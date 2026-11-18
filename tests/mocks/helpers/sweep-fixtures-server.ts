@@ -32,7 +32,8 @@ export async function startSweepOverlay(app: DashboardApp, profile?: FixtureDash
     const http = await startDashboardHttpServer({ app, port: 0 });
     return { baseUrl: `http://127.0.0.1:${http.port}`, async close() {
       const results = await Promise.allSettled([http.close(), shell.close()]);
-      const failures = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+      const failures: unknown[] = [];
+      for (const result of results) if (result.status === "rejected") failures.push(result.reason);
       if (failures.length) throw new AggregateError(failures, "sweep fixture server cleanup failed");
     } };
   } catch (error) { await shell.close(); throw error; }

@@ -5,7 +5,6 @@ import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-mode
 import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
 import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
 import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { disposeHttpRouteHarness, harness as backendHarness, type Harness as BackendHarness } from "../../support/helpers/backend/http-route-harness.js";
