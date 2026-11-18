@@ -14,7 +14,7 @@ import type { TaskId } from "../../../rules/identity/ids.js";
 import type { TaskLogger, BrowserDriver } from "../../../workflow-kit/task.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
+import { BrowserLoginError, DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
 import { withBrowserActionSession, withoutBrowserActionNotes } from "../../systems/browser-shared/action-notes.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
@@ -183,6 +183,14 @@ function closureUnproved(state: WorkerSessionState): boolean {
 
 function abortError(system: BrowserSystemId): Error {
   return new Error(`${system} driver lease was aborted before acquisition`);
+}
+
+function retainedSessionUnavailable(system: BrowserSystemId, error: unknown): boolean {
+  if (error instanceof BrowserLoginError) {
+    return error.system === system && error.step === "verify-landing"
+      && (error.check === "application-route" || error.check === "positive-evidence" || error.check === "sign-in-form-absent");
+  }
+  return error instanceof Error && /^TargetClosedError\d*$/u.test(error.constructor.name);
 }
 
 
@@ -643,11 +651,31 @@ export class WorkerSessionManager {
     if (browserMode === undefined) {
       throw new Error(`${need.system} driver lease requires the claimed run's bound browser presentation; none is bound`);
     }
+    const session = this.#session(need.system);
+    // An active lease must reset or close before this turn. An idle browser's last proof predates the request.
+    const idleAtRequest = session.state.state === "authenticated" && session.state.lease === "idle"
+      ? heldResource(session) : undefined;
     return this.#withSystemTurn(need.system, signal, async () => {
       if (need.session === "fresh") {
         await this.#closeSystem(need.system, "fresh-boundary");
       }
-      const resource = await withoutBrowserActionNotes(() => this.#acquireBounded(need, instance, configFingerprint, browserMode, signal));
+      const resource = await withoutBrowserActionNotes(async () => {
+        const acquire = () => this.#acquireBounded(need, instance, configFingerprint, browserMode, signal);
+        const candidate = await acquire();
+        if (candidate !== idleAtRequest) return candidate;
+        try {
+          await candidate.reset({ signal });
+          return candidate;
+        } catch (error) {
+          try { await this.#closeSystem(need.system, "poisoned"); }
+          catch (closeError) {
+            throw new AggregateError([error, closeError], `${need.system} retained session check and poison-close both failed`, { cause: error });
+          }
+          if (signal.aborted || !retainedSessionUnavailable(need.system, error)) throw error;
+          return acquire();
+        }
+      });
+      signal.throwIfAborted();
       let leaseActive = true;
       const captureScreenshot = async (boundary: "step" | "before-submit" | "after-submit" = "step"): Promise<void> => {
         if (screenshotOwner === undefined) throw new Error("task screenshot capability is outside its owned lease");
@@ -826,14 +854,16 @@ export class WorkerSessionManager {
     const current = new Promise<void>((resolve) => {
       releaseTurn = resolve;
     });
-    const tail = previous.then(() => current);
+    const tail = previous.then(async () => {
+      await current;
+      if (session.turn === tail) session.turn = undefined;
+    });
     session.turn = tail;
     try {
       await waitForTurn(previous, signal, system);
       return await operation();
     } finally {
       releaseTurn();
-      if (session.turn === tail) session.turn = undefined;
     }
   }
 
