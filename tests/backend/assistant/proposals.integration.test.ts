@@ -37,6 +37,8 @@ import { launchHarness } from "../../support/fixtures/run-launch-fixtures.js";
 import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { createWorkbookLibraryService, type WorkbookSyncDownload } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
+import { WorkbookLibraryActionSchema } from "../../../src/models/dashboard/workbook-library.js";
 import { EditableWorkbookSchema } from "../../../src/models/dashboard/workbooks.js";
 import type { AssistantAttachmentRecord } from "../../../src/models/dashboard/assistant.js";
 import { createHash } from "node:crypto";
@@ -79,8 +81,12 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   let mode: SubmitMode = "direct", entered = false, release: () => void = () => {};
   const gate = () => new Promise<void>(resolve => { release = resolve; });
   cleanups.push(() => { release(); });
-  const sync: { download: WorkbookSyncDownload["withDownload"] } = { download: () => Promise.reject(new Error("no SharePoint download in this test")) };
-  const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: { withDownload: (command, use) => sync.download(command, use) } });
+  const repository = database.authority.workbooks;
+  const sync: { download: WorkbookSyncDownload["withDownload"]; record: typeof repository.recordSync } = {
+    download: () => Promise.reject(new Error("no SharePoint download in this test")), record: repository.recordSync.bind(repository),
+  };
+  const library = createWorkbookLibraryService({ repository: { ...repository, recordSync: (libraryId, record) => sync.record(libraryId, record) },
+    clock, sync: { withDownload: (command, use) => sync.download(command, use) } });
   const workbookOwner: { library: Parameters<typeof createAssistantProposals>[0] extends { workbooks(): infer L } ? L : never } = { library };
   const files = new Map<string, AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>>();
   let capacityFailure: RunWorkerStartupFailure | undefined;
@@ -395,6 +401,44 @@ it("reads a lost library-action response back from its operation record and keep
   assert.deepEqual(await o.decide(card, "confirm"), { state: "unknown", actionId: card.actionId });
   assert.ok(o.captions().at(-1)?.includes("Check the Spreadsheets library for Lost."));
   await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u, "UNKNOWN is never retried");
+});
+
+it("refuses a confirmed action when its operation ID belongs to a different committed action", async () => {
+  const o = await owners(), seed = seedWorkbook(o);
+  o.context.operatorText = "Rename to Approved";
+  const card = await sheetCard(o, { action: "rename", sheet: seed.sheet, name: "Approved" });
+  const real = o.library;
+  o.workbookOwner.library = { ...real, async libraryAction(libraryId, value, signal, assertCurrent) {
+    const action = WorkbookLibraryActionSchema.parse(value);
+    await real.libraryAction(libraryId, { ...action, change: { kind: "rename", name: "Other" } }, signal);
+    return real.libraryAction(libraryId, action, signal, assertCurrent);
+  } };
+
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "refused", code: "ASSISTANT_SPREADSHEET_REFUSED" });
+  assert.equal(seed.entry().name, "Other");
+  assert.equal(o.captions().at(-1), `Not done: Rename spreadsheet. ${ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text}`);
+});
+
+it.each(["applied", "unknown"] as const)("reports a committed SharePoint sync as %s when recording sync status fails", async expected => {
+  const o = await owners(), seed = seedWorkbook(o);
+  const url = "https://contoso.sharepoint.com/sites/hr/roster.xlsx";
+  o.context.operatorText = `link ${url}`;
+  const link = await sheetCard(o, { action: "link", sheet: seed.sheet, url });
+  assert.equal((await o.decide(link, "confirm")).state, "applied");
+  const version = seed.entry().version;
+  const storageError = new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  o.sync.download = async (_command, use) => use({ name: "roster.csv", bytes: new TextEncoder().encode("Name\nZed\n").buffer },
+    { signal: o.context.signal, assertCurrent() {} });
+  o.sync.record = () => { throw storageError; };
+  if (expected === "unknown") o.workbookOwner.library = { ...o.library, libraryActionRecord() { throw storageError; } };
+
+  const card = await sheetCard(o, { action: "sync", sheet: seed.sheet });
+  const result = await o.decide(card, "confirm");
+  assert.equal(seed.entry().version, version + 1, "the workbook committed before the failed status write");
+  assert.deepEqual(result, { state: expected, actionId: card.actionId });
+  assert.equal(o.captions().at(-1), expected === "applied" ? "Done: Download from SharePoint." : ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text);
+  await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
+  assert.equal(seed.entry().version, version + 1);
 });
 
 it.each(["ready", "refused", "unknown"] as const)("keeps a confirmed Resume applied with %s worker capacity and stores only its safe warning", async state => {
