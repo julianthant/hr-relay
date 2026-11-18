@@ -62,6 +62,18 @@ describe("classifyNameSimilarity — the ported same/similar/different classifie
     assert.equal(classifyNameSimilarity("Rick Roe", "Johnnie Battistessa"), "different");
   });
 
+  it("requires a separate match for each occurrence of a repeated token", () => {
+    assert.equal(classifyNameSimilarity("Lee Lee", "Lee Thompson"), "different");
+    assert.equal(classifyNameSimilarity("Lee Thompson", "Lee Lee"), "different");
+    assert.equal(classifyNameSimilarity("Lee Lee", "Lee Michael Lee"), "same");
+  });
+
+  it("pairs spelling variants one-to-one even when they compete for an exact token", () => {
+    assert.equal(classifyNameSimilarity("Sam Tam", "Sam Saul"), "similar");
+    assert.equal(classifyNameSimilarity("Sam Saul", "Sam Tam"), "similar");
+    assert.equal(classifyNameSimilarity("Lee Lea", "Lee Thompson"), "different");
+  });
+
   it("calls an empty side different", () => {
     assert.equal(classifyNameSimilarity("", "Bea Morrow"), "different");
   });
