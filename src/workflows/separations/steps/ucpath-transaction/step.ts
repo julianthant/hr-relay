@@ -27,17 +27,12 @@ import {
 } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../../../../models/workflow/step-omission.js";
 import { SeparationsMatchIdentity } from "../../../../models/workflows/separations/match-identity.js";
 import {
   SeparationsMatchTerminationType,
 } from "../../../../models/workflows/separations/match-termination-type.js";
 import {
-  ReadSeparationDatesOutputSchema
-} from "../../../../models/workflows/separations/read-separation-dates.js";
-import {
   SeparationsVerifyIdentityApproval,
-  VerifyIdentityApprovalOutputSchema,
 } from "../../../../models/workflows/separations/verify-identity-approval.js";
 import {
   SeparationsVerifyTerminationReceipt,
@@ -48,10 +43,6 @@ import {
   ResolvedIdentitySubjectSchema,
 } from "../../../../rules/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
-import {
-  TERMINATION_RECEIPT_ACCEPTED_STATUSES,
-  assertTerminationReceipt,
-} from "../../../../rules/separations/termination-receipt.js";
 import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
 import type { StepProofSpec, WorkflowAuthor, WorkflowEntryScope } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
@@ -341,42 +332,6 @@ const receiptNode = ucpathTransactionEntries.task(RECEIPT_NODE, SeparationsVerif
   replay: "always-rerun",
 });
 
-const UcpathTransactionFactsSchema = z.strictObject({
-  transactionNumber: z.string().min(1),
-  approvalStatus: z.string().min(1),
-});
-
-export const UCPATH_TRANSACTION_OMISSION: StepOmissionDeclaration = {
-  form: {
-    fields: [
-      {
-        key: "transactionNumber", label: "UCPath transaction number", kind: "text",
-        help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.",
-      },
-      {
-        key: "approvalStatus", label: "Approval status", kind: "enum",
-        values: [...TERMINATION_RECEIPT_ACCEPTED_STATUSES],
-        help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.",
-      },
-    ],
-  },
-  produces: {
-    [RECEIPT_NODE]: ({ facts, scope }) => {
-      const typed = UcpathTransactionFactsSchema.parse(facts);
-      const approval = VerifyIdentityApprovalOutputSchema.parse(scope.outputs["approval"]);
-      const dates = ReadSeparationDatesOutputSchema.parse(scope.outputs["dates"]);
-      return assertTerminationReceipt({
-        transactionNumber: typed.transactionNumber,
-        approvalStatus: typed.approvalStatus,
-        approvedEmplId: approval.approved.emplId,
-        approvedName: approval.approved.ucpathName,
-        expectedEffectiveDate: dates.terminationEffectiveDate,
-      });
-    },
-  },
-};
-
-
 
 const TerminationInputShape = {
   documentNumber: KualiDocumentNumberSchema,
@@ -467,7 +422,7 @@ export function buildTermination({ task, transaction, group }: Author, extractio
   }));
   return {
     receipt, clearPending, fileTermination,
-    steps: [[group(UCPATH_TRANSACTION_STEP, { ...UCPATH_TRANSACTION_DISPLAY, omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]]] as const
+    steps: [[group(UCPATH_TRANSACTION_STEP, UCPATH_TRANSACTION_DISPLAY), [pendingSet, clearPending, fileTermination, receipt]]] as const
   };
 }
 

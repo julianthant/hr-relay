@@ -3,10 +3,11 @@ import { describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import {
-  attemptFacts, changeDryRun, changeFact, changeText, changeTypedValue, changeWorkflow, clearWorkbookRows, copyOmittedValue,
+  changeDryRun, changeFact, changeText, changeTypedValue, changeWorkflow, clearWorkbookRows, copyOmittedValue,
   enterCustomization, freshLaunchDraft, leaveCustomization, pickReference, pickReferenceVersion, pickWorksheet, removeReference,
-  restoreRerunDraft, selectWorkbookRows, selectedStepKeys, setLaunchField, toggleStep, touchFact, typedDraftOf, type LaunchDraft,
+  restoreRerunDraft, selectWorkbookRows, selectedStepKeys, setLaunchField, toggleManual, toggleRow, typedDraftOf, type LaunchDraft,
 } from "../../../../src/dashboard/surfaces/run-start/run-launch-draft-model.js";
+import { startRowsOf, type StepRow } from "../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 
@@ -47,18 +48,22 @@ const candidate = (field: string, value: unknown, target: Record<string, string>
   state: "available", sourceStepKey: "read", nodeId: "read", fieldPath: field, ...target, label: field, value,
   checkpoint: { attempt: 1, writtenAt: AT }, provenance: { path: field, source: "live", observedAt: AT, originalObservedAt: AT } });
 
+const row = (key: string): StepRow => {
+  const found = startRowsOf(plain).find(entry => entry.key === key);
+  assert.ok(found);
+  return found;
+};
 const used = (draft: LaunchDraft): LaunchDraft => ({ ...draft, text: "x", sourceInputUnchanged: true, priority: "bulk", dryRunRequested: true, browserMode: "headless",
-  stepDrafts: { read: { reason: "r" } }, touchedFacts: new Set(["read:reason"]), factsAttempted: true,
+  stepDrafts: { read: { reason: "r" } }, manualRows: ["kid"],
   referenceSelections: { ref: { libraryId: "l", versionId: "v", sheetId: "s" } }, referenceDrafts: { ref: { libraryId: "l", versionId: "v" } },
   selectedWorkbookRows: { source: "s", choices: [] }, launchFields: { fileToOnBase: "yes" },
   valueDrafts: { 0: { text: "t", copied: false } }, copiedOmissions: { 0: true } });
 
 describe("the fresh draft", () => {
   it("starts empty with the resting options", () => {
-    const draft = freshLaunchDraft(plain);
-    assert.deepEqual({ ...draft, touchedFacts: [...draft.touchedFacts] }, {
+    assert.deepEqual(freshLaunchDraft(plain), {
       text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, stepSelection: undefined,
-      stepDrafts: {}, touchedFacts: [], factsAttempted: false, priority: undefined, dryRunRequested: false, browserMode: "headed",
+      stepDrafts: {}, manualRows: [], priority: undefined, dryRunRequested: false, browserMode: "headed",
       referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {}, valueDrafts: {}, copiedOmissions: {},
     });
   });
@@ -77,8 +82,8 @@ describe("workflow change", () => {
     assert.equal(next.text, "");
     assert.equal(next.sourceInputUnchanged, false);
     assert.deepEqual([next.priority, next.dryRunRequested, next.browserMode], [undefined, false, "headed"]);
-    assert.deepEqual([next.stepDrafts, [...next.touchedFacts], next.factsAttempted, next.referenceSelections, next.selectedWorkbookRows, next.launchFields, next.stepSelection],
-      [{}, [], false, {}, undefined, {}, undefined]);
+    assert.deepEqual([next.stepDrafts, next.manualRows, next.referenceSelections, next.selectedWorkbookRows, next.launchFields, next.stepSelection],
+      [{}, [], {}, undefined, {}, undefined]);
     assert.deepEqual(next.referenceDrafts, { ref: { libraryId: "l", versionId: "v" } });
     assert.deepEqual([next.valueDrafts, next.copiedOmissions], [{ 0: { text: "t", copied: false } }, { 0: true }]);
     assert.equal(next.typed.workflowId, "other");
@@ -90,34 +95,37 @@ describe("step selection", () => {
     assert.deepEqual(selectedStepKeys(freshLaunchDraft(plain), plain), ["read", "write", "finish"]);
   });
   it("applies the shared cascade and orders by the timeline", () => {
-    const off = toggleStep(freshLaunchDraft(plain), plain, "read", false);
+    const off = toggleRow(freshLaunchDraft(plain), plain, null, row("read"), false);
     assert.deepEqual(selectedStepKeys(off, plain), ["finish"]);
-    assert.deepEqual(selectedStepKeys(toggleStep(off, plain, "read", true), plain), ["read", "write", "finish"]);
+    assert.deepEqual(selectedStepKeys(toggleRow(off, plain, null, row("read"), true), plain), ["read", "write", "finish"]);
   });
   it("refuses a step the workflow does not declare", () => {
-    assert.throws(() => toggleStep(freshLaunchDraft(plain), plain, "nope", true), /does not declare/u);
+    assert.throws(() => toggleRow(freshLaunchDraft(plain), plain, null, { ...row("read"), key: "nope", stepKey: "nope" }, false), /does not declare/u);
+  });
+  it("leaves a locked row alone", () => {
+    const draft = freshLaunchDraft(plain);
+    assert.equal(toggleRow(draft, plain, null, row("finish"), false), draft);
   });
   it("shows a selection made for another workflow as that workflow's defaults", () => {
-    const made = toggleStep(freshLaunchDraft(plain), plain, "read", false);
+    const made = toggleRow(freshLaunchDraft(plain), plain, null, row("read"), false);
     assert.deepEqual(selectedStepKeys(made, other), ["finish"]);
     assert.deepEqual(selectedStepKeys({ ...made, stepSelection: { workflowId: "plain", keys: ["x"] } }, other), ["finish"]);
   });
   it("entering customization resets the keys and keeps the facts", () => {
-    const next = enterCustomization(used(toggleStep(freshLaunchDraft(plain), plain, "read", false)), plain);
+    const next = enterCustomization(used(toggleRow(freshLaunchDraft(plain), plain, null, row("read"), false)), plain);
     assert.deepEqual(selectedStepKeys(next, plain), ["read", "write", "finish"]);
     assert.deepEqual(next.stepDrafts, { read: { reason: "r" } });
-    assert.equal(next.factsAttempted, true);
   });
   it("leaving customization also clears the facts so unchosen assertions cannot survive", () => {
     const next = leaveCustomization(used(freshLaunchDraft(plain)), plain);
-    assert.deepEqual([next.stepDrafts, [...next.touchedFacts], next.factsAttempted], [{}, [], false]);
+    assert.deepEqual([next.stepDrafts, next.manualRows], [{}, []]);
     assert.deepEqual(selectedStepKeys(next, plain), ["read", "write", "finish"]);
   });
 });
 
 describe("omission facts", () => {
   it("seeds the form's resting draft, then sets the field", () => {
-    const next = changeFact(freshLaunchDraft(plain), snapshot, "read", OMIT_FORM, "reason", "because");
+    const next = changeFact(freshLaunchDraft(plain), snapshot, row("read"), OMIT_FORM, "reason", "because");
     assert.deepEqual(next.stepDrafts, { read: { reason: "because", confirmed: false } });
   });
   it("drops the copied marker of the candidate that targeted that field", () => {
@@ -125,8 +133,8 @@ describe("omission facts", () => {
       candidate("reason", "old"),
       candidate("confirmed", true)] });
     const base = { ...freshLaunchDraft(plain), copiedOmissions: { 0: true, 1: true } };
-    assert.deepEqual(changeFact(base, withCandidate, "read", OMIT_FORM, "reason", "new").copiedOmissions, { 1: true });
-    assert.deepEqual(changeFact(base, null, "read", OMIT_FORM, "reason", "new").copiedOmissions, { 0: true, 1: true });
+    assert.deepEqual(changeFact(base, withCandidate, row("read"), OMIT_FORM, "reason", "new").copiedOmissions, { 1: true });
+    assert.deepEqual(changeFact(base, null, row("read"), OMIT_FORM, "reason", "new").copiedOmissions, { 0: true, 1: true });
   });
   it("copies an available candidate into its field and marks it copied", () => {
     const withCandidate = RerunValuesSnapshotSchema.parse({ ...snapshot, values: [
@@ -141,11 +149,30 @@ describe("omission facts", () => {
     assert.throws(() => copyOmittedValue(freshLaunchDraft(plain), withCandidate, 0, "read", OMIT_FORM), /RERUN_OMISSION_FIELD_UNAVAILABLE/u);
     assert.throws(() => copyOmittedValue(freshLaunchDraft(plain), snapshot, 0, "read", OMIT_FORM), /RERUN_OMISSION_FIELD_UNAVAILABLE/u);
   });
-  it("records touched fields once and an attempt", () => {
-    const touched = touchFact(touchFact(freshLaunchDraft(plain), "read", "reason"), "read", "reason");
-    assert.deepEqual([...touched.touchedFacts], ["read:reason"]);
-    assert.equal(touchFact(touched, "read", "reason"), touched);
-    assert.equal(attemptFacts(touched).factsAttempted, true);
+  it("opens a switch's fields prefilled from the source run when it is turned off, and keeps them while the dialog is open", () => {
+    const withCandidate = RerunValuesSnapshotSchema.parse({ ...snapshot, values: [candidate("reason", "old")] });
+    const off = toggleRow(freshLaunchDraft(plain), plain, withCandidate, row("read"), false);
+    assert.deepEqual(off.stepDrafts, { read: { reason: "old", confirmed: false } });
+    assert.deepEqual(off.copiedOmissions, { 0: true });
+    const edited = changeFact(off, withCandidate, row("read"), OMIT_FORM, "reason", "mine");
+    const back = toggleRow(toggleRow(edited, plain, withCandidate, row("read"), true), plain, withCandidate, row("read"), false);
+    assert.deepEqual(back.stepDrafts, { read: { reason: "mine", confirmed: false } });
+    assert.deepEqual(back.copiedOmissions, {});
+  });
+  it("offers the facts the source run typed as typed, not as copied", () => {
+    const typed = RerunValuesSnapshotSchema.parse({ ...snapshot, values: [candidate("reason", "old")], typed: [{ step: "read", facts: { reason: "hand", confirmed: true } }] });
+    const off = toggleRow(freshLaunchDraft(plain), plain, typed, row("read"), false);
+    assert.deepEqual(off.stepDrafts, { read: { reason: "hand", confirmed: true } });
+    assert.deepEqual(off.copiedOmissions, {});
+  });
+  it("opens and closes a child row and a locked row through manualRows, and starts a child row empty", () => {
+    const kid: StepRow = { ...row("read"), key: "kid", stepKey: undefined, child: { workflow: "kids", step: "read" } };
+    const open = toggleRow(freshLaunchDraft(plain), plain, snapshot, kid, false);
+    assert.deepEqual([open.manualRows, open.stepDrafts], [["kid"], {}]);
+    assert.deepEqual(toggleRow(open, plain, snapshot, kid, true).manualRows, []);
+    const locked: StepRow = { ...row("read"), kind: "locked-manual" };
+    assert.deepEqual(toggleManual(freshLaunchDraft(plain), null, locked, true).manualRows, ["read"]);
+    assert.deepEqual(toggleManual({ ...freshLaunchDraft(plain), manualRows: ["read"] }, null, locked, false).manualRows, []);
   });
 });
 
@@ -211,12 +238,12 @@ describe("reference spreadsheet", () => {
 });
 
 describe("rerun restore", () => {
-  it("restores the plain identity text, current-step defaults and no value drafts", () => {
+  it("restores the plain identity text, every step included and no value drafts", () => {
     const partial = RerunValuesSnapshotSchema.parse({ ...snapshot, sourceInput: { state: "partial", value: { eid: "10812345" }, identityCopied: true } });
     const ran = { ...plain, steps: plain.steps.slice(0, 3) };
     const next = restoreRerunDraft(used(freshLaunchDraft(ran)), partial, ran);
     assert.equal(next.text, "10812345");
-    assert.deepEqual(selectedStepKeys(next, ran), ["finish"]);
+    assert.deepEqual(selectedStepKeys(next, ran), ["read", "write", "finish"]);
     assert.deepEqual(next.valueDrafts, {});
   });
   it("seeds copied values for the declared input fields", () => {

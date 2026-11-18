@@ -39,13 +39,14 @@ export const stepOmissionTerminalDescriptor = defineWorkflowDescriptor({
       key: "reading",
       label: "Reading",
       nodes: ["read"],
-      omission: {
+      manual: {
+        skips: [],
         form: FORM,
         produces: { read: ({ facts }) => ({ eid: "10873698", present: facts.present }) },
       },
     },
     { key: "folding", label: "Folding", nodes: ["fold"] },
-    { key: "skipping", label: "Skipping", nodes: ["skip"], omission: { form: FORM, produces: {} } },
+    { key: "skipping", label: "Skipping", nodes: ["skip"], manual: { form: FORM, produces: {}, skips: ["skip"] } },
   ],
   flow: flow(FixtureInput)
     .step("read", FixtureReadReceipt, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
