@@ -194,6 +194,74 @@ describe("Transactions in Progress selection at the delete boundary", () => {
     }
   });
 
+  it("blocks Delete Selected if the checked set changes while the button is disabled after the census", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await routeSweepFixture(page, false);
+      await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
+      await page.evaluate(() => {
+        const button = document.querySelector<HTMLButtonElement>("#HR_TBH_WRK_DELETE_BTN");
+        const foreign = document.querySelector<HTMLInputElement>('[id="SELECT$1"]');
+        const checked = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked");
+        if (!button || !foreign || !checked?.get || !checked.set) throw new Error("missing fixture controls");
+        const readChecked = checked.get;
+        button.disabled = true;
+        Object.defineProperty(foreign, "checked", {
+          set: checked.set,
+          get() {
+            document.documentElement.dataset.sweepCensused = "true";
+            return readChecked.call(this) === true;
+          },
+        });
+      });
+
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      const refused = assert.rejects(
+        ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
+        /checked set changed at Delete Selected dispatch/u,
+      );
+      const changeSelection = async () => {
+        await page.locator('html[data-sweep-censused="true"]').waitFor({ state: "attached" });
+        await page.evaluate(() => {
+          const button = document.querySelector<HTMLButtonElement>("#HR_TBH_WRK_DELETE_BTN");
+          const foreign = document.querySelector<HTMLInputElement>('[id="SELECT$1"]');
+          if (!button?.disabled || !foreign) throw new Error("fixture must change the selection while Delete Selected is disabled");
+          foreign.checked = true;
+          button.disabled = false;
+        });
+      };
+      await Promise.all([refused, changeSelection()]);
+      assert.equal(await page.locator("#ALERTMSG").textContent(), "");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("blocks the delete handler if a row becomes checked on pointerdown", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await routeSweepFixture(page, false);
+      await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
+      await page.evaluate(() => {
+        const button = document.querySelector("#HR_TBH_WRK_DELETE_BTN");
+        const foreign = document.querySelector<HTMLInputElement>('[id="SELECT$1"]');
+        if (!button || !foreign) throw new Error("missing fixture controls");
+        button.addEventListener("pointerdown", () => { foreign.checked = true; }, { once: true });
+      });
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      await assert.rejects(
+        ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
+        /checked set changed at Delete Selected dispatch/u,
+      );
+      assert.equal(await page.locator('[id="SELECT$1"]').isChecked(), true);
+      assert.equal(await page.locator("#ALERTMSG").textContent(), "");
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("clicks Delete Selected when precisely the authorized rows remain checked", async () => {
     const browser = await chromium.launch({ headless: true });
     try {
