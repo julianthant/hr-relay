@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 
-import type { Page } from "playwright";
+import { chromium, type Page } from "playwright";
 import { describe, it } from "vitest";
-import { joinPendingSweepGridRows, readInProgressSubjectOnPage } from "../../../../../src/backend/systems/ucpath/driver/smart-hr-operation.js";
+import { joinPendingSweepGridRows, readInProgressSubjectOnPage, ucpathSmartHrOperations } from "../../../../../src/backend/systems/ucpath/driver/smart-hr-operation.js";
+import { UCPATH_SMART_HR_DELETE_SELECTED_BUTTON } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import type { UcpathPendingSweepTarget, UcpathTransactionRow } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
-import { EidSchema, IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
+import { EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
+import { mintMutationCapability } from "../../../../../src/workflow-kit/mutation-capability.js";
 import { createDeterministicUcpathDriverRow } from "../../../../support/helpers/ucpath-pending-row-fixtures.js";
 
 const EID = EidSchema.parse("10203262");
@@ -104,5 +106,109 @@ describe("Transactions in Progress exact-set join", () => {
       ]), EID),
       /2 distinct names/u,
     );
+  });
+});
+
+async function routeSweepFixture(page: Page, foreignChecked: boolean): Promise<void> {
+  const row = transactionRow();
+  const result = `
+    <p>1-1 of 1</p>
+    <table><tr id="trPTS_CFG_CL_STD_RSL0">
+      <td id="PTS_CFG_CL_RSLT_NUI_SRCH0$11$$0">${row.transactionId}</td>
+      <td id="PTS_CFG_CL_RSLT_NUI_SRCH3$14$$0">${row.emplId}</td>
+      <td id="PTS_CFG_CL_RSLT_NUI_SRCH2$13$$0">${row.displayedName}</td>
+      <td><button id="PTS_CFG_CL_RSLT_PTS_DRILLIN$40$$0" onclick="show('detail')">Details</button></td>
+    </tr></table>`;
+  const search = `
+    <input id="UC_SS_TBH_DVW_EMPLID">
+    <select id="UC_SS_TBH_DVW_EMPLID$op"><option value="2">Equals</option></select>
+    <button id="PTS_CFG_CL_WRK_PTS_SRCH_BTN" onclick="show('result')">Search</button>
+    <template id="result">${result}</template>
+    <template id="detail">
+      <span id="UC_SS_TRANSACT_UC_TRANSACT_ID">${row.transactionId}</span>
+      <span id="UC_SS_TRANSACT_APPR_STATUS">${row.approvalStatus}</span>
+      <span id="UC_SS_TRANSACT_DTTM_CREATED">06/10/26 9:12:34.123456AM</span>
+      <span id="NAME$span$0">${row.displayedName}</span>
+      <span id="UC_SS_TBH_VW_ACTION$0">${row.action}</span>
+      <span id="UC_SS_TBH_VW_START_DT$0">${row.startDate}</span>
+      <button id="#ICList" onclick="show('result')">Return to list</button>
+    </template>
+    <div id="surface"></div>
+    <script>function show(id) {
+      document.getElementById('surface').replaceChildren(document.getElementById(id).content.cloneNode(true));
+    }</script>`;
+  const wizardRow = (index: number, eid: string, checked: boolean) => `
+    <tr id="trHR_TBH_EULST_VW$0_row${index}"><td>
+      <input type="checkbox" id="SELECT$${index}" ${checked ? "checked" : ""}>
+      <span id="EMPLID$${index}">${eid}</span>
+      <a id="NAME$${index}">${index === 0 ? row.displayedName : "Other Test Person"}</a>
+      <span id="ACTION$${index}">Terminatn</span>
+      <span id="TBH_TMPL_TXN_TYP$${index}">Termination</span>
+      <span id="EFFDT$${index}">${row.startDate}</span>
+      <span id="COUNTRY$${index}">USA</span>
+    </td></tr>`;
+  const wizard = `
+    <input id="HR_TBH_WRK_TBH_TMPL_ID">
+    <table>${wizardRow(0, row.emplId, false)}${wizardRow(1, "10800000", foreignChecked)}</table>
+    <button id="HR_TBH_WRK_DELETE_BTN" onclick="document.getElementById('ALERTMSG').textContent = 'Synthetic delete clicked'">Delete Selected</button>
+    <p id="ALERTMSG"></p>`;
+  await page.route("**/*", route => route.fulfill({
+    contentType: "text/html",
+    body: new URL(route.request().url()).pathname.includes("UC_SS_TBH.GBL") ? search : wizard,
+  }));
+}
+
+describe("Transactions in Progress selection at the delete boundary", () => {
+  it("refuses a pre-checked foreign row before checking the authorized row", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await routeSweepFixture(page, true);
+      await assert.rejects(
+        ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT),
+        /checked outside the authorized pending sweep/u,
+      );
+      assert.equal(await page.locator('[id="SELECT$0"]').isChecked(), false);
+      assert.equal(await page.locator('[id="SELECT$1"]').isChecked(), true);
+      assert.equal(await page.locator("#ALERTMSG").textContent(), "");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("refuses a foreign row checked after staging and before Delete Selected", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await routeSweepFixture(page, false);
+      await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
+      await page.locator('[id="SELECT$1"]').check();
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      await assert.rejects(
+        ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
+        /checked outside the authorized pending sweep/u,
+      );
+      assert.equal(await page.locator("#ALERTMSG").textContent(), "");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("clicks Delete Selected when precisely the authorized rows remain checked", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await routeSweepFixture(page, false);
+      await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      await assert.rejects(
+        ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
+        /Synthetic delete clicked/u,
+      );
+      assert.equal(await page.locator('[id="SELECT$0"]').isChecked(), true);
+      assert.equal(await page.locator('[id="SELECT$1"]').isChecked(), false);
+    } finally {
+      await browser.close();
+    }
   });
 });

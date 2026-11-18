@@ -1,7 +1,7 @@
 import { readTransactionFindingsOnPage, scanTerminationTransactionsOnPage, textOf } from "./transaction-findings-operation.js";
 export { readTransactionFindingsOnPage, scanTerminationTransactionsOnPage } from "./transaction-findings-operation.js";
 
-import type { Locator, Page } from "playwright";
+import type { Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
@@ -30,6 +30,7 @@ import {
   UcpathCommitRefusedError,
   UcpathEmplIdNotRecognizedError,
   UcpathEmploymentRecordMismatchError,
+  UcpathInProgressRowSchema,
   UcpathPendingSweepStagingSchema,
   UcpathTerminationStagingSchema,
   isUcpathTerminationAction,
@@ -58,6 +59,8 @@ const DRIVER_ANCHOR = Object.freeze({
   wizardJobEffectiveDate: "#HR_TBH_WRK_JOB_EFFDT",
   // The staged transaction ID is NEW until Save; the same field changes from input to span on detail.
   wizardTransactionIdDisplay: "#UC_SS_TRANSACT_UC_TRANSACT_ID",
+  pendingRow: 'tr[id^="trHR_TBH_EULST_VW$0_row"]',
+  pendingSelect: 'input[type="checkbox"][id^="SELECT$"]',
 
 });
 
@@ -66,6 +69,11 @@ const WIZARD_URL = `${HRMS}/c/ADMINISTER_WORKFORCE_(GBL).HR_TBH_JOB.GBL`;
 
 
 const STEP_BOUND_MS = 60_000;
+
+const stagedPendingSweeps = new WeakMap<Page, {
+  readonly target: UcpathPendingSweepTarget;
+  readonly selected: readonly UcpathInProgressRow[];
+}>();
 
 
 function resolveReasonOption(
@@ -105,6 +113,7 @@ async function stageTerminationOnPage(
   input: UcpathTerminationTarget,
   observedAt: string,
 ): Promise<UcpathTerminationStaging> {
+  stagedPendingSweeps.delete(page);
   assertCurrent();
   await page.goto(WIZARD_URL, { waitUntil: "domcontentloaded", timeout: STEP_BOUND_MS });
   assertCurrent();
@@ -278,7 +287,7 @@ export async function readStagedWizardSubjectOnPage(assertCurrent: () => void, p
 export async function readInProgressSubjectOnPage(assertCurrent: () => void, page: Page, emplId: Eid): Promise<string> {
   const names: string[] = [];
   assertCurrent();
-  for (const row of await page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]').all()) {
+  for (const row of await page.locator(DRIVER_ANCHOR.pendingRow).all()) {
     const eid = row.locator('span[id^="EMPLID$"]');
     assertCurrent();
     if (await eid.count() !== 1) {
@@ -313,6 +322,7 @@ export async function readInProgressSubjectOnPage(assertCurrent: () => void, pag
   return names[0];
 }
 
+const PendingSweepGridFactsSchema = UcpathInProgressRowSchema.omit({ transactionId: true });
 type PendingSweepGridFacts = Omit<UcpathInProgressRow, "transactionId">;
 
 export type PendingSweepGridJoin = Readonly<{
@@ -364,13 +374,77 @@ export function joinPendingSweepGridRows(
   return joined;
 }
 
+async function readPendingSweepSelection(
+  assertCurrent: () => void,
+  page: Page,
+  target: UcpathPendingSweepTarget,
+  requireAllChecked: boolean,
+) {
+  assertCurrent();
+  const grid = await page.evaluate(({ row, select, emplId }) => {
+    const cell = {
+      read(node: Element, selector: string): string {
+        const matches = node.querySelectorAll<HTMLElement>(selector);
+        return matches.length === 1 ? matches[0].innerText.trim() : "";
+      },
+    };
+    const checkedCount = document.querySelectorAll(`${select}:checked`).length;
+    const rows = Array.from(document.querySelectorAll(row), (node, index) => {
+      const rowEmplId = cell.read(node, 'span[id^="EMPLID$"]');
+      const action = cell.read(node, 'span[id^="ACTION$"]');
+      const controls = node.querySelectorAll<HTMLInputElement>(select);
+      return {
+        index,
+        checked: controls.length === 1 && controls[0].checked,
+        checkboxCount: controls.length,
+        facts: {
+          emplId: rowEmplId,
+          action,
+          ...(rowEmplId === emplId ? {
+            transactionType: cell.read(node, 'span[id^="TBH_TMPL_TXN_TYP$"]'),
+            effectiveDate: cell.read(node, 'span[id^="EFFDT$"]'),
+            displayedName: cell.read(node, 'a[id^="NAME$"]'),
+            country: cell.read(node, 'span[id^="COUNTRY$"]'),
+          } : {}),
+        },
+      };
+    });
+    return { rows, checkedCount };
+  }, { row: DRIVER_ANCHOR.pendingRow, select: DRIVER_ANCHOR.pendingSelect, emplId: target.emplId });
+  assertCurrent();
+  const candidates = grid.rows.flatMap((row) => {
+    const emplId = EidSchema.parse(row.facts.emplId);
+    if (row.facts.action.length === 0) {
+      throw new Error("a Transactions in Progress row has no unique non-empty Action control");
+    }
+    return emplId === target.emplId && isUcpathTerminationAction(row.facts.action)
+      ? [{ ...row, facts: PendingSweepGridFactsSchema.parse(row.facts) }]
+      : [];
+  });
+  const joined = joinPendingSweepGridRows(target, candidates.map(({ facts }) => facts));
+  const authorized = joined.map(({ candidateIndex, selected }) => ({
+    ...candidates[candidateIndex], selected,
+  }));
+  if (authorized.some(({ checkboxCount }) => checkboxCount !== 1)) {
+    throw new Error("an authorized Transactions in Progress row has no unique Select checkbox");
+  }
+  const authorizedChecked = authorized.filter(({ checked }) => checked).length;
+  if (authorizedChecked !== grid.checkedCount) {
+    throw new Error("a Transactions in Progress checkbox is checked outside the authorized pending sweep");
+  }
+  if (requireAllChecked && authorizedChecked !== authorized.length) {
+    throw new Error("an authorized Transactions in Progress checkbox did not remain selected");
+  }
+  return authorized;
+}
+
 async function stagePendingTerminationSweepOnPage(
   assertCurrent: () => void,
   page: Page,
   input: UcpathPendingSweepTarget,
   observedAt: string,
 ): Promise<UcpathPendingSweepStaging> {
-
+  stagedPendingSweeps.delete(page);
   assertCurrent();
   const current = await scanTerminationTransactionsOnPage(assertCurrent,
     page,
@@ -390,79 +464,29 @@ async function stagePendingTerminationSweepOnPage(
   recordBrowserAction("opened", "ucpath.smart-hr.wizard");
   assertCurrent();
   await waitForUcpathState(assertCurrent, page, UCPATH_SMART_HR_SETUP_READY);
-  const text = async (row: Locator, selector: string, field: string): Promise<string> => {
-    const matches = row.locator(selector);
+  const beforeSelection = await readPendingSweepSelection(assertCurrent, page, input, false);
+  const gridRows = page.locator(DRIVER_ANCHOR.pendingRow);
+  for (const { index } of beforeSelection) {
     assertCurrent();
-    const count = await matches.count();
-    if (count !== 1) {
-      throw new Error(
-        `a Transactions in Progress row exposed ${String(count)} ${field} controls; exactly one is required for an exact-set join`,
-      );
-    }
-    assertCurrent();
-    const value = (await matches.innerText()).trim();
-    if (value.length === 0) throw new Error(`a Transactions in Progress row rendered an empty ${field}`);
-    assertCurrent();
-    return value;
-  };
-  const gridRows = page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]');
-  const candidates: Array<Readonly<{
-    facts: Omit<UcpathInProgressRow, "transactionId">;
-    checkbox: Locator;
-  }>> = [];
-  assertCurrent();
-  for (const row of await gridRows.all()) {
-    assertCurrent();
-    const emplId = EidSchema.parse(await text(row, 'span[id^="EMPLID$"]', "Person ID"));
-    assertCurrent();
-    const action = await text(row, 'span[id^="ACTION$"]', "Action");
-    if (emplId !== input.emplId || !isUcpathTerminationAction(action)) continue;
-    const checkbox = row.locator('input[type="checkbox"][id^="SELECT$"]');
-    assertCurrent();
-    if (await checkbox.count() !== 1) {
-      throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDisplay(input.emplId)} has no unique Select checkbox; refusing before selection`,
-      );
-    }
-    assertCurrent();
-    candidates.push({
-      facts: {
-        transactionType: await text(row, 'span[id^="TBH_TMPL_TXN_TYP$"]', "Transaction Type"),
-        effectiveDate: await text(row, 'span[id^="EFFDT$"]', "Effective Date"),
-        displayedName: await text(row, 'a[id^="NAME$"]', "Name"),
-        emplId,
-        action,
-        country: await text(row, 'span[id^="COUNTRY$"]', "Country"),
-      },
-      checkbox,
-    });
-  }
-  const joined = joinPendingSweepGridRows(input, candidates.map(({ facts }) => facts));
-  const selected = joined.map(({ selected: row }) => row);
-  for (const { candidateIndex } of joined) {
-    assertCurrent();
-    await candidates[candidateIndex].checkbox.check();
+    await gridRows.nth(index).locator(DRIVER_ANCHOR.pendingSelect).check();
     assertCurrent();
     recordBrowserAction("checked", "ucpath.smart-hr.pending-transaction");
   }
-  for (const { candidateIndex } of joined) {
-    const candidate = candidates[candidateIndex];
-    assertCurrent();
-    if (!(await candidate.checkbox.isChecked())) {
-      throw new Error("a uniquely joined Transactions in Progress checkbox did not remain selected; refusing before the fence");
-    }
-  }
-
-  assertCurrent();
   const observedName = await readInProgressSubjectOnPage(assertCurrent, page, input.emplId);
-  assertCurrent();
-  return UcpathPendingSweepStagingSchema.parse({
+  const checked = await readPendingSweepSelection(assertCurrent, page, input, true);
+  const selected = checked.map((row) => row.selected);
+  if (JSON.stringify(selected) !== JSON.stringify(beforeSelection.map((row) => row.selected))) {
+    throw new Error("the authorized Transactions in Progress rows changed during selection");
+  }
+  const staging = UcpathPendingSweepStagingSchema.parse({
     stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
     emplId: input.emplId,
     observedName,
     selected,
     observedAt,
   });
+  stagedPendingSweeps.set(page, { target: input, selected });
+  return staging;
 }
 
 // Watch for explicit refusal; an absent refusal is not proof that the write landed.
@@ -514,6 +538,18 @@ async function commitOnPage(
   assertCurrent();
   await locator.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
   assertCurrent();
+  if (id === UCPATH_SMART_HR_DELETE_SELECTED_BUTTON) {
+    const staging = stagedPendingSweeps.get(page);
+    stagedPendingSweeps.delete(page);
+    if (staging === undefined) {
+      throw new Error("Delete Selected has no authorized staged pending sweep on this page");
+    }
+    const checked = await readPendingSweepSelection(assertCurrent, page, staging.target, true);
+    if (JSON.stringify(checked.map((row) => row.selected)) !== JSON.stringify(staging.selected)) {
+      throw new Error("the authorized Transactions in Progress rows changed before Delete Selected");
+    }
+    assertCurrent();
+  }
   await locator.click();
   assertCurrent();
   recordBrowserAction("clicked", id);
