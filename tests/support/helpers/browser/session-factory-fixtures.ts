@@ -6,7 +6,7 @@ import { runInNewContext } from "node:vm";
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BrowserContext, Worker } from "playwright";
+import type { BrowserContext, ElementHandle, Worker } from "playwright";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
@@ -24,7 +24,13 @@ export function createBrowserSessionFactoryFixtures(
   NEVER_SCHEDULER: BrowserDeadlineScheduler,
 ) {
   // Fake controls count as painted: filter({ visible: true }) returns the same locator.
-  interface FakeLocator { selector: string; count: () => Promise<number>; filter: (options: { visible: true }) => FakeLocator }
+  interface FakeLocator {
+    selector: string;
+    count: () => Promise<number>;
+    filter: (options: { visible: true }) => FakeLocator;
+    getByRole: (role: string) => FakeLocator;
+    elementHandles: () => Promise<ElementHandle[]>;
+  }
   interface FakeFrame {
     url: () => string;
     locator: (selector: string) => FakeLocator;
@@ -37,6 +43,7 @@ export function createBrowserSessionFactoryFixtures(
     emitFrameEvent: (event: "framenavigated" | "frameattached" | "framedetached", frame: { url: () => string }) => void;
     off: () => void;
     locator: () => { count: () => Promise<number> };
+    getByRole: FakeLocator["getByRole"];
     frames: () => readonly FakeFrame[];
     evaluate: FakeFrame["evaluate"];
     viewportSize: () => { width: number; height: number };
@@ -68,7 +75,14 @@ export function createBrowserSessionFactoryFixtures(
       const result: unknown = runInNewContext(`(${callback.toString()})(arg)`, { ...sandbox, document: realm.document, arg });
       return result as T;
     };
-    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: (selector: string) => { const locator: FakeLocator = { selector, ...page.locator(), filter: () => locator }; return locator; } };
+    const locator = (selector: string): FakeLocator => ({
+      selector,
+      ...page.locator(),
+      filter() { return this; },
+      getByRole: locator,
+      elementHandles: async () => [],
+    });
+    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator };
     const page: FakePage = {
       evaluate,
       viewportSize: () => ({ width: realm.innerWidth, height: realm.innerHeight }),
@@ -86,6 +100,7 @@ export function createBrowserSessionFactoryFixtures(
       emitFrameEvent: (event, frame) => { for (const listener of frameListeners.get(event) ?? []) listener(frame); },
       off: () => undefined,
       locator: () => ({ count: async () => 0 }),
+      getByRole: locator,
       frames: () => [mainFrame],
       closed: false,
       gotoUrls: [],
