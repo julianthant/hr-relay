@@ -204,6 +204,13 @@ it("serves a valid review spec for every readable workflow", async () => {
   }
 });
 
+it("serves operator-only recovery when a Kuali finalization cannot be confirmed", async () => {
+  const separations = (await served()).find(workflow => workflow.id === "separations");
+  assert.ok(separations);
+  const save = separations.nodes.flatMap(node => node.tasks).find(task => task.taskId === "kuali/save-separation-finalization");
+  assert.equal(save?.writeSafety?.recoveryAbsence.kind, "operator-only");
+});
+
 it("serves the picker tree: startable workflows as roots, each delegated child under its parent, every title once", async () => {
   const workflows = await served();
   const pairs = workflows.flatMap(workflow => workflow.reviewSpec.steps.flatMap(entry => entry.blocks.flatMap(block =>
