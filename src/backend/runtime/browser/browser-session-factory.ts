@@ -386,6 +386,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       assertCurrent();
       const recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => { assertCurrent(); this.#options.onAuthenticationEvidence?.(evidence); };
       let pageVersion = 1;
+      let mainPageVersion = pageVersion;
       const detach = (): void => {
         page.off("framenavigated", navigated);
         page.off("frameattached", frameChanged);
@@ -405,7 +406,10 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       const navigated = (frame: Frame): void => {
         if (observeEvent().state === "revoked") return;
         pageVersion += 1;
-        if (frame === page.mainFrame()) this.#options.onNavigation?.(frame.url());
+        if (frame === page.mainFrame()) {
+          mainPageVersion = pageVersion;
+          this.#options.onNavigation?.(frame.url());
+        }
       };
       const frameChanged = (): void => { if (observeEvent().state === "current") pageVersion += 1; };
       const diagnostics = attachBrowserDiagnostics(page, this.#options.clock, observeEvent);
@@ -433,6 +437,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         screenshot: async (sampleLabels?: readonly string[]): Promise<BrowserScreenshotEvidence> => {
           assertCurrent();
           const version = pageVersion;
+          const mainVersion = mainPageVersion;
+          let captureSettled = false;
+          const pageChanged = (): boolean => captureSettled ? mainPageVersion !== mainVersion : pageVersion !== version;
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"], detail?: string): BrowserScreenshotEvidence =>
             Object.freeze({ ...identity, state: "unavailable", reason, ...(detail === undefined ? {} : { detail }) });
@@ -509,6 +516,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                   if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 },
               });
+              captureSettled = pageVersion === version;
             } catch (error) {
               const errors = await unwatch();
               throw errors.length === 0 ? error : new FullPageCaptureRestoreError([error, ...errors]);
@@ -517,18 +525,19 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (stopErrors.length > 0) throw new FullPageCaptureRestoreError(stopErrors);
             assertCurrent();
             stage = "secret-check";
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             for (const frame of frames) {
+              if (frame !== page.mainFrame() && frame.isDetached()) continue;
               if (await secretPresent(frame)) return unavailable("secret-controls-present");
             }
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
             assertCurrent();
             if (error instanceof FullPageCaptureFailedError) return unavailable(error.reason, error.detail);
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             const causes = serializeErrorCauses(error);
             const detail = captureFailureDetail(stage, error, causes[0]?.name ?? "error");
             for (const [index, cause] of causes.entries()) {

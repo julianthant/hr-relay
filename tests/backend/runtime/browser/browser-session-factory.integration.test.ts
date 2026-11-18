@@ -354,6 +354,36 @@ describe("worker browser session factory", () => {
     });
   }
 
+  it("returns the captured image when a child frame attaches after capture verification", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const launcher = fakeLauncher();
+      const main = launcher.page.mainFrame();
+      const child = { ...main, url: () => "https://example.test/embedded" };
+      const evaluate = main.evaluate;
+      let imageReads = 0;
+      const takeImage = launcher.page.screenshot;
+      launcher.page.screenshot = options => { imageReads += 1; return takeImage(options); };
+      main.evaluate = async (callback, arg) => {
+        const result = await evaluate(callback, arg);
+        if (arg === undefined && callback.toString().includes("__relaySsnWatch?.stop()")) {
+          assert.ok(imageReads > 0);
+          launcher.page.frames = () => [main, child];
+          launcher.page.emitFrameEvent("frameattached", child);
+        }
+        return result;
+      };
+      const resource = await factoryFor(config, launcher, recordingBindings()).open(OPEN_INPUT);
+      try {
+        await resource.authentication.authenticate("ucpath", {});
+        const screenshot = await resource.screenshot?.();
+        assert.equal(launcher.page.frames().length, 2);
+        assert.ok(screenshot?.state === "available", screenshot?.state === "unavailable" ? screenshot.reason : "missing screenshot");
+        assert.equal(screenshot.pageVersion, 1);
+        assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+
   it("launches the run's headed presentation in its own profile partition", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();
