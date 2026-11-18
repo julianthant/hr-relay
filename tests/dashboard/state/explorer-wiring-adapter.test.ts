@@ -42,12 +42,12 @@ it("invalidates settled and pending requests across workflow and client A -> B -
     await render(b, served.id); assert.ok(seen.slice(start).every(value => value.state.state === "loading"));
     await render(a, "missing-workflow");
     await render(a, served.id);
+    assert.equal(pending.length, 3, "a workflow change reads nothing; only the client change did");
     await act(async () => { pending[1].reject(new Error("old client")); pending[2].resolve(wire); });
-    assert.equal(seen.at(-1)?.state.state, "loading");
-    await act(async () => pending[3].resolve(wire)); assert.equal(seen.at(-1)?.state.state, "ready");
+    assert.equal(seen.at(-1)?.state.state, "ready");
     await render(a, served.id, served.version + 1);
     assert.equal(seen.at(-1)?.state.state, "loading");
-    await act(async () => pending[4].resolve(wire)); assert.equal(seen.at(-1)?.state.state, "refused");
+    await act(async () => pending[3].resolve(wire)); assert.equal(seen.at(-1)?.state.state, "refused");
   } finally { await act(async () => root.unmount()); }
 });
 

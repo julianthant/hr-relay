@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { WorkflowExplorerWire } from "../../models/dashboard/explorer.js";
 import type { ExplorerReviewSpec } from "../../models/dashboard/explorer-review-spec.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogFailure } from "../../models/failures/error-catalog.js";
@@ -15,20 +15,29 @@ const unavailableExplorerClient = {};
 
 /** The served review spec of one workflow, at the version the bootstrap catalog registers. `retry` reads it again. */
 export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number): Readonly<{ state: ExplorerWiringState; retry: () => void; workflows: WorkflowExplorerWire["workflows"] | undefined }> {
-  const resource = useSettingsRead<WorkflowExplorerWire>(client ?? unavailableExplorerClient, `explorer:${workflowId ?? "none"}:${version ?? "current"}`);
+  const resource = useSettingsRead<WorkflowExplorerWire>(client ?? unavailableExplorerClient, "explorer");
   const result = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   const retry = useCallback(() => {
-    if (workflowId === undefined || client === undefined) return;
+    if (client === undefined) return;
     void resource.read(() => client.workflowExplorer(), "DASHBOARD_READ_FAILED").catch(() => resource.snapshot());
-  }, [client, workflowId, resource]);
-  useEffect(retry, [retry, version]);
+  }, [client, resource]);
+  const held = result.value?.workflows.find(candidate => candidate.id === workflowId);
+  // The one wire serves every workflow; it is read on mount, on a client change and when the held version is not the catalog's.
+  const mismatched = held !== undefined && version !== undefined && held.version !== version;
+  const selected = workflowId !== undefined;
+  const readBy = useRef<unknown>(undefined);
+  useEffect(() => {
+    if (!selected || (readBy.current === retry && !mismatched)) return;
+    readBy.current = retry;
+    retry();
+  }, [retry, selected, mismatched]);
   const projected = useMemo((): ExplorerWiringState => {
     const workflow = result.value?.workflows.find(candidate => candidate.id === workflowId);
     if (result.value === undefined) return { state: "loading" };
     if (!workflow) return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text };
-    if (version !== undefined && workflow.version !== version) return { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
+    if (version !== undefined && workflow.version !== version) return result.state === "loading" ? { state: "loading" } : { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
     return { state: "ready", spec: workflow.reviewSpec };
-  }, [result.value, workflowId, version]);
+  }, [result.value, result.state, workflowId, version]);
   const state = ((): ExplorerWiringState => {
     if (workflowId === undefined) return { state: "idle" };
     if (client === undefined) return { state: "unavailable", reason: "Registered workflow data is unavailable because the dashboard client is not connected." };
