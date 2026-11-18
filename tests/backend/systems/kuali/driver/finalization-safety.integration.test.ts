@@ -14,6 +14,7 @@ import { kualiFinalizationVariablesInput } from "../../../../support/helpers/kua
 
 const ACTION_LIST_URL = `https://ucsd.kualibuild.com/build/space/${KUALI_RRSS_SPACE_ID}/actions`;
 const DOCUMENT_NUMBER = "123456";
+const DOCUMENT_ID = "fixture-document-id";
 const TARGET = KualiFinalizationTargetSchema.parse({
   actionId: "123456789abcdef012345678",
   documentNumber: DOCUMENT_NUMBER,
@@ -133,7 +134,7 @@ function saveVariables(): {
 } {
   return {
     actionId: TARGET.actionId,
-    documentId: "fixture-document-id",
+    documentId: DOCUMENT_ID,
     status: "saved",
     timeZone: "America/Los_Angeles",
     overriddenFields: [],
@@ -155,6 +156,7 @@ function saveVariables(): {
 }
 
 async function stageSave(variables: ReturnType<typeof saveVariables>, query = SAVE_QUERY) {
+  const { driver, received: lookups } = await setupActionList();
   const payload = { operationName: "submitDocumentV2", query, variables };
   const forwarded: unknown[] = [];
   await context.route(DOCUMENT_URL, route => route.fulfill({
@@ -163,13 +165,17 @@ async function stageSave(variables: ReturnType<typeof saveVariables>, query = SA
   }));
   await context.route(GRAPHQL_URL, async route => {
     const received: unknown = route.request().postDataJSON();
+    if (typeof received === "object" && received !== null
+      && "operationName" in received && received.operationName === "OldActions") {
+      await route.fallback();
+      return;
+    }
     forwarded.push(received);
     const observedEnvelope = isDeepStrictEqual(received, payload);
     await route.fulfill({ json: observedEnvelope
       ? { data: { submitDocumentV2: { status: "Ok", validations: null } } }
       : { errors: [{ message: "fixture received a different Save envelope" }] } });
   });
-  const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
   await driver.stageSeparationFinalization(TARGET);
   await page.evaluate(({ graphqlUrl, payload }) => {
     const submit = async () => {
@@ -184,7 +190,7 @@ async function stageSave(variables: ReturnType<typeof saveVariables>, query = SA
     document.querySelector("button")?.addEventListener("click", () => { void submit(); });
   }, { graphqlUrl: GRAPHQL_URL, payload });
   const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
-  return { driver, forwarded, payload, commit: () => driver.commit(KUALI_RRSS_SAVE_BUTTON, capability) };
+  return { driver, forwarded, lookups, payload, commit: () => driver.commit(KUALI_RRSS_SAVE_BUTTON, capability) };
 }
 
 function actionListEdge(number: string, id: string) {
@@ -195,7 +201,7 @@ function actionListEdge(number: string, id: string) {
       createdAt: "1784000000000",
       handlerUrl: `/action/${id}`,
       display: { id: "RRSS Separation Request Form", documentTitle: number, type: "Task Form" },
-      details: { serialNumber: number, documentId: "fixture-document-id", stepLabel: "Fixture" },
+      details: { serialNumber: number, documentId: DOCUMENT_ID, stepLabel: "Fixture" },
     },
   };
 }
@@ -352,12 +358,12 @@ describe("Kuali finalization safety", () => {
 
   it("refuses to stage if partial finalization appears after a proved absence", async () => {
     let payrollTitle = "";
+    const { driver } = await setupActionList();
     await context.route(DOCUMENT_URL, route => route.fulfill({
       contentType: "text/html",
       body: documentForm("", payrollTitle),
     }));
     await page.goto(DOCUMENT_URL);
-    const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
     assert.equal(kualiFinalizationVerdict(TARGET, await driver.readSavedSeparationFinalization(TARGET)).state, "absent");
 
     payrollTitle = "Prior title";
@@ -366,6 +372,14 @@ describe("Kuali finalization safety", () => {
     const verdict = kualiFinalizationVerdict(TARGET, await driver.readSavedSeparationFinalization(TARGET));
     assert.equal(verdict.state, "unknown");
     assert.match(verdict.reason, /finalization conflict.*partial.*review/iu);
+  });
+
+  it("refuses to stage if the fresh Action List shows a different action for the document", async () => {
+    const { driver } = await setupActionList({
+      edges: [actionListEdge(DOCUMENT_NUMBER, "abcdef0123456789abcdef01")],
+    });
+    await assert.rejects(driver.stageSeparationFinalization(TARGET), /staging could not verify the requested action/u);
+    assert.equal(page.url(), ACTION_LIST_URL);
   });
 
   it("blocks a Save for a different action before the request is forwarded", async () => {
@@ -389,6 +403,13 @@ describe("Kuali finalization safety", () => {
     const fixture = await stageSave(variables);
     await assert.rejects(fixture.commit(), /staged.*(?:transactionNumber|wPyuyY0wT0)/iu);
     assert.deepEqual(fixture.forwarded, []);
+  });
+
+  it("blocks a Save for a different document ID even when the action ID matches", async () => {
+    const fixture = await stageSave({ ...saveVariables(), documentId: "another-document-id" });
+    await assert.rejects(fixture.commit(), /save targeted a different document ID/iu);
+    assert.deepEqual(fixture.forwarded, []);
+    assert.equal(fixture.lookups.length, 1);
   });
 
   it("blocks a submission that would advance the workflow", async () => {

@@ -381,9 +381,11 @@ function isRequestedActionListFilter(request: Request, searchText: string): bool
   return parsed.success && parsed.data.variables.args.query === searchText;
 }
 
+const WireDocumentIdSchema = z.string().min(1).refine(id => id === id.trim());
+
 const SubmitVariablesSchema = z.strictObject({
   actionId: KualiActionIdSchema,
-  documentId: z.string().min(1),
+  documentId: WireDocumentIdSchema,
   status: z.string(),
   timeZone: z.literal("America/Los_Angeles"),
   overriddenFields: z.tuple([]),
@@ -409,6 +411,7 @@ const SubmitResponseSchema = z.object({
 type StagedExpectation = Readonly<{
   kind: "finalization";
   actionId: string;
+  documentId: string;
   documentNumber: string;
   fields: KualiFinalizationFields;
 }>;
@@ -513,7 +516,7 @@ function validatedStagedSave(request: Request, expected: StagedExpectation): str
   if (graphqlDocumentSignature(submit.data.query) !== SAVE_DOCUMENT_SIGNATURE) {
     throw new Error(`Kuali Save on document ${expected.documentNumber} did not carry the single supported Save operation`);
   }
-  const { actionId, data, status } = submit.data.variables;
+  const { actionId, documentId, data, status } = submit.data.variables;
   if (status !== "saved") {
     throw new Error(
       `Kuali Save on document ${expected.documentNumber} used a save status other than "saved"`,
@@ -524,6 +527,9 @@ function validatedStagedSave(request: Request, expected: StagedExpectation): str
       `Kuali Save targeted action ${actionId} but the staged document ${expected.documentNumber} `
       + `is action ${expected.actionId}`,
     );
+  }
+  if (documentId !== expected.documentId) {
+    throw new Error(`Kuali Save targeted a different document ID for staged document ${expected.documentNumber}`);
   }
   for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
     const formKey = KUALI_RRSS_FINALIZATION_FORM_KEYS[field];
@@ -705,10 +711,11 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     }
   }
 
-  async function readActionListForDocument(input: Readonly<{
-    documentNumber: string;
-  }>): Promise<KualiActionListObservation> {
-    const documentNumber = KualiDocumentNumberSchema.parse(input.documentNumber);
+  async function lookupActionList(requestedNumber: string): Promise<{
+    observation: KualiActionListObservation;
+    documentIdsByAction: ReadonlyMap<string, string>;
+  }> {
+    const documentNumber = KualiDocumentNumberSchema.parse(requestedNumber);
     // A navigation away from a document discards Kuali's in-page form model, so
     // any staging is gone — the same invariant `openDocument` maintains.
     staged = undefined;
@@ -741,7 +748,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         throw new Error("OldActions did not return the complete filtered result set");
       }
       const listedDocumentNumbers: string[] = [];
-      const expectedActionIds = new Set<string>();
+      const documentIdsByAction = new Map<string, string>();
       for (const { node } of result.edges) {
         const serial = KualiDocumentNumberSchema.parse(node.details["serialNumber"]);
         listedDocumentNumbers.push(serial);
@@ -750,11 +757,16 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         if (node.handlerUrl !== `/action/${actionId}`) {
           throw new Error("OldActions returned inconsistent action ID and handler URL");
         }
-        expectedActionIds.add(actionId);
+        const documentId = WireDocumentIdSchema.parse(node.details["documentId"]);
+        const priorId = documentIdsByAction.get(actionId);
+        if (priorId !== undefined && priorId !== documentId) {
+          throw new Error("OldActions returned conflicting document IDs for the same action");
+        }
+        documentIdsByAction.set(actionId, documentId);
       }
 
       let matchedLinks: KualiActionListLink[] = [];
-      if (expectedActionIds.size > 0) {
+      if (documentIdsByAction.size > 0) {
         const links = actionListDocumentLinks(page, documentNumber);
         for (;;) {
           assertCurrent();
@@ -765,8 +777,8 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
               || new URL(href, actionListUrl()).origin !== `https://${KUALI_HOST}`) return undefined;
             return parseKualiActionHref(href, KUALI_RRSS_SPACE_ID);
           }));
-          if (actionIds.size === expectedActionIds.size
-            && [...expectedActionIds].every(actionId => actionIds.has(actionId))) {
+          if (actionIds.size === documentIdsByAction.size
+            && [...documentIdsByAction.keys()].every(actionId => actionIds.has(actionId))) {
             matchedLinks = observed;
             break;
           }
@@ -786,7 +798,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         observedAt: now(),
       });
       if (matchedLinks.length > 0) matchedActionListNumber = documentNumber;
-      return observation;
+      return { observation, documentIdsByAction };
     } catch (error) {
       assertCurrent();
       throw new Error(
@@ -794,6 +806,14 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         { cause: error },
       );
     }
+  }
+
+  async function readActionListForDocument(input: Readonly<{
+    documentNumber: string;
+  }>): Promise<KualiActionListObservation> {
+    const { observation } = await lookupActionList(input.documentNumber);
+    assertCurrent();
+    return observation;
   }
 
   async function openDocument(input: Readonly<{
@@ -1316,6 +1336,12 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     const fields = kualiFinalizationFields(target.variables);
     staged = undefined;
     assertCurrent();
+    const { documentIdsByAction } = await lookupActionList(target.documentNumber);
+    assertCurrent();
+    const documentId = documentIdsByAction.get(target.actionId);
+    if (documentIdsByAction.size !== 1 || documentId === undefined) {
+      throw new Error(`Kuali finalization staging could not verify the requested action for document ${target.documentNumber}`);
+    }
     const view = await openDocument({
       actionId: target.actionId,
       documentNumber: target.documentNumber,
@@ -1454,6 +1480,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     staged = {
       kind: "finalization",
       actionId: view.actionId,
+      documentId,
       documentNumber: view.documentNumber,
       fields,
     };
