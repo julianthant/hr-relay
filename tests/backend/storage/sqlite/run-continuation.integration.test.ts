@@ -11,9 +11,37 @@ import { mappedReadDescriptor } from "../../../support/fixtures/rerun-values-fix
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { bindRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
+import { VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
+import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
+
+it("offers the dry run's reference checkpoint only for the same captured workbook version", async () => {
+  const f = await settingsFixture();
+  cleanups.push(f.close);
+  const typeId = "reference-check";
+  const start = (version: number, dryRun: boolean) => {
+    const reference = bindRunWorkbookReference({ libraryId: "roster", typeId, keys: [], fields: ["eid"] }, {
+      libraryId: "roster", version, worksheets: [{ sheetId: "sheet", name: "People" }], rows: [],
+      type: { id: typeId, name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null },
+    });
+    return f.create({ dryRun, input: { ...f.request().input, workbookReferences: [reference] } });
+  };
+  const dry = start(1, true);
+  const { runId, workflow, itemId, attempt, descriptorVersion, contractFingerprint } = dry.envelope;
+  const row = RunCheckpointRecordSchema.parse({ runId, workflowId: workflow, itemId, attempt, descriptorVersion, contractFingerprint,
+    nodeId: "reference-check", claimGeneration: 1, implFingerprint: taskImplFingerprint(VerifyWorkbookPerson),
+    output: { schemaHash: deriveSchemaHash(VerifyWorkbookPerson.output, "output"), value: VerifyWorkbookPerson.example },
+    provenance: [], writtenAt: dry.createdAt });
+  const authority = f.database.authority;
+  authority.runCheckpoints.insert(row);
+  assert.deepEqual(authority.runCheckpoints.latest(workflow, itemId, "reference-check"), row);
+  assert.deepEqual(readRunCheckpoint(authority, start(1, false).envelope, "reference-check", true, typeId), row);
+  assert.equal(readRunCheckpoint(authority, start(2, false).envelope, "reference-check", true, typeId), undefined);
+});
 
 function recover(h: Awaited<ReturnType<typeof sourceBoundHarness>>, source: ReturnType<typeof h.fresh>) {
   const result = h.kernel.execute({ commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
