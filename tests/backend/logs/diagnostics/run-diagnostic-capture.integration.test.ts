@@ -139,6 +139,24 @@ function captureService(database: AuthorityDatabase, now = NOW): {
 }
 
 describe("diagnostic values at capture", () => {
+  it("captures only the count of causes when failure text contains HR details", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const capture = createRunDiagnosticCapture({ service });
+    const hrText = "Synthetic employee River Example";
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"),
+      error: new Error(hrText), occurredAt: NOW,
+      secondaryCauses: [{ code: "TASK_UNHANDLED_FAILURE", summary: `Follow-up for ${hrText}` }],
+    });
+    assert.ok(JSON.stringify(failure.causeChain).includes(hrText));
+    const bundle = await capture.captureForFailure({ failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B });
+    assert.equal(JSON.stringify(bundle).includes(hrText), false);
+    const count = bundle.redaction.fields.find(field => field.key === "causeChainLength");
+    assert.ok(count?.state === "allowed");
+    assert.equal(count.value, 2);
+  });
+
   it("retains classified originals and names unclassified values", async () => {
     const database = await openDatabase();
     const { service } = captureService(database);
@@ -325,7 +343,7 @@ describe("the failure and its bundle land together", () => {
       database.authority.diagnosticBundles.findByArtifact(indexed[0]?.attachment.artifactId ?? "").length,
       1,
     );
-    assert.ok(JSON.stringify(bundle).includes("UCPath search failed."));
+    assert.equal(JSON.stringify(bundle).includes("UCPath search failed."), false);
     assert.ok(classifiedFailureFields(failure).length > 0);
     const persisted = JSON.stringify({ failure, bundle });
     for (const value of ["902481357", "902-48-1357", "902 48 1357", "1357"]) assert.equal(persisted.includes(value), false);

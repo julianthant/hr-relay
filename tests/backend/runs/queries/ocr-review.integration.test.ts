@@ -22,6 +22,8 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER 
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { ReviewPageSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { sessionFactoryHarness, healthyCrmDriver, EXECUTOR_EID } from "../../../support/helpers/phase1f-executor-harness.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -115,4 +117,31 @@ it("authenticates an original correction after a later native revision replaces 
   assert.equal(current.ocr.revision.revision, 3);
   const contact = current.ocr.revision.records[0].fields.answers.find(answer => answer.path === "contact.name"); assert.ok(contact?.state === "read");
   assert.equal(contact.value, "Later Native Edit");
+});
+
+it("asserts a form naming the UCPath person with extra given or family names and serves why every other record is held", async () => {
+  const person = { emplId: EXECUTOR_EID, name: "Example, Avery", department: "Housing Dining Hospitality", jobTitle: "Fixture employee",
+    employeeStatus: "active" as const, hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
+  const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [person],
+    selection: { status: "resolved", selected: person, candidateEids: [EXECUTOR_EID] } }), crm: () => healthyCrmDriver() });
+  const f = await world.fixture({ record: true, release: true, pageCount: 2, sessions,
+    lookupNames: ["Avery Quinn Example Rowan", "Avery Quinn Example Rowan"], employeeIds: [EXECUTOR_EID, null] });
+  const reader = f.canonical.lifecycle, { stateRoot } = f.harness.authority;
+  const projection = createOperatorProjection({ database: f.database, stateRoot, clock: f.clock, reader, appVersion: "0.1.0",
+    descriptorSetHash: descriptorSetHash([f.root.descriptor.contractFingerprint]), ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: f.resolve } });
+  const deps = createOperatorRunDetail({ database: f.database, stateRoot, projection, runReader: reader,
+    canonical: { reader, database: f.database, descriptors: { resolve: f.resolve } } });
+  const section = buildOcrReviewSection(deps, f.run.envelope.runId); assert.ok(section.section === "review");
+  const review = section.payload.ocr; assert.ok(review);
+  const [eidRead, nameOnly] = review.revision.records; assert.ok(eidRead && nameOnly);
+  assert.equal(eidRead.assertedEid, EXECUTOR_EID, "the searched EID agrees and UCPath's first and last names are on the form");
+  assert.equal(nameOnly.assertedEid, null, "a name-only search needs the whole name to agree");
+  assert.deepEqual(review.identityHolds, [{ recordId: nameOnly.recordId, reason: "name-differs" }]);
+  const correction = CommandRequestSchema.parse({ ...f.command("correct-ocr-record", 1),
+    payload: correctedOcrRecord(section.payload, nameOnly.recordId, { "employee.name": "Example, Avery" }) });
+  assert.equal(f.canonical.kernel.execute(correction).state, "applied");
+  const corrected = buildOcrReviewSection(deps, f.run.envelope.runId); assert.ok(corrected.section === "review");
+  assert.equal(corrected.payload.ocr?.revision.records[1]?.assertedEid, null, "a corrected name never asserts the identity by itself");
+  assert.deepEqual(corrected.payload.ocr?.identityHolds, [{ recordId: nameOnly.recordId, reason: "awaiting-assertion" }],
+    "the reason reads the corrected name the card shows");
 });

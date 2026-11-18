@@ -1215,6 +1215,36 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
   }
 
+  function requiresI9ReuseProof(taskId: TaskId): boolean {
+    return taskId === "i9/create-profile" || taskId === "i9/create-remote-record";
+  }
+
+  async function requireFreshI9ReuseProof(
+    context: WriteSequencerContext,
+    commitContract: AnyCommitTaskContract,
+    commitInput: unknown,
+    durable: WriteIntentRecord,
+  ): Promise<void> {
+    if (context.previewBinding !== undefined && context.previewBinding.samples.length > 0) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Preview samples cannot confirm a saved I-9 record.");
+    }
+    const stored = durable.status === "committed" ? durable.completionProof
+      : durable.status === "observed-present" ? durable.observedProof : undefined;
+    if (stored === undefined) throw new Error("I-9 reuse requires a settled write proof");
+    const verdict = await readPrewriteProbe(context, commitContract, commitInput, durable.idempotencyKeyDigest,
+      durable.occurrence?.businessKeyDigest ?? durable.idempotencyKeyDigest, "reuse-probe");
+    if (verdict.state !== "present") {
+      throw new TaskError(commitContract.id, "I9_WRITE_REFUSED", ERROR_CATALOG.I9_WRITE_REFUSED.text,
+        { cause: new Error("i9-retained-effect-not-present") });
+    }
+    const completion = commitContract.writeSafety.completion;
+    const observed = completion.proofSchema.parse(Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]));
+    if (canonicalJsonStringify(observed) !== canonicalJsonStringify(stored.value)) {
+      throw new TaskError(commitContract.id, "I9_WRITE_REFUSED", ERROR_CATALOG.I9_WRITE_REFUSED.text,
+        { cause: new Error("i9-retained-proof-mismatch") });
+    }
+  }
+
   /** Persist an already-present settlement (checkpoint + run advance, one txn). */
   function settleAlreadyPresent(input: Readonly<{
     context: WriteSequencerContext;
@@ -1317,6 +1347,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const proof = completion.proofSchema.parse(stored.value);
     const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
     const outputValue = JsonValueSchema.parse(commitContract.output.parse(outputRaw));
+    if (requiresI9ReuseProof(commitContract.id)) await requireFreshI9ReuseProof(context, commitContract, commitInput, durable);
     await requireHistoricalContactPresent(context, commitContract, commitInput, durable);
     return settleAlreadyPresent({
       context,
@@ -1924,6 +1955,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
 
     if (replaysCommittedOutcome) {
       const intent = intentMatchingCheckpoint(context, commitContract, storedCheckpoint, system, key, keyDigest);
+      if (storedCheckpoint.runId !== envelope.runId && requiresI9ReuseProof(commitContract.id)) {
+        await requireFreshI9ReuseProof(context, commitContract, commitInput, intent);
+      }
       if (storedCheckpoint.runId !== envelope.runId && envelope.continuation === undefined && envelope.retryOf === undefined) {
         await requireHistoricalContactPresent(context, commitContract, commitInput, intent);
       }
@@ -2533,6 +2567,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           );
         }
         const settled = presentFromProof(stored.value);
+        if (requiresI9ReuseProof(commitContract.id)) await requireFreshI9ReuseProof(context, commitContract, commitInput, durable);
         await requireHistoricalContactPresent(context, commitContract, commitInput, durable);
         return TransactionDryRunPreviewSchema.parse({
           kind: "transaction-dry-run-preview",
