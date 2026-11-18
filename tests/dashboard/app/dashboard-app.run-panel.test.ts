@@ -34,7 +34,7 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
   const panel = host.querySelector('.dashboard-log-column');
   assert(panel);
@@ -60,7 +60,7 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   const servedLogs = (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => { const composition = MOCK_WORKFLOW_COMPOSITION(workflows); return Object.freeze({ ...composition, logs: "served" as const }); };
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: servedLogs }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
   const block = host.querySelector('form[aria-label="Is this the right person?"]');
   assert(block, host.querySelector('.dashboard-log-column')?.textContent ?? '');
@@ -128,7 +128,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
     const composition = MOCK_WORKFLOW_COMPOSITION(workflows);
     return Object.freeze({ ...composition, logs: "served" as const });
   };
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: servedLogs }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
   const block = host.querySelector('form[aria-label="Is this the right person?"]');
   assert(block);

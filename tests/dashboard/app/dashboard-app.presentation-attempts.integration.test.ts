@@ -68,7 +68,7 @@ it("shows the selected day's runs by start time and keeps that day when an attem
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
     const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Attempts for"]'); assert.ok(trigger);
     assert.equal(host.querySelectorAll("[data-demo-row-id]").length, 1);
     assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("data-demo-row-id"), chronologicalRunIds[chronologicalRunIds.length - 1]);

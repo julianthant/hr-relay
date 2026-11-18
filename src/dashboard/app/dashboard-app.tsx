@@ -144,7 +144,7 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 const noHarnessSearch = (): undefined => undefined;
 const noHarnessInbox = (): undefined => undefined;
 
-export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
+export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "served", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const profileClient = useDashboardClient();
   const publicProfile = usePublicProfileSession(profileClient, profileSource === "served");
   const session = profileSource === "served" ? publicProfile.state : undefined;
