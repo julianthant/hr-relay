@@ -773,13 +773,33 @@ export async function executeClaimedRun(
     const payPathRecheckInputs = !startsAtPayPath ? undefined : deps.authority.withAuthorityTransaction?.(repositories => {
       const intent = requestedPayPathRecheck(repositories, initial, startNode);
       if (intent === undefined) return undefined;
+      const ancestors = new Set(nodes.slice(0, startIndex).filter(node => node.kind === "task").map(node => node.id));
       const checkpoints = new Map<string, RunCheckpointRecord>();
-      for (const node of nodes.slice(0, startIndex)) {
-        if (node.kind !== "task") continue;
-        const record = originalCheckpoint(repositories, initial, node.id, claim.claimGeneration - 1);
-        if (record !== undefined && Date.parse(record.writtenAt) <= Date.parse(intent.fencedAt)) checkpoints.set(node.id, record);
+      const fencedAt = Date.parse(intent.fencedAt);
+      // Native replay records retain the source checkpoint, even when it belongs to another run.
+      for (let after = 0; ;) {
+        const page = repositories.timelineEvents.page({ runId, after, limit: 1000 });
+        for (const { eventId, source, payload, occurredAt } of page) {
+          if (source.kind !== "native") continue;
+          if (payload.kind === "write-parked" && payload.writeIntentId === intent.writeIntentId && payload.generation === intent.generation) return checkpoints;
+          if (payload.kind !== "checkpoint-recorded" && payload.kind !== "checkpoint-replayed") continue;
+          const reference = payload.checkpoint;
+          if (payload.runId !== runId || payload.workflow !== descriptor.id || payload.attempt !== envelope.attempt
+            || payload.claimGeneration >= claim.claimGeneration || Date.parse(occurredAt) > fencedAt
+            || Date.parse(reference.writtenAt) > fencedAt || !ancestors.has(reference.nodeId)) continue;
+          if (payload.kind === "checkpoint-replayed" && eventId !== lifecycleCommandId("timeline-checkpoint-replayed", {
+            runId, nodeId: reference.nodeId, claimGeneration: payload.claimGeneration,
+          })) throw new RunContinuationRefusedError("paypath-recheck-replay-identity-mismatch");
+          const record = repositories.runCheckpoints.get(descriptor.id, envelope.itemId, reference.nodeId, reference.attempt, reference.claimGeneration);
+          if (record === undefined || canonicalJsonStringify(timelineCheckpointReference(record)) !== canonicalJsonStringify(reference)) {
+            throw new RunContinuationRefusedError("paypath-recheck-checkpoint-unavailable");
+          }
+          checkpoints.set(reference.nodeId, record);
+        }
+        const last = page.at(-1);
+        if (last === undefined || page.length < 1000) return checkpoints;
+        after = last.cursor;
       }
-      return checkpoints;
     });
     const previousNode = startIndex === undefined ? undefined : nodes[startIndex - 1];
     const resolvedResumeGate = envelope.continuation === undefined

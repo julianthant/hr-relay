@@ -39,7 +39,7 @@ function installRecord(positionNumber: string) {
   }, true);
 }
 
-it.each(["on open", "before Save"])("refuses a different position %s even when the employee and form values agree", async when => {
+it.each(["on open", "before Save", "after the final tab postback"])("refuses a different position %s even when the employee and form values agree", async when => {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
@@ -64,7 +64,17 @@ it.each(["on open", "before Save"])("refuses a different position %s even when t
       assert.equal(await UCPATH_PAYPATH_UI.effectiveDate(frame).inputValue(), "");
     } else {
       await driver.stagePayPathWorkStudy(target);
-      await UCPATH_PAYPATH_UI.positionNumber(frame).fill("40054321");
+      if (when === "before Save") {
+        await UCPATH_PAYPATH_UI.positionNumber(frame).fill("40054321");
+      } else {
+        await UCPATH_PAYPATH_UI.additionalPayDataTab(frame).evaluate(tab => {
+          tab.addEventListener("click", () => {
+            const position = tab.ownerDocument.getElementById("position-number");
+            if (!(position instanceof HTMLInputElement)) throw new Error("fixture record missing");
+            position.value = "40054321";
+          }, { once: true });
+        });
+      }
       const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
       await assert.rejects(driver.submitPayPathWorkStudy(target, capability), { message: "paypath-position-mismatch" });
       assert.equal(await UCPATH_PAYPATH_UI.saveAndSubmit(frame).isVisible(), true);

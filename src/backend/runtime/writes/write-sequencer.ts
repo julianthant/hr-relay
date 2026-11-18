@@ -525,8 +525,9 @@ export async function executeIdempotencyProbe(
   if (input.transactionId !== undefined && !acceptsRecheckTransactionId(completion)) {
     throw new Error("write-recheck-transaction-id-unsupported");
   }
-  const useVerifier = completion.kind !== "receipt" && (input.transactionId !== undefined
-    || (input.parkedRecheck === true && completion.verify.taskId === "ucpath/verify-paypath-work-study"));
+  const payPathRecheck = input.parkedRecheck === true && completion.kind !== "receipt"
+    && completion.verify.taskId === "ucpath/verify-paypath-work-study";
+  const useVerifier = completion.kind !== "receipt" && (input.transactionId !== undefined || payPathRecheck);
   const probeRef = useVerifier ? completion.verify : commitContract.writeSafety.idempotency.probe;
   const probeTask = taskIndexOf(deps.stores).get(probeRef.taskId);
   if (probeTask === undefined) throw new Error(`no store implements idempotency probe ${probeRef.taskId}`);
@@ -565,6 +566,11 @@ export async function executeIdempotencyProbe(
   }, input.screenshotOwner === undefined ? undefined : { ...input.screenshotOwner, taskId: probeRef.taskId });
   try {
     const verdict = probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
+    if (payPathRecheck && verdict.state === "present") {
+      // shortcut: SS Smart HR lacks position and attempt identity, upgrade when UCPath exposes both.
+      return { state: "unknown", reason: "SS Smart HR does not identify the reviewed position and fenced PayPath Save",
+        observedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()) };
+    }
     if (input.transactionId !== undefined && verdict.state === "present") {
       const target = UcpathTerminationTargetSchema.parse(input.commitInput);
       const observed = z.object({ emplId: z.string(), effectiveDate: z.string(), transactionId: z.string() }).parse(verdict.proof);

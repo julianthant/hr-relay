@@ -101,10 +101,11 @@ kind shows the effective date; any row on that date is unknown and the run refus
 existing row is never taken as this person's filing. After Save and Submit the commit read-back and the verifier
 take as proof the one filed work-study row now on that date and nothing else; two such rows are ambiguous, and any
 other row on the date, a Denied, Error or Pushed Back row, or a capped or unreadable search is unknown and parks.
-The driver checks the reviewed position number when it opens the record to stage and again during the final
-read-back before Save and Submit. An existing employee-and-date-only intent blocks a new Save for that employee
-and date. An audited "Saved" recheck for a parked PayPath intent uses its original fenced target with the
-saved-effect verifier.
+The driver checks the reviewed position number when it opens the record to stage and immediately before clicking
+Save and Submit, after the final tab transition. An existing employee-and-date-only intent blocks a new Save for
+that employee and date. An audited "Saved" recheck reconstructs the fenced target from retained checkpoint
+records, including exact workbook replays, and invokes the saved-effect verifier. SS Smart HR findings do not
+identify the reviewed position and fenced attempt, so even a matching row leaves the write parked for review.
 Four facts behind both folds still need live proof. PayPath transactions must appear in the SS Smart HR
 search with the expected Action label and start date, and the detail name must match the PayPath header name.
 The PayPath Save-path anchors also need live proof.

@@ -246,6 +246,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       if (!header.success || header.data !== input.emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
       if (!keepsTarget(await readStagedValues(frame, input.positionNumber), input)) throw new UcpathPayPathRefusedError("staged-value-mismatch");
       const save = await saveControl(frame);
+      await reached("paypath-position-mismatch", () => assertPosition(frame, input.positionNumber));
       await click(save, "ucpath.paypath.save-and-submit");
       // PeopleSoft answers with an alert or replaces the staged page; seeing neither leaves the outcome unknown, and the caller parks.
       const outcome = await Promise.any([

@@ -9,21 +9,27 @@ import { createNoteTimelineWriter } from "../../../src/backend/storage/events/no
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { deterministicPayPathOperations } from "../../../src/backend/systems/ucpath/driver/paypath-fake.js";
+import type { RunRecord } from "../../../src/models/run/record.js";
 import { UcpathPayPathReadSchema } from "../../../src/models/ui/ucpath-paypath.js";
 import { UcpathTransactionFindingSchema } from "../../../src/models/ui/ucpath-transaction-findings.js";
 import { WorkStudyResultSchema } from "../../../src/models/workflows/work-study/result.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
+import type { Clock } from "../../../src/rules/time/clock.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { workStudyWorkflow } from "../../../src/workflows/work-study/workflow.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
-import { testRunContinuation, testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunContinuation, testRunLifecycle, testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { canonicalChildExecution } from "../../support/helpers/backend/canonical-child-execution.js";
+import { createReferenceCheckWriteWorld } from "../../support/helpers/backend/reference-check-write-world.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-pool.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
+import type { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
 const world = createRunExecutorTestWorld();
+const referenceWorld = createReferenceCheckWriteWorld();
 afterEach(world.cleanup);
+afterEach(referenceWorld.cleanup);
 const compiled = compileWorkflow(workStudyWorkflow);
 const INPUT = { emplId: "10000001", effectiveDate: "08/03/2026" };
 const COMMENTS = "Updated pool id to F per work study award 08/03/2026";
@@ -151,31 +157,39 @@ for (const submit of ["answer-lost", "nothing-filed", "alert"] as const) {
   });
 }
 
-it.each(["answer-lost", "nothing-filed"] as const)("rechecks a parked PayPath Save whose response was %s without clicking again", async submit => {
-  const f = await workStudyRun({ submit });
+function requestPayPathRecheck(database: AuthorityDatabase, clock: Clock, parked: RunRecord) {
+  assert.ok(parked.lifecycle.state === "parked-write");
+  const intent = database.authority.writeIntents.get(parked.lifecycle.writeIntentId);
+  assert.ok(intent?.status === "parked");
+  const descriptors = { resolve: (id: string) => id === compiled.descriptor.id ? compiled.descriptor : undefined };
+  const ids = { uuid: randomUUID };
+  const kernel = createCommandKernel({
+    authority: database, lifecycle: testRunService(database, clock), clock, ids, appVersion: "0.1.0",
+    descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS, workerRuntime: { pool: unusedWorkerPool() },
+    writeResolution: createWriteResolutionExecutor({ authority: database, ids, descriptors,
+      continuation: testRunContinuation(database, clock) }),
+  });
+  const result = kernel.execute({
+    commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+    source: "dashboard", family: "run", type: "recheck-write",
+    target: { runId: parked.envelope.runId, expectedVersion: parked.version, writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest },
+    payload: { occurrenceKeyDigest: intent.idempotencyKeyDigest },
+  });
+  assert.equal(result.state, "applied");
+}
+
+it.each(["answer-lost", "nothing-filed", "unrelated-change"] as const)("rechecks a parked PayPath Save in the %s case without clicking again", async scenario => {
+  const f = await workStudyRun({ submit: scenario === "unrelated-change" ? "nothing-filed" : scenario });
   const [intent] = f.intents;
   const parked = f.database.authority.runs.get(f.runId);
   assert.ok(intent?.status === "parked" && parked?.lifecycle.state === "parked-write");
   assert.equal(f.commits(), 1);
   const attempt = f.database.authority.writeAttempts.get(intent.currentAttemptId);
   assert.ok(attempt);
-  const descriptors = { resolve: (id: string) => id === compiled.descriptor.id ? compiled.descriptor : undefined };
-  const ids = { uuid: randomUUID };
-  const kernel = createCommandKernel({
-    authority: f.database, lifecycle: f.execution.lifecycle, clock: f.clock, ids, appVersion: "0.1.0",
-    descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
-    intakeProjections: NO_INTAKE_PROJECTIONS, workerRuntime: { pool: unusedWorkerPool() },
-    writeResolution: createWriteResolutionExecutor({ authority: f.database, ids, descriptors,
-      continuation: testRunContinuation(f.database, f.clock) }),
-  });
-  const result = kernel.execute({
-    commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: LOCAL_OPERATOR_ACTOR_ID,
-    source: "dashboard", family: "run", type: "recheck-write",
-    target: { runId: f.runId, expectedVersion: parked.version, writeIntentId: intent.writeIntentId,
-      intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest },
-    payload: { occurrenceKeyDigest: intent.idempotencyKeyDigest },
-  });
-  assert.equal(result.state, "applied");
+  if (scenario === "unrelated-change") f.paypath.rows.push(filed({ submittedAt: "08/03/26 11:00:00.000000AM" }));
+  requestPayPathRecheck(f.database, f.clock, parked);
   const before = f.paypath.events.length;
   const report = await f.execution.execute(parked, world.SIGNAL);
   assert.deepEqual(f.paypath.events.slice(before), ["read:transactions:10000001"], JSON.stringify({
@@ -184,17 +198,38 @@ it.each(["answer-lost", "nothing-filed"] as const)("rechecks a parked PayPath Sa
   assert.equal(f.commits(), 1);
   assert.deepEqual(f.database.authority.writeAttempts.listByIntent(intent.writeIntentId), [attempt]);
   const after = f.database.authority.writeIntents.get(intent.writeIntentId);
-  if (submit === "answer-lost") {
-    assert.equal(report.outcomes[0]?.state, "done");
-    assert.equal(after?.status, "committed");
-    const saved = WorkStudyResultSchema.parse(f.database.authority.runResults.get(f.runId)?.result.value);
-    assert.equal(saved.receipt.transactionId, "T009000001");
-    assert.equal(f.history(f.runId).length, 1);
-  } else {
-    assert.equal(report.outcomes[0]?.state, "parked-write");
-    assert.ok(after?.status === "parked" && after.recheck === undefined);
-    assert.deepEqual(f.history(f.runId), []);
-  }
+  assert.equal(report.outcomes[0]?.state, "parked-write");
+  assert.ok(after?.status === "parked" && after.recheck === undefined);
+  assert.equal(f.database.authority.runResults.get(f.runId), undefined);
+  assert.deepEqual(f.history(f.runId), []);
+});
+
+it("rechecks a parked PayPath Save after the run reused an earlier workbook reference check", async () => {
+  const paypath = deterministicPayPathOperations({ read, submit: "answer-lost" });
+  const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath }) });
+  const f = await referenceWorld.fixture(compiled.descriptor, sessions);
+  const reference = f.spreadsheet("Fall roster", "Awards", ["eid"], [[INPUT.emplId]]);
+  const preview = await f.execute(f.start(INPUT, [reference], true));
+  assert.equal(preview.lifecycle.state, "terminal");
+  const parked = await f.execute(f.start(INPUT, [reference]));
+  assert.equal(parked.lifecycle.state, "parked-write");
+  assert.equal(paypath.events.filter(event => event.startsWith("commit:")).length, 1);
+  const initialReplay = f.events(parked).find(event => event.payload.kind === "checkpoint-replayed"
+    && event.payload.checkpoint.nodeId === "reference-check" && event.payload.checkpoint.runId === preview.envelope.runId);
+  assert.ok(initialReplay?.payload.kind === "checkpoint-replayed");
+  requestPayPathRecheck(f.database, f.clock, parked);
+  const before = paypath.events.length;
+  const checked = await f.execute(parked);
+  assert.deepEqual(paypath.events.slice(before), ["read:transactions:10000001"],
+    JSON.stringify(f.database.authority.failures.listByRun(parked.envelope.runId)));
+  assert.equal(checked.lifecycle.state, "parked-write");
+  const recheckReplay = f.events(checked).find(event => event.payload.kind === "checkpoint-replayed"
+    && event.payload.checkpoint.nodeId === "reference-check" && event.payload.claimGeneration === checked.claimGeneration);
+  assert.ok(recheckReplay?.payload.kind === "checkpoint-replayed");
+  assert.deepEqual(recheckReplay.payload.checkpoint, initialReplay.payload.checkpoint);
+  const intent = f.database.authority.writeIntents.get(parked.lifecycle.writeIntentId);
+  assert.ok(intent?.status === "parked" && intent.recheck === undefined);
+  assert.equal(f.database.authority.runResults.get(parked.envelope.runId), undefined);
 });
 
 const PROBE_UNKNOWN = /pre-write probe .* is indeterminate; refusing to fence or click/u;
