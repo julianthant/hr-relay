@@ -912,8 +912,39 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 
 describe_m2('real mounted dashboard through the typed mock transport', () => {
 
+  it_m2("reverts an ordinary save whose reply was lost with one failure toast and no retry", async () => {
+    const commands: unknown[] = [];
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
+    const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
+      commands.push(body);
+      return Promise.reject(new Error("private-transport-sentinel"));
+    } });
+    const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "Task");
+    assert_m2.ok(label, "missing Task label");
+    const input = document.getElementById(label.htmlFor);
+    assert_m2.ok(input instanceof HTMLInputElement);
+    const original = input.value;
+    assert_m2.notEqual(original, "240");
+    await act_m2(async () => {
+      input.focus();
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
+      descriptor.set.call(input, "240");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act_m2(async () => input.blur()); await settle();
+    assert_m2.equal(commands.length, 1);
+    const toasts = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+    assert_m2.equal(toasts.length, 1);
+    assert_m2.match(toasts[0]?.textContent ?? "", /Settings weren't saved/u);
+    assert_m2.match(toasts[0]?.textContent ?? "", /The previous value is back\./u);
+    assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /save unconfirmed|Command result|private-transport-sentinel/u);
+    assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
+    assert_m2.equal(input.value, original);
+    await settle(); assert_m2.equal(commands.length, 1, "a lost reply must not retry automatically");
+  });
+
   for (const save of [
-    { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed" },
     { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed" },
   ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
     const commands: unknown[] = [];
@@ -964,7 +995,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.doesNotMatch(activeToasts[0]?.textContent ?? "", /save unconfirmed/u);
     assert_m2.match(activeToasts[0]?.textContent ?? "", replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
   });
-  it_m2("withdraws a section's warning when it is left and dismisses a replayed command's own warning", async () => {
+  it_m2("keeps an ordinary failure toast apart from the credentials warning and dismisses a replayed command's own warning", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
@@ -986,15 +1017,16 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       await act_m2(async () => input.blur()); await settle();
     };
     await edit("Task", "240");
-    assert_m2.match(document.querySelector('[data-slot="toast"]')?.textContent ?? "", /Settings save unconfirmed/u);
+    assert_m2.match(document.querySelector('[data-slot="toast"]')?.textContent ?? "", /Settings weren't saved/u);
     const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Account");
     assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
     await edit("UCPath username", "Synthetic credential");
     assert_m2.equal(commands.length, 2);
     assert_m2.notEqual(commands[0]?.commandId, commands[1]?.commandId);
     const shown = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
-    assert_m2.equal(shown().length, 1, "each section shows only its own warning");
-    assert_m2.match(shown()[0]?.textContent ?? "", /Credentials save unconfirmed/u);
+    const unconfirmed = () => shown().filter(node => /save unconfirmed/u.test(node.textContent ?? ""));
+    assert_m2.equal(unconfirmed().length, 1, "only the credentials save is left unconfirmed");
+    assert_m2.match(unconfirmed()[0]?.textContent ?? "", /Credentials save unconfirmed/u);
     const retry = [...document.querySelectorAll("button")].find(button => button.textContent === "Retry exact attempt"); assert_m2.ok(retry);
     await act_m2(async () => retry.click()); await settle();
     assert_m2.equal(commands.length, 3); assert_m2.deepEqual(commands[2], commands[1]);
