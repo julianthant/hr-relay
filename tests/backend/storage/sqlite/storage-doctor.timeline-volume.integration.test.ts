@@ -82,6 +82,7 @@ async function store(runs: readonly RunRecord[], write: (emit: (event: Readonly<
     } finally { raw.close(); }
   })();
   return {
+    authorityPath,
     totals,
     doctor: () => doctorAuthorityStorage({
       stateRootTrustAnchor: root, stateRoot: root, authorityPath,
@@ -125,5 +126,26 @@ describe("storage doctor on a long-lived timeline", () => {
     const defect = (await (await prepare(true)).doctor()).spanAuthority;
     assert.equal(defect.state, "degraded");
     assert.match(JSON.stringify(defect), /ends before its matching start/u);
+  });
+
+  // Pre-root replay selects by the indexed run_id column; it relies on this refusal.
+  it("refuses a span event whose run differs from its run scope", async () => {
+    const record = run(0);
+    const f = await store([record], (emit) => {
+      emit(rootEvent(record));
+      emit(taskSpan(record, "span.started", 1));
+    });
+    const raw = new DatabaseSync(f.authorityPath), eventId = randomUUID();
+    try {
+      raw.prepare(`INSERT INTO timeline_events
+        (cursor,id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+        SELECT cursor+1,?,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,
+          json_set(payload_json,'$.cursor',cursor+1,'$.eventId',?,'$.payload.event.runId',?)
+        FROM timeline_events WHERE kind='span.started'`).run(eventId, eventId, randomUUID());
+      raw.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } finally { raw.close(); }
+    const report = (await f.doctor()).spanAuthority;
+    assert.equal(report.state, "unavailable");
+    assert.deepEqual(report, { state: "unavailable", cause: { code: "span-stream-invalid", summary: "timeline-record-invalid" } });
   });
 });
