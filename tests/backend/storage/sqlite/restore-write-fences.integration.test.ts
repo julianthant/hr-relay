@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
+import { readdirSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import {
-  assertRestoreDatabasePreservesWriteFences,
-  readRestoreWriteFenceDigest,
+  captureRestoreWriteFenceProof,
   readRestoreWriteFences,
   readUnresolvedRestoreWrites,
   restoreWriteFenceDigest,
 } from "../../../../src/backend/storage/sqlite/restore-write-fences.js";
 import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+
+const capture = (database: DatabaseSync) => captureRestoreWriteFenceProof(read => read(database));
 
 function authority(resultKey: "id" | "run_id" = "id") {
   const database = new DatabaseSync(":memory:");
@@ -54,28 +58,32 @@ it.each(["id", "run_id"] as const)("preserves the journal digest and compares ex
   original.exec("PRAGMA query_only=ON; BEGIN");
   candidate.exec("PRAGMA query_only=ON; BEGIN");
   const digest = restoreWriteFenceDigest(readRestoreWriteFences(original));
-  assert.equal(readRestoreWriteFenceDigest(original), digest);
-  assert.doesNotThrow(() => assertRestoreDatabasePreservesWriteFences(original, candidate, digest, "source-changed"));
+  using proof = capture(original);
+  assert.equal(proof.digest, digest);
+  assert.doesNotThrow(() => proof.assertPreservedBy(candidate));
+  assert.doesNotThrow(() => proof.assertCurrent(original));
+  assert.throws(() => proof.assertCurrent(candidate), /restore-write-fences-changed/u);
   original.exec("ROLLBACK; PRAGMA query_only=OFF");
   candidate.exec("ROLLBACK; PRAGMA query_only=OFF");
   candidate.exec(`UPDATE run_results SET payload_json='{}' WHERE ${key}='run'`);
-  assert.throws(() => assertRestoreDatabasePreservesWriteFences(original, candidate, digest, "source-changed"), /restore-would-weaken-write-evidence:run_results/u);
+  assert.throws(() => proof.assertPreservedBy(candidate), /restore-would-weaken-write-evidence:run_results/u);
   original.exec("INSERT INTO commands VALUES ('changed','{}')");
-  assert.throws(() => assertRestoreDatabasePreservesWriteFences(original, candidate, digest, "source-changed"), /source-changed/u);
+  assert.throws(() => proof.assertCurrent(original), /restore-write-fences-changed/u);
 });
 
 it("retains only held leases and refuses a candidate that lost the lease table", () => {
   using original = authority();
   using candidate = authority();
-  assert.equal(readRestoreWriteFenceDigest(original), restoreWriteFenceDigest(readRestoreWriteFences(original)));
+  using empty = capture(original);
+  assert.equal(empty.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
   holdLease(original);
-  const digest = readRestoreWriteFenceDigest(original);
-  assert.equal(digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
-  assert.throws(() => assertRestoreDatabasePreservesWriteFences(original, candidate, digest, "source-changed"), /restore-would-weaken-write-evidence:exclusive_session_leases/u);
+  using proof = capture(original);
+  assert.equal(proof.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
+  assert.throws(() => proof.assertPreservedBy(candidate), /restore-would-weaken-write-evidence:exclusive_session_leases/u);
   holdLease(candidate);
-  assert.doesNotThrow(() => assertRestoreDatabasePreservesWriteFences(original, candidate, digest, "source-changed"));
+  assert.doesNotThrow(() => proof.assertPreservedBy(candidate));
   candidate.exec("UPDATE exclusive_session_leases SET released_at = acquired_at");
-  assert.throws(() => assertRestoreDatabasePreservesWriteFences(original, candidate, digest, "source-changed"), /restore-would-weaken-write-evidence:exclusive_session_leases/u);
+  assert.throws(() => proof.assertPreservedBy(candidate), /restore-would-weaken-write-evidence:exclusive_session_leases/u);
 });
 
 it("refuses losing an unresolved write even when the candidate has no evidence comparison rows", () => {
@@ -84,9 +92,9 @@ it("refuses losing an unresolved write even when the candidate has no evidence c
   const intent = WRITE_INTENT_ATTEMPTING;
   original.prepare("INSERT INTO write_intents VALUES (?,?,?,?,?)").run(
     intent.writeIntentId, intent.status, intent.generation, intent.runId, JSON.stringify(intent));
-  const digest = readRestoreWriteFenceDigest(original);
-  assert.equal(digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
-  assert.throws(() => assertRestoreDatabasePreservesWriteFences(original, candidate, digest, "source-changed"), /restore-would-lose-unresolved-write/u);
+  using proof = capture(original);
+  assert.equal(proof.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
+  assert.throws(() => proof.assertPreservedBy(candidate), /restore-would-lose-unresolved-write/u);
 });
 
 it("reads unresolved IDs without comparison rows and preserves malformed-fence refusals", () => {
@@ -104,4 +112,38 @@ it("reads unresolved IDs without comparison rows and preserves malformed-fence r
   assert.throws(() => readUnresolvedRestoreWrites(db), /restore-run-fence-record-invalid/u);
   db.exec("UPDATE runs SET state='parked-write'; DROP TABLE run_results");
   assert.throws(() => readUnresolvedRestoreWrites(db), /no such table: run_results/u);
+});
+
+it("refuses an unreadable row in a present comparison table before account removal", () => {
+  using db = authority();
+  retainEvidence(db);
+  db.exec("ALTER TABLE run_batches ADD COLUMN version INTEGER NOT NULL DEFAULT 1 CHECK(version>0)");
+  db.exec("INSERT INTO run_batches VALUES ('batch', '{}', 9007199254740992)");
+  assert.throws(() => readRestoreWriteFences(db), { code: "ERR_OUT_OF_RANGE" });
+  assert.throws(() => readUnresolvedRestoreWrites(db), { code: "ERR_OUT_OF_RANGE" });
+});
+
+
+it("owns a private indexed witness and removes it on disposal or a failed source close", () => {
+  using original = authority();
+  retainEvidence(original);
+  const ownIndexes = () => readdirSync(tmpdir()).filter(name => name.startsWith(`relay-readonly-authority-pid${process.pid}-fences-`));
+  const before = ownIndexes();
+  {
+    using proof = capture(original);
+    const active = ownIndexes().filter(name => !before.includes(name));
+    assert.equal(active.length, 1);
+    const [name] = active;
+    assert.ok(name);
+    const folder = join(tmpdir(), name);
+    assert.deepEqual(readdirSync(folder), ["fences.sqlite"]);
+    if (process.platform !== "win32") assert.equal(statSync(folder).mode & 0o777, 0o700);
+    assert.equal(proof.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
+  }
+  assert.deepEqual(ownIndexes(), before);
+  assert.throws(() => captureRestoreWriteFenceProof(read => {
+    read(original);
+    throw new Error("unproved source close");
+  }), /unproved source close/u);
+  assert.deepEqual(ownIndexes(), before);
 });

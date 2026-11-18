@@ -1,5 +1,10 @@
-import { createHash } from "node:crypto";
-import type { DatabaseSync } from "node:sqlite";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { createPrivateDirectory } from "../private-path.js";
+import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { z } from "zod";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
@@ -50,7 +55,7 @@ function readWriteState(rows: ReadRows) {
 
 export function readUnresolvedRestoreWrites(database: DatabaseSync): readonly string[] {
   const { unresolved, tables } = readFenceSummary(sql => database.prepare(sql).iterate());
-  for (const table of tables) database.prepare(`SELECT * FROM ${table} LIMIT 0`);
+  validateReadableFenceRows(database, tables);
   return unresolved;
 }
 
@@ -105,62 +110,178 @@ export function assertRestorePreservesWriteFences(source: RestoreWriteFences, re
 }
 
 const PrimaryKey = z.tuple([z.strictObject({ name: z.string() })]);
-const SortedFenceRow = z.strictObject({ fence_key: z.union([z.string(), z.number()]), canonical_row: z.instanceof(Uint8Array) });
+const EvidenceRow = z.strictObject({ row_key: z.union([z.string(), z.number()]), canonical: z.instanceof(Uint8Array) });
+const RowKey = z.union([z.string(), z.number()]);
 const quoteColumn = (column: string) => `"${column.replaceAll('"', '""')}"`;
-type InspectTable = (name: FenceTable, key: string, columns: readonly string[]) => ((key: string | number, canonicalRow: string) => void) | undefined;
 
-function streamFenceDigest(database: DatabaseSync, { unresolved, tables }: FenceSummary, inspectTable?: InspectTable): string {
+type WitnessTable = {
+  readonly name: FenceTable;
+  readonly key: string;
+  readonly columns: readonly string[];
+  readonly rowCount: number;
+};
+
+type ReadAuthority = <Result>(read: (database: DatabaseSync) => Result) => Result;
+
+export type RestoreWriteFenceProof = Readonly<{
+  digest: string;
+  assertPreservedBy(database: DatabaseSync): void;
+  assertCurrent(database: DatabaseSync): void;
+  [Symbol.dispose](): void;
+}>;
+
+function openFenceIndex() {
+  const prefix = join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-fences-`);
+  const path = process.platform === "win32" ? `${prefix}${randomUUID()}` : mkdtempSync(prefix);
+  if (process.platform === "win32") createPrivateDirectory(path, { mode: 0o700 });
+  const directory = { path };
+  let database: DatabaseSync | undefined;
+  const dispose = () => {
+    if (database !== undefined) {
+      try { database.close(); }
+      catch (error) { throw retainAuthoritySourceClosure([error], { database, directory }); }
+    }
+    try { rmSync(path, { recursive: true }); }
+    catch (error) { throw retainAuthoritySourceClosure([error], { directory }); }
+  };
+  try {
+    database = new DatabaseSync(join(path, "fences.sqlite"));
+    database.exec(`
+      PRAGMA journal_mode=OFF;
+      PRAGMA cache_size=-2048;
+      PRAGMA cache_spill=ON;
+      PRAGMA temp_store=MEMORY;
+      CREATE TABLE evidence (
+        table_id INTEGER NOT NULL,
+        canonical BLOB NOT NULL,
+        row_key ANY NOT NULL,
+        PRIMARY KEY(table_id,canonical)
+      ) STRICT, WITHOUT ROWID;
+    `);
+    return { database, dispose };
+  } catch (error) {
+    try { dispose(); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-index-setup-failed"); }
+    throw error;
+  }
+}
+
+function validateReadableFenceRows(database: DatabaseSync, tables: readonly FenceTable[]): void {
+  for (const table of tables) {
+    for (const row of database.prepare(`SELECT * FROM ${table}${fenceTableSelection(table)}`).iterate()) {
+      for (const field of Object.values(row)) {
+        if (field !== null && typeof field !== "string" && (typeof field !== "number" || !Number.isFinite(field))) {
+          throw new Error("canonical-json-invalid");
+        }
+      }
+    }
+  }
+}
+
+function indexFenceRows(source: DatabaseSync, index: DatabaseSync, tables: readonly FenceTable[]): readonly WitnessTable[] {
+  const keyOf = source.prepare("SELECT name FROM pragma_table_info(?) WHERE pk > 0");
+  const insert = index.prepare("INSERT INTO evidence (table_id,canonical,row_key) VALUES (?,?,?)");
+  index.exec("BEGIN");
+  const indexed = tables.map((name, tableId) => {
+    const key = PrimaryKey.parse(keyOf.all(name))[0].name;
+    const rows = source.prepare(`SELECT * FROM ${name}${fenceTableSelection(name)}`);
+    const columns = rows.columns().map(column => column.name);
+    let rowCount = 0;
+    for (const row of rows.iterate()) {
+      // Index UTF-16 code units in JavaScript sort order to preserve the restore journal digest.
+      insert.run(tableId, Buffer.from(canonicalJsonStringify(row), "utf16le").swap16(), RowKey.parse(row[key]));
+      rowCount++;
+    }
+    return { name, key, columns, rowCount };
+  });
+  index.exec("COMMIT; PRAGMA query_only=ON");
+  return indexed;
+}
+
+function readIndexedFenceRows(index: DatabaseSync) {
+  const rows = index.prepare("SELECT row_key, canonical FROM evidence WHERE table_id=? ORDER BY canonical");
+  return function* (tableId: number) {
+    for (const raw of rows.iterate(tableId)) {
+      const { row_key, canonical } = EvidenceRow.parse(raw);
+      yield { key: row_key, canonical: Buffer.from(canonical).swap16().toString("utf16le") };
+    }
+  };
+}
+
+function digestFenceProof(tables: readonly WitnessTable[], unresolved: readonly string[], rows: ReturnType<typeof readIndexedFenceRows>): string {
   const hash = createHash("sha256").update('{"tables":[');
-  const keyOf = database.prepare("SELECT name FROM pragma_table_info(?) WHERE pk > 0");
   for (const [index, table] of tables.entries()) {
     if (index !== 0) hash.update(",");
-    hash.update(`{"name":${JSON.stringify(table)},"rows":[`);
-    const key = PrimaryKey.parse(keyOf.all(table))[0].name;
-    const columns = database.prepare(`SELECT * FROM ${table} LIMIT 0`).columns().map(column => column.name);
-    const inspectRow = inspectTable?.(table, key, columns);
-    // Sort in SQLite using JavaScript's UTF-16 order so in-flight journals keep their exact digest.
-    database.function("relay_restore_fence_row", { deterministic: true, varargs: true }, (...values) =>
-      Buffer.from(canonicalJsonStringify(Object.fromEntries(columns.map((column, index) => [column, values[index]]))), "utf16le").swap16());
-    const rows = database.prepare(`SELECT ${quoteColumn(key)} AS fence_key,
-      relay_restore_fence_row(${columns.map(quoteColumn).join(",")}) AS canonical_row
-      FROM ${table}${fenceTableSelection(table)} ORDER BY canonical_row`).iterate();
+    hash.update(`{"name":${JSON.stringify(table.name)},"rows":[`);
     let first = true;
-    for (const raw of rows) {
-      const row = SortedFenceRow.parse(raw);
-      const canonicalRow = Buffer.from(row.canonical_row).swap16().toString("utf16le");
+    for (const row of rows(index)) {
       if (!first) hash.update(",");
       first = false;
-      hash.update(JSON.stringify(canonicalRow));
-      inspectRow?.(row.fence_key, canonicalRow);
+      hash.update(JSON.stringify(row.canonical));
     }
     hash.update("]}");
   }
   return hash.update(`],"unresolved":${canonicalJsonStringify(unresolved)}}`).digest("hex");
 }
 
-export function readRestoreWriteFenceDigest(database: DatabaseSync): string {
-  return streamFenceDigest(database, readFenceSummary(sql => database.prepare(sql).iterate()));
+function compareFenceRows(
+  database: DatabaseSync, witnesses: readonly WitnessTable[], current: FenceSummary,
+  rows: ReturnType<typeof readIndexedFenceRows>, changed?: string,
+): void {
+  for (const [index, { name, key, columns, rowCount }] of witnesses.entries()) {
+    const refusal = changed ?? `restore-would-weaken-write-evidence:${name}`;
+    if (changed !== undefined) {
+      const count = database.prepare(`SELECT count(*) AS n FROM ${name}${fenceTableSelection(name)}`).get()?.n;
+      if (count !== rowCount) throw new Error(refusal);
+    }
+    if (rowCount === 0) continue;
+    if (!current.tables.includes(name)) throw new Error(refusal);
+    const candidateColumns = database.prepare(`SELECT * FROM ${name} LIMIT 0`).columns().map(column => column.name);
+    if (candidateColumns.length !== columns.length || columns.some(column => !candidateColumns.includes(column))) {
+      throw new Error(refusal);
+    }
+    const lookup = database.prepare(`SELECT * FROM ${name} WHERE ${quoteColumn(key)}=?`);
+    for (const row of rows(index)) {
+      const candidate = lookup.get(row.key);
+      if (candidate === undefined || canonicalJsonStringify(candidate) !== row.canonical) throw new Error(refusal);
+    }
+  }
 }
 
-export function assertRestoreDatabasePreservesWriteFences(
-  source: DatabaseSync, restored: DatabaseSync, expectedSourceDigest: string, sourceChangedError: string,
-): void {
-  const sourceSummary = readFenceSummary(sql => source.prepare(sql).iterate());
-  const restoredSummary = readFenceSummary(sql => restored.prepare(sql).iterate());
-  const unresolved = new Set(restoredSummary.unresolved);
-  let refusal = sourceSummary.unresolved.some(id => !unresolved.has(id)) ? "restore-would-lose-unresolved-write" : undefined;
-  const sourceDigest = streamFenceDigest(source, sourceSummary, (table, key, columns) => {
-    if (refusal !== undefined) return undefined;
-    const restoredColumns = restoredSummary.tables.includes(table)
-      ? restored.prepare(`SELECT * FROM ${table} LIMIT 0`).columns().map(column => column.name) : [];
-    const lookup = restoredColumns.length === columns.length && columns.every(column => restoredColumns.includes(column))
-      ? restored.prepare(`SELECT * FROM ${table} WHERE ${quoteColumn(key)}=?`) : undefined;
-    return (id, canonicalRow) => {
-      if (refusal !== undefined) return;
-      const candidate = lookup?.get(id);
-      if (candidate === undefined || canonicalJsonStringify(candidate) !== canonicalRow) refusal = `restore-would-weaken-write-evidence:${table}`;
-    };
-  });
-  if (sourceDigest !== expectedSourceDigest) throw new Error(sourceChangedError);
-  if (refusal !== undefined) throw new Error(refusal);
+export function captureRestoreWriteFenceProof(readAuthority: ReadAuthority): RestoreWriteFenceProof {
+  let owned: ReturnType<typeof openFenceIndex> | undefined;
+  try {
+    return readAuthority(source => {
+      const summary = readFenceSummary(sql => source.prepare(sql).iterate());
+      const index = openFenceIndex();
+      owned = index;
+      const witnesses = indexFenceRows(source, index.database, summary.tables);
+      const rows = readIndexedFenceRows(index.database);
+      let digest: string | undefined;
+      return Object.freeze({
+        get digest() { return digest ??= digestFenceProof(witnesses, summary.unresolved, rows); },
+        assertPreservedBy(database: DatabaseSync) {
+          const restored = readFenceSummary(sql => database.prepare(sql).iterate());
+          validateReadableFenceRows(database, restored.tables);
+          const unresolved = new Set(restored.unresolved);
+          if (summary.unresolved.some(id => !unresolved.has(id))) throw new Error("restore-would-lose-unresolved-write");
+          compareFenceRows(database, witnesses, restored, rows);
+        },
+        assertCurrent(database: DatabaseSync) {
+          const errorCode = "restore-write-fences-changed";
+          const current = readFenceSummary(sql => database.prepare(sql).iterate());
+          if (current.tables.length !== summary.tables.length || summary.tables.some((table, position) => current.tables[position] !== table)
+            || current.unresolved.length !== summary.unresolved.length || summary.unresolved.some((id, position) => current.unresolved[position] !== id)) {
+            throw new Error(errorCode);
+          }
+          compareFenceRows(database, witnesses, current, rows, errorCode);
+        },
+        [Symbol.dispose]: index.dispose,
+      });
+    });
+  } catch (error) {
+    try { owned?.dispose(); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-proof-capture-failed"); }
+    throw error;
+  }
 }
