@@ -523,76 +523,96 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
     scrollSteps: number;
   }> => {
     // Keep page callbacks anonymous and small; tsx helper bindings are unavailable inside page evaluation.
-    const harvestOnce = async (): Promise<{
-      rows: readonly { month: number; day: number; rawDateCell: string; cells: readonly string[] }[];
-      headers: readonly string[];
-      dateRowCount: number;
-      dataRowCount: number;
-      viewportCount: number;
-      topRow: string;
-      scrollTop: number;
-      scrollHeight: number;
-      clientHeight: number;
-    }> => {
+    const harvestOnce = async () => {
       assertCurrent();
-      const result = await page.evaluate(() => {
-      const viewports = [...document.querySelectorAll(".ui-grid-viewport")];
-      const dateViewport = viewports[0];
-      const dataViewport = viewports[viewports.length - 1];
-      if (dateViewport === undefined || dataViewport === undefined || viewports.length < 2) {
-        return {
-          rows: [], headers: [], viewportCount: viewports.length, dateRowCount: 0, dataRowCount: 0,
-          topRow: "", scrollTop: 0, scrollHeight: 0, clientHeight: 0,
-        };
-      }
-      // Read headers only from the data container; pinned headers would duplicate column names.
-      const container = dataViewport.closest(".ui-grid-render-container");
-      const headers = (container === null ? [] : [...container.querySelectorAll(".ui-grid-header-cell")])
-        .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim())
-        .filter((text) => text.length > 0 && text !== ".");
-      const dateRows = [...dateViewport.querySelectorAll("[role=row]")];
-      const dataRows = [...dataViewport.querySelectorAll("[role=row]")];
-      const rows: { month: number; day: number; rawDateCell: string; cells: string[] }[] = [];
-      let carriedMonth = 0;
-      let carriedDay = 0;
-      let carriedCell = "";
-      for (let index = 0; index < Math.max(dateRows.length, dataRows.length); index++) {
-        const dateRow = dateRows[index];
-        const raw = dateRow === undefined ? "" : (dateRow.textContent ?? "").replace(/\s+/g, " ").trim();
-        const match = /([A-Za-z]{3})\s+(\d{1,2})\/(\d{1,2})/.exec(raw);
-        if (match !== null) {
-          carriedMonth = Number(match[2]);
-          carriedDay = Number(match[3]);
-          carriedCell = raw;
+      const { dateRows, dataRows, ...windowState } = await page.evaluate(() => {
+        const viewports = [...document.querySelectorAll(".ui-grid-viewport")];
+        const dateViewport = viewports[0];
+        const dataViewport = viewports[viewports.length - 1];
+        if (dateViewport === undefined || dataViewport === undefined || viewports.length < 2) {
+          return {
+            dateRows: [], dataRows: [], headers: [], viewportCount: viewports.length,
+            scrollTop: 0, scrollHeight: 0, clientHeight: 0,
+          };
         }
-        if (carriedMonth === 0) continue;
-        const dataRow = dataRows[index];
-        const cells = dataRow === undefined
-          ? []
-          : [...dataRow.querySelectorAll("[role=gridcell]")]
-            .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim());
-        rows.push({
-          month: carriedMonth,
-          day: carriedDay,
-          rawDateCell: match === null ? "" : carriedCell,
-          cells,
-        });
-      }
-      const first = dateRows[0];
-      return {
-        rows,
-        headers,
-        dateRowCount: dateRows.length,
-        dataRowCount: dataRows.length,
-        viewportCount: viewports.length,
-        topRow: first === undefined ? "" : (first.textContent ?? "").trim(),
-        scrollTop: dataViewport.scrollTop,
-        scrollHeight: dataViewport.scrollHeight,
-        clientHeight: dataViewport.clientHeight,
-      };
-    });
+        const angular = "angular" in window ? window.angular : undefined;
+        // UI Grid's pinned and body panes share the logical GridRow uid across virtualized windows.
+        const rowIdentity = {
+          key(element: Element): string | number | null {
+            if (typeof angular !== "object" || angular === null
+              || !("element" in angular) || typeof angular.element !== "function") return null;
+            const wrapped: unknown = Reflect.apply(angular.element, angular, [element]);
+            if (typeof wrapped !== "object" || wrapped === null
+              || !("isolateScope" in wrapped) || typeof wrapped.isolateScope !== "function") return null;
+            const scope: unknown = Reflect.apply(wrapped.isolateScope, wrapped, []);
+            if (typeof scope !== "object" || scope === null || !("row" in scope)) return null;
+            const row = scope.row;
+            if (typeof row !== "object" || row === null || !("uid" in row)) return null;
+            const uid = row.uid;
+            if (typeof uid === "string" && uid.trim() !== "") return uid;
+            return typeof uid === "number" && Number.isSafeInteger(uid) ? uid : null;
+          },
+        };
+        // Read headers only from the data container; pinned headers would duplicate column names.
+        const container = dataViewport.closest(".ui-grid-render-container");
+        const headers = (container === null ? [] : [...container.querySelectorAll(".ui-grid-header-cell")])
+          .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim())
+          .filter((text) => text.length > 0 && text !== ".");
+        return {
+          dateRows: [...dateViewport.querySelectorAll("[role=row]")].map(row => ({
+            key: rowIdentity.key(row), label: (row.textContent ?? "").replace(/\s+/g, " ").trim(),
+          })),
+          dataRows: [...dataViewport.querySelectorAll("[role=row]")].map(row => ({
+            key: rowIdentity.key(row),
+            cells: [...row.querySelectorAll("[role=gridcell]")]
+              .map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
+          })),
+          headers,
+          viewportCount: viewports.length,
+          scrollTop: dataViewport.scrollTop,
+          scrollHeight: dataViewport.scrollHeight,
+          clientHeight: dataViewport.clientHeight,
+        };
+      });
       assertCurrent();
-      return result;
+
+      if (dateRows.length !== dataRows.length) {
+        throw new NewKronosDriverError(
+          `the timecard grid has unaligned date/data row counts ${String(dateRows.length)}/${String(dataRows.length)} `
+          + "— refusing an incomplete row window",
+        );
+      }
+      const dataByKey = new Map<string | number, readonly string[]>();
+      for (const { key, cells } of dataRows) {
+        if (key === null || dataByKey.has(key)) {
+          throw new NewKronosDriverError("unpaired timecard row keys: missing or duplicate GridRow uid in the data pane");
+        }
+        dataByKey.set(key, cells);
+      }
+      const rows: RawTimecardGridRow[] = [];
+      let month = 0;
+      let day = 0;
+      for (const { key, label } of dateRows) {
+        const cells = key === null ? undefined : dataByKey.get(key);
+        if (key === null || cells === undefined) {
+          throw new NewKronosDriverError("unpaired timecard row keys: missing, duplicate or unmatched GridRow uid in the date pane");
+        }
+        dataByKey.delete(key);
+        const match = /([A-Za-z]{3})\s+(\d{1,2})\/(\d{1,2})/.exec(label);
+        if (match !== null) {
+          month = Number(match[2]);
+          day = Number(match[3]);
+        }
+        if (month === 0) continue;
+        rows.push({ month, day, rawDateCell: match === null ? "" : label, cells });
+      }
+      if (rows.length !== dateRows.length) {
+        throw new NewKronosDriverError(
+          `the timecard grid has ${String(rows.length)} dated row(s) for ${String(dateRows.length)} date rows `
+          + "— refusing an incomplete row window",
+        );
+      }
+      return { ...windowState, rows };
     };
 
     // Scroll each grid viewport, but read the data body; pinned regions can share the scroll control.
@@ -628,12 +648,8 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
       );
     }
     const validateHarvest = (harvest: Awaited<ReturnType<typeof harvestOnce>>): void => {
-      if (harvest.viewportCount < 2 || harvest.dateRowCount !== harvest.dataRowCount
-        || harvest.rows.length !== harvest.dateRowCount) {
-        throw new NewKronosDriverError(
-          `the timecard grid has unaligned date/data row counts ${String(harvest.dateRowCount)}/${String(harvest.dataRowCount)} `
-          + `and ${String(harvest.rows.length)} dated row(s) — refusing an incomplete row window`,
-        );
+      if (harvest.viewportCount < 2) {
+        throw new NewKronosDriverError("the timecard grid lost its date or data viewport during repaint");
       }
       if (harvest.headers.length !== headers.length
         || harvest.headers.some((header, index) => header !== headers[index])) {

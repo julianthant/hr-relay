@@ -1,7 +1,7 @@
-
+// @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { type Locator, type Page } from "playwright";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { createNewKronosTimecardDriver } from "../../../../../src/backend/systems/new-kronos/driver/interpreter.js";
 import { NEW_KRONOS_SEARCH_QUERY_LABEL } from "../../../../../src/models/ui/new-kronos-timecard.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
@@ -169,9 +169,8 @@ interface Script {
   readonly endField: FakeField;
   readonly gridHarvests?: readonly Readonly<{
     headers: readonly string[];
-    rows: readonly Readonly<{ month: number; day: number; rawDateCell: string; cells: readonly string[] }>[];
-    dateRowCount: number;
-    dataRowCount: number;
+    dateRows: readonly Readonly<{ key: string; label: string }>[];
+    dataRows: readonly Readonly<{ key: string; cells: readonly string[] }>[];
   }>[];
 }
 
@@ -273,18 +272,37 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>)
     ...rootSurface(),
     frameLocator: () => emptyFrameRoot(),
     url: () => "https://ucsd-sso.prd.mykronos.com/wfd/timekeeping#/timecard",
-    evaluate: (_fn: unknown, position?: number) => {
-      const geometry = { scrollTop: position ?? 0, scrollHeight: 60, clientHeight: 60 };
-      if (position !== undefined) return Promise.resolve(geometry);
+    evaluate: (fn: () => unknown, position?: number) => {
+      if (position !== undefined) return Promise.resolve({ scrollTop: position, scrollHeight: 60, clientHeight: 60 });
       const harvest = script.gridHarvests?.[Math.min(harvestIndex++, script.gridHarvests.length - 1)];
       if (harvest === undefined) throw new Error("unscripted grid harvest");
-      return Promise.resolve({ ...geometry, ...harvest, viewportCount: 2, topRow: "Mon 6/1" });
+      document.body.innerHTML = `
+        <div class="ui-grid-viewport">
+          ${harvest.dateRows.map(row => `<div role="row" data-key="${row.key}">${row.label}</div>`).join("")}
+        </div>
+        <div class="ui-grid-render-container">
+          ${harvest.headers.map(header => `<div class="ui-grid-header-cell">${header}</div>`).join("")}
+          <div class="ui-grid-viewport">
+            ${harvest.dataRows.map(row => `<div role="row" data-key="${row.key}">
+              ${row.cells.map(cell => `<div role="gridcell">${cell}</div>`).join("")}
+            </div>`).join("")}
+          </div>
+        </div>`;
+      vi.stubGlobal("angular", {
+        element: (element: Element) => ({ isolateScope: () => ({ row: { uid: element.getAttribute("data-key") } }) }),
+      });
+      try {
+        return Promise.resolve(fn());
+      } finally {
+        document.body.replaceChildren();
+        vi.unstubAllGlobals();
+      }
     },
   };
   return page as unknown as Page;
 }
 
-function driveTimecardRead(script: Script): Promise<unknown> {
+function driveTimecardRead(script: Script) {
   const clock = manualClock(new Date("2026-08-27T18:00:00.000Z"));
   const page = fakeTimecardPage(script, clock);
   const driver = createNewKronosTimecardDriver(() => undefined, page, clock);
@@ -297,18 +315,45 @@ function driveTimecardRead(script: Script): Promise<unknown> {
 
 describe("timecard grid structural completeness", () => {
   const headers = ["Schedule", "In", "Out", "Transfer", "Pay code", "Amount", "Shift", "Daily", "Period", "Absence"];
-  const row = (day: number, cells: readonly string[]) => ({ month: 6, day, rawDateCell: `Mon 6/${String(day)}`, cells });
+  const dateRows = [{ key: "day-1", label: "Mon 6/1" }, { key: "day-2", label: "Tue 6/2" }];
+  const punches = ["", "08:00", "17:00", "", "", "", "", "", "", ""];
+  const empty = ["", "", "", "", "", "", "", "", "", ""];
+  const readGrid = (...gridHarvests: NonNullable<Script["gridHarvests"]>) => driveTimecardRead({
+    startField: new FakeField("08/27/2026"), endField: new FakeField("08/27/2026"), gridHarvests,
+  });
+
+  it("refuses equal-sized panes shifted by one row before attributing a punch to the previous day", async () => {
+    const dataRows = [{ key: "day-2", cells: punches }, { key: "day-3", cells: empty }];
+    await assert.rejects(readGrid({ headers, dateRows, dataRows }), /unpaired timecard row keys/u);
+  });
+
+  it("keeps a continuation punch with its date when the data pane has a different row order", async () => {
+    const continuedDates = [...dateRows, { key: "day-2-continuation", label: "" }];
+    const dataRows = [
+      { key: "day-2-continuation", cells: punches }, { key: "day-1", cells: empty }, { key: "day-2", cells: empty },
+    ];
+    const read = await readGrid({ headers, dateRows: continuedDates, dataRows });
+    assert.deepEqual(read.grid.punchDates, ["06/02/2026"]);
+    assert.equal(read.grid.lastPunchDate, "06/02/2026");
+  });
+
+  it.each(["", "day-1"])("refuses a missing or repeated data row key (%j)", async key => {
+    const dataRows = [{ key: "day-1", cells: empty }, { key, cells: punches }];
+    await assert.rejects(readGrid({ headers, dateRows, dataRows }), /unpaired timecard row keys/u);
+  });
+
   for (const cells of [[], ["", "08:00"]]) {
     it(`refuses a later date row with ${String(cells.length)} data cells`, async () => {
-      const harvest = { headers, dateRowCount: 2, dataRowCount: cells.length === 0 ? 1 : 2, rows: [row(1, ["", "08:00", "17:00", "", "", "", "", "", "", ""]), row(2, cells)] };
-      await assert.rejects(driveTimecardRead({ startField: new FakeField("08/27/2026"), endField: new FakeField("08/27/2026"), gridHarvests: [harvest] }), /date\/data row counts|cell\(s\) against/u);
+      const dataRows = [{ key: "day-1", cells: punches }];
+      if (cells.length > 0) dataRows.push({ key: "day-2", cells });
+      await assert.rejects(readGrid({ headers, dateRows, dataRows }), /date\/data row counts|cell\(s\) against/u);
     });
   }
   it("refuses headers that change on a grid repaint", async () => {
-    const rows = [row(1, ["", "08:00", "17:00", "", "", "", "", "", "", ""]), row(2, Array<string>(10).fill(""))];
-    const opening = { headers, rows, dateRowCount: 2, dataRowCount: 2 };
+    const dataRows = [{ key: "day-1", cells: punches }, { key: "day-2", cells: empty }];
+    const opening = { headers, dateRows, dataRows };
     const repaint = { ...opening, headers: ["In", "Schedule", ...headers.slice(2)] };
-    await assert.rejects(driveTimecardRead({ startField: new FakeField("08/27/2026"), endField: new FakeField("08/27/2026"), gridHarvests: [opening, repaint] }), /headers changed/u);
+    await assert.rejects(readGrid(opening, repaint), /headers changed/u);
   });
 });
 
