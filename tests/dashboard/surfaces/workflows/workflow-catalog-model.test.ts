@@ -1,14 +1,9 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { buildWorkflowCatalog as buildWorkflowCatalog_m0 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
-import { act as act_m0,createElement as createElement_m0,createElement as createElement_m1 } from "react";
-import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/client";
+import { createElement as createElement_m1 } from "react";
 import { renderToStaticMarkup as renderToStaticMarkup_m1 } from "react-dom/server";
-import { afterAll as afterAll_m0,afterEach as afterEach_m0,beforeAll as beforeAll_m0,describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
+import { describe as describe_m1,expect as expect_m1,it as it_m1 } from "vitest";
 import { PRODUCT_WORKFLOW_COMPOSITION as PRODUCT_WORKFLOW_COMPOSITION_m1,WORKFLOW_SOURCES as WORKFLOW_SOURCES_m1,workflowComposition as workflowComposition_m1,workflowSource as workflowSource_m1 } from "../../../../src/dashboard/app/workflow-sources.js";
-import { explorerRecoveryWorkflow as explorerRecoveryWorkflow_m1, explorerWorkflowOptions as explorerWorkflowOptions_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
-import { WorkflowExplorer as WorkflowExplorer_m0 } from "../../../../src/dashboard/surfaces/explorer/explorer.js";
 import { launchWorkflows as launchWorkflows_m1 } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { RunWorkflowPicker as RunWorkflowPicker_m1 } from "../../../../src/dashboard/surfaces/run-start/run-start-picker.js";
 import { parseWorkflows as parseWorkflows_m1 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
@@ -23,89 +18,6 @@ import { workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js"
 
 
 {
-
-
-Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-let root: Root_m0 | undefined;
-const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
-const _beforeAllFixture0 = () => Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined });
-const _afterAllFixture1 = () => {
-  if (originalScroll) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScroll);
-  else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
-};
-const _afterEachFixture2 = async () => {
-  if (root) await act_m0(async () => root?.unmount());
-  root = undefined;
-  document.body.replaceChildren();
-};
-async function render(): Promise<void> {
-  const host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(WorkflowExplorer_m0, { catalog: buildWorkflowCatalog_m0([], true, previewFixtureSources([])) })));
-}
-function button(name: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll("button")].find((node) => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
-  assert_m0.ok(found instanceof HTMLButtonElement, `missing button ${name}`);
-  return found;
-}
-async function click(name: string): Promise<void> { await act_m0(async () => button(name).click()); }
-async function chooseControl(label: string, value: string): Promise<void> {
-  const trigger = document.querySelector(`[aria-label="${label}"]`);
-  assert_m0.ok(trigger instanceof HTMLButtonElement, `missing choice ${label}`);
-  await act_m0(async () => trigger.click());
-  const option = document.querySelector(`[role="option"][data-value="${value}"]`);
-  assert_m0.ok(option instanceof HTMLElement, `missing option ${value}`);
-  await act_m0(async () => option.click());
-}
-async function chooseWorkflow(value: string): Promise<void> { await chooseControl("Explorer workflow", value); }
-
-describe_m0("frontend-only Explorer mock workflows", () => {
-beforeAll_m0(_beforeAllFixture0);
-afterAll_m0(_afterAllFixture1);
-afterEach_m0(_afterEachFixture2);
-
-  it_m0("switches mock workflows without a client provider, resets transient details and preserves Separations", async () => {
-    await render();
-    assert_m0.equal(document.querySelectorAll("li[data-step-number]").length, 22);
-    const workflowSelect = document.querySelector('[aria-label="Explorer workflow"]');
-    assert_m0.ok(workflowSelect instanceof HTMLButtonElement);
-    await act_m0(async () => workflowSelect.click());
-    assert_m0.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), buildWorkflowCatalog_m0([], true, previewFixtureSources([])).map(entry => entry.label));
-    await act_m0(async () => document.querySelector<HTMLElement>('[role="option"][data-value="fixture-separations"]')?.click());
-    assert_m0.equal(document.querySelector('aside[aria-label="Workflow browser"]'), null);
-    for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {
-      assert_m0.ok(![...document.querySelectorAll("button")].some(node => node.textContent === name || node.getAttribute("aria-label") === name));
-    }
-    await chooseWorkflow("fixture-onboarding");
-    assert_m0.equal(document.querySelectorAll("li[data-step-number]").length, 11);
-    await click("Show source for Legal name");
-    assert_m0.ok(document.querySelector('[aria-label="Legal name source"]'));
-    await chooseWorkflow("fixture-emergency-contact");
-    assert_m0.equal(document.querySelectorAll("li[data-step-number]").length, 11);
-    assert_m0.equal(document.querySelector('[aria-label="Legal name source"]'), null);
-    await chooseWorkflow("fixture-separations");
-    assert_m0.equal(document.querySelectorAll("li[data-step-number]").length, 22);
-    assert_m0.ok(document.querySelector('[aria-label="Read result preview"]'));
-  });
-  it_m0("opens served Separations on the registered definition instead of the mock timeline", async () => {
-    const registered = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
-    const catalog = buildWorkflowCatalog_m0(registered, true, WORKFLOW_SOURCES_m1);
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot_m0(host);
-    await act_m0(async () => root?.render(createElement_m0(WorkflowExplorer_m0, { catalog })));
-    const select = document.querySelector('[aria-label="Explorer workflow"]');
-    assert_m0.ok(select instanceof HTMLButtonElement);
-    assert_m0.equal(select.getAttribute("data-value"), "separations");
-    assert_m0.match(document.body.textContent ?? "", /Registered workflow data is unavailable because the dashboard client is not connected/);
-    assert_m0.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
-  });
-});
-}
-
-{
-
 
 const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
 const catalog = buildWorkflowCatalog_m1(served, true, servedFixtureSources_m1([]));
@@ -157,7 +69,6 @@ describe_m1("frontend workflow catalog", () => {
     expect_m1(product.find(entry => entry.id === "ocr")).toBeUndefined();
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", false)).toBe("hidden");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", true)).toBe("hidden");
-    expect_m1(explorerRecoveryWorkflow_m1(product)).toBe("separations");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", false)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", true)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("onboarding", false)).toBe("served");
@@ -205,7 +116,6 @@ describe_m1("frontend workflow catalog", () => {
       if (entry.source === "preview" && entry.preview?.runnable === false) expect_m1(picker).not.toContain(`aria-label="${entry.label}"`);
       else expect_m1(picker).toContain(`aria-label="${entry.label}"`);
     }
-    expect_m1(explorerWorkflowOptions_m1(catalog).map(entry => [entry.id, entry.title])).toEqual(catalog.map(entry => [`fixture-${entry.id}`, entry.label]));
     expect_m1(picker.match(/disabled=""/gu) ?? []).toHaveLength(0);
     expect_m1(picker).not.toContain("Started by a parent workflow.");
   });
@@ -266,7 +176,7 @@ describe_m1("frontend workflow catalog", () => {
 
 it_m1('uses served start refusals even for a statically selected preview', () => {
   const reason = 'Top-level start is unavailable until its workflow backend is implemented.';
-  const catalog = buildWorkflowCatalog_m1([], true, previewFixtureSources([]), [
+  const catalog = buildWorkflowCatalog_m1([], true, servedFixtureSources_m1([]), [
     { feature: 'workflow-start:i9-check-start', availability: { state: 'unavailable', code: 'deferred', reason } },
   ]);
   expect_m1(catalog.find(entry => entry.id === 'i9-check-start')?.launch).toEqual({ state: 'unavailable', label: 'Unavailable', reason });

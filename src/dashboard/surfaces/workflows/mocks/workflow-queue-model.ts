@@ -46,6 +46,7 @@ export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockR
     status: mockQueueStatus(run),
     startedAt: start, updatedAt: end,
     endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
+    operatorWait: { state: "absent" },
     gateOpenedAt: review ? { state: "present", value: end } : absent("No open approval"),
     liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : currentStep ? { state: "present", value: currentStep.label } : absent("No active step"),
     warnings: warnings.length ? { state: "present", count: warnings.length, first: warnings[0] } : absent("No record warnings"),

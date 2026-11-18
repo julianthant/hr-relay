@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { WorkflowWorkbookSelectionInputSchema, WorkflowWorkbookSelectionRecordSchema, WorkbookLibraryStateSchema, WorkbookLibraryEntrySchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryActionResultSchema, type WorkbookLibraryState, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
+import { WorkflowWorkbookSelectionInputSchema, WorkflowWorkbookSelectionRecordSchema, WorkbookLibraryStateSchema, WorkbookLibraryEntrySchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryActionResultSchema, WorkbookLibrarySyncRecordSchema, type WorkbookLibrarySyncRecord, type WorkbookLibraryState, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches, type WorkbookReplayContext } from "../../workbooks/master-changes.js";
@@ -94,6 +94,11 @@ export const WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION = Object.freeze({ version: 30, 
   ACTION_UPDATE_GUARD,
 ]) });
 
+/** Schema 36: each library state row keeps its last finished SharePoint sync; no earlier sync result was recorded, so every row starts empty. */
+export const WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION = Object.freeze({ version: 36, statements: Object.freeze([
+  `ALTER TABLE workbook_library_state ADD COLUMN sync_json TEXT CHECK(sync_json IS NULL OR json_valid(sync_json))`,
+]) });
+
 const RowSchema = z.object({ id: z.string(), version: z.number().int().positive(), created_at: z.string(), saved_at: z.string(), payload_json: z.string() });
 function selectionFromRow(value: unknown) {
   const row = z.object({ workflow_id: z.string(), revision: z.number(), accepted_command_id: z.string(), used_at: z.string(), payload_json: z.string() }).parse(value);
@@ -175,6 +180,10 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     const state = WorkbookLibraryStateSchema.parse(withPinTags(JSON.parse(row.payload_json)));
     if (state.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return state;
+  });
+  const lastSync = (id: string): WorkbookLibrarySyncRecord | undefined => stored(() => {
+    const row = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(id));
+    return row.sync_json === null ? undefined : WorkbookLibrarySyncRecordSchema.parse(JSON.parse(row.sync_json));
   });
   const putLibraryState = (state: WorkbookLibraryState) => {
     const value = WorkbookLibraryStateSchema.parse(state);
@@ -420,12 +429,21 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       if (selected === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       const record = librarySnapshot(current.libraryId, selected.snapshotId), meta = metadata(current.libraryId), workbookType = type(meta.typeId);
       if (workbookType === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      const last = meta.sharePoint === null ? undefined : lastSync(current.libraryId);
+      const sync = meta.sharePoint === null ? {} : { sync: last === undefined || last.url !== meta.sharePoint.url ? { state: 'idle' }
+        : { state: 'idle', lastFinishedAt: last.finishedAt, lastResult: last.result, ...(last.result === 'failed' ? { lastFailureCode: last.code } : {}) } };
       return [WorkbookLibraryEntrySchema.parse({ libraryId: current.libraryId, version: current.version, name: current.workbook.name, updatedAt: selected.savedAt,
         worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
         rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
-        state, metadata: meta, type: workbookType })];
+        state, metadata: meta, type: workbookType, ...sync })];
     }))),
     libraryState: id => storage(() => deps.read(() => libraryState(id))),
+    recordSync: (id, value) => storage(() => deps.mutate(() => {
+      const record = WorkbookLibrarySyncRecordSchema.parse(value);
+      const changes = Number(database.prepare('UPDATE workbook_library_state SET sync_json=? WHERE id=?').run(canonicalJsonStringify(record), id).changes);
+      if (changes !== 1) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
+      return { result: undefined, changes };
+    })),
     libraryVersion: (id, versionId) => storage(() => deps.read(() => libraryVersion(id, versionId))),
     libraryActionRecord: (id, operationId) => storage(() => deps.read(() => libraryActionRecord(id, operationId))),
     libraryAction: (id, value, atValue, sharePointWorkbook) => {
@@ -624,7 +642,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   return repository;
 }
 
-export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true): number {
+export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true, syncStatus = pinTags): number {
   if (!master) {
     const records = database.prepare('SELECT * FROM workbook_library').all().map(fromRow);
     return records.reduce((total, record) => {
@@ -661,6 +679,10 @@ export function validateWorkbookLibrary(database: DatabaseSync, master = true, c
         ids.add(snapshot.id);
       }
       if (state.versions.some(version => !ids.has(version.snapshotId))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      if (syncStatus) {
+        const sync = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(record.libraryId)).sync_json;
+        if (sync !== null) WorkbookLibrarySyncRecordSchema.parse(JSON.parse(sync));
+      }
       count += snapshots.length;
       const actions = database.prepare('SELECT operation_id FROM workbook_library_actions WHERE workbook_id=? ORDER BY id').all(record.libraryId);
       for (const raw of actions) {

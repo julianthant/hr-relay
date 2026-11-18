@@ -2,18 +2,19 @@ import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import type { TypedInputDraft } from "../../../models/workflow/ingress.js";
-import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import {
-  candidateText, defaultRerunSteps, initialRerunValueDrafts, partialRerunTypedInput, plainRerunInputText, type RerunValueDraft,
+  defaultRerunSteps, initialRerunValueDrafts, partialRerunTypedInput, plainRerunInputText, type RerunValueDraft,
 } from "./run-start-rerun-model.js";
 import {
-  changeTypedInput, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedInputDefaults, typedInputText,
+  changeTypedInput, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedInputDefaults, typedInputText, typedDateControls, usDateText,
   type BrowserMode, type StartPriority, type StepOmissionDraft, type StepOmissionFactDraft,
 } from "./run-start-model.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
+import { factDraft, sourceTypedFacts, type ManualRows, type StepRow } from "./run-steps-model.js";
 
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
+export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
 export type ReferenceDraft = Readonly<{ libraryId: string; versionId?: string }>;
 
 /** Everything the operator has entered into the Run and Rerun dialog. The PDF files stay with their upload hook. */
@@ -24,14 +25,18 @@ export type LaunchDraft = Readonly<{
   sourceInputUnchanged: boolean;
   /** A step selection belongs to the workflow that made it; another workflow shows its own defaults. */
   stepSelection?: Readonly<{ workflowId: string; keys: readonly string[] }>;
+  /** Typed fields by row key. */
   stepDrafts: Readonly<Record<string, StepOmissionDraft>>;
-  touchedFacts: ReadonlySet<string>;
-  factsAttempted: boolean;
-  priority: StartPriority;
+  /** Rows whose typed fields are open without a step switch: a locked row's Enter manually, a child row switched off. */
+  manualRows: ManualRows;
+  /** Undefined until the operator picks; `effectivePriority` supplies the default. */
+  priority: StartPriority | undefined;
   dryRunRequested: boolean;
   browserMode: BrowserMode;
   referenceSelections: Readonly<Record<string, ReferenceSelection>>;
   referenceDrafts: Readonly<Record<string, ReferenceDraft>>;
+  /** The optional check's picked spreadsheets: library id to the named version and the worksheets chosen in it. */
+  checkPicks: Readonly<Record<string, CheckPick>>;
   selectedWorkbookRows?: Readonly<{ source: string; choices: readonly WorkbookRowChoice[] }>;
   /** Declared launch fields by key; a field is absent until the operator picks it. */
   launchFields: Readonly<Record<string, string>>;
@@ -42,9 +47,13 @@ export type LaunchDraft = Readonly<{
 const NO_TYPED_DRAFT: TypedInputDraft = {};
 const typedDeclarationOf = (workflow: RunStartWorkflow | undefined) =>
   workflow?.inputRun.state === "present" ? workflow.inputRun.surface.typedInput : undefined;
-const typedDefaultsOf = (workflow: RunStartWorkflow | undefined): TypedInputDraft => {
+/** A required date starts on the dashboard day; clearing it still refuses. */
+const typedDefaultsOf = (workflow: RunStartWorkflow | undefined, today: string | undefined): TypedInputDraft => {
   const declaration = typedDeclarationOf(workflow);
-  return declaration === undefined ? {} : typedInputDefaults(declaration);
+  if (declaration === undefined) return {};
+  const defaults = typedInputDefaults(declaration);
+  const day = today === undefined ? undefined : usDateText(today);
+  return day === undefined ? defaults : { ...defaults, ...Object.fromEntries(typedDateControls(declaration, String(defaults[declaration.modeField] ?? declaration.initialMode)).filter(control => control.required).map(control => [control.field, day])) };
 };
 const defaultStepKeys = (workflow: RunStartWorkflow | undefined): string[] =>
   workflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? [];
@@ -52,12 +61,12 @@ const omit = <T>(record: Readonly<Record<string, T>>, key: string): Record<strin
   Object.fromEntries(Object.entries(record).filter(([entry]) => entry !== key));
 const withSteps = (draft: LaunchDraft, workflowId: string, keys: readonly string[]): LaunchDraft => ({ ...draft, stepSelection: { workflowId, keys } });
 
-export function freshLaunchDraft(workflow: RunStartWorkflow | undefined): LaunchDraft {
+export function freshLaunchDraft(workflow: RunStartWorkflow | undefined, today?: string): LaunchDraft {
   return {
-    text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow) }, sourceInputUnchanged: false,
-    stepSelection: undefined, stepDrafts: {}, touchedFacts: new Set(), factsAttempted: false,
-    priority: "interactive", dryRunRequested: false, browserMode: "headed",
-    referenceSelections: {}, referenceDrafts: {}, selectedWorkbookRows: undefined, launchFields: {},
+    text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow, today) }, sourceInputUnchanged: false,
+    stepSelection: undefined, stepDrafts: {}, manualRows: [],
+    priority: undefined, dryRunRequested: false, browserMode: "headed",
+    referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {},
     valueDrafts: {}, copiedOmissions: {},
   };
 }
@@ -72,8 +81,8 @@ export function selectedStepKeys(draft: LaunchDraft, workflow: RunStartWorkflow 
 }
 
 /** Another workflow cannot reuse the old one's input, steps, facts or options; reference picks and rerun values stay. */
-export function changeWorkflow(draft: LaunchDraft, workflow: RunStartWorkflow | undefined): LaunchDraft {
-  return { ...freshLaunchDraft(workflow), referenceDrafts: draft.referenceDrafts, valueDrafts: draft.valueDrafts, copiedOmissions: draft.copiedOmissions };
+export function changeWorkflow(draft: LaunchDraft, workflow: RunStartWorkflow | undefined, today?: string): LaunchDraft {
+  return { ...freshLaunchDraft(workflow, today), referenceDrafts: draft.referenceDrafts, valueDrafts: draft.valueDrafts, copiedOmissions: draft.copiedOmissions };
 }
 
 export function changeText(draft: LaunchDraft, text: string): LaunchDraft {
@@ -92,53 +101,74 @@ export function changeTypedValue(draft: LaunchDraft, workflow: RunStartWorkflow,
     sourceInputUnchanged: field === declaration.modeField ? false : draft.sourceInputUnchanged }, workflow.workflowId, keys);
 }
 
-export function toggleStep(draft: LaunchDraft, workflow: RunStartWorkflow, key: string, next: boolean): LaunchDraft {
-  return withSteps(draft, workflow.workflowId, toggleStepSelection(workflow.steps, selectedStepKeys(draft, workflow), key, next));
+/** Offer the source run's values in a row that just opened: what it typed, else what its step produced. Typed text is kept. */
+function prefillRow(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, row: StepRow): LaunchDraft {
+  const form = row.form;
+  if (snapshot === null || form === undefined || draft.stepDrafts[row.key] !== undefined) return draft;
+  const typed = sourceTypedFacts(row, snapshot);
+  if (typed !== undefined) {
+    const values = Object.fromEntries(form.fields.flatMap(field => field.key in typed ? [[field.key, factDraft(field, typed[field.key])]] : []));
+    return { ...draft, stepDrafts: { ...draft.stepDrafts, [row.key]: { ...initialStepOmissionDraft(form), ...values } } };
+  }
+  let next = draft;
+  snapshot.values.forEach((candidate, index) => {
+    if (candidate.state === "available" && row.stepKey !== undefined && candidate.targetStepKey === row.stepKey
+      && form.fields.some(field => field.key === candidate.targetFieldPath)) next = copyOmittedValue(next, snapshot, index, row.key, form);
+  });
+  return next;
 }
 
+/** A switch row on or off. Off opens its typed fields; on closes them and keeps what was typed. */
+export function toggleRow(draft: LaunchDraft, workflow: RunStartWorkflow, snapshot: RerunValuesSnapshot | null, row: StepRow, next: boolean): LaunchDraft {
+  if (row.kind !== "switch") return draft;
+  let changed: LaunchDraft;
+  if (row.stepKey !== undefined) changed = withSteps(draft, workflow.workflowId, toggleStepSelection(workflow.steps, selectedStepKeys(draft, workflow), row.stepKey, next));
+  else changed = { ...draft, manualRows: next ? draft.manualRows.filter(key => key !== row.key) : [...new Set([...draft.manualRows, row.key])] };
+  return next ? changed : prefillRow(changed, snapshot, row);
+}
+
+/** Enter manually on a locked row that offers it. */
+export function toggleManual(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, row: StepRow, next: boolean): LaunchDraft {
+  if (row.kind !== "locked-manual") return draft;
+  const changed = { ...draft, manualRows: next ? [...new Set([...draft.manualRows, row.key])] : draft.manualRows.filter(key => key !== row.key) };
+  return next ? prefillRow(changed, snapshot, row) : changed;
+}
+
+/** Every row starts as the workflow serves it; a change of steps keeps the rows closed. */
 export function enterCustomization(draft: LaunchDraft, workflow: RunStartWorkflow | undefined): LaunchDraft {
   return workflow === undefined ? draft : withSteps(draft, workflow.workflowId, defaultStepKeys(workflow));
 }
 
 /** Leaving customization clears the facts so unchosen assertions cannot survive invisibly. */
 export function leaveCustomization(draft: LaunchDraft, workflow: RunStartWorkflow | undefined): LaunchDraft {
-  return { ...enterCustomization(draft, workflow), stepDrafts: {}, touchedFacts: new Set(), factsAttempted: false };
+  return { ...enterCustomization(draft, workflow), stepDrafts: {}, manualRows: [] };
 }
 
-export function changeFact(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, step: string, form: StepOmissionForm,
+export function changeFact(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, row: StepRow, form: StepOmissionForm,
   field: string, next: StepOmissionFactDraft): LaunchDraft {
   const copiedOmissions = Object.fromEntries(Object.entries(draft.copiedOmissions).filter(([index]) => {
     const candidate = snapshot?.values[Number(index)];
-    return candidate?.targetStepKey !== step || candidate.targetFieldPath !== field;
+    return candidate === undefined || candidate.targetStepKey !== row.stepKey || candidate.targetFieldPath !== field;
   }));
-  return { ...draft, copiedOmissions, stepDrafts: { ...draft.stepDrafts, [step]: { ...(draft.stepDrafts[step] ?? initialStepOmissionDraft(form)), [field]: next } } };
+  return { ...draft, copiedOmissions, stepDrafts: { ...draft.stepDrafts, [row.key]: { ...(draft.stepDrafts[row.key] ?? initialStepOmissionDraft(form)), [field]: next } } };
 }
 
-export function copyOmittedValue(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, index: number, step: string, form: StepOmissionForm): LaunchDraft {
+export function copyOmittedValue(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, index: number, rowKey: string, form: StepOmissionForm): LaunchDraft {
   const candidate = snapshot?.values[index];
   if (candidate === undefined || candidate.state !== "available") throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
   const field = form.fields.find(entry => entry.key === candidate.targetFieldPath);
   if (field === undefined) throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
-  const value = typeof candidate.value === "boolean" ? candidate.value
-    : Array.isArray(candidate.value) ? candidate.value.map((entry: unknown) => candidateText(JsonValueSchema.parse(entry))).join("\n")
-    : candidateText(candidate.value);
-  return { ...draft, stepDrafts: { ...draft.stepDrafts, [step]: { ...(draft.stepDrafts[step] ?? initialStepOmissionDraft(form)), [field.key]: value } },
+  return { ...draft, stepDrafts: { ...draft.stepDrafts, [rowKey]: { ...(draft.stepDrafts[rowKey] ?? initialStepOmissionDraft(form)), [field.key]: factDraft(field, candidate.value) } },
     copiedOmissions: { ...draft.copiedOmissions, [index]: true } };
-}
-
-export function touchFact(draft: LaunchDraft, step: string, field: string): LaunchDraft {
-  const id = `${step}:${field}`;
-  return draft.touchedFacts.has(id) ? draft : { ...draft, touchedFacts: new Set([...draft.touchedFacts, id]) };
-}
-
-export function attemptFacts(draft: LaunchDraft): LaunchDraft {
-  return { ...draft, factsAttempted: true };
 }
 
 export function changeValueText(draft: LaunchDraft, index: number, text: string): LaunchDraft {
   return { ...draft, valueDrafts: { ...draft.valueDrafts, [index]: { text, copied: false } } };
 }
 
+export function effectivePriority(choice: StartPriority | undefined, people: number): StartPriority {
+  return choice ?? (people > 1 ? "bulk" : "interactive");
+}
 export function changePriority(draft: LaunchDraft, priority: StartPriority): LaunchDraft { return { ...draft, priority }; }
 export function changeDryRun(draft: LaunchDraft, dryRunRequested: boolean): LaunchDraft { return { ...draft, dryRunRequested }; }
 export function changeBrowserMode(draft: LaunchDraft, browserMode: BrowserMode): LaunchDraft { return { ...draft, browserMode }; }
@@ -163,6 +193,14 @@ export function pickWorksheet(draft: LaunchDraft, typeId: string, selection: Ref
 
 export function removeReference(draft: LaunchDraft, typeId: string): LaunchDraft {
   return { ...draft, referenceDrafts: omit(draft.referenceDrafts, typeId), referenceSelections: omit(draft.referenceSelections, typeId) };
+}
+
+export function pickCheck(draft: LaunchDraft, libraryId: string, pick: CheckPick): LaunchDraft {
+  return { ...draft, checkPicks: { ...draft.checkPicks, [libraryId]: pick } };
+}
+
+export function removeCheck(draft: LaunchDraft, libraryId: string): LaunchDraft {
+  return { ...draft, checkPicks: omit(draft.checkPicks, libraryId) };
 }
 
 export function selectWorkbookRows(draft: LaunchDraft, source: string, choices: readonly WorkbookRowChoice[]): LaunchDraft {

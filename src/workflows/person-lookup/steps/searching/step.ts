@@ -1,7 +1,9 @@
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
-import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
+import { SearchPersonOrg, UcpathCandidateSchema } from "../../../../models/systems/ucpath/search-person-org.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PERSON_LOOKUP_EXAMPLE_EID, PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { ReadResolvedIdentity } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
+import { typedSearchMatch, typedSearchPerson, typedSearchIdentity } from "../../../../rules/matching/person-lookup.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -15,10 +17,38 @@ export const lookupMethodDisplay = {
   ]
 } as const;
 
+export const SEARCHING_NODE = "searching";
+export const MATCHING_NODE = "matching";
+export const SEARCH_IDENTITY_NODE = "search-identity";
+
+const SearchFactsSchema = UcpathCandidateSchema.pick({ emplId: true, name: true, department: true, jobTitle: true, hrStatus: true, employeeStatus: true, hdh: true });
+const selectedLeaf = (path: string) => ({ nodeId: SEARCH_IDENTITY_NODE, path: `selected.${path}` });
+
+/** The typed UCPath person stands for the search in either mode: the mode's own read is built from it and the identity resolved over it. */
+export const SEARCHING_MANUAL: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "emplId", label: "Employee ID", kind: "eid", replaces: selectedLeaf("emplId") },
+      { key: "name", label: "Name", kind: "text", replaces: selectedLeaf("name") },
+      { key: "department", label: "Department", kind: "text", replaces: selectedLeaf("department") },
+      { key: "jobTitle", label: "Job title", kind: "text", replaces: selectedLeaf("jobTitle") },
+      { key: "hrStatus", label: "HR status", kind: "text", replaces: selectedLeaf("hrStatus") },
+      { key: "employeeStatus", label: "Employee status", kind: "enum", values: ["active", "inactive", "terminated", "unknown"], replaces: selectedLeaf("employeeStatus") },
+      { key: "hdh", label: "HDH employee", kind: "boolean", replaces: selectedLeaf("hdh") },
+    ],
+  },
+  produces: {
+    [SEARCHING_NODE]: ({ facts, scope }) => typedSearchPerson(PersonLookupInput.parse(scope.input), SearchFactsSchema.parse(facts)),
+    [MATCHING_NODE]: ({ facts }) => typedSearchMatch(SearchFactsSchema.parse(facts)),
+    [SEARCH_IDENTITY_NODE]: ({ facts, scope }) => typedSearchIdentity(PersonLookupInput.parse(scope.input), SearchFactsSchema.parse(facts)),
+  },
+};
+
 export const SEARCHING_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "searching", label: "Search for person" }),
   description: "Search UCPath by employee ID or name and read the matching person records.",
   system: "ucpath",
+  manual: SEARCHING_MANUAL,
   operatorFields: [
     ...[["emplId", "Employee ID", PERSON_LOOKUP_EXAMPLE_EID], ["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["jobTitle", "Job title", "Fictional analyst"], ["hrStatus", "HR status", "Active"]].map(([path, label, example]) => ({
       label, example, sources: [
@@ -35,29 +65,37 @@ export const SEARCHING_STEP = Object.freeze({
     pages: [
       {
         id: "person-search",
-        title: "Person Organizational Summary search",
+        title: "Person Organizational Summary",
         mode: "Fill form",
         nodeIds: ["searching"],
-        lines: [{ id: "search", kind: "action", text: "In Search mode, enter the requested employee ID or name and search.", nodeIds: ["searching"] }],
-        fields: []
+        lines: [
+          { id: "keep-hdh", kind: "check", text: "Keeps HDH departments only", nodeIds: ["searching"], when: [{ "search-by": ["name"] }] },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["searching"] }
+        ],
+        fields: [
+          { id: "search-employee-id", label: "Employee ID", example: PERSON_LOOKUP_EXAMPLE_EID, inputField: "emplId", source: { origin: "Run input", detail: "The employee ID entered when the run starts.", chain: [] } },
+          { id: "search-name", label: "Name", example: "Morrow, Bea", inputField: "name", source: { origin: "Run input", detail: "The name entered when the run starts.", chain: [] } }
+        ]
       },
       {
         id: "person-match",
         title: "Smart HR person search",
         mode: "Fill form",
         nodeIds: ["matching"],
-        lines: [{ id: "match", kind: "action", text: "In Match mode, search by name with the supplied date of birth or SSN.", nodeIds: ["matching"] }],
-        fields: []
+        lines: [{ id: "search", kind: "click", target: "Search", nodeIds: ["matching"] }],
+        fields: [
+          { id: "last-name", label: "Last name", example: "Morrow", inputField: "lastName", source: { origin: "Run input", detail: "The last name entered when the run starts.", chain: [] } },
+          { id: "first-name", label: "First name", example: "Bea", inputField: "firstName", source: { origin: "Run input", detail: "The first name entered when the run starts.", chain: [] } },
+          { id: "date-of-birth", label: "Date of birth", example: "01/15/2000", inputField: "dob", source: { origin: "Run input", detail: "The date of birth entered when the run starts.", chain: [] } }
+        ]
       },
       {
         id: "person-details",
         title: "Person Organizational Summary detail",
         mode: "Read only",
         nodeIds: ["searching", "matching", "search-identity"],
-        lines: [
-          { id: "read-person", kind: "read", text: "Read candidate names, employee IDs and employment assignments.", nodeIds: ["searching", "matching"] },
-          { id: "confirm-person", kind: "check", text: "Confirm a unique identity or retain the unresolved matches.", nodeIds: ["search-identity"] }
-        ],
+        when: [{ "search-result": ["resolved"] }],
+        lines: [],
         fields: [
           {
             id: "employee-id",
@@ -112,13 +150,25 @@ export const SEARCHING_STEP = Object.freeze({
         ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [
+      {
+        id: "search-result",
+        label: "Search result",
+        reads: { nodeId: "search-identity", fieldPath: "state" },
+        nodeIds: ["searching", "matching", "search-identity"],
+        initial: "resolved",
+        outcomes: [
+          { value: "resolved", label: "One person found" },
+          { value: "multiple-matches", label: "Several people match", then: "Continues; unless the CRM cross-check narrows it to one person, the run ends as Multiple matches." },
+          { value: "not-found", label: "Nobody found", then: "Continues; unless CRM has an onboarding record for the person, the run ends as Not found." }
+        ]
+      }
+    ]
   } as const,
 } as const);
 
 const searchingEntries = defineStepEntries(SEARCHING_STEP);
-
-export const SEARCHING_NODE = "searching";
 
 export const searchingNode = searchingEntries.task(SEARCHING_NODE, SearchPersonOrg, {
   label: "Search for person",
@@ -126,15 +176,11 @@ export const searchingNode = searchingEntries.task(SEARCHING_NODE, SearchPersonO
   when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" }
 });
 
-export const MATCHING_NODE = "matching";
-
 export const matchingNode = searchingEntries.task(MATCHING_NODE, SearchPersonMatch, {
   label: "Match person",
   replay: "checkpoint",
   when: { kind: "equals", of: { from: "input", path: "mode" }, value: "match" }
 });
-
-export const SEARCH_IDENTITY_NODE = "search-identity";
 
 export const searchIdentityNode = searchingEntries.task(SEARCH_IDENTITY_NODE, ReadResolvedIdentity, {
   label: "Resolve UCPath identity",

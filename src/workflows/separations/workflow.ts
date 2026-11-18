@@ -17,10 +17,8 @@ import { DATES_NODE, separationsKronosTimecardDefinition } from "./steps/kronos-
 import { ACTION_NODE, TERMINATION_TYPE_NODE, separationsKualiReadDefinition } from "./steps/kuali-extraction/step.js";
 import { FINALIZE_NODE, KUALI_FINALIZATION_STEP, separationsKualiFinalizationDefinition } from "./steps/kuali-finalization/step.js";
 import { separationsReferenceCheckDefinition } from "./steps/reference-check/step.js";
-import { RECEIPT_NODE, SWEEP_NODE, TERMINATION_NODE, UCPATH_TRANSACTION_STEP, separationsUcpathTerminationDefinition } from "./steps/ucpath-transaction/step.js";
+import { PENDING_SET_NODE, RECEIPT_NODE, SWEEP_NODE, TERMINATION_NODE, UCPATH_TRANSACTION_STEP, separationsUcpathTerminationDefinition } from "./steps/ucpath-transaction/step.js";
 export { KRONOS_TIMECARD_OMISSION } from "./steps/kronos-timecard/step.js";
-export { KUALI_FINALIZATION_OMISSION } from "./steps/kuali-finalization/step.js";
-export { UCPATH_TRANSACTION_OMISSION } from "./steps/ucpath-transaction/step.js";
 const SEARCH_TIMEOUT_DEFAULT_MS = 15_000;
 
 const SeparationReReadSchema = z.strictObject({
@@ -101,12 +99,6 @@ export const separationsWorkflow = defineWorkflow({
     label: "Document number", actionLabel: "Enter document number", pattern: z.toJSONSchema(KualiDocumentNumberSchema).pattern
   }],
   gateCorrections: [{ gateId: GATE_NODE, inputField: "operatorEmployeeId", label: "Employee ID", placeholder: "8 digits", pattern: EID_PATTERN.source }],
-  rerunValues: [
-    { nodeId: DATES_NODE, fieldPath: "lastDayWorked", label: "Last day worked", targetStepKey: "kronos-timecard", targetFieldPath: "lastDayWorked" },
-    { nodeId: DATES_NODE, fieldPath: "separationDate", label: "Separation date", targetStepKey: "kronos-timecard", targetFieldPath: "separationDate" },
-    { nodeId: RECEIPT_NODE, fieldPath: "transactionNumber", label: "UCPath transaction number", targetStepKey: "ucpath-transaction", targetFieldPath: "transactionNumber" },
-    { nodeId: RECEIPT_NODE, fieldPath: "approvalStatus", label: "Approval status", targetStepKey: "ucpath-transaction", targetFieldPath: "approvalStatus" },
-  ],
   protectedInputs: [{ inputPath: "timekeeperName", name: "timekeeperName" }],
   inputSubject: "document",
   surface: { shape: "single" },
@@ -114,12 +106,13 @@ export const separationsWorkflow = defineWorkflow({
   actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {
     inputRun: {
-      placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+      placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
       parser: {
         split: { kind: "delimited", delimiters: [";", "\n"] },
         rules: [
           { when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" },
         ],
+        unmatched: "Kuali ID must contain digits.",
       },
       examples: [
         {
@@ -208,6 +201,16 @@ export const separationsWorkflow = defineWorkflow({
   },
   input: SeparationsInput,
   role: defineWorkflowRole({ kind: "composition" }),
+  // The reference check reads the Employee ID the subject node resolves, so it shows under Verify employee identity.
+  rows: [
+    { key: "kuali-extraction", label: "Read Kuali document", members: [{ step: "kuali-extraction" }] },
+    { key: "identity-check", label: "Verify employee identity", members: [{ step: "identity-check" }, { step: "reference-check" }] },
+    { key: "kronos-timecard", label: "Read timecard", members: [{ step: "kronos-timecard" }], target: { step: "kronos-timecard" } },
+    { key: "identity-review", label: "Approve identity", members: [{ step: "identity-review" }] },
+    { key: "pending-termination", label: "Check pending termination", members: [{ step: "ucpath-transaction", nodes: [PENDING_SET_NODE, SWEEP_NODE] }] },
+    { key: "submit-termination", label: "Submit termination", members: [{ step: "ucpath-transaction", nodes: [TERMINATION_NODE, RECEIPT_NODE] }] },
+    { key: "kuali-finalization", label: "Finalize Kuali document", members: [{ step: "kuali-finalization" }] },
+  ],
   scenarios: [
     "separations/action-resolved",
     "separations/action-not-in-action-list",

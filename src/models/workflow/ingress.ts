@@ -145,6 +145,8 @@ export const InputParserSpecSchema = z.strictObject({
   rules: z.array(EntryRuleSchema).min(1),
   /** Fields the panel contributes to every entry (operator flags, never text). */
   constants: z.array(SurfaceFieldSchema).optional(),
+  /** The sentence shown for an entry no rule claims. */
+  unmatched: z.string().min(1).optional(),
 });
 export type InputParserSpec = z.infer<typeof InputParserSpecSchema>;
 
@@ -155,7 +157,7 @@ export const ParsedInputEntrySchema = z.strictObject({
 });
 export type ParsedInputEntry = z.infer<typeof ParsedInputEntrySchema>;
 
-function splitEntries(spec: InputParserSpec, text: string): readonly string[] {
+export function splitEntries(spec: InputParserSpec, text: string): readonly string[] {
   if (spec.split.kind === "whole-text") {
     const whole = text.trim();
     return whole.length === 0 ? [] : [whole];
@@ -185,7 +187,7 @@ export function parseInputRunText(
   return Object.freeze(entries.map((sourceText, index) => {
     const rule = matchRule(spec, sourceText);
     if (rule === undefined) {
-      throw new Error(`input-run entry ${String(index)} ("${sourceText}") matched no parser rule`);
+      throw new Error(spec.unmatched ?? `input-run entry ${String(index)} ("${sourceText}") matched no parser rule`);
     }
     const fields = [
       { field: rule.emit, value: { kind: "text", text: sourceText } },
@@ -385,6 +387,8 @@ const TypedInputModeSchema = z.strictObject({
       familyName: InputFieldNameSchema, givenName: InputFieldNameSchema,
       identifiers: z.array(z.strictObject({ field: InputFieldNameSchema, canonicalField: z.enum(["ssn", "text"]) })).min(1),
       missing: z.string().min(1), missingIdentifiersCode: z.literal("PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS"),
+      /** The sentences shown for an entry with too few parts and for one whose identifiers are all missing. */
+      shapeRefusal: z.string().min(1).optional(), missingRefusal: z.string().min(1).optional(),
     }),
   ]),
   display: z.discriminatedUnion("kind", [

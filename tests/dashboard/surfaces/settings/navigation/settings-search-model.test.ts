@@ -45,7 +45,7 @@ describe("Settings field search", () => {
   });
 
   it("has no search destinations for removed permission controls", () => {
-    assert.deepEqual(searchSettings(index, "assistant permission"), []);
+    assert.deepEqual(searchSettings(index, "assistant permission").map(result => [result.entry.id, result.target]), [["general", "assistant.fullAccess"]]);
     assert.deepEqual(searchSettings(index, "ask before every action"), []);
     for (const query of ["ask before submits", "without asking"]) assert.deepEqual(searchSettings(index, query), []);
   });

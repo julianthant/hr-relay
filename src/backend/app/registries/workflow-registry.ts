@@ -152,3 +152,7 @@ export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint 
     sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
   );
 }
+
+/** The workflows the dashboard bootstrap lists: every public workflow and each child workflow that offers review. */
+export const DASHBOARD_CATALOG_MODULES = Object.freeze(READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module)
+  || module.descriptor.capabilities?.review === true));

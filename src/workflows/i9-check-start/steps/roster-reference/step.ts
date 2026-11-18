@@ -1,6 +1,7 @@
 import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
 import { ReadI9CheckRequests } from "../../../../models/workflows/i9-check-start/read-requests.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../models/workflows/i9-check/start.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -17,9 +18,20 @@ const step = Object.freeze({
         nodeIds: ["read-reference", "read-requests"],
         lines: [
           { id: "reference", kind: "read", text: "Read the captured roster version for the approved people.", nodeIds: ["read-reference"] },
+          { id: "captured", kind: "check", text: "Keep the captured spreadsheet version and worksheet rows selected when the run started.", nodeIds: ["read-reference"] },
           { id: "bind", kind: "check", text: "Check the selected worksheet rows and retention evidence before checking each person.", nodeIds: ["read-requests"] }
         ],
-        fields: []
+        fields: [
+          { id: "version", label: "Reference version", taskFields: [{ nodeId: "read-reference", kind: "output", fieldPath: "reference.snapshot.versionName" }], example: "Fictional retention roster",
+            source: { origin: "Selected reference spreadsheet", detail: "The named version captured when the run starts.", chain: [] } },
+          { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-requests", kind: "output", fieldPath: "people.eid" }], example: PERSON_LOOKUP_EXAMPLE_EID,
+            source: { origin: "Approved PDF records", detail: "Look up each approved Employee ID in the captured roster.",
+              read: { stepKey: "documents", page: "I-9 PDFs and approved records", field: "Employee ID" }, chain: [] } },
+          { id: "pps", label: "PPS ID", taskFields: [{ nodeId: "read-requests", kind: "output", fieldPath: "children.roster.rows.ppsEid" }], example: "700001",
+            source: { origin: "Retention roster", detail: "The PPS ID on the selected person's captured roster row, when available.", chain: [] } },
+          { id: "separation", label: "Separation date", taskFields: [{ nodeId: "read-requests", kind: "output", fieldPath: "children.roster.rows.separationDate" }], example: "2022-10-15",
+            source: { origin: "Retention roster", detail: "The separation date retained with the selected roster evidence, when available.", chain: [] } },
+        ]
       }
     ],
     branchLabels: []

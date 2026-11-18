@@ -21,8 +21,12 @@ describe("explicit Rerun mapping admission", () => {
     ["unknown source", { nodeId: "missing" }, /SOURCE_NODE_MISSING/u],
     ["unknown source path", { fieldPath: "missing" }, /Rerun source field/u],
     ["unknown input field", { targetFieldPath: "missing" }, /TARGET_FIELD_MISSING/u],
-    ["unknown omission step", { targetStepKey: "missing" }, /TARGET_STEP_MISSING/u],
+    ["declared step target", { targetStepKey: "missing" }, /step Rerun values are derived from each manual field's replaces/u],
   ] as const) it(`rejects ${name}`, () => assert.throws(() => mappedReadDescriptor([{ ...eidMapping, ...patch }]), error));
+  it("rejects a derived mapping whose omission step is missing", () => {
+    const descriptor = mappedReadDescriptor();
+    assert.throws(() => rerunTargetAccepts(descriptor, RerunValueMappingSchema.parse({ ...eidMapping, targetStepKey: "missing" }), "10812345"), /TARGET_STEP_MISSING/u);
+  });
   it("rejects duplicate coordinates even with another display label", () => {
     assert.throws(() => mappedReadDescriptor([eidMapping, { ...eidMapping, label: "Alias" }]), /duplicate Rerun/u);
   });
@@ -57,7 +61,10 @@ describe("explicit Rerun mapping admission", () => {
   it("compiles Separations mappings into the registered descriptor and validates existing omission fields", () => {
     const descriptor = DESCRIPTORS.find(({ id }) => id === "separations"); assert.ok(descriptor);
     const mappings = descriptor.rerunValues?.map((mapping) => RerunValueMappingSchema.parse(mapping)); assert.ok(mappings);
-    assert.equal(mappings.length, 4);
+    assert.deepEqual(mappings.map(({ fieldPath, targetStepKey, targetFieldPath }) => [fieldPath, targetStepKey, targetFieldPath]), [
+      ["lastDayWorked", "kronos-timecard", "lastDayWorked"],
+      ["separationDate", "kronos-timecard", "separationDate"],
+    ]);
     const date = mappings.find(({ fieldPath }) => fieldPath === "lastDayWorked"); assert.ok(date);
     assert.equal(rerunTargetAccepts(descriptor, date, "09/08/2026"), true);
     assert.equal(rerunTargetAccepts(descriptor, date, "not a date"), false);

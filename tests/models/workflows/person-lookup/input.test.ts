@@ -10,6 +10,13 @@ describe("Person Lookup input", () => {
     assert.equal(personLookupSearchText(person), "Example, Person, Middle, 01/15/2000, [masked]");
     assert.equal(personLookupTitle(person), "Example, Person, Middle");
   });
+  it("accepts an SSN typed with dashes and stores nine digits", () => {
+    const person = PersonLookupInput.parse({ mode: "match", lastName: "Lee", firstName: "Jordan", dob: "01/01/2000", ssn: "123-45-6789" });
+    assert.ok(person.mode === "match");
+    assert.equal(person.ssn, "123456789");
+    assert.equal(PersonLookupCanonicalInput.safeParse(person).success, true);
+    assert.equal(PersonLookupInput.safeParse({ mode: "match", lastName: "Lee", firstName: "Jordan", ssn: "000 12 3456" }).success, false);
+  });
   it("refuses invalid explicit submissions and canonical snapshots without defaults", () => {
     for (const submission of [
       { mode: "match", lastName: "Example", firstName: "Person", dob: "x" },

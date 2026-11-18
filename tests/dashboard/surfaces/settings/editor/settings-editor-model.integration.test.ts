@@ -13,25 +13,25 @@ async function setup(section?: string) {
   const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority, section); cleanups.push(mounted.close); return { ...mounted, authority };
 }
+const FAILURE = { tone: "danger", title: "Settings weren't saved", description: "The previous value is back.", key: "settings-save" } as const;
+const labelValue = (h: Awaited<ReturnType<typeof setup>>): unknown => {
+  const editor = h.controller().editor; assert.equal(editor.state, "loaded");
+  if (editor.state !== "loaded") throw new Error("current settings unavailable");
+  return editor.document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label")?.effectiveValue;
+};
 describe("typed Settings catalog controls", () => {
-  it("retains cross-section edits and the unchanged conflict draft beside fresh current values", async () => {
+  it("reverts a conflicting save to the competitor's current values with a failure toast", async () => {
     const h = await setup();
-    await settingsAction(() => h.controller().update("actor.label", "Retained draft"));
-    await h.render("display"); await settingsAction(() => h.controller().update("display.screenWidth", "1800"));
-    const before = structuredClone(h.controller().draft);
-    assert.equal(h.authority.apply({ "actor.label": { set: "Competing writer" }, "display.screenWidth": { set: 1600 }, "display.screenHeight": { set: 900 } }).state, "applied");
+    await settingsAction(() => h.controller().update("actor.label", "Rejected draft"));
+    assert.equal(h.authority.apply({ "actor.label": { set: "Competing writer" } }).state, "applied");
     await settingsAction(() => h.controller().submit());
-    assert.equal(h.controller().save.state, "conflict"); assert.deepEqual(h.controller().draft, before);
-    assert.equal(h.commands.length, 1);
-    assert.match(h.host.textContent ?? "", /1600/u);
-    assert.equal((h.host.querySelector('[data-settings-path="display.screenWidth"] input') as HTMLInputElement).value, "1800");
-    await settingsAction(() => h.controller().submit());
-    assert.equal(SettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, 2);
-    assert.equal(h.controller().save.state, "applied");
-    assert.equal(h.authority.read().sections.find(section => section.id === "display")?.leaves[1].settingsValue, 1080, "the original coupled height is retained, never auto-merged with the competitor");
+    assert.equal(h.commands.length, 1); assert.equal(h.controller().dirtyCount, 0);
+    assert.deepEqual(h.problems, [FAILURE]); assert.deepEqual(h.notices, []);
+    assert.equal(labelValue(h), "Competing writer");
+    assert.equal(h.controller().locked, false);
   });
   for (const failure of ["lost-response", "failed-readback", "stale-readback", "intervening-writer", "foreign-result", "wrong-family"] as const) {
-    it(`retains unconfirmed ordinary edits after ${failure}`, async () => {
+    it(`reverts the edit with a failure toast and no retry after ${failure}`, async () => {
       const h = await setup(); const original = h.authority.read();
       h.ports.execute = request => {
         const result = h.authority.execute(request);
@@ -44,57 +44,24 @@ describe("typed Settings catalog controls", () => {
         return result;
       };
       await settingsAction(() => h.controller().update("actor.label", "Unconfirmed draft")); await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().save.state, failure === "intervening-writer" ? "conflict" : "unconfirmed"); assert.equal(h.controller().dirtyCount, 1);
+      assert.equal(h.controller().dirtyCount, 0); assert.deepEqual(h.problems, [FAILURE]); assert.deepEqual(h.notices, []);
+      assert.equal(h.commands.length, 1, "an unknown outcome is never silently retried");
+      assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message|Retry|Saving/u);
       if (failure === "intervening-writer") {
-        assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Unconfirmed draft" });
         assert.equal(h.authority.read().revision, original.revision + 2);
-        assert.match(h.host.textContent ?? "", /Settings changed/u);
-        const editor = h.controller().editor; assert.equal(editor.state, "loaded");
-        if (editor.state !== "loaded") throw new Error("current settings unavailable");
-        assert.equal(editor.document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label")?.effectiveValue, "Later writer");
-        h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
-        await settingsAction(() => h.controller().submit());
-        assert.equal(h.controller().save.state, "applied");
-        assert.equal(SettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, original.revision + 2);
-        return;
+        assert.equal(labelValue(h), "Later writer");
       }
-      assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message/u);
-      const exact = structuredClone(h.commands[0]);
-      await settingsAction(() => h.controller().update("actor.label", "Divergent edit"));
-      assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Unconfirmed draft" });
-      h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
-      await settingsAction(() => h.controller().retry()); assert.deepEqual(h.commands[1], exact);
-      assert.equal(h.controller().save.state, "applied");
     });
   }
 });
 
-it("recovers the original unknown Settings envelope after the editor unmounts", async () => {
-  const h = await setup();
-  h.ports.execute = request => { h.authority.execute(request); throw new Error("lost response"); };
-  await settingsAction(() => h.controller().update("actor.label", "Retained attempt"));
-  await settingsAction(() => h.controller().submit());
-  const original = structuredClone(h.commands[0]);
-  assert.equal(h.controller().save.state, "unconfirmed");
-  await h.render("general", false); await h.render("general");
-  assert.equal(h.controller().save.state, "unconfirmed"); assert.equal(h.controller().locked, true);
-  await settingsAction(() => { h.controller().update("actor.label", "Fresh command"); h.controller().submit(); });
-  assert.equal(h.commands.length, 1);
-  h.ports.execute = h.authority.execute;
-  await settingsAction(() => h.controller().retry());
-  assert.deepEqual(h.commands, [original, original]); assert.equal(h.controller().save.state, "applied");
-});
-
-for (const family of ["ordinary", "protected"] as const) {
+for (const family of ["protected"] as const) {
   it(`recovers ${family} after same-day scope refresh while its reply is pending`, async () => {
     const h = await setup();
     let settle: ((value: unknown) => void) | undefined;
     h.ports.execute = () => new Promise<unknown>(resolve => { settle = resolve; });
-    const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
-    await settingsAction(() => {
-      if (family === "ordinary") h.controller().update("actor.label", "retained");
-      else if (family === "protected") h.controller().protectedEditor.update("ucpathUserId", "retained");
-    });
+    const control = () => h.controller().protectedEditor;
+    await settingsAction(() => control().update("ucpathUserId", "retained"));
     await settingsAction(() => control().submit());
     assert.equal(control().save.state, "saving"); const original = structuredClone(h.commands[0]);
     await h.render("general", true, 1);
@@ -125,7 +92,8 @@ const retentionCases: readonly { name: string; retained: boolean; outcome: (comm
 
 for (const family of ["ordinary", "protected"] as const) {
   for (const scenario of retentionCases) {
-    it(`${family} pending draft is ${scenario.retained ? "kept" : "released"} after ${scenario.name}`, async () => {
+    const retained = family === "protected" && scenario.retained;
+    it(`${family} pending draft is ${retained ? "kept" : "released"} after ${scenario.name}`, async () => {
       const h = await setup();
       vi.spyOn(CommandExecutor.prototype, "execute").mockImplementation(async (input, options) => {
         const command = DashboardCommandRequestSchema.parse(input);
@@ -138,9 +106,9 @@ for (const family of ["ordinary", "protected"] as const) {
       const draft = () => family === "ordinary" ? h.controller().draft["actor.label"] : h.controller().protectedEditor.draft.ucpathUserId;
       await settingsAction(() => update("Original draft"));
       await settingsAction(() => control().submit());
-      assert.equal(control().locked, scenario.retained);
+      assert.equal(control().locked, retained);
       await settingsAction(() => update("Next draft"));
-      assert.deepEqual(draft(), { kind: "set", raw: scenario.retained ? "Original draft" : "Next draft" });
+      assert.deepEqual(draft(), { kind: "set", raw: retained ? "Original draft" : "Next draft" });
     });
   }
 }

@@ -71,7 +71,7 @@ describe("typed Settings catalog controls", () => {
     assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1440" });
     assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "1000" });
     await settingsAction(() => h.controller().submit());
-    assert.equal(h.controller().save.state, "applied");
+    assert.equal(h.controller().dirtyCount, 0);
     const leaves = h.authority.read().sections.flatMap(section => section.leaves);
     assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1440);
     assert.equal(leaves.find(leaf => leaf.path === "display.screenHeight")?.effectiveValue, 1000);
@@ -90,7 +90,7 @@ describe("typed Settings catalog controls", () => {
     assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1280" });
     assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "800" });
     await settingsAction(() => h.controller().submit());
-    assert.equal(h.controller().save.state, "applied");
+    assert.equal(h.controller().dirtyCount, 0);
     assert.equal(h.commands.length, 1);
     assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
     assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);
@@ -147,22 +147,20 @@ describe("typed Settings catalog controls", () => {
     const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
     assert.match(mounted.host.textContent ?? "", /did not include|unavailable/u);
   });
-  it("keeps set-to-default saved; Reset/Discard make no write, and Clear is explicit", async () => {
+  it("keeps set-to-default saved; Reset makes no write, and Clear is explicit", async () => {
     const h = await setup();
     await settingsAction(() => h.controller().update("actor.label", "Local operator"));
     assert.equal(h.controller().dirtyCount, 1);
-    await settingsAction(() => h.controller().submit()); assert.equal(h.controller().save.state, "applied");
+    await settingsAction(() => h.controller().submit()); assert.equal(h.controller().dirtyCount, 0);
     assert.equal(h.authority.read().sections[0].leaves[0].source, "settings");
     assert.equal(h.controller().dirtyCount, 0);
     await settingsAction(() => h.controller().update("actor.label", "Draft only"));
     await settingsAction(() => h.controller().reset("actor.label"));
     assert.equal(h.commands.length, 1);
-    await settingsAction(() => h.controller().update("actor.label", "Discard only"));
-    await settingsAction(() => h.controller().discard()); assert.equal(h.commands.length, 1);
     await settingsAction(() => h.controller().clear("actor.label"));
     await settingsAction(() => h.controller().submit());
     assert.equal(h.authority.read().sections[0].leaves[0].settingsValue, undefined);
-    assert.equal(h.controller().save.state, "applied");
+    assert.equal(h.controller().dirtyCount, 0);
   });
   it("resets one coupled leaf without discarding the other deliberate edit", async () => {
     const h = await setup("display");

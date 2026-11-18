@@ -32,7 +32,7 @@ it("tags expired dashboard readiness while preserving its last report and a futu
   assert.deepEqual(service.read(), { state: "present", report });
   currentClock.advanceWall(60_000);
   assert.deepEqual(service.read(), { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED",
-    reason: "Preflight evidence expired; re-check readiness.", lastCompleted: report });
+    reason: "The last check of this run is out of date. Check again.", lastCompleted: report });
   currentClock.setWall(new Date(Date.parse(report.checkedAt) - 1));
   const future = service.read();
   assert.equal(future.state, "unavailable");

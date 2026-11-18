@@ -11,6 +11,7 @@ import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
 import { answeredRow, decisionAnswerValid, failureCardFacts, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
+import { projectFailureDisplay } from "../../models/dashboard/failure-display.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
@@ -22,6 +23,7 @@ import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-mod
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
 import { plainStepLabel } from "./log-display.js";
+import { REPLACED_READING, typedValuesEntry, usesTypedEntry } from "../surfaces/run-detail/logs/typed-values-model.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
 import { workbookReferenceChoiceId, workbookReferenceLogDecision, workbookReferenceMatchesReplay, workbookReferenceTimelineEvent, workbookWriteLogStep, workbookWriteMatchesReplay, type WorkbookReferenceChoice, type WorkbookWrite } from "../surfaces/run-detail/logs/workbook-write-model.js";
@@ -261,16 +263,30 @@ const SCREENSHOT_REASON: Readonly<Record<string, string>> = {
   "secret-controls-present": "the page showed a password or other secret field", "authentication-unverified": "the sign-in could not be confirmed",
   "verification-failed": "the captured page could not be checked", "task-aborted": "the step was stopped first",
   "lease-ended": "the browser had already been released", TimeoutError: "the browser did not respond in time",
+  "horizontal-overflow": "the page was wider than the browser could capture", "unpainted-gap": "part of the page could not be scrolled into view",
+  "content-bottom-unreached": "the bottom of the page could not be scrolled into view", "band-limit": "the page was too long to capture",
+  "pixel-limit": "the page was too large to capture", "observer-unavailable": "the secret-field check stopped working during capture",
 };
 
-/** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. */
-function noScreenshotLine(reason: string): string {
-  return `No screenshot: ${Object.hasOwn(SCREENSHOT_REASON, reason) ? SCREENSHOT_REASON[reason] : "the browser could not take it"}.`;
+const SCREENSHOT_STOPPED = "Screenshot capture stopped at ";
+// Longest stage first: "final-sign-in-check" also ends in "sign-in-check".
+const CAPTURE_STAGE: readonly (readonly [string, string])[] = [["final-sign-in-check", "while re-confirming the sign-in"],
+  ["sign-in-check", "while confirming the sign-in"], ["secret-check", "while checking for secret fields"], ["page-capture", "while capturing the page"]];
+
+/** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. A detail names the capture stage and its value-free browser call. */
+function noScreenshotLine(reason: string, detail?: string): string {
+  const text = Object.hasOwn(SCREENSHOT_REASON, reason) ? SCREENSHOT_REASON[reason] : "the browser could not take it";
+  const stage = detail === undefined ? undefined : CAPTURE_STAGE.find(([token]) => detail.startsWith(`${token}-`));
+  const stopped = detail === undefined ? "" : stage === undefined ? ` (${detail})` : ` ${stage[1]} (${detail.slice(stage[0].length + 1)})`;
+  return `No screenshot: ${text}${stopped}.`;
 }
 
 function failureScreenshotReason(failure: Readonly<{ causeChain: readonly Readonly<{ code: string; summary: string }>[] }>): string | undefined {
-  const refused = failure.causeChain.find(cause => cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && cause.summary.startsWith(SCREENSHOT_REFUSED));
-  return refused === undefined ? undefined : noScreenshotLine(refused.summary.slice(SCREENSHOT_REFUSED.length).trim());
+  const causes = failure.causeChain.filter(cause => cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+  const refused = causes.find(cause => cause.summary.startsWith(SCREENSHOT_REFUSED));
+  const stopped = causes.find(cause => cause.summary.startsWith(SCREENSHOT_STOPPED));
+  return refused === undefined ? undefined : noScreenshotLine(refused.summary.slice(SCREENSHOT_REFUSED.length).trim(),
+    stopped?.summary.slice(SCREENSHOT_STOPPED.length).trim());
 }
 
 export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{
@@ -347,11 +363,13 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };
       else {
         const reason = row.note.fields.find(field => field.key === "reason" && field.kind === "text")?.value;
+        const captureFailure = row.note.fields.find(field => field.key === "captureFailure" && field.kind === "text")?.value;
         // The failed step's card already says why it has no screenshot.
         const told = sections.some(section => section.section === "failure" && section.payload.state === "available"
           && section.payload.value.nodeId === requireNative(row.native).nodeId && section.payload.value.attempt === requireNative(row.native).attempt
           && failureScreenshotReason(section.payload.value) !== undefined);
-        entry = told ? undefined : typeof reason === "string" ? { ...entry, message: noScreenshotLine(reason) } : entry;
+        entry = told ? undefined : typeof reason === "string"
+          ? { ...entry, message: noScreenshotLine(reason, typeof captureFailure === "string" && captureFailure !== reason ? captureFailure : undefined) } : entry;
       }
     }
     const entries: LogEntry[] = entry === undefined ? [] : [entry];
@@ -383,10 +401,11 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const message = operatorFailureSentence(failure.code);
+      const failureTitle = failure.display?.title ?? projectFailureDisplay(failure).title;
       const noScreenshot = failureScreenshotReason(failure);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
-      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
-        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
+      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failureTitle,
+        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failureTitle,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
@@ -430,8 +449,10 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
     const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
+    const replacedReading = event.state === "skipped" && event.notRun.state === "present" && event.notRun.reason === "operator-asserted"
+      && detail.timeline.steps?.some(category => category.key === event.categoryKey && category.typedValues !== undefined) === true;
     steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
-      message: reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
+      message: replacedReading ? REPLACED_READING : reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {
@@ -454,10 +475,17 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const previous = grouped.at(-1);
     if (previous !== undefined && key === previousKey && groupable.has(previous.id) && groupable.has(step.id)) {
       grouped[grouped.length - 1] = { ...previous, entries: [...previous.entries, ...step.entries] };
-    } else grouped.push({ ...step, title: category?.label ?? step.title, ...(system === undefined ? {} : { system }) });
+    } else grouped.push({ ...step, title: category === undefined ? step.title : plainStepLabel(category.label), ...(system === undefined ? {} : { system }) });
     previousKey = key;
   }
-  const named = grouped.map(({ system: raw, ...step }): LogStep => {
+  const withTyped = grouped.map((step): LogStep => {
+    const category = categoryOf.get(node.get(step.id));
+    if (category?.typedValues === undefined && category?.usesTyped === undefined) return step;
+    const lead = [...category.typedValues === undefined ? [] : [typedValuesEntry(step.id, step.time, category.typedValues)],
+      ...category.usesTyped === undefined ? [] : [usesTypedEntry(step.id, step.time, category.usesTyped)]];
+    return { ...step, entries: [...lead, ...step.entries] };
+  });
+  const named = withTyped.map(({ system: raw, ...step }): LogStep => {
     const system = systemName(raw);
     return system === undefined ? step : { ...step, system, entries: step.entries.map(entry => entryWithSystem(entry, system)) };
   });
@@ -465,7 +493,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const members = new Set<string | undefined>(category.members.map(member => member.nodeId));
     const first = grouped.find(step => members.has(node.get(step.id)));
     if (category.key === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
-    return { id: category.key, label: category.label, state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
+    return { id: category.key, label: plainStepLabel(category.label), state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
       ...(first === undefined ? {} : { stepId: first.id, time: first.time }),
       ...(category.durationSec === undefined ? {} : { durationLabel: fmtElapsed(category.durationSec) }),
       substeps: category.members.map(member => {

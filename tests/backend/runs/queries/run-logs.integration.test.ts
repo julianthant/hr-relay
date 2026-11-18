@@ -193,6 +193,25 @@ it("retains a task screenshot association and native node without exposing raw a
   assert.equal("action" in row.note, false);
 });
 
+it("leaves a lease-end browser capture out of Logs, so a saved screenshot never reads as unsaved", async () => {
+  const harness = await executorHarness();
+  const { database, clock } = harness.authority;
+  const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+  const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  const address = { runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt, traceId: claimed.run.envelope.traceId,
+    spanPath: taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("searching"), 1, claimed.claim.claimGeneration) };
+  for (const targetId of ["ucpath.task-capture", "ucpath.browser-capture"]) {
+    notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action: { kind: "screenshot", targetId,
+      value: `${UUID_4}:${UUID_5}`, physicalSessionId: UUID_5, at: clock.now().toISOString() } }, claimed.run);
+  }
+  const deps = { timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps;
+  const section = buildRunLogsSection(deps, claimed.run.envelope.runId, undefined, claimed.run);
+  assert.ok(section.section === "logs");
+  const screenshots = section.payload.rows?.flatMap(row => row.kind === "note" && row.note.operatorAction?.kind === "screenshot" ? [row.note] : []);
+  assert.equal(screenshots?.length, 1);
+  assert.deepEqual(screenshots[0]?.screenshot, { bundleId: UUID_4, artifactId: UUID_5, sessionId: UUID_5 });
+});
+
 it("serves registered operator labels for the normal legacy Person Lookup actions without raw targets or values", async () => {
   const harness = await executorHarness();
   const { database, clock } = harness.authority;

@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, describe, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
+import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
+import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -42,10 +46,14 @@ describe("the Run dialog's Checks step", () => {
     const dialog = await h.openDialog(client);
     await reachChecks(dialog);
     const rows = [...document.body.querySelectorAll('[aria-label="Check results"] .ds-run-row')].map(row => (row.textContent ?? "").trim());
-    assert.equal(rows.length, 3);
+    assert.equal(rows.length, 3, "two problems and the passing summary row");
     assert.match(rows[0] ?? "", /UCPath sign-in.*The UCPath password is missing\..*Add password/u);
     assert.match(rows[1] ?? "", /Current fiscal year.*The fiscal year ends soon\..*Warning/u);
-    assert.match(rows[2] ?? "", /Runtime settings.*Ready/u);
+    assert.match(rows[2] ?? "", /1 other check ready/u);
+    await dialog.press("Show ready checks");
+    const opened = [...document.body.querySelectorAll('[aria-label="Check results"] .ds-run-row')].map(row => (row.textContent ?? "").trim());
+    assert.equal(opened.length, 4);
+    assert.match(opened[3] ?? "", /Runtime settings.*Ready/u);
     assert.ok(dialog.text().includes("1 of 3 ready"));
     assert.ok(!/secrets\.|config\.valid|fiscal\.current/u.test(dialog.text()), "no check id is drawn");
   });
@@ -77,7 +85,16 @@ describe("the Run dialog's Checks step", () => {
     await act(async () => { pending.resolve(h.readiness([PASSING])); });
     assert.equal(slow.disabled("Start run"), false);
     await h.cleanup();
-    const down = await h.openDialog(h.stubClient({ readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }) }));
+    const down = await h.openDialog(h.stubClient({
+      readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }),
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows),
+      rerunPreflight: async request => {
+        const command = PreflightRerunCommandRequestSchema.parse(request);
+        if (h.READY.state !== "present") throw new Error("fixture readiness report required");
+        return { state: "completed", commandId: command.commandId, report: h.READY.report };
+      },
+    }));
     await reachChecks(down);
     assert.equal(down.disabled("Start run"), true);
     assert.ok(down.text().includes("The runtime is restarting."));
@@ -85,15 +102,53 @@ describe("the Run dialog's Checks step", () => {
   });
 
   it("gives a fixable failed check a button named for it, and an unfixable one only a message", async () => {
-    const fixes: string[] = [];
+    const fixes: (readonly [string, string | undefined])[] = [];
     const { client } = served(h.readiness([FIXABLE, UNFIXABLE, PASSING]));
     const dialog = await h.openDialog(client);
-    await dialog.rerender({ onFixCheck: section => fixes.push(section) });
+    await dialog.rerender({ onFixCheck: (section, target) => fixes.push([section, target]) });
     await reachChecks(dialog);
     assert.equal(dialog.text().includes("Failed"), true);
     assert.equal(h.buttons().filter(button => button.hasAttribute("data-run-check-fix")).length, 1, "only the fixable check has a button");
     await dialog.press("Add password");
-    assert.deepEqual(fixes, ["account"]);
+    assert.deepEqual(fixes, [["account", "protected.ucpathPassword"]]);
+  });
+
+  it("says on a failed check with no Fix button that Settings cannot fix it and what to do", async () => {
+    const files = { check: "filesystem.health", status: "fail", summary: "Relay is out of disk space." } as const;
+    const address = { check: "endpoint.crm.prod", status: "fail", summary: "The CRM address is invalid." } as const;
+    const { client } = served(h.readiness([files, address, PASSING]));
+    const dialog = await h.openDialog(client);
+    await reachChecks(dialog);
+    assert.equal(h.buttons().filter(button => button.hasAttribute("data-run-check-fix")).length, 0);
+    assert.match(dialog.text(), /Cannot be fixed in Settings\. Free up disk space, then check again\. Relay is out of disk space\./u);
+    assert.match(dialog.text(), /Cannot be fixed in Settings\. Relay cannot use this system's address, and this run cannot start until it can\. The CRM address is invalid\./u);
+  });
+
+  it("holds the list's place while checking: one Checking indicator over eight placeholder rows", async () => {
+    const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
+    const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
+    await slow.type(h.TYPED);
+    await slow.press("Continue");
+    await slow.press("Continue");
+    const section = document.body.querySelector('section[aria-label="Checks"]');
+    assert.equal(((section?.textContent ?? "").match(/Checking/gu) ?? []).length, 1, "the Checks section says Checking once");
+    assert.equal(document.body.querySelectorAll('[aria-label="Checking"] .ds-run-row').length, 8);
+    await act(async () => { pending.resolve(h.readiness([PASSING])); });
+    assert.equal(document.body.querySelector('[aria-label="Checking"]'), null);
+  });
+
+  it("draws a failed check's fix as a button beside a Failed status, with its whole summary readable", async () => {
+    const { client } = served(h.readiness([FIXABLE, PASSING]));
+    const dialog = await h.openDialog(client);
+    await dialog.rerender({ onFixCheck: () => undefined });
+    await reachChecks(dialog);
+    const row = document.body.querySelector('[aria-label="Check results"] .ds-run-row');
+    assert.ok(row?.textContent?.includes("Failed"), "the status stays beside the button");
+    const fix = fixButton("Add password");
+    assert.ok(fix && fix.tagName === "BUTTON" && fix.querySelector("svg") === null, "a plain button, not a status pill with an icon");
+    const summary = [...(row?.querySelectorAll("div") ?? [])].find(node => node.textContent === FIXABLE.summary);
+    assert.equal(summary?.getAttribute("title"), FIXABLE.summary);
+    assert.ok(!summary?.className.includes("truncate"), "the summary wraps instead of cutting");
   });
 
   it("keeps everything typed and the stage while Settings is open over it, and reads the checks again on return", async () => {
@@ -125,5 +180,36 @@ describe("the Run dialog's Checks step", () => {
     await dialog.rerender({ onFixCheck: () => undefined, hidden: true });
     await dialog.rerender({ onFixCheck: () => undefined, hidden: false });
     assert.equal(document.activeElement, fixButton("Add password"));
+  });
+
+  it("sums the passing checks in one row that opens them, closed again on each visit to the stage", async () => {
+    const { client } = served(h.readiness([PASSING, { check: "browser.assets", status: "pass" }]));
+    const dialog = await h.openDialog(client);
+    await reachChecks(dialog);
+    const results = () => document.body.querySelectorAll('[aria-label="Check results"] .ds-run-row').length;
+    assert.equal(results(), 1);
+    assert.ok(dialog.text().includes("All 2 checks ready"));
+    assert.ok(dialog.text().includes("2 of 2 ready"));
+    await dialog.press("Show ready checks");
+    assert.equal(results(), 3);
+    assert.equal(h.buttons().find(button => h.buttonName(button) === "Hide ready checks")?.getAttribute("aria-expanded"), "true");
+    await dialog.press("Back");
+    await dialog.press("Continue");
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(results(), 1, "the passing list is closed on the next visit");
+  });
+
+  it("announces the result through one status region that holds Checking and then the count", async () => {
+    const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
+    const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
+    await slow.type(h.TYPED);
+    await slow.press("Continue");
+    await slow.press("Continue");
+    const region = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
+    assert.ok(region?.textContent?.includes("Checking"));
+    await act(async () => { pending.resolve(h.readiness([PASSING, UNFIXABLE])); });
+    const after = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
+    assert.equal(after, region, "the same live region is updated, not replaced");
+    assert.match(after?.textContent ?? "", /1 of 2 ready, 1 needs fixing/u);
   });
 });

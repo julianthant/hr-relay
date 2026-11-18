@@ -3,6 +3,7 @@ import { ReadI9CheckPeople } from "../../../../models/workflows/i9-check-start/r
 import { I9CheckStartInput } from "../../../../models/workflows/i9-check/start.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
 import { OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { NodeIdSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
@@ -10,7 +11,31 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
 const step = Object.freeze({
   ...defineWorkflowStep({ key: "documents", label: "Read and approve PDFs" }),
-  review: { pages: [], branchLabels: [] } as const
+  review: {
+    starts: [{ nodeId: "read-documents", each: "Each attached PDF" }],
+    pages: [{
+      id: "source-pdfs", title: "I-9 PDFs and approved records", mode: "Read only",
+      nodeIds: ["read-documents", "read-approved-records", "read-people"],
+      lines: [
+        { id: "review", kind: "action", text: "Read each attached PDF and wait for you to review and approve its records in Logs.", nodeIds: ["read-documents"] },
+        { id: "approved", kind: "check", text: "Use only approved records from these PDFs and group their I-9 sections by person, keeping every source page.", nodeIds: ["read-approved-records", "read-people"] },
+      ],
+      fields: [
+        { id: "pdf", label: "PDF", inputField: "documents.fileName", example: "fictional-i9-packet.pdf",
+          source: { origin: "Attached PDFs", detail: "The original file selected when the run starts.", chain: [] } },
+        { id: "person", label: "Approved person", taskFields: [{ nodeId: "read-people", kind: "output", fieldPath: "people.person.name" }], example: "Morrow, Bea",
+          source: { origin: "Approved PDF records", detail: "The name on the I-9 sections you approved in Logs.", chain: [] } },
+        { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-people", kind: "output", fieldPath: "people.eid" }], example: PERSON_LOOKUP_EXAMPLE_EID,
+          source: { origin: "Approved PDF records", detail: "The employee identity approved with the source-bound record.", chain: [] } },
+      ],
+    }],
+    branchLabels: [],
+    decisions: [{ id: "document-review", label: "PDF record review", reads: { nodeId: "read-approved-records", fieldPath: "state" },
+      nodeIds: ["read-approved-records", "read-people"], initial: "ready", outcomes: [
+        { value: "ready", label: "Records approved", then: "Continues with the approved people after every PDF has settled." },
+        { value: "refused", label: "Review unavailable", then: "Stops before the roster or person checks; resolve the PDF review in Logs.", stops: true },
+      ] }],
+  } as const
 });
 const entries = defineStepEntries(step);
 type Author = WorkflowAuthor<typeof I9CheckStartInput>;

@@ -3,10 +3,13 @@ import { WorkbookActiveSelectionSchema } from "../../../models/dashboard/workboo
 import type { WorkbookLibraryEntry } from "../../../models/dashboard/workbook-library.js";
 import {
   stepOmissionFactsSchema,
+  IsoDateFactSchema,
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
-import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
+import { z } from "zod";
+import type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
+import { inputRunValueNoun, parseInputRunText, splitEntries, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -151,10 +154,10 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
   }
   const parser = mode.parser;
   if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), ...named, ...options }));
-  return text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+  return splitTupleEntries(text, parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
     const fields = entry.split(",").map(field => field.trim());
-    const fail = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
-    if (fields.length < parser.identifiers.length + 1) throw fail();
+    const fail = (sentence?: string) => new Error(sentence ?? formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
+    if (fields.length < parser.identifiers.length + 1 || fields.some(field => field === "")) throw fail(parser.shapeRefusal);
     const identifiers = fields.splice(-parser.identifiers.length);
     const legalName = fields.join(", ");
     const parts = legalName.split(",").map(part => part.trim());
@@ -163,9 +166,9 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
     const values = Object.fromEntries(parser.identifiers.flatMap((identifier, index) => {
       const value = identifiers[index];
       if (!value || value.toLowerCase() === parser.missing.toLowerCase()) return [];
-      return [[identifier.field, identifier.canonicalField === "ssn" ? CANONICAL_FIELDS.ssn.schema.parse(value) : value]];
+      return [[identifier.field, identifier.canonicalField === "ssn" ? CANONICAL_FIELDS.ssn.schema.parse(value.replaceAll("-", "")) : value]];
     }));
-    if (Object.keys(values).length === 0) throw fail();
+    if (Object.keys(values).length === 0) throw fail(parser.missingRefusal);
     return JsonValueSchema.parse({ ...named,
       [parser.familyName]: CANONICAL_FIELDS.fullName.schema.parse(family), [parser.givenName]: CANONICAL_FIELDS.fullName.schema.parse(given), ...values, ...options });
   });
@@ -196,13 +199,39 @@ export function previewRunInput(surface: InputRunSurface, text: string, draft: T
     const entries = parseInputRunText(surface.parser, text);
     return { entries, submissions: entries.map(entry => JsonValueSchema.parse(toRawSubmission(entry))), problem: null };
   } catch (caught) {
-    return { entries: [], submissions: [], problem: caught instanceof Error ? caught.message : String(caught) };
+    return { entries: refusedRows(surface, text, draft), submissions: [], problem: plainRefusal(caught) };
   }
+}
+
+/** One sentence for the operator: a validation issue list prints its first message only. */
+function plainRefusal(caught: unknown): string {
+  if (caught instanceof z.ZodError) return caught.issues[0]?.message ?? "This entry is not valid.";
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
+/** The rows a refused text still shows, split as the workflow splits it; an identifier column is masked. */
+function refusedRows(surface: InputRunSurface, text: string, draft: TypedInputDraft): RunInputPreview["entries"] {
+  const typed = surface.typedInput;
+  const chosen = typed === undefined ? undefined : draft[typed.modeField] ?? typed.initialMode;
+  const parser = typed?.modes.find(candidate => candidate.value === chosen)?.parser;
+  const texts = parser === undefined ? splitEntries(surface.parser, text)
+    : parser.kind === "entries" ? splitEntries(parser.spec, text)
+      : splitTupleEntries(text, parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+        const fields = entry.split(",").map(field => field.trim());
+        return fields.length > parser.identifiers.length && fields.at(-1)?.toLowerCase() !== parser.missing.toLowerCase() && fields.at(-1) !== ""
+          ? [...fields.slice(0, -1), "[masked]"].join(", ") : fields.join(", ");
+      });
+  return texts.map((sourceText, index) => ({ index, sourceText }));
 }
 
 export function inputRunFieldLabel(parser: InputParserSpec): string {
   const noun = inputRunValueNoun(parser);
   return noun === "Kuali document numbers" ? "Kuali ID" : noun.charAt(0).toUpperCase() + noun.slice(1);
+}
+
+/** Name-tuple entries end at the declared delimiter or a new line, as the hint says. */
+function splitTupleEntries(text: string, delimiter: string): string[] {
+  return text.split(delimiter).flatMap(part => part.split("\n"));
 }
 
 export function inputRunDelimiterHint(parser: InputParserSpec): string {
@@ -246,7 +275,8 @@ export interface StartRequestShape {
   dryRun: boolean;
   browserMode: BrowserMode;
   captureBrowserScreenshots: boolean;
-  priority: StartPriority;
+  /** Undefined until the operator picks; the text already fixes the default it implies. */
+  priority: StartPriority | undefined;
   selectedStepKeys: readonly string[];
   /** Raw omission drafts identify the request; partially typed edits must invalidate plans before parsing succeeds. */
   stepOmissionDrafts: readonly Readonly<{ step: string; draft: StepOmissionDraft }>[];
@@ -328,11 +358,11 @@ export type StepOmissionFieldRead =
   | Readonly<{ state: "unreadable"; message: string }>;
 
 /** Narrow draft facts to declared form shapes before the shared JSON submission boundary. */
-export type StepOmissionFactValue = string | number | boolean | readonly string[];
+export type StepOmissionFactValue = string | number | boolean | null | readonly string[];
 
 /** the parsed value of one declared field, or a loud refusal — never a widened `unknown` */
 function asFactValue(field: string, value: unknown): StepOmissionFactValue {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return Object.freeze([...value]);
   throw new Error(`omission field "${field}" parsed to a value no declared kind produces`);
 }
@@ -349,7 +379,13 @@ export function readStepOmissionField(
     return { state: "value", value: draft };
   }
   if (typeof draft !== "string") return { state: "unreadable", message: "This field is typed, not a yes/no answer." };
+  if (field.optional === true && draft.trim() === "") return { state: "value", value: null };
   switch (field.kind) {
+    case "iso-date": {
+      const typed = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(draft.trim());
+      const iso = typed === null ? "" : `${typed[3]}-${typed[1]}-${typed[2]}`;
+      return IsoDateFactSchema.safeParse(iso).success ? { state: "value", value: iso } : { state: "unreadable", message: "Type a date as MM/DD/YYYY." };
+    }
     case "integer": {
       const typed = draft.trim();
       if (typed.length === 0) return { state: "unreadable", message: "Type a whole number." };
@@ -467,14 +503,30 @@ export function toggleStepSelection(
   return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
 }
 
+/** The footer's short reason while Continue is held; the sentence below stays as the refusal text. */
+export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
+/** The one sentence for a required reference spreadsheet that was never chosen. */
+export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
+
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
   eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
-  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] }) {
+  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] },
+  checks?: { typeId: string; picks: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[] }) {
+  if (requiredTypes.some(typeId => selections[typeId] === undefined)) throw new Error(MISSING_REFERENCE_TEXT);
   if (requiredTypes.length > 1 || selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
-  return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
+  const checkEntries = (index: number) => (checks?.picks ?? []).map(pick => {
+    const entry = catalog.find(candidate => candidate.libraryId === pick.libraryId);
+    if (!entry || entry.state.removed || entry.state.origin.kind !== 'local' || !entry.state.versions.some(version => version.id === pick.versionId)
+      || !eligibleSources.some(source => source.libraryId === pick.libraryId && source.versionId === pick.versionId && source.sheetId === pick.sheetId))
+      throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    return WorkbookActiveSelectionSchema.parse({ typeId: checks?.typeId, entry: index + 1, libraryId: entry.libraryId, versionId: pick.versionId,
+      sheetId: pick.sheetId, expectedVersion: entry.version });
+  });
+  return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.map(typeId => {
     const selection = selections[typeId];
-    const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
+    if (selection === undefined) throw new Error(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
+    const entry = catalog.find(entry => entry.libraryId === selection.libraryId);
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
       || !entry.state.versions.some(version => version.id === selection.versionId)
       || writable && entry.state.selectedVersionId !== selection.versionId
@@ -483,5 +535,21 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
     return WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
       sheetId: selection.sheetId, expectedVersion: entry.version,
       ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
-  })).flat();
+  }), ...checkEntries(index)]).flat();
+}
+
+/** The one plain sentence for the first refused entry of a plan, shown in the dialog's notice slot; no code, trace id or server text. */
+export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: RunInputPreview["entries"]): { sentence: string; goesToQueue: boolean } | null {
+  const entry = refused[0];
+  if (entry === undefined) return null;
+  const source = sources?.find(candidate => candidate.index + 1 === entry.entry)?.sourceText;
+  const name = source ?? (refused.length > 1 || entry.entry > 1 ? `Entry ${String(entry.entry)}` : "This item");
+  if (entry.code === "active-run-exists") {
+    if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
+    return { sentence: `${name} already has a run in progress. Find it in the queue or wait for it to finish.`, goesToQueue: true };
+  }
+  if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: "This workflow cannot do a dry run. Turn Dry run off to start it.", goesToQueue: false };
+  if (entry.code === "preflight-failed") return { sentence: "A check failed for this run. Go back to Checks to fix it.", goesToQueue: false };
+  return { sentence: "Relay cannot run this right now. Try again later.", goesToQueue: false };
 }

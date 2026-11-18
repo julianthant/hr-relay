@@ -2,7 +2,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import type { Clock } from "../../../rules/time/clock.js";
 import { PreflightAdmissionRefusal, PreflightEvidenceExpiredError, type PreflightAdmission, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
 import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultWireSchema, PreflightSelectionSchema, type PreflightReadinessWire, type PreflightSelection } from "../../../models/preflight/preflight-contract.js";
-import type { createPreflightAuthority } from "../../../models/preflight/preflight.js";
+import { createPreflightCommandReplay, type createPreflightAuthority } from "../../../models/preflight/preflight.js";
 import type { InstanceSelection } from "../../../models/run/envelope.js";
 import type { z } from "zod";
 
@@ -16,7 +16,10 @@ export interface PreflightReportRuntime {
 export function createPreflightReportService(input: Readonly<{
   dashboard: ReturnType<typeof createPreflightAuthority>; runtime: PreflightReportRuntime; clock: Clock;
 }>) {
-  const commands = new Map<string, { identity: string; result: Promise<Result> }>();
+  const replay = createPreflightCommandReplay<Result>({
+    divergent: () => new PreflightAdmissionRefusal("scope-mismatch", "Preflight command was replayed with a divergent request."),
+    busy: () => new PreflightAdmissionRefusal("unavailable", "Preflight command capacity is occupied by active reruns."),
+  });
   const lastCompleted = new Map<string, Extract<PreflightReadinessWire, { state: "present" }>["report"]>();
   const current = (selection: PreflightSelection) => input.runtime.currentScope(selection.workflowId, selection.requestedInstance);
   const remember = (selection: PreflightSelection, report: Extract<PreflightReadinessWire, { state: "present" }>["report"]): void => {
@@ -51,17 +54,9 @@ export function createPreflightReportService(input: Readonly<{
     },
     async execute(raw: unknown, signal: AbortSignal): Promise<Result> {
       const command = PreflightRerunCommandRequestSchema.parse(raw);
-      const identity = canonicalJsonStringify(command);
-      const existing = commands.get(command.commandId);
-      if (existing !== undefined) {
-        if (existing.identity !== identity) throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight command was replayed with a divergent request.");
-        return existing.result;
-      }
-      if (commands.size >= 256) throw new PreflightAdmissionRefusal("unavailable", "Preflight command capacity reached; restart the runtime.");
-      const result = Promise.resolve().then(async (): Promise<Result> => {
+      return replay(command, async () => {
         const selection = command.target.selection;
         if (selection === undefined) {
-
           const scope = input.runtime.currentScope();
           if (scope.configFingerprint !== command.target.expectedConfigFingerprint) throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight configuration changed.");
           return input.dashboard.execute(command, signal);
@@ -75,8 +70,6 @@ export function createPreflightReportService(input: Readonly<{
         remember(selection, report);
         return PreflightRerunCommandResultWireSchema.parse({ state: "completed", commandId: command.commandId, report });
       });
-      commands.set(command.commandId, { identity, result });
-      return result;
     },
   });
 }

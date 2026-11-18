@@ -119,7 +119,7 @@ export type RunDialogEffect =
   | { kind: "retain-and-submit"; request: number; command: LaunchFinalCommand; plan?: StartPlanResponse }
   | { kind: "dismiss-recovery"; command: LaunchFinalCommand }
   | { kind: "feedback" }
-  | { kind: "applied"; workflowId: string; count?: number; workerStartup?: RunWorkerStartupFailure }
+  | { kind: "applied"; workflowId: string; count?: number; runId?: string; workerStartup?: RunWorkerStartupFailure }
   | { kind: "close-dialog" } | { kind: "refusal-toast" }
   /** A clean plan from Start: the runner sends `start` again with fresh authority and gates. */
   | { kind: "auto-start" };
@@ -186,7 +186,7 @@ function startRefusal(state: RunDialogState, gates: LaunchGates, current: Planne
   if (state.recovery.state === "retained" && current?.plan.startPlanId !== state.recovery.command.target.startPlanId) return "blocked";
   if (current !== undefined) return gates.omissionMismatch || gates.plannedCount === 0 ? "blocked" : undefined;
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
-  if (state.source.kind === "start" && gates.stepsBlocked) return "blocked";
+  if (gates.stepsBlocked) return "blocked";
   if (gates.optionsBlocked) return "blocked";
   if (state.source.kind === "start" ? gates.inputBlocked : gates.rerunInputBlocked) return "blocked";
   return undefined;
@@ -199,7 +199,7 @@ function continueRefusal(state: RunDialogState, gates: LaunchGates): RunDialogRe
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
   if (state.stage === "Input" && gates.inputBlocked) return "blocked";
   if (state.stage === "Options" && gates.optionsBlocked) return "blocked";
-  if (state.stage === "Steps" && state.source.kind === "start" && gates.stepsBlocked) return "blocked";
+  if (state.stage === "Steps" && gates.stepsBlocked) return "blocked";
   if (state.stage === "Values" && (gates.rerunInputBlocked || gates.stepsBlocked)) return "blocked";
   return undefined;
 }
@@ -273,8 +273,9 @@ function submitSettled(state: RunDialogState, event: Extract<RunDialogEvent, { t
       case "landed": {
         const reply = event.reply;
         const workerStartup = reply !== undefined && (reply.state === "applied" || reply.state === "already-applied") ? reply.workerStartup : undefined;
+        const startedRunId = reply !== undefined && (reply.state === "applied" || reply.state === "already-applied") ? reply.affectedTargets.find(target => target.family === "run")?.runId : undefined;
         return step(closed, [{ kind: "dismiss-recovery", command: request.command }, { kind: "feedback" },
-          { kind: "applied", workflowId: request.command.target.workflowId,
+          { kind: "applied", workflowId: request.command.target.workflowId, ...(startedRunId === undefined ? {} : { runId: startedRunId }),
             ...(request.plannedCount === undefined ? {} : { count: request.plannedCount }), ...(workerStartup === undefined ? {} : { workerStartup }) },
           { kind: "close-dialog" }]);
       }
@@ -460,8 +461,7 @@ export function runDialogControls(view: RunDialogState, gates: LaunchGates): Run
       enter: enabled ? event : null, hint: enabled ? "Enter to continue" : null };
   }
   const plan = view.shown?.plan;
-  const label = plan === undefined ? gates.dryRun === undefined ? "Start run" : gates.dryRun ? "Start dry run" : "Start live run"
-    : plan.dryRun ? "Start dry run" : view.source.kind === "rerun" ? "Create rerun" : `Start ${String(plan.planned.length)} ${plan.planned.length === 1 ? "run" : "runs"}`;
+  const label = gates.dryRun === undefined ? "Start run" : (plan === undefined ? gates.dryRun : plan.dryRun) ? "Start dry run" : "Start live run";
   const enabled = startRefusal(view, gates, view.shown) === undefined;
   const event = (input: RunDialogPrimaryInput) => ({ type: "start", ...input }) as const;
   return { primary: { label, enabled, loading, event }, back, cancel: { type: "close" },
@@ -480,7 +480,7 @@ export type RunDialogEffects = Readonly<{
   submit: (command: LaunchFinalCommand, verification: LaunchVerificationPlan | undefined) => Promise<CommandOutcome>;
   dismissRecovery: (command: LaunchFinalCommand) => void;
   feedback: (outcome: CommandOutcome) => void;
-  applied: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  applied: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure, runId?: string) => void;
   closeDialog: () => void;
   refusalToast: () => void;
   /** Runs after the clean plan has rendered, so the component sends `start` with fresh gates and authority. */
@@ -551,7 +551,7 @@ export function useRunDialogMachine(input: Readonly<{ stage: RunStartStage; setS
         }
         case "dismiss-recovery": fx.dismissRecovery(effect.command); break;
         case "feedback": if (outcome.current !== undefined) fx.feedback(outcome.current); break;
-        case "applied": fx.applied(effect.workflowId, effect.count, effect.workerStartup); break;
+        case "applied": fx.applied(effect.workflowId, effect.count, effect.workerStartup, effect.runId); break;
         case "close-dialog": fx.closeDialog(); break;
         case "refusal-toast": fx.refusalToast(); break;
         case "auto-start": autoStart.current = true; break;

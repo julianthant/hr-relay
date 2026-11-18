@@ -105,7 +105,7 @@ describe("onboarding workflow", () => {
       { id: "i9-lookup", kind: "task", nodeIds: ["i9-lookup"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup-child"], taskIds: ["workflow:onboarding/read-i9-lookup"] },
       { id: "hire-findings", kind: "task", nodeIds: ["hire-findings"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup"], taskIds: ["ucpath/read-hire-findings"] },
       { id: "hire-review", kind: "gate", nodeIds: ["hire-review"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject", "i9-lookup", "hire-findings"], taskIds: [] },
-      { id: "reference-check", kind: "task", nodeIds: ["reference-check"], dependsOn: ["hire-plan", "hire-review"], taskIds: ["workbooks/verify-person"] },
+      { id: "reference-check", kind: "task", nodeIds: ["reference-check"], dependsOn: ["hire-plan", "hire-subject", "hire-review"], taskIds: ["workbooks/verify-person"] },
       { id: "reference-stop", kind: "task", nodeIds: ["reference-stop"], dependsOn: ["reference-check"], taskIds: ["workflow:onboarding/read-reference-stop"] },
       { id: "reference-check-review", kind: "gate", nodeIds: ["reference-check-review"], dependsOn: ["reference-stop"], taskIds: [] },
       { id: "write-plan", kind: "task", nodeIds: ["write-plan"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject", "i9-lookup", "hire-findings", "hire-review"], taskIds: ["workflow:onboarding/read-write-plan"] },
@@ -368,7 +368,7 @@ describe("onboarding roster names in a real run", () => {
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps as unknown as RunDetailQueryDeps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined);
     assert.deepEqual(gate.decision.options.map(option => option.id), ["new-hire"]);
-    assert.equal(gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire.");
+    assert.equal(gate.decision.context, "Legal: last Hire, first Fixture, middle Marie · Preferred: last Hire, first Fix");
   });
 
   const allDroppedMatch = () => {
@@ -396,6 +396,30 @@ describe("onboarding roster names in a real run", () => {
       ["i9-search", "done", [...(lookupRuns ? [["i9-lookup-child", "done", undefined]] : []), ["i9-lookup", "done", undefined]]],
       ["hire-review", "blocked", [["hire-findings", "done", undefined], ["hire-review", "blocked", undefined]]],
     ]);
+  });
+
+  it("files under the one exact-name hit of a name, DOB and SSN search without stopping at the hire review", async () => {
+    const person = { emplId: "10800000", name: "Hire, Fixture" };
+    const personMatch = SearchPersonMatchOutputSchema.parse({ hits: [person], confirmed: [person], dropped: [] });
+    const f = await runWorld.executionFixture(false, { match: "unique", personMatch, ssn: "123-45-6789" }), root = f.start();
+    const executed = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done");
+    assert.deepEqual(f.database.authority.gateResults.listByRun(root.envelope.runId).filter(row => String(row.gateId) === "hire-review"), []);
+    const checkpoint = (nodeId: string) => f.database.authority.runCheckpoints.listByItem(descriptor.id, root.envelope.itemId)
+      .find(row => row.runId === root.envelope.runId && row.nodeId === nodeId)?.output.value;
+    assert.deepEqual(checkpoint("hire-subject"), { state: "existing-person", person, matchedBy: "name-dob-ssn" });
+    const plan = OnboardingReadWritePlan.output.parse(checkpoint("write-plan"));
+    assert.equal(plan.hire.mode, "rehire"); assert.equal(plan.hire.emplId, person.emplId);
+  });
+
+  for (const [shape, ssn, hits] of [
+    ["without SSN", undefined, [{ emplId: "10800000", name: "Hire, Fixture" }]],
+    ["over two SSN hits", "123-45-6789", [{ emplId: "10800000", name: "Hire, Fixture" }, { emplId: "10800001", name: "Hire, Fixture" }]],
+  ] as const) it(`still stops at the hire review for a confirmed match ${shape}`, async () => {
+    const personMatch = SearchPersonMatchOutputSchema.parse({ hits, confirmed: hits, dropped: [] });
+    const f = await runWorld.executionFixture(false, { match: "unique", personMatch, ...(ssn === undefined ? {} : { ssn }) }), root = f.start();
+    const parked = await f.rawExecution.execute(root, new AbortController().signal);
+    assert.ok(parked.run?.lifecycle.state === "parked-gate" && parked.run.lifecycle.gateId === "hire-review");
   });
 
   it("answers the all-dropped hire review through the served arms, composing the gate result from the run's own match", async () => {
@@ -445,7 +469,7 @@ describe("onboarding roster names in a real run", () => {
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined, "the dead end is explained instead of a bare Waiting");
     assert.deepEqual(gate.decision.options, []);
-    assert.match(gate.decision.context ?? "", /Under another name: Other, Person \(••••0001\): Last name does not match; HIRE,FIXTURE \(••••0002\): Last name does not match\..*file the rehire by hand in UCPath\./u);
+    assert.match(gate.decision.context ?? "", /Other name: Other, Person \(••••0001, Last name does not match\) · Other name: HIRE,FIXTURE \(••••0002, Last name does not match\) · .*file the rehire by hand in UCPath$/u);
     for (const payload of [{ arm: "new-hire" }, { arm: "existing-person", rowId: "10800002" }, { arm: "existing-person", rowId: "10800001" }]) {
       const resolution = resolveGateArmAnswer(deps, GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
         source: "run-detail", family: "gate", type: "answer-gate-arm", target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion: parked.run.version }, payload }), undefined);

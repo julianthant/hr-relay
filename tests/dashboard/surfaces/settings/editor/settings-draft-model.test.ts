@@ -27,8 +27,7 @@ afterEach_m0(_afterEachFixture0);
     if (typeof raw === 'string') throw new Error('route-fixture-invalid');
     await act_m0(async () => controller().update(leaf.path, { ...raw, entry: 'https://crm.example.test/private-route-sentinel' }));
     await act_m0(async () => vi.advanceTimersByTimeAsync(701));
-    assert_m0.equal(controller().save.state, 'applied');
-    assert_m0.deepEqual(notices, [{ title: 'Saved CRM routes' }]);
+    assert_m0.deepEqual(notices, [{ key: 'settings-save', title: 'Saved CRM routes' }]);
     assert_m0.doesNotMatch(JSON.stringify(notices), /private-route-sentinel/);
   });
 
