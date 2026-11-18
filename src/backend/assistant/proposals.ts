@@ -13,7 +13,7 @@ import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingres
 import { CommandRequestSchema, StartCommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { Clock } from "../../rules/time/clock.js";
-import { workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
+import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
 import type { DashboardCommandService } from "../runs/commands/command-service.js";
 import type { StartPlanService } from "../runs/commands/start-plan-service.js";
 import type { RunRecordService } from "../runs/lifecycle/run-record-service.js";
@@ -23,6 +23,7 @@ import { requireTrustRun } from "../runs/trust/run-reader.js";
 import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import type { createAssistantAuthorization } from "./authorization.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantToolContext } from "./plugins/plugin.js";
+import { assistantWorkflowRunMode } from "./plugins/workflows/facts.js";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import { createSpreadsheetProposals, type AssistantSpreadsheetProposalDeps } from "./spreadsheet-proposals.js";
 
@@ -105,9 +106,9 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
   function startable(workflowId: string) {
     const descriptor = deps.descriptors.resolve(workflowId);
     if (descriptor === undefined || !deps.served(workflowId)) refuse();
-    const support = workflowDryRunSupport(descriptor);
-    if (support.state !== "supported" && !("reason" in support && support.reason === "no-transaction-node")) refuse();
-    return { descriptor, dryRun: support.state === "supported" };
+    const mode = assistantWorkflowRunMode(descriptor);
+    if (mode === "unavailable") refuse();
+    return { descriptor, dryRun: mode === "dry-run" };
   }
   /** A run whose retained input may be reused: same workflow, served, no protected subject, current definition. */
   function reusableRun(runId: string, workflowId: string) {
@@ -190,8 +191,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
 
   const plugin: AssistantPlugin = { domain: "proposals", tools: [
     { kind: "proposal", tier: "leaves-machine", name: "propose_workflow_start",
-      description: "Prepare a card to start one served workflow for 1 to 20 entries; the operator confirms it. Each entry is one line of that workflow's input format (see describe_workflow), or exactly a run reference to reuse that run's input. Use references for people and IDs exactly as given. List every entry the operator asked for; the card shows every row. "
-        + "For emergency-contact each entry is exactly an attached PDF reference; the card reads it through OCR.",
+      description: "Prepare a card to start one served workflow for 1 to 20 entries; the operator confirms it. Use describe_workflow to see whether fresh input can start in chat or needs the Dashboard. For fresh starts in chat, each entry is one line of the workflow's input format. To reuse retained input, supply an eligible run reference. Use references exactly as given and list every requested entry.",
       parameters: startParameters,
       async propose(value, context) {
         const { workflow, entries } = startParameters.parse(value), { descriptor } = startable(workflow);
@@ -224,7 +224,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
             && planned.every((run, index) => canonicalJsonStringify(run.rawInput) === canonicalJsonStringify(submissions[index])) });
       } },
     { kind: "proposal", tier: "leaves-machine", name: "propose_rerun",
-      description: "Prepare a card to rerun one run with its own input and all of its steps; the operator confirms it. Value changes stay in the Rerun dialog.",
+      description: "Check one selected run's eligibility and prepare a card to rerun it with its retained input and all of its steps; the operator confirms it. Use the Rerun dialog to change values or select steps.",
       parameters: rerunParameters,
       async propose(value, context) {
         const reference = context.references.resolve(rerunParameters.parse(value).run, ["R"]);
