@@ -56,7 +56,7 @@ it('restores served rows without a card or Confirm and states every turn deliver
   send('Lost one'); history.settleInterrupted(now);
   const state = (await w.open()).read(id);
   assert.ok(state); assert.equal(state.restored, true); assert.equal(state.turn.state, 'idle');
-  assert.deepEqual(state.messages.map(message => message.text), ['Prepare a card', 'This proposal is no longer available. Ask again to review a new one.',
+  assert.deepEqual(state.messages.map(message => message.text), ['Prepare a card', 'This earlier request is no longer available. Ask again.',
     'Refused one', ASSISTANT_FAILURES.ASSISTANT_LIMIT, 'Lost one', 'The reply was not saved. Do not resend it; ask again as a new message.']);
   assert.equal(JSON.stringify(state).includes('actionId'), false);
 });
@@ -104,7 +104,7 @@ it('imports a chat larger than one batch through a lost middle and a lost final 
 });
 
 it('keeps a full transcript within the limit with either closing notice', async () => {
-  for (const [flag, text] of [['interrupted', "The previous request's outcome is unknown. Do not retry it."], ['proposalExpired', 'The previous proposal expired. Ask again to review a new one.']] as const) {
+  for (const [flag, text] of [['interrupted', "The previous request's outcome is unknown. Do not retry it."], ['proposalExpired', 'The previous request expired. Ask again.']] as const) {
     const w = world(), id = randomUUID();
     const messages: OldMessage[] = Array.from({ length: 200 }, (_, index) => ({ id: `m${String(index)}`, role: 'assistant', text: `Row ${String(index)}` }));
     w.bytes.set(w.key, JSON.stringify({ format: 1, profileId: w.server.profileId, chats: [oldChat(id, 'Full')], transcripts: { [id]: transcript(messages, { [flag]: true }) } }));
