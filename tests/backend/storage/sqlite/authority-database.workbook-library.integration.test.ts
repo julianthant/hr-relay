@@ -12,6 +12,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { bindOcrRoster } from "../../../../src/models/workflows/ocr/roster.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { encodeSavedWorkbook, RunWorkbookAllRowsReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const clock = manualClock(new Date("2026-10-15T12:00:00.000Z"));
@@ -212,5 +213,51 @@ it('refreshes cached workbooks after own and cross-process commits and discards 
     assert.equal(repository.list()[0].version, 3);
     assert.equal(repository.catalog()[0].name, 'External.xlsx');
     assert.strictEqual(service.read(first.libraryId), repository.list()[0]);
+  } finally { database.close(); }
+});
+
+it('rechecks collections after diagnostic writes while reusing unchanged decoded rows', async () => {
+  const f = await fixture(), database = f.open();
+  try {
+    const repository = database.authority.workbooks;
+    const service = createWorkbookLibraryService({ repository, sync: unexpectedWorkbookSync, clock });
+    const created = service.create(workbook);
+    const first = service.read(created.libraryId), list = repository.list(), catalog = repository.catalog();
+    const selected = repository.libraryVersion(created.libraryId).workbook;
+    const key = database.changeKey();
+    createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: 'test' }).emit({
+      category: 'http', phase: 'settled', area: 'storage', reason: 'slow-operation', code: 'read-snapshot',
+      durationMs: 123, correlationId: 'synthetic-slow-read',
+    });
+    assert.notDeepEqual(database.changeKey(), key);
+    assert.strictEqual(service.read(created.libraryId), first);
+    assert.notStrictEqual(repository.list(), list);
+    assert.strictEqual(repository.list()[0], first);
+    assert.notStrictEqual(repository.catalog(), catalog);
+    assert.strictEqual(repository.libraryVersion(created.libraryId).workbook, selected);
+  } finally { database.close(); }
+});
+
+it('reuses frozen wire records across diagnostic writes and refreshes edited workbooks', async () => {
+  const f = await fixture(), database = f.open();
+  try {
+    const service = createWorkbookLibraryService({ repository: database.authority.workbooks, sync: unexpectedWorkbookSync, clock });
+    const created = service.create(workbook);
+    const first = service.listWire()[0];
+    assert.deepEqual(first, encodeSavedWorkbook(created));
+    assert.strictEqual(service.listWire()[0], first);
+    assert.equal(Reflect.set(first.workbook.sheets[0].rows[0].cells[0], 'value', 'Changed'), false);
+    createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: 'test' }).emit({
+      category: 'http', phase: 'settled', area: 'storage', reason: 'slow-operation', code: 'read-snapshot',
+      durationMs: 123, correlationId: 'synthetic-wire-read',
+    });
+    assert.strictEqual(service.listWire()[0], first);
+    service.save(created.libraryId, 1, { ...created.workbook, name: 'Edited.xlsx' });
+    const edited = service.listWire()[0];
+    assert.notStrictEqual(edited, first);
+    assert.equal(edited.version, 2);
+    assert.equal(edited.workbook.name, 'Edited.xlsx');
+    assert.equal(first.workbook.name, 'Dates.xlsx');
+    assert.deepEqual(edited, encodeSavedWorkbook(service.read(created.libraryId)));
   } finally { database.close(); }
 });

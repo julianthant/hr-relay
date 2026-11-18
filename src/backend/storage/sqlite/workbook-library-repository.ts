@@ -100,6 +100,7 @@ export const WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION = Object.freeze({ version: 3
 ]) });
 
 const RowSchema = z.object({ id: z.string(), version: z.number().int().positive(), created_at: z.string(), saved_at: z.string(), payload_json: z.string() });
+const SnapshotRowSchema = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() });
 function selectionFromRow(value: unknown) {
   const row = z.object({ workflow_id: z.string(), revision: z.number(), accepted_command_id: z.string(), used_at: z.string(), payload_json: z.string() }).parse(value);
   const record = WorkflowWorkbookSelectionRecordSchema.parse(JSON.parse(row.payload_json));
@@ -155,6 +156,8 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   beforePinTags?: boolean;
 }>): WorkbookLibraryRepository {
   const { database } = deps;
+  const decodedRecords = new Map<string, { row: z.infer<typeof RowSchema>; record: SavedWorkbook }>();
+  const decodedSnapshots = new Map<string, { row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema> }>();
   let cache: {
     key: string;
     records: Map<string, SavedWorkbook>;
@@ -173,6 +176,12 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     const entry = readCache(), row = RowSchema.parse(value);
     const cached = entry?.records.get(row.id);
     if (cached !== undefined) return cached;
+    const previous = decodedRecords.get(row.id);
+    if (entry !== undefined && previous !== undefined && row.id === previous.row.id && row.version === previous.row.version
+      && row.created_at === previous.row.created_at && row.saved_at === previous.row.saved_at && row.payload_json === previous.row.payload_json) {
+      entry.records.set(row.id, previous.record);
+      return previous.record;
+    }
     const record = fromRow(row);
     if (entry === undefined) return record;
     // Frozen Dates still have setters; each cell read gets its own Date.
@@ -187,6 +196,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       })) })),
     } });
     entry.records.set(row.id, frozen);
+    decodedRecords.set(row.id, { row, record: frozen });
     return frozen;
   });
   const withPinTags = (state: unknown) => {
@@ -232,12 +242,15 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       if (cached.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       return cached;
     }
-    const row = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() }).parse(database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE id=?').get(snapshotId));
-    const snapshot = WorkbookLibrarySnapshotSchema.parse(JSON.parse(row.payload_json));
+    const row = SnapshotRowSchema.parse(database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE id=?').get(snapshotId));
+    const previous = entry === undefined ? undefined : decodedSnapshots.get(id);
+    const snapshot = previous !== undefined && row.id === previous.row.id && row.workbook_id === previous.row.workbook_id && row.payload_json === previous.row.payload_json
+      ? previous.snapshot : WorkbookLibrarySnapshotSchema.parse(JSON.parse(row.payload_json));
     if (row.id !== snapshot.id || row.workbook_id !== id || snapshot.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     if (entry === undefined) return snapshot;
     const frozen = deepFreeze(snapshot);
     entry.snapshots.set(snapshotId, frozen);
+    decodedSnapshots.set(id, { row, snapshot: frozen });
     return frozen;
   });
   const putLibrarySnapshot = (id: string, versionId: string, workbook: z.infer<typeof WorkbookLibrarySnapshotSchema>["workbook"]) => {
