@@ -4,6 +4,8 @@ import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
 import type { LogScreenshot } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
+import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { LogScreenshots } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-screenshots.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -105,5 +107,24 @@ describe("classified log screenshot viewer", () => {
     await mount([]);
     assert.equal(document.querySelector("button"), null);
     assert.equal(document.querySelector("figure"), null);
+  });
+  it("loads protected captures through the authenticated fetch and releases them on unmount", async () => {
+    const release = vi.fn();
+    const client = { fetchAuthenticatedResource: vi.fn(async () => ({ url: "blob:capture", release })) } as unknown as DashboardClient;
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(LogScreenshots, { screenshots: [{ ...captures[0], src: "/artifacts/v1/capture" }] }) })));
+    assert.equal(document.querySelector("img")?.getAttribute("src"), "blob:capture");
+    await act(async () => root?.unmount()); root = undefined;
+    assert.equal(release.mock.calls.length, 1);
+  });
+  it("shows the screenshot failure state when the authenticated fetch is refused", async () => {
+    const client = { fetchAuthenticatedResource: vi.fn(async () => { throw new Error("refused"); }) } as unknown as DashboardClient;
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(LogScreenshots, { screenshots: [{ ...captures[0], src: "/artifacts/v1/capture" }] }) })));
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Screenshot could not be loaded/);
   });
 });
