@@ -231,6 +231,8 @@ function logLinesForRun(
         if (!("runId" in projected)) {
           throw new Error(`notes line ${line.file.path}:${String(line.lineNumber)} changed identity during projection`);
         }
+        // A lease-end capture is saved with the run's diagnostics but anchors no step, so it has no place in a step's log.
+        if (projected.action?.kind === "screenshot" && projected.action.targetId.endsWith(".browser-capture")) continue;
         matches.push({
           kind: "note",
           line,

@@ -5,6 +5,7 @@ import { workbookRowChoices } from '../../../../src/dashboard/surfaces/run-start
 import { EditableWorkbookWireSchema } from '../../../../src/models/dashboard/workbooks.js';
 import { launchWorkbookReferences } from '../../../../src/dashboard/surfaces/run-start/run-start-model.js';
 import { WorkbookLibraryEntrySchema } from '../../../../src/models/dashboard/workbook-library.js';
+import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 1,
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: 'roster-type', sharePoint: null },
   type: { id: 'roster-type', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: 'roster' },
@@ -33,6 +34,10 @@ it('sends each check pick with its declaration beside the required reference, fo
   expect(launchWorkbookReferences([], [entry], {}, 1, sources, false, undefined, { typeId: 'reference-check', picks: [] })).toEqual([]);
   expect(() => launchWorkbookReferences([], [entry], {}, 1, [], false, undefined, check)).toThrow();
   expect(() => launchWorkbookReferences([], [], {}, 1, sources, false, undefined, check)).toThrow();
+});
+it('names the missing required reference when only a check spreadsheet is picked', () => {
+  const check = { typeId: 'reference-check', picks: [{ libraryId: 'roster', versionId: 'current', sheetId: 'people' }] };
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], {}, 1, sources, false, undefined, check)).toThrow(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
 });
 it('refuses missing reference identities, unavailable named versions', () => {
   expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1, sources, false)).toThrow();

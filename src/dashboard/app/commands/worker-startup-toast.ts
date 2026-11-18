@@ -66,9 +66,10 @@ export function unconfirmedBulkWorkerToast(request: StartupRequest, reply: Start
   return appliedWorkerStartupToast(request, reply);
 }
 
-/** Queued runs no worker can take: every worker of their workflow has stopped, or it has none. Sticky while that holds. */
+/** Queued runs no worker can take: every worker of their workflow has stopped, or it has none. Sticky while that holds.
+ * A delegated child waits for its root workflow's worker, never one of its own workflow, so it is not counted. */
 export function stoppedWorkerToasts(day: DashboardDayWire, workflowLabel: (workflowId: string) => string): WorkerStartupToast[] {
-  const waiting = day.queueSurfaces.filter(row => row.status === "queued" && row.pause === undefined);
+  const waiting = day.queueSurfaces.filter(row => row.status === "queued" && row.pause === undefined && row.parent === null);
   return [...new Set(waiting.map(row => row.workflowId))].flatMap(workflowId => {
     const workers = day.workerCards.filter(card => card.workflowId === workflowId);
     const stopped = workers.some(card => card.state !== "failed") ? undefined : workers[0]?.stopReason;

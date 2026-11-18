@@ -298,17 +298,16 @@ it("publishes a failed refresh while retaining the verified document and unsaved
 });
 
 for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {
-  it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
+  it(`renders the one failed-read notice with Retry in the ${section} part after a ${mode} initial read`, async () => {
     vi.useFakeTimers();
     const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
     } as unknown as DashboardClient;
     const dom = await mountSettingsPage(client, section);
     if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Settings unavailable"));
+    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Relay could not read your settings."));
     assert.ok(failure);
-    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
+    assert.ok(failure.textContent?.includes("Nothing was changed."));
+    assert.ok([...failure.querySelectorAll("button")].some(button => button.textContent === "Retry"));
     assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
   });
 }
-
-import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
