@@ -1248,15 +1248,25 @@ export function redactEvidenceLeaf(
 const OCR_SSN_ANSWER_PATHS: ReadonlySet<string> = new Set(Object.values(OCR_FORMS).flatMap(({ fields }) =>
   fields.filter(({ canonicalFieldId }) => canonicalFieldId === "ssn").map(({ path }) => path)));
 
-/** An admitted OCR answer is one array member, below the leaf the `ssn` guard sees, so each is classified by its own field: an SSN answer keeps its path and state and loses its raw, canonical value and read text. */
-function withoutOcrSsnAnswers(value: JsonValue): JsonValue {
-  if (Array.isArray(value)) return value.map(withoutOcrSsnAnswers);
+const OCR_SSN_MASK = "[SSN masked]";
+
+/** An admitted OCR answer is one array member, below the leaf the `ssn` guard sees, so each is classified by its own field: an SSN answer's raw, canonical value and read text are masked in place, keeping every leaf address that observation origins name. */
+function maskOcrSsnAnswers(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(maskOcrSsnAnswers);
   if (value === null || typeof value !== "object") return value;
   const answer = AdmittedAnswerSchema.safeParse(value);
   if (answer.success && OCR_SSN_ANSWER_PATHS.has(answer.data.path)) {
-    return answer.data.state === "absent" ? answer.data : { state: answer.data.state, path: answer.data.path, confidence: answer.data.confidence };
+    if (answer.data.state === "read") return { ...answer.data, raw: OCR_SSN_MASK, value: OCR_SSN_MASK };
+    if (answer.data.state === "unreadable") return { ...answer.data, raw: OCR_SSN_MASK, reason: OCR_SSN_MASK };
+    return answer.data;
   }
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, withoutOcrSsnAnswers(child)]));
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, maskOcrSsnAnswers(child)]));
+}
+
+/** An observed field as timeline, Context Data and Logs may hold it: no OCR SSN, including in rows retained before this rule. */
+export function maskObservedOcrSsn(field: z.infer<typeof RedactedFieldSchema>): z.infer<typeof RedactedFieldSchema> {
+  if (field.state !== "allowed") return field;
+  return RedactedFieldSchema.parse({ ...field, value: maskOcrSsnAnswers(field.value) });
 }
 
 /** The observation copy of a leaf: OCR authority keeps the original answers; timeline, Context Data and Logs never receive an OCR SSN. */
@@ -1264,7 +1274,5 @@ export function redactObservedEvidenceLeaf(
   scope: EvidenceValueScope,
   leaf: EvidenceLeaf,
 ): z.infer<typeof RedactedFieldSchema> {
-  const redacted = redactEvidenceLeaf(scope, leaf);
-  if (redacted.state !== "allowed") return redacted;
-  return RedactedFieldSchema.parse({ ...redacted, value: withoutOcrSsnAnswers(redacted.value) });
+  return maskObservedOcrSsn(redactEvidenceLeaf(scope, leaf));
 }

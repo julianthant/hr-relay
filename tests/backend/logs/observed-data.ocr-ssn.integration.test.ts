@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { extractFormPageTask } from "../../../src/backend/processing/ocr/tasks/extract-form-page.js";
 import { redactObservedDataPoints } from "../../../src/backend/logs/observed-data.js";
-import { buildRunLogsSection, runDataObservationsForRun } from "../../../src/backend/runs/queries/run-logs.js";
+import { buildRunLogsSection } from "../../../src/backend/runs/queries/run-logs.js";
+import { buildDataSection } from "../../../src/backend/runs/queries/data.js";
 import { dataOriginViewsOf } from "../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { ArtifactRefSchema } from "../../../src/models/artifacts/artifacts.js";
 import { ExtractFormPage, OCR_EXTRACTION_RESPONSE_HASH } from "../../../src/models/processing/ocr/extract-form-page.js";
+import { evidenceLeaves, redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { RecordedDataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { ocrTaskContext } from "../../support/fixtures/ocr/task-context.js";
@@ -45,11 +47,22 @@ async function extractI9Section1() {
   return { output, recorded };
 }
 
-it("keeps a read I-9 SSN in the OCR output and out of the observation, Context Data and Logs", async () => {
+type Recorded = Awaited<ReturnType<typeof extractI9Section1>>["recorded"];
+const scope = { kind: "task-output", taskId: ExtractFormPage.id } as const;
+const observationPaths = {
+  "written by the current observation path": (recorded: Recorded, stamp: (point: unknown) => Parameters<typeof redactObservedDataPoints>[1][number]) =>
+    redactObservedDataPoints(ExtractFormPage.id, recorded.map(stamp)),
+  "retained from before the OCR SSN rule": (recorded: Recorded) => recorded.map(point => {
+    const { direction, field, value } = point as { direction: "read"; field: string; value: unknown };
+    return { direction, field, values: evidenceLeaves(value, field).map(leaf => redactEvidenceLeaf(scope, leaf)) };
+  }),
+};
+
+for (const [label, observe] of Object.entries(observationPaths)) it(`serves no I-9 SSN in Context Data or Logs for an observation ${label}`, async () => {
   const { output, recorded } = await extractI9Section1();
   const ssn = output.record?.answers.find(answer => answer.path === "ssn");
   assert.ok(ssn?.state === "read");
-  assert.equal(ssn.raw, SSN_RAW);
+  assert.equal(ssn.raw, SSN_RAW, "OCR authority keeps the original");
   assert.equal(ssn.value, SSN_CANONICAL);
 
   const w = await world();
@@ -59,21 +72,26 @@ it("keeps a read I-9 SSN in the OCR output and out of the observation, Context D
   const at = w.clock.now().toISOString();
   const identity = { runId: run.envelope.runId, attempt: 1, spanPath: `${run.envelope.traceId}/extract#1.1`, nodeId: "extract", taskId: ExtractFormPage.id };
   const execution = { runId: run.envelope.runId, traceId: run.envelope.traceId, attempt: 1, workflowId: run.envelope.workflow, nodeId: "extract", taskId: ExtractFormPage.id };
-  const points = redactObservedDataPoints(ExtractFormPage.id,
-    recorded.map(point => RecordedDataPointSchema.parse({ ...(point as object), execution, recordedAt: at })));
-  const observed = JSON.stringify(points);
-  assert.ok(observed.includes("Avery"), "the observation keeps the rest of the record");
-  assert.ok(observed.includes(`"path":"ssn"`), "the observation still names the SSN answer");
-  for (const leak of [SSN_RAW, SSN_CANONICAL]) assert.equal(observed.includes(leak), false, `observation carries ${leak}`);
-
+  const points = observe(recorded, point => RecordedDataPointSchema.parse({ ...(point as object), execution, recordedAt: at }));
+  if (observe === observationPaths["written by the current observation path"]) {
+    for (const leak of [SSN_RAW, SSN_CANONICAL]) assert.equal(JSON.stringify(points).includes(leak), false, `observation carries ${leak}`);
+  }
   w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: run.envelope.workflow, traceId: run.envelope.traceId, ...identity, points });
   w.projection.ingestFromTimeline();
+
+  const dataOrigins = dataOriginViewsOf(ocrPageModule).map(origin => origin.nodeId === "extract"
+    ? { ...origin, operatorFields: [{ label: "Answer", kind: "output" as const, fieldPath: "record.answers.raw" }] } : origin);
   const deps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
-    descriptors: { resolve: () => ({ dataOrigins: dataOriginViewsOf(ocrPageModule) }) } };
-  const contextData = JSON.stringify(runDataObservationsForRun(deps as never, run, run.envelope.runId));
-  const logs = JSON.stringify(buildRunLogsSection(deps as never, run.envelope.runId, undefined, run));
-  assert.ok(contextData.includes("Avery"));
-  for (const served of [contextData, logs]) {
+    descriptors: { resolve: () => ({ dataOrigins }) } };
+  const contextData = buildDataSection(deps as never, run.envelope.runId, "context-data");
+  assert.ok(contextData.section === "context-data");
+  const logs = buildRunLogsSection(deps as never, run.envelope.runId, undefined, run);
+  assert.ok(logs.section === "logs");
+  const answers = logs.payload.rows?.flatMap(row => row.kind === "observed" ? row.displayFields ?? [] : [])
+    .filter(field => field.label === "Answer").map(field => "value" in field ? field.value : undefined);
+  assert.ok(answers?.includes("Avery"), "Logs serve the observed OCR answers");
+  assert.ok(JSON.stringify(contextData).includes("Avery"), "Context Data serves the observed OCR record");
+  for (const served of [JSON.stringify(contextData), JSON.stringify(logs)]) {
     for (const leak of [SSN_RAW, SSN_CANONICAL]) assert.equal(served.includes(leak), false, `served payload carries ${leak}`);
   }
 });
