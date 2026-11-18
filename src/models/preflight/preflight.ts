@@ -269,6 +269,36 @@ interface PreflightAuthority {
   readLatest(): z.infer<typeof PreflightReportSchema>;
 }
 
+/** Keep exact recent replays and release the oldest settled result when admitting a new command. */
+export function createPreflightCommandReplay<Result>(errors: Readonly<{
+  divergent(commandId: string): Error;
+  busy(): Error;
+}>) {
+  type Replay = Readonly<{ identity: string; result: Promise<Result> }>;
+  const pending = new Map<string, Replay>();
+  const settled = new Map<string, Replay>();
+  return (command: z.output<typeof PreflightRerunCommandRequestSchema>, run: () => Promise<Result>): Promise<Result> => {
+    const { commandId } = command;
+    const identity = canonicalJsonStringify(command);
+    const existing = pending.get(commandId) ?? settled.get(commandId);
+    if (existing !== undefined) {
+      if (existing.identity !== identity) throw errors.divergent(commandId);
+      return existing.result;
+    }
+    if (pending.size + settled.size >= 256) {
+      const oldest = settled.keys().next();
+      if (oldest.done) throw errors.busy();
+      settled.delete(oldest.value);
+    }
+    const result = Promise.resolve().then(run).finally(() => {
+      pending.delete(commandId);
+      settled.set(commandId, { identity, result });
+    });
+    pending.set(commandId, { identity, result });
+    return result;
+  };
+}
+
 interface CreatePreflightAuthorityInput {
   readonly configFingerprint: string;
   readonly descriptorFingerprint?: string;
@@ -310,15 +340,10 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   if (extra.length > 0) throw new Error(`preflight authority received extra runners: ${extra.join(", ")}`);
 
   let latest: z.infer<typeof PreflightReportSchema> | undefined;
-  const completed = new Map<string, Readonly<{
-    request: string;
-    result: z.infer<typeof PreflightRerunCommandResultSchema>;
-  }>>();
-  const failed = new Map<string, Readonly<{ request: string; error: unknown }>>();
-  const inFlight = new Map<string, Readonly<{
-    request: string;
-    result: Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
-  }>>();
+  const replay = createPreflightCommandReplay<z.infer<typeof PreflightRerunCommandResultSchema>>({
+    divergent: commandId => new Error(`preflight command ${commandId} was replayed with a divergent request`),
+    busy: () => new Error("preflight command capacity is occupied by active reruns"),
+  });
 
   const runRefresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
     const settlements = await Promise.allSettled(selectedChecks.map(async (check) => {
@@ -366,65 +391,28 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   return Object.freeze({
     async execute(commandInput: unknown, signal: AbortSignal) {
       const command = PreflightRerunCommandRequestSchema.parse(commandInput);
-      const request = canonicalJsonStringify(command);
-      const priorFailure = failed.get(command.commandId);
-      if (priorFailure !== undefined) {
-        if (priorFailure.request !== request) {
-          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+      return replay(command, async () => {
+        if (command.target.expectedConfigFingerprint !== configFingerprint) {
+          throw new Error(
+            `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
+            + `but current config is ${configFingerprint}`,
+          );
         }
-        throw priorFailure.error;
-      }
-      const prior = completed.get(command.commandId);
-      if (prior !== undefined) {
-        if (prior.request !== request) {
-          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+        if (command.target.expectedDescriptorFingerprint !== descriptorFingerprint) {
+          throw new Error(
+            `preflight command ${command.commandId} expected descriptor `
+            + `${command.target.expectedDescriptorFingerprint ?? "absent"} but current descriptor is `
+            + `${descriptorFingerprint ?? "absent"}`,
+          );
         }
-        return prior.result;
-      }
-      const pending = inFlight.get(command.commandId);
-      if (pending !== undefined) {
-        if (pending.request !== request) {
-          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
-        }
-        return pending.result;
-      }
-      if (completed.size + failed.size + inFlight.size >= 256) {
-        throw new Error("preflight retained command identity capacity 256 is exhausted; "
-          + "restart the local dashboard before admitting another unique rerun command");
-      }
-      const deferred = Promise.withResolvers<z.infer<typeof PreflightRerunCommandResultSchema>>();
-      inFlight.set(command.commandId, { request, result: deferred.promise });
-      void (async (): Promise<void> => {
-        try {
-          if (command.target.expectedConfigFingerprint !== configFingerprint) {
-            throw new Error(
-              `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
-              + `but current config is ${configFingerprint}`,
-            );
-          }
-          if (command.target.expectedDescriptorFingerprint !== descriptorFingerprint) {
-            throw new Error(
-              `preflight command ${command.commandId} expected descriptor `
-              + `${command.target.expectedDescriptorFingerprint ?? "absent"} but current descriptor is `
-              + `${descriptorFingerprint ?? "absent"}`,
-            );
-          }
-          const result = PreflightRerunCommandResultSchema.parse({
-            state: "completed",
-            commandId: command.commandId,
-            report: await refresh(signal),
-          });
-          latest = result.report;
-          completed.set(command.commandId, { request, result });
-          inFlight.delete(command.commandId);
-          deferred.resolve(result);
-        } catch (error) {
-          failed.set(command.commandId, { request, error });
-          inFlight.delete(command.commandId);
-          deferred.reject(error);
-        }
-      })();
-      return deferred.promise;
+        const result = PreflightRerunCommandResultSchema.parse({
+          state: "completed",
+          commandId: command.commandId,
+          report: await refresh(signal),
+        });
+        latest = result.report;
+        return result;
+      });
     },
     refresh,
     readLatest() {

@@ -67,7 +67,7 @@ export function createDashboardModelFixtures() {
         placement: ["footer", "menu"], kind: "command", command: "cancel", expectedVersion: 1,
         confirm: {
           title: "Cancel this run",
-          body: "This stops the run where it is and settles it cancelled.",
+          body: "Final: a cancelled run is never resumed.",
           confirmLabel: "Cancel the run",
           tone: "destructive",
         },

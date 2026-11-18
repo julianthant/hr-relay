@@ -69,7 +69,8 @@ export type DecisionInputWire = z.infer<typeof DecisionInputWireSchema>;
 export const DecisionOptionWireSchema = z.strictObject({
   id: Text,
   label: Text,
-  hint: Text,
+  /* Only where the label alone is not enough. */
+  hint: Text.optional(),
   recommended: z.literal(true).optional(),
   send: DecisionSendSchema,
   /* Only the option that uses it; an option without one is submittable as is. */
