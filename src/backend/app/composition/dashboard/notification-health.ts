@@ -14,12 +14,27 @@ import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { isAuthoritySourceChanged } from "../../../storage/sqlite/readonly-authority-snapshot.js";
 
 type InspectionVerdict = "sound" | "failed" | "overtaken";
-/** The whole-store inspection runs on a worker thread because it takes seconds on a real store. An aborted pass throws; a refused inspection is a failed verdict the caller turns into a failed-health notification. */
+
+/** The inspection worker preserves error messages and string codes. Only diagnostics from a failed integrity check count as a verdict. */
+function isStoreIntegrityFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const { message } = error;
+  if ("code" in error && error.code === "ERR_SQLITE_ERROR") {
+    return message === "database disk image is malformed" || message === "file is not a database";
+  }
+  return /^authority database foreign-key validation failed for [1-9]\d* row\(s\)$/u.test(message)
+    || message.startsWith("authority database invariant validation failed: ")
+    || /^authority table \w+ failed native record validation: \[\s*\{/u.test(message)
+    || (message.startsWith("[") && /"path":\s*\[\s*"(?:quick_check|authority_generation)"\s*\]/u.test(message));
+}
+
 async function inspectStore(admission: RuntimeAdmission, path: string, signal: AbortSignal | undefined): Promise<InspectionVerdict> {
   try { await inspectAuthorityOffThread(admission, path, { signal }); return "sound"; }
   catch (error) {
     if (signal?.aborted === true) throw error;
-    return isAuthoritySourceChanged(error) ? "overtaken" : "failed";
+    if (isAuthoritySourceChanged(error)) return "overtaken";
+    if (isStoreIntegrityFailure(error)) return "failed";
+    throw error;
   }
 }
 

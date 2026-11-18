@@ -1,5 +1,6 @@
-import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -13,11 +14,64 @@ import { withReadonlyAuthoritySnapshot } from "../../../../../src/backend/storag
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
+import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld();
 
 describe("canonical notification producers", () => {
+  it("reports a scratch failure without raising an integrity alert and retries the unchanged store", async () => {
+    const f = await fixture();
+    const inspect = vi.spyOn(authorityInspection, "inspectAuthorityOffThread")
+      .mockRejectedValueOnce(new Error("backup-inspection-scratch-failed"));
+    try {
+      const { observer, inbox } = createTrustNotifications({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock, ids: sequentialIdFactory("b"), reader: f.reader, stateRoot: f.root });
+      await observer.observe();
+      expect(inbox.list("local-operator").filter(row => row.title.includes("integrity-check"))).toEqual([]);
+      expect(f.db.authority.notificationHealth.get("integrity-check")).toBeUndefined();
+      expect(observer.status()).toEqual({ state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 });
+
+      await observer.observe();
+      expect(inspect).toHaveBeenCalledTimes(2);
+      expect(observer.status()).toEqual({ state: "ready", pending: 0 });
+      expect(f.db.authority.notificationHealth.get("integrity-check")?.active).toBe(false);
+    } finally { inspect.mockRestore(); await f.close(); }
+  });
+
+  it.each([
+    { failure: "a foreign-key violation", damage: (database: DatabaseSync, at: string) => {
+      database.prepare("INSERT INTO command_audits (id, command_id, payload_json, created_at) VALUES (?, ?, ?, ?)")
+        .run(randomUUID(), randomUUID(), "{}", at);
+    } },
+    { failure: "an invalid authority record", damage: (database: DatabaseSync) => {
+      database.exec("UPDATE database_states SET updated_at='invalid'");
+    } },
+    { failure: "an invalid authority generation", damage: (database: DatabaseSync) => {
+      database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET authority_generation=-1");
+    } },
+    { failure: "an invalid SQLite file", damage: undefined },
+  ])("raises an integrity alert for $failure", async ({ damage }) => {
+    const f = await fixture();
+    const root = mkdtempSync(join(tmpdir(), "relay-health-verdict-"));
+    const path = join(root, "state.db");
+    try {
+      if (damage === undefined) {
+        writeFileSync(path, Buffer.alloc(4096, 1), { mode: 0o600 });
+      } else {
+        const source = new DatabaseSync(f.path, { readOnly: true });
+        try { source.prepare("VACUUM INTO ?").run(path); } finally { source.close(); }
+        const damaged = new DatabaseSync(path, { enableForeignKeyConstraints: false });
+        try { damage(damaged, f.clock.now().toISOString()); } finally { damaged.close(); }
+      }
+
+      const { observer, inbox } = createTrustNotifications({ admission: syntheticStateRoot(root), database: f.db, clock: f.clock, ids: sequentialIdFactory("b"), reader: f.reader, stateRoot: root });
+      await observer.observe();
+      expect(f.db.authority.notificationHealth.get("integrity-check")?.active).toBe(true);
+      expect(inbox.list("local-operator").filter(row => row.title.includes("integrity-check"))).toHaveLength(1);
+      expect(observer.status()).toEqual({ state: "ready", pending: 0 });
+    } finally { rmSync(root, { recursive: true, force: true }); await f.close(); }
+  });
+
   it("reads actual backup verification, accepts stale generations, and never creates a backup", async () => {
     const f = await fixture();
     try {
