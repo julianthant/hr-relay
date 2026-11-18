@@ -155,7 +155,8 @@ describe('confirmed Settings feedback through the current editor', () => {
     await act(async () => controller().update('display.screenWidth', '1980'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
     assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved settings', description: 'Restart required to use these changes.' }]);
-    assert.equal(host.textContent?.includes('Saved'), false, 'no inline saved row');
+    assert.match(host.textContent ?? '', /Restart required/);
+    assert.doesNotMatch(host.textContent ?? '', /Saved(?! settings apply after Relay restarts)|Saving/, 'no inline saved row');
   });
   it('reverts an unknown outcome with a failure toast and never retries it', async () => {
     const { controller, host, ports, commands, notices, problems } = await setup();

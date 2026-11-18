@@ -944,6 +944,47 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     await settle(); assert_m2.equal(commands.length, 1, "a lost reply must not retry automatically");
   });
 
+  for (const settlement of ["confirmed", "conflict", "refused"] as const) it_m2(`settles an ordinary Settings save on a ${settlement} reply with one toast`, async () => {
+    const commands: unknown[] = [];
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
+    const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
+      commands.push(body);
+      const command = CommandRequestSchema.parse(body);
+      return Promise.resolve(settlement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(settlement === "conflict"
+        ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
+        : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
+    } });
+    const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "Task");
+    assert_m2.ok(label, "missing Task label");
+    const input = document.getElementById(label.htmlFor);
+    assert_m2.ok(input instanceof HTMLInputElement);
+    const original = input.value;
+    assert_m2.notEqual(original, "240");
+    await act_m2(async () => {
+      input.focus();
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
+      descriptor.set.call(input, "240");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    assert_m2.equal(input.value, "240", "the new value shows at once");
+    await act_m2(async () => input.blur()); await settle();
+    assert_m2.equal(commands.length, 1);
+    const toasts = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+    assert_m2.equal(toasts.length, 1);
+    assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /save unconfirmed|Command result|Synthetic/u);
+    if (settlement === "confirmed") {
+      assert_m2.match(toasts[0]?.textContent ?? "", /Saved Task/u);
+      assert_m2.equal(input.value, "240");
+    } else {
+      assert_m2.match(toasts[0]?.textContent ?? "", /Settings weren't saved/u);
+      assert_m2.match(toasts[0]?.textContent ?? "", /The previous value is back\./u);
+      assert_m2.equal(input.value, original);
+    }
+    assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
+    await settle(); assert_m2.equal(commands.length, 1, "a settled save is never retried");
+  });
+
   for (const save of [
     { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed" },
   ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {

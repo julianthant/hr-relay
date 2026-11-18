@@ -15,7 +15,7 @@ import { fixtureSettingsDocument } from "../../../mocks/helpers/fixture-settings
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
-const APPROVED_NAV = [
+const APPROVED_NAV: [string, string[]][] = [
   ["Personal", ["general", "account"]],
   ["Data", ["spreadsheets", "explorer", "activity"]],
   ["Help", ["keyboard"]],
@@ -110,7 +110,8 @@ describe("canonical Settings navigation", () => {
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 7);
+    assert.deepEqual([...page.querySelectorAll('a[href^="?settings="]')].map(link => link.getAttribute("href")),
+      APPROVED_NAV.flatMap(([, ids]) => ids).map(id => `?settings=${id}`));
     assert.ok(page.textContent?.includes("Relay could not read your settings."), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Nothing was changed."), page.textContent ?? "");
     assert.ok([...page.querySelectorAll("button")].some(button => button.textContent === "Retry"));

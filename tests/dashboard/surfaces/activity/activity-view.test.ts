@@ -76,10 +76,10 @@ const withAssistant = (messages: readonly number[], proposed: readonly number[])
 };
 const headings = () => [...document.querySelectorAll('h2, h3')].map(item => item.textContent);
 
-it('draws Messages, Tools used and Actions after Why runs failed, with the served counts', async () => {
+it('draws Messages, Tools used and Actions, with the served counts', async () => {
   await render(withAssistant([1, 2, 3, 0, 0, 4, 5], [0, 1, 0, 0, 2, 0, 0]));
   const order = headings().filter(text => ['Why runs failed', 'Messages', 'Tools used', 'Actions'].includes(text ?? ''));
-  assert.deepEqual(order, ['Why runs failed', 'Messages', 'Tools used', 'Actions']);
+  assert.deepEqual(order, ['Messages', 'Tools used', 'Actions'], 'Why runs failed is no longer drawn');
   assert.match(document.body.textContent, /Messages sent to the assistant each day\./);
   const messages = document.querySelector('figure[aria-label="Messages per day"]'); assert(messages);
   assert.match(messages.textContent ?? '', /Messages\s*15/);
@@ -127,7 +127,7 @@ it('says one plain sentence for an empty period and keeps the period control', a
   await render(activitySample(ACTIVITY_SAMPLE_RANGE, 'empty'));
   assert.match(document.body.textContent, /No runs in this period/);
   assert.doesNotMatch(document.body.textContent, /0 finished runs|Open a row to see what went wrong/);
-  assert(document.querySelector('[aria-label="Report period"], [role="radiogroup"]'));
+  assert([...document.querySelectorAll('fieldset legend')].some(item => item.textContent === 'Report period'));
 });
 
 it('a bad range keeps the period control and never echoes the raw value', async () => {
@@ -135,5 +135,5 @@ it('a bad range keeps the period control and never echoes the raw value', async 
   await act(async () => root?.render(createElement(ActivityReport, { source: 'mock', range: 'not-a-range', onRange() {} })));
   assert.doesNotMatch(document.body.textContent, /not-a-range/);
   assert.match(document.body.textContent, /That date range is not valid/);
-  assert(['7d', '30d', '90d'].every(label => [...document.querySelectorAll('button, [role="radio"]')].some(item => item.textContent === label)));
+  assert(['7d', '30d', '90d'].every(value => document.querySelector(`fieldset input[type="radio"][value="${value}"]`)));
 });
