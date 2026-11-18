@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { afterEach, it } from "vitest";
-import { RailSearch } from "../../../../src/dashboard/surfaces/shell/search/navbar-view.js";
+import { RailSearch } from "../../../../../src/dashboard/surfaces/shell/search/navbar-view.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Element.prototype.scrollIntoView = () => {};
@@ -20,8 +20,8 @@ it("reopens the search palette with an empty query", async () => {
   const input = () => document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]');
   await act(async () => trigger().click());
   assert.equal(input()?.value, "");
-  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-  await act(async () => { setValue.call(input()!, "archer"); input()!.dispatchEvent(new Event("input", { bubbles: true })); });
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.bind(input()!);
+  await act(async () => { setValue?.("archer"); input()!.dispatchEvent(new Event("input", { bubbles: true })); });
   assert.equal(input()?.value, "archer");
   await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
   assert.equal(input(), null);

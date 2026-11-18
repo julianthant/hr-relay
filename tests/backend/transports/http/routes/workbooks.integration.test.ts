@@ -23,7 +23,7 @@ afterEach(disposeHttpRouteHarness);
 const headers = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
 const workbook = { name: "Dates.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Dates", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: new Date("2026-01-01T00:00:00.000Z") }] }] }] };
 function workbookClient(app: DashboardApp) {
-  return createWorkbookLibraryQueries(createDashboardTransport({ baseUrl: 'http://localhost', fetchImpl: (url, init) => {
+  return createWorkbookLibraryQueries(createDashboardTransport({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {
     const request = new Request(url, init);
     request.headers.set('host', new URL(url).host);
     return app.request(request);
