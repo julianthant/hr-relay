@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { paletteSheets, readSearchSnapshot, searchResults, withQueueSubjects, useLibrarySheets, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
+import { SEARCH_PAUSE_MS, paletteSheets, readSearchSnapshot, searchResults, withQueueSubjects, useLibrarySheets, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
@@ -68,7 +68,7 @@ it("reports a pending library read as loading and keeps loaded rows through a fa
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { open: true })));
   assert.equal(seen?.sheets.length, 0); assert.equal(seen?.unavailable, undefined);
-  const sheet = { libraryId: "x", version: 1, savedAt: "2026-11-01T12:00:00Z", workbook: { name: "Roster" } } as never;
+  const sheet = { libraryId: "x", version: 1, savedAt: "2026-11-01T12:00:00Z", name: "Roster" } as never;
   await act(async () => reads[0].finish([sheet]));
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
   await act(async () => root?.render(createElement(Probe, { open: false })));
@@ -88,6 +88,8 @@ it("does no reads in mock/closed mode and suppresses a stale query result", asyn
   const render = async (query: string, enabled: boolean) => { await act(async () => root?.render(createElement(Probe, { query, enabled }))); };
   await render("old", false); assert.equal(requests.length, 0);
   await render("old", true); await render("new", true);
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, SEARCH_PAUSE_MS + 100)); });
+  assert.equal(requests.length, 2);
   await act(async () => requests[1].finish(zeroMatchSearchPage()));
   assert.equal(data?.totalMatches, 0);
   await act(async () => requests[0].finish({ ...zeroMatchSearchPage(), totalMatches: 1, results: [result(1)] }));
@@ -164,4 +166,21 @@ it("never uses an unregistered workflow's raw id as its display label", async ()
       registration: { state: "unregistered", reason: "workflow declaration unavailable" } }] });
   const snapshot = await readSearchSnapshot({ searchRuns: async () => historical }, { q: "" }, new AbortController().signal);
   assert.equal(searchResults(snapshot)[0].workflow, "Unregistered workflow");
+});
+
+it("sends one search after the operator pauses, not one per keystroke", async () => {
+  const requests: string[] = [];
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => { requests.push(new URL(url).searchParams.get("q") ?? ""); return Response.json(zeroMatchSearchPage()); } });
+  const epoch = {}, workflows: Parameters<typeof workspaceSearchQuery>[1] = [];
+  let data: NavbarData | undefined;
+  function Probe({ query }: { query: string }) { data = useSearchWiring({ client, enabled: true, query, today: "2026-08-03", epoch, workflows }); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe, { query: "" })));
+  assert.deepEqual(requests, [""]);
+  for (const typed of ["a", "ar", "arc", "arch", "arche", "archer"]) await act(async () => root?.render(createElement(Probe, { query: typed })));
+  assert.deepEqual(requests, [""]); assert.equal(data?.loading, true);
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, SEARCH_PAUSE_MS + 100)); });
+  assert.deepEqual(requests, ["", "archer"]); assert.equal(data?.loading, undefined); assert.equal(data?.totalMatches, 0);
+  await act(async () => root?.render(createElement(Probe, { query: "" })));
+  assert.deepEqual(requests, ["", "archer", ""]);
 });
