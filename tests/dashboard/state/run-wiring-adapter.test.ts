@@ -322,7 +322,10 @@ describe("served Logs wiring", () => {
     assert.equal(original.section, "failure");
     if (original.section !== "failure" || original.payload.state !== "available") throw new Error("failure fixture unavailable");
     const source = original.payload.value;
-    const failure = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: { ...source, retry: undefined,
+    // An unknown write serves no retry, so its decision offers none (failureDecision drops it the same way).
+    const decision = source.decision === undefined ? undefined
+      : { ...source.decision, options: source.decision.options.filter(option => option.send.via !== "action" || option.send.actionKey !== source.retry?.key) };
+    const failure = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: { ...source, retry: undefined, decision,
       runId: RUN, native: nativeOf(RUN, 40, source.nodeId), traceId: selection().row.traceId, writeState: "unknown" } } });
     const servedDetail = RunDetailWireSchema.parse({ ...detail(), availableSections: ["logs", "failure"] });
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/failure") ? failure : servedDetail);
