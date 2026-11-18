@@ -31,7 +31,7 @@ beforeEach(() => {
 function render(state: "running" | "pause-pending" | "paused" | "unavailable", interrupt?: StepInterruptWire): string {
   const row = QueueSurfaceWireSchema.parse({ ...running, pauseControl: { state, expectedVersion: running.rowRevision },
     ...(interrupt === undefined ? {} : { interrupt }) });
-  return renderToStaticMarkup(createElement(TooltipProvider, null, createElement(LogSample, { source: "served", selection: { row, workflowLabel: "Person Lookup" } })));
+  return renderToStaticMarkup(createElement(TooltipProvider, null, createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } })));
 }
 
 describe("Logs timeline shows the served pause control and interrupt", () => {
