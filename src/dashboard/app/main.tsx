@@ -26,9 +26,12 @@ const client = createDashboardClient({ baseUrl: window.location.origin,
 
 const clientId = crypto.randomUUID();
 const report = (error: unknown) => {
-  const [cause] = serializeErrorCauses(error instanceof DashboardClientError ? error : undefined);
-  void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard", route: window.location.pathname, surface: "app",
-    code: cause.code, reason: cause.reason, message: cause.name, stack: cause.stack })
+  const classification = error instanceof DashboardClientError
+    ? new DashboardClientError({ kind: error.kind, code: error.code, message: "" })
+    : undefined;
+  const [{ code, reason, name }] = serializeErrorCauses(classification);
+  void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard", route: "/", surface: "app",
+    code, reason, message: name })
     .catch(() => {
       window.reportError(new DashboardReportDeliveryError());
     });

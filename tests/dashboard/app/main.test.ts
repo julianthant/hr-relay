@@ -36,7 +36,7 @@ it("surfaces rejected error delivery once without recursively reporting it, and 
   assert.equal(surfaced[0].message, "Dashboard error report was not recorded");
   assert.equal(report.mock.calls[0][0].code, "INTERNAL_FAILURE");
   assert.equal(report.mock.calls[0][0].message, "UnknownCause");
-  assert.equal(report.mock.calls[0][0].stack, "UnknownCause");
+  assert.equal(report.mock.calls[0][0].stack, undefined);
   assert.ok(dashboardReportAccepted(report.mock.calls[0][0]));
   assert.equal(JSON.stringify(surfaced.map(error => error.message)).includes("private"), false);
 
@@ -45,13 +45,36 @@ it("surfaces rejected error delivery once without recursively reporting it, and 
   assert.equal(report.mock.calls.length, 2);
   assert.equal(report.mock.calls[1][0].code, "INTERNAL_FAILURE");
   assert.equal(report.mock.calls[1][0].message, "UnknownCause");
-  assert.equal(report.mock.calls[1][0].stack, "UnknownCause");
+  assert.equal(report.mock.calls[1][0].stack, undefined);
   assert.ok(errors.every(event => !event.defaultPrevented));
 
   browser.dispatchEvent(new Event("pagehide"));
   dispatchError(new Error("after pagehide"));
   browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("after pagehide") }));
   assert.equal(report.mock.calls.length, 2);
+});
+
+it("reports a typed client error with closed fields when its stack and URL contain HR text", async () => {
+  const browser = new EventTarget();
+  Object.assign(browser, { location: { origin: "http://localhost:5174", pathname: "/River-Example" } });
+  vi.stubGlobal("window", browser);
+  vi.stubGlobal("document", { getElementById: () => ({}) });
+  report.mockResolvedValue(undefined);
+  const { DashboardClientError } = await import("../../../src/dashboard/client/errors.js");
+  await import("../../../src/dashboard/app/main.js");
+  const error = new DashboardClientError({ kind: "network", message: "Synthetic employee River Example" });
+  const hrFrame = "src/synthetic/River-Example.ts:12:4";
+  error.stack = `DashboardClientError: ${error.message}\n    at /synthetic/worktree/${hrFrame}`;
+  browser.dispatchEvent(Object.assign(new Event("error"), { error }));
+  assert.equal(report.mock.calls.length, 1);
+  const [payload] = report.mock.calls[0];
+  assert.equal(payload.code, "DASHBOARD_READ_FAILED");
+  assert.equal(payload.reason, "network-failed");
+  assert.equal(payload.message, "DashboardClientError");
+  assert.equal(payload.route, "/");
+  assert.equal(JSON.stringify(payload).includes("River-Example"), false);
+  assert.equal(payload.stack, undefined);
+  assert.ok(dashboardReportAccepted(payload));
 });
 
 it("reports errors and rejections after persisted pagehide and pageshow, then disposes on final hide", async () => {

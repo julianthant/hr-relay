@@ -24,10 +24,11 @@ it("persists an uncaught dashboard exception without HR text for import at the n
   const root = mkdtempSync(join(tmpdir(), "relay-process-crash-"));
   try {
     const hrText = "Synthetic employee River Example";
+    const hrFrame = "src/synthetic/River-Example.ts:12:4";
     const child = crash(root, `setImmediate(() => {
       const error = new TypeError(${JSON.stringify(`${hrText} password=${CREDENTIAL}`)});
       error.code = "EID_SYNTHETIC_001";
-      error.stack += "\\n    at /synthetic/worktree/src/backend/app/bootstrap/process-crash.ts:12:4";
+      error.stack += "\\n    at /synthetic/worktree/${hrFrame}";
       throw error;
     });`);
     assert.equal(child.error, undefined);
@@ -47,10 +48,11 @@ it("persists an uncaught dashboard exception without HR text for import at the n
     const spool = readFileSync(join(root, "logs", "boot.jsonl"), "utf8");
     assert.equal(spool.includes(CREDENTIAL), false);
     assert.equal(spool.includes(hrText), false);
+    assert.equal(spool.includes(hrFrame), false);
     assert.equal(spool.includes("EID_SYNTHETIC_001"), false);
     assert.equal(payload.event.code, "INTERNAL_FAILURE");
-    assert.equal(payload.event.message, "TypeError");
-    assert.equal(payload.event.stack, "TypeError\n    at src/backend/app/bootstrap/process-crash.ts:12:4");
+    assert.equal(payload.event.message, undefined);
+    assert.equal(payload.event.stack, undefined);
     const { repository, records } = debugTimelineFixture();
     assert.equal(importLocalDebugLog(root, repository), 1);
     assert.deepEqual(records.map(record => record.payload), [payload]);
@@ -90,22 +92,29 @@ it("still exits when appending the crash event fails while the process has activ
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it("still exits when reading the error's stack throws inside the handler", () => {
-  const root = mkdtempSync(join(tmpdir(), "relay-crash-stack-failed-"));
+it.each(["cause", "stack"])("records a crash and exits when inspecting the error's %s would throw", property => {
+  const root = mkdtempSync(join(tmpdir(), "relay-crash-error-accessor-"));
   try {
     const child = crash(root, `
       setInterval(() => undefined, 1000);
-      const error = new Error("synthetic stack failure");
-      Object.defineProperty(error, "stack", { get() { throw new Error("synthetic stack getter failed"); } });
+      const error = new Error("synthetic crash");
+      Object.defineProperty(error, ${JSON.stringify(property)}, { get() { throw new Error("synthetic error getter failed"); } });
       setImmediate(() => { throw error; });
     `);
     assert.equal(child.error, undefined);
     assert.equal(child.signal, null);
     assert.equal(child.status, 1);
+    const local = readLocalDebugLog(root);
+    assert.ok(local.state === "present");
+    assert.equal(local.records.length, 1);
+    const payload = local.records[0]?.payload;
+    assert.ok(payload?.kind === "debug");
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.reason, "uncaught-exception");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it("persists one unhandled worker rejection with its error name and sanitized stack and exits non-zero", () => {
+it("persists one unhandled worker rejection and exits non-zero", () => {
   const root = mkdtempSync(join(tmpdir(), "relay-process-rejection-"));
   try {
     const child = crash(root, `void Promise.reject(new RangeError("synthetic rejection token=${CREDENTIAL}"));`, "worker");
@@ -122,8 +131,8 @@ it("persists one unhandled worker rejection with its error name and sanitized st
     assert.equal(payload.event.reason, "unhandled-rejection");
     assert.equal(payload.event.pid, child.pid);
     assert.equal(payload.event.code, "INTERNAL_FAILURE");
-    assert.equal(payload.event.message, "RangeError");
-    assert.equal(payload.event.stack?.split("\n")[0], "RangeError");
+    assert.equal(payload.event.message, undefined);
+    assert.equal(payload.event.stack, undefined);
     assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes(CREDENTIAL), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -155,6 +164,7 @@ it.each(["dashboard", "worker"])("installs crash capture through the %s process 
     assert.ok(payload?.kind === "debug");
     assert.equal(payload.event.area, `${processKind}-process`);
     assert.equal(payload.event.code, "INTERNAL_FAILURE");
-    assert.equal(payload.event.message, "SyntaxError");
+    assert.equal(payload.event.reason, "uncaught-exception");
+    assert.equal(payload.event.message, undefined);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
