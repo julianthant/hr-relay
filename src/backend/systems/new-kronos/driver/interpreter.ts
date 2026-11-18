@@ -83,6 +83,11 @@ class NewKronosDriverError extends Error {
   }
 }
 
+class NewKronosRowPairingError extends NewKronosDriverError {
+  override name = "NewKronosRowPairingError";
+  readonly code = "timecard-unreadable";
+}
+
 const ELEMENTS = new Map(NEW_KRONOS_UI_REGISTRY.elements.map((element) => [element.id, element]));
 
 function elementDefinition(id: ElementId) {
@@ -577,17 +582,15 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
       assertCurrent();
 
       if (dateRows.length !== dataRows.length) {
-        throw new NewKronosDriverError(
+        throw new NewKronosRowPairingError(
           `the timecard grid has unaligned date/data row counts ${String(dateRows.length)}/${String(dataRows.length)} `
-          + "— refusing an incomplete row window. Review the separation dates manually.",
+          + "— refusing an incomplete row window",
         );
       }
       const dataByKey = new Map<string | number, readonly string[]>();
       for (const { key, cells } of dataRows) {
         if (key === null || dataByKey.has(key)) {
-          throw new NewKronosDriverError(
-            "unpaired timecard row keys: missing or duplicate GridRow uid in the data pane. Review the separation dates manually.",
-          );
+          throw new NewKronosRowPairingError("unpaired timecard row keys: missing or duplicate GridRow uid in the data pane");
         }
         dataByKey.set(key, cells);
       }
@@ -597,9 +600,7 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
       for (const { key, label } of dateRows) {
         const cells = key === null ? undefined : dataByKey.get(key);
         if (key === null || cells === undefined) {
-          throw new NewKronosDriverError(
-            "unpaired timecard row keys: missing, duplicate or unmatched GridRow uid in the date pane. Review the separation dates manually.",
-          );
+          throw new NewKronosRowPairingError("unpaired timecard row keys: missing, duplicate or unmatched GridRow uid in the date pane");
         }
         dataByKey.delete(key);
         const match = /([A-Za-z]{3})\s+(\d{1,2})\/(\d{1,2})/.exec(label);

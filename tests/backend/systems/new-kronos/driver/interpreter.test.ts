@@ -2,9 +2,16 @@
 import assert from "node:assert/strict";
 import { type Locator, type Page } from "playwright";
 import { describe, it, vi } from "vitest";
+import { buildNodeFailureRecord } from "../../../../../src/backend/runtime/execution/run-failure.js";
 import { createNewKronosTimecardDriver } from "../../../../../src/backend/systems/new-kronos/driver/interpreter.js";
+import { readSeparationTimecardTask } from "../../../../../src/backend/systems/new-kronos/tasks/read-separation-timecard.js";
+import { projectFailureForOperator } from "../../../../../src/models/trust/failure.js";
 import { NEW_KRONOS_SEARCH_QUERY_LABEL } from "../../../../../src/models/ui/new-kronos-timecard.js";
+import { NodeIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { TaskError } from "../../../../../src/workflow-kit/errors.js";
+import { taskFailer } from "../../../../../src/workflow-kit/task.js";
+import { QUEUED_RUN } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 
 import { NEW_KRONOS_NO_RESULTS_SENTINEL } from "../../../../../src/models/ui/new-kronos-timecard.js";
 
@@ -307,11 +314,14 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>)
   return page as unknown as Page;
 }
 
-function driveTimecardRead(script: Script) {
+function scriptedTimecardDriver(script: Script) {
   const clock = manualClock(new Date("2026-08-27T18:00:00.000Z"));
   const page = fakeTimecardPage(script, clock);
-  const driver = createNewKronosTimecardDriver(() => undefined, page, clock);
-  return driver.readSeparationTimecard({
+  return createNewKronosTimecardDriver(() => undefined, page, clock);
+}
+
+function driveTimecardRead(script: Script) {
+  return scriptedTimecardDriver(script).readSeparationTimecard({
     employeeId: EMPLOYEE_ID,
     rangeStart: "6/1/2026",
     rangeEnd: script.gridHarvests === undefined ? "8/12/2026" : "6/2/2026",
@@ -345,12 +355,37 @@ describe("timecard grid structural completeness", () => {
     assert.equal(read.grid.lastPunchDate, "06/02/2026");
   });
 
-  it("refuses aligned panes without debug scope and directs the operator to review the dates", async () => {
+  it("projects manual-date guidance for a protected run when aligned panes lack row keys", async () => {
     const dataRows = [{ key: "day-1", cells: empty }, { key: "day-2", cells: punches }];
-    await assert.rejects(
-      readGrid({ headers, dateRows, dataRows, debugInfoEnabled: false }),
-      /unpaired timecard row keys.*Review the separation dates manually/u,
-    );
+    const { contract, impl } = readSeparationTimecardTask;
+    const run = impl.run({
+      input: contract.input.parse({ emplId: EMPLOYEE_ID, rangeStart: "6/1/2026", rangeEnd: "6/2/2026" }),
+      ctx: {
+        driver: scriptedTimecardDriver({
+          startField: new FakeField("08/27/2026"), endField: new FakeField("08/27/2026"),
+          gridHarvests: [{ headers, dateRows, dataRows, debugInfoEnabled: false }],
+        }),
+        signal: new AbortController().signal,
+        log: { info() {}, warn() {}, debug() {} },
+        fail: taskFailer(contract),
+        recordData: () => assert.fail("an unpaired timecard must not record output evidence"),
+        captureScreenshot: async () => undefined,
+      },
+    });
+    await assert.rejects(run, (error: unknown) => {
+      assert.ok(error instanceof TaskError);
+      assert.equal(error.code, "timecard-unreadable");
+      assert.match(error.message, /unpaired timecard row keys/u);
+      const failure = projectFailureForOperator(buildNodeFailureRecord({
+        run: { ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, workflow: "separations" } },
+        writes: [], failureId: "10000000-0000-4000-8000-000000000004", nodeId: NodeIdSchema.parse("timecard"),
+        taskId: contract.id, error, occurredAt: "2026-08-27T18:00:00.000Z",
+      }), true);
+      assert.equal(failure.code, "TIMECARD_UNREADABLE");
+      assert.equal(failure.summary, "Kronos could not verify the timecard. Review it, then enter the confirmed separation dates manually.");
+      assert.equal(failure.remediation[0]?.message, failure.summary);
+      return true;
+    });
   });
 
   it.each(["", "day-1"])("refuses a missing or repeated data row key (%j)", async key => {
