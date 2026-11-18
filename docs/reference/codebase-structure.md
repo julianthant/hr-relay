@@ -236,7 +236,7 @@ Its `index.ts` declares the store and the retained proof. `src/workflows/registr
 `CHILD_ONLY_WORKFLOWS`, separately from `PUBLIC_WORKFLOWS`. A caller must
 declare its delegation edge to resolve a child.
 
-The [Spreadsheets import dialog](../../src/dashboard/surfaces/spreadsheets/design/sheets-v2.tsx) accepts
+The [Spreadsheets import dialog](../../src/dashboard/surfaces/spreadsheets/design/sheets-v2-import.tsx) accepts
 SharePoint workbook links. The [spreadsheet wiring adapter](../../src/dashboard/state/spreadsheet-wiring-adapter.ts)
 sends them through the typed client to `POST /api/v1/workbooks/import`.
 

@@ -367,7 +367,7 @@
       "file": "tests/architecture/systems/semantic-ui-registry.test.ts",
       "status": "active",
       "owner": "docs/reference/operator-trust.md; docs/reference/guards-and-tests.md",
-      "invariant": "Audits the CRM, Kuali, New Kronos, and UCPath semantic UI registries for unique classified IDs, collision-free search terms, resolved acyclic dependencies within the owning system and screen, and unique verification scenarios that exercise registry facts. Published selectors require fixture and live read-only evidence bound to the exact screen, scenario, date, and selector port row. The guard checks that buildUiTaskLinks covers every published fact with its registry metadata and preserves task attribution for the UCPath submit control and Kuali action list.",
+      "invariant": "Audits the CRM, Kuali, New Kronos, and UCPath semantic UI registries for unique classified IDs, collision-free search terms, and unique verification scenarios referenced by the registry. Each audit rejects cross-system facts and requires an element's required states to resolve on the same screen. The UCPath audit also rejects unknown targets, self-references, and cycles in supersedes links. Published selectors require fixture and live read-only evidence bound to the exact screen, scenario, date, and selector port row. The guard checks that buildUiTaskLinks covers every published fact with its registry metadata and preserves task attribution for the UCPath submit control and Kuali action list.",
       "replacementRequired": true
     },
     {
