@@ -40,6 +40,3 @@ export function notificationsSample(scenario: string): NotificationsState {
   throw new Error("notification-sample-missing");
 }
 
-export const previewNotificationReads: Readonly<Record<string, boolean>> = {
-  "mock:emergency-contact:sample:ocr": false,
-};

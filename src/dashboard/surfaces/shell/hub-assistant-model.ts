@@ -2,48 +2,10 @@ import { useMemo, useRef } from 'react';
 import { useDashboardClient } from '../../state/client-context.js';
 import { useSpreadsheetWiringAdapter } from '../../state/spreadsheet-wiring-adapter.js';
 import { spreadsheetChatRegistrationPort, type SpreadsheetFileReference } from '../spreadsheets/spreadsheet-chat-registration-model.js';
-import { addSpreadsheetColumn, editSpreadsheetCell, spreadsheetSaveMatches } from '../spreadsheets/spreadsheet-editor-model.js';
-import { type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
+import { spreadsheetSaveMatches } from '../spreadsheets/spreadsheet-editor-model.js';
 import type { ComposerDraft } from './composer-model.js';
-import { assistantWorkflowOption, createAssistantMockProducer, readAssistantAttachment, type AssistantConversation, type AssistantFile, type AssistantPorts, type AssistantWorkflowRequest, type AssistantWorkflowResult } from './assistant-panel-model.js';
-import { initialMockDraft, mockRunsForDraft, type MockRun } from '../workflows/mocks/workflow-mock-model.js';
-import type { WorkflowComposition } from '../../app/workflow-sources.js';
+import { createAssistantMockProducer, readAssistantAttachment, type AssistantConversation, type AssistantFile, type AssistantPorts, type AssistantWorkflowRequest, type AssistantWorkflowResult } from './assistant-panel-model.js';
 import type { AssistantHistory } from '../assistant/assistant-history-model.js';
-
-export function prepareHubWorkflow(request: AssistantWorkflowRequest, composition: WorkflowComposition, sequence: number): { runs: readonly MockRun[]; result: AssistantWorkflowResult } {
-  const option = assistantWorkflowOption(request.workflowId);
-  if (request.source !== 'mock' || request.dryRun !== true || !option || composition.assistant !== 'mock') throw new Error('This assistant supports sample dry runs only.');
-  const workbook = request.file.workbook;
-  if (!workbook || !request.rows.length || request.rows.some(row => row.issue !== null)) throw new Error('Review the spreadsheet rows before starting.');
-  const id = option.id;
-  const runs = request.rows.flatMap((row, index) => {
-    const field = Object.entries(row.values).filter(([key]) => option.identifier.test(key));
-    if (field.length !== 1 || !field[0][1].trim()) throw new Error(`${row.person}: provide one ${option.identifierLabel} column before starting.`);
-    const created = mockRunsForDraft(id, { ...initialMockDraft(id), method: 'typed', text: field[0][1].trim(), dryRun: true }, sequence + index);
-    if (created.length !== 1) throw new Error(`${row.person}: provide one ${option.identifierLabel} per row before starting.`);
-    return created.map(run => ({ ...run, title: row.person }));
-  });
-  const status = 'Sample dry run complete';
-  const updated: EditableWorkbook = { ...workbook, sheets: workbook.sheets.map(sheet => {
-    const rows = request.rows.filter(row => row.sheet === sheet.name);
-    if (!rows.length) return sheet;
-    let next = addSpreadsheetColumn(sheet, 'Relay result');
-    for (const row of rows) {
-      const target = sheet.rows[row.row - 1];
-      if (!target) throw new Error('The reviewed spreadsheet row is unavailable.');
-      next = editSpreadsheetCell(next, target.id, sheet.width, status);
-    }
-    return next;
-  }) };
-  const generated: EditableWorkbook = { name: 'Results.csv', themes: {}, hasFormulas: false, sheets: [{ id: 'results', name: 'Results', width: 4, hidden: [], rows: [
-    { id: 'header', cells: ['Name', 'Source sheet', 'Source row', 'Result'].map(value => ({ value })) },
-    ...request.rows.map((row, index) => ({ id: `result-${index}`, cells: [row.person, row.sheet, row.row, status].map(value => ({ value })) })),
-  ] }] };
-  return { runs, result: { state: 'complete', source: 'mock', files: [
-    { id: `${request.file.id}:updated`, name: workbook.name, status: 'Updated', workbook: updated },
-    { id: `${request.file.id}:results`, name: generated.name, status: 'Generated', workbook: generated },
-  ] } };
-}
 
 export function createHubAssistantSession(id: string, adapter: ReturnType<typeof useSpreadsheetWiringAdapter>['adapter'], onTitle?: (title: string) => void, initialTitle?: string, retainedDraft?: { read(): string; retain(text: string): void }) {
   const producer = createAssistantMockProducer(id === 'a' ? 'ask-write' : 'new');

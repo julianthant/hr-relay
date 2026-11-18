@@ -1,9 +1,9 @@
-import { displayExtractedDate } from "../../../lib/date-format.js";
+import { displayExtractedDate } from "../../../src/dashboard/lib/date-format.js";
 import type { MockRun } from "./workflow-mock-model.js";
 import { MOCK_FORM_TYPES, type MockStep } from "./workflow-mock-catalog.js";
 import { mockInputRecord, reviewName, reviewRecords, reviewValue, seedReviewRecords } from "./workflow-review-model.js";
-import type { LogEntry } from "../../run-detail/logs/log-feed-model.js";
-import type { LogTimelineState, LogTimelineSubstep } from "../../run-detail/logs/log-timeline-model.js";
+import type { LogEntry } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import type { LogTimelineState, LogTimelineSubstep } from "../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 
 import { MOCK_OPERATION_CATALOG, read, fill, click, type OperationField, type MockOperation } from "./workflow-operation-catalog.js";
 export { MOCK_OPERATION_CATALOG } from "./workflow-operation-catalog.js";

@@ -1,17 +1,16 @@
 import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
 import { WORKFLOW_SOURCES, workflowSource, type WorkflowSourcePolicy } from "../../app/workflow-sources.js";
-import { MOCK_WORKFLOW_CATALOG, type MockWorkflow } from "./mocks/workflow-mock-catalog.js";
 import type { RunStartWorkflow } from "../run-start/run-start.js";
-import { workflowNavigationGroups, workflowRailCategory, type WorkflowNavigationEntry } from "../shell/workflow-rail-model.js";
+import { workflowCategoryLabel } from "./workflow-category.js";
+import { workflowNavigationGroups, type WorkflowNavigationEntry } from "../shell/workflow-rail-model.js";
 
-export type WorkflowLaunchCapability = Readonly<{ state: "served" | "preview" }>
+export type WorkflowLaunchCapability = Readonly<{ state: "served" }>
   | Readonly<{ state: "unavailable"; label: string; reason: string }>;
 export interface WorkflowCatalogEntry extends WorkflowNavigationEntry {
   readonly code?: string;
-  readonly source: "served" | "preview";
+  readonly source: "served";
   readonly launch: WorkflowLaunchCapability;
   readonly served?: RunStartWorkflow;
-  readonly preview?: MockWorkflow;
 }
 
 /** The catalog lists the served workflows the sources policy marks "served"; nothing else is shown. */
@@ -20,12 +19,11 @@ export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], source
   const entries: WorkflowCatalogEntry[] = served.filter(flow => workflowSource(flow.workflowId, sources) === "served").map(flow => {
     if (seen.has(flow.workflowId)) throw new Error(`WORKFLOW_CATALOG_DUPLICATE: ${flow.workflowId}`);
     seen.add(flow.workflowId);
-    return { id: flow.workflowId, label: flow.label, categoryId: workflowRailCategory(flow.workflowId, flow.categoryId), role: flow.role,
-      code: flow.code, source: "served", served: flow, preview: MOCK_WORKFLOW_CATALOG.workflows.find(item => item.id === flow.workflowId),
+    return { id: flow.workflowId, label: flow.label, categoryId: workflowCategoryLabel(flow.categoryId), role: flow.role,
+      code: flow.code, source: "served", served: flow,
       launch: flow.inputRun.state === "present" || flow.uploadRun?.pdfInput !== undefined ? { state: "served" }
         : { state: "unavailable", label: "No direct start", reason: `This served workflow has no standalone launch input. ${flow.inputRun.reason}` } };
   });
-  for (const preview of MOCK_WORKFLOW_CATALOG.workflows) if (sources[preview.id] === "served" && !seen.has(preview.id)) throw new Error(`WORKFLOW_SERVED_REGISTRATION_MISSING: ${preview.id}`);
   const restrictions = workflowStartRestrictions(features);
   const guarded = entries.map(entry => {
     const restriction = restrictions.get(entry.id);

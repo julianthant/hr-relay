@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
-import { buildExplorerPreview,previewFieldSource } from "../../../../src/dashboard/surfaces/explorer/explorer-fixture.js";
+import { buildExplorerPreview,previewFieldSource } from "../../../support/fixtures/dashboard/explorer-fixture.js";
 import { DEFAULT_SCENARIO } from "../../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 import { ExplorerTimeline } from "../../../../src/dashboard/surfaces/explorer/explorer-flow.js";
 
@@ -41,7 +41,7 @@ describe("Explorer source focus return", () => {
     await act(async () => mounted?.render(createElement(ExplorerTimeline, {
       title: "Separations", steps: buildExplorerPreview(DEFAULT_SCENARIO), scenario: DEFAULT_SCENARIO,
       onScenario: () => undefined, sourceFor: (field, step) => previewFieldSource(field.source ?? "", step, DEFAULT_SCENARIO),
-      workflows: [{ id: "fixture-separations", title: "Separations", count: 22 }], workflowId: "fixture-separations", onWorkflow: () => undefined,
+      workflows: [{ id: "separations", title: "Separations", count: 22 }], workflowId: "separations", onWorkflow: () => undefined,
       summary: "Sample", completion: "Complete", path: { step: 17, control: "preview-pending" }, onMockChoice: () => undefined,
     })));
     const origin = host.querySelector<HTMLButtonElement>('[aria-label="Show source for Department"]');

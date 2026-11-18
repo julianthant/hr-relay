@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { DsBodyScope, PageHeading, SearchInput, TakeoverFrame, TooltipProvider, dsFocus, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
 import { WorkspaceRail } from "../../../../../src/dashboard/surfaces/shell/workspace-rail.js";
-import { MOCK_WORKFLOW_CATALOG } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { MOCK_WORKFLOW_CATALOG } from "../../../../mocks/workflows/workflow-mock-catalog.js";
 import type { LogStep } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import type { LogTimelineStage } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 import { Pause } from "lucide-react";

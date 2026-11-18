@@ -35,7 +35,7 @@ presentation.
 
 - Search uses first Escape to clear a nonempty query and a second Escape to close.
 - Intake dismisses through the header’s Close control; closing preserves the durable session.
-- An unknown Explorer workflow offers Open Separations as its recovery destination.
+- An unknown Explorer workflow offers the first listed workflow as its recovery destination.
 - The desktop canvas stays side by side at 1024×720 and scrolls below the minimum.
 - Queue uses mixed workflow rows, focus mode, one-line footers, `#attempt`, and plain trace text.
 - Review is a blue decision pill; Done with warnings keeps short Done text plus a warning count.

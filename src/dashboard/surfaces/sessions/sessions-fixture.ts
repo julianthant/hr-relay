@@ -56,10 +56,9 @@ export function previewSessionAdd(data: SessionsViewState, catalog: readonly Wor
   if (data.state !== "ready") throw new Error("sessions-preview-not-ready");
   const workflow = catalog.find(item => item.id === workflowId);
   if (!workflow || !Number.isSafeInteger(count) || count < 1) throw new Error("sessions-preview-add-invalid");
-  const systems = [...new Set(workflow.preview?.steps.flatMap(step => step.system ? [step.system] : []) ?? [])];
   return { state: "ready", workers: [...data.workers, ...Array.from({ length: count }, (_, index): SessionWorker => ({
     id: `sample-added-${firstOrdinal + index}`, label: `Worker ${firstOrdinal + index}`, workflowId: workflow.id, workflow: workflow.label, state: "starting", action: "Preparing worker",
-    browsers: systems.map(label => ({ id: label, label, state: "starting" })),
+    browsers: [],
   }))] };
 }
 

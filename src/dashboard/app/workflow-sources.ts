@@ -1,7 +1,6 @@
 import { z } from "zod";
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
-import type { RunStartWorkflow } from "../surfaces/run-start/run-start.js";
-import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
+import type { AssistantWorkflowRequest, AssistantWorkflowResult } from "../surfaces/shell/assistant-panel-model.js";
 
 /** Where a surface (sessions, activity, inbox, search, assistant) reads from; the design-mock harness composes "mock" surfaces, the product only "served". */
 export type SurfaceSource = "mock" | "served";
@@ -19,8 +18,6 @@ export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFL
 
 export interface WorkflowComposition {
   readonly sources: WorkflowSourcePolicy;
-  /** The design-mock harness supplies its own Explorer catalog; the product uses the served catalog. */
-  readonly explorerCatalog?: (served: readonly RunStartWorkflow[]) => readonly WorkflowCatalogEntry[];
   readonly logs?: SurfaceSource;
   readonly dataSources?: WorkflowSourcePolicy;
   readonly servedDay?: boolean;
@@ -29,6 +26,8 @@ export interface WorkflowComposition {
   readonly inbox: SurfaceSource;
   readonly search: SurfaceSource;
   readonly assistant?: SurfaceSource;
+  /** The design-mock harness runs the assistant's sample workflows; the product has none. */
+  readonly runAssistantSample?: (request: AssistantWorkflowRequest) => AssistantWorkflowResult;
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {

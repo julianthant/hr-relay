@@ -6,11 +6,7 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../m
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import "./launch-presentation.css";
-import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
-import { statusMock } from "../settings/status-mock/status-mock-model.js";
-import { WorkflowMockRunForm } from "../workflows/mocks/workflow-mock-run.js";
 import { RunOptionsLayout } from "./run-launch-layout.js";
-import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
 import { RunChecksStage } from "./run-checks.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
@@ -41,7 +37,7 @@ import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-
 import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, MISSING_REFERENCE_REASON, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
-import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
+import { WorkflowPdfInput } from "./run-start-pdf-input.js";
 import { pdfRunLaunchFields, previewPdfRun, unpickedPdfRunField, usePdfRunInput } from "./run-start-pdfs.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration ) */
@@ -195,9 +191,6 @@ export function RunStartDialog({
   onFixCheck,
   rerunSource,
   rerunInputText,
-  previewLaunch,
-  previewRuns,
-  onSubmitPreview,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -217,25 +210,10 @@ export function RunStartDialog({
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
   rerunInputText?: string;
-  previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
-  previewRuns?: readonly MockRun[];
-  onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   const workflows = useMemo(() => servedLaunchWorkflows(catalog), [catalog]);
-  if (catalog.some(entry => entry.launch.state === "preview") && onSubmitPreview === undefined) throw new Error("RUN_PREVIEW_CAPABILITY_INCOMPLETE");
-  if ((previewRuns === undefined) !== (onSubmitPreview === undefined) || (previewLaunch !== undefined && onSubmitPreview === undefined)) throw new Error("RUN_PREVIEW_CAPABILITY_INCOMPLETE");
-  if (previewLaunch && !previewLaunch.source && !mockWorkflow(previewLaunch.workflowId).runnable) throw new Error("RUN_PREVIEW_NOT_RUNNABLE");
   const navigation = useViewNavigation();
   const routed = navigation !== undefined;
-  const updateView = navigation?.update;
-  const [localPreviewSelection, setLocalPreviewSelection] = useState(previewLaunch);
-  const previewSelection = navigation ? previewLaunch : localPreviewSelection;
-  const previewOwnsStages = previewSelection !== undefined;
-  const setPreviewSelection = useCallback((next: typeof previewLaunch) => {
-    if (updateView) updateView({ launchWorkflow: next?.workflowId, launchSource: next?.source?.id });
-    else setLocalPreviewSelection(next);
-  }, [updateView]);
-  const previewDrafts = useRef(new Map<string, MockDraft>());
   const [pickerQuery, setPickerQuery] = useState("");
   const client = useDashboardClient();
   const commandBinding = useDashboardCommandBinding();
@@ -252,8 +230,8 @@ export function RunStartDialog({
   const isRerun = rerunSource !== undefined;
 
   const [workflowId, setWorkflowId] = useViewState("launchServed", () => defaultWorkflowId(workflows, panelWorkflowId));
-  const selectedWorkflowRef = useRef(previewSelection?.workflowId ?? workflowId);
-  useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
+  const selectedWorkflowRef = useRef(workflowId);
+  useEffect(() => { selectedWorkflowRef.current = workflowId; }, [workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
   const [draft, setDraft] = useState(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId)), commandBinding?.authority.today));
   const draftRef = useRef(draft);
@@ -362,9 +340,8 @@ export function RunStartDialog({
   const launchStages = useMemo(() => runStartStages(customizeSteps, isRerun), [customizeSteps, isRerun]);
 
   useEffect(() => {
-    if (previewOwnsStages) return;
     setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
-  }, [launchStages, setCurrentStage, previewOwnsStages]);
+  }, [launchStages, setCurrentStage]);
 
   /** Plans and results expire when any request-shaping fact changes. */
   /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
@@ -471,8 +448,7 @@ export function RunStartDialog({
   useEffect(() => {
     if (!open) return;
     resetPdfs();
-    if (!routed && !previewLaunch && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
-    if (!routed) setLocalPreviewSelection(previewLaunch);
+    if (!routed && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
     setPickerQuery("");
     update(current => ({ ...current, valueDrafts: {}, copiedOmissions: {}, sourceInputUnchanged: false,
       ...(rerunSource === undefined ? {} : { typed: { workflowId: "", draft: {} }, text: "" }) }));
@@ -486,21 +462,18 @@ export function RunStartDialog({
     suppressStage.current = rerunSource === undefined;
     try { send({ type: "open", recovery: recoveryState, ...(rerunSource === undefined ? {} : { rerun: rerunSource }), landOnValues: rerunInputText !== undefined }); }
     finally { suppressStage.current = false; }
-  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCustomizeSteps, resetPdfs, update, send]);
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, routed, setCustomizeSteps, resetPdfs, update, send]);
 
   const pickWorkflow = useCallback((id: string) => {
     if (selectedWorkflowRef.current === id || sending) return;
     const entry = catalog.find(flow => flow.id === id);
     if (!entry || entry.launch.state === "unavailable") return;
-    if (entry.launch.state === "preview" && onSubmitPreview === undefined) return;
     selectedWorkflowRef.current = id;
-    if (entry.preview && (statusMock() !== undefined && entry.preview.runnable || !entry.served)) setPreviewSelection({ workflowId: entry.preview.id });
-    else if (entry.served) {
+    if (entry.served) {
       send({ type: "pick-workflow" });
-      setPreviewSelection(undefined);
       selectWorkflow(id);
     }
-  }, [catalog, selectWorkflow, onSubmitPreview, setPreviewSelection, send, sending]);
+  }, [catalog, selectWorkflow, send, sending]);
 
   /** Closing without starting keeps the draft; the next open says so for a few seconds. */
   const [draftKept, setDraftKept] = useState(false);
@@ -522,7 +495,7 @@ export function RunStartDialog({
   }, [open]);
   useEffect(() => { if (!open) setDraftKept(false); }, [open]);
 
-  const checks = useRunChecks(client, previewOwnsStages ? undefined : workflow?.workflowId, open && !hidden);
+  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
   const fixCheck = (item: RunCheckRow) => {
@@ -663,10 +636,9 @@ export function RunStartDialog({
   };
 
 
-  const picker = <RunWorkflowPicker catalog={catalog} value={previewSelection?.workflowId ?? workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
-  const selectedLaunch = catalog.find(entry => entry.id === (previewSelection?.workflowId ?? workflowId))?.launch;
+  const picker = <RunWorkflowPicker catalog={catalog} value={workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
+  const selectedLaunch = catalog.find(entry => entry.id === workflowId)?.launch;
   const launchRefusal = selectedLaunch?.state === 'unavailable' ? selectedLaunch.reason : undefined;
-  const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
 
   const checkBusy = library.catalogRefreshing || library.compatibility === undefined;
   const checkHandlers = {
@@ -748,7 +720,7 @@ export function RunStartDialog({
   ];
   // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
   const enterRef = useRef<(() => void) | null>(null);
-  enterRef.current = previewOwnsStages || controls.enter === null ? null : () => press(controls.enter);
+  enterRef.current = controls.enter === null ? null : () => press(controls.enter);
   useEffect(() => {
     if (!open || hidden) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -770,13 +742,13 @@ export function RunStartDialog({
         onCloseAutoFocus={event => { if (hidden) event.preventDefault(); else onCloseAutoFocus?.(event); }}
         size="xl"
         band
-        title={previewSelection?.source || isRerun ? "Rerun" : "Start run"}
-        description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
-        className={cn("launch-design launch-dialog", (previewSelection?.source || isRerun) && "launch-rerun")}
+        title={isRerun ? "Rerun" : "Start run"}
+        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
+        className={cn("launch-design launch-dialog", isRerun && "launch-rerun")}
       >
-          {!previewSelection?.source && !isRerun && picker}
+          {!isRerun && picker}
 
-          {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
+          {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
@@ -1029,9 +1001,6 @@ export function RunStartSurfaces({
   onFixCheck,
   rerunSource,
   rerunInputText,
-  previewLaunch,
-  previewRuns,
-  onSubmitPreview,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1045,9 +1014,6 @@ export function RunStartSurfaces({
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
   rerunInputText?: string;
-  previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
-  previewRuns?: readonly MockRun[];
-  onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   return (
     <RunStartDialog
@@ -1063,9 +1029,6 @@ export function RunStartSurfaces({
       onFixCheck={onFixCheck}
       rerunSource={rerunSource}
       rerunInputText={rerunInputText}
-      previewLaunch={previewLaunch}
-      previewRuns={previewRuns}
-      onSubmitPreview={onSubmitPreview}
     />
   );
 }

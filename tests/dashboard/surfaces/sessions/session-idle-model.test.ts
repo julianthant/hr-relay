@@ -1,4 +1,10 @@
-import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import { act,createElement } from 'react';
@@ -77,7 +83,7 @@ it('retains the original held refresh across its own version move, cancels Remov
   const basis = (lifetimeId: string, version: number) => ({ basis: { state: 'present' as const, value: { lifetimeId, version } } });
   const card = { ...base, controls: basis(uuidOf(970), 1),
     browsers: base.browsers.map(browser => ({ ...browser, observation: { state: 'present' as const, health: 'authenticated' as const, observedAt: FIXTURE_NOW, browserMode: 'headed' as const, configFingerprint: 'a'.repeat(64) } })) };
-  const view = (next = card) => sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards: FIXTURE_DAY_WIRE.workerCards.map(old => old.workerId === card.workerId ? next : old) }), buildPreviewCatalog([], previewFixtureSources([])), FIXTURE_NOW);
+  const view = (next = card) => sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards: FIXTURE_DAY_WIRE.workerCards.map(old => old.workerId === card.workerId ? next : old) }), SERVED_CATALOG, FIXTURE_NOW);
   const schedule = new IdleSessionSchedule(); schedule.sync(view(), 0);
   const request = schedule.due(IDLE_REFRESH_MS, () => false)[0]; assert(request?.action === 'refresh');
   const operations = { [card.workerId]: { request, state: 'uncertain' as const, message: 'No response' } };

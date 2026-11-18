@@ -1,15 +1,15 @@
-import type { TypedInputDraft } from "../../../../models/workflow/ingress.js";
-import { typedInputDefaults, changeTypedInput } from "../../run-start/run-start-model.js";
-import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
+import type { TypedInputDraft } from "../../../src/models/workflow/ingress.js";
+import { typedInputDefaults, changeTypedInput } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import type { QueueBusinessOutcome } from "../../../src/dashboard/surfaces/shared/status/status-model.js";
 import { manualFact, mockStepInputError, usesManualRead } from "./workflow-manual-model.js";
-import { displayExtractedDate } from "../../../lib/date-format.js";
+import { displayExtractedDate } from "../../../src/dashboard/lib/date-format.js";
 import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockOnbaseDocumentType, mockWorkflow, type MockMethod, type MockStep, type MockWorkflowId } from "./workflow-mock-catalog.js";
-import type { LogEntry, LogStep } from "../../run-detail/logs/log-feed-model.js";
-import { WorkflowCountWireSchema } from "../../../../models/dashboard/projection.js";
-import type { LogTimelineStage, LogTimelineState } from "../../run-detail/logs/log-timeline-model.js";
+import type { LogEntry, LogStep } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { WorkflowCountWireSchema } from "../../../src/models/dashboard/projection.js";
+import type { LogTimelineStage, LogTimelineState } from "../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 
-import type { StatusBucket, StatusCountWire, WorkflowCountWire } from "../../shell/shell-model.js";
-import type { QueueSortKey } from "../../queue/queue-model.js";
+import type { StatusBucket, StatusCountWire, WorkflowCountWire } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import type { QueueSortKey } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 import { reviewCanApprove, reviewName, reviewRecords, reviewValue, seedReviewRecords, mockInputRecord, type ReviewRecord } from "./workflow-review-model.js";
 import { mockDetailEntries } from "./workflow-result-model.js";
 import { mockOperationEntries, mockOperationSubsteps, mockOperationDuration, mockOperationValue } from "./workflow-operation-model.js";

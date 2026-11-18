@@ -1,9 +1,9 @@
 import type { RecordReviewProps } from "../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
-import { mockReviewProps } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { mockReviewProps } from "../../../../mocks/workflows/workflow-review-model.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
-import { approveMockRun,initialMockDraft,mockRunsForDraft } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun,initialMockDraft,mockRunsForDraft } from "../../../../mocks/workflows/workflow-mock-model.js";
 import { RecordReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);

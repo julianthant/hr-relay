@@ -9,8 +9,8 @@ import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../
 import { readRunLogs, projectRunLogs, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
-import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
-import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
+import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import { RunDetailWireSchema, NativeRunEventWireSchema, IdentityGateDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { createIdentityCeremonyFixtures } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";

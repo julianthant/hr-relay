@@ -7,9 +7,15 @@ import { WorkerCard } from "../../../../src/dashboard/surfaces/sessions/worker-c
 import { sessionsFromDay } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { DashboardDayWireSchema, type StepInterruptWire } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../support/fixtures/dashboard/fixture-day.js";
-import { buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 
-const catalog = buildPreviewCatalog([]);
+const catalog = SERVED_CATALOG;
 
 /** Render worker 1 of the served fixture day with the served directive and interrupt, as the sessions view builds it. */
 function render(directive: "run" | "pause" | "stop", interrupt?: StepInterruptWire, state: "running" | "paused" = "running"): string {

@@ -14,7 +14,7 @@ The browser application starts at `app/main.tsx` and mounts `DashboardApp` from
 | `surfaces/queue/` | Queue rows, focus mode, filters, sorting, grouping, selection, and local preview mutations |
 | `surfaces/run-detail/` | Logs, timeline, decisions, image workspace, run headers, and identity models |
 | `surfaces/run-start/` | Launcher, plan, options, steps, rerun, and recovery |
-| `surfaces/workflows/` | Shared workflow catalog; `mocks/` contains preview runs, definitions, documents, and Records |
+| `surfaces/workflows/` | Shared served workflow catalog and category grouping |
 | `surfaces/sessions/` | Worker strip, cards, local command port, idle refresh, and samples |
 | `surfaces/notifications/` | Bell, inbox, destination models, and local preview producer |
 | `surfaces/settings/` | Settings composition and local styles |

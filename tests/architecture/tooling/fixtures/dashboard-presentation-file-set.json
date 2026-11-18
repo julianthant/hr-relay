@@ -40,7 +40,6 @@
   "src/dashboard/surfaces/explorer/explorer-flow.tsx",
   "src/dashboard/surfaces/explorer/explorer-parts.tsx",
   "src/dashboard/surfaces/explorer/explorer-source.tsx",
-  "src/dashboard/surfaces/explorer/explorer-spec-view.tsx",
   "src/dashboard/surfaces/explorer/explorer.tsx",
   "src/dashboard/surfaces/intake/intake.tsx",
   "src/dashboard/surfaces/notifications/notifications-panel.css",
@@ -68,6 +67,7 @@
   "src/dashboard/surfaces/run-start/run-launch-layout.tsx",
   "src/dashboard/surfaces/run-start/run-launch.tsx",
   "src/dashboard/surfaces/run-start/run-start-kit.tsx",
+  "src/dashboard/surfaces/run-start/run-start-pdf-input.tsx",
   "src/dashboard/surfaces/run-start/run-start-picker.tsx",
   "src/dashboard/surfaces/run-start/run-start.tsx",
   "src/dashboard/surfaces/sessions/session-panel.tsx",
@@ -133,6 +133,7 @@
   "src/dashboard/surfaces/shell/search/search-palette.tsx",
   "src/dashboard/surfaces/shell/startup-loading.css",
   "src/dashboard/surfaces/shell/startup-loading.tsx",
+  "src/dashboard/surfaces/shell/workflow-harness-tag.tsx",
   "src/dashboard/surfaces/shell/workflow-navigation.tsx",
   "src/dashboard/surfaces/shell/workflow-rail.tsx",
   "src/dashboard/surfaces/shell/workspace-rail.tsx",
@@ -145,9 +146,5 @@
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2-ui.tsx",
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2.css",
   "src/dashboard/surfaces/spreadsheets/design/sheets-v2.tsx",
-  "src/dashboard/surfaces/spreadsheets/spreadsheet-library.css",
-  "src/dashboard/surfaces/workflows/mocks/workflow-harness-tag.tsx",
-  "src/dashboard/surfaces/workflows/mocks/workflow-mock-queue.tsx",
-  "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx",
-  "src/dashboard/surfaces/workflows/mocks/workflow-pdf-input.tsx"
+  "src/dashboard/surfaces/spreadsheets/spreadsheet-library.css"
 ]
