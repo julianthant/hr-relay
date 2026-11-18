@@ -183,10 +183,15 @@ export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDep
     await library.libraryAction(pinned.libraryId, pinned.action, signal, () => { entry.assertIssued(); });
     return "applied";
   }
-  /** After a throw: the owner's own record of this operation, when it has one. */
-  function readback(pinned: Pinned): "applied" | "refused" | undefined {
+  function outcomeAfterError(pinned: Pinned, error: unknown): "applied" | "refused" | undefined {
     try {
-      if (pinned.kind === "library-action") return deps.workbooks().libraryActionRecord(pinned.libraryId, pinned.action.operationId) === undefined ? undefined : "applied";
+      if (pinned.kind === "library-action") {
+        // The action and its receipt commit together, before the separate sync status write.
+        const record = deps.workbooks().libraryActionRecord(pinned.libraryId, pinned.action.operationId);
+        if (record !== undefined) return "applied";
+        return error instanceof WorkbookLibraryError ? "refused" : undefined;
+      }
+      if (error instanceof WorkbookLibraryError) return "refused";
       if (pinned.kind === "operation") {
         const receipt = deps.workbooks().journal(pinned.libraryId).find(candidate => candidate.operationId === pinned.operationId);
         return receipt === undefined ? undefined : receipt.state === "applied" ? "applied" : "refused";
@@ -223,7 +228,7 @@ export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDep
       try { outcome = await run(guarded, signal); }
       catch (error) {
         if (stale !== undefined) return refuse(stale);
-        outcome = error instanceof WorkbookLibraryError ? "refused" : readback(entry.pinned);
+        outcome = outcomeAfterError(entry.pinned, error);
       }
       if (outcome === "refused") return refuse("ASSISTANT_SPREADSHEET_REFUSED");
       if (outcome === "applied") { entry.state = "settled"; caption(`Done: ${entry.label}.`); return { state: "applied", actionId: decision.actionId }; }
