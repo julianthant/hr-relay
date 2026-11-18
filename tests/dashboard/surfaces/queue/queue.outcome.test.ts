@@ -6,8 +6,8 @@ import { it } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { QueuePanel, QueueRow } from '../../../../src/dashboard/surfaces/queue/queue.js';
 import { StatusBadge } from '../../../../src/dashboard/surfaces/shared/status/status.js';
-import { seedMockRuns } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
-import { mockQueueSurface } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js';
+import { seedMockRuns } from '../../../mocks/workflows/workflow-mock-model.js';
+import { mockQueueSurface } from '../../../mocks/workflows/workflow-queue-model.js';
 import { QueueSurfaceWireSchema } from '../../../../src/models/dashboard/projection.js';
 import { DS_STATUS, DS_STATUS_ORDER } from '../../../../src/dashboard/ds/ui.js';
 it('renders all eight mounted seed Search and Match outcomes in completed Queue rows', () => {

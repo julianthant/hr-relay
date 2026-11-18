@@ -5,7 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, it, vi } from 'vitest';
 import { ActivityReport } from '../../../../src/dashboard/surfaces/activity/activity.js';
 import { ActivityView } from '../../../../src/dashboard/surfaces/activity/activity-view.js';
-import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { activityRangeValue } from '../../../../src/dashboard/surfaces/activity/activity-model.js';
+import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
+import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample, useActivitySampleReport } from '../../../support/fixtures/dashboard/activity-sample.js';
 import type { ActivityViewState } from '../../../../src/dashboard/surfaces/activity/activity-view-model.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -39,9 +41,9 @@ it('supports the existing synchronous export callback', async () => {
 
 it('the mock report refuses export visibly without starting a download', async () => {
   await render();
-  await act(async () => root?.render(createElement(ActivityReport, { source: "mock", range: '', onRange() {} })));
+  await act(async () => root?.render(createElement(ActivityReport, { useReport: useActivitySampleReport, today: ACTIVITY_SAMPLE_TODAY, range: activityRangeValue(ACTIVITY_SAMPLE_RANGE), onRange() {} })));
   await act(async () => button().click());
-  assert.match(document.body.textContent, /CSV export is unavailable in this preview./);
+  assert.ok(document.body.textContent.includes(ERROR_CATALOG.DASHBOARD_READ_FAILED.text));
   assert.equal(document.querySelectorAll('a[download]').length, 0);
 });
 
@@ -76,10 +78,10 @@ const withAssistant = (messages: readonly number[], proposed: readonly number[])
 };
 const headings = () => [...document.querySelectorAll('h2, h3')].map(item => item.textContent);
 
-it('draws Messages, Tools used and Actions, with the served counts', async () => {
+it('draws Messages and Actions, with the served counts', async () => {
   await render(withAssistant([1, 2, 3, 0, 0, 4, 5], [0, 1, 0, 0, 2, 0, 0]));
   const order = headings().filter(text => ['Why runs failed', 'Messages', 'Tools used', 'Actions'].includes(text ?? ''));
-  assert.deepEqual(order, ['Messages', 'Tools used', 'Actions'], 'Why runs failed is no longer drawn');
+  assert.deepEqual(order, ['Messages', 'Actions'], 'Why runs failed is no longer drawn');
   assert.match(document.body.textContent, /Messages sent to the assistant each day\./);
   const messages = document.querySelector('figure[aria-label="Messages per day"]'); assert(messages);
   assert.match(messages.textContent ?? '', /Messages\s*15/);
@@ -89,19 +91,18 @@ it('draws Messages, Tools used and Actions, with the served counts', async () =>
   assert.deepEqual([...actions.querySelectorAll('table tbody tr')].map(row => row.lastElementChild?.textContent), ['0', '1', '0', '0', '2', '0', '0']);
 });
 
-it('says tool calls and approvals are not recorded rather than drawing zeros', async () => {
+it('shows no tools section and no not-recorded line, since neither is recorded', async () => {
   await render(withAssistant([1], [1]));
-  const tools = [...document.querySelectorAll('section, div')].find(node => node.querySelector(':scope > h2, :scope > h3')?.textContent === 'Tools used');
-  assert(tools); assert.match(tools.textContent ?? '', /Tool calls are not recorded yet\./);
+  assert.equal(headings().includes('Tools used'), false);
   assert.equal(document.querySelector('figure[aria-label="Tool calls per day"]'), null);
-  assert.match(document.body.textContent, /Approvals are not recorded yet\./);
+  assert.doesNotMatch(document.body.textContent, /not recorded yet/);
 });
 
 it('shows each assistant section empty when the range has no assistant use', async () => {
   await render(withAssistant([], []));
   assert.match(document.body.textContent, /No messages in this period/);
   assert.match(document.body.textContent, /No actions proposed in this period/);
-  assert.match(document.body.textContent, /Tool calls are not recorded yet\./);
+  assert.doesNotMatch(document.body.textContent, /not recorded yet/);
   assert.equal(document.querySelector('figure[aria-label="Messages per day"]'), null);
   assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]'), null);
 });
@@ -132,7 +133,7 @@ it('says one plain sentence for an empty period and keeps the period control', a
 
 it('a bad range keeps the period control and never echoes the raw value', async () => {
   await render();
-  await act(async () => root?.render(createElement(ActivityReport, { source: 'mock', range: 'not-a-range', onRange() {} })));
+  await act(async () => root?.render(createElement(ActivityReport, { useReport: useActivitySampleReport, today: ACTIVITY_SAMPLE_TODAY, range: 'not-a-range', onRange() {} })));
   assert.doesNotMatch(document.body.textContent, /not-a-range/);
   assert.match(document.body.textContent, /That date range is not valid/);
   assert(['7d', '30d', '90d'].every(value => document.querySelector(`fieldset input[type="radio"][value="${value}"]`)));

@@ -337,7 +337,7 @@ afterEach_m1(_afterEachFixture0);
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
-      return { ...composition, inbox: "served" as const, dataSources: { ...composition.dataSources, separations: "served" } };
+      return { ...composition, harness: { ...composition.harness, useInbox: undefined }, dataSources: { ...composition.dataSources, separations: "served" } };
     });
     await editHeadlessPreference();
     if (surface === "search") await click(button("Search"));
@@ -516,7 +516,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     await settle();
     assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
     const failedReads = reads;
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
@@ -525,9 +525,9 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
     assert_m1.ok(workflow);
     const composition = MOCK_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
-    assert_m1.equal(composition.sources["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
+    assert_m1.equal(composition.sources["person-lookup"], "hidden");
+    assert_m1.ok(composition.harness?.LogPreview);
+    assert_m1.equal(composition.sources["generic-served-workflow"], "served");
   } finally { await _afterEachFixture0(); }
 });
 it_m1("offers a Skip to run logs link that moves focus to the selected run logs", async () => {
@@ -579,7 +579,7 @@ it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
 try {
 
 
-  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), catalogIncludesMocks: false, servedDay: true }));
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
   assert_m1.match(document.body.textContent??"",/No workflows available/);
 
 } finally {

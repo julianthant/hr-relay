@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach,beforeEach,describe,it,vi } from 'vitest';
 import { ACTIVITY_RUN_PAGE_SIZE,activityDrilldown,activityOrderValue,setActivityOrder,type ActivityBrowse,type ActivitySelectionHandler } from '../../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
 import { ActivityDrilldown } from '../../../../src/dashboard/surfaces/activity/activity-drilldown.js';
-import { ACTIVITY_SAMPLE_RANGE,activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { ACTIVITY_SAMPLE_RANGE,activitySample } from '../../../support/fixtures/dashboard/activity-sample.js';
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);

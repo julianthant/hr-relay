@@ -4,7 +4,9 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
+import { createServedOnboardingPort } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 import { workflowInitials, workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
 import { WorkflowNavigation } from "../../../../src/dashboard/surfaces/shell/workflow-navigation.js";
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
@@ -42,7 +44,7 @@ it("gives every collapsed code the full workflow name as accessible name and kee
 
 it("offers the details step from the deep-link page that asks for the details", async () => {
   let step = "";
-  const host = await mount(createElement(Onboarding, { step: "ready", onStep: next => { step = next; }, onDashboard() {} }));
+  const host = await mount(createElement(Onboarding, { step: "ready", port: createServedOnboardingPort(createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("not called"); } }), () => {}), onStep: next => { step = next; }, onDashboard() {} }));
   assert.equal(host.querySelector("h1")?.textContent, "Start with your details");
   const button = host.querySelector<HTMLButtonElement>("button.btn.primary"); assert.ok(button);
   assert.equal(button.textContent, "Start with your details");

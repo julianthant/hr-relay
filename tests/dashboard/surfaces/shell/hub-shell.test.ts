@@ -23,7 +23,7 @@ it("keeps the served assistant closed until requested and preserves its close an
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
-      source: "served", settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {}, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }),
+      settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
     const launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
     const panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
@@ -58,7 +58,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
   const submit = () => { const found = document.querySelector<HTMLButtonElement>('.hub-modal button[type="submit"]'); assert.ok(found); return found; };
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
-      source: "mock", chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {}, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }),
+      chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
     await act(async () => button("History").click());
     await act(async () => button("Delete chat Kept chat").click());
@@ -102,7 +102,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
   const submit = () => { const found = document.querySelector<HTMLButtonElement>('.hub-modal button[type="submit"]'); assert.ok(found); return found; };
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
-      source: "mock", chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {}, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }),
+      chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
     await act(async () => button("History").click());
     await act(async () => button("Delete chat Kept chat").click());

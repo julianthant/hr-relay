@@ -36,7 +36,6 @@ it("opens a served re-enrolment as the setup window's draft, never a mock", asyn
     assert.equal(f.reenrol().port, undefined);
     assert.equal(await act(() => f.reenrol().begin()), undefined);
     const port = f.reenrol().port;
-    assert.equal(port?.source, "served");
     assert.equal(port?.reenrol, true);
     assert.equal(port?.onboarding?.operationId, operationId);
   } finally { await f.close(); }
