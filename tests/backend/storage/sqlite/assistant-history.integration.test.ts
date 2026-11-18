@@ -135,7 +135,8 @@ it("stores exactly one outcome per result arm and settles interrupted sends as d
     ["turn", "refused", "ASSISTANT_CANCELLED", null],
     ["turn", "delivery-unknown", null, null],
   ]);
-  assert.deepEqual(w.history.replay(id, 99).map(row => row.role), ["operator", "assistant", "operator", "assistant", "operator", "operator"]);
+  assert.deepEqual(w.history.replay(id, 99).map(row => [row.role, row.modelText]), [["operator", "masked Card"], ["assistant", "I prepared a confirmation card: Start Person Lookup. The operator has not decided yet."],
+    ["operator", "masked Lost"], ["assistant", "Outcome unknown: Mark notifications read. Do not retry."]]);
   assert.equal(w.history.settleInterrupted(LATER), 0);
 });
 

@@ -5,8 +5,8 @@ import { createRoot } from "react-dom/client";
 import { it } from "vitest";
 import { QueuePanel } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { queueMemberPresentation } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { mockQueueSurface } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
-import { initialMockDraft } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueSurface } from "../../../mocks/workflows/workflow-queue-model.js";
+import { initialMockDraft } from "../../../mocks/workflows/workflow-mock-model.js";
 import { QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 
