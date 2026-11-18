@@ -106,7 +106,10 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const settlements = [...(script.settlesTo ?? [])];
   const selected = new Set<FakeElementName>();
   const rendered = new Set<FakeElementName>();
-  const mainFrame = {};
+  const mainFrame = {
+    url: () => current,
+    getByText: (text: string | RegExp) => makeLocator(classify("text", String(text))),
+  };
   let navigationGeneration = 0;
   const navigationListeners = new Set<() => void>();
   const navigate = (url: string): void => {
@@ -123,9 +126,20 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   function makeLocator(name: FakeElementName | undefined): Record<string, unknown> {
     const locator: Record<string, unknown> = {
       first: () => locator,
+      filter: () => locator,
+      evaluateAll: async (_fn: unknown, expectedUrl: string) =>
+        expectedUrl === current && name === "duo-refusal" && (scriptFor(name).count ?? 1) > 0,
       elementHandle: async () => {
         const generation = navigationGeneration;
         return {
+          isVisible: async () => (locator.isVisible as () => Promise<boolean>)(),
+          isEditable: async () => name === "sso-username" || name === "sso-password",
+          isEnabled: async () => name === "sso-submit",
+          evaluate: async () => name === "sso-username" && generation === navigationGeneration,
+          fill: async (value: string) => {
+            if (generation !== navigationGeneration) throw new Error("fake page: original element detached");
+            await (locator.fill as (value: string) => Promise<void>)(value);
+          },
           click: async (options: unknown) => {
             if (generation !== navigationGeneration) throw new Error("fake page: original element detached");
             await (locator.click as (options: unknown) => Promise<void>)(options);
@@ -199,6 +213,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const page = {
     url: () => current,
     mainFrame: () => mainFrame,
+    frames: () => [mainFrame],
     waitForEvent: async (_event: string, options: Readonly<{ predicate: (frame: unknown) => boolean; timeout: number }>) =>
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => {

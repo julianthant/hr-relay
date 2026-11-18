@@ -20,6 +20,11 @@ import { systemClock } from "../../../rules/time/clock.js";
 
 const DUO_HOST = "duosecurity.com";
 
+function isDuoOrigin(url: URL | null): boolean {
+  return url?.protocol === "https:" && url.port === "" && url.username === "" && url.password === ""
+    && (url.hostname === DUO_HOST || url.hostname.endsWith(`.${DUO_HOST}`));
+}
+
 const SSO_SUBMIT_SELECTOR = 'button[name="_eventId_proceed"]';
 const TRAINING_REMINDER_SELECTOR = 'input[type="submit"][value*="Continue Log In"], button:has-text("Continue Log In")';
 
@@ -73,33 +78,14 @@ export async function raceCancellation<Result>(
 
 // TritON labels vary by login realm; stable id/name anchors identify the same username field.
 const SSO_USERNAME_SELECTOR = '#ssousername, input[name="urn:mace:ucsd.edu:sso:username"]';
-const SSO_USERNAME_LABELS = [
-  "User name (or email address)",
-  "Account ID or email address",
-  "Username",
-] as const;
-// The password label and stable ssopassword ID bind the same SSO control.
 const SSO_PASSWORD_SELECTOR = '#ssopassword, input[name="urn:mace:ucsd.edu:sso:password"]';
-const SSO_PASSWORD_LABELS = ["Password:", "Password"] as const;
-
-function byLabels(page: Page, base: Locator, labels: readonly string[]): Locator {
-  return labels.reduce<Locator>((chain, label) => chain.or(page.getByLabel(label)), base);
-}
-
-function usernameField(page: Page): Locator {
-  return byLabels(page, page.locator(SSO_USERNAME_SELECTOR), SSO_USERNAME_LABELS).first();
-}
-
-function passwordField(page: Page): Locator {
-  return byLabels(page, page.locator(SSO_PASSWORD_SELECTOR), SSO_PASSWORD_LABELS).first();
-}
 
 export async function waitForUcsdDuoSignIn(page: Page, assertCurrent: () => void, timeout: number): Promise<"sso-form" | "duo"> {
   const deadline = systemClock.monotonicMs() + timeout;
   const remaining = () => Math.max(1, deadline - systemClock.monotonicMs());
   const allowed = (url: URL) => url.protocol === "https:" && url.port === "" && url.username === "" && url.password === ""
     && (url.hostname === "a5.ucsd.edu" && url.pathname === "/tritON/profile/SAML2/Redirect/SSO"
-      || url.hostname === DUO_HOST || url.hostname.endsWith(`.${DUO_HOST}`));
+      || isDuoOrigin(url));
   assertCurrent();
   try {
     await page.waitForURL(allowed, { waitUntil: "domcontentloaded", timeout: remaining() });
@@ -134,13 +120,20 @@ export async function waitForUcsdDuoSignIn(page: Page, assertCurrent: () => void
   return "sso-form";
 }
 
+type UcsdSsoPath = "/tritON/profile/SAML2/Redirect/SSO" | "/idp/profile/SAML2/Redirect/SSO";
+
+function requireSsoPath(path: string): UcsdSsoPath {
+  if (path !== "/tritON/profile/SAML2/Redirect/SSO" && path !== "/idp/profile/SAML2/Redirect/SSO") throw new Error("UCSD_SSO_SCOPE");
+  return path;
+}
+
 export async function submitPinnedUcsdSsoCredentials(page: Page,
   acquire: () => Promise<Readonly<{ userId: string; password: string }>>,
   assertCurrent: () => void, timeout: number,
-  path: "/tritON/profile/SAML2/Redirect/SSO" | "/idp/profile/SAML2/Redirect/SSO"): Promise<void> {
+  path: UcsdSsoPath, onAction?: (kind: "typed" | "clicked", targetId: string) => void): Promise<void> {
   assertCurrent();
   const url = page.url();
-  if (path !== "/tritON/profile/SAML2/Redirect/SSO" && path !== "/idp/profile/SAML2/Redirect/SSO") throw new Error("UCSD_SSO_SCOPE");
+  requireSsoPath(path);
   const allowed = (value: string) => {
     const parsed = URL.parse(value);
     return parsed?.origin === "https://a5.ucsd.edu" && parsed.username === "" && parsed.password === "" && parsed.port === "" && parsed.pathname === path;
@@ -151,6 +144,8 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
   const users = await username.count(); check();
   const passwords = await password.count(); check();
   const buttons = await submit.count(); check();
+  if (users === 0) throw new Error("UCSD_SSO_USERNAME_MISSING");
+  if (passwords === 0) throw new Error("UCSD_SSO_PASSWORD_MISSING");
   if (users !== 1 || passwords !== 1 || buttons !== 1) throw new Error("UCSD_SSO_FIELDS");
   let user: Awaited<ReturnType<typeof username.elementHandle>> | null = null;
   let secret: Awaited<ReturnType<typeof password.elementHandle>> | null = null;
@@ -195,10 +190,13 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
     const credentials = await acquire(); check();
     await controls();
     await user.fill(credentials.userId, { timeout }); check();
+    onAction?.("typed", "ucsd.sso.username");
     await controls();
     await secret.fill(credentials.password, { timeout }); check();
+    onAction?.("typed", "ucsd.sso.password");
     await controls();
     await button.click({ timeout }); assertCurrent();
+    onAction?.("clicked", "ucsd.sso.submit");
   } catch (error) { failure = { error }; }
   finally {
     for (const handle of [user, secret, button]) {
@@ -262,114 +260,66 @@ export async function waitForSsoForm(
 }
 
 
-export async function fillSsoCredentials(
-  system: BrowserSystemId,
-  context: SystemLoginContext,
-  token: DuoCeremonyLeaseToken,
-): Promise<void> {
-  context.assertCurrent();
-  assertDuoCeremonyLeaseToken(token, { system });
-  const timeout = context.config.timeouts.navigationMs;
-
-  context.assertCurrent();
-  await requireMatchedField(system, context, usernameField(context.page), "username", SSO_USERNAME_SELECTOR);
-  context.assertCurrent();
-  await requireMatchedField(system, context, passwordField(context.page), "password", SSO_PASSWORD_SELECTOR);
-  context.assertCurrent();
-  try {
-    await usernameField(context.page).fill(context.credentials.userId, { timeout });
-    context.assertCurrent();
-    recordBrowserAction("typed", "ucsd.sso.username");
-    context.assertCurrent();
-    await passwordField(context.page).fill(context.credentials.password, { timeout });
-    context.assertCurrent();
-    recordBrowserAction("typed", "ucsd.sso.password");
-  } catch (error) {
-    context.assertCurrent();
-    throw new BrowserLoginError(
-      system,
-      "credential-fill",
-      "the SSO username/password fields could not be filled",
-      context.page.url(),
-      { cause: error },
-    );
-  }
-}
-
-async function requireMatchedField(
-  system: BrowserSystemId,
-  context: SystemLoginContext,
-  field: Locator,
-  role: "username" | "password",
-  anchors: string,
-): Promise<void> {
-  context.assertCurrent();
-  let matches: number;
-  try {
-    context.assertCurrent();
-    matches = await field.count();
-    context.assertCurrent();
-  } catch (error) {
-    context.assertCurrent();
-    throw new BrowserLoginError(
-      system,
-      "credential-fill",
-      `the SSO ${role} field could not be counted, so its presence is unproven`,
-      context.page.url(),
-      { cause: error },
-    );
-  }
-  if (matches === 0) {
-    throw new BrowserLoginError(
-      system,
-      "credential-fill",
-      `the SSO ${role} field matched no element; the ported locator chain (${anchors}, then its visible label) is stale and must be re-verified against the live page`,
-      context.page.url(),
-    );
-  }
-}
-
 export async function submitSsoForm(
   system: BrowserSystemId,
   context: SystemLoginContext,
   token: DuoCeremonyLeaseToken,
 ): Promise<void> {
-  context.assertCurrent();
-
-  assertDuoCeremonyLeaseToken(token, { system });
-  abortIfCancelled(system, "sso-submit", context);
-  try {
-    context.assertCurrent();
-    await ssoSubmitButton(context.page).click({ timeout: context.config.timeouts.navigationMs });
-    context.assertCurrent();
-    recordBrowserAction("clicked", "ucsd.sso.submit");
-  } catch (error) {
-    context.assertCurrent();
-    throw new BrowserLoginError(
-      system,
-      "sso-submit",
-      "the SSO submit control could not be clicked",
-      context.page.url(),
-      { cause: error },
-    );
-  }
-}
-
-function duoTerminalRefusalLocator(page: Page): Locator {
-  return page.getByText(DUO_TERMINAL_REFUSAL_PATTERN).first();
-}
-
-// Only a terminal refusal settles this arm; the parallel landing wait owns its timeout.
-async function observeDuoTerminalRefusal(page: Page, timeoutMs: number, assertCurrent: () => void): Promise<"duo-refused"> {
+  let step: BrowserLoginStep = "credential-fill";
+  const assertCurrent = (): void => {
+    abortIfCancelled(system, step, context);
+    assertDuoCeremonyLeaseToken(token, { system });
+  };
   assertCurrent();
+  const { page } = context;
   try {
-    await duoTerminalRefusalLocator(page).waitFor({ state: "visible", timeout: timeoutMs });
+    await submitPinnedUcsdSsoCredentials(page, async () => context.credentials, assertCurrent,
+      context.config.timeouts.navigationMs, requireSsoPath(new URL(page.url()).pathname), (kind, targetId) => {
+        if (targetId === "ucsd.sso.password") step = "sso-submit";
+        recordBrowserAction(kind, targetId);
+      });
+  } catch (error) {
+    if (error instanceof AggregateError) throw error;
     assertCurrent();
-  } catch {
-    assertCurrent();
-    return await new Promise<"duo-refused">(() => undefined);
+    const detail = error instanceof Error && error.message === "UCSD_SSO_USERNAME_MISSING"
+      ? `the SSO username field matched no element (${SSO_USERNAME_SELECTOR})`
+      : error instanceof Error && error.message === "UCSD_SSO_PASSWORD_MISSING"
+        ? `the SSO password field matched no element (${SSO_PASSWORD_SELECTOR})`
+        : "the pinned UCSD SSO form could not be proved or submitted";
+    throw new BrowserLoginError(system, step, detail, page.url(), { cause: error });
   }
-  return "duo-refused";
+}
+
+interface DuoRefusal {
+  readonly duoUrl: string;
+}
+
+async function findDuoRefusal(page: Page, assertCurrent: () => void): Promise<DuoRefusal | undefined> {
+  assertCurrent();
+  for (const frame of page.frames()) {
+    const url = frame.url();
+    if (!isDuoOrigin(URL.parse(url))) continue;
+    const matches = frame.getByText(DUO_TERMINAL_REFUSAL_PATTERN).filter({ visible: true });
+    const refused = await matches.evaluateAll((nodes, expectedUrl) =>
+      nodes.length > 0 && location.href === expectedUrl, url);
+    assertCurrent();
+    if (refused) return { duoUrl: url };
+  }
+  return undefined;
+}
+
+// Frames may appear or navigate while the application landing is pending.
+async function observeDuoTerminalRefusal(page: Page, isWaiting: () => boolean, assertCurrent: () => void): Promise<DuoRefusal> {
+  while (isWaiting()) {
+    try {
+      const refusal = await findDuoRefusal(page, assertCurrent);
+      if (refusal && isWaiting()) return refusal;
+    } catch {
+      assertCurrent();
+    }
+    if (isWaiting()) await new Promise<void>(resolve => setTimeout(resolve, 100));
+  }
+  return await new Promise<DuoRefusal>(() => undefined);
 }
 
 async function observeStaleRequest(page: Page, timeoutMs: number, assertCurrent: () => void): Promise<"stale-request"> {
@@ -481,10 +431,10 @@ export async function waitForAuthenticatedLanding(
   try {
     context.assertCurrent();
     const result = await raceCancellation(
-      () => Promise.race<"landed" | "duo-refused" | "stale-request" | "TRAINING_REMINDER_REPEATED">([
+      () => Promise.race<"landed" | DuoRefusal | "stale-request" | "TRAINING_REMINDER_REPEATED">([
         context.page.waitForURL((url) => landed(url.href), { timeout: landingMs })
           .then(() => "landed"),
-        observeDuoTerminalRefusal(context.page, landingMs, context.assertCurrent),
+        observeDuoTerminalRefusal(context.page, isWaiting, context.assertCurrent),
         observeStaleRequest(context.page, landingMs, context.assertCurrent),
         observeTrainingReminder(system, context, deadline, isWaiting, operation => { activeClick = operation; }),
       ]),
@@ -516,15 +466,15 @@ export async function waitForAuthenticatedLanding(
       });
     }
     if (outcome === "stale-request") throw new Error("Shibboleth stale request observed");
-    if (outcome === "duo-refused") {
-      throw new DuoTerminalRefusalError(system, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, context.page.url());
+    if (typeof outcome === "object") {
+      throw new DuoTerminalRefusalError(system, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, outcome.duoUrl);
     }
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
     context.assertCurrent();
     const observed = URL.parse(context.page.url());
     let title = "";
-    let diagnosis: BrowserLandingStallCode | "duo-refused" = "LANDING_PROBE_UNAVAILABLE";
+    let diagnosis: BrowserLandingStallCode | DuoRefusal = "LANDING_PROBE_UNAVAILABLE";
     const budget = Math.max(1, Math.min(900, (context.acquisitionRemainingMs?.() ?? 1_000) - 100));
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -541,8 +491,8 @@ export async function waitForAuthenticatedLanding(
     } finally {
       clearTimeout(timer);
     }
-    if (diagnosis === "duo-refused") {
-      throw new DuoTerminalRefusalError(system, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, context.page.url(), { cause: error }, title);
+    if (typeof diagnosis === "object") {
+      throw new DuoTerminalRefusalError(system, ERROR_CATALOG.DUO_TERMINAL_REFUSAL.text, diagnosis.duoUrl, { cause: error }, title);
     }
     throw new BrowserLandingStallError(system, diagnosis, {
       host: observed?.hostname ?? "",
@@ -554,7 +504,7 @@ export async function waitForAuthenticatedLanding(
 
 async function describeStalledLanding(
   context: Pick<SystemLoginContext, "page" | "assertCurrent">,
-): Promise<BrowserLandingStallCode | "duo-refused"> {
+): Promise<BrowserLandingStallCode | DuoRefusal> {
   context.assertCurrent();
   try {
     if (URL.parse(context.page.url())?.hostname === "a5.ucsd.edu") {
@@ -562,19 +512,16 @@ async function describeStalledLanding(
       context.assertCurrent();
       if (count > 0) return "SHIBBOLETH_STALE_REQUEST";
     }
-    const host = URL.parse(context.page.url())?.hostname;
-    if (host === DUO_HOST || host?.endsWith(`.${DUO_HOST}`)) {
-      try {
-        context.assertCurrent();
-        const count = await duoTerminalRefusalLocator(context.page).count();
-        context.assertCurrent();
-        if (count > 0) return "duo-refused";
-      } catch {
-        context.assertCurrent();
-        return "DUO_REFUSAL_UNPROVEN";
-      }
-      return "DUO_PROMPT_STALLED";
+    const duo = isDuoOrigin(URL.parse(context.page.url()));
+    try {
+      const refusal = await findDuoRefusal(context.page, context.assertCurrent);
+      if (refusal) return refusal;
+    } catch (error) {
+      context.assertCurrent();
+      if (duo) return "DUO_REFUSAL_UNPROVEN";
+      throw error;
     }
+    if (duo) return "DUO_PROMPT_STALLED";
     if (await isSsoFormPresent(context.page, context.assertCurrent)) return "SSO_FIRST_FACTOR_REJECTED";
     context.assertCurrent();
     return "AUTHENTICATED_LANDING_MISSING";

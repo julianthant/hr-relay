@@ -1,14 +1,114 @@
 import assert from "node:assert/strict";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it } from "vitest";
-import { submitPinnedUcsdSsoCredentials, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
+import { submitPinnedUcsdSsoCredentials, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { BrowserLandingStallError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { crmLoginRecipe } from "../../../../src/backend/systems/crm/session.js";
+import { i9LoginRecipe } from "../../../../src/backend/systems/i9/login.js";
+import { kualiLoginRecipe } from "../../../../src/backend/systems/kuali/session.js";
+import { newKronosLoginRecipe } from "../../../../src/backend/systems/new-kronos/session.js";
+import { onbaseLoginRecipe } from "../../../../src/backend/systems/onbase/login.js";
+import { ucpathLoginRecipe } from "../../../../src/backend/systems/ucpath/session.js";
+import { resolveSystemLoginUrl } from "../../../../src/models/config/instance.js";
+import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 
+const { contextFor } = createSystemSessionTestWorld();
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const form = (action = SSO) => `<form action="${action}" method="post"><input id="ssousername" name="username"><input id="ssopassword" type="password" name="password"><button name="_eventId_proceed">Sign in</button></form>`;
 
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ channel: "chromium", headless: true }); });
 afterAll(async () => { await browser?.close(); });
+
+it("requires the session cookie to apply to the current application path", async () => {
+  const context = await browser.newContext();
+  try {
+    const domain = "application.example.invalid";
+    await context.route("**/*", route => route.fulfill({ body: "Application" }));
+    await context.addCookies([{ domain, name: "sid", value: "fixture", path: "/app" }]);
+    const page = await context.newPage();
+    const probe = () => probeSessionCookie(page, {
+      assertCurrent: () => undefined, name: "sid", domainSuffix: domain, issuer: "application",
+    });
+    for (const [path, applies] of [["/app", true], ["/app/home", true], ["/application", false]] as const) {
+      await page.goto(`https://${domain}${path}`);
+      assert.equal((await probe()).holds, applies, path);
+    }
+  } finally { await context.close(); }
+});
+
+for (const [system, recipe] of [
+  ["crm", crmLoginRecipe], ["kuali", kualiLoginRecipe], ["new-kronos", newKronosLoginRecipe],
+  ["ucpath", ucpathLoginRecipe], ["i9", i9LoginRecipe], ["onbase", onbaseLoginRecipe],
+] as const) {
+  it.each(["trusted", "wrong-origin", "wrong-destination"] as const)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
+    const browserContext = await browser.newContext();
+    try {
+      const page = await browserContext.newPage();
+      const { context } = await contextFor({ url: "about:blank" }, undefined, system);
+      const other = "https://sso.example.invalid/login";
+      const landing = scenario === "wrong-origin" ? other : SSO;
+      const config = {
+        ...context.config,
+        timeouts: { ...context.config.timeouts, navigationMs: 1000 },
+        urls: { ...context.config.urls, kuali: { prod: { entry: landing } }, newKronos: { prod: { entry: landing } } },
+      };
+      const entry = new URL(resolveSystemLoginUrl(config, system, "prod", "fixture")).href;
+      const fieldPage = form(scenario === "wrong-destination" ? other : SSO)
+        + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>AD</option></select>';
+      let servedForm = false;
+      let credentialReads = 0;
+      await browserContext.route("**/*", async route => {
+        if (route.request().url() === landing) {
+          servedForm = true;
+          await route.fulfill({ contentType: "text/html", body: fieldPage });
+        } else if (route.request().url() === entry) {
+          if (system === "ucpath" || system === "i9") {
+            const link = system === "ucpath" ? "Log in to UCPath" : "Tracker I-9 Complete Application";
+            await route.fulfill({ contentType: "text/html", body: `<a href="${landing}">${link}</a>` });
+          } else {
+            await route.fulfill({ contentType: "text/html", body: `<meta http-equiv="refresh" content="0; url=${landing}">` });
+          }
+        } else await route.abort();
+      });
+      await assert.rejects(recipe({
+        ...context, page, config,
+        get credentials(): typeof context.credentials {
+          credentialReads++;
+          throw new Error("fixture stopped at credential acquisition");
+        },
+      }));
+      assert.equal(servedForm, true);
+      assert.equal(credentialReads, scenario === "trusted" ? 1 : 0);
+      assert.equal(await page.locator("#ssopassword").inputValue(), "");
+    } finally { await browserContext.close(); }
+  });
+}
+
+it.each(["application", "duo", "embedded-duo"] as const)("binds terminal refusal text to the Duo document (%s)", async surface => {
+  const browserContext = await browser.newContext();
+  try {
+    const page = await browserContext.newPage();
+    const { context } = await contextFor({ url: "about:blank" });
+    const duo = "https://fixture.duosecurity.com/prompt";
+    const app = "https://application.example.invalid/home";
+    await browserContext.route("**/*", route => route.fulfill({ contentType: "text/html",
+      body: surface === "embedded-duo" && route.request().url() === app
+        ? `<iframe src="${duo}"></iframe>` : "<p>Login request was canceled or timed out</p>",
+    }));
+    await page.goto(surface === "duo" ? duo : app);
+    const landing = context.duoCeremony.withCeremony(token => waitForAuthenticatedLanding(
+      "ucpath", { ...context, page }, token, () => false, 500,
+    ));
+    if (surface === "application") {
+      await assert.rejects(landing, error => error instanceof BrowserLandingStallError && error.code === "AUTHENTICATED_LANDING_MISSING");
+    } else {
+      await assert.rejects(landing, error => error instanceof DuoTerminalRefusalError
+        && error.host === "fixture.duosecurity.com" && error.path === "/prompt");
+    }
+  } finally { await browserContext.close(); }
+});
 
 it("waits through a client redirect and a delayed ready form before acquiring credentials", async () => {
   const context = await browser.newContext();

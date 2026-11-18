@@ -1,7 +1,7 @@
 import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { defineVerifiedLoginRecipe } from "../browser-shared/authenticated-application.js";
 import type { AuthenticatedApplicationVerifier } from "../browser-shared/login-contract.js";
-import { fillSsoCredentials, raceCancellation, submitSsoForm, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForSsoForm } from "../browser-shared/ucsd-sso.js";
+import { raceCancellation, submitSsoForm, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForSsoForm } from "../browser-shared/ucsd-sso.js";
 import { ONBASE_UI_REGISTRY as ui } from "./driver/ui-registry.js";
 
 const appUrl = (raw: string): boolean => {
@@ -22,7 +22,6 @@ export const onbaseLoginRecipe = defineVerifiedLoginRecipe({
     { waitUntil: "domcontentloaded", timeout: context.config.timeouts.navigationMs }), "onbase", "navigate-login-entry", context); },
   ceremony: async (context, token) => {
     await waitForSsoForm("onbase", context, token);
-    await fillSsoCredentials("onbase", context, token);
     await submitSsoForm("onbase", context, token);
     await waitForAuthenticatedLanding("onbase", context, token, appUrl, context.config.timeouts.duoApprovalSeconds * 1000);
   },
