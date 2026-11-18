@@ -7,8 +7,8 @@ import { RunDecisionWireSchema } from "../../../src/models/dashboard/run-decisio
 const RUN = "00000000-0000-4000-8000-000000000090", TRACE = "ob-100000-0090", AT = "2026-08-03T17:00:00.000Z";
 const id = (number: number) => `10000000-0000-4000-8000-${String(number).padStart(12, "0")}`;
 const native = (order: number) => NativeRunEventWireSchema.parse({ eventId: id(order), order, runId: RUN, attempt: 1, traceId: TRACE, nodeId: "hire-review", spanPath: `${TRACE}/hire-review#1` });
-const DECISION = RunDecisionWireSchema.parse({ type: "review-before-write", title: "Review before Relay writes", choiceLabel: "Next step",
-  options: [{ id: "new-hire", label: "File as a new hire", hint: "Relay creates a new person.", send: { via: "gate-arm", gateNodeId: "hire-review", expectedVersion: 7, arm: "new-hire" } }] });
+const DECISION = RunDecisionWireSchema.parse({ type: "review-before-write", title: "Review before writing", choiceLabel: "Next step",
+  options: [{ id: "new-hire", label: "File as a new hire", send: { via: "gate-arm", gateNodeId: "hire-review", expectedVersion: 7, arm: "new-hire" } }] });
 const logs = NotePageSchema.parse({ runId: RUN, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } });
 function detail(gate: unknown, state: "blocked" | "done") {
   return RunDetailWireSchema.parse({ runId: RUN, rowRevision: 7, panelKind: "run", header: { runId: RUN, traceId: TRACE, workflowId: "onboarding", title: "Fixture Person", status: "running", attempt: 1 },

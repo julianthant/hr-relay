@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 
 /** One auto-opened employee record, shaped like the live Workforce Job Summary detail page (frozen left table + tab-switched right table). */
-const page = `<!doctype html><html><body>
+const jobSummaryPage = (blank: boolean) => `<!doctype html><html><body>
 <input aria-label="Empl ID" id="emplid"><button id="search">Search</button>
 <div id="detail" hidden>
   <span id="DERIVED_NAME_DISPLAY_NAME">Rivera Quinn</span><span id="PER_ORG_ASGN_VW_EMPLID">10800003</span>
@@ -16,12 +16,34 @@ const page = `<!doctype html><html><body>
   const right = document.getElementById("tdgbrWF_JOB_SUMM$0");
   const fill = cells => { right.innerHTML = "<tr>" + cells.map(cell => "<td>" + cell + "</td>").join("") + "</tr>"; };
   document.getElementById("search").onclick = () => { document.getElementById("detail").hidden = false; };
-  document.getElementById("wl").onclick = () => fill(["40000001", "STDT 2", "UCS", "000412", "HOUSING/DINING/HOSPITALITY", "6840-1", "SDCMP", "Avery Example", ""]);
-  document.getElementById("ji").onclick = () => fill(["004921", "STDT 2", "PSS", "Active", "Variable", "17.60", "0.440000", "Nonexempt", "06/30/2025", "", ""]);
+  const blank = ${String(blank)};
+  document.getElementById("wl").onclick = () => fill([blank ? "&nbsp;" : "40000001", "Position description", "UCS", "000412", "HOUSING/DINING/HOSPITALITY", "6840-1", "SDCMP", "Avery Example", ""]);
+  document.getElementById("ji").onclick = () => {
+    const job = [blank ? "" : "004921", "STDT 2", "PSS", "Active", "Variable", "17.60", "0.440000", "Nonexempt", blank ? "" : "06/30/2025", "", ""];
+    if (blank) {
+      fill(["", "Position description"]);
+      setTimeout(() => fill(job), 500);
+    } else {
+      fill(job);
+    }
+  };
 </script></body></html>`;
 
 describe("Workforce Job Summary read in a real browser", () => {
-  it("reads the frozen job grid through the tsx loader the dashboard runs on", () => {
+  it.each([
+    {
+      name: "reads populated position and job code cells",
+      blank: false,
+      positionNumber: { state: "present", value: "40000001" },
+      jobCode: { state: "present", value: "004921" },
+    },
+    {
+      name: "reads blank position and job code cells after the partial Work Location row clears",
+      blank: true,
+      positionNumber: { state: "absent", reason: "the Workforce Job Summary Position Number cell rendered empty" },
+      jobCode: { state: "absent", reason: "the Workforce Job Summary Job Code cell rendered empty" },
+    },
+  ])("$name through the tsx loader", ({ blank, positionNumber, jobCode }) => {
     // Vitest compiles without keepNames; tsx wraps named inner functions in a __name helper the page realm lacks.
     const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import { chromium } from "playwright";
@@ -30,12 +52,19 @@ describe("Workforce Job Summary read in a real browser", () => {
       const browser = await chromium.launch({ headless: true });
       try {
         const page = await browser.newPage();
-        await page.route(UCPATH_WORKFORCE_JOB_SUMMARY_UI.url, route => route.fulfill({ contentType: "text/html", body: ${JSON.stringify(page)} }));
+        await page.route(UCPATH_WORKFORCE_JOB_SUMMARY_UI.url, route => route.fulfill({ contentType: "text/html", body: ${JSON.stringify(jobSummaryPage(blank))} }));
         const read = await readWorkforceJobSummaryOnPage(() => undefined, page, { emplId: "10800003" }, "2026-11-17T10:00:00.000Z");
-        process.stdout.write(JSON.stringify({ state: read.state, rowCount: read.summary?.rowCount, jobTitle: read.summary?.jobRows[0]?.jobTitle }));
+        const row = read.summary?.jobRows[0];
+        process.stdout.write(JSON.stringify({ state: read.state, rowCount: read.summary?.rowCount, positionNumber: row?.positionNumber, jobCode: row?.jobCode, jobTitle: row?.jobTitle }));
       } catch (error) { process.stdout.write(JSON.stringify({ failed: error.message.split("\\n")[0] })); }
       finally { await browser.close(); }
     `], { cwd: fileURLToPath(new URL("../../../../..", import.meta.url)), encoding: "utf8" });
-    assert.deepEqual(JSON.parse(output), { state: "read", rowCount: 1, jobTitle: { state: "present", value: "STDT 2" } });
+    assert.deepEqual(JSON.parse(output), {
+      state: "read",
+      rowCount: 1,
+      positionNumber,
+      jobCode,
+      jobTitle: { state: "present", value: "STDT 2" },
+    });
   });
 });

@@ -580,7 +580,7 @@ function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunR
     const action = ActionDescriptorWireSchema.parse({
       kind: "command", key: "resolve-workbook-reference-row", command: "resolve-workbook-reference-row", label: "Choose a worksheet row",
       intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
-      confirm: { title: "Use this worksheet row", body: "Relay retains this row from the selected spreadsheet version. The batch continues after every person has a resolved row.", confirmLabel: "Use row", tone: "neutral" },
+      confirm: { title: "Use this worksheet row", body: "The batch continues once every person has a row.", confirmLabel: "Use row", tone: "neutral" },
     });
     const legal = person.resolution.candidates[0]?.row.names.legalName;
     const numbered = person.resolution.candidates.map(candidate => {
@@ -683,7 +683,7 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
   const action = ActionDescriptorWireSchema.parse({
     kind: "command", key: "resolve-workbook-reference-row", command: "resolve-workbook-reference-row", label: "Choose a roster row",
     intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
-    confirm: { title: "Use this roster row", body: "Relay checks the current key, worksheet and revision, then retains this row's name values for the run.", confirmLabel: "Use row", tone: "neutral" },
+    confirm: { title: "Use this roster row", confirmLabel: "Use row", tone: "neutral" },
   });
   const sheets = new Set(picks.map(({ sheetId }) => sheetId));
   const sheet = sheets.size === 1 ? reference.value.snapshot.worksheets.find(candidate => sheets.has(candidate.sheetId)) : undefined;
@@ -719,7 +719,7 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
     const action = ActionDescriptorWireSchema.parse({
       kind: "command", key: "resolve-workbook-row", command: "resolve-workbook-row", label: "Choose a row", intent: "primary", icon: "resolve",
       placement: ["review"], expectedVersion: run.version, workbookTarget: target,
-      confirm: { title: "Apply the captured workbook change to this row", body: "Relay checks the current key, worksheet, revision and cell ownership before applying the retained values.", confirmLabel: "Apply change", tone: "neutral" },
+      confirm: { title: "Apply the change to this row", confirmLabel: "Apply change", tone: "neutral" },
     });
     return { ...base, resolution: { state: "available", target, candidates: live.candidates.map(({ sheetId, rowId, label }) => ({ sheetId, rowId, label })), action,
       decision: rowPickDecision("workbook-row", "Matching rows", action, live.candidates.map(({ sheetId, rowId, label, rowNumber }) => ({ sheetId, rowId, label, rowNumber }))) } };

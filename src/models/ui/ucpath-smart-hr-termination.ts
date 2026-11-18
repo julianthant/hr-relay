@@ -203,12 +203,21 @@ export type UcpathSsSmartHrSettlementDiagnostic = z.infer<
   typeof UcpathSsSmartHrSettlementDiagnosticSchema
 >;
 
+export const UcpathTerminationEmploymentRecordObservationSchema = z.strictObject({
+  transactionId: UcpathTransactionReceiptSchema,
+  emplRecord: z.string().regex(/^\d+$/u),
+});
+export type UcpathTerminationEmploymentRecordObservation =
+  z.infer<typeof UcpathTerminationEmploymentRecordObservationSchema>;
+
 /** The rich read of one person's Smart HR transactions: ONE page visit, and it classifies nothing, because the idempotency probe and the pending sweep ask different questions of the same rows. */
 export const UcpathTransactionScanSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("read"),
     emplId: EidSchema,
     rows: z.array(UcpathTransactionRowSchema),
+    /** Records independently read from the detail bound to each exact T-number. */
+    employmentRecords: z.array(UcpathTerminationEmploymentRecordObservationSchema).optional(),
     /** Every row the grid rendered, before the per-row detail read. */
     scannedRowCount: z.number().int().min(0),
     observedAt: IsoInstantSchema,

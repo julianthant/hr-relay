@@ -33,7 +33,7 @@ it("cancels the run at once from a decision card, without the queue card's confi
   const sent: unknown[] = [];
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(TooltipProvider, null, createElement(LogSample, { source: "served", selection: { row, workflowLabel: "Person Lookup" }, onAction: (action: unknown) => sent.push(action) } as never))));
+    await act(async () => root.render(createElement(TooltipProvider, null, createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" }, onAction: (action: unknown) => sent.push(action) } as never))));
     const button = [...host.querySelectorAll("button")].find(node => node.textContent === "Cancel run")!;
     await act(async () => button.click());
     assert.equal(sent.length, 1);

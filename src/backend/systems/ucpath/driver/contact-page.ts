@@ -212,8 +212,27 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
     async save() {
       const save = page.locator(recipes.save).filter({ visible: true });
       if (await current(() => save.count()) !== 1) throw new UcpathContactRefusedError("unexpected-contact-page");
+      const editor = new URL(page.url());
+      const answered = page.waitForEvent("requestfinished", {
+        timeout: 10_000,
+        predicate: (request) => {
+          if (request.method() !== "POST") return false;
+          const url = new URL(request.url());
+          if (url.origin !== editor.origin || url.pathname !== editor.pathname) return false;
+          const actions = new URLSearchParams(request.postData() ?? "").getAll("ICAction");
+          return actions.length === 1 && actions[0] === "#ICSave"
+            && request.serviceWorker() === null && request.frame() === page.mainFrame();
+        },
+      });
+      // The click can refuse before this bounded observer is awaited.
+      void answered.catch(() => undefined);
       await current(() => save.click());
-      await settle();
+      await current(async () => {
+        const response = await (await answered).response();
+        if (response === null) throw new Error("UCPath contact Save response is missing");
+        if (!response.ok()) throw new Error(`UCPath contact Save returned HTTP ${String(response.status())}`);
+      });
+      await current(() => page.locator(recipes.busy).waitFor({ state: "hidden", timeout: 10_000 }));
     },
     async readPersisted(subject) {
       return readContactSetWithPort(await open(subject), subject);
