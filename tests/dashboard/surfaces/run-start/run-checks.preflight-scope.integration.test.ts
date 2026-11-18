@@ -105,7 +105,7 @@ async function settle() {
   for (let turn = 0; turn < 40; turn += 1) await act(async () => { await Promise.resolve(); });
 }
 
-it("produces Emergency Contact's exact-scope report and shows its real failed check with a fix", async () => {
+it("produces Emergency Contact's exact-scope report and shows its real failed check with the restart hint", async () => {
   const h = checksHarness("emergency-contact");
   const selection = PreflightSelectionSchema.parse({ workflowId: "emergency-contact" });
   const missing = await h.client.readPreflight(selection);
@@ -114,7 +114,8 @@ it("produces Emergency Contact's exact-scope report and shows its real failed ch
   assert.match(missing.reason, /Preflight evidence is unavailable for this exact scope/u);
   await mount(h.client, "emergency-contact");
   assert.ok(document.body.textContent?.includes("The runtime configuration is invalid."), document.body.textContent ?? "");
-  assert.ok(document.querySelector('[data-run-check-fix="config.valid"]'));
+  assert.ok(document.body.textContent?.includes("Cannot be fixed in Settings. Restart Relay, then check again."), document.body.textContent ?? "");
+  assert.equal(document.querySelector('[data-run-check-fix="config.valid"]'), null, "Settings cannot fix an invalid runtime configuration");
   const report = PreflightReadinessWireSchema.parse(await h.client.readPreflight(selection));
   assert.equal(report.state, "present");
   if (report.state !== "present") throw new Error("completed exact-scope report required");
