@@ -100,6 +100,15 @@ it("focuses a newly selected run even when the same document record ID appears i
   await vi.waitFor(() => assert.ok(document.activeElement?.hasAttribute("data-ocr-review-heading")));
 });
 
+it("opens the hosted OCR review a parent run serves under the OCR run's own identity", async () => {
+  const parent = { ...selection(), row: QueueSurfaceWireSchema.parse({ ...selection().row, runId: "00000000-0000-4000-8000-000000000996", workflowId: "oath-upload" }) };
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => Response.json(
+    String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(SOURCE_RUN_ID) } : detail(parent)) });
+  const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(RunReview, { selection: parent }) })));
+  await vi.waitFor(() => assert.equal(host.querySelectorAll("[data-review-record-id]").length, 2));
+});
+
 function editorWorld(unknownOnce = false, delegated = true) {
   let runVersion = 1;
   let page = ocrReviewPageFixture(); assert.ok(page.ocr);

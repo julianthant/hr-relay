@@ -25,7 +25,7 @@ export async function readRunReview(client: Pick<DashboardClient, "runDetail" | 
   }
   signal.throwIfAborted();
   const section = await client.runSection(row.runId, "review", undefined, signal);
-  if (section.section !== "review" || section.payload.runId !== row.runId) throw new Error("RUN_REVIEW_IDENTITY_MISMATCH");
+  if (section.section !== "review") throw new Error("RUN_REVIEW_IDENTITY_MISMATCH");
   return section.payload;
 }
 

@@ -69,7 +69,7 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       );
       if (response.section !== section) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
       const payload = response.payload;
-      const owner = "runId" in payload ? payload.runId
+      const owner = section === "review" ? undefined : "runId" in payload ? payload.runId
         : "state" in payload && payload.state === "available" && "runId" in payload.value ? payload.value.runId : undefined;
       if (owner !== undefined && owner !== runId) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
       return response;
