@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';

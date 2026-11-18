@@ -67,7 +67,7 @@ export function TagEditor({ tags, onChange }: { tags: readonly string[]; onChang
 export function SyncStatus({ sheet }: { sheet: Sheet }) {
   const sync = sheet.sync;
   if (!sync) return null;
-  if (sync.state === 'running') return <span data-sync="running" className="inline-flex items-center gap-1 text-ui-info"><Loader2 size={11} aria-hidden className="shrink-0 animate-spin" /><span className="truncate">Syncing…</span></span>;
+  if (sync.state === 'running') return <span data-sync="running" className="inline-flex items-center gap-1 text-ui-info"><Loader2 size={11} aria-hidden className="shrink-0 animate-spin motion-reduce:animate-none" /><span className="truncate">Syncing…</span></span>;
   const failed = sync.lastResult === 'failed', never = sync.lastFinishedAt === undefined;
   const text = never ? 'Not synced yet' : failed ? 'Sync failed' : `Synced ${stamp(sync.lastFinishedAt!)}`;
   const line = <span data-sync={never ? 'never' : failed ? 'failed' : 'ok'} title={failed || never ? undefined : `Synced ${stamp(sync.lastFinishedAt!)}`} tabIndex={failed ? 0 : undefined} className={`inline-flex min-w-0 items-center gap-1.5 ${failed ? `text-ui-danger ${dsFocus}` : ''}`}>

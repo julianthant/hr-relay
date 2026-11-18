@@ -35,10 +35,10 @@ import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
-import { TypedInput, planRefusalNotice, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
+import { TypedInput, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
-import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, MISSING_REFERENCE_REASON, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
+import { foldStepOmissionFacts, planRefusalNotice, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, MISSING_REFERENCE_REASON, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
@@ -616,8 +616,10 @@ export function RunStartDialog({
   const subjectCount = preview.entries.length;
   const multiSubject = subjectCount > 1;
   const multiSubjectOmissionReason = `Omitting a step describes one subject; this run would create ${String(subjectCount)}.`;
-  const missingFactLabels = omissionRows.flatMap(row => row.fold.state === "invalid"
-    ? row.form.fields.filter(field => field.key in row.fold.errors).map(field => field.label) : []);
+  const missingFactLabels = omissionRows.flatMap(row => {
+    const fold = row.fold;
+    return fold.state === "invalid" ? row.form.fields.filter(field => field.key in fold.errors).map(field => field.label) : [];
+  });
   const stepsBlockedReason = customizeSteps && multiSubject && omissionRows.length > 0
     ? `${multiSubjectOmissionReason} Include every step, or type one value.`
     : customizeSteps && stepOmissions === null

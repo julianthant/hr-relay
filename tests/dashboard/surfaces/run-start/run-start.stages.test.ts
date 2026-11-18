@@ -39,7 +39,8 @@ describe("the Run dialog has no Confirm stage", () => {
     await dialog.press("Continue");
     await dialog.press("Start run");
     assert.equal(dialog.stage(), "Checks", "a stopped plan stays on the last stage");
-    assert.ok(dialog.text().includes("No such person."));
+    assert.match(dialog.text(), /Relay could not use .+\. Fix it, then try again\./);
+    assert.ok(!dialog.text().includes("No such person."), "the server message is not shown");
     assert.ok(!dialog.text().includes(versionTag(h.WORKFLOWS[0].version)), "the version line is retired");
     assert.ok(!dialog.text().includes("ready to queue"));
     assert.equal(document.body.querySelector('[aria-label="Run outputs"]'), null);

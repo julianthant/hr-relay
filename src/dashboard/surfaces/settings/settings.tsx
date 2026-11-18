@@ -4,7 +4,7 @@ import { ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,Messa
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,PageHeading,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";

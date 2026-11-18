@@ -30,7 +30,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
   .toSorted();
 
 const EXACT_GATE_COMMANDS = {
-  typecheck: "tsc --noEmit",
+  typecheck: "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit",
   lint: "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ src tests scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts --max-warnings 0",
   test: "vitest run --project unit --project integration --project architecture --project perf",
   "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
@@ -49,7 +49,7 @@ describe("gate coverage", () => {
   it("rejects inert wrappers around every per-commit gate", () => {
     assert.deepEqual(gateCommandViolations(pkg.scripts), []);
     for (const [name, command] of [
-      ["typecheck", "echo tsc --noEmit"],
+      ["typecheck", `echo ${EXACT_GATE_COMMANDS.typecheck}`],
       ["lint", `echo ${EXACT_GATE_COMMANDS.lint}`],
       ["test", "true && vitest run"],
       ["test:coverage", `${EXACT_GATE_COMMANDS["test:coverage"]} && echo bypass`],
