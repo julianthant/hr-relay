@@ -4,10 +4,16 @@ import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness } from "../../.
 import { WorkflowExplorerWireSchema, type ExplorerWorkflowWire } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
-import { DASHBOARD_CATALOG_MODULES, READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { DASHBOARD_CATALOG_MODULES, READABLE_WORKFLOW_MODULES, descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { buildBootstrap } from "../../../../../src/backend/runs/queries/bootstrap.js";
+import { projectWorkbookCompatibilityFromRepository } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { explorerPickerEntries } from "../../../../../src/dashboard/surfaces/explorer/explorer-picker-model.js";
-import type { RunStartWorkflow } from "../../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { launchWorkflows } from "../../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows } from "../../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { healthyDashboardPreflightReport } from "../../../../support/fixtures/preflight-seams.js";
+import { AT, makeWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -209,15 +215,24 @@ it("serves the picker tree: startable workflows as roots, each delegated child u
   const titles = workflows.map(workflow => workflow.label);
   assert.deepEqual(titles.filter((title, index) => titles.indexOf(title) !== index), []);
 
-  const bootstrapped = DASHBOARD_CATALOG_MODULES.map(({ descriptor, role }) => ({ workflowId: String(descriptor.id), label: descriptor.label,
-    categoryId: descriptor.category, role, code: descriptor.code, inputRun: { state: "absent", reason: "" } }) as unknown as RunStartWorkflow);
-  const picker = explorerPickerEntries(buildWorkflowCatalog(bootstrapped, false), workflows);
-  assert.deepEqual(picker.filter(entry => entry.depth === 0).map(entry => entry.id).sort(),
-    ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);
-  assert.deepEqual(picker.map(entry => `${"  ".repeat(entry.depth)}${entry.title}`), [
-    "Person Lookup", "Separations", "I-9 Check", "  OCR", "    OCR Page", "    I-9 Lookup", "  I-9 Check person", "Onboarding",
-    "Emergency Contact", "  Emergency Contact member", "    OnBase Emergency Contact", "Work-Study",
-  ]);
+  const world = await makeWorld();
+  try {
+    const boot = buildBootstrap({ appVersion: "0.1.0", clock: manualClock(AT), modules: DASHBOARD_CATALOG_MODULES,
+      descriptorSetHash: descriptorSetHash(DASHBOARD_CATALOG_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
+      settingsSchemaHash: descriptorSetHash(["settings-schema"]), projection: world.projection, actorLabel: () => "Fixture Operator",
+      authorityMeta: () => world.database.getMeta(), preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
+      workbookCompatibility: modules => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, modules) });
+    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility), false);
+    const picker = explorerPickerEntries(catalog, workflows);
+    assert.deepEqual(picker.filter(entry => entry.depth === 0).map(entry => entry.id).sort(),
+      ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);
+    assert.deepEqual(picker.map(entry => `${"  ".repeat(entry.depth)}${entry.title}`), [
+      "Person Lookup", "Separations", "I-9 Check", "  OCR", "    OCR Page", "    I-9 Lookup", "  I-9 Check person", "Onboarding",
+      "Emergency Contact", "  Emergency Contact member", "    OnBase Emergency Contact", "Work-Study",
+    ]);
+  } finally {
+    await world.dispose();
+  }
 });
 
 it("serves a value for every Read row of every readable workflow", async () => {
