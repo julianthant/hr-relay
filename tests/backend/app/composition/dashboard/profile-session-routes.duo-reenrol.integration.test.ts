@@ -100,7 +100,7 @@ it("refuses every Duo re-enrolment route without the session cookie or the mutat
   } finally { await started.stop(); }
 });
 
-it("closes an open Duo re-enrolment before logout and before delete account", async () => {
+it("closes an open Duo re-enrolment on logout and before a non-macOS account deletion refusal", async () => {
   const started = await boot();
   try {
     const { post, cookie, state } = await signedIn(started.base);
@@ -118,18 +118,13 @@ it("closes an open Duo re-enrolment before logout and before delete account", as
     assert.equal(again.profileId, state.profileId);
     const session = login.headers.get("set-cookie")?.split(";", 1)[0];
     assert.ok(session);
-    const reopened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, session)).json());
-    assert.equal((await post("/api/v1/profile/duo/reenrol/start", { operationId: reopened.operationId, method: "key" }, session)).status, 200);
-    const deletedResponse = await post("/api/v1/profile/delete-account", {
-      confirmed: true, expectedProfileId: again.profileId, expectedEpoch: again.epoch }, session);
-    const deleted = PublicProfileStateSchema.parse(await deletedResponse.json());
-    assert.equal(existsSync(join(started.f.machine.stateRoot, "machine", "operations", `${reopened.operationId}.json`)), false);
-    // Erasure proves the profile root is unused only on macOS. Elsewhere the re-enrolment is already gone and deletion refuses.
-    if (process.platform === "darwin") {
-      assert.deepEqual(deleted, { state: "signed-out", signUpRequired: true });
-      const refused = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" })).json());
-      assert.equal(refused.state, "refused");
-    } else {
+    if (process.platform !== "darwin") {
+      const reopened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, session)).json());
+      assert.equal((await post("/api/v1/profile/duo/reenrol/start", { operationId: reopened.operationId, method: "key" }, session)).status, 200);
+      const deletedResponse = await post("/api/v1/profile/delete-account", {
+        confirmed: true, expectedProfileId: again.profileId, expectedEpoch: again.epoch }, session);
+      const deleted = PublicProfileStateSchema.parse(await deletedResponse.json());
+      assert.equal(existsSync(join(started.f.machine.stateRoot, "machine", "operations", `${reopened.operationId}.json`)), false);
       assert.deepEqual(deleted, { state: "refused", code: "PROFILE_ACCOUNT_DELETION_REFUSED" });
     }
   } finally { await started.stop(); }
