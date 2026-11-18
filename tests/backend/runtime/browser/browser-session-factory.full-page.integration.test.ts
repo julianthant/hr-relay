@@ -266,7 +266,11 @@ describe("whole-page factory screenshots", () => {
     await withPage(`<label for="name">Name</label><input id="name" value="fixture-value">${content}`, async (page, resource) => {
       const screenshot = page.screenshot.bind(page);
       page.screenshot = async options => {
-        await page.locator("label").evaluate(label => { label.textContent = "Full name"; label.title = "Full name"; });
+        await page.locator("label").evaluate(label => {
+          if (!(label instanceof HTMLLabelElement)) throw new Error("Expected the fixture label");
+          label.textContent = "Full name";
+          label.title = "Full name";
+        });
         return screenshot(options);
       };
       assert.ok((await image(resource)).height >= 3000);
@@ -603,6 +607,26 @@ describe("whole-page factory screenshots", () => {
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
       assert.equal(evidence.reason, "observer-unavailable");
+    });
+  });
+  it("refuses when the SSN observer fails during a band even after the control is removed", async () => {
+    await withPage(content, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      page.screenshot = async options => {
+        await page.evaluate(() => {
+          const input = document.createElement("input");
+          input.id = "fixture-ssn";
+          input.setAttribute("aria-label", "Employee SSN");
+          input.checkVisibility = () => { throw new Error("fixture observer scan failure"); };
+          document.body.append(input);
+        });
+        await page.locator("#fixture-ssn").evaluate(input => { input.remove(); });
+        return screenshot(options);
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "observer-unavailable");
+      assert.equal("bytes" in evidence, false);
     });
   });
   it("refuses a capture that cannot reach the content bottom and names the measured heights", async () => {

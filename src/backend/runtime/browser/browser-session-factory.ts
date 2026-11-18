@@ -146,8 +146,8 @@ const ssnRecipes = (page: Page, frame: Frame): Locator[] => [frame.locator(UCPAT
   ? [UCPATH_HIRE_UI.field(page, "ssn"), I9_CREATION_UI.field(page, "ssn"), I9_UI_REGISTRY.ssn(I9_UI_REGISTRY.dialog(page))] : []];
 const SSN_CONTROL_NAME = /social security|national id|\bssn\b/iu;
 /** Marks the elements a band boundary settled, so the screenshot masks exactly those rather than resolving the recipes again. */
-const SSN_MASK_MARK = "data-relay-capture-mask";
-type SsnWatchWindow = Window & { __relaySsnWatch?: { settle(covered: Node[]): boolean; stop(): void } };
+const CAPTURE_MASK_ATTRIBUTE = "data-relay-capture-mask";
+type SsnWatchWindow = Window & { __relaySsnWatch?: { settle(covered: Node[]): boolean | "observer-unavailable"; stop(): void } };
 
 /** Watches one frame for an SSN-named control outside the settled masks, and for any text-entry control in a shadow tree it cannot watch. Names come from the DOM, so an ARIA-hidden control counts. */
 async function watchSsnControls(frame: Frame): Promise<void> {
@@ -206,15 +206,16 @@ async function watchSsnControls(frame: Frame): Promise<void> {
     };
     const target = window as SsnWatchWindow;
     target.__relaySsnWatch?.stop();
-    let seen = false;
+    let seen: boolean | "observer-unavailable" = false;
     const observer = new MutationObserver(records => {
-      // A check that cannot complete fails closed.
+      if (seen === "observer-unavailable") return;
       try { if (scan.uncovered() || records.some(record => scan.escaped(record) || scan.unmarked(record))) seen = true; }
-      catch { seen = true; }
+      catch { seen = "observer-unavailable"; }
     });
     target.__relaySsnWatch = {
       // Marks the recipe matches for every later band, then reports exposure latched since the last boundary or present now.
       settle(next) {
+        if (seen === "observer-unavailable") return seen;
         for (const node of next) if (node instanceof Element) { node.setAttribute(mark, ""); marked.add(node); }
         const exposed = seen || scan.uncovered() || scan.shadowed();
         seen = false;
@@ -228,7 +229,7 @@ async function watchSsnControls(frame: Frame): Promise<void> {
     };
     observer.observe(document, { subtree: true, childList: true, characterData: true, attributes: true,
       attributeFilter: ["class", "style", "hidden", "open", "aria-label", "aria-labelledby", "placeholder", "title", "for", "id", mark] });
-  }, { source: SSN_CONTROL_NAME.source, flags: SSN_CONTROL_NAME.flags, mark: SSN_MASK_MARK });
+  }, { source: SSN_CONTROL_NAME.source, flags: SSN_CONTROL_NAME.flags, mark: CAPTURE_MASK_ATTRIBUTE });
 }
 
 // A Playwright message starts "<object>.<method>: [<Class>: ]", and the page chooses the class text; only these fixed names leave it.
@@ -477,9 +478,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               const covered = (await Promise.all(ssnRecipes(page, frame).map(recipe => recipe.elementHandles()))).flat();
               try {
                 assertCurrent();
-                const exposed = await frame.evaluate(next => (window as SsnWatchWindow).__relaySsnWatch?.settle(next) ?? "unwatched", covered);
+                const exposed = await frame.evaluate(next => (window as SsnWatchWindow).__relaySsnWatch?.settle(next) ?? "observer-unavailable", covered);
                 assertCurrent();
-                if (exposed === "unwatched") throw new FullPageCaptureFailedError("observer-unavailable");
+                if (exposed === "observer-unavailable") throw new FullPageCaptureFailedError(exposed);
                 if (exposed) throw new FullPageCaptureRefusedError("secret-controls-present");
               } finally { await Promise.all(covered.map(handle => handle.dispose())); }
             };
@@ -497,7 +498,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                   assertCurrent();
                   if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 },
-                mask: () => page.frames().flatMap(frame => [frame.locator(`[${SSN_MASK_MARK}]`), frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)]),
+                mask: () => page.frames().flatMap(frame => [frame.locator(`[${CAPTURE_MASK_ATTRIBUTE}]`), frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)]),
                 assertSafe: async () => {
                   assertCurrent();
                   if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
