@@ -7,7 +7,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { Eid, ElementId } from "../../../../rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
-import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { UiActionProofSchema } from "../../../../models/ui/driver.js";
 import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
 import {
@@ -542,7 +542,7 @@ async function stagePendingTerminationSweepOnPage(
   return staging;
 }
 
-async function clickGuardedPendingSweepDelete(assertCurrent: () => void, page: Page, locator: Locator): Promise<void> {
+async function clickGuardedPendingSweepDelete(assertCurrent: () => void, page: Page, locator: Locator, capability: MutationCapability): Promise<void> {
   const staging = stagedPendingSweeps.get(page);
   stagedPendingSweeps.delete(page);
   if (staging === undefined) {
@@ -570,7 +570,7 @@ async function clickGuardedPendingSweepDelete(assertCurrent: () => void, page: P
         guard.armed = true;
       });
       assertCurrent();
-      await button.click();
+      await clickWithMutationCapability(capability, button);
     } finally {
       try {
         dispatch = await observation.evaluate(({ guard }) => {
@@ -643,9 +643,9 @@ async function commitOnPage(
   await locator.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
   assertCurrent();
   if (id === UCPATH_SMART_HR_DELETE_SELECTED_BUTTON) {
-    await clickGuardedPendingSweepDelete(assertCurrent, page, locator);
+    await clickGuardedPendingSweepDelete(assertCurrent, page, locator, capability);
   } else {
-    await locator.click();
+    await clickWithMutationCapability(capability, locator);
   }
   assertCurrent();
   recordBrowserAction("clicked", id);

@@ -175,7 +175,7 @@ describe("production UCPath contact driver on a synthetic browser page", () => {
   });
 });
 
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 
 it("clicks the literal visible Save once and decides success from a new search and complete persisted read without a success message", async () => {
   const h = await browserFixture({ saveResponse: "persist" });

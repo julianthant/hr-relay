@@ -159,6 +159,44 @@ async function routeSweepFixture(page: Page, foreignChecked: boolean): Promise<v
 }
 
 describe("Transactions in Progress selection at the delete boundary", () => {
+  it("refuses Delete Selected when the probe expires while the driver waits for the control", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await routeSweepFixture(page, false);
+      await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
+      const button = page.locator("#HR_TBH_WRK_DELETE_BTN");
+      await button.evaluate(element => element.setAttribute("hidden", ""));
+      let remainingMs = 100;
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => remainingMs);
+      const refused = assert.rejects(
+        ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
+        /probe deadline/u,
+      );
+      remainingMs = 0;
+      await button.evaluate(element => element.removeAttribute("hidden"));
+      await refused;
+      assert.equal(await page.locator("#ALERTMSG").textContent(), "");
+    } finally { await browser.close(); }
+  });
+
+  it("bounds Playwright's actionability wait by the remaining probe budget", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await routeSweepFixture(page, false);
+      await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
+      const button = page.locator("#HR_TBH_WRK_DELETE_BTN");
+      await button.evaluate(element => element.setAttribute("disabled", ""));
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 125);
+      await assert.rejects(
+        ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
+        /Timeout 125ms exceeded/u,
+      );
+      assert.equal(await page.locator("#ALERTMSG").textContent(), "");
+    } finally { await browser.close(); }
+  });
+
   it("refuses a pre-checked foreign row before checking the authorized row", async () => {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -183,7 +221,7 @@ describe("Transactions in Progress selection at the delete boundary", () => {
       await routeSweepFixture(page, false);
       await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
       await page.locator('[id="SELECT$1"]').check();
-      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
       await assert.rejects(
         ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
         /checked outside the authorized pending sweep/u,
@@ -216,7 +254,7 @@ describe("Transactions in Progress selection at the delete boundary", () => {
         });
       });
 
-      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
       const refused = assert.rejects(
         ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
         /checked set changed at Delete Selected dispatch/u,
@@ -250,7 +288,7 @@ describe("Transactions in Progress selection at the delete boundary", () => {
         if (!button || !foreign) throw new Error("missing fixture controls");
         button.addEventListener("pointerdown", () => { foreign.checked = true; }, { once: true });
       });
-      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
       await assert.rejects(
         ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
         /checked set changed at Delete Selected dispatch/u,
@@ -268,7 +306,7 @@ describe("Transactions in Progress selection at the delete boundary", () => {
       const page = await browser.newPage();
       await routeSweepFixture(page, false);
       await ucpathSmartHrOperations.stagePendingTerminationSweep(() => undefined, page, sweepTarget([transactionRow()]), OBSERVED_AT);
-      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
       await assert.rejects(
         ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
         /Synthetic delete clicked/u,

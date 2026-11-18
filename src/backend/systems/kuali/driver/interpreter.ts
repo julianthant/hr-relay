@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { ElementId, ObservationId } from "../../../../rules/identity/ids.js";
-import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import {
   KUALI_ACTION_LIST_DOCUMENT_LINK,
   KUALI_ACTION_LIST_MATCHED_NUMBER,
@@ -1381,7 +1381,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     );
     void settled.catch(() => { /* The original promise is awaited below unless revocation refuses. */ });
     assertCurrent();
-    await save.click({ timeout: FIELD_TIMEOUT_MS });
+    await clickWithMutationCapability(capability, save, FIELD_TIMEOUT_MS);
     assertCurrent();
     recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
     // Wait for the specific save mutation response; networkidle and Form saved do not prove retained values.

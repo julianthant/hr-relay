@@ -1963,7 +1963,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
     const probeDeadline = deps.clock.monotonicMs() + node.probeToFenceMaxMs;
     const assertProbeFresh = (): void => {
-      if (deps.clock.monotonicMs() > probeDeadline) {
+      if (deps.clock.monotonicMs() >= probeDeadline) {
         throw new StagedPageDiscardedError(
           `transaction "${node.id}" exceeded its ${String(node.probeToFenceMaxMs)}ms probe-to-fence budget; `
           + "the staged page is discarded and nothing was clicked",
@@ -2149,7 +2149,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         ownership.retainAfterFence();
 
         /* beat ⑤ — the external commit under the minted capability */
-        const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest);
+        const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest, () => probeDeadline - deps.clock.monotonicMs());
         const bufferedCommitObservations: BoundedTaskRecordBatch[] = [];
         const bufferedCommitLogs: BufferedCommitLog[] = [];
         let commitSettlement:
