@@ -7,7 +7,8 @@ import type { Clock } from "../../../src/rules/time/clock.js";
 import type { Fingerprint } from "../../../src/rules/identity/ids.js";
 import {
   EXPLORER_SOURCE_ROOT,
-  type ExplorerQueryDeps,
+  registerExplorerCatalog,
+  type ExplorerQueryInput,
 } from "../../../src/backend/runs/queries/explorer.js";
 import { buildUiTaskLinks } from "../../../src/backend/systems/ui-task-links.js";
 
@@ -22,7 +23,7 @@ export function registeredScenarioFixtureSources(): readonly Readonly<{ path: st
 export function explorerQueryDeps(
   clock: Clock,
   descriptorSetHash: Fingerprint,
-): ExplorerQueryDeps {
+): ExplorerQueryInput {
   return {
     clock,
     modules: READABLE_WORKFLOW_MODULES,
@@ -31,4 +32,8 @@ export function explorerQueryDeps(
     uiTaskLinks: buildUiTaskLinks(),
     listScenarioSources: registeredScenarioFixtureSources,
   };
+}
+
+export function registeredExplorerQueryDeps(clock: Clock, descriptorSetHash: Fingerprint) {
+  return registerExplorerCatalog(explorerQueryDeps(clock, descriptorSetHash));
 }
