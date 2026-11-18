@@ -1126,8 +1126,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         />
         {quitting && <Notice sticky tone="info" title="Relay quits after runs pause" description={PAUSE_ALL_EFFECT} />}
         {dayResource.state !== "failed" && (streamDown || lifecycle.resource.state === "failed")
-          ? <div className="px-[var(--ds-space-base)] pt-[var(--ds-space-base)]"><FailureNotice sentence="Can't reach Relay."
-            action={{ label: "Retry", onClick: () => { dayState.refresh(); lifecycle.refresh(); } }} /></div> : null}
+          ? <Notice sticky tone="warning" title="Can't reach Relay" description="Reconnecting…" /> : null}
         {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
           .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
 

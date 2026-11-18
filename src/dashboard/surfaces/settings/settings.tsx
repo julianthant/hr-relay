@@ -257,7 +257,7 @@ export function SettingsPage({
         {openedForCheckName !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then press Back to run.</Banner>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
         {editor.editor.state === "failed" && !isDataSection && activeId !== "spreadsheets" && (
-          <FailureNotice sentence="Couldn't read settings."
+          <FailureNotice sentence="Couldn't load settings."
             action={{ label: "Retry", onClick: editor.reload }} />
         )}
         {/* Refuse unknown settings destinations; redirecting would label the wrong page as the requested one. */}

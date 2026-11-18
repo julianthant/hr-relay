@@ -112,7 +112,7 @@ describe("canonical Settings navigation", () => {
     const page = await mountFailedRead("keyboard");
     assert.deepEqual([...page.querySelectorAll('a[href^="?settings="]')].map(link => link.getAttribute("href")),
       APPROVED_NAV.flatMap(([, ids]) => ids).map(id => `?settings=${id}`));
-    assert.ok(page.textContent?.includes("Couldn't read settings."), page.textContent ?? "");
+    assert.ok(page.textContent?.includes("Couldn't load settings."), page.textContent ?? "");
     assert.ok([...page.querySelectorAll("button")].some(button => button.textContent === "Retry"));
     assert.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
   });
@@ -121,7 +121,7 @@ describe("canonical Settings navigation", () => {
     const page = await mountFailedRead("credentials");
     assert.ok(page.textContent?.includes("Credentials unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Relay could not load your settings. Reload the page to try again."), page.textContent ?? "");
-    assert.ok(page.textContent?.includes("Couldn't read settings."), page.textContent ?? "");
+    assert.ok(page.textContent?.includes("Couldn't load settings."), page.textContent ?? "");
     assert.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
   });
@@ -130,7 +130,7 @@ describe("canonical Settings navigation", () => {
     const page = await mountFailedRead("archive");
     assert.match(page.textContent ?? "", /Archive page removed/u);
     assert.match(page.textContent ?? "", /Existing stored run data has not been deleted/u);
-    assert.match(page.textContent ?? "", /Couldn't read settings\./u);
+    assert.match(page.textContent ?? "", /Couldn't load settings\./u);
     assert.equal(page.querySelector('a[href="?settings=archive"]'), null);
     assert.equal(page.querySelector('[aria-label="Archive"]'), null);
   });

@@ -13,24 +13,24 @@ interface NoticeContent { sentence: string; action: string }
 
 const CONTENT: Record<NoticeScene, Record<NoticeCopy, NoticeContent>> = {
   "run-panel": {
-    short: { sentence: "Logs could not load.", action: "Retry" },
-    long: { sentence: "Relay could not read the logs for this run because the log store did not answer in time, so no steps are shown yet.", action: "Retry" },
+    short: { sentence: "Couldn't load logs.", action: "Retry" },
+    long: { sentence: "Couldn't load logs.", action: "Retry" },
   },
   settings: {
-    short: { sentence: "Settings could not load.", action: "Retry" },
-    long: { sentence: "Relay could not read your General settings, so the values below may not be the ones you saved.", action: "Retry" },
+    short: { sentence: "Couldn't load settings.", action: "Retry" },
+    long: { sentence: "Couldn't load General settings.", action: "Retry" },
   },
   "dialog-checks": {
-    short: { sentence: "Checks are unavailable.", action: "Retry" },
-    long: { sentence: "Relay could not read this workflow's readiness checks, so it cannot tell whether a run would start.", action: "Retry" },
+    short: { sentence: "Checks unavailable.", action: "Retry" },
+    long: { sentence: "Couldn't read run checks.", action: "Retry" },
   },
   "dialog-refusal": {
     short: { sentence: "Run not started.", action: "Start again" },
-    long: { sentence: "Run not started because T00042871 is already pending in UCPath, filed today at 09:33.", action: "Open existing run" },
+    long: { sentence: "T00042871 is already pending.", action: "Open existing run" },
   },
   "app-start": {
-    short: { sentence: "Relay could not start.", action: "Reload" },
-    long: { sentence: "Relay could not reach its backend, so the queue, Logs and Settings cannot load yet.", action: "Reload" },
+    short: { sentence: "Couldn't start Relay.", action: "Reload" },
+    long: { sentence: "Can't reach Relay.", action: "Reload" },
   },
 };
 
