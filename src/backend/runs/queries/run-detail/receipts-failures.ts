@@ -219,8 +219,8 @@ export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failur
   const rejected = correction.displaySafe === true ? (run.input.parsed.value as Record<string, unknown> | null)?.[correction.inputField] : undefined;
   return { recovery: { correction, expectedVersion: run.version, ...(typeof rejected === "string" && rejected !== "" ? { prefill: rejected } : {}),
     retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: run.version,
-      confirm: { title: "Check again", body: "Retry this run from its retained checkpoints.", confirmLabel: "Check again", tone: "neutral" } },
-    confirm: { title: correction.actionLabel, body: "Relay reads the entered value in the real system before continuing. Identity still requires operator approval.", confirmLabel: correction.actionLabel, tone: "neutral" },
+      confirm: { title: "Check again", body: "Retries from the saved checkpoints.", confirmLabel: "Check again", tone: "neutral" } },
+    confirm: { title: correction.actionLabel, body: "Relay checks the value first; identity still needs approval.", confirmLabel: correction.actionLabel, tone: "neutral" },
     request } };
 }
 
