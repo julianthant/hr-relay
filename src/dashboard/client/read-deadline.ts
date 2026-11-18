@@ -2,7 +2,6 @@ import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/erro
 import { DashboardClientError } from "./errors.js";
 
 export const SETTINGS_READ_DEADLINE_MS = 10_000;
-export const STORAGE_DOCTOR_DEADLINE_MS = 60_000;
 export const CHATGPT_COMPLETION_READ_DEADLINE_MS = 310_000;
 
 export function readWithDeadline<Value>(read: (signal: AbortSignal) => Promise<Value>, code: ErrorCatalogCode, milliseconds = SETTINGS_READ_DEADLINE_MS, signal?: AbortSignal): Promise<Value> {

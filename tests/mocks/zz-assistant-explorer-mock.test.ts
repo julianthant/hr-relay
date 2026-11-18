@@ -5,7 +5,6 @@ import { test } from "./helpers/fixtures.js";
 import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { ASSISTANT_FRAMES } from "../../src/dashboard/surfaces/assistant/assistant-mock-frames.js";
 
 // Design mock renders for the floating Sessions dock, the assistant launcher and Explorer; output goes to the gitignored .work folder.
 const OUT = process.env.AX_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/assistant-explorer-mock";
@@ -24,11 +23,9 @@ const launcherFrames: Frame[] = [
     const [id, name] = item.split(":");
     return { id, query: "assistantOpen=0", view: RUN, keepHover: true, act: async (page: Page) => { await page.getByRole("button", { name, exact: true }).first().hover(); await expect(page.getByRole("tooltip")).toBeVisible(); } };
   }),
-  { id: "launcher-open", query: "assistantOpen=1&assistantNeeds=2&assistantMock=01-chat-basics", view: RUN },
+  { id: "launcher-open", query: "assistantOpen=1&assistantNeeds=2", view: RUN },
 ];
-const assistantFrames: Frame[] = ASSISTANT_FRAMES.map(frame => ({ id: frame.id, query: `assistantOpen=1&assistantMock=${frame.id}`, view: RUN, ...frame.menu === "effort" ? { act: async (page: Page) => { await page.getByRole("button", { name: /^Model:/u }).click(); } } : {} }));
 const FRAMES: Frame[] = [
-  ...assistantFrames,
   { id: "r2-open", query: "assistantOpen=1", view: RUN },
   { id: "r2-open-sessions", query: "assistantOpen=1", view: { ...RUN, sessions: true } },
   { id: "r2-history-chats", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); } },
@@ -40,9 +37,9 @@ const FRAMES: Frame[] = [
   { id: "r2-full-access", query: "assistantOpen=1&assistantFullAccess=1", view: RUN, act: async page => { await page.getByRole("button", { name: "Ask before every action" }).click(); await page.getByRole("menuitemradio", { name: /Full access/u }).click(); } },
   { id: "dock-closed", query: "assistantOpen=0", view: RUN },
   { id: "dock-open", query: "assistantOpen=0", view: { ...RUN, sessions: true } },
-  { id: "dock-open-assistant", query: "assistantOpen=1&assistantMock=01-chat-basics", view: { ...RUN, sessions: true } },
-  { id: "assistant-effort-menu", query: "assistantOpen=1&assistantMock=01b-model-effort", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model:/u }).click(); } },
-  { id: "assistant-model-menu", query: "assistantOpen=1&assistantMock=01-chat-basics", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model:/u }).click(); } },
+  { id: "dock-open-assistant", query: "assistantOpen=1", view: { ...RUN, sessions: true } },
+  { id: "assistant-effort-menu", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model:/u }).click(); } },
+  { id: "assistant-model-menu", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model:/u }).click(); } },
   { id: "dock-rail-collapsed", query: "assistantOpen=0", view: RUN, act: async page => { await page.locator(".workspace-rail-actions button").first().click(); } },
   { id: "dock-open-end", query: "assistantOpen=0", view: { ...RUN, sessions: true }, act: async page => { await page.locator("[data-session-strip]").evaluate(strip => { strip.scrollLeft = strip.scrollWidth; }); } },
   { id: "dock-open-rail-collapsed", query: "assistantOpen=0", view: { ...RUN, sessions: true }, act: async page => { await page.locator(".workspace-rail-actions button").first().click(); } },
@@ -207,7 +204,7 @@ for (const theme of THEMES) test(`assistant full access and Ask mark @ ${theme} 
   test.setTimeout(300_000); page.setDefaultTimeout(20_000);
   await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: 720 });
-  await page.goto(url("assistantOpen=1&assistantFullAccess=1&assistantMock=01-chat-basics"));
+  await page.goto(url("assistantOpen=1&assistantFullAccess=1"));
   await page.getByRole("button", { name: "Ask before every action" }).click();
   await expect(page.getByRole("menuitemradio")).toHaveCount(2);
   await page.screenshot({ path: join(OUT, `approval-menu-${theme}.png`) });
