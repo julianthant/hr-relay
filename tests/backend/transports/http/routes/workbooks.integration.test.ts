@@ -122,9 +122,13 @@ it('serves persisted types and manual named versions, refusing forged sources an
   const request = { operationId: 'reviewed', expectedVersion: first.version, expectedRevision: before.state.revision,
     change: { kind: 'create-version', name: 'Reviewed', from: { kind: 'version', versionId: before.state.selectedVersionId }, useNow: false } };
   assert.equal((await post(request)).status, 200);
-  assert.equal((await post(request)).status, 200);
   const after = await catalog();
-  assert.deepEqual(after.state.versions.filter(({ id }) => id === request.operationId).map(({ name, source }) => ({ name, source })), [{ name: 'Reviewed', source: 'operator' }]);
+  assert.deepEqual(after.state.versions.map(({ id, name, source }) => ({ id, name, source })), [
+    ...before.state.versions.map(({ id, name, source }) => ({ id, name, source })),
+    { id: request.operationId, name: 'Reviewed', source: 'operator' },
+  ]);
+  assert.equal((await post(request)).status, 200);
+  assert.deepEqual(await catalog(), after);
   const view = await h.app.request(`${path}/versions/${request.operationId}`);
   assert.equal(view.status, 200);
   assert.equal(WorkbookLibraryVersionViewSchema.parse(await view.json()).version.name, 'Reviewed');
