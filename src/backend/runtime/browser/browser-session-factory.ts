@@ -149,11 +149,12 @@ const SSN_CONTROL_NAME = /social security|national id|\bssn\b/iu;
 const SSN_MASK_MARK = "data-relay-capture-mask";
 type SsnWatchWindow = Window & { __relaySsnWatch?: { settle(covered: Node[]): boolean; stop(): void } };
 
-/** Watches one frame for an SSN-named control outside the settled masks. Names come from the DOM, so an ARIA-hidden control counts. */
+/** Watches one frame for an SSN-named control outside the settled masks, and for any text-entry control in a shadow tree it cannot watch. Names come from the DOM, so an ARIA-hidden control counts. */
 async function watchSsnControls(frame: Frame): Promise<void> {
   await frame.evaluate(({ source, flags, mark }) => {
     const pattern = new RegExp(source, flags);
     const controlSelector = "input, textarea, [role=textbox], [role=spinbutton]";
+    const nonTextInputs = ["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"];
     const marked = new Set<Element>();
     // Object methods: tsx wraps a named inner function in a __name helper the page realm lacks.
     const scan = {
@@ -172,25 +173,32 @@ async function watchSsnControls(frame: Frame): Promise<void> {
       controls(root: ParentNode): Element[] {
         return [...root.querySelectorAll(controlSelector)].filter(el => el.isConnected && scan.named(el));
       },
+      covered(el: Element): boolean {
+        return marked.has(el) && el.getAttribute(mark) === "";
+      },
       uncovered(): boolean {
-        return scan.controls(document).some(el => scan.shown(el) && !(marked.has(el) && el.getAttribute(mark) === ""));
+        return scan.controls(document).some(el => scan.shown(el) && !scan.covered(el));
+      },
+      // A control a person can type into, whatever its name.
+      textEntry(el: Element): boolean {
+        return el instanceof HTMLInputElement ? !nonTextInputs.includes(el.type) : el.matches(controlSelector);
       },
       shadowRoots(root: ParentNode): ShadowRoot[] {
         return [...root.querySelectorAll("*")].flatMap(el => el.shadowRoot === null ? [] : [el.shadowRoot]);
       },
-      // The observer cannot watch a shadow tree, so any SSN control there refuses.
+      // The observer cannot watch a shadow tree, so any text-entry control there that no recipe mask covers refuses, painted or not.
       shadowed(): boolean {
         const roots = scan.shadowRoots(document);
         for (const root of roots) {
-          if (scan.controls(root).length > 0) return true;
+          if ([...root.querySelectorAll(controlSelector)].some(el => scan.textEntry(el) && !scan.covered(el))) return true;
           roots.push(...scan.shadowRoots(root));
         }
         return false;
       },
-      // An SSN control that left this document but stays connected moved into a tree the observer cannot see.
+      // A text-entry control that left this document but stays connected moved into a tree the observer cannot see, where its name may no longer resolve.
       escaped(record: MutationRecord): boolean {
         return [...record.removedNodes].some(node => node instanceof Element
-          && [node, ...node.querySelectorAll(controlSelector)].some(el => el.matches(controlSelector) && el.isConnected && !document.contains(el) && scan.named(el)));
+          && [node, ...node.querySelectorAll(controlSelector)].some(el => el.matches(controlSelector) && el.isConnected && !document.contains(el) && scan.textEntry(el)));
       },
       unmarked(record: MutationRecord): boolean {
         return record.attributeName === mark && record.target instanceof Element && marked.has(record.target) && record.target.getAttribute(mark) !== "";

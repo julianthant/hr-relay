@@ -303,6 +303,43 @@ describe("whole-page factory screenshots", () => {
       assert.equal("bytes" in evidence, false);
     });
   });
+  it("refuses a text-entry control in an open shadow root that shows as an SSN control only while a band paints", async () => {
+    await withPage(`<div id="paint-host"></div>${content}`, async (page, resource) => {
+      await page.locator("#paint-host").evaluate(host => { host.attachShadow({ mode: "open" }).innerHTML = '<input id="paint-ssn" aria-label="Reference" style="display:none;width:200px;height:40px">'; });
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      const reveal = (shown: boolean) => page.locator("#paint-ssn").evaluate((input: HTMLInputElement, shown) => {
+        input.style.display = shown ? "block" : "none";
+        input.setAttribute("aria-label", shown ? "Employee SSN" : "Reference");
+        input.value = shown ? "fixture-value" : "";
+      }, shown);
+      page.screenshot = async options => {
+        if (++bands !== 2) return screenshot(options);
+        await reveal(true);
+        try { return await screenshot(options); }
+        finally { await reveal(false); }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
+    });
+  });
+  it("refuses a recipe SSN control named by an external label that moves into a closed shadow root", async () => {
+    await withPage(`<div id="closed-host" style="position:absolute;top:1500px;left:0"></div><label for="moved-ssn">U.S. Social Security Number</label><input id="moved-ssn" value="fixture-value" style="width:200px;height:40px">${content}`, async (page, resource) => {
+      await page.evaluate(() => { (window as Window & { closedRoot?: ShadowRoot }).closedRoot = document.querySelector("#closed-host")!.attachShadow({ mode: "closed" }); });
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands === 2) await page.evaluate(() => { (window as Window & { closedRoot?: ShadowRoot }).closedRoot!.append(document.querySelector("#moved-ssn")!); });
+        return screenshot(options);
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
+    });
+  });
   it("refuses an unmasked SSN control the wider capture viewport reveals without a DOM change", async () => {
     await withPage(`<style>@media (min-width: 1000px) { #wide-ssn { display: block !important; } }</style>${content}<input id="wide-ssn" aria-label="Employee SSN" value="fixture-value" style="display:none">`, async (_page, resource) => {
       const evidence = await resource.screenshot?.();
