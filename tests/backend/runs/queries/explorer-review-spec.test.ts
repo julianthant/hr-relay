@@ -130,6 +130,15 @@ it("refuses a Search by option whose choice no review row reads", () => {
   assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /option search-by has no review row that reads input field emplId/u);
 });
 
+it("refuses a Read row with no example value", () => {
+  const definition = { ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries]) => [group.review === undefined ? group : { ...group, review: { ...group.review,
+    pages: group.review.pages.map(page => ({ ...page, mode: "Read only" as const, fields: page.fields.map(field => "inputField" in field && field.id === "search-name" ? { ...field, example: undefined } : field) })) } }, entries] as const) };
+  const deps = explorerQueryDeps(clock, hash);
+  const original = deps.modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
+  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
+  assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /review field search-name on read page \S+ has no example value/u);
+});
+
 it("applies a task's outcome explanation to every decision that owns it", () => {
   const then = "Stops before using unverified hire findings.";
   const definition = { ...onboardingWorkflow, steps: onboardingWorkflow.steps.map(([group, entries]) =>

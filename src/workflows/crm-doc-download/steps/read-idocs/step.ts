@@ -10,7 +10,7 @@ import type { buildReference } from "../reference/step.js";
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "read-idocs", label: "Download CRM documents" }), system: "crm",
   operatorFields: [
-    { label: "Employee ID", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.identity.eid" }] },
+    { label: "Employee ID", example: "10000001", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.identity.eid" }] },
     { label: "Available documents", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.totalDocuments" }] },
     { label: "Downloaded PDF", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.documents.fileName" }] },
   ],
