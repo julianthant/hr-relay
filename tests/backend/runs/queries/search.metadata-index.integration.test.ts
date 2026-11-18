@@ -263,7 +263,7 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
   } finally {await f.dispose();}
 });
 
-it("refuses a selection beyond the 10000 metadata bound before reading run JSON",async ()=>{
+it("counts only the requested scope toward the 10000 metadata bound", async () => {
   const f=await fixture();
   try {
     const prototype = runRecordOf({seed:1,workflow:"history"});
@@ -274,7 +274,7 @@ it("refuses a selection beyond the 10000 metadata bound before reading run JSON"
       const insert = raw.prepare(`INSERT INTO runs(${columns.join(",")}) VALUES(${columns.map(() => "?").join(",")})`);
       for (let seed = 1; seed <= 10001; seed++) {
         const runId = `00000000-0000-4000-8000-${String(seed).padStart(12,"0")}`;
-        const record = RunRecordSchema.parse({...prototype,envelope:{...prototype.envelope,runId,itemId:runId,workflow:seed === 10001 ? "needle" : "history"}});
+        const record = RunRecordSchema.parse({...prototype,envelope:{...prototype.envelope,runId,itemId:runId,workflow:seed === 10001 ? "needle-4000" : "history"}});
         insert.run(...Object.values(runRecordColumns(record)));
       }
       raw.exec("COMMIT");
@@ -291,6 +291,11 @@ it("refuses a selection beyond the 10000 metadata bound before reading run JSON"
     });
     try {assert.throws(()=>f.service().search({q:""}),/run-search-query-too-broad/u);} finally {spy.mockRestore();}
     assert.equal(f.service().search({q:"needle"}).totalMatches,1);
+    const scoped = f.service().search({ q: "4000", scope: "workflow" });
+    assert.equal(scoped.totalMatches, 1);
+    assert.deepEqual(scoped.results.map(({ workflowId, match }) => ({ workflowId, match })), [
+      { workflowId: "needle-4000", match: { field: "workflow", strength: "contains" } },
+    ]);
   } finally {await f.dispose();}
 });
 
