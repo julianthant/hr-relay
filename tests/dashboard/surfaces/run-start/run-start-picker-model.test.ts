@@ -6,10 +6,11 @@ import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-m
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
+import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
-const catalog = buildWorkflowCatalog(served);
+const catalog = buildPreviewCatalog(served, WORKFLOW_SOURCES);
 const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(child => child.entry.id)]));
 
 describe("shared run catalog", () => {
@@ -31,22 +32,22 @@ describe("shared run catalog", () => {
   });
   it("uses served capability instead of restoring a preview launch when served input is absent", () => {
     const absent: RunStartWorkflow = { ...served[0], inputRun: { state: "absent", reason: "Delegation only" } };
-    const entries = buildWorkflowCatalog([absent], true, servedFixtureSources([absent]));
+    const entries = buildPreviewCatalog([absent], servedFixtureSources([absent]));
     expect(entries.filter(entry => entry.id === absent.workflowId)).toHaveLength(1);
     expect(entries.find(entry => entry.id === absent.workflowId)?.launch).toEqual({ state: "unavailable", label: "No direct start", reason: "This served workflow has no standalone launch input. Delegation only" });
     expect(runPickerGroups(entries, "").flatMap(group => group.entries).map(node => node.entry.id)).toContain(absent.workflowId);
-    expect(buildWorkflowCatalog(served, false, servedFixtureSources(served)).map(entry => entry.id).sort()).toEqual(served.map(entry => entry.workflowId).sort());
+    expect(buildWorkflowCatalog(served, servedFixtureSources(served)).map(entry => entry.id).sort()).toEqual(served.map(entry => entry.workflowId).sort());
   });
   it("matches categories, multiple words and served short codes", () => {
     expect(runPickerGroups(catalog, "  ONBOARDING  ").map(group => group.label)).toEqual(["Onboarding", "Utils"]);
     expect(ids("oath signature")).toEqual(["oath-signature"]);
-    expect(runPickerGroups(buildWorkflowCatalog([{ ...served[0], code: "zz" }], false, servedFixtureSources([served[0]])), "zz")[0].entries[0].entry.id).toBe(served[0].workflowId);
+    expect(runPickerGroups(buildWorkflowCatalog([{ ...served[0], code: "zz" }], servedFixtureSources([served[0]])), "zz")[0].entries[0].entry.id).toBe(served[0].workflowId);
   });
   it("shares sidebar category order and retains subordinate proving harnesses", () => {
     expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Lookup", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "Timekeeping"]);
     const composition: RunStartWorkflow = { ...served[0], workflowId: "test-composition", role: defineWorkflowRole({ kind: "composition" }) };
     const harness: RunStartWorkflow = { ...served[0], workflowId: "test-harness", role: defineWorkflowRole({ kind: "chunk-harness", of: "test-composition", step: composition.steps[0].key }) };
-    const groups = runPickerGroups(buildWorkflowCatalog([composition, harness], false, servedFixtureSources([composition, harness])), "");
+    const groups = runPickerGroups(buildWorkflowCatalog([composition, harness], servedFixtureSources([composition, harness])), "");
     expect(groups[0].entries).toHaveLength(1);
     expect(groups[0].entries[0].members[0].entry.id).toBe("test-harness");
     expect(groups[0].entries[0].members[0].harness?.nested).toBe(true);

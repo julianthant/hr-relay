@@ -174,7 +174,7 @@ async function relatedFixture(options: Readonly<{ failure?: 'missing' | 'wrong-p
   window.history.replaceState(null,'',`/?day=${parentDay}`);
   const preferences = createPersonPreferences('preview',{ ...NEUTRAL_PERSON_PREFERENCES,workflowPanelMode: 'sidebar' });
   const host = document.createElement('div');document.body.append(host);root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => { const composition = MOCK_WORKFLOW_COMPOSITION(workflows);return { ...composition,logsSources: composition.sources }; },
+  await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => { const composition = MOCK_WORKFLOW_COMPOSITION(workflows);return { ...composition,logs: "served" as const }; },
     previewPreferences: preferences }) })));
   const chip = () => { const chip = host.querySelector<HTMLButtonElement>(`[data-demo-row-id="${parent.runId}"] button[data-demo-row-link]`);assert.ok(chip);return chip; };
   await vi.waitFor(() => assert.ok(chip()));

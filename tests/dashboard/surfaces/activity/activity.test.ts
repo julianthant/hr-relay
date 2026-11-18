@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
 import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';
@@ -10,7 +10,6 @@ import { afterEach as afterEach_m0,beforeEach as beforeEach_m0,describe as descr
 import { ActivityReport as ActivityReport_m0,ActivityReport as ActivityReport_m1 } from '../../../../src/dashboard/surfaces/activity/activity.js';
 import { WorkflowExplorer as WorkflowExplorer_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer.js";
 import { LogSample as LogSample_m1 } from "../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
-import { buildWorkflowCatalog as buildWorkflowCatalog_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 
 
 {
@@ -76,7 +75,7 @@ describe_m1("frontend presentation producers", () => {
     const activity = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(ActivityReport_m1, { source: "mock", range: "", onRange: noop })));
     assert_m1.match(activity, /Workflows/);
     assert_m1.doesNotMatch(activity, /Sample data/);
-    const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([], true, previewFixtureSources([])) })));
+    const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: buildPreviewCatalog([], previewFixtureSources([])) })));
     assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
     assert_m1.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
     const logs = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(LogSample_m1)));

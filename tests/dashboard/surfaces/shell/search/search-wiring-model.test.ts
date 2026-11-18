@@ -5,9 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { FIXTURE_DAY_WIRE } from "../../../../support/fixtures/dashboard/fixture-day.js";
 import { buildWorkspaceSearchData, useWorkspaceSearchData } from "../../../../../src/dashboard/surfaces/shell/search/search-wiring-model.js";
-import { mockRunStatus, seedMockRuns } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { mockRunDisplayId } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
-import { mockWorkflow } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { runDisplayId } from "../../../../../src/dashboard/surfaces/shared/status/run-display-model.js";
 import { dsStatusOf, statusAccessibleName } from "../../../../../src/dashboard/surfaces/shared/status/status-model.js";
 import type { NavbarData } from "../../../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
@@ -22,27 +19,18 @@ afterEach(async () => {
   host = undefined;
 });
 
-const input = () => {
-  const runs = seedMockRuns();
-  const onboarding = runs.find(run => run.workflowId === "onboarding");
-  const ocr = runs.find(run => run.workflowId === "ocr" && !run.approved);
-  const host = runs.find(run => run.id === ocr?.parentId);
-  assert.ok(onboarding && ocr && host);
-  return {
-    today: "2026-08-04",
-    day: FIXTURE_DAY_WIRE.day,
-    rows: FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.surfaceKind === "single").slice(0, 2),
-    workflowLabel: (workflowId: string) => workflowId === "person-lookup" ? "Person Lookup" : workflowId,
-    mockRuns: [onboarding, host, ocr],
-  };
-};
+const input = () => ({
+  today: "2026-08-04",
+  day: FIXTURE_DAY_WIRE.day,
+  rows: FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.surfaceKind === "single").slice(0, 2),
+  workflowLabel: (workflowId: string) => workflowId === "person-lookup" ? "Person Lookup" : workflowId,
+});
 
 describe("workspace search wiring", () => {
-  it("keeps queue and mock search order, identities, labels, states and destinations", () => {
+  it("keeps queue search order, identities, labels, states and destinations", () => {
     const searchInput = input();
     const [queued, running] = searchInput.rows;
-    const [onboarding, host, ocr] = searchInput.mockRuns;
-    assert.ok(queued && running && onboarding && host && ocr);
+    assert.ok(queued && running);
 
     const data = buildWorkspaceSearchData(searchInput);
     assert.deepEqual(data.results, [
@@ -50,10 +38,6 @@ describe("workspace search wiring", () => {
         state: statusAccessibleName(dsStatusOf(queued.status)), destination: { kind: "run", runId: String(queued.runId), day: searchInput.day } },
       { id: String(running.runId), publicId: runDisplayId(running.runId, running.traceId), subject: running.title, workflow: "Person Lookup", day: searchInput.day,
         state: statusAccessibleName(dsStatusOf(running.status)), destination: { kind: "run", runId: String(running.runId), day: searchInput.day } },
-      { id: onboarding.id, publicId: mockRunDisplayId(onboarding), subject: onboarding.title, workflow: mockWorkflow(onboarding.workflowId).label, day: searchInput.day,
-        state: mockRunStatus(onboarding), destination: { kind: "preview-run", runId: onboarding.id, day: searchInput.day, records: false } },
-      { id: host.id, publicId: mockRunDisplayId(host), subject: host.title, workflow: mockWorkflow(host.workflowId).label, day: searchInput.day,
-        state: mockRunStatus(host), destination: { kind: "preview-run", runId: host.id, day: searchInput.day, records: true } },
     ]);
   });
 

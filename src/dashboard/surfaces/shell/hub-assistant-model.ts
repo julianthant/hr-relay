@@ -12,7 +12,7 @@ import type { AssistantHistory } from '../assistant/assistant-history-model.js';
 
 export function prepareHubWorkflow(request: AssistantWorkflowRequest, composition: WorkflowComposition, sequence: number): { runs: readonly MockRun[]; result: AssistantWorkflowResult } {
   const option = assistantWorkflowOption(request.workflowId);
-  if (request.source !== 'mock' || request.dryRun !== true || !option || composition.sourceForRoute(request.workflowId, true) !== 'mock') throw new Error('This assistant supports sample dry runs only.');
+  if (request.source !== 'mock' || request.dryRun !== true || !option || composition.assistant !== 'mock') throw new Error('This assistant supports sample dry runs only.');
   const workbook = request.file.workbook;
   if (!workbook || !request.rows.length || request.rows.some(row => row.issue !== null)) throw new Error('Review the spreadsheet rows before starting.');
   const id = option.id;

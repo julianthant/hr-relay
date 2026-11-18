@@ -1,8 +1,4 @@
 import { useMemo } from "react";
-import type { MockRun } from "../../workflows/mocks/workflow-mock-model.js";
-import { mockReviewRun, mockRunStatus } from "../../workflows/mocks/workflow-mock-model.js";
-import { mockRunDisplayId } from "../../workflows/mocks/workflow-queue-model.js";
-import { mockWorkflow } from "../../workflows/mocks/workflow-mock-catalog.js";
 import { dsStatusOf, statusAccessibleName } from "../../shared/status/status-model.js";
 import { runDisplayId } from "../../shared/status/run-display-model.js";
 import type { QueueSurfaceWire } from "../../queue/queue-model.js";
@@ -14,9 +10,8 @@ export function buildWorkspaceSearchData(input: {
   readonly unavailable?: string;
   readonly rows: readonly QueueSurfaceWire[];
   readonly workflowLabel: (workflowId: string) => string;
-  readonly mockRuns: readonly MockRun[];
 }): NavbarData {
-  const { today, day, unavailable, rows, workflowLabel, mockRuns } = input;
+  const { today, day, unavailable, rows, workflowLabel } = input;
   return {
     today,
     counts: {},
@@ -24,13 +19,11 @@ export function buildWorkspaceSearchData(input: {
     results: unavailable ? [] : [
       ...rows.map(row => ({ id: String(row.runId), publicId: runDisplayId(row.runId, row.traceId), subject: row.title, workflow: workflowLabel(row.workflowId), day, state: statusAccessibleName(dsStatusOf(row.status)),
         destination: { kind: "run" as const, runId: row.runId, day } })),
-      ...mockRuns.filter(run => run.workflowId !== "ocr").map(run => ({ id: run.id, publicId: mockRunDisplayId(run), subject: run.title, workflow: mockWorkflow(run.workflowId).label, day, state: mockRunStatus(run),
-        destination: { kind: "preview-run" as const, runId: run.id, day, records: mockReviewRun(run, mockRuns).workflowId === "ocr" && !mockReviewRun(run, mockRuns).approved } })),
     ],
   };
 }
 
 export function useWorkspaceSearchData(input: Parameters<typeof buildWorkspaceSearchData>[0]): NavbarData {
-  const { today, day, unavailable, rows, workflowLabel, mockRuns } = input;
-  return useMemo(() => buildWorkspaceSearchData({ today, day, unavailable, rows, workflowLabel, mockRuns }), [today, day, unavailable, rows, workflowLabel, mockRuns]);
+  const { today, day, unavailable, rows, workflowLabel } = input;
+  return useMemo(() => buildWorkspaceSearchData({ today, day, unavailable, rows, workflowLabel }), [today, day, unavailable, rows, workflowLabel]);
 }

@@ -1,31 +1,11 @@
 import { describe,expect,it } from "vitest";
 import { approveMockRun,mockQueueCounts,mockQueueView,mockRunLog,mockRunSubset,seedMockRuns } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { keepsMockRun, PRODUCT_WORKFLOW_COMPOSITION, WORKFLOW_SOURCES } from "../../../../../src/dashboard/app/workflow-sources.js";
 import { mockQueueId,mockQueueSurface,mockQueueSurfaces } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { discardMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { QueueSurfaceWireSchema } from "../../../../../src/models/dashboard/projection.js";
 
 const anchor = "2026-08-03T16:10:00.000Z";
 describe("canonical workflow mock queue presentations", () => {
-  it("keeps hidden previews only under their kept mock host", () => {
-    const all = seedMockRuns();
-    const runs = mockRunSubset(all, run => keepsMockRun(PRODUCT_WORKFLOW_COMPOSITION, run));
-    const rows = mockQueueSurfaces(runs, anchor);
-    expect(runs.some(run => WORKFLOW_SOURCES[run.workflowId] === "served")).toBe(false);
-    const hidden = runs.filter(run => WORKFLOW_SOURCES[run.workflowId] === "hidden");
-    expect(hidden.length).toBeGreaterThan(0);
-    expect(hidden.some(run => run.workflowId === "i9-lookup")).toBe(false);
-    for (const child of hidden) {
-      const parent = runs.find(run => run.id === child.parentId)!;
-      expect(WORKFLOW_SOURCES[parent.workflowId]).toBe("mock");
-      expect(parent.workflowId).toBe(child.parentWorkflowId);
-      expect(rows.find(row => row.runId === mockQueueId(child.id))?.parent?.runId).toBe(mockQueueId(parent.id));
-    }
-    expect(runs.every(run => run.ocrRunId === undefined || runs.some(target => target.id === run.ocrRunId))).toBe(true);
-    expect(mockRunSubset(all, () => true)).toEqual(all);
-    const child = all.find(run => run.workflowId === "i9-lookup")!;
-    expect(() => mockRunSubset([{ ...child, parentId: "missing" }], () => true)).toThrow("MOCK_QUEUE_PARENT_UNAVAILABLE");
-  });
   it("parses every workflow into the canonical wire without enabling commands", () => {
     const runs = seedMockRuns(), rows = mockQueueSurfaces(runs, anchor);
     expect(rows).toHaveLength(runs.length);

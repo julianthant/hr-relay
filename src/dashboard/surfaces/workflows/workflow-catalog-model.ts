@@ -1,7 +1,7 @@
 import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
 import { WORKFLOW_SOURCES, workflowSource, type WorkflowSourcePolicy } from "../../app/workflow-sources.js";
-import type { RunStartWorkflow } from "../run-start/run-start.js";
 import { MOCK_WORKFLOW_CATALOG, type MockWorkflow } from "./mocks/workflow-mock-catalog.js";
+import type { RunStartWorkflow } from "../run-start/run-start.js";
 import { workflowNavigationGroups, workflowRailCategory, type WorkflowNavigationEntry } from "../shell/workflow-rail-model.js";
 
 export type WorkflowLaunchCapability = Readonly<{ state: "served" | "preview" }>
@@ -14,31 +14,18 @@ export interface WorkflowCatalogEntry extends WorkflowNavigationEntry {
   readonly preview?: MockWorkflow;
 }
 
-/** Compose each workflow from its statically selected source. */
-export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], includePreviews = true, sources: WorkflowSourcePolicy = WORKFLOW_SOURCES, features: FrontendBootstrapWire["featureAvailability"] = []): readonly WorkflowCatalogEntry[] {
-  if (includePreviews && new Set(MOCK_WORKFLOW_CATALOG.workflows.map(flow => flow.id)).size !== MOCK_WORKFLOW_CATALOG.workflows.length) throw new Error("WORKFLOW_PREVIEW_REGISTRY_DUPLICATE");
+/** The catalog lists the served workflows the sources policy marks "served"; nothing else is shown. */
+export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], sources: WorkflowSourcePolicy = WORKFLOW_SOURCES, features: FrontendBootstrapWire["featureAvailability"] = []): readonly WorkflowCatalogEntry[] {
   const seen = new Set<string>();
   const entries: WorkflowCatalogEntry[] = served.filter(flow => workflowSource(flow.workflowId, sources) === "served").map(flow => {
     if (seen.has(flow.workflowId)) throw new Error(`WORKFLOW_CATALOG_DUPLICATE: ${flow.workflowId}`);
     seen.add(flow.workflowId);
-    const preview = MOCK_WORKFLOW_CATALOG.workflows.find(item => item.id === flow.workflowId);
     return { id: flow.workflowId, label: flow.label, categoryId: workflowRailCategory(flow.workflowId, flow.categoryId), role: flow.role,
-      code: flow.code, source: "served", served: flow, preview,
+      code: flow.code, source: "served", served: flow, preview: MOCK_WORKFLOW_CATALOG.workflows.find(item => item.id === flow.workflowId),
       launch: flow.inputRun.state === "present" || flow.uploadRun?.pdfInput !== undefined ? { state: "served" }
         : { state: "unavailable", label: "No direct start", reason: `This served workflow has no standalone launch input. ${flow.inputRun.reason}` } };
   });
-  if (includePreviews) for (const preview of MOCK_WORKFLOW_CATALOG.workflows) {
-    const source = workflowSource(preview.id, sources);
-    if (source === "hidden") continue;
-    if (source !== "mock") {
-      if (!seen.has(preview.id)) throw new Error(`WORKFLOW_SERVED_REGISTRATION_MISSING: ${preview.id}`);
-      continue;
-    }
-    seen.add(preview.id);
-    entries.push({ id: preview.id, label: preview.label, categoryId: preview.category, role: { kind: "standalone" }, source: "preview", preview,
-      launch: preview.runnable ? { state: "preview" }
-        : { state: "unavailable", label: "Parent only", reason: "Started by a parent workflow." } });
-  }
+  for (const preview of MOCK_WORKFLOW_CATALOG.workflows) if (sources[preview.id] === "served" && !seen.has(preview.id)) throw new Error(`WORKFLOW_SERVED_REGISTRATION_MISSING: ${preview.id}`);
   const restrictions = workflowStartRestrictions(features);
   const guarded = entries.map(entry => {
     const restriction = restrictions.get(entry.id);

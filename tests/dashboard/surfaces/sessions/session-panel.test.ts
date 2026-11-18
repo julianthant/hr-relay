@@ -1,12 +1,11 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it } from "vitest";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
+const catalog = buildPreviewCatalog([], previewFixtureSources([]));
 
 describe("frontend timeline and sessions", () => {
   it("renders the canonical Sessions host inside the shell toast provider without a dashboard client provider", () => {

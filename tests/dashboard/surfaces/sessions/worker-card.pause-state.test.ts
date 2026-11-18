@@ -3,14 +3,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
-import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 import { WorkerCard } from "../../../../src/dashboard/surfaces/sessions/worker-card.js";
 import { sessionsFromDay } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { DashboardDayWireSchema, type StepInterruptWire } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../support/fixtures/dashboard/fixture-day.js";
+import { buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 
-const catalog = buildWorkflowCatalog([], true, Object.fromEntries(Object.entries(WORKFLOW_SOURCES).map(([id, source]) => [id, source === "hidden" ? source : "mock" as const])));
+const catalog = buildPreviewCatalog([]);
 
 /** Render worker 1 of the served fixture day with the served directive and interrupt, as the sessions view builds it. */
 function render(directive: "run" | "pause" | "stop", interrupt?: StepInterruptWire, state: "running" | "paused" = "running"): string {

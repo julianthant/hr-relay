@@ -26,7 +26,7 @@ it('registers attached, updated and generated files through HTTP/SQLite, reopens
   ] }] } };
   await session.register(file); await session.register(file);
   const request = { workflowId: 'separations', source: 'mock', dryRun: true, conversationId: 'chat', file, rows: assistantWorkflowRows(file, 'separations') } as const;
-  const { result } = prepareHubWorkflow(request, workflowComposition({ separations: 'mock' }), 0);
+  const { result } = prepareHubWorkflow(request, { ...workflowComposition({}), assistant: 'mock' as const }, 0);
   if (result.state !== 'complete') throw Error('missing result');
   session.linkOutputs(request, result);
   for (const output of result.files) { await session.register(output); await session.register(output); }
