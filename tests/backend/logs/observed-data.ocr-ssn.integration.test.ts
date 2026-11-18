@@ -83,9 +83,9 @@ for (const [label, observe] of Object.entries(observationPaths)) it(`serves no I
     ? { ...origin, operatorFields: [{ label: "Answer", kind: "output" as const, fieldPath: "record.answers.raw" }] } : origin);
   const deps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
     descriptors: { resolve: () => ({ dataOrigins }) } };
-  const contextData = buildDataSection(deps as never, run.envelope.runId, "context-data");
+  const contextData = buildDataSection(deps, run.envelope.runId, "context-data");
   assert.ok(contextData.section === "context-data");
-  const logs = buildRunLogsSection(deps as never, run.envelope.runId, undefined, run);
+  const logs = buildRunLogsSection(deps, run.envelope.runId, undefined, run);
   assert.ok(logs.section === "logs");
   const answers = logs.payload.rows?.flatMap(row => row.kind === "observed" ? row.displayFields ?? [] : [])
     .filter(field => field.label === "Answer").map(field => "value" in field ? field.value : undefined);
