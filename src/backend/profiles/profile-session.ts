@@ -1080,13 +1080,15 @@ export function createProfileSession(input: {
       }
       return unproved;
     },
-    signIn(fields: { readonly email: string; readonly password: string; readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+    signIn(fields: { readonly email: string; readonly password: string; readonly at: string }, mountedToken?: string): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
       admission.lifetime.assertRuntimeAvailable();
       return withProfileLock(machineRoot, () => {
         const identified = verifiers.identify(fields.email);
         if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");
+        const mounted = mountedToken === undefined ? undefined : requireSession(mountedToken);
+        if (mounted !== undefined && ("state" in mounted || identified.profileId !== mounted.profileId)) return refusal("PROFILE_SIGN_IN_REFUSED");
         const row = registry.read().profiles.find((entry) => entry.profileId === identified.profileId);
         if (row === undefined) return refusal("PROFILE_SIGN_IN_REFUSED");
         if (row.registration.onboardingCompletion === undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
@@ -1098,16 +1100,24 @@ export function createProfileSession(input: {
           verifiers.recordFailure(row.profileId, nowMs);
           return refusal("PROFILE_SIGN_IN_REFUSED");
         }
+        if (mounted !== undefined && mountedToken !== undefined) {
+          const entries = storeFor(mounted.profileId, mounted.admission).read().entries;
+          if (entries.ucpathUserId?.value !== fields.email || entries.ucpathPassword?.value !== fields.password) return refusal("PROFILE_SIGN_IN_REFUSED");
+          verifiers.clearFailures(row.profileId);
+          return { state: "active" as const, profileId: mounted.profileId, epoch: mounted.epoch, token: mountedToken };
+        }
         return admitSignedIn(row, at, entries => entries.ucpathUserId?.value === fields.email && entries.ucpathPassword?.value === fields.password,
           { email: fields.email, password: fields.password });
       });
     },
-    resumeSignedInProfile(fields: { readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+    resumeSignedInProfile(fields: { readonly at: string; readonly expected?: Readonly<{ installationId: string; profileId: string; epoch: number }> }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
       admission.lifetime.assertRuntimeAvailable();
       return withProfileLock(machineRoot, () => {
         const selection = registry.read(), row = selection.profiles.find(entry => entry.profileId === selection.activeProfileId);
+        if (fields.expected !== undefined && (selection.installationId !== fields.expected.installationId
+          || selection.activeProfileId !== fields.expected.profileId || selection.sessionGeneration !== fields.expected.epoch)) return refusal("PROFILE_SIGN_IN_REFUSED");
         if (row === undefined) return refusal("PROFILE_SIGN_IN_REFUSED");
         if (row.registration.onboardingCompletion === undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
         const pending = openLogout(row.profileId);

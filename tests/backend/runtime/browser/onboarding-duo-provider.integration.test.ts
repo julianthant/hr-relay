@@ -446,13 +446,13 @@ for (const expire of [false, true]) it(`real public Reopen proves owned stop, na
   const runtime = await composeDashboardApplication({ admission: machine, lifetimeLock: lifetime, isolation: rebuildRuntimeIsolation,
     backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: provider });
   const base = `http://127.0.0.1:${runtime.port}`;
-  let cookie: string | undefined, failure: unknown;
-  const post = (path: string, body: unknown, session = cookie) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
-    origin: base, "content-type": "application/json", ...(session === undefined ? {} : { cookie: session }) }, body: JSON.stringify(body) });
+  let credential: string | undefined, failure: unknown;
+  const post = (path: string, body: unknown, session = credential) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
+    origin: base, "content-type": "application/json", ...(session === undefined ? {} : { "x-relay-session": session }) }, body: JSON.stringify(body) });
   try {
     const signup = await post("sign-up", { firstName: "Synthetic", lastName: "Reopen", email: "synthetic-reopen@ucsd.edu", password: "synthetic-reopen-password" });
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
-    cookie = signup.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     const shown = PublicProfileStateSchema.parse(await (await post("onboarding/duo/browser", { operationId: draft.operationId })).json());
     assert.equal(shown.state, "onboarding"); if (shown.state !== "onboarding") throw new Error("open draft required");
     const request = { operationId: draft.operationId, generation: shown.browser.generation };
@@ -549,19 +549,19 @@ for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as
       async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", phase === "foreign" ? foreign : undefined)); },
     } });
   const base = `http://127.0.0.1:${runtime.port}`;
-  let cookie: string | undefined, failure: unknown;
-  const post = (path: string, body: unknown, session = cookie) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
-    origin: base, "content-type": "application/json", ...(session === undefined ? {} : { cookie: session }) }, body: JSON.stringify(body) });
+  let credential: string | undefined, failure: unknown;
+  const post = (path: string, body: unknown, session = credential) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
+    origin: base, "content-type": "application/json", ...(session === undefined ? {} : { "x-relay-session": session }) }, body: JSON.stringify(body) });
   try {
     const signup = await post("sign-up", { firstName: "Synthetic", lastName: "Recovery", email: "synthetic-recovery@ucsd.edu", password: "synthetic-recovery-password" });
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
-    cookie = signup.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     const call = (action: string, extra = {}) => post(`onboarding/${action}`, { operationId: draft.operationId, ...extra });
     assert.equal((await call("duo/start", { method: "touch" })).status, 200);
     const operationPath = join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
     const readOperation = () => SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
     const old = readOperation().onboarding?.attempts[0]; assert.ok(old); assert.equal(old.state, "unknown");
-    const state = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json());
+    const state = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json());
     assert.equal(state.state, "onboarding"); if (state.state !== "onboarding") throw new Error("current draft required");
     const request = { operationId: draft.operationId, generation: state.browser.generation };
     failCapture = phase === "prelaunch" || phase === "foreign"; failReplacement = !failCapture;

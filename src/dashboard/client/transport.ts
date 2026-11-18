@@ -21,6 +21,7 @@ export interface StreamHandle {
 
 /** A response whose STATUS is part of the contract, kept beside its body. */
 export interface JsonResponse {
+  readonly headers: Headers;
   readonly status: number;
   readonly ok: boolean;
   readonly body: unknown;
@@ -54,12 +55,19 @@ export interface DashboardTransport {
 export function createDashboardTransport(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
+  profileHeaders?: (path: string) => Record<string, string>;
   onFailure?: (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }) => void;
   captureProfileSessionStale?: () => () => void;
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const baseOrigin = new URL(baseUrl).origin;
-  const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
+  const sendRequest: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
+  const fetchImpl: FetchLike = (url, init) => {
+    const destination = new URL(url);
+    if (destination.origin !== baseOrigin || destination.username || destination.password) throw new Error("Dashboard request origin mismatch");
+    return sendRequest(url, { ...init, credentials: "omit", redirect: "error", mode: "same-origin",
+      headers: { ...Object.fromEntries(new Headers(init?.headers)), ...input.profileHeaders?.(destination.pathname) } });
+  };
   const observeProfileSession = (path: string, status: number, body: unknown, notify: (() => void) | undefined): void => {
     if (status !== 401 || /^\/api\/v1\/profile\//u.test(path) || path === "/api/v1/debug/errors") return;
     const parsed = PublicProfileStateSchema.safeParse(body);
@@ -95,7 +103,7 @@ export function createDashboardTransport(input: Readonly<{
       throw httpError(response.status, { unparseable: String(error) });
     });
     observeProfileSession(path, response.status, body, notify);
-    return Object.freeze({ status: response.status, ok: response.ok, body });
+    return Object.freeze({ headers: response.headers, status: response.status, ok: response.ok, body });
   };
 
   const sendWithDeadline = (path: string, init?: RequestInit): Promise<JsonResponse> => {

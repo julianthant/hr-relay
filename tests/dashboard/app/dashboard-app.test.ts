@@ -1,3 +1,4 @@
+import { profileActivationResponse } from "../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 import { chatGptStatusFixture } from "../../support/helpers/chatgpt-status-fixture.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
@@ -313,7 +314,7 @@ describe_m1("served sign-up Finish", () => {
         reads++; if (holdPublic) return publicRead.promise;
         return Response.json(restarted && resumes === 0 ? { state: "signed-out", resumable: true } : active(1 + resumes));
       }
-      if (path.endsWith("/resume")) { resumes++; return Response.json(active(1 + resumes)); }
+      if (path.endsWith("/resume")) { resumes++; return profileActivationResponse(active(1 + resumes)); }
       if (path.endsWith("/bootstrap")) {
         if (defer) { defer = false; dispatched.resolve(); return old.promise; }
         if (restarted && resumes === 0 || invalidateFresh) return stale();
@@ -356,7 +357,7 @@ describe_m1("served sign-up Finish", () => {
     const live = createDashboardClient_m2({ baseUrl: "http://fixture.test", fetchImpl: async url => {
       const path = new URL(url).pathname;
       if (path.endsWith("/state")) return Response.json(restarted && resumes === 0 ? { state: "signed-out", resumable: true } : { ...active, epoch: 1 + resumes });
-      if (path.endsWith("/resume")) { resumes++; return Response.json({ ...active, epoch: 1 + resumes }); }
+      if (path.endsWith("/resume")) { resumes++; return profileActivationResponse({ ...active, epoch: 1 + resumes }); }
       if (path.endsWith("/bootstrap")) {
         if (restarted && resumes === 0) { refusedReads++; return Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 }); }
         return Response.json(APP_BOOTSTRAP);

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { profileActivationResponse } from "../../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 import { z } from "zod";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import assert from "node:assert/strict";
@@ -168,7 +169,7 @@ it("served Open Duo dispatches the owned portal command without opening a local 
 it("signup can only settle a draft, never a premature active session", async () => {
   const settled: unknown[] = [];
   let value: unknown = onboardingDraft();
-  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => Response.json(value) });
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => profileActivationResponse(value) });
   const served = createServedOnboardingPort(client, state => settled.push(state));
   const details = { firstName: "Test", lastName: "Operator", email: "test@example.invalid", password: "synthetic-test-password" };
   assert.equal((await served.submit("signup", details)).state, "onboarding");
@@ -347,7 +348,7 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
       if (reads === 2) throw new Error("synthetic offline");
       return reads === 3 ? refresh.promise : Response.json(polled);
     }
-    return Response.json(draft);
+    return path.endsWith("/sign-up") ? profileActivationResponse(draft) : Response.json(draft);
   } });
   const host = document.createElement("div"), root = createRoot(host);
   let session!: ReturnType<typeof usePublicProfileSession>, browser!: ReturnType<typeof useDuoBrowser>;

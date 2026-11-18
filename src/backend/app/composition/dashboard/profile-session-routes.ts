@@ -1,5 +1,5 @@
 import { Hono,type Context } from "hono";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { readFileSync,realpathSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -34,6 +34,7 @@ import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onb
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { PROFILE_ONBOARDING_BROWSER_DIRECTORY } from "../../../storage/browser-root-contract.js";
 import { createBrowserRoots } from "../../../storage/browser-roots.js";
+import { createProfileVerifiers } from "../../../storage/configuration/verifier-store.js";
 import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
 import { assertMaintenanceCustodyAvailable } from "../../../storage/maintenance/custody-availability.js";
 import { dispatchMountedRequest,startDashboardHttpServer } from "../../../transports/http/http-server.js";
@@ -102,13 +103,25 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   let pending: { sessionId: string; operationId: string; profileId: string; epoch: number; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
   const retainedCustodyFailures: unknown[] = [];
-  const cookieName = "relay-profile-session";
-  const onboardingCookieName = "relay-profile-onboarding";
+  const verifiers = createProfileVerifiers(machine.stateRoot);
+  const sessionHeader = "x-relay-session", resumeHeader = "x-relay-resume";
   let registeredPort: number = input.backendPortOverride ?? input.isolation.backendPort;
-  const cookieOf = (request: Request, name = cookieName): string | undefined => {
-    const cookies = request.headers.get("cookie")?.split(";").map(value => value.trim()).filter(value => value.startsWith(`${name}=`));
-    if (cookies?.length !== 1) return undefined;
-    return cookies[0]?.slice(name.length + 1);
+  const originOf = (request: Request) => new URL(`http://${request.headers.get("host")}`).origin;
+  const credential = (request: Request, secret: string, purpose: "active" | "draft" = "active") =>
+    purpose + "." + createHmac("sha256", secret).update(JSON.stringify([purpose, originOf(request)])).digest("hex");
+  const carries = (request: Request, secret: string, purpose: "active" | "draft" = "active") =>
+    request.headers.get(sessionHeader) === credential(request, secret, purpose);
+  const bindingFor = (request: Request, registry = machine.readProfileRegistry()) => {
+    return registry.activeProfileId === null ? undefined : { installationId: registry.installationId,
+      profileId: registry.activeProfileId, epoch: registry.sessionGeneration, origin: originOf(request) };
+  };
+  const issue = (c: Context, active: Selection, verifiedPredecessor?: string) => {
+    const binding = bindingFor(c.req.raw);
+    if (selection !== active || binding?.profileId !== active.profileId || binding.epoch !== active.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    const proof = verifiers.issueResumeProof(binding, verifiedPredecessor);
+    c.header("cache-control", "no-store");
+    c.header(sessionHeader, credential(c.req.raw, active.sessionId));
+    c.header(resumeHeader, proof);
   };
   const loopback = (request: Request): boolean => {
     const host = request.headers.get("host");
@@ -120,14 +133,14 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       && (request.headers.get("origin") === null || request.headers.get("origin") === url.origin);
   };
   const current = (request: Request): Selection => {
-    if (!loopback(request) || transitioning || selection === undefined || cookieOf(request) !== selection.sessionId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (!loopback(request) || transitioning || selection === undefined || !carries(request, selection.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     profileRuntime.assertCurrent(selection.token);
     return selection;
   };
   const currentOnboarding = (request: Request, operationId: string, abort = false) => {
     const draft = onboardingSelection;
     if (!loopback(request) || transitioning || draft === undefined || draft.operationId !== operationId
-      || cookieOf(request, onboardingCookieName) !== draft.sessionId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      || !carries(request, draft.sessionId, "draft")) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (abort) profileRuntime.session.assertOnboardingAbort(draft.token, operationId);
     else profileRuntime.session.readOnboarding(draft.token, operationId);
     return draft;
@@ -166,19 +179,24 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return next();
   });
   app.get("/api/v1/profile/state", c => {
-    if (selection === undefined && onboardingSelection !== undefined && cookieOf(c.req.raw, onboardingCookieName) === onboardingSelection.sessionId) {
+    c.header("cache-control", "no-store");
+    if (selection === undefined && onboardingSelection !== undefined && carries(c.req.raw, onboardingSelection.sessionId, "draft")) {
       return c.json(profileRuntime.session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
     }
-    if (selection === undefined && pending !== undefined && cookieOf(c.req.raw) === pending.sessionId) return c.json(PublicProfileStateSchema.parse({ state: "cancelling", operationId: pending.operationId }));
+    if (selection === undefined && pending !== undefined && carries(c.req.raw, pending.sessionId)) return c.json(PublicProfileStateSchema.parse({ state: "cancelling", operationId: pending.operationId }));
+    const resumeState = (registry: ReturnType<typeof machine.readProfileRegistry>) => {
+      const bound = bindingFor(c.req.raw, registry);
+      return bound !== undefined && verifiers.verifyResumeProof(bound, c.req.header(resumeHeader) ?? null) ? { resumable: true } : {};
+    };
     if (selection === undefined) {
       const registry = machine.readProfileRegistry();
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: registry.profiles.length === 0,
-        ...registry.activeProfileId !== null && { resumable: true },
+        ...resumeState(registry),
         ...(registry.profiles.some(row => row.lifecycle === "cancelling") || profileRuntime.session.logoutOperations().some(operation => operation.phase !== "complete")) && { logoutIncomplete: true } }));
     }
-    if (!transitioning && cookieOf(c.req.raw) !== selection.sessionId) {
+    if (!transitioning && !carries(c.req.raw, selection.sessionId)) {
       profileRuntime.assertCurrent(selection.token);
-      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: false, resumable: true }));
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: false, ...resumeState(machine.readProfileRegistry()) }));
     }
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse(activeState(active.profileId, active.epoch)));
@@ -225,24 +243,30 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
     return activeState(result.profileId, result.epoch);
   };
-  let resumeInFlight: Promise<void> | undefined;
-  const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
-    // A page reload during a resume sends a second resume; it waits for the first and then answers from its outcome.
-    if (mode === "resume" && resumeInFlight !== undefined) { await resumeInFlight; return activate(request, mode); }
+  type ResumeBinding = NonNullable<ReturnType<typeof bindingFor>>;
+  let resumeInFlight: { predecessor: ResumeBinding; result: Promise<PublicProfileState> } | undefined;
+  const activate = async (request: Request, mode: "signup" | "signin" | "resume", expected?: ResumeBinding): Promise<PublicProfileState> => {
     if (transitioning || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     if (selection !== undefined) {
-      if (mode !== "resume") throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      const mounted = selection;
+      if (mode === "signin") {
+        const fields = ProfileLoginRequestSchema.parse(await request.json());
+        if (selection !== mounted || transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+        const result = profileRuntime.session.signIn({ ...fields, at: clock.now().toISOString() }, mounted.token);
+        if (result.state !== "active") return { state: "refused", code: result.state === "refused" ? result.code : "PROFILE_TRANSITION_BLOCKED" };
+      } else if (mode !== "resume") throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
       const { token, profileId, epoch } = selection;
       profileRuntime.assertCurrent(token);
       return PublicProfileStateSchema.parse(activeState(profileId, epoch));
     }
     transitioning = true;
-    let settled: () => void = () => undefined;
-    if (mode === "resume") resumeInFlight = new Promise<void>(resolve => { settled = resolve; });
     try {
       const result = await (async () => {
         if (mode === "signup") return profileRuntime.session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
-        if (mode === "resume") return profileRuntime.session.resumeSignedInProfile({ at: clock.now().toISOString() });
+        if (mode === "resume") {
+          if (expected === undefined) throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED");
+          return profileRuntime.session.resumeSignedInProfile({ at: clock.now().toISOString(), expected });
+        }
         const fields = { ...ProfileLoginRequestSchema.parse(await request.json()), at: clock.now().toISOString() };
         const signed = profileRuntime.session.signIn(fields);
         if (signed.state !== "cancelling") return signed;
@@ -259,27 +283,42 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       }
       if (result.state !== "active") return { state: "refused" as const, code: result.code };
       return await mountActive(result);
-    } finally { transitioning = false; if (mode === "resume") { resumeInFlight = undefined; settled(); } }
+    } finally { transitioning = false; }
+  };
+  const resume = async (request: Request): Promise<PublicProfileState> => {
+    const flight = resumeInFlight;
+    const bound = flight?.predecessor ?? bindingFor(request);
+    if (bound === undefined || bound.origin !== originOf(request) || !verifiers.verifyResumeProof(bound, request.headers.get(resumeHeader))) {
+      return { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" };
+    }
+    if (flight !== undefined) return flight.result;
+    const result = activate(request, "resume", bound);
+    resumeInFlight = { predecessor: bound, result };
+    try { return await result; } finally { resumeInFlight = undefined; }
   };
   const admitProfile = async (mode: "signup" | "signin" | "resume", request: Request) => {
-    const activated = await activate(request, mode);
+    const activated = await (mode === "resume" ? resume(request) : activate(request, mode));
     const result = PublicProfileStateSchema.parse(activated.state === "refused" ? { state: activated.state, code: activated.code } : activated);
+    if (result.state === "active" && (selection?.profileId !== result.profileId || selection.epoch !== result.epoch)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     return { result, session: result.state === "active" ? selection : undefined };
   };
   app.post("/api/v1/profile/sign-in", async c => {
     const admitted = await admitProfile("signin", c.req.raw);
-    if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+    if (admitted.session !== undefined) issue(c, admitted.session);
     return c.json(admitted.result);
   });
   app.post("/api/v1/profile/resume", async c => {
     const admitted = await admitProfile("resume", c.req.raw);
-    if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+    if (admitted.session !== undefined) issue(c, admitted.session, c.req.header(resumeHeader));
     return c.json(admitted.result);
   });
   app.post("/api/v1/profile/sign-up", async c => {
     const admitted = await admitProfile("signup", c.req.raw);
-    if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-    if (admitted.result.state === PROFILE_ONBOARDING_STATE && onboardingSelection !== undefined) c.header("set-cookie", `${onboardingCookieName}=${onboardingSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/api/v1/profile`);
+    if (admitted.session !== undefined) issue(c, admitted.session);
+    if (admitted.result.state === PROFILE_ONBOARDING_STATE && onboardingSelection !== undefined) {
+      c.header("cache-control", "no-store");
+      c.header(sessionHeader, credential(c.req.raw, onboardingSelection.sessionId, "draft"));
+    }
     return c.json(admitted.result);
   });
   app.post("/api/v1/profile/onboarding/duo/browser", async c => {
@@ -312,20 +351,20 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     try {
       const result = await profileRuntime.session.cancelOnboarding(draft.token, request.operationId);
       onboardingSelection = undefined;
-      c.header("set-cookie", `${onboardingCookieName}=; HttpOnly; SameSite=Strict; Path=/api/v1/profile; Max-Age=0`);
+
       return c.json(PublicProfileStateSchema.parse(result));
     } finally { transitioning = false; }
   });
   app.post("/api/v1/profile/onboarding/complete", async c => {
     const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json());
     const completed = completedDraft;
-    if (completed?.operationId === request.operationId && cookieOf(c.req.raw, onboardingCookieName) === completed.sessionId) {
+    if (completed?.operationId === request.operationId && carries(c.req.raw, completed.sessionId, "draft")) {
       const registry = machine.readProfileRegistry();
       if (transitioning || registry.activeProfileId !== completed.profileId || registry.sessionGeneration !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
       if (completed.response.body.state === "active") {
         if (selection === undefined || selection.sessionId !== completed.activeSessionId || selection.profileId !== completed.profileId || selection.epoch !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
         profileRuntime.assertCurrent(selection.token);
-        c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+        issue(c, selection);
       }
       return c.json(completed.response.body, completed.response.status);
     }
@@ -348,7 +387,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (response.body.state === "active") {
         if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
         activeSessionId = selection.sessionId;
-        c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+        issue(c, selection);
       }
       completedDraft = { operationId: request.operationId, sessionId: draft.sessionId, profileId: active.profileId, epoch: active.epoch,
         response, ...(activeSessionId === undefined ? {} : { activeSessionId }) };
@@ -358,7 +397,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const endSession = async (c: Context, deleting: boolean) => {
     const deletion = deleting ? DeleteProfileAccountRequestSchema.parse(await c.req.json()) : undefined;
     const active = selection === undefined ? undefined : current(c.req.raw);
-    if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (active === undefined && (pending === undefined || !carries(c.req.raw, pending.sessionId))) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     if (deletion !== undefined) {
       const target = active ?? pending;
@@ -387,7 +426,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId }));
       if (operation.deleting) profileRuntime.session.deleteLoggedOutAccount(operation.operationId);
       pending = undefined;
-      c.header("set-cookie", `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     } finally { transitioning = false; }
   };
