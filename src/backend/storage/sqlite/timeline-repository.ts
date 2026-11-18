@@ -198,56 +198,49 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
     pruneBefore(retentionDate: string) {
       const cutoff = z.iso.date().parse(retentionDate);
       return ports.mutate(() => {
+        // Pair adjacent span boundaries at their native identity before deleting either side.
         const result = prepare(
-          `DELETE FROM timeline_events WHERE retention_class = 'ordinary'
+          `WITH span_peers AS MATERIALIZED (
+            SELECT cursor, CASE WHEN kind = 'span.ended'
+              THEN lag(kind = 'span.ended' OR expires, 1, 1) OVER span
+              ELSE lead(kind = 'span.ended' AND expires, 1, 0) OVER span
+              END AS peer_expires
+            FROM (
+              SELECT cursor, kind, run_id, worker_id, workflow, payload_json,
+                retention_class = 'ordinary' AND retention_date < ?1 AS expires
+              FROM timeline_events WHERE kind IN ('span.started', 'span.ended', 'run.claimed')
+            )
+            WINDOW span AS (PARTITION BY run_id, worker_id, workflow,
+              CASE WHEN kind = 'run.claimed' THEN 'run' ELSE json_extract(payload_json,'$.payload.event.kind') END,
+              json_extract(payload_json,'$.payload.event.pid'),
+              json_extract(payload_json,'$.payload.event.attempt'),
+              json_extract(payload_json,'$.payload.event.traceId'),
+              json_extract(payload_json,'$.payload.event.spanPath'),
+              json_extract(payload_json,'$.payload.event.workerId'),
+              json_extract(payload_json,'$.payload.event.claimGeneration')
+              ORDER BY cursor)
+          ), sse_expiry AS MATERIALIZED (
+            SELECT cursor, min(retention_class = 'ordinary') OVER stream
+              AND max(retention_date) OVER stream < CASE WHEN
+                max(json_extract(payload_json,'$.payload.event.phase') = 'settled') OVER stream
+                THEN date(?1,'+23 days') ELSE ?1 END AS expires
+            FROM timeline_events WHERE kind = 'debug'
+              AND json_extract(payload_json,'$.payload.event.category') = 'sse'
+              AND json_extract(payload_json,'$.payload.event.phase') IN ('started', 'settled')
+            WINDOW stream AS (PARTITION BY json_extract(payload_json,'$.scope'),
+              json_extract(payload_json,'$.payload.event.correlationId'))
+          )
+          DELETE FROM timeline_events WHERE retention_class = 'ordinary'
             AND kind <> 'gate.resolved'
-            AND retention_date < CASE WHEN json_extract(payload_json,'$.payload.event.category')='sse'
-              AND json_extract(payload_json,'$.payload.event.phase')='settled' THEN date(?,'+23 days') ELSE ? END
+            AND COALESCE((SELECT expires FROM sse_expiry WHERE cursor = timeline_events.cursor), retention_date < ?1)
             AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=timeline_events.run_id AND r.state<>'terminal')
-            AND NOT (kind='span.started' AND (
-              NOT EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended' AND ended.cursor>timeline_events.cursor
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.kind') IS json_extract(timeline_events.payload_json,'$.payload.event.kind')
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath'))
-              OR EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended' AND ended.retention_class='protected' AND ended.cursor>timeline_events.cursor
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.kind') IS json_extract(timeline_events.payload_json,'$.payload.event.kind')
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath'))))
-            AND NOT (kind='run.claimed' AND (
-              NOT EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended'
-                AND json_extract(ended.payload_json,'$.payload.event.kind')='run' AND ended.cursor>timeline_events.cursor
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath')
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.workerId') IS json_extract(timeline_events.payload_json,'$.payload.event.workerId')
-                AND json_extract(ended.payload_json,'$.payload.event.claimGeneration') IS json_extract(timeline_events.payload_json,'$.payload.event.claimGeneration'))
-              OR EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended' AND ended.retention_class='protected' AND ended.cursor>timeline_events.cursor
-                AND json_extract(ended.payload_json,'$.payload.event.kind')='run' AND ended.cursor>timeline_events.cursor
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath')
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.workerId') IS json_extract(timeline_events.payload_json,'$.payload.event.workerId')
-                AND json_extract(ended.payload_json,'$.payload.event.claimGeneration') IS json_extract(timeline_events.payload_json,'$.payload.event.claimGeneration'))))
+            AND cursor NOT IN (SELECT cursor FROM span_peers WHERE NOT peer_expires)
             AND NOT EXISTS (SELECT 1 FROM run_search AS search_row JOIN runs AS run_owner ON run_owner.id=search_row.run_id,
               json_each(search_row.actor_source_json) actor_source
               WHERE search_row.run_id=timeline_events.run_id
                 AND json_extract(actor_source.value,'$.kind')='queued'
                 AND json_extract(actor_source.value,'$.event.eventId')=timeline_events.id)`,
-        ).run(cutoff, cutoff);
+        ).run(cutoff);
         const changes = z.number().int().nonnegative().parse(Number(result.changes));
         return { result: changes, changes };
       });

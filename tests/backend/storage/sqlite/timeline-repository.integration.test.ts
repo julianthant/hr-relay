@@ -9,9 +9,11 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { resolutionApp, resolutionFixture } from "../../../support/helpers/failure-resolution/fixtures.js";
 
 {
@@ -145,6 +147,50 @@ describe("native logging authority", () => {
       const remaining = repository.page({}); assert.equal(remaining.length, 2);
       assert.equal(repository.pruneBefore("2027-01-01"), 1);
       assert.equal(repository.page({}).length, 1);
+    } finally { database.close(); }
+  });
+
+  it("retains a task span across the append-day boundary and prunes it as a pair", async () => {
+    const f = await trustWorld();
+    try {
+      const repository = f.database.authority.timelineEvents;
+      const clock = f.world.clock;
+      clock.setWall(new Date(2026, 9, 10, 23, 59));
+      const run = f.create(820);
+      const { workflow, runId, traceId, attempt } = run.envelope;
+      const writer = createTimelineEmitter({ repository, clock, pid: 1 });
+      const task = { kind: "task", workflow, runId, traceId, attempt,
+        spanPath: `${traceId}/lookup`, parentSpanPath: traceId };
+      writer.emit({ ...task, t: "span.started", name: "Lookup", ts: clock.now().toISOString() });
+      clock.advanceWall(120_000);
+      writer.emit({ ...task, t: "span.ended", outcome: "done", ts: clock.now().toISOString() });
+      f.cancel(run, 821);
+      const taskRows = () => repository.page({ runId }).filter(row =>
+        row.payload.kind === "span" && "kind" in row.payload.event && row.payload.event.kind === "task");
+      const pair = taskRows();
+      assert.deepEqual(pair.map(row => row.retentionDate), ["2026-10-10", "2026-10-11"]);
+
+      repository.pruneBefore("2026-10-11");
+      assert.deepEqual(taskRows(), pair);
+      repository.pruneBefore("2026-10-12");
+      assert.deepEqual(taskRows(), []);
+    } finally { await f.dispose(); }
+  });
+
+  it("expires an SSE start and its successful settle together seven days after settlement", () => {
+    const { database, repository } = fixture();
+    try {
+      const clock = manualClock(new Date(2026, 9, 10, 23, 59));
+      const writer = createDebugEventWriter({ repository, clock, build: "test" });
+      const started = writer.emit({ category: "sse", phase: "started", correlationId: "successful" }).record;
+      clock.advanceWall(120_000);
+      const settled = writer.emit({ category: "sse", phase: "settled", correlationId: "successful" }).record;
+      const unrelated = writer.emit({ category: "sse", phase: "started", correlationId: "other" }).record;
+
+      assert.equal(repository.pruneBefore("2026-09-18"), 0);
+      assert.deepEqual(repository.page({}), [started, settled, unrelated]);
+      assert.equal(repository.pruneBefore("2026-09-19"), 2);
+      assert.deepEqual(repository.page({}), [unrelated]);
     } finally { database.close(); }
   });
 });
