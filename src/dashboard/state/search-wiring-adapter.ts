@@ -87,6 +87,9 @@ export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, 
 }
 
 const NO_TITLES: ReadonlyMap<string, string> = new Map();
+/** A search is sent once the query has rested this long; typing and reopening send nothing in between. */
+export const SEARCH_PAUSE_MS = 150;
+
 export function useSearchWiring({ client, enabled, query, today, epoch, workflows, titles = NO_TITLES }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object; workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]; titles?: ReadonlyMap<string, string> }): NavbarData {
   const request = useMemo(() => ({ client, enabled, query, epoch, workflows }), [client, enabled, query, epoch, workflows]);
   const active = useRef(request); active.current = request;
@@ -94,13 +97,15 @@ export function useSearchWiring({ client, enabled, query, today, epoch, workflow
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
-    void readSearchSnapshot(client, workspaceSearchQuery(query, workflows), controller.signal).then(snapshot => {
-      if (active.current !== request || controller.signal.aborted) return;
-      setSettled({ request, data: { today, counts: {}, results: searchResults(snapshot), totalMatches: snapshot.totalMatches } });
-    }, () => {
-      if (active.current === request && !controller.signal.aborted) setSettled({ request, data: { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_UNAVAILABLE") } });
-    });
-    return () => controller.abort();
+    const timer = setTimeout(() => {
+      void readSearchSnapshot(client, workspaceSearchQuery(query, workflows), controller.signal).then(snapshot => {
+        if (active.current !== request || controller.signal.aborted) return;
+        setSettled({ request, data: { today, counts: {}, results: searchResults(snapshot), totalMatches: snapshot.totalMatches } });
+      }, () => {
+        if (active.current === request && !controller.signal.aborted) setSettled({ request, data: { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_UNAVAILABLE") } });
+      });
+    }, SEARCH_PAUSE_MS);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [client, enabled, query, today, workflows, request]);
   return useMemo(() => {
     const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], loading: true };
