@@ -114,7 +114,9 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const settled = observedBrowse?.request === browseRequest ? observedBrowse : cachedBrowse.value === undefined ? observedBrowse : { request: browseRequest, result: cachedBrowse.value };
   useEffect(() => {
     if (!enabled || client === undefined) return;
-    void resource.read(() => client.activityPopulation(request.from, request.to), "DASHBOARD_READ_FAILED").catch(() => undefined);
+    const controller = new AbortController();
+    void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).catch(() => undefined);
+    return () => controller.abort();
   }, [client, enabled, request, resource]);
   useEffect(() => {
     if (!enabled || client === undefined || selection === undefined || browseInput?.success !== true) return;

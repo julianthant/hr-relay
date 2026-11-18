@@ -147,6 +147,17 @@ it("invalidates settled and pending requests across workflow and client A -> B -
   } finally { await act(async () => root.unmount()); }
 });
 
+it("aborts the unfinished explorer read when its section is left", async () => {
+  const signals: (AbortSignal | undefined)[] = [];
+  const client = { workflowExplorer: (signal?: AbortSignal) => { signals.push(signal); return new Promise<WorkflowExplorerWire>(() => undefined); } };
+  function Probe() { useExplorerWiring(client, compiled.id); return null; }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => root.render(createElement(Probe)));
+  assert.equal(signals.length, 1); assert.equal(signals[0]?.aborted, false);
+  await act(async () => root.unmount());
+  assert.equal(signals[0]?.aborted, true);
+});
+
 it("renders the actual authored onboarding branch through the served definition and existing timeline", async () => {
   const workflow = wire.workflows.find(workflow => workflow.id === "onboarding"); assert.ok(workflow);
   const projected = projectExplorerDefinition(workflow); assert.ok(projected.state === "ready");
