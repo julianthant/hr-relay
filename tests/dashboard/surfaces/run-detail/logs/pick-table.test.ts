@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { logDecisionExamples } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
+import { logDecisionExamples } from "../../../../support/fixtures/dashboard/log-preview/log-decision-fixture";
 import { LogDecisionBlock, type DecisionAnswerHandler } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

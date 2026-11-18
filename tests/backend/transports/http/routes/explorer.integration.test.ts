@@ -222,7 +222,7 @@ it("serves the picker tree: startable workflows as roots, each delegated child u
       settingsSchemaHash: descriptorSetHash(["settings-schema"]), projection: world.projection, actorLabel: () => "Fixture Operator",
       authorityMeta: () => world.database.getMeta(), preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       workbookCompatibility: modules => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, modules) });
-    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility), false);
+    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility));
     const picker = explorerPickerEntries(catalog, workflows);
     assert.deepEqual(picker.filter(entry => entry.depth === 0).map(entry => entry.id).sort(),
       ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);

@@ -48,7 +48,7 @@ async function start(answers: Record<string, Answer>, fallback?: (url: string, i
     if (frames.at(-1) !== frame) frames.push(frame);
   });
   watcher.observe(host, { childList: true, subtree: true, characterData: true });
-  await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
+  await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
   return { host, paths, frames, signInFrames: () => signInFrames,
     stop: async () => { watcher.disconnect(); await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", previous); } };
 }

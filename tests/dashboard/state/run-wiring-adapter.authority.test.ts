@@ -17,8 +17,8 @@ import { projectRunLogs, readRunLogs, useRunWiring, type RunWiringConfirm } from
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/actions/actions.js";
-import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
-import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
+import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
 import { RunWorkbookReferenceChoiceWireSchema, FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
