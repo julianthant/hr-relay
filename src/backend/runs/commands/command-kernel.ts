@@ -2198,7 +2198,7 @@ async function executeWorkerPoolCommand(
           throw error;
         }
       };
-      const { member, result } = transact(repositories => {
+      const { member, result, releaseClaimHold } = transact(repositories => {
         repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
         requireMemberFence(pool, request);
@@ -2210,9 +2210,18 @@ async function executeWorkerPoolCommand(
           ...workerPauseHeldRuns(repositories, member.workerId, "paused").map(held => journaledResetCancel(repositories, held, true))];
         const reset = applied(request, [workerTarget(member.workerId), ...cancels.flatMap(cancel => cancel.result.state === "applied" ? cancel.result.affectedTargets : [])],
           cancels.flatMap(cancel => cancel.versionChanges), cancels.flatMap(cancel => cancel.affectedDependencyIds));
-        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset) };
+        const slot = repositories.workerSlots.get(member.workerId);
+        if (slot === undefined) throw new Error("worker-slot-not-found");
+        if (!slot.paused) repositories.workerSlots.setPaused({ workerId: member.workerId, paused: true, now });
+        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset), releaseClaimHold: !slot.paused };
       });
-      try { await pool.stop(member.workerId, "reset"); await pool.start(member); }
+      try { await pool.stop(member.workerId, "reset"); }
+      catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; return result; }
+      // Stop proves the old process exited. Keep any pause that preceded the Reset.
+      if (releaseClaimHold) transact(repositories => repositories.workerSlots.setPaused({
+        workerId: member.workerId, paused: false, now: dependencies.clock.now().toISOString(),
+      }));
+      try { await pool.start(member); }
       catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }
       return result;
     }
