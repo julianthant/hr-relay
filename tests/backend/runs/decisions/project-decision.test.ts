@@ -39,7 +39,7 @@ describe("decision instance text", () => {
   it("asks the person pick as a question naming the document's person and counting the candidates", () => {
     const decision = identityGateDecision([option("10000001"), option("10000042")], [approve], [], undefined, { documentName: "Bea Morrow" });
     assert.equal(decision.title, "Which Bea Morrow is this run about?");
-    assert.equal(decision.context, "UCPath found 2 people with this name.");
+    assert.equal(decision.context, "2 UCPath name matches");
   });
 
   it("asks the row pick as a question counting the candidate rows", () => {

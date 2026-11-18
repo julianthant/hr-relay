@@ -10,8 +10,7 @@ import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js
 import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { draftHasUnsavedWork, draftHoldsSave, draftTransition, isDraftRefusal, type DraftEvent, type SpreadsheetDraft } from './spreadsheet-draft.js';
 import { cellText, type EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
-import { NOT_MAPPED, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-mock-model.js';
-import { spreadsheetEditorField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
+import { NOT_MAPPED, spreadsheetEditorField, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 
 type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'
   | 'workbookCatalog' | 'workbookCompatibility' | 'workbookLibraryAction' | 'workbookLibraryActionStatus' | 'workbookLibraryVersion' | 'workbookTypes' | 'workbookPutType' | 'workbookClone' | 'workbookImportSharePoint'>;

@@ -8,6 +8,9 @@ import { EidSchema } from "../../../../rules/identity/ids.js";
 import { OcrReviewCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import type { ReviewField, ReviewRecordView, ReviewSourcePage } from "./review-record-model.js";
 
+const IDENTITY_HOLD_LABELS = { "lookup-failed": "Lookup failed", "not-looked-up": "Not looked up", "no-match": "No UCPath match", "multiple-matches": "Several UCPath matches",
+  "name-differs": "Name differs from UCPath", "eid-differs": "EID differs from UCPath", "awaiting-assertion": "Not confirmed yet" } as const;
+
 const sourceField = (pageKind: string) => pageKind === "i9-section1" ? "section1" : pageKind === "i9-section2" ? "section2" : "sourcePage";
 function operatorPages(record: OcrReviewRecord, values: Readonly<Record<string, string>>) {
   if (record.provenance === undefined) throw new Error("RUN_REVIEW_SOURCE_UNAVAILABLE");
@@ -48,7 +51,11 @@ export function ocrReviewCards(page: ReviewPage, sourcePageUrl: (runId: string, 
     const labels = new Map(fields.map(field => [field.key, fields.some(other => other.key !== field.key && other.label === field.label)
       ? `${field.section}: ${field.label}` : field.label]));
     const approved = review.approvedSnapshots.some(snapshot => snapshot.revision === revision.revision && snapshot.selectedRecordIds.includes(record.recordId));
+    const hold = record.assertedEid === null ? review.identityHolds.find(item => item.recordId === record.recordId) : undefined;
+    const unconfirmed = record.assertedEid === null ? hold === undefined ? "Not confirmed" : IDENTITY_HOLD_LABELS[hold.reason] : undefined;
+    const needsReview = record.fields.blockingPaths.map(path => `${labels.get(path) ?? path} needs review`);
     const model: ReviewRecordView = { id: record.recordId, page: sourcePages[0],
+      ...(unconfirmed === undefined ? {} : { unconfirmed }), blockers: [...(unconfirmed === undefined ? [] : [unconfirmed]), ...needsReview],
       kind: form.formType,
       ...(record.provenance === undefined ? {} : { manualEntry: true, sourcePageCount: revision.seed.review.accounting.manifest.pages.length }),
       selected: includes[record.recordId] ?? !record.discarded, fields,

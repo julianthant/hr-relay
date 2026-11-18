@@ -70,6 +70,7 @@ export function createRunStartDialogHarness() {
         enqueue: start.enqueue,
         version: start.version,
         steps: start.steps,
+        ...(start.rows === undefined ? {} : { rows: start.rows }),
         inputRun:
           start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
@@ -295,7 +296,7 @@ export function createRunStartDialogHarness() {
     onApplied: (workflowId: string) => void = () => undefined,
   ): Promise<OpenDialog> {
     intakeHandoffs.length = 0; closed.length = 0;
-    const catalog = buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows));
+    const catalog = buildWorkflowCatalog(catalogue.workflows, servedFixtureSources(catalogue.workflows));
     const dialogElement = (extra: Partial<ComponentProps<typeof RunStartDialog>>) => createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
       client,
       children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {

@@ -15,11 +15,13 @@ import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfi
 export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
 export type { BrowserDeadlineScheduler, PersistentContextLauncher } from "./native-browser.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
+import { UCPATH_HIRE_UI } from "../../systems/ucpath/driver/hire-ui-registry.js";
+import { I9_CREATION_UI, I9_UI_REGISTRY } from "../../systems/i9/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import type { BrowserContext, Frame, Page } from "playwright";
+import type { BrowserContext, Frame, Locator, Page } from "playwright";
 import type {
   BrowserSessionCloseProof,
   BrowserSessionCloseReason,
@@ -139,11 +141,104 @@ function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): B
   return binding;
 }
 
+/** Every form recipe's SSN control in one frame, addressed as its driver addresses it: the I-9 and Hire forms fill the top-level page. */
+const ssnRecipes = (page: Page, frame: Frame): Locator[] => [frame.locator(UCPATH_PENDING_READ_RECIPES.ssn), ...frame === page.mainFrame()
+  ? [UCPATH_HIRE_UI.field(page, "ssn"), I9_CREATION_UI.field(page, "ssn"), I9_UI_REGISTRY.ssn(I9_UI_REGISTRY.dialog(page))] : []];
+const SSN_CONTROL_NAME = /social security|national id|\bssn\b/iu;
+/** Marks the elements a band boundary settled, so the screenshot masks exactly those rather than resolving the recipes again. */
+const CAPTURE_MASK_ATTRIBUTE = "data-relay-capture-mask";
+type SsnWatchWindow = Window & { __relaySsnWatch?: { settle(covered: Node[]): boolean | "observer-unavailable"; stop(): void } };
+
+/** Watches one frame for an SSN-named control outside the settled masks, and for any text-entry control in a shadow tree it cannot watch. Names come from the DOM, so an ARIA-hidden control counts. */
+async function watchSsnControls(frame: Frame): Promise<void> {
+  await frame.evaluate(({ source, flags, mark }) => {
+    const pattern = new RegExp(source, flags);
+    const controlSelector = "input, textarea, [role=textbox], [role=spinbutton]";
+    const nonTextInputs = ["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"];
+    const marked = new Set<Element>();
+    // Object methods: tsx wraps a named inner function in a __name helper the page realm lacks.
+    const scan = {
+      shown(el: Element): boolean {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && el.checkVisibility({ visibilityProperty: true });
+      },
+      // Called only on connected elements, whose root is a document or a shadow root.
+      named(el: Element): boolean {
+        const root = el.getRootNode() as Document | ShadowRoot;
+        const labelledBy = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/u).filter(id => id !== "").map(id => root.getElementById(id)?.textContent ?? null);
+        const labels = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? [...el.labels ?? []].map(label => label.textContent) : [];
+        return [el.getAttribute("aria-label"), el.getAttribute("placeholder"), el.getAttribute("title"), ...labelledBy, ...labels]
+          .some(name => name !== null && pattern.test(name));
+      },
+      controls(root: ParentNode): Element[] {
+        return [...root.querySelectorAll(controlSelector)].filter(el => el.isConnected && scan.named(el));
+      },
+      covered(el: Element): boolean {
+        return marked.has(el) && el.getAttribute(mark) === "";
+      },
+      uncovered(): boolean {
+        return scan.controls(document).some(el => scan.shown(el) && !scan.covered(el));
+      },
+      // A control a person can type into, whatever its name.
+      textEntry(el: Element): boolean {
+        return el instanceof HTMLInputElement ? !nonTextInputs.includes(el.type) : el.matches(controlSelector);
+      },
+      shadowRoots(root: ParentNode): ShadowRoot[] {
+        return [...root.querySelectorAll("*")].flatMap(el => el.shadowRoot === null ? [] : [el.shadowRoot]);
+      },
+      // The observer cannot watch a shadow tree, so any text-entry control there that no recipe mask covers refuses, painted or not.
+      shadowed(): boolean {
+        const roots = scan.shadowRoots(document);
+        for (const root of roots) {
+          if ([...root.querySelectorAll(controlSelector)].some(el => scan.textEntry(el) && !scan.covered(el))) return true;
+          roots.push(...scan.shadowRoots(root));
+        }
+        return false;
+      },
+      // A text-entry control that left this document but stays connected moved into a tree the observer cannot see, where its name may no longer resolve.
+      escaped(record: MutationRecord): boolean {
+        return [...record.removedNodes].some(node => node instanceof Element
+          && [node, ...node.querySelectorAll(controlSelector)].some(el => el.matches(controlSelector) && el.isConnected && !document.contains(el) && scan.textEntry(el)));
+      },
+      unmarked(record: MutationRecord): boolean {
+        return record.attributeName === mark && record.target instanceof Element && marked.has(record.target) && record.target.getAttribute(mark) !== "";
+      },
+    };
+    const target = window as SsnWatchWindow;
+    target.__relaySsnWatch?.stop();
+    let seen: boolean | "observer-unavailable" = false;
+    const observer = new MutationObserver(records => {
+      if (seen === "observer-unavailable") return;
+      try { if (scan.uncovered() || records.some(record => scan.escaped(record) || scan.unmarked(record))) seen = true; }
+      catch { seen = "observer-unavailable"; }
+    });
+    target.__relaySsnWatch = {
+      // Marks the recipe matches for every later band, then reports exposure latched since the last boundary or present now.
+      settle(next) {
+        if (seen === "observer-unavailable") return seen;
+        for (const node of next) if (node instanceof Element) { node.setAttribute(mark, ""); marked.add(node); }
+        const exposed = seen || scan.uncovered() || scan.shadowed();
+        seen = false;
+        return exposed;
+      },
+      stop() {
+        observer.disconnect();
+        for (const el of marked) el.removeAttribute(mark);
+        delete target.__relaySsnWatch;
+      },
+    };
+    observer.observe(document, { subtree: true, childList: true, characterData: true, attributes: true,
+      attributeFilter: ["class", "style", "hidden", "open", "aria-label", "aria-labelledby", "placeholder", "title", "for", "id", mark] });
+  }, { source: SSN_CONTROL_NAME.source, flags: SSN_CONTROL_NAME.flags, mark: CAPTURE_MASK_ATTRIBUTE });
+}
+
 // A Playwright message starts "<object>.<method>: [<Class>: ]", and the page chooses the class text; only these fixed names leave it.
 const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle", "jsHandle", "browserContext"]);
 const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
   "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
 const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
+const DETACHED_FRAME_FAILURE = /^(?:frame\.evaluate|locator\.count): (?:Frame was detached|Frame has been detached\.)$/u;
+const DESTROYED_FRAME_CONTEXT = /^(?:frame\.evaluate|locator\.count): Execution context was destroyed, most likely because of a navigation\.?$/u;
 /** The capture stage and failing call or error class, as a value-free kebab token for logs and failures. */
 function captureFailureDetail(stage: "sign-in-check" | "secret-check" | "page-capture" | "final-sign-in-check", error: unknown, errorName: string): string {
   const failed = playwrightCall(error) ?? (errorName.replace(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "") || "error");
@@ -293,6 +388,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       assertCurrent();
       const recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => { assertCurrent(); this.#options.onAuthenticationEvidence?.(evidence); };
       let pageVersion = 1;
+      let mainPageVersion = pageVersion;
+      const childNavigations = new WeakMap<Frame, number>();
       const detach = (): void => {
         page.off("framenavigated", navigated);
         page.off("frameattached", frameChanged);
@@ -312,7 +409,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       const navigated = (frame: Frame): void => {
         if (observeEvent().state === "revoked") return;
         pageVersion += 1;
-        if (frame === page.mainFrame()) this.#options.onNavigation?.(frame.url());
+        if (frame === page.mainFrame()) {
+          mainPageVersion = pageVersion;
+          this.#options.onNavigation?.(frame.url());
+        } else {
+          childNavigations.set(frame, pageVersion);
+        }
       };
       const frameChanged = (): void => { if (observeEvent().state === "current") pageVersion += 1; };
       const diagnostics = attachBrowserDiagnostics(page, this.#options.clock, observeEvent);
@@ -340,6 +442,15 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         screenshot: async (sampleLabels?: readonly string[]): Promise<BrowserScreenshotEvidence> => {
           assertCurrent();
           const version = pageVersion;
+          const mainVersion = mainPageVersion;
+          let captureSettled = false;
+          const pageChanged = (): boolean => captureSettled ? mainPageVersion !== mainVersion : pageVersion !== version;
+          const lostSettledChildContext = (frame: Frame, navigation: number | undefined, error: unknown): boolean => {
+            if (!captureSettled || pageChanged() || page.isClosed() || frame === page.mainFrame() || !(error instanceof Error)) return false;
+            const contextDestroyed = DESTROYED_FRAME_CONTEXT.test(error.message);
+            if (frame.isDetached()) return contextDestroyed || DETACHED_FRAME_FAILURE.test(error.message);
+            return contextDestroyed && childNavigations.get(frame) !== navigation;
+          };
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"], detail?: string): BrowserScreenshotEvidence =>
             Object.freeze({ ...identity, state: "unavailable", reason, ...(detail === undefined ? {} : { detail }) });
@@ -369,40 +480,81 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             }
             if (pageVersion !== version) return unavailable("page-changed");
             stage = "page-capture";
-            const capture = await captureFullPage(page, {
-              ...(sampleLabels === undefined ? {} : { sampleLabels }),
-              assertCurrent,
-              secretControls,
-              afterCapture: async () => {
-                stage = "final-sign-in-check";
+            const ssnWatched: Frame[] = [];
+            const unwatch = async (): Promise<unknown[]> => {
+              const errors: unknown[] = [];
+              for (const frame of ssnWatched) {
+                if (frame.isDetached()) continue;
+                const navigation = childNavigations.get(frame);
+                try { await frame.evaluate(() => { (window as SsnWatchWindow).__relaySsnWatch?.stop(); }); }
+                catch (error) { if (!lostSettledChildContext(frame, navigation, error)) errors.push(error); }
+              }
+              return errors;
+            };
+            // A boundary marks the recipe matches resolved now; the screenshot masks the marked elements.
+            const settleSsnWatch = async (frame: Frame): Promise<void> => {
+              assertCurrent();
+              const covered = (await Promise.all(ssnRecipes(page, frame).map(recipe => recipe.elementHandles()))).flat();
+              try {
                 assertCurrent();
-                const after = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
+                const exposed = await frame.evaluate(next => (window as SsnWatchWindow).__relaySsnWatch?.settle(next) ?? "observer-unavailable", covered);
                 assertCurrent();
-                if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
-              },
-              mask: () => page.frames().map(frame => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)),
-              assertSafe: async () => {
-                assertCurrent();
-                if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
-                for (const frame of page.frames()) {
-                  if (await secretPresent(frame)) throw new FullPageCaptureRefusedError("secret-controls-present");
-                }
-                if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
-              },
-            });
+                if (exposed === "observer-unavailable") throw new FullPageCaptureFailedError(exposed);
+                if (exposed) throw new FullPageCaptureRefusedError("secret-controls-present");
+              } finally { await Promise.all(covered.map(handle => handle.dispose())); }
+            };
+            let capture: Awaited<ReturnType<typeof captureFullPage>>;
+            try {
+              for (const frame of frames) { assertCurrent(); ssnWatched.push(frame); await watchSsnControls(frame); }
+              capture = await captureFullPage(page, {
+                ...(sampleLabels === undefined ? {} : { sampleLabels }),
+                assertCurrent,
+                secretControls,
+                afterCapture: async () => {
+                  stage = "final-sign-in-check";
+                  assertCurrent();
+                  const after = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
+                  assertCurrent();
+                  if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
+                },
+                mask: () => page.frames().flatMap(frame => [frame.locator(`[${CAPTURE_MASK_ATTRIBUTE}]`), frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)]),
+                assertSafe: async () => {
+                  assertCurrent();
+                  if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
+                  for (const frame of page.frames()) {
+                    if (await secretPresent(frame)) throw new FullPageCaptureRefusedError("secret-controls-present");
+                    await settleSsnWatch(frame);
+                  }
+                  if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
+                },
+              });
+              captureSettled = pageVersion === version;
+            } catch (error) {
+              const errors = await unwatch();
+              throw errors.length === 0 ? error : new FullPageCaptureRestoreError([error, ...errors]);
+            }
+            const stopErrors = await unwatch();
+            if (stopErrors.length > 0) throw new FullPageCaptureRestoreError(stopErrors);
             assertCurrent();
             stage = "secret-check";
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             for (const frame of frames) {
-              if (await secretPresent(frame)) return unavailable("secret-controls-present");
+              if (frame !== page.mainFrame() && frame.isDetached()) continue;
+              const navigation = childNavigations.get(frame);
+              try { if (await secretPresent(frame)) return unavailable("secret-controls-present"); }
+              catch (error) {
+                assertCurrent();
+                if (!lostSettledChildContext(frame, navigation, error)) throw error;
+              }
             }
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
             assertCurrent();
-            if (error instanceof FullPageCaptureRefusedError || error instanceof FullPageCaptureFailedError) return unavailable(error.reason);
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (error instanceof FullPageCaptureFailedError) return unavailable(error.reason, error.detail);
+            if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
+            if (pageChanged()) return unavailable("page-changed");
             const causes = serializeErrorCauses(error);
             const detail = captureFailureDetail(stage, error, causes[0]?.name ?? "error");
             for (const [index, cause] of causes.entries()) {

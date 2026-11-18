@@ -6,7 +6,7 @@ import { PlanApprovedEmergencyContact } from "../../../../models/workflows/emerg
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
-export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-plan", label: "Review approved contact plan" }), operatorFields: [
+export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-plan", label: "Review approved contact plan" }), locked: "bound-read" as const, operatorFields: [
   { label: "Existing primary change", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "demotionLine" }] },
   { label: "Approved contact", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "contactLine" }] },
 ] as const, system: "ucpath" as const,
@@ -59,7 +59,13 @@ export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "c
         ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    outcomes: [
+      { nodeId: "map-contact", value: "CONTACT_APPROVED_FIELDS_INVALID", then: "Stops this person's run before Save because the approved contact fields are not valid. The approved PDF record is locked for this run, so an operator must resolve it in Logs; retrying this person cannot change the approved record." },
+      { nodeId: "contact-plan", value: "relationship-unmapped", then: "Stops before Save because the approved relationship has no matching UCPath option. The approved PDF record is locked for this run, so an operator must resolve it in Logs; retrying this person cannot change the approved record." },
+      { nodeId: "contact-plan", value: "address-choice-unresolved", then: "Stops before Save because the approved record does not settle the contact address. The approved PDF record is locked for this run, so an operator must resolve it in Logs; retrying this person cannot change the approved record." },
+      { nodeId: "contact-plan", value: "contact-plan-refused", then: "Stops before Save. Review the existing contacts and the approved contact before retrying this person." },
+    ],
   } as const,
 });
 export function buildContactPlan(author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>) {

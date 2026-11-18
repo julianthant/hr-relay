@@ -66,6 +66,7 @@ const IDENTITY_CHECK_DISPLAY = {
         nodeIds: ["name-search", "subject"],
         lines: [
           { id: "search-name", kind: "action", text: "Search UCPath for the employee named on the Kuali document.", nodeIds: ["name-search"] },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["name-search"] },
           { id: "select-subject", kind: "check", text: "Resolve the exact employee ID and name match.", nodeIds: ["subject"] }
         ],
         fields: [
@@ -183,7 +184,7 @@ const IDENTITY_REVIEW_DISPLAY = {
         nodeIds: ["comparison", "identity-approval", "approval"],
         lines: [
           { id: "compare-identities", kind: "check", text: "Compare document and UCPath identity evidence.", nodeIds: ["comparison"] },
-          { id: "request-approval", kind: "action", text: "Request operator approval when the names or identifiers require it.", nodeIds: ["identity-approval"] },
+          { id: "request-approval", kind: "action", text: "Request operator approval when the names or identifiers require it.", nodeIds: ["identity-approval"], when: [{ "identity-result": ["true"] }] },
           { id: "verify-approval", kind: "check", text: "Verify the approval against the comparison evidence.", nodeIds: ["approval"] }
         ],
         fields: [
@@ -210,7 +211,15 @@ const IDENTITY_REVIEW_DISPLAY = {
         ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [{
+      id: "identity-result", label: "Identity result", reads: { nodeId: "comparison", fieldPath: "approvalRequired" },
+      nodeIds: ["comparison", "identity-approval", "approval"], initial: "false",
+      outcomes: [
+        { value: "false", label: "Identity agrees", then: "Continues with the verified identity." },
+        { value: "true", label: "Identity needs approval", then: "Waits for you to approve or correct the identity in Logs before anything is filed.", stops: true },
+      ],
+    }],
   } as const,
 } satisfies WorkflowGroupOptions;
 
@@ -392,7 +401,7 @@ export function readJobs({ task, group }: Author, extraction: Extraction, resolv
   );
   return {
     jobSummary, employment, departmentOption,
-    steps: [[group(IDENTITY_CHECK_STEP, IDENTITY_CHECK_DISPLAY), [nameSearch, subject, jobSummary, employment, departmentOption]]] as const,
+    steps: [[group(IDENTITY_CHECK_STEP, { ...IDENTITY_CHECK_DISPLAY, locked: "guard-read" }), [nameSearch, subject, jobSummary, employment, departmentOption]]] as const,
   };
 }
 export function buildIdentity({ task, gate, group }: Author, extraction: Extraction, resolved: Subject, jobs: Jobs, timecard: Timecard) {

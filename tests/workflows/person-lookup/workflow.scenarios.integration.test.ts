@@ -56,6 +56,7 @@ interface Case {
 }
 const matchInput = { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", ssn: "123456789" };
 const hit = { emplId: candidate.emplId, name: candidate.name };
+const { ssn: _ssn, ...matchWithoutSsn } = matchInput;
 const cases: readonly Case[] = [
   { id: "S1", state: "active", crm: "Found" },
   { id: "S2", candidates: [{ ...candidate, employeeStatus: "terminated", hrStatus: "Terminated", terminationDate: "09/01/2026", terminationReason: "Resigned" }], state: "inactive" },
@@ -74,7 +75,9 @@ const cases: readonly Case[] = [
   { id: "S15", input: { emplId: candidate.emplId, crmCheck: false }, state: "active", crm: "Not checked" },
   { id: "S16", input: { emplId: candidate.emplId, includeCrmDates: true }, state: "active", dates: true },
   { id: "M1", input: matchInput, matches: { hits: [hit], confirmed: [hit], dropped: [] }, state: "found", crm: "Not checked" },
-  { id: "M1b", input: matchInput, matches: { hits: [hit], confirmed: [], dropped: [{ ...hit, reason: "Person Org name does not match" }] }, state: "not-found-in-ucpath", crm: "Not checked" },
+  { id: "M1b", input: matchWithoutSsn, matches: { hits: [hit], confirmed: [], dropped: [{ ...hit, reason: "Person Org name does not match" }] }, state: "not-found-in-ucpath", crm: "Not checked" },
+  // Name, DOB and SSN with one exact-name hit is that person, even where Person Org shows another name.
+  { id: "M1c", input: matchInput, matches: { hits: [hit], confirmed: [], dropped: [{ ...hit, reason: "Person Org name does not match" }] }, state: "found", crm: "Not checked" },
   { id: "M2", input: matchInput, matches: { hits: [], confirmed: [], dropped: [] }, state: "not-found-in-ucpath", crm: "Not checked" },
   { id: "M3", input: matchInput, matches: { hits: [hit, { ...hit, emplId: other.emplId }], confirmed: [hit, { ...hit, emplId: other.emplId }], dropped: [] }, state: "multiple-matches", code: "PERSON_LOOKUP_MATCH_MULTIPLE_MATCHES" },
   { id: "M5", input: { ...matchInput, crmCheck: true }, matches: { hits: [hit], confirmed: [hit], dropped: [] }, state: "found", crm: "Found" },
@@ -208,7 +211,7 @@ describe("approved Person Lookup scenarios", () => {
     const verifiedRecord = terminal.dependencies.find(row => row.nodeId === "crm-selected-record")?.state === "resolved";
     assert.equal(agreement.verdict === "verified", verifiedRecord);
     assert.equal(selection.verdict === "verified", output.activeStatus.ucpathSelection === "resolved");
-    if (input.mode === "match") {
+    if (input.mode === "match" && input.ssn !== undefined) {
       const run = database.authority.runs.get(queued.envelope.runId); assert.ok(run);
       const receipt = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, result: terminal,
         checkpoints: database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId) });
@@ -226,7 +229,7 @@ describe("approved Person Lookup scenarios", () => {
     const resolved = !ambiguous && !missing;
     const expectedCrm = testCase.crm ?? (matchMode ? "Not checked" : ambiguous ? "Not found" : missing ? "Not found" : "Found");
     assert.deepEqual(output.activeStatus.details, {
-      search: matchMode ? "Example, Person, 01/15/2000, [masked]" : "emplId" in input ? candidate.emplId : candidate.name,
+      search: matchMode ? `Example, Person, 01/15/2000, ${input.ssn === undefined ? "x" : "[masked]"}` : "emplId" in input ? candidate.emplId : candidate.name,
       name: resolved ? candidate.name : null, eid: resolved ? candidate.emplId : null,
       department: resolved ? matchMode ? expectedCrm === "Found" ? record.department : null : testCase.state === "crm-only" ? record.department : expectedPerson.department : null,
       hrStatus: resolved && !matchMode && testCase.state !== "crm-only" ? expectedPerson.hrStatus : null,
@@ -258,7 +261,9 @@ describe("approved Person Lookup scenarios", () => {
     const searchActions = ["ucpath.person-org.summary", "ucpath.person-org.criteria", "ucpath.person-org.search-button"];
     const byName = input.mode === "search" && !("emplId" in input);
     const people = testCase.candidates ?? [candidate];
-    const expectedActions = matchMode ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results", "ucpath.match.last-name-check",
+    const strongMatch = matchMode && "ssn" in input && input.ssn !== undefined && testCase.matches?.hits.length === 1;
+    const expectedActions = strongMatch ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results", "ucpath.match.result"]
+      : matchMode ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results", "ucpath.match.last-name-check",
       ...(testCase.matches?.hits ?? []).flatMap(() => ["ucpath.match.person-org-confirmation", "ucpath.match.confirmed-name"]),
       ...((testCase.matches?.hits.length ?? 0) > 0 ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results"] : []), "ucpath.match.result"]
       : [...(byName ? ["ucpath.person-org.search-attempt"] : []), ...searchActions,

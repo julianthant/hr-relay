@@ -47,7 +47,7 @@ describe("failureDecision", () => {
       assert.deepEqual(decision.options.map(({ id, label, send, recommended }) => [id, label, send, recommended]), [
         ["mark-as-failed", "Mark as failed", annotate, true],
       ]);
-      assert.equal(decision.options[0]?.hint, "Ends this person's run as failed; files nothing.");
+      assert.equal(decision.options[0]?.hint, "Files nothing.");
       assert.equal(decision.options[0]?.input, undefined);
       assert.equal(decision.options.length, 1, "the approved failure card has no Add note action");
       assert.ok(decision.options.every(({ id }) => id !== "retry" && id !== "check-again"), "nothing after a committed write runs again from this card");

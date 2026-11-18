@@ -87,7 +87,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
       children: createElement(DashboardClientProvider, { client,
         children: createElement(ToastProvider, { children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID,
           children: createElement(RunStartDialog, { open: route.start === true, onOpenChange() {},
-            catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)),
+            catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)),
             panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} }) }) }) }) });
   }
   await act(async () => root.render(createElement(Harness)));
@@ -185,7 +185,7 @@ it("keeps the row selection silently when the dialog is reopened for the same sp
   const client = h.stubClient({ ...libraryReads });
   const render = (open: boolean) => act(async () => reopenRoot?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
     children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID, children: createElement(RunStartDialog, { open, onOpenChange() {}, panelWorkflowId: descriptor.id, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {},
-      catalog: buildWorkflowCatalog([workflow], false, servedFixtureSources([workflow])) }) }) }) })));
+      catalog: buildWorkflowCatalog([workflow], servedFixtureSources([workflow])) }) }) }) })));
   await render(true); await h.settle(); await chooseCurrent(); await select(0);
   await render(false); await h.settle(); await render(true); await h.settle();
   assert.equal(document.body.textContent?.includes("Previous row selection"), false);

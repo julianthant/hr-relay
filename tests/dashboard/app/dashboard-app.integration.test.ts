@@ -338,7 +338,7 @@ afterEach_m1(_afterEachFixture0);
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
-      return { ...composition, inbox: "served" as const, dataSources: { ...composition.dataSources, separations: "served" } };
+      return { ...composition, harness: { ...composition.harness, useInbox: undefined }, dataSources: { ...composition.dataSources, separations: "served" } };
     });
     await editHeadlessPreference();
     if (surface === "search") await click(button("Search"));
@@ -517,7 +517,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     await settle();
     assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
     const failedReads = reads;
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
@@ -526,9 +526,9 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
     assert_m1.ok(workflow);
     const composition = MOCK_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
-    assert_m1.equal(composition.sources["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
+    assert_m1.equal(composition.sources["person-lookup"], "hidden");
+    assert_m1.ok(composition.harness?.LogPreview);
+    assert_m1.equal(composition.sources["generic-served-workflow"], "served");
   } finally { await _afterEachFixture0(); }
 });
 it_m1("offers a Skip to run logs link that moves focus to the selected run logs", async () => {
@@ -540,7 +540,7 @@ it_m1("offers a Skip to run logs link that moves focus to the selected run logs"
     assert_m1.equal(document.activeElement?.getAttribute("aria-label"), "Selected run logs");
   } finally { await _afterEachFixture0(); }
 });
-it_m1("passes the app client to a served Explorer read while mocks explicitly retains mock Explorer", async () => {
+it_m1("passes the app client to a served Explorer read", async () => {
   try {
     const explorer = structuredClone(FIXTURE_EXPLORER_WIRE);
     let calls = 0;
@@ -549,37 +549,8 @@ it_m1("passes the app client to a served Explorer read while mocks explicitly re
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
     assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
-    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
+    assert_m1.ok(document.body.textContent?.includes("Anything not listed stops the run with a failure card."));
     assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
-    await _afterEachFixture0();
-    calls = 0;
-    const client = await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22fixture-person-lookup%22%7D", {
-      workflowExplorer: async () => { calls++; throw new Error("mock Explorer must not read served definitions"); },
-    });
-    assert_m1.equal(calls, 0);
-    assert_m1.equal(document.body.textContent?.includes("Registered Person Lookup"), false);
-    assert_m1.equal(document.body.textContent?.includes("Purpose from the served definition"), false);
-    assert_m1.ok(document.body.textContent?.includes("Browse workflows, their steps and field sources."));
-    assert_m1.equal(document.body.textContent?.includes("Fictional preview data"), false);
-    assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
-    const select = document.querySelector('[aria-label="Explorer workflow"]');
-    assert_m1.ok(select instanceof HTMLButtonElement);
-    await click(select);
-    const separation = document.querySelector('[role="option"][data-value="fixture-separations"]');
-    assert_m1.ok(separation instanceof HTMLElement);
-    await click(separation);
-    const identity = document.querySelector('[aria-label="Identity check preview"]');
-    assert_m1.ok(identity instanceof HTMLButtonElement);
-    await click(identity);
-    const rejected = document.querySelector('[role="option"][data-value="rejected"]');
-    assert_m1.ok(rejected instanceof HTMLElement);
-    await click(rejected);
-    assert_m1.ok((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden);
-    const replacement = { ...client };
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client: replacement, children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
-    await settle();
-    assert_m1.equal((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden, false);
-    assert_m1.equal(calls, 0);
   } finally { await _afterEachFixture0(); }
 });
 it_m1("failed and delayed day snapshots never render an empty or stale queue",async()=>{
@@ -609,7 +580,7 @@ it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
 try {
 
 
-  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), catalogIncludesMocks: false, servedDay: true }));
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
   assert_m1.match(document.body.textContent??"",/No workflows available/);
 
 } finally {

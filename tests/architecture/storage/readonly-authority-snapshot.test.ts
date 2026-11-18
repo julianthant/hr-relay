@@ -54,7 +54,7 @@ it.each([false, true])("inspects committed WAL: %s without creating or changing 
     const expectedGeneration = baseline + (liveWal ? 1 : 0);
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(admission, path).authorityGeneration, expectedGeneration);
     assert.equal(AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(admission, path).authorityGeneration, expectedGeneration);
-    assert.equal(AuthorityDatabase.inspectTimelineReadOnly(admission, path).authorityGeneration, expectedGeneration);
+    assert.equal(AuthorityDatabase.inspectTimelineReadOnly(admission, path, () => {}).authorityGeneration, expectedGeneration);
     assert.equal(AuthorityDatabase.inspectSpanRunAuthorityReadOnly(admission, path, []).authorityGeneration, expectedGeneration);
     assert.equal(inspectAuthorityBackupReadOnly(admission, path).authorityGeneration, expectedGeneration);
     await doctorAuthorityStorage(admission, { stateRootTrustAnchor: workspace, stateRoot: admission.stateRoot,

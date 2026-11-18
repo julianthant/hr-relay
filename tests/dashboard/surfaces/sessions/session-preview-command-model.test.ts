@@ -1,4 +1,10 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
@@ -9,7 +15,7 @@ import { act as act_m0,createElement as createElement_m0 } from "react";
 import { createRoot as createRoot_m0 } from "react-dom/client";
 import { describe as describe_m0,it as it_m0 } from "vitest";
 import { useSessionPreviewCommands as useSessionPreviewCommands_m0,type SessionPreviewCommandPort as SessionPreviewCommandPort_m0,type SessionPreviewRequest as SessionPreviewRequest_m0 } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
-import { sessionsSample as sessionsSample_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
+import { sessionsSample as sessionsSample_m0 } from "../../../support/fixtures/dashboard/sessions-sample.js";
 // @vitest-environment jsdom
 import assert_m1 from 'node:assert/strict';
 import { act as act_m1,createElement as createElement_m1 } from 'react';
@@ -17,9 +23,8 @@ import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createRoot as createRoot_m1,type Root as Root_m1 } from 'react-dom/client';
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from 'vitest';
 import { useSessionPreviewCommands as useSessionPreviewCommands_m1,type SessionPreviewCommandPort as SessionPreviewCommandPort_m1,type SessionPreviewRequest as SessionPreviewRequest_m1,type SessionPreviewResult as SessionPreviewResult_m1 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
-import { createFixtureSessionPort, previewSessionControl, sessionsSample as sessionsSample_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { createFixtureSessionPort, previewSessionControl, sessionsSample as sessionsSample_m1 } from '../../../support/fixtures/dashboard/sessions-sample.js';
 import { SessionsView as SessionsView_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
-import { buildWorkflowCatalog as buildWorkflowCatalog_m1 } from '../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js';
 // @vitest-environment jsdom
 import assert_m2 from 'node:assert/strict';
 import { act as act_m2,createElement as createElement_m2 } from 'react';
@@ -27,7 +32,7 @@ import { createRoot as createRoot_m2 } from 'react-dom/client';
 import { it as it_m2 } from 'vitest';
 import { IDLE_REFRESH_MS as IDLE_REFRESH_MS_m2 } from '../../../../src/dashboard/surfaces/sessions/session-idle-model.js';
 import { useSessionPreviewCommands as useSessionPreviewCommands_m2,type SessionPreviewCommandPort as SessionPreviewCommandPort_m2,type SessionPreviewRequest as SessionPreviewRequest_m2 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
-import { sessionsSample as sessionsSample_m2 } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { sessionsSample as sessionsSample_m2 } from '../../../support/fixtures/dashboard/sessions-sample.js';
 
 
 {
@@ -112,7 +117,7 @@ async function mount(element: ReturnType<typeof createElement_m1>) { const host 
 const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert_m1(found, name); return found; };
 const press = async (name: string) => act_m1(async () => button(name).click());
 function SessionsHarness({ port }: { port: SessionPreviewCommandPort_m1 }) {
-  const catalog = buildWorkflowCatalog_m1([], true, previewFixtureSources([]));
+  const catalog = SERVED_CATALOG;
   const commands = useSessionPreviewCommands_m1(sessionsSample_m1('active'), catalog, port);
   return createElement_m1(SessionsView_m1, { data: commands.data, open: true, onOpenChange: () => undefined, workflows: catalog.map(flow => ({ id: flow.id, label: flow.label })), onControl: commands.control, onAdd: commands.add, operations: commands.operations, onCheck: commands.check });
 }
@@ -146,7 +151,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(refused.textContent ?? '', /Busy elsewhere/); assert_m1.equal(refused.querySelectorAll('button[aria-label="Resume"]').length, 0);
   });
   it_m1('the fictional port separates uncertain response from original command readback', async () => {
-    vi.useFakeTimers(); const port = createFixtureSessionPort(sessionsSample_m1('active'), buildWorkflowCatalog_m1([], true, previewFixtureSources([])), 'uncertain');
+    vi.useFakeTimers(); const port = createFixtureSessionPort(sessionsSample_m1('active'), SERVED_CATALOG, 'uncertain');
     const request: SessionPreviewRequest_m1 = { id: 'exact-one', target: 'sample-worker-1', action: 'pause' };
     const sent = port.send(request); await vi.advanceTimersByTimeAsync(600); assert_m1.equal((await sent).state, 'uncertain');
     const read = port.check(request); await vi.advanceTimersByTimeAsync(600); assert_m1.equal((await read).state, 'confirmed');
@@ -199,7 +204,7 @@ _afterEachFixture0();
 it_m2('maps malformed and replaced-context responses to fixed catalog text while retaining originals', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const initial = sessionsSample_m2('active'); assert_m2(initial.state === 'ready');
-  const target = initial.workers[0].id; const catalog = buildWorkflowCatalog_m1([], true, previewFixtureSources([]));
+  const target = initial.workers[0].id; const catalog = SERVED_CATALOG;
   let scope = {}; let resolve!: (result: SessionPreviewResult_m1) => void; let reject!: (cause: Error) => void;
   let raw: SessionPreviewResult_m1 | undefined;
   let commands: ReturnType<typeof useSessionPreviewCommands_m2> | undefined;

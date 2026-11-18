@@ -205,7 +205,7 @@ export function buildExtraction({ task, group }: Author) {
       documentNumber: input.documentNumber,
     }),
   );
-  return { action, document, plan, terminationType, steps: [[group(KUALI_EXTRACTION_STEP, KUALI_EXTRACTION_DISPLAY), [action, document, plan, terminationType]]] as const };
+  return { action, document, plan, terminationType, steps: [[group(KUALI_EXTRACTION_STEP, { ...KUALI_EXTRACTION_DISPLAY, locked: "bound-read" }), [action, document, plan, terminationType]]] as const };
 }
 
 export const separationsKualiReadDefinition = defineStep({

@@ -5,7 +5,7 @@ import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../s
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
-import type { StepOmissionDeclaration, StepOmissionForm } from "../../../src/models/workflow/step-omission.js";
+import type { StepManualDeclaration, StepOmissionForm } from "../../../src/models/workflow/step-omission.js";
 import { FixtureReadReceipt } from "./descriptor-fixtures.js";
 import { HASH_A } from "./phase1c-contract-fixtures.js";
 
@@ -26,19 +26,20 @@ export const READING_FORM: StepOmissionForm = {
 export const FOLDING_FORM: StepOmissionForm = { fields: [{ key: "folded", label: "Folded", kind: "text" }] };
 export const AUDITING_FORM: StepOmissionForm = { fields: [{ key: "reviewed", label: "Reviewed", kind: "boolean" }] };
 
-const BARE_READING: StepOmissionDeclaration = { form: READING_FORM, produces: {} };
-const ASSERTING_READING: StepOmissionDeclaration = {
+const BARE_READING: StepManualDeclaration = { form: READING_FORM, produces: {}, skips: ["read"] };
+const ASSERTING_READING: StepManualDeclaration = {
   form: READING_FORM,
   produces: { read: ({ facts }) => ({ eid: facts.eid, present: true }) },
+  skips: [],
 };
-const BARE_FOLDING: StepOmissionDeclaration = { form: FOLDING_FORM, produces: {} };
-const BARE_AUDITING: StepOmissionDeclaration = { form: AUDITING_FORM, produces: {} };
+const BARE_FOLDING: StepManualDeclaration = { form: FOLDING_FORM, produces: {}, skips: ["fold"] };
+const BARE_AUDITING: StepManualDeclaration = { form: AUDITING_FORM, produces: {}, skips: ["audit"] };
 
 function omissionDescriptor(
   id: string,
   code: string,
-  reading: StepOmissionDeclaration,
-  folding?: StepOmissionDeclaration,
+  reading: StepManualDeclaration,
+  folding?: StepManualDeclaration,
 ): AnyWorkflowDescriptor {
   return defineWorkflowDescriptor({
     id,
@@ -59,11 +60,11 @@ function omissionDescriptor(
     presentation: { title: (input: z.output<typeof OmissionInput>) => `EID ${input.eid}` },
     scenarios: ["ucpath/person-org-happy"],
     timeline: [
-      { key: "reading", label: "Reading", nodes: ["read"], omission: reading },
+      { key: "reading", label: "Reading", nodes: ["read"], manual: reading },
       folding === undefined
         ? { key: "folding", label: "Folding", nodes: ["fold"] }
-        : { key: "folding", label: "Folding", nodes: ["fold"], omission: folding },
-      { key: "auditing", label: "Auditing", nodes: ["audit"], omission: BARE_AUDITING },
+        : { key: "folding", label: "Folding", nodes: ["fold"], manual: folding },
+      { key: "auditing", label: "Auditing", nodes: ["audit"], manual: BARE_AUDITING },
     ],
     flow: flow(OmissionInput)
       .step("read", FixtureReadReceipt, {

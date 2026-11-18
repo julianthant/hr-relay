@@ -73,7 +73,29 @@ import { composeWorkerPool,productionWorkerLaunch,realWorkerProcessSpawner } fro
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
 
 
+const DASHBOARD_WORKFLOW_SOURCES = ["served", "hidden"] as const;
+type DashboardWorkflowSource = (typeof DASHBOARD_WORKFLOW_SOURCES)[number];
+
+export class DashboardWorkflowSourceRefusedError extends Error {
+  readonly name = "DashboardWorkflowSourceRefusedError";
+
+  constructor(readonly workflowId: string, readonly value: unknown) {
+    super(`config/dashboard-workflow-sources.json: workflow ${workflowId} has source ${JSON.stringify(value)}; expected "served" or "hidden"`);
+  }
+}
+
+function parseDashboardWorkflowSources(configured: unknown): Readonly<Record<string, DashboardWorkflowSource>> {
+  const sources: Record<string, DashboardWorkflowSource> = {};
+  for (const [workflowId, value] of Object.entries(z.record(z.string(), z.unknown()).parse(configured))) {
+    const source = DASHBOARD_WORKFLOW_SOURCES.find(candidate => candidate === value);
+    if (source === undefined) throw new DashboardWorkflowSourceRefusedError(workflowId, value);
+    sources[workflowId] = source;
+  }
+  return Object.freeze(sources);
+}
+
 export async function composeDashboardRuntimeStartup(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody): Promise<DashboardRuntime> {
+  const workflowSources = parseDashboardWorkflowSources(configuredWorkflowSources);
   const environment = prepareDashboardEnvironment(input, custody);
   const { repoRoot, frontend } = environment;
   const staticBundle = frontend === "built-bundle"
@@ -158,7 +180,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
-  const workflowSources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredWorkflowSources);
   const servedDescriptors = DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served");
   // The manifest identity hashes the facts from the running definitions; the on-disk pin is checked only when the assistant runs.
   const factsSha256 = assistantWorkflowFacts(servedDescriptors).sha256;

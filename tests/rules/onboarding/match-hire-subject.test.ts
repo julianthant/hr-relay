@@ -5,7 +5,7 @@ import { hireReviewChoices, matchHireSubject } from "../../../src/rules/onboardi
 
 const person = { emplId: EidSchema.parse("10800000"), name: "Hire, Fixture" };
 const other = { emplId: EidSchema.parse("10800001"), name: "Hire, Other" };
-const base = { mode: "new-hire" as const, firstName: "Fixture", lastName: "Hire", match: { hits: [], confirmed: [], dropped: [] } };
+const base = { mode: "new-hire" as const, firstName: "Fixture", lastName: "Hire", ssnSearched: false, match: { hits: [], confirmed: [], dropped: [] } };
 
 describe("onboarding duplicate identity", () => {
   it("continues a new hire only after a complete empty UCPath search", () => {
@@ -17,6 +17,18 @@ describe("onboarding duplicate identity", () => {
     const match = { hits: [person], confirmed: [person], dropped: [] };
     assert.deepEqual(matchHireSubject({ ...base, match }), { state: "existing-person", person });
     assert.deepEqual(matchHireSubject({ ...base, mode: "rehire", match }), { state: "review-required", candidates: [person] });
+  });
+
+  it("settles a name, DOB and SSN search's one exact confirmed hit as that person in either mode", () => {
+    const match = { hits: [person], confirmed: [person], dropped: [] };
+    for (const mode of ["new-hire", "rehire"] as const) {
+      assert.deepEqual(matchHireSubject({ ...base, mode, ssnSearched: true, match }), { state: "existing-person", person, matchedBy: "name-dob-ssn" });
+    }
+    for (const weaker of [
+      { hits: [person, other], confirmed: [person], dropped: [{ ...other, reason: "Last name does not match" }] },
+      { hits: [person], confirmed: [], dropped: [{ ...person, reason: "Person Org name does not match" }] },
+      { hits: [other], confirmed: [other], dropped: [] },
+    ]) assert.equal(matchHireSubject({ ...base, ssnSearched: true, match: weaker }).state, "review-required");
   });
 
   it("requires review for different names, multiple hits, and dropped fuzzy candidates", () => {

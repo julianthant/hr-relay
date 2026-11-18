@@ -1,6 +1,8 @@
 /** Declared evidence classification: redaction is schema-owned, and a receipt's facts are classified where they are declared rather than at the UI. */
 import { z } from "zod";
-import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
+import { AdmittedAnswerSchema } from "../ocr/extraction.js";
+import { OCR_FORMS } from "../ocr/form-registry.js";
 import { GateIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import {
   DataClassificationSchema,
@@ -417,7 +419,7 @@ function onboardingPlanLeaves(scope: EvidenceValueScope, prefix = ""): unknown[]
 
 function onboardingSubjectLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
   return [
-    ...open(scope, `${prefix}state`),
+    ...open(scope, `${prefix}state`, `${prefix}matchedBy`),
     ...onboardingPrivateLeaves(scope, `${prefix}person.emplId`, `${prefix}person.name`),
     ...population(scope, `${prefix}candidateEids`, `${prefix}candidates`),
   ];
@@ -796,6 +798,9 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     })),
   ]),
   ...open(taskOutput("workflow:i9-check/read-match-outcome"), "shouldLookup"),
+  ...population(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates"),
+  ...person(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates.emplId", "candidates.name"),
+  ...open(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates.hireDate"),
   ...[taskOutput("workflow:i9-check/read-match-outcome"), taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-person-match"), workflowResult("i9-check-person-lookup")].flatMap(scope => [
     ...open(scope, "identity.status", "identity.candidateCount", "identity.reason"),
     ...person(scope, "identity.eid", "identity.name"),
@@ -810,7 +815,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(workflowResult("i9-check-person-lookup"), "shouldLookup"),
   ...[workflowInput("i9-check"), workflowInput("i9-check-roster-match"), workflowInput("i9-check-person-match"), workflowInput("i9-check-person-lookup"), workflowInput("i9-check-reference-check")].flatMap(scope => [
     ...person(scope, "person.name", "person.firstName", "person.lastName", "person.dob", "roster.seed.ppsEid", "reviewerName"),
-    ...["person.ssn", "recordId", "ocrRunId"].map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" })),
+    { scope, path: "person.ssn", classification: "direct-identifier", transform: "drop" },
+    ...["recordId", "ocrRunId"].map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" })),
     ...population(scope, "roster.rows"),
     ...open(scope, "person.hireDate", "person.sourcePages", "roster.seed.separationDate", "asOf", "person.useMatch"),
   ]),
@@ -818,7 +824,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["operationId", "libraryId"].map(path => ({ scope: taskOutput("workbooks/read-result"), path, classification: "direct-identifier", transform: "digest" })),
   ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
     ...person(workflowInput(id), "lastName", "firstName"),
-    { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "digest" },
+    { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "drop" },
   ]),
   ...[taskOutput("i9/read-section2-signer"), taskOutput("workflow:i9-lookup/read-result"), workflowResult("i9-lookup"), workflowResult("i9-lookup-lookup")].flatMap(scope => [
     ...person(scope, "signerName", "profileId", "i9Id"),
@@ -830,7 +836,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates", "person-lookup-reference-check"].map(workflowInput),
   ].flatMap(scope => [
     ...person(scope, "name", "emplId", "lastName", "firstName", "dob"),
-    { scope, path: "ssn", classification: "direct-identifier", transform: "digest" },
+    { scope, path: "ssn", classification: "direct-identifier", transform: "drop" },
     ...open(scope, "mode", "crmCheck", "keepNonHdh", "includeCrmDates"),
   ]),
 
@@ -1237,4 +1243,37 @@ export function redactEvidenceLeaf(
     );
   }
   return RedactedFieldSchema.parse({ ...field, key: leaf.path });
+}
+
+/** OCR answer paths that carry the canonical SSN on any registered form. */
+const OCR_SSN_ANSWER_PATHS: ReadonlySet<string> = new Set(Object.values(OCR_FORMS).flatMap(({ fields }) =>
+  fields.filter(({ canonicalFieldId }) => canonicalFieldId === "ssn").map(({ path }) => path)));
+
+const OCR_SSN_MASK = "[SSN masked]";
+
+/** An admitted OCR answer is one array member, below the leaf the `ssn` guard sees, so each is classified by its own field: an SSN answer's raw, canonical value and read text are masked in place, keeping every leaf address that observation origins name. */
+function maskOcrSsnAnswers(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(maskOcrSsnAnswers);
+  if (value === null || typeof value !== "object") return value;
+  const answer = AdmittedAnswerSchema.safeParse(value);
+  if (answer.success && OCR_SSN_ANSWER_PATHS.has(answer.data.path)) {
+    if (answer.data.state === "read") return { ...answer.data, raw: OCR_SSN_MASK, value: OCR_SSN_MASK };
+    if (answer.data.state === "unreadable") return { ...answer.data, raw: OCR_SSN_MASK, reason: OCR_SSN_MASK };
+    return answer.data;
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, maskOcrSsnAnswers(child)]));
+}
+
+/** An observed field as timeline, Context Data and Logs may hold it: no OCR SSN, including in rows retained before this rule. */
+export function maskObservedOcrSsn(field: z.infer<typeof RedactedFieldSchema>): z.infer<typeof RedactedFieldSchema> {
+  if (field.state !== "allowed") return field;
+  return RedactedFieldSchema.parse({ ...field, value: maskOcrSsnAnswers(field.value) });
+}
+
+/** The observation copy of a leaf: OCR authority keeps the original answers; timeline, Context Data and Logs never receive an OCR SSN. */
+export function redactObservedEvidenceLeaf(
+  scope: EvidenceValueScope,
+  leaf: EvidenceLeaf,
+): z.infer<typeof RedactedFieldSchema> {
+  return maskObservedOcrSsn(redactEvidenceLeaf(scope, leaf));
 }
