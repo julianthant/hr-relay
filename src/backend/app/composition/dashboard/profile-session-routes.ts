@@ -310,6 +310,14 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return { result, session: result.state === "active" ? selection : undefined };
   };
   app.post("/api/v1/profile/sign-in", async c => {
+    const operation = pending;
+    if (operation !== undefined) {
+      if (transitioning || operation.deleting || !carries(c.req.raw, operation.sessionId)) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      const fields = ProfileLoginRequestSchema.parse(await c.req.json());
+      if (transitioning || pending !== operation) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      profileRuntime.session.confirmPendingLogoutLogin({ ...fields, at: clock.now().toISOString() }, operation);
+      return endSession(c, false);
+    }
     const admitted = await admitProfile("signin", c.req.raw);
     if (admitted.session !== undefined) issue(c, admitted.session);
     return c.json(admitted.result);

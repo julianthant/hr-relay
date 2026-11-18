@@ -131,9 +131,14 @@ export function createDashboardClient(input: Readonly<{
     };
   },
     ...(surface === undefined ? {} : { onFailure: reportFailure }) });
+  const withProofLock = async <T>(run: () => T | Promise<T>): Promise<T> =>
+    browser === undefined ? run() : await browser.navigator.locks.request(resumeKey, run);
   const activateProfile = async (path: string, init: RequestInit): Promise<PublicProfileState> => {
-    const predecessor = resumeProof(), request = { pending: true }; activation = request;
-    try {
+    const rotating = path === "/api/v1/profile/resume";
+    const request = { pending: true }; activation = request;
+    const dispatch = async (): Promise<PublicProfileState> => {
+      if (activation !== request) return { state: "refused", code: "PROFILE_SESSION_STALE" };
+      const predecessor = resumeProof();
       const response = await transport.requestJsonResponse(path, init);
       const state = parseProfileState(response.body);
       const settle = (): PublicProfileState => {
@@ -160,8 +165,11 @@ export function createDashboardClient(input: Readonly<{
         }
         return state;
       };
-      return browser === undefined ? settle() : await browser.navigator.locks.request(resumeKey, settle);
-    } finally { request.pending = false; }
+      return rotating ? settle() : withProofLock(settle);
+    };
+    // Other tabs may discover or resume only after the successor proof is visible in origin storage.
+    try { return await (rotating ? withProofLock(dispatch) : dispatch()); }
+    finally { request.pending = false; }
   };
   const endProfile = (path: string, body: unknown) => {
     if (session !== null) browser?.sessionStorage.setItem(endingKey, session);
@@ -228,7 +236,8 @@ export function createDashboardClient(input: Readonly<{
     },
     async readProfileSession() {
       const dispatchedAuthority = profileAuthority, requestedActivation = activation;
-      const state = parseProfileState((await transport.requestJsonResponse("/api/v1/profile/state")).body);
+      const response = await withProofLock(() => transport.requestJsonResponse("/api/v1/profile/state"));
+      const state = parseProfileState(response.body);
       if (dispatchedAuthority === profileAuthority && requestedActivation === activation && !activation.pending) {
         if (state.state !== "active") profileAuthority = undefined;
         else if (state.profileId !== profileAuthority?.profileId || state.epoch !== profileAuthority.epoch) profileAuthority = { profileId: state.profileId, epoch: state.epoch };

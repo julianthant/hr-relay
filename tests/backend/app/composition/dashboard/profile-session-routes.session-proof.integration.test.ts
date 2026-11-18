@@ -5,7 +5,10 @@ import { it, vi } from "vitest";
 import type { DashboardComposeInput } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import * as startup from "../../../../../src/backend/app/composition/dashboard/runtime-startup.js";
 import * as verifierStore from "../../../../../src/backend/storage/configuration/verifier-store.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { createServedOnboardingPort } from "../../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
@@ -190,20 +193,92 @@ it("joins two enrolled tabs through state and resume during a cold mount", async
   }
 });
 
-it("continues an unfinished logout after the initiating tab reloads", async () => {
+it("starts enrolled tabs while the cold mount response is awaiting browser settlement", async () => {
+  const fixture = await publicProfileShellFixture();
+  const received = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const pending: Promise<unknown>[] = [];
+  let runtime: Awaited<ReturnType<typeof start>> | undefined, machine = fixture.machine;
+  try {
+    runtime = await start(fixture);
+    const port = runtime.port, origin = `http://127.0.0.1:${port}`;
+    const enrollment = await (await readyPublicSignUp(origin)).finish();
+    const proof = enrollment.headers.get("x-relay-resume");
+    assert.ok(proof);
+    const epoch = machine.readProfileRegistry().sessionGeneration;
+    await runtime.stop();
+    runtime = undefined;
+    machine = acquireEntrypointAdmission(fixture.root, "exclusive", fixture.lifetime);
+    runtime = await start(fixture, { admission: machine, backendPortOverride: port });
+    const localStorage = tabStorage();
+    localStorage.setItem("relay.profile.resume", proof);
+    const tab = (holdResponse: boolean) => {
+      const entered = Promise.withResolvers<void>();
+      vi.stubGlobal("window", { location: { origin }, localStorage, sessionStorage: tabStorage(), navigator: { locks: {
+        request: (key: string, run: () => unknown) => {
+          const queued = navigator.locks.request(key, run);
+          if (!holdResponse) entered.resolve();
+          return queued;
+        },
+      } } });
+      try {
+        const client = createDashboardClient({ baseUrl: origin, fetchImpl: async (url, init) => {
+          const response = await fetch(url, init);
+          if (holdResponse && url.endsWith("/resume")) {
+            assert.equal(response.status, 200);
+            received.resolve();
+            await release.promise;
+          } else if (!holdResponse) entered.resolve();
+          return response;
+        } });
+        return { client, entered: entered.promise };
+      } finally { vi.unstubAllGlobals(); }
+    };
+    const first = tab(true), discovered = tab(false);
+    const resumable = { state: "signed-out", signUpRequired: false, resumable: true };
+    assert.deepEqual(await first.client.readProfileSession(), resumable);
+    assert.deepEqual(await discovered.client.readProfileSession(), resumable);
+    const mounting = first.client.resumeProfile();
+    pending.push(mounting);
+    await Promise.race([received.promise, mounting.then(() => assert.fail("cold response was not held"))]);
+    assert.equal(machine.readProfileRegistry().sessionGeneration, epoch + 1);
+    const arriving = tab(false);
+    const discovery = arriving.client.readProfileSession();
+    pending.push(discovery);
+    await arriving.entered;
+    const joining = discovered.client.resumeProfile();
+    pending.push(joining);
+    release.resolve();
+    assert.equal((await mounting).state, "active");
+    assert.deepEqual(await discovery, resumable);
+    assert.equal((await joining).state, "active");
+    assert.equal((await arriving.client.resumeProfile()).state, "active");
+    assert.equal(machine.readProfileRegistry().sessionGeneration, epoch + 1);
+  } finally {
+    release.resolve();
+    await Promise.allSettled(pending);
+    await runtime?.stop();
+    machine.release();
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+it.each(["logout", "login before settlement", "login after settlement", "login during deletion"] as const)("recovers the initiating tab through %s", async entry => {
   const fixture = await publicProfileShellFixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  const clock = manualClock(new Date("2026-11-04T12:00:00Z"));
+  const settlement = vi.spyOn(AuthorityDatabase.prototype, "settlePendingLogout");
   const actual = await vi.importActual<typeof startup>("../../../../../src/backend/app/composition/dashboard/runtime-startup.js");
   vi.mocked(startup.composeDashboardRuntime).mockImplementationOnce(async input => {
     const mounted = await actual.composeDashboardRuntime(input);
     let held = true;
     return { ...mounted, async detach() {
+      if (held && entry === "login before settlement") { held = false; throw new Error("fixture detach delayed"); }
       await mounted.detach();
       if (held) { held = false; throw new Error("fixture closure confirmation delayed"); }
     } };
   });
   try {
-    runtime = await start(fixture);
+    runtime = await start(fixture, { clock });
     const origin = `http://127.0.0.1:${runtime.port}`;
     const enrolled = await (await readyPublicSignUp(origin)).finish();
     assert.equal(PublicProfileStateSchema.parse(await enrolled.json()).state, "active");
@@ -216,18 +291,55 @@ it("continues an unfinished logout after the initiating tab reloads", async () =
     const first = load();
     const active = await first.signInProfile({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     assert.ok(active.state === "active");
-    assert.equal((await first.logOutProfile()).state, "error");
+    const confirmation = { confirmed: true as const, expectedProfileId: active.profileId, expectedEpoch: active.epoch };
+    const interruption = entry === "login during deletion" ? await first.deleteProfileAccount(confirmation) : await first.logOutProfile();
+    assert.equal(interruption.state, "error");
+    const journalOpen = entry === "login before settlement";
+    assert.deepEqual(fixture.machine.readPendingLogoutProfileIds(), journalOpen ? [active.profileId] : []);
+    const settlementsBeforeLogin = journalOpen ? 0 : 1;
+    assert.equal(settlement.mock.calls.length, settlementsBeforeLogin);
     assert.equal(fixture.machine.readProfileRegistry().activeProfileId, null);
     const stranger = createDashboardClient({ baseUrl: origin });
     assert.equal((await stranger.readProfileSession()).state, "signed-out");
     assert.deepEqual(await stranger.logOutProfile(), { state: "refused", code: "PROFILE_SESSION_STALE" });
     const reloaded = load();
     assert.equal((await reloaded.readProfileSession()).state, "cancelling");
-    assert.deepEqual(await reloaded.deleteProfileAccount({ confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }),
-      { state: "refused", code: "PROFILE_LOGOUT_BLOCKED" });
-    assert.deepEqual(await reloaded.logOutProfile(), { state: "signed-out", signUpRequired: false });
+    const details = { firstName: "", lastName: "", email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
+    const settled: string[] = [];
+    const form = createServedOnboardingPort(reloaded, state => settled.push(state.state));
+    assert.deepEqual(await stranger.signInProfile({ email: details.email, password: details.password }),
+      { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" });
+    if (entry === "login during deletion") {
+      assert.deepEqual(await form.submit("login", details), { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" });
+      assert.equal((await reloaded.readProfileSession()).state, "cancelling");
+      assert.deepEqual(await reloaded.logOutProfile(), { state: "refused", code: "PROFILE_LOGOUT_BLOCKED" });
+      assert.deepEqual(await reloaded.deleteProfileAccount({ ...confirmation, expectedEpoch: active.epoch + 1 }),
+        { state: "refused", code: "PROFILE_SESSION_STALE" });
+      assert.ok(fixture.machine.readProfileRegistry().profiles.some(row => row.profileId === active.profileId));
+      assert.equal(settlement.mock.calls.length, 1);
+      return;
+    }
+    assert.deepEqual(await reloaded.deleteProfileAccount(confirmation), { state: "refused", code: "PROFILE_LOGOUT_BLOCKED" });
+    const signedOut = { state: "signed-out", signUpRequired: false };
+    if (entry === "logout") {
+      assert.deepEqual(await reloaded.logOutProfile(), signedOut);
+    } else {
+      const refused = { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" };
+      for (let attempt = 0; attempt < 5; attempt++) {
+        assert.deepEqual(await form.submit("login", { ...details, password: "incorrect-fixture-password" }), refused);
+      }
+      assert.deepEqual(await form.submit("login", details), refused);
+      assert.equal(settlement.mock.calls.length, settlementsBeforeLogin);
+      clock.advanceWall(60_001);
+      assert.equal((await reloaded.readProfileSession()).state, "cancelling");
+      assert.deepEqual(await form.submit("login", details), signedOut);
+      assert.deepEqual(settled, [...Array<string>(6).fill("refused"), "signed-out"]);
+    }
     assert.deepEqual(await load().logOutProfile(), { state: "refused", code: "PROFILE_SESSION_STALE" });
+    assert.equal(settlement.mock.calls.length, 1);
+    assert.equal(fixture.machine.readProfileRegistry().sessionGeneration, active.epoch + 1);
   } finally {
+    settlement.mockRestore();
     vi.mocked(startup.composeDashboardRuntime).mockReset();
     await runtime?.stop();
     fixture.machine.release();

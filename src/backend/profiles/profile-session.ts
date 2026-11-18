@@ -296,6 +296,14 @@ export function createProfileSession(input: {
     return { state: "available", snapshot: Object.freeze(snapshot) };
   }
 
+  function checkLoginPassword(profileId: string, password: string, at: string): boolean {
+    const nowMs = Date.parse(at);
+    if (verifiers.locked(profileId, nowMs)) return false;
+    if (verifiers.passwordMatches(profileId, password)) return true;
+    verifiers.recordFailure(profileId, nowMs);
+    return false;
+  }
+
   function openLogout(profileId: string): LogoutOperation | undefined {
     return readOperations().find((operation): operation is LogoutOperation => operation.kind === "logout" && operation.profileId === profileId && operation.phase !== "complete");
   }
@@ -545,13 +553,18 @@ export function createProfileSession(input: {
     }
   }
 
+  function logoutRowCanSettle(row: ProfileRegistryRow | undefined, operation: LogoutOperation): boolean {
+    return row?.lifecycle === "cancelling" || row?.lifecycle === "ready"
+      && (operation.settlement === undefined || operation.settlement.phase === "done");
+  }
+
   function continueLogout(operation: LogoutOperation): { readonly state: "signed-out" } | ProfileLogoutResult | ProfileCancelling {
     admission.assertWritable();
     const profileId = operation.profileId, selection = registry.read();
     const row = selection.profiles.find(row => row.profileId === profileId);
     const before = operation.settlement === undefined && selection.sessionGeneration === operation.sessionGeneration && selection.activeProfileId === profileId && row?.lifecycle === "ready";
     const revoked = selection.sessionGeneration === operation.sessionGeneration + 1 && selection.activeProfileId === null
-      && (row?.lifecycle === "cancelling" || row?.lifecycle === "ready" && (operation.settlement === undefined || operation.settlement.phase === "done"));
+      && logoutRowCanSettle(row, operation);
     if (!before && !revoked) return refusal("PROFILE_TRANSITION_BLOCKED", operation.operationId);
     if (before) registry.advanceSession(null, "profile-logout-continuation");
     if (row?.lifecycle !== "cancelling" && operation.settlement?.phase !== "done") registry.update(profileId, { lifecycle: "cancelling" });
@@ -1094,12 +1107,7 @@ export function createProfileSession(input: {
         if (row.registration.onboardingCompletion === undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
         const pending = openLogout(row.profileId);
         if (row.lifecycle === "cancelling" || pending !== undefined) return cancelling(pending?.operationId);
-        const nowMs = Date.parse(at);
-        if (verifiers.locked(row.profileId, nowMs)) return refusal("PROFILE_SIGN_IN_REFUSED");
-        if (!verifiers.passwordMatches(row.profileId, fields.password)) {
-          verifiers.recordFailure(row.profileId, nowMs);
-          return refusal("PROFILE_SIGN_IN_REFUSED");
-        }
+        if (!checkLoginPassword(row.profileId, fields.password, at)) return refusal("PROFILE_SIGN_IN_REFUSED");
         if (mounted !== undefined && mountedToken !== undefined) {
           const entries = storeFor(mounted.profileId, mounted.admission).read().entries;
           if (entries.ucpathUserId?.value !== fields.email || entries.ucpathPassword?.value !== fields.password) return refusal("PROFILE_SIGN_IN_REFUSED");
@@ -1185,6 +1193,35 @@ export function createProfileSession(input: {
         return continueLogout(operation);
       });
     },
+    confirmPendingLogoutLogin(fields: { email: string; password: string; at: string },
+      expected: { operationId: string; profileId: string; epoch: number }): void {
+      const at = IsoInstantSchema.parse(fields.at);
+      admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
+      withProfileLock(machineRoot, () => {
+        const identified = verifiers.identify(fields.email);
+        if (identified === "unknown" || identified.profileId !== expected.profileId
+          || !checkLoginPassword(expected.profileId, fields.password, at)) throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED");
+        const selected = registry.read();
+        const row = selected.profiles.find(profile => profile.profileId === expected.profileId);
+        if (selected.activeProfileId !== null || selected.sessionGeneration !== expected.epoch + 1 || row === undefined) {
+          throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+        }
+        const operations = readOperations().filter((op): op is LogoutOperation => op.kind === "logout" && op.profileId === expected.profileId
+          && (op.phase !== "complete" || op.operationId === expected.operationId));
+        const [operation] = operations;
+        if (operation === undefined) {
+          const receipt = input.completedLogout?.(expected.operationId);
+          if (row.lifecycle !== "ready" || receipt?.profileId !== expected.profileId || receipt.epoch !== selected.sessionGeneration) {
+            throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+          }
+        } else if (operations.length !== 1 || operation.operationId !== expected.operationId || operation.sessionGeneration !== expected.epoch
+          || operation.phase === "complete" || !logoutRowCanSettle(row, operation)) {
+          throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+        }
+        verifiers.clearFailures(expected.profileId);
+      });
+    },
     authorizeLogoutContinuation(fields: { readonly email: string; readonly password: string; readonly at: string }) {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
@@ -1192,12 +1229,7 @@ export function createProfileSession(input: {
       return withProfileLock(machineRoot, () => {
         const identified = verifiers.identify(fields.email);
         if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");
-        const nowMs = Date.parse(at);
-        if (verifiers.locked(identified.profileId, nowMs)) return refusal("PROFILE_SIGN_IN_REFUSED");
-        if (!verifiers.passwordMatches(identified.profileId, fields.password)) {
-          verifiers.recordFailure(identified.profileId, nowMs);
-          return refusal("PROFILE_SIGN_IN_REFUSED");
-        }
+        if (!checkLoginPassword(identified.profileId, fields.password, at)) return refusal("PROFILE_SIGN_IN_REFUSED");
         const selection = registry.read();
         const row = selection.profiles.find(entry => entry.profileId === identified.profileId);
         const operations = readOperations().filter((entry): entry is LogoutOperation => entry.kind === "logout"
@@ -1206,7 +1238,7 @@ export function createProfileSession(input: {
         if (row === undefined || operations.length !== 1 || operation === undefined) return refusal("PROFILE_SESSION_STALE");
         const before = operation.settlement === undefined && selection.sessionGeneration === operation.sessionGeneration && selection.activeProfileId === row.profileId && row.lifecycle === "ready";
         const revoked = selection.sessionGeneration === operation.sessionGeneration + 1 && selection.activeProfileId === null
-          && (row.lifecycle === "cancelling" || row.lifecycle === "ready" && (operation.settlement === undefined || operation.settlement.phase === "done"));
+          && logoutRowCanSettle(row, operation);
         if (!before && !revoked) return refusal("PROFILE_SESSION_STALE");
         verifiers.clearFailures(row.profileId);
         const operationSnapshot = canonicalJsonStringify(operation), rowSnapshot = canonicalJsonStringify(row);

@@ -442,13 +442,17 @@ bound to the installation, profile, session generation and origin, including the
 
 An enrolled tab reads `/api/v1/profile/state` and posts to `/api/v1/profile/resume` when the
 response reports `resumable`. During a cold mount, tabs with a valid proof for the preceding
-generation can join that mount and receive credentials for the new generation. A browser without
+generation can join that mount and receive credentials for the new generation. The browser holds
+an origin-wide lock through resume and storage of the successor proof. A tab starting during that
+exchange waits for the proof before reading state or posting its own resume. A browser without
 a valid proof signs in with the existing password form. Signing in to the mounted profile retains
 its generation, and a failed sign-in leaves the selection intact.
 
 When logout or account deletion starts, the initiating tab saves its session credential in session
-storage. After a reload in the same runtime, the tab can read a pending logout and continue it.
-The server checks the original operation kind and, for deletion, the confirmed profile and epoch.
+storage. After a reload in the same runtime, submitting the login form with the original profile's
+password continues its pending ordinary logout. The server checks the tab credential, password
+lockout, profile, generation and original logout operation or completion receipt. The form returns
+to signed-out after closure. Account deletion requires its explicit confirmation, profile and epoch.
 Successful sign-out clears the tab's continuation credential and the origin's resume proof.
 
 The Relay login is the work email and password saved as the profile's UCPath sign-in.
