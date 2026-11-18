@@ -1,10 +1,11 @@
-
-import type { ElementHandle, Locator, Page, Response } from "playwright";
+import { setTimeout as delay } from "node:timers/promises";
+import type { ElementHandle, Locator, Page, Request, Response, Route } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { z } from "zod";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { ElementId, ObservationId } from "../../../../rules/identity/ids.js";
+import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import {
   KUALI_ACTION_LIST_DOCUMENT_LINK,
@@ -13,8 +14,9 @@ import {
   KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
   KUALI_ACTION_LIST_SEARCH_INPUT,
   KualiActionListObservationSchema,
+  parseKualiActionHref,
 } from "../../../../models/ui/kuali-action-list.js";
-import type { KualiActionListObservation } from "../../../../models/ui/kuali-action-list.js";
+import type { KualiActionListLink, KualiActionListObservation } from "../../../../models/ui/kuali-action-list.js";
 import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
 import { UiActionProofSchema } from "../../../../models/ui/driver.js";
 import {
@@ -86,6 +88,7 @@ import type {
 } from "../../../../models/ui/kuali-separation-finalization.js";
 import { KUALI_RRSS_SPACE_ID, KUALI_UI_REGISTRY } from "./ui-registry.js";
 import type { KualiLocatorRecipe } from "./ui-registry.js";
+import { kualiFinalizationConflictReason } from "../finalization-verdict.js";
 
 const KUALI_HOST = "ucsd.kualibuild.com";
 const NAVIGATION_TIMEOUT_MS = 60_000;
@@ -96,6 +99,9 @@ const FIELD_TIMEOUT_MS = 10_000;
 const KUALI_GRAPHQL_PATH = "/app/api/v0/graphql";
 const KUALI_SUBMIT_OPERATION = "submitDocumentV2";
 
+function isKualiGraphqlUrl(url: URL): boolean {
+  return url.origin === `https://${KUALI_HOST}` && url.pathname === KUALI_GRAPHQL_PATH;
+}
 
 const MODEL_COMMIT_TIMEOUT_MS = 20_000;
 const SUBMIT_OBSERVE_TIMEOUT_MS = 30_000;
@@ -173,8 +179,7 @@ function actionListUrl(): string {
   return `https://${KUALI_HOST}/build/space/${KUALI_RRSS_SPACE_ID}/actions`;
 }
 
-// Kuali searches document numbers by substring; anchor the exact link name to avoid neighboring documents.
-function documentLinks(page: Page, documentNumber: string): Locator {
+function actionListDocumentLinks(page: Page, documentNumber: string): Locator {
   const recipe = elementLocator(KUALI_ACTION_LIST_DOCUMENT_LINK);
   if (recipe.kind !== "role-anchored-value-name") {
     throw new Error(
@@ -182,8 +187,7 @@ function documentLinks(page: Page, documentNumber: string): Locator {
     );
   }
 
-  const number = KualiDocumentNumberSchema.parse(documentNumber);
-  return page.getByRole(recipe.role, { name: new RegExp(`^\\s*${number}\\s*$`, "u") });
+  return page.getByRole(recipe.role, { name: new RegExp(`^\\s*${documentNumber}\\s*$`, "u") });
 }
 
 // Kuali redirects document routes to view; stale action IDs silently return to the Action List.
@@ -202,10 +206,15 @@ function assertExactKualiDocumentUrl(rawUrl: string, actionId: string): void {
 const DOCUMENT_NUMBER_HEADING_NAME = /^\s*\d{3,8}\s*$/u;
 
 
-const BARE_DOCUMENT_NUMBER_NAME = /^\s*\d+\s*$/u;
-
-
 const ACTION_LIST_FILTER_TIMEOUT_MS = 15_000;
+const ACTION_LIST_FILTER_POLL_MS = 100;
+
+async function readActionListLinks(links: Locator): Promise<KualiActionListLink[]> {
+  return links.evaluateAll(elements => elements.map(element => ({
+    name: (element.textContent ?? "").trim(),
+    href: element.getAttribute("href"),
+  })));
+}
 
 type DocumentNumberProbe =
   | { readonly state: "read"; readonly documentNumber: string }
@@ -266,13 +275,127 @@ async function readDocumentNumberHeading(assertCurrent: () => void, page: Page, 
   return probe.documentNumber;
 }
 
-// Check only the staging-owned keys in submitDocumentV2 data; do not reinterpret the rest of the document.
-const SubmitVariablesSchema = z.object({
-  actionId: z.string().min(1),
-  documentId: z.string().min(1),
-  data: z.record(z.string(), z.unknown()),
+function graphqlDocumentSignature(query: string): string {
+  return query.trim().replace(/\s+/gu, " ");
+}
+
+// The executable documents observed on Kuali's Action List and RRSS Save.
+const ACTION_LIST_QUERY_SIGNATURE = graphqlDocumentSignature(`query OldActions($args: ActionConnectionInput!) {
+  actions: actionsConnection(args: $args) {
+    totalCount
+    edges {
+      node {
+        id
+        type
+        createdAt
+        display
+        details
+        handlerUrl
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}`);
+
+const SAVE_DOCUMENT_SIGNATURE = graphqlDocumentSignature(`mutation submitDocumentV2($documentId: ID!, $data: JSON, $actionId: ID!, $status: String, $comment: String, $timeZone: String, $overriddenFields: [String!]) {
+  submitDocumentV2(
+    id: $documentId
+    data: $data
+    actionId: $actionId
+    status: $status
+    comment: $comment
+    timeZone: $timeZone
+    overriddenFields: $overriddenFields
+  ) {
+    id
+    status
+    label
+    documentSetId
+    validations {
+      formKeys
+      label
+      message
+      __typename
+    }
+    query {
+      viewer {
+        id
+        actionCount
+        __typename
+      }
+      myDrafts(args: {skip: 0, limit: 1}) {
+        totalCount
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}`);
+
+const ActionListRequestSchema = z.strictObject({
+  operationName: z.literal("OldActions"),
+  query: z.string().refine(query => graphqlDocumentSignature(query) === ACTION_LIST_QUERY_SIGNATURE),
+  variables: z.strictObject({
+    args: z.strictObject({
+      skip: z.literal(0),
+      limit: z.literal(25),
+      sort: z.tuple([z.literal("-createdAt")]),
+      query: z.string(),
+    }),
+  }),
 });
 
+const ActionListResultSchema = z.strictObject({
+  data: z.strictObject({
+    actions: z.strictObject({
+      totalCount: z.number().int().nonnegative(),
+      edges: z.array(z.strictObject({
+        node: z.strictObject({
+          id: z.string(),
+          type: z.string(),
+          createdAt: z.string(),
+          display: z.record(z.string(), JsonValueSchema),
+          details: z.record(z.string(), JsonValueSchema),
+          handlerUrl: z.string(),
+          __typename: z.string().optional(),
+        }),
+        __typename: z.string().optional(),
+      })),
+      __typename: z.string().optional(),
+    }),
+  }),
+});
+
+function isRequestedActionListFilter(request: Request, searchText: string): boolean {
+  if (request.method() !== "POST" || !isKualiGraphqlUrl(new URL(request.url()))) return false;
+  let body: unknown;
+  try {
+    body = request.postDataJSON();
+  } catch {
+    return false;
+  }
+  const parsed = ActionListRequestSchema.safeParse(body);
+  return parsed.success && parsed.data.variables.args.query === searchText;
+}
+
+const WireDocumentIdSchema = z.string().min(1).refine(id => id === id.trim());
+
+const SubmitVariablesSchema = z.strictObject({
+  actionId: KualiActionIdSchema,
+  documentId: WireDocumentIdSchema,
+  status: z.string(),
+  timeZone: z.literal("America/Los_Angeles"),
+  overriddenFields: z.tuple([]),
+  data: z.record(z.string(), JsonValueSchema),
+});
+const SubmitRequestSchema = z.strictObject({
+  operationName: z.literal(KUALI_SUBMIT_OPERATION),
+  query: z.string().min(1),
+  variables: SubmitVariablesSchema,
+});
 // A successful mutation body is not landing proof; name only fields that can show explicit refusal.
 const SubmitResponseSchema = z.object({
   errors: z.array(z.object({ message: z.string() }).loose()).optional(),
@@ -288,6 +411,7 @@ const SubmitResponseSchema = z.object({
 type StagedExpectation = Readonly<{
   kind: "finalization";
   actionId: string;
+  documentId: string;
   documentNumber: string;
   fields: KualiFinalizationFields;
 }>;
@@ -374,61 +498,55 @@ async function awaitModelPropsReplaced(
 }
 
 // Verify staged values under the exact form keys in the Save payload for this action ID.
-function assertSubmitCarriedValue(
-  request: Readonly<{ postData: () => string | null }>,
-  expected: StagedExpectation,
-): void {
-  const raw = request.postData();
-  if (raw === null) {
+function validatedStagedSave(request: Request, expected: StagedExpectation): string {
+  let parsed: unknown;
+  try {
+    parsed = request.postDataJSON();
+  } catch {
     throw new Error(
-      `Kuali document ${expected.documentNumber} issued a ${KUALI_SUBMIT_OPERATION} with no request body; `
-      + "the save cannot be proved to carry the staged values",
+      `Kuali Save on document ${expected.documentNumber} issued an unreadable request body`,
     );
   }
-  const parsed: unknown = JSON.parse(raw);
-  const variables = SubmitVariablesSchema.safeParse(
-    (parsed as { variables?: unknown } | null)?.variables,
-  );
-  if (!variables.success) {
+  const submit = SubmitRequestSchema.safeParse(parsed);
+  if (!submit.success) {
     throw new Error(
-      `Kuali document ${expected.documentNumber} issued a ${KUALI_SUBMIT_OPERATION} whose variables do `
-      + `not match the known save shape: ${variables.error.message}`,
+      `Kuali Save on document ${expected.documentNumber} issued a request outside the known save shape`,
     );
   }
-  if (variables.data.actionId !== expected.actionId) {
+  if (graphqlDocumentSignature(submit.data.query) !== SAVE_DOCUMENT_SIGNATURE) {
+    throw new Error(`Kuali Save on document ${expected.documentNumber} did not carry the single supported Save operation`);
+  }
+  const { actionId, documentId, data, status } = submit.data.variables;
+  if (status !== "saved") {
     throw new Error(
-      `Kuali save targeted action ${variables.data.actionId} but the staged document ${expected.documentNumber} `
-      + `is action ${expected.actionId}; refusing to treat it as this write`,
+      `Kuali Save on document ${expected.documentNumber} used a save status other than "saved"`,
     );
   }
-  for (const [formKey, value] of stagedWireValues(expected)) {
-    const sent = variables.data.data[formKey];
-    if (sent === value) continue;
+  if (actionId !== expected.actionId) {
     throw new Error(
-      `Kuali save on document ${expected.documentNumber} did NOT carry a staged value: `
-      + `${KUALI_SUBMIT_OPERATION} sent ${JSON.stringify(sent ?? null)} at formKey ${formKey} instead of `
-      + `${JSON.stringify(value)}. Kuali accepts and reports success for such a save while persisting `
-      + "nothing of that field, so this is reported as a failed write, not a completed one",
+      `Kuali Save targeted action ${actionId} but the staged document ${expected.documentNumber} `
+      + `is action ${expected.actionId}`,
     );
   }
-}
-
-// Non-text Kuali model values have different wire shapes; assert only derivable payload values and reload-compare all twelve fields.
-function stagedWireValues(expected: StagedExpectation): readonly (readonly [string, unknown])[] {
-  const pairs: (readonly [string, unknown])[] = [];
+  if (documentId !== expected.documentId) {
+    throw new Error(`Kuali Save targeted a different document ID for staged document ${expected.documentNumber}`);
+  }
   for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
-    if (!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field)) continue;
     const formKey = KUALI_RRSS_FINALIZATION_FORM_KEYS[field];
-
     if (formKey === null) {
       throw new Error(
-        `Kuali finalization field ${field} is asserted on the wire but its formKey has never been `
-        + "observed; refusing to check a payload against a key this repository invented",
+        `Kuali finalization field ${field} has no observed formKey`,
       );
     }
-    pairs.push([formKey, expected.fields[field]] as const);
+    const sent = data[formKey];
+    if (sent === undefined || sent === null
+      || (KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field) && sent !== expected.fields[field])) {
+      throw new Error(
+        `Kuali Save on document ${expected.documentNumber} did not carry the staged ${field} at formKey ${formKey}`,
+      );
+    }
   }
-  return pairs;
+  return JSON.stringify(submit.data);
 }
 
 // GraphQL refusals can return HTTP 200; inspect refusal fields, then verify persisted values separately.
@@ -538,7 +656,21 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
 
   /** See `StagedExpectation` — the staging this page's `Save` may act on, if any. */
   let staged: StagedExpectation | undefined;
+  let saveRouteInstalled: Promise<void> | undefined;
+  let forwardSave: ((route: Route) => Promise<void>) | undefined;
 
+  async function routeKualiGraphql(route: Route): Promise<void> {
+    const request = route.request();
+    if (request.method() !== "POST") {
+      await route.fallback();
+    } else if (forwardSave !== undefined) {
+      await forwardSave(route);
+    } else if (request.postData()?.includes(KUALI_SUBMIT_OPERATION)) {
+      await route.abort();
+    } else {
+      await route.fallback();
+    }
+  }
 
   // Retain the proved document number; rereading would be a new observation under the retained proof identity.
   let matchedActionListNumber: string | undefined;
@@ -546,10 +678,44 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
 
 
 
-  async function readActionListForDocument(input: Readonly<{
-    documentNumber: string;
-  }>): Promise<KualiActionListObservation> {
-    const documentNumber = KualiDocumentNumberSchema.parse(input.documentNumber);
+  async function submitActionListFilter(search: Locator, go: Locator, searchText: string) {
+    assertCurrent();
+    await search.fill(searchText, { timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
+    recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, searchText);
+
+    let submitted: Request | undefined;
+    const observeRequest = (request: Request): void => {
+      if (submitted === undefined && isRequestedActionListFilter(request, searchText)) submitted = request;
+    };
+    page.on("request", observeRequest);
+    try {
+      const settled = page.waitForResponse(response => response.request() === submitted,
+        { timeout: ACTION_LIST_FILTER_TIMEOUT_MS });
+      void settled.catch(() => { /* Clicking can fail before the response is awaited. */ });
+      assertCurrent();
+      await go.click({ timeout: FIELD_TIMEOUT_MS });
+      assertCurrent();
+      recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
+
+      const response = await settled;
+      assertCurrent();
+      if (!response.ok()) {
+        throw new Error(`OldActions returned HTTP ${String(response.status())}`);
+      }
+      const body: unknown = await response.json();
+      assertCurrent();
+      return ActionListResultSchema.parse(body).data.actions;
+    } finally {
+      page.off("request", observeRequest);
+    }
+  }
+
+  async function lookupActionList(requestedNumber: string): Promise<{
+    observation: KualiActionListObservation;
+    documentIdsByAction: ReadonlyMap<string, string>;
+  }> {
+    const documentNumber = KualiDocumentNumberSchema.parse(requestedNumber);
     // A navigation away from a document discards Kuali's in-page form model, so
     // any staging is gone — the same invariant `openDocument` maintains.
     staged = undefined;
@@ -566,42 +732,88 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     const search = await exactlyOne(assertCurrent, page, KUALI_ACTION_LIST_SEARCH_INPUT);
     assertCurrent();
     const go = await exactlyOne(assertCurrent, page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
-    assertCurrent();
-    await search.fill(documentNumber, { timeout: FIELD_TIMEOUT_MS });
-    assertCurrent();
-    recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, documentNumber);
-    assertCurrent();
-    await go.click({ timeout: FIELD_TIMEOUT_MS });
-    assertCurrent();
-    recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
-
-    const matched = documentLinks(page, documentNumber);
     try {
       assertCurrent();
-      await matched.first().waitFor({ state: "attached", timeout: ACTION_LIST_FILTER_TIMEOUT_MS });
-    } catch {
+      const initialSearch = await search.inputValue({ timeout: FIELD_TIMEOUT_MS });
       assertCurrent();
-      // No matched action is a valid absence; the observation below retains the list contents and zero links.
+      // Kuali sends no request if GO repeats the selected search. Change it with a read-only prefix query first.
+      if (initialSearch === documentNumber) {
+        await submitActionListFilter(search, go, documentNumber.slice(0, -1));
+      }
+
+      const deadline = clock.monotonicMs() + ACTION_LIST_FILTER_TIMEOUT_MS;
+      const result = await submitActionListFilter(search, go, documentNumber);
+      assertCurrent();
+      if (result.totalCount !== result.edges.length) {
+        throw new Error("OldActions did not return the complete filtered result set");
+      }
+      const listedDocumentNumbers: string[] = [];
+      const documentIdsByAction = new Map<string, string>();
+      for (const { node } of result.edges) {
+        const serial = KualiDocumentNumberSchema.parse(node.details["serialNumber"]);
+        listedDocumentNumbers.push(serial);
+        if (serial !== documentNumber) continue;
+        const actionId = KualiActionIdSchema.parse(node.id);
+        if (node.handlerUrl !== `/action/${actionId}`) {
+          throw new Error("OldActions returned inconsistent action ID and handler URL");
+        }
+        const documentId = WireDocumentIdSchema.parse(node.details["documentId"]);
+        const priorId = documentIdsByAction.get(actionId);
+        if (priorId !== undefined && priorId !== documentId) {
+          throw new Error("OldActions returned conflicting document IDs for the same action");
+        }
+        documentIdsByAction.set(actionId, documentId);
+      }
+
+      let matchedLinks: KualiActionListLink[] = [];
+      if (documentIdsByAction.size > 0) {
+        const links = actionListDocumentLinks(page, documentNumber);
+        for (;;) {
+          assertCurrent();
+          const observed = await readActionListLinks(links);
+          assertCurrent();
+          const actionIds = new Set(observed.map(({ name, href }) => {
+            if (name !== documentNumber || href === null || !URL.canParse(href, actionListUrl())
+              || new URL(href, actionListUrl()).origin !== `https://${KUALI_HOST}`) return undefined;
+            return parseKualiActionHref(href, KUALI_RRSS_SPACE_ID);
+          }));
+          if (actionIds.size === documentIdsByAction.size
+            && [...documentIdsByAction.keys()].every(actionId => actionIds.has(actionId))) {
+            matchedLinks = observed;
+            break;
+          }
+          if (clock.monotonicMs() >= deadline) {
+            throw new Error("Rendered Action List links did not match the answered OldActions filter");
+          }
+          await delay(ACTION_LIST_FILTER_POLL_MS);
+        }
+      }
+      assertCurrent();
+      const observation = KualiActionListObservationSchema.parse({
+        pageStateId: KUALI_ACTION_LIST_READY,
+        space: KUALI_RRSS_SPACE_ID,
+        requestedDocumentNumber: documentNumber,
+        matchedLinks,
+        listedDocumentNumbers,
+        observedAt: now(),
+      });
+      if (matchedLinks.length > 0) matchedActionListNumber = documentNumber;
+      return { observation, documentIdsByAction };
+    } catch (error) {
+      assertCurrent();
+      throw new Error(
+        `Kuali Action List lookup for document ${documentNumber} could not prove the filtered result; the outcome is unknown`,
+        { cause: error },
+      );
     }
+  }
+
+  async function readActionListForDocument(input: Readonly<{
+    documentNumber: string;
+  }>): Promise<KualiActionListObservation> {
+    const { observation } = await lookupActionList(input.documentNumber);
     assertCurrent();
-    const matchedLinks = await matched.evaluateAll((elements) => elements.map((element) => ({
-      name: (element.textContent ?? "").trim(),
-      href: element.getAttribute("href"),
-    })));
-    assertCurrent();
-    const listed = await page
-      .getByRole("link", { name: BARE_DOCUMENT_NUMBER_NAME })
-      .evaluateAll((elements) => elements.map((element) => (element.textContent ?? "").trim()));
-    if (matchedLinks.length > 0) matchedActionListNumber = documentNumber;
-    assertCurrent();
-    return KualiActionListObservationSchema.parse({
-      pageStateId: KUALI_ACTION_LIST_READY,
-      space: KUALI_RRSS_SPACE_ID,
-      requestedDocumentNumber: documentNumber,
-      matchedLinks,
-      listedDocumentNumbers: listed,
-      observedAt: now(),
-    });
+    return observation;
   }
 
   async function openDocument(input: Readonly<{
@@ -1124,6 +1336,12 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     const fields = kualiFinalizationFields(target.variables);
     staged = undefined;
     assertCurrent();
+    const { documentIdsByAction } = await lookupActionList(target.documentNumber);
+    assertCurrent();
+    const documentId = documentIdsByAction.get(target.actionId);
+    if (documentIdsByAction.size !== 1 || documentId === undefined) {
+      throw new Error(`Kuali finalization staging could not verify the requested action for document ${target.documentNumber}`);
+    }
     const view = await openDocument({
       actionId: target.actionId,
       documentNumber: target.documentNumber,
@@ -1139,6 +1357,8 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         observed: before.fields.timekeeperComments,
       });
     }
+    const conflict = kualiFinalizationConflictReason(target, before.fields);
+    if (conflict !== undefined) throw new Error(conflict);
     // **S55.** Refuse an option the live control does not offer, and record the
     // whole list it did offer.
     if (!before.departmentOptions.includes(fields.department)) {
@@ -1260,6 +1480,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     staged = {
       kind: "finalization",
       actionId: view.actionId,
+      documentId,
       documentNumber: view.documentNumber,
       fields,
     };
@@ -1366,43 +1587,63 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         + "staged re-submits the document unchanged and Kuali still answers 200 with `Form saved`",
       );
     }
+    staged = undefined;
     assertCurrent();
     const save = await exactlyOne(assertCurrent, page, KUALI_RRSS_SAVE_BUTTON);
-    // Arm the observation BEFORE the click: the mutation is issued within a
-    // second of it, and a listener attached afterwards would race it.
+    // Keep the route installed for this page so delayed application retries also need Save authority.
     assertCurrent();
-    const settled = page.waitForResponse(
-      (response) => {
-        assertCurrent();
-        return response.url().includes(KUALI_GRAPHQL_PATH)
-        && (response.request().postData() ?? "").includes(KUALI_SUBMIT_OPERATION);
-      },
-      { timeout: SUBMIT_OBSERVE_TIMEOUT_MS },
-    );
-    void settled.catch(() => { /* The original promise is awaited below unless revocation refuses. */ });
+    saveRouteInstalled ??= page.route(isKualiGraphqlUrl, routeKualiGraphql);
+    await saveRouteInstalled;
     assertCurrent();
-    await clickWithMutationCapability(capability, save, FIELD_TIMEOUT_MS);
-    assertCurrent();
-    recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
-    // Wait for the specific save mutation response; networkidle and Form saved do not prove retained values.
-    let response: Response;
-    try {
-      assertCurrent();
-      response = await settled;
-    } catch (error) {
-      assertCurrent();
-      throw new Error(
-        `Kuali Save on document ${expectation.documentNumber} issued no answered ${KUALI_SUBMIT_OPERATION} `
-        + `within ${String(SUBMIT_OBSERVE_TIMEOUT_MS)}ms; the click cannot be described and the outcome is unknown`,
-        { cause: error },
-      );
+    if (await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))) {
+      throw new Error("Kuali Save cannot be intercepted on a page controlled by a service worker");
     }
     assertCurrent();
-    assertSubmitCarriedValue(response.request(), expectation);
-    assertCurrent();
-    await assertSubmitNotRefused(assertCurrent, response, expectation.documentNumber);
-    assertCurrent();
-    return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
+    const refused = Promise.withResolvers<never>();
+    let forwarded: Request | undefined;
+    const answered = page.waitForResponse(
+      response => response.request() === forwarded,
+      { timeout: SUBMIT_OBSERVE_TIMEOUT_MS },
+    ).catch((error: unknown) => {
+      throw new Error(
+        `Kuali Save on document ${expectation.documentNumber} issued no answered ${KUALI_SUBMIT_OPERATION} `
+        + `within ${String(SUBMIT_OBSERVE_TIMEOUT_MS)}ms; the outcome is unknown`,
+        { cause: error },
+      );
+    });
+    const settled = Promise.race([answered, refused.promise]);
+    void settled.catch(() => { /* The click can outlast a request refusal. */ });
+    forwardSave = async route => {
+      if (forwarded !== undefined) {
+        await route.abort().catch(refused.reject);
+        return;
+      }
+      const request = route.request();
+      let postData: string;
+      try {
+        assertCurrent();
+        postData = validatedStagedSave(request, expectation);
+        assertCurrent();
+      } catch (error) {
+        forwardSave = undefined;
+        await route.abort().then(() => refused.reject(error), refused.reject);
+        return;
+      }
+      forwarded = request;
+      await route.fallback({ postData }).catch(refused.reject);
+    };
+    try {
+      await clickWithMutationCapability(capability, save, FIELD_TIMEOUT_MS);
+      assertCurrent();
+      recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
+      const response = await settled;
+      assertCurrent();
+      await assertSubmitNotRefused(assertCurrent, response, expectation.documentNumber);
+      assertCurrent();
+      return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
+    } finally {
+      forwardSave = undefined;
+    }
   }
 
   const driver: KualiRrssDocumentDriver = {
