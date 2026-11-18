@@ -45,9 +45,8 @@ describe("manual field paths through conditional outputs", () => {
   });
 
   it("admits an optional field below a possibly empty or optional candidate array", () => {
-    for (const optional of [false, true]) {
-      const candidates = z.array(z.strictObject({ emplId: EidSchema }));
-      const output = z.strictObject({ candidates: optional ? candidates.optional() : candidates });
+    const candidates = z.array(z.strictObject({ emplId: EidSchema }));
+    for (const output of [z.strictObject({ candidates }), z.strictObject({ candidates: candidates.optional() })]) {
       const descriptor = fixture(output, { candidates: [] }, {
         form: { fields: [{ key: "emplId", label: "Employee ID", kind: "eid", optional: true, replaces: { nodeId: "read", path: "candidates.0.emplId" } }] },
         produces: { read: ({ facts }) => ({ candidates: facts.emplId === null ? [] : [{ emplId: facts.emplId }] }) },

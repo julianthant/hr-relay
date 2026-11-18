@@ -121,7 +121,7 @@ function prefillRow(draft: LaunchDraft, snapshot: RerunValuesSnapshot | null, ro
 /** A switch row on or off. Off opens its typed fields; on closes them and keeps what was typed. */
 export function toggleRow(draft: LaunchDraft, workflow: RunStartWorkflow, snapshot: RerunValuesSnapshot | null, row: StepRow, next: boolean): LaunchDraft {
   if (row.kind !== "switch") return draft;
-  let changed = draft;
+  let changed: LaunchDraft;
   if (row.stepKey !== undefined) changed = withSteps(draft, workflow.workflowId, toggleStepSelection(workflow.steps, selectedStepKeys(draft, workflow), row.stepKey, next));
   else changed = { ...draft, manualRows: next ? draft.manualRows.filter(key => key !== row.key) : [...new Set([...draft.manualRows, row.key])] };
   return next ? changed : prefillRow(changed, snapshot, row);

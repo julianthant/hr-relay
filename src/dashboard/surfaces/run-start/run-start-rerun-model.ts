@@ -25,7 +25,8 @@ export function partialRerunTypedInput(surface: TypedInputSurface, input: Extrac
   }
   for (const control of surface.controls) if (!typedControlAvailable(surface, draft, control.field)) {
     const defaults = typedInputDefaults(surface, mode);
-    if (defaults[control.field] !== undefined) draft[control.field] = defaults[control.field];
+    if (defaults[control.field] === undefined) continue;
+    draft[control.field] = !("kind" in control) && control.placement !== "hidden" ? false : defaults[control.field];
   }
   const submitted = surface.submitsMode === false ? Object.fromEntries(Object.entries(draft).filter(([field]) => field !== surface.modeField)) : draft;
   const value = JsonValueSchema.parse({ ...input.value, ...submitted });

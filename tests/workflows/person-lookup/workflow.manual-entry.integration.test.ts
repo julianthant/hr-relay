@@ -83,7 +83,7 @@ describe("Person Lookup Read CRM dates typed by hand", () => {
     const typed = await typedRun(f, ["crm-dates"]);
     assert.deepEqual(typed.result.crmDates, { state: "not-requested" });
     assert.equal(typed.checkpoint("crm-dates"), undefined);
-    assert.deepEqual(served(f, typed.run.envelope.runId).members("crm-dates"), [["crm-dates", "skipped", "condition-false"]]);
+    assert.equal(served(f, typed.run.envelope.runId).members("crm-dates"), undefined, "a step whose only member took no branch is served");
   });
 });
 
@@ -137,7 +137,6 @@ describe("Person Lookup Cross-check identity typed by hand", () => {
     assert.deepEqual(typed.stored.dependencies.filter(entry => entry.state === "asserted").map(entry => entry.nodeId), ["crm-identity"]);
     assert.deepEqual(served(f, typed.run.envelope.runId).members("cross-verify"), [
       ["cross-verify", "skipped", "step-omitted"], ["crm-identity", "skipped", "operator-asserted"],
-      ["crm-selected-record", "skipped", "condition-false"], ["crm-results", "skipped", "condition-false"],
     ]);
   });
 
@@ -155,8 +154,7 @@ describe("Person Lookup Cross-check identity typed by hand", () => {
     const typed = await typedRun(f, ["cross-verify", "crm-dates"]);
     assert.equal(typed.result.activeStatus.details.crm, "Not checked");
     assert.equal(typed.checkpoint("crm-identity"), undefined);
-    assert.deepEqual(served(f, typed.run.envelope.runId).members("cross-verify")?.map(([, state, reason]) => [state, reason]),
-      [["skipped", "condition-false"], ["skipped", "condition-false"], ["skipped", "condition-false"], ["skipped", "condition-false"]]);
+    assert.equal(served(f, typed.run.envelope.runId).members("cross-verify"), undefined, "a step whose members all took no branch is served");
   });
 });
 
@@ -189,7 +187,7 @@ describe("Person Lookup Search for person typed by hand", () => {
     assert.equal(typed.checkpoint("matching"), undefined);
     assert.deepEqual(typed.stored.dependencies.filter(entry => entry.state === "asserted").map(entry => entry.nodeId), ["search-identity"]);
     assert.deepEqual(served(f, typed.run.envelope.runId).members("searching"), [
-      ["searching", "skipped", "operator-asserted"], ["matching", "skipped", "condition-false"], ["search-identity", "skipped", "operator-asserted"],
+      ["searching", "skipped", "operator-asserted"], ["search-identity", "skipped", "operator-asserted"],
     ]);
   });
 
@@ -272,11 +270,11 @@ describe("Person Lookup Start run rows", () => {
     const typed = await typedRun(f, []);
     const wire = served(f, typed.run.envelope.runId);
     assert.deepEqual(STEPS.map(step => [step, wire.members(step)]), [
-      ["searching", [["searching", "done", undefined], ["matching", "skipped", "condition-false"], ["search-identity", "done", undefined]]],
-      ["cross-verify", [["cross-verify", "done", undefined], ["crm-identity", "done", undefined], ["crm-selected-record", "done", undefined], ["crm-results", "skipped", "condition-false"]]],
-      ["active-status", [["crm-only-recovery", "skipped", "condition-false"], ["active-status", "done", undefined]]],
+      ["searching", [["searching", "done", undefined], ["search-identity", "done", undefined]]],
+      ["cross-verify", [["cross-verify", "done", undefined], ["crm-identity", "done", undefined], ["crm-selected-record", "done", undefined]]],
+      ["active-status", [["active-status", "done", undefined]]],
       ["crm-dates", [["crm-dates", "done", undefined]]],
-      ["reference-check", [["reference-check", "skipped", "condition-false"]]],
+      ["reference-check", undefined],
     ]);
     assert.equal(wire.omittedSteps, undefined);
     assert.equal(typed.run.envelope.stepOmissions, undefined);

@@ -346,15 +346,15 @@ export function RunStartDialog({
   const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   /** A step the typed input decides (its control sits on the Input stage or is unavailable) is neither switched nor typed here. */
-  const inputDriven = (row: StepRow): boolean => {
+  const inputDriven = useCallback((row: StepRow): boolean => {
     const control = row.stepKey === undefined ? undefined : steps.find(step => step.key === row.stepKey)?.control;
     return typedDeclaration !== undefined && control?.state === "selectable"
       && (typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "input") || !typedControlAvailable(typedDeclaration, typedValues, control.inputField));
-  };
+  }, [steps, typedDeclaration, typedValues]);
   const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps ? rows.flatMap(row => {
     if (row.form === undefined || inputDriven(row) || !rowFieldsOpen(row, selectedStepKeys, manualRows)) return [];
     return [rowOpenFold(row, row.form, stepDrafts[row.key] ?? initialStepOmissionDraft(row.form))];
-  }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, typedDeclaration, typedValues, steps]);
+  }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven]);
   const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
   const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, manualRows, typedValues, sourceInputUnchanged, pdfInput.draft, pdfInput.picks, startRequestFingerprint({
     workflowId,
@@ -880,9 +880,10 @@ export function RunStartDialog({
                       const forcedBy = row.stepKey === undefined ? [] : forcedByStep.get(row.stepKey) ?? [];
                       const open = openRows.find(candidate => candidate.row.key === row.key);
                       const badge = isRerun && snapshot !== null ? sourceBadge(row, snapshot) : undefined;
-                      const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows)
-                        || (multiSubject && row.form !== undefined && included);
-                      const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.` : row.note;
+                      const oneSubjectOnly = multiSubject && row.form !== undefined && included;
+                      const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows) || oneSubjectOnly;
+                      const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
+                        : oneSubjectOnly ? `Typed values describe one person; this run would create ${String(subjectCount)}.` : row.note;
                       const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
                       return <RunListRow key={row.key} title={row.label} description={note}
                         {...(row.kind === "switch" ? { check: { checked: included, disabled, onChange: next => toggleRow(row, next) } } : { locked: true })}

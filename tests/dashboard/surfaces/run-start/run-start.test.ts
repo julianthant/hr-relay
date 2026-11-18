@@ -475,7 +475,8 @@ describe("an omittable step draws its own form when it is left out", () => {
     assert.ok(dialog.text().includes("Last day worked"), "omitting the step drew no form");
     assert.ok(dialog.text().includes("Separation date"));
 
-    assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
+    assert.ok(dialog.text().includes("Enter last day worked for Kronos timecard."), "the first missing field drew no error in place of its help");
+    assert.ok(dialog.text().includes("The last day on pay status, MM/DD/YYYY"), "a field without an error drew no help line");
     assert.ok(dialog.text().includes("6 of 7 included"));
   });
 

@@ -87,7 +87,7 @@ function resolveValueLeaf(schema: z.core.$ZodType, path: readonly string[], manu
   }
   if (!(schema instanceof z.core.$ZodObject)) return undefined;
   const shape: Readonly<Record<string, z.core.$ZodType>> = schema._zod.def.shape;
-  return Object.hasOwn(shape, key) ? resolveValueLeaf(shape[key] as z.core.$ZodType, rest, manual) : manual ? z.undefined() : undefined;
+  return Object.hasOwn(shape, key) ? resolveValueLeaf(shape[key], rest, manual) : manual ? z.undefined() : undefined;
 }
 
 /** True when the schema itself accepts the value and parses it to the same canonical JSON. */
