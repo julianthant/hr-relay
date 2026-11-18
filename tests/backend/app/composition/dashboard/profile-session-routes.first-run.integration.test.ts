@@ -54,11 +54,11 @@ it("serves the original local startup report at Finish and replays it without ch
     const completion = f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion;
     const replay = await ready.finish();
     assert.equal(replay.status, finished.status); assert.deepEqual(await replay.json(), active);
-    assert.equal(replay.headers.get("set-cookie"), finished.headers.get("set-cookie"));
+    assert.equal(replay.headers.get("x-relay-session"), finished.headers.get("x-relay-session"));
     assert.equal(reports.length, 1); assert.equal(checkConnection.mock.calls.length, 0);
     assert.deepEqual(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion, completion);
-    const sessionCookie = finished.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(sessionCookie);
-    const ordinary = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie: sessionCookie } })).json());
+    const sessionCredential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(sessionCredential);
+    const ordinary = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { "x-relay-session": sessionCredential } })).json());
     const row = f.machine.readProfileRegistry().profiles[0];
     assert.ok(row);
     assert.deepEqual(ordinary, { state: "active", profileId: active.profileId, epoch: active.epoch, duoState: active.duoState,
@@ -66,7 +66,7 @@ it("serves the original local startup report at Finish and replays it without ch
     const foreign = await ready.post("/api/v1/profile/onboarding/complete", { operationId: ready.draft.operationId }, "relay-profile-onboarding=foreign");
     assert.deepEqual(await foreign.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
     assert.equal(reports.length, 1);
-    const logout = await ready.post("/api/v1/profile/logout", {}, sessionCookie); assert.equal(logout.status, 200);
+    const logout = await ready.post("/api/v1/profile/logout", {}, sessionCredential); assert.equal(logout.status, 200);
     assert.deepEqual(await (await ready.finish()).json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
   } finally { await runtime?.stop(); vi.restoreAllMocks(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
@@ -92,7 +92,7 @@ it("a failed first-run check after Finish mounts the published profile and resum
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       onInitialPreflight: report => { reports.push(report); } });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
-    const { post, cookie, finish, draft } = await readyPublicSignUp(base);
+    const { credential, finish, draft } = await readyPublicSignUp(base);
     const failed = await finish();
     assert.equal(failed.status, 200);
     const body = PublicProfileStateSchema.parse(await failed.json()), registry = f.machine.readProfileRegistry();
@@ -102,11 +102,12 @@ it("a failed first-run check after Finish mounts the published profile and resum
     assert.equal(reports[0]?.results.some(result => result.status === "fail" && result.check === "ports.available"), true);
     assert.ok(registry.profiles[0]?.registration.onboardingCompletion);
     const replay = await finish(); assert.equal(replay.status, 200); assert.deepEqual(await replay.json(), body);
-    assert.equal(probes, 1); assert.equal(reports.length, 1); assert.match(replay.headers.get("set-cookie") ?? "", /relay-profile-session=/u);
-    const state = await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } });
+    assert.equal(probes, 1); assert.equal(reports.length, 1); assert.match(replay.headers.get("x-relay-session") ?? "", /^active\.[a-f0-9]{64}$/u);
+    const state = await fetch(`${base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } });
     assert.equal(state.status, 200);
-    assert.deepEqual(PublicProfileStateSchema.parse(await state.json()), { state: "signed-out", signUpRequired: false, resumable: true });
-    const login = await post("/api/v1/profile/resume", {});
+    assert.deepEqual(PublicProfileStateSchema.parse(await state.json()), { state: "signed-out", signUpRequired: false });
+    const proof = failed.headers.get("x-relay-resume"); assert.ok(proof);
+    const login = await fetch(`${base}/api/v1/profile/resume`, { method: "POST", headers: { origin: base, "content-type": "application/json", "x-relay-resume": proof }, body: "{}" });
     const resumed = PublicProfileStateSchema.parse(await login.json()); assert.equal(resumed.state, "active");
     if (resumed.state !== "active") throw new Error("resumed profile required");
     assert.equal(resumed.profileId, draft.profileId);
@@ -114,8 +115,8 @@ it("a failed first-run check after Finish mounts the published profile and resum
     const afterResume = await finish();
     assert.deepEqual(await afterResume.json(), body);
     assert.equal(probes, 1); assert.equal(reports.length, 1);
-    const session = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(session);
-    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie: session, origin: base } })).status, 200);
+    const session = login.headers.get("x-relay-session") ?? undefined; assert.ok(session);
+    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { "x-relay-session": session, origin: base } })).status, 200);
     const registryPath = join(f.machine.stateRoot, "machine", "profiles.json"), registration = f.machine.readProfileRegistry().profiles[0]?.registration;
     const stopping = runtime; runtime = undefined;
     await stopping.stop();
@@ -159,13 +160,13 @@ for (const phase of ["before-report", "after-report"] as const) it(`retains an u
       assert.equal(body.state, "active");
       if (body.state !== "active" || body.firstRunCheck?.state !== "failed") throw new Error("failed first-run check required");
       assert.equal(body.firstRunCheck.report.results.some(result => result.check === "ports.available" && result.status === "fail" && result.summary === "check did not complete (error)"), true);
-      assert.ok(response.headers.get("set-cookie"));
+      assert.ok(response.headers.get("x-relay-session"));
       assert.equal(reports.length, 1);
     } else {
       assert.deepEqual(body, { state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE",
         firstRunCheck: { scope: "local-startup", profileId: ready.draft.profileId, epoch: f.machine.readProfileRegistry().sessionGeneration, state: "passed", report: reports[0] } });
       assert.equal(response.status, 409);
-      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(response.headers.get("x-relay-session"), null);
       assert.equal(reports.length, 1);
     }
     const replay = await ready.finish(); assert.equal(replay.status, response.status); assert.deepEqual(await replay.json(), body); assert.equal(probes, 1);
@@ -183,14 +184,14 @@ it("leaves unfinished Duo setup as an uncompleted refusal without a first-run re
       body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding");
     if (draft.state !== "onboarding") throw new Error("unfinished draft required");
-    const cookie = signup.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    const credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     for (let attempt = 0; attempt < 2; attempt++) {
-      const response: Response = await fetch(`${base}/api/v1/profile/onboarding/complete`, { method: "POST", headers: { origin: base, "content-type": "application/json", cookie },
+      const response: Response = await fetch(`${base}/api/v1/profile/onboarding/complete`, { method: "POST", headers: { origin: base, "content-type": "application/json", "x-relay-session": credential },
         body: JSON.stringify({ operationId: draft.operationId }) });
       assert.equal(response.status, 409); assert.deepEqual(await response.json(), { state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" });
     }
     assert.equal(onInitialPreflight.mock.calls.length, 0); assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
-    const current = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json());
+    const current = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json());
     assert.equal(current.state, "onboarding");
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });

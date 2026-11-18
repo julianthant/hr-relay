@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
 import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
+import { useAuthenticatedImage } from "../../shared/authenticated-image.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import { captureGeometry, captureKindLabel, captureLoadProblem, captureSourceDimensions, type CaptureMode } from "./log-screenshots-model.js";
 import "./log-presentation.css";
@@ -9,15 +10,24 @@ import "./log-presentation.css";
 function CaptureImage({ screenshot, className, style, eager = false, onFailure, retryable = false }: { screenshot: LogScreenshot; className?: string; style?: CSSProperties; eager?: boolean; onFailure?: () => void; retryable?: boolean }) {
   const [problem, setProblem] = useState<string>();
   const [attempt, setAttempt] = useState(0);
-  if (problem) return <div role="alert" className="log-image-error"><ImageOff aria-hidden className="size-4" /><span>{problem}</span>{retryable && <Button size="sm" variant="secondary" onClick={() => { setProblem(undefined); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</div>;
-  return <img key={attempt} src={screenshot.src} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} loading={eager ? "eager" : "lazy"} className={className} style={style} onError={() => { setProblem("Screenshot could not be loaded."); onFailure?.(); }} onLoad={event => {
+  const image = useAuthenticatedImage(screenshot.src, attempt);
+  const failure = problem ?? (image.failed ? "Screenshot could not be loaded." : undefined);
+  useEffect(() => { if (image.failed) onFailure?.(); }, [image.failed]);
+  if (failure) return <div role="alert" className="log-image-error"><ImageOff aria-hidden className="size-4" /><span>{failure}</span>{retryable && <Button size="sm" variant="secondary" onClick={() => { setProblem(undefined); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</div>;
+  if (image.src === undefined) return <div role="status" aria-label="Loading screenshot" className={className} style={{ ...style, aspectRatio: `${screenshot.width} / ${screenshot.height}` }} />;
+  const loaded = image.src;
+  return <img key={attempt} src={loaded} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} loading={eager ? "eager" : "lazy"} className={className} style={style} onError={() => { setProblem("Screenshot could not be loaded."); onFailure?.(); }} onLoad={event => {
     const element = event.currentTarget;
-    void captureSourceDimensions(screenshot.src).then(actual => {
+    void captureSourceDimensions(loaded).then(actual => {
       if (!element.isConnected) return;
       const failure = captureLoadProblem(screenshot, actual);
       if (failure) { setProblem(failure); onFailure?.(); }
     }, () => { if (element.isConnected) { setProblem("Screenshot could not be loaded."); onFailure?.(); } });
   }} />;
+}
+function CaptureThumb({ src }: { src: string }) {
+  const image = useAuthenticatedImage(src);
+  return image.src === undefined ? <span aria-hidden /> : <img src={image.src} alt="" loading="lazy" />;
 }
 function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: LogScreenshot; submit?: boolean; onChoose: (button: HTMLButtonElement) => void }) {
   const [failed, setFailed] = useState(false);
@@ -73,7 +83,7 @@ function CaptureWorkspace({ screenshots, selected, choose }: { screenshots: read
     if (event.key === "-") { event.preventDefault(); zoomBy(-1); }
     if (event.key.toLowerCase() === "r") { event.preventDefault(); setRotation(value => (value + 90) % 360); }
   }}>
-    {screenshots.length > 1 && <aside className="log-capture-sidebar" aria-label="Capture selection"><p>{screenshots.length} {screenshots.length === 1 ? "capture" : "captures"}</p>{screenshots.map((item, index) => <button key={`${item.src}-${index}`} type="button" className="log-capture-tab" aria-pressed={index === selected} onClick={() => switchCapture(index)}><img src={item.src} alt="" loading="lazy" /><strong>{item.system ?? "Capture"}</strong><span>{item.label ?? captureKindLabel(item.kind)}</span></button>)}</aside>}
+    {screenshots.length > 1 && <aside className="log-capture-sidebar" aria-label="Capture selection"><p>{screenshots.length} {screenshots.length === 1 ? "capture" : "captures"}</p>{screenshots.map((item, index) => <button key={`${item.src}-${index}`} type="button" className="log-capture-tab" aria-pressed={index === selected} onClick={() => switchCapture(index)}><CaptureThumb src={item.src} /><strong>{item.system ?? "Capture"}</strong><span>{item.label ?? captureKindLabel(item.kind)}</span></button>)}</aside>}
     <div className="log-image-workspace"><div className="log-viewer-toolbar"><SegmentedChoice label="Image size" hideLabel value={zoom === undefined ? mode : "width"} onChange={reset} options={[{ value: "width", label: "Fit width" }, { value: "whole", label: "Whole image" }, { value: "actual", label: "100%" }]} />
       <IconButton size="md" label="Zoom out" icon={<Minus aria-hidden className="size-4" />} onClick={() => zoomBy(-1)} disabled={(zoom ?? scale) <= .1} /><span className="log-zoom" role="status">{Math.round((zoom ?? scale) * 100)}%</span><IconButton size="md" label="Zoom in" icon={<Plus aria-hidden className="size-4" />} onClick={() => zoomBy(1)} disabled={(zoom ?? scale) >= 4} />
       <IconButton size="md" label="Rotate image" icon={<RotateCw aria-hidden className="size-4" />} onClick={() => setRotation(value => (value + 90) % 360)} />{screenshots.length > 1 && <IconButton size="md" label="Compare captures" icon={<Columns2 aria-hidden className="size-4" />} aria-pressed={compare} onClick={() => { setCompare(value => !value); reset("whole"); }} />}

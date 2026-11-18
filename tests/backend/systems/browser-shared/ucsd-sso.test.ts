@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { withBrowserActionNotes, type BrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { BrowserLandingStallError, BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import { fillSsoCredentials, submitSsoForm, waitForAuthenticatedLanding } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { submitSsoForm, waitForAuthenticatedLanding } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 
@@ -355,10 +355,7 @@ for (const revokeAfterUsername of [false, true]) {
       }
       return locator;
     };
-    const operation = context.duoCeremony.withCeremony(async token => {
-      await fillSsoCredentials("ucpath", guarded, token);
-      await submitSsoForm("ucpath", guarded, token);
-    });
+    const operation = context.duoCeremony.withCeremony(token => submitSsoForm("ucpath", guarded, token));
     if (revokeAfterUsername) await assert.rejects(operation, error => error === refusal);
     else await operation;
     assert.equal(harness.filled().length, revokeAfterUsername ? 1 : 2);
