@@ -1552,7 +1552,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const proofRaw: unknown = Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]);
       const proof = completion.proofSchema.parse(proofRaw);
       const proofValue = JsonValueSchema.parse(proof);
-      if (canonicalJsonStringify(claimedProof) !== canonicalJsonStringify(proofValue)) {
+      const identity = (value: JsonValue): string => canonicalJsonStringify(completion.effectIdentity === undefined
+        ? value : Reflect.apply(completion.effectIdentity, undefined, [value]));
+      if (identity(claimedProof) !== identity(proofValue)) {
         throw postFence("unknown", `${commitContract.id} callback and verifier receipts disagree`,
           "post-click-verifier-unknown", "proof", { callback: claimedProof, verifier: proofValue });
       }
