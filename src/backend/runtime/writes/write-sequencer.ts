@@ -211,6 +211,12 @@ export interface WriteSequencerAuthority {
   commitRecheckedParkedWrite(input: unknown): AtomicWriteCommitReport;
 }
 
+type TransactionDriverOperation<Result> = (
+  driver: BrowserDriver,
+  ownership: Readonly<{ readonly signal: AbortSignal; retainAfterFence(): void }>,
+  captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>,
+) => Promise<Result>;
+
 // Use the same session manager bound by the worker loop; recovery binds retained config separately.
 export interface TransactionSessionHost {
   withDriver<Result>(
@@ -224,11 +230,7 @@ export interface TransactionSessionHost {
     need: SessionNeed,
     instance: string | undefined,
     signal: AbortSignal,
-    operation: (
-      driver: BrowserDriver,
-      ownership: Readonly<{ readonly signal: AbortSignal; retainAfterFence(): void }>,
-      captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>,
-    ) => Promise<Result>,
+    operation: TransactionDriverOperation<Result>,
     screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result>;
   closeAll(reason: "parked"): Promise<void>;
@@ -1455,14 +1457,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   async function parkAfterFence(
     context: WriteSequencerContext,
     failure: PostFenceWriteFailure,
-  ): Promise<void> {
+  ): Promise<never> {
+    let closeFailure: string | undefined;
     try {
       await deps.sessions.closeAll("parked");
-    } catch (closeError) {
-      deps.log.warn("browser close before write park failed; parking anyway", {
-        writeIntentId: failure.writeIntentId,
-        error: closeError instanceof Error ? closeError.message : "non-Error",
-      });
+    } catch (error) {
+      closeFailure = error instanceof Error ? error.message : "non-Error";
     }
     const now = instant();
     const envelope = context.run.envelope;
@@ -1505,18 +1505,47 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       });
       requireLifecycleApplied(applied);
     });
+    if (closeFailure !== undefined) {
+      try {
+        deps.log.warn("browser close before write park failed", { writeIntentId: failure.writeIntentId, error: closeFailure });
+      } catch { reportDiagnosticFailure(context); }
+    }
+    throw new WriteParkedError({
+      writeIntentId: failure.writeIntentId,
+      intentGeneration: failure.generation,
+      parkCode: failure.parkCode,
+      message: failure.message,
+      cause: failure,
+    });
   }
 
-  /** Beat ⑦ keeps custody of a proven save: a settlement that does not land parks the intent UNKNOWN. */
-  async function settleOrPark<T>(
+  function settleVerified(
     context: WriteSequencerContext,
-    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
-    settle: () => T,
-  ): Promise<T> {
+    intent: CommitSettlementIdentity["intent"],
+    proofSource: "normal-output" | "recovery-probe",
+    proofValue: JsonValue,
+    outputValue: JsonValue,
+  ) {
     try {
-      return settle();
+      const commitContract = context.node.commit.uses;
+      const built = buildCommittedSettlement({
+        descriptor: context.descriptor, nodeId: String(context.node.id), run: context.run, intent,
+        commitContract, operator, implFingerprint: taskImplFingerprint(commitContract),
+        proofSource, proofValue, outputValue, confirmedAt: instant(), ids: deps.ids,
+      });
+      if (built.outcome.disposition !== "committed") throw new Error("committed-settlement-disposition-mismatch");
+      deps.authority.withAuthorityTransaction(repositories => {
+        const runId = context.run.envelope.runId;
+        const current = repositories.runs.get(runId);
+        if (current === undefined) throw new Error(`run ${runId} disappeared from authority`);
+        executeSequencedWriteCommit(deps.authority, {
+          run: { runId, expectedVersion: current.version, claim: context.claim },
+          checkpoint: built.checkpoint, commit: built.commit,
+        }, { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle }, deps.hooks);
+      });
+      return built.outcome;
     } catch (error) {
-      const failure = new PostFenceWriteFailure({
+      throw new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
         generation: intent.generation,
         intentVersion: intent.version,
@@ -1525,14 +1554,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         operatorMessage: "The save was proven but could not be recorded; check again to confirm it",
         authorityReason: authorityReason(context.run, "post-fence-session-exception", "settlement", authorityExceptionDetail(error)),
         cause: error,
-      });
-      await parkAfterFence(context, failure);
-      throw new WriteParkedError({
-        writeIntentId: failure.writeIntentId,
-        intentGeneration: failure.generation,
-        parkCode: failure.parkCode,
-        message: failure.message,
-        cause: failure,
       });
     }
   }
@@ -1709,14 +1730,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         authorityReason: authorityReason(context.run, "inline-recovery-probe-exception", "exception", error),
         cause: error,
       });
-      await parkAfterFence(context, failure);
-      throw new WriteParkedError({
-        writeIntentId: failure.writeIntentId,
-        intentGeneration: failure.generation,
-        parkCode: failure.parkCode,
-        message: failure.message,
-        cause: failure,
-      });
+      return parkAfterFence(context, failure);
     }
     const completion = commitContract.writeSafety.completion;
     if (verdict.state === "present") {
@@ -1739,14 +1753,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           authorityReason: authorityReason(context.run, "inline-recovery-present-proof-schema-failure", "exception", error),
           cause: error,
         });
-        await parkAfterFence(context, failure);
-        throw new WriteParkedError({
-          writeIntentId: failure.writeIntentId,
-          intentGeneration: failure.generation,
-          parkCode: failure.parkCode,
-          message: failure.message,
-          cause: failure,
-        });
+        return parkAfterFence(context, failure);
       }
       if (!isFreshOccurrenceProof(intent, context.run.envelope, {
         schemaHash: deriveSchemaHash(completion.proofSchema, "output"), value: proofValue,
@@ -1754,43 +1761,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const failure = new PostFenceWriteFailure({ writeIntentId: intent.writeIntentId, generation: intent.generation,
           intentVersion: intent.version, parkCode: "unknown", message: "Earlier receipt cannot settle the new write occurrence",
           authorityReason: authorityReason(context.run, "recovery-probe-unknown", "proof", proofValue) });
-        await parkAfterFence(context, failure);
-        throw new WriteParkedError({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
-          parkCode: "unknown", message: failure.message, cause: failure });
+        return parkAfterFence(context, failure);
       }
-      const settlement = await settleOrPark(context, intent, () => {
-        const built = buildCommittedSettlement({
-          descriptor: context.descriptor,
-          nodeId: String(context.node.id),
-          run: context.run,
-          intent,
-          commitContract,
-          operator,
-          implFingerprint: taskImplFingerprint(commitContract),
-          proofSource: "recovery-probe",
-          proofValue,
-          outputValue,
-          confirmedAt: instant(),
-          ids: deps.ids,
-        });
-        executeSequencedWriteCommit(
-          deps.authority,
-          {
-            run: { runId: context.run.envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
-            checkpoint: built.checkpoint,
-            commit: built.commit,
-          },
-          { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
-          deps.hooks,
-        );
-        return built;
-      });
-      return {
-        disposition: "committed",
-        proofSource: "recovery-probe",
-        output: settlement.outcome.output.value,
-        proof: settlement.outcome.proof.value,
-      };
+      try {
+        const settled = settleVerified(context, intent, "recovery-probe", proofValue, outputValue);
+        return { disposition: "committed", proofSource: "recovery-probe", output: settled.output.value, proof: settled.proof.value };
+      } catch (error) {
+        if (error instanceof PostFenceWriteFailure) return parkAfterFence(context, error);
+        throw error;
+      }
     }
     // Inline recovery parks uncertain absence; only the standalone stabilized recovery may authorize retry.
     const parkCode: WriteIntentParkCode = verdict.state === "ambiguous" ? "ambiguous" : "unknown";
@@ -1812,14 +1791,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         verdict,
       ),
     });
-    await parkAfterFence(context, failure);
-    throw new WriteParkedError({
-      writeIntentId: failure.writeIntentId,
-      intentGeneration: failure.generation,
-      parkCode: failure.parkCode,
-      message: failure.message,
-      cause: failure,
-    });
+    return parkAfterFence(context, failure);
   }
 
   function claimedAtFor(context: WriteSequencerContext): string {
@@ -1832,12 +1804,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const current = deps.authority.authority.runs.get(context.run.envelope.runId);
     if (current === undefined) throw new Error("run disappeared before write fence");
     if (current.cancelRequested === true) throw new Error("run cancellation requested before write fence");
-  }
-
-  function currentRunVersion(context: WriteSequencerContext): number {
-    const current = deps.authority.authority.runs.get(context.run.envelope.runId);
-    if (current === undefined) throw new Error(`run ${context.run.envelope.runId} disappeared from authority`);
-    return current.version;
   }
 
   // Earlier permanent-key material cannot reinterpret immutable intents; refuse before probing or browser effects.
@@ -2080,22 +2046,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const trace = TraceIdSchema.parse(envelope.traceId);
     const afterPrepareSpanPath = `${trace}/${String(node.id)}/prepare`;
 
-    interface LeasedCommitResult {
-      readonly intent: AttemptingIntent;
-      readonly proofValue: JsonValue;
-      readonly outputValue: JsonValue;
-    }
-
-    return await completeProtectedWrite({
-      performCommitAndVerify: async () => {
-        let leased: LeasedCommitResult;
-        let retainedIntent: AttemptingIntent | undefined;
-        try {
-          leased = await deps.sessions.withTransactionDriver(
-        need,
-        instance,
-        context.signal,
-        async (driver, ownership, captureScreenshot) => {
+    let retainedIntent: AttemptingIntent | undefined;
+    const commitInLease: TransactionDriverOperation<unknown> = (driver, ownership, captureScreenshot) => {
+      const performCommitAndVerify = async () => {
         const leaseId = deps.ids.uuid();
 
         /* beat ② — prepare stages the page; output is preview data only */
@@ -2370,8 +2323,28 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           try { context.onSavedEffectVerified?.({ proofDigest: sha256Hex(canonicalJsonStringify(captured.proofValue)) }); }
           catch { reportDiagnosticFailure(context); }
         }
-        return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
+        return { state: "new" as const, proof: { intent: fenced, ...captured } };
+      };
+      return completeProtectedWrite({
+        performCommitAndVerify,
+        settleVerified: proof => {
+          const settled = settleVerified(context, proof.intent, "normal-output", proof.proofValue, proof.outputValue);
+          // A later lease cleanup failure cannot park a durably committed Save.
+          retainedIntent = undefined;
+          return settled;
         },
+        onSettled: (settled, proof) => context.onDurableCommit?.({
+          writeIntentId: proof.intent.writeIntentId,
+          confirmedAt: settled.confirmedAt,
+          proofDigest: sha256Hex(canonicalJsonStringify(settled.proof.value)),
+        }),
+        reportDeliveryFailure: () => reportDiagnosticFailure(context),
+        projectSettled: settled => ({ disposition: "committed" as const, proofSource: "normal-output" as const,
+          output: settled.output.value, proof: settled.proof.value }),
+      });
+    };
+    try {
+      return await deps.sessions.withTransactionDriver(need, instance, context.signal, commitInLease,
         { taskId: commitContract.id, nodeId: String(node.id), attempt: envelope.attempt,
           log: { warn(message, fields) { (context.captureLog ?? deps.log).warn(message, { ...fields,
             ...(retainedIntent === undefined ? {} : { writeIntentId: retainedIntent.writeIntentId,
@@ -2381,14 +2354,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       );
     } catch (error) {
       if (error instanceof PostFenceWriteFailure) {
-        await parkAfterFence(context, error);
-        throw new WriteParkedError({
-          writeIntentId: error.writeIntentId,
-          intentGeneration: error.generation,
-          parkCode: error.parkCode,
-          message: error.message,
-          cause: error,
-        });
+        return parkAfterFence(context, error);
       }
       if (retainedIntent !== undefined) {
         const failure = new PostFenceWriteFailure({
@@ -2402,21 +2368,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           authorityReason: authorityReason(context.run, "post-fence-session-exception", "session", authorityExceptionDetail(error)),
           cause: error,
         });
-        await parkAfterFence(context, failure);
-        throw new WriteParkedError({
-          writeIntentId: failure.writeIntentId,
-          intentGeneration: failure.generation,
-          parkCode: failure.parkCode,
-          message: failure.message,
-          cause: failure,
-        });
+        return parkAfterFence(context, failure);
       }
       if (error instanceof FenceLostRaceError) {
         // The staged page is already poison-closed. Route the race winner:
         // committed / observed-present reuses its proof; anything else refuses.
         const winner = error.existing;
         if (winner.status === "committed" || winner.status === "observed-present") {
-          return { state: "existing" as const, result: await reuseDurableIntent(context, commitContract, commitInput, winner) };
+          return reuseDurableIntent(context, commitContract, commitInput, winner);
         }
         throw new Error(
           `write fence for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} lost the race to intent `
@@ -2427,49 +2386,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       throw error;
     }
-        return { state: "new" as const, proof: leased };
-      },
-      settleVerified: async proof => {
-        /* beat ⑦ — ONE outer authority transaction over the whole bundle */
-        const committed = await settleOrPark(context, proof.intent, () => {
-          const built = buildCommittedSettlement({
-            descriptor: context.descriptor,
-            nodeId: String(node.id),
-            run,
-            intent: proof.intent,
-            commitContract,
-            operator,
-            implFingerprint: taskImplFingerprint(commitContract),
-            proofSource: "normal-output",
-            proofValue: proof.proofValue,
-            outputValue: proof.outputValue,
-            confirmedAt: instant(),
-            ids: deps.ids,
-          });
-          executeSequencedWriteCommit(
-            deps.authority,
-            {
-              run: { runId: envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
-              checkpoint: built.checkpoint,
-              commit: built.commit,
-            },
-            { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
-            deps.hooks,
-          );
-          return built;
-        });
-        if (committed.outcome.disposition !== "committed") throw new Error("committed-settlement-disposition-mismatch");
-        return { committed, confirmedAt: committed.outcome.confirmedAt };
-      },
-      onSettled: (settled, proof) => context.onDurableCommit?.({
-        writeIntentId: proof.intent.writeIntentId,
-        confirmedAt: settled.confirmedAt,
-        proofDigest: sha256Hex(canonicalJsonStringify(settled.committed.outcome.proof.value)),
-      }),
-      reportDeliveryFailure: () => reportDiagnosticFailure(context),
-      projectSettled: settled => ({ disposition: "committed" as const, proofSource: "normal-output" as const,
-        output: settled.committed.outcome.output.value, proof: settled.committed.outcome.proof.value }),
-    });
   }
 
   // Preview runs the same initial probe and refusals as real execution, without storing settlement or advancing the run.
