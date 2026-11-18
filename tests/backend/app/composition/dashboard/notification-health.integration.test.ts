@@ -49,6 +49,16 @@ describe("canonical notification producers", () => {
     { failure: "an invalid authority generation", damage: (database: DatabaseSync) => {
       database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET authority_generation=-1");
     } },
+    { failure: "an extra run reference", damage: (database: DatabaseSync) => {
+      database.prepare("INSERT INTO run_references (run_id, table_name, row_key) VALUES (?, 'command_audits', json_array(?))")
+        .run(randomUUID(), randomUUID());
+    } },
+    { failure: "an invalid authority schema shape", damage: (database: DatabaseSync) => {
+      database.exec("DROP INDEX run_references_row_idx");
+    } },
+    { failure: "a published search generation that disagrees with authority", damage: (database: DatabaseSync) => {
+      database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET search_state='ready', search_generation=authority_generation+1");
+    } },
     { failure: "an invalid SQLite file", damage: undefined },
   ])("raises an integrity alert for $failure", async ({ damage }) => {
     const f = await fixture();
