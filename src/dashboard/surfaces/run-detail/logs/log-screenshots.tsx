@@ -10,7 +10,7 @@ import "./log-presentation.css";
 function CaptureImage({ screenshot, className, style, eager = false, onFailure, retryable = false }: { screenshot: LogScreenshot; className?: string; style?: CSSProperties; eager?: boolean; onFailure?: () => void; retryable?: boolean }) {
   const [problem, setProblem] = useState<string>();
   const [attempt, setAttempt] = useState(0);
-  const image = useAuthenticatedImage(screenshot.src);
+  const image = useAuthenticatedImage(screenshot.src, attempt);
   const failure = problem ?? (image.failed ? "Screenshot could not be loaded." : undefined);
   useEffect(() => { if (image.failed) onFailure?.(); }, [image.failed]);
   if (failure) return <div role="alert" className="log-image-error"><ImageOff aria-hidden className="size-4" /><span>{failure}</span>{retryable && <Button size="sm" variant="secondary" onClick={() => { setProblem(undefined); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</div>;

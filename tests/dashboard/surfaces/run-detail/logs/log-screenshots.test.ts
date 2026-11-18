@@ -127,4 +127,16 @@ describe("classified log screenshot viewer", () => {
     await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(LogScreenshots, { screenshots: [{ ...captures[0], src: "/artifacts/v1/capture" }] }) })));
     assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Screenshot could not be loaded/);
   });
+  it("refetches when Retry screenshot follows a refused authenticated fetch", async () => {
+    const fetchAuthenticatedResource = vi.fn().mockRejectedValueOnce(new Error("refused")).mockResolvedValueOnce({ url: "blob:retried", release: vi.fn() });
+    const client = { fetchAuthenticatedResource } as unknown as DashboardClient;
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(LogScreenshots, { screenshots: [{ ...captures[0], src: "/artifacts/v1/capture" }] }) })));
+    assert.ok(document.querySelector('[role="alert"]'));
+    await act(async () => { [...document.querySelectorAll("button")].find(node => node.textContent === "Retry screenshot")?.click(); });
+    assert.equal(fetchAuthenticatedResource.mock.calls.length, 2);
+    assert.equal(document.querySelector("img")?.getAttribute("src"), "blob:retried");
+  });
 });
