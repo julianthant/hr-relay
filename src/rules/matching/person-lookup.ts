@@ -117,7 +117,7 @@ type TypedSearchPerson = Pick<UcpathCandidate, "emplId" | "name" | "department" 
 /** The candidate the operator typed; the dates UCPath would show stay empty (they are typed under Read employment status). */
 function typedCandidate(input: z.output<typeof ReadResolvedIdentity.input>["input"], typed: TypedSearchPerson): UcpathCandidate {
   if (input.mode === "search" && "emplId" in input && input.emplId !== typed.emplId) {
-    throw new Error(`The typed Employee ID ${typed.emplId} is not the searched Employee ID ${input.emplId}`);
+    throw new Error("The typed Employee ID is not the searched Employee ID");
   }
   return { ...typed, startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
 }

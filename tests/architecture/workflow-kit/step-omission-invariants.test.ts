@@ -22,6 +22,10 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presenta
 import {
   KRONOS_TIMECARD_OMISSION,
 } from "../../../src/workflows/separations/workflow.js";
+import { ACTIVE_STATUS_MANUAL } from "../../../src/workflows/person-lookup/steps/active-status/step.js";
+import { CRM_DATES_MANUAL } from "../../../src/workflows/person-lookup/steps/crm-dates/step.js";
+import { CROSS_VERIFY_MANUAL } from "../../../src/workflows/person-lookup/steps/cross-verify/step.js";
+import { SEARCHING_MANUAL } from "../../../src/workflows/person-lookup/steps/searching/step.js";
 import { FixtureCommit, FixtureStage } from "../../support/fixtures/descriptor-fixtures.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });
@@ -139,8 +143,9 @@ const VALID_OMISSION: StepManualDeclaration = {
   skips: [],
 };
 
-/** The two descriptor ids this guard names explicitly: the real registry's only omission author, and the fixture's. */
+/** The descriptor ids this guard names explicitly: the registry's manual-entry authors, and the fixture's. */
 const SEPARATIONS_ID = "separations";
+const PERSON_LOOKUP_ID = "person-lookup";
 const FIXTURE_ID = "step-omission-guard-valid";
 
 /** The one legitimate fixture descriptor every positive check runs against too. */
@@ -168,9 +173,25 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     descriptor: SEPARATIONS_ID, step: "kronos-timecard", declaration: KRONOS_TIMECARD_OMISSION,
     fieldKeys: ["lastDayWorked", "separationDate"], produces: ["dates"],
   },
+  {
+    descriptor: PERSON_LOOKUP_ID, step: "searching", declaration: SEARCHING_MANUAL,
+    fieldKeys: ["emplId", "name", "department", "jobTitle", "hrStatus", "employeeStatus", "hdh"], produces: ["searching", "matching", "search-identity"],
+  },
+  {
+    descriptor: PERSON_LOOKUP_ID, step: "cross-verify", declaration: CROSS_VERIFY_MANUAL,
+    fieldKeys: ["name", "firstDayOfService"], produces: ["crm-identity"],
+  },
+  {
+    descriptor: PERSON_LOOKUP_ID, step: "active-status", declaration: ACTIVE_STATUS_MANUAL,
+    fieldKeys: ["state", "hrStatus", "startDate", "endDate", "terminationReason", "ucpath"], produces: ["active-status"],
+  },
+  {
+    descriptor: PERSON_LOOKUP_ID, step: "crm-dates", declaration: CRM_DATES_MANUAL,
+    fieldKeys: ["employmentDate", "oathDate"], produces: ["crm-dates"],
+  },
 ];
 
-/** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declaration plus the fixture's one. */
+/** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declarations plus the fixture's one. */
 const REQUIRED_SWEEP_ROWS: readonly string[] = [
   ...PRODUCTION_DECLARATIONS.map(({ descriptor, step }) => `${descriptor}::${step}`),
   `${FIXTURE_ID}::identity-check`,
@@ -179,11 +200,19 @@ const REQUIRED_SWEEP_ROWS: readonly string[] = [
 /** The exact cascade row each production step yields today (check b). */
 const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> = {
   "separations::kronos-timecard": { state: "omittable", forces: [] },
+  "person-lookup::searching": { state: "omittable", forces: [] },
+  "person-lookup::cross-verify": { state: "omittable", forces: [] },
+  "person-lookup::active-status": { state: "omittable", forces: [] },
+  "person-lookup::crm-dates": { state: "omittable", forces: [] },
 };
 
 
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
   "separations::kronos-timecard": { asserted: ["dates"], omitted: ["timecard", "timecard-search"] },
+  "person-lookup::searching": { asserted: ["matching", "search-identity", "searching"], omitted: [] },
+  "person-lookup::cross-verify": { asserted: ["crm-identity"], omitted: ["cross-verify"] },
+  "person-lookup::active-status": { asserted: ["active-status"], omitted: ["crm-only-recovery"] },
+  "person-lookup::crm-dates": { asserted: ["crm-dates"], omitted: [] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
@@ -191,6 +220,10 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
   [SEPARATIONS_ID]: {
     asserted: ["dates"],
     omitted: ["timecard", "timecard-search"],
+  },
+  [PERSON_LOOKUP_ID]: {
+    asserted: ["active-status", "crm-dates", "crm-identity", "matching", "search-identity", "searching"],
+    omitted: ["crm-only-recovery", "cross-verify"],
   },
 };
 
@@ -343,12 +376,13 @@ describe("step-omission invariants", () => {
   it("never omits or asserts a gate — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
     const audited: string[] = [];
     const wholeDescriptorsAudited: string[] = [];
+    const gatedDescriptors: string[] = [];
     for (const descriptor of SWEPT_DESCRIPTORS) {
       const view = graphViewOf(descriptor);
       if (view.stepOmissions.length === 0) continue;
       const id = String(descriptor.id);
       const gateIds = view.nodes.filter((node) => node.kind === "gate").map((node) => node.id);
-      assert.ok(gateIds.length > 0, `${id}: declares an omission but has no gate — the ALWAYS-GATE sweep would be vacuous here`);
+      if (gateIds.length > 0) gatedDescriptors.push(id);
       if (id === SEPARATIONS_ID) {
         assert.ok(gateIds.includes("identity-approval"), "separations must still carry the identity-approval gate");
       }
@@ -396,6 +430,8 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.omitted.keys()), expectedWhole?.omitted, `${id}: whole-descriptor omitted nodes changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
+    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });

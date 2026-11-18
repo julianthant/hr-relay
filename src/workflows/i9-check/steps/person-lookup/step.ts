@@ -53,7 +53,11 @@ const lookup = defineStepEntries(personLookup);
 export function personLookupEntries({ task }: I9Author, matched: ReturnType<typeof personMatchEntries>) {
   const searchCall = searchPersonOrgTask(personLookup, "name-search", { kind: "is-true", of: { from: "node", nodeId: "match-outcome", path: "shouldLookup" } });
   const search = task(searchCall.identity, [matched.initial], searchCall.bind);
-  const candidates = task(lookup.task("employment-candidates", ReadEmploymentCandidates, { replay: "always-rerun", when: searchCall.identity.when }), [matched.initial, search], ({ outputs }) => ({ search: outputs["name-search"] }));
+  const candidates = task(lookup.task("employment-candidates", ReadEmploymentCandidates, { replay: "always-rerun", when: searchCall.identity.when }), [matched.initial, search], ({ outputs }) => {
+    const search = outputs["name-search"];
+    if (search === undefined) throw new Error("employment-candidates ran without the name-search it shares a condition with");
+    return { search };
+  });
   return { search, candidates };
 }
 export function buildStep(author: I9Author, matched: ReturnType<typeof personMatchEntries>) {

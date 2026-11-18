@@ -20,6 +20,7 @@ import { createOperatorProjection, createOperatorRunDetail } from "../../../src/
 import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/commands/run-queued-span.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
@@ -67,7 +68,7 @@ async function runCase(options: Readonly<{ useMatch: boolean; entries?: StepOmis
   testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(descriptor.id).find(member => member.poolIndex === 1 && member.retiredAt === null); assert.ok(slot);
   database.authority.runs.enqueue(queued);
-  harness.emitter.emitter.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: input.person.name, subtitle: "I-9 retention check" }));
+  createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: input.person.name, subtitle: "I-9 retention check" }));
   const claimed = database.authority.runs.claimNext({ workflow: descriptor.id, workerId: slot.workerId, now: clock.now().toISOString() });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("Fixture claim failed");
@@ -187,7 +188,7 @@ describe.each([false, true])("I-9 switch combinations, useMatch=%s", useMatch =>
     assert.ok(f.terminal);
     assert.deepEqual(f.terminal.dependencies.filter(dependency => dependency.state === "asserted").map(dependency => [dependency.nodeId, dependency.step]), expectedAssertions);
     for (const [nodeId, step] of expectedAssertions) {
-      const dependency = f.terminal.dependencies.find(candidate => String(candidate.nodeId) === nodeId);
+      const dependency: NonNullable<typeof f.terminal>["dependencies"][number] | undefined = f.terminal.dependencies.find(candidate => String(candidate.nodeId) === nodeId);
       const checkpoint = f.checkpoints.find(candidate => String(candidate.nodeId) === nodeId);
       assert.ok(dependency?.state === "asserted");
       assert.ok(checkpoint?.assertion);

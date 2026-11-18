@@ -5,11 +5,22 @@ import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-
 import { foldStepOmissionFacts, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 
 type ServedRow = NonNullable<WorkflowStartWire["rows"]>[number];
-type ServedStep = WorkflowStartWire["steps"][number];
+/** One served step as the Run dialog holds it. */
+export type StartStep = Readonly<{
+  key: string;
+  label: string;
+  includedByDefault: boolean;
+  systems?: readonly BrowserSystemId[];
+  control:
+    | { state: "selectable"; inputField: string }
+    /** the step declares an omission the operator may take instead of running */
+    | { state: "omittable"; form: StepOmissionForm; forces: readonly string[] }
+    | { state: "required"; reason: string };
+}>;
 
 /** The served start data the Steps stage draws from. */
 export interface StepRowSource {
-  readonly steps: readonly ServedStep[];
+  readonly steps: readonly StartStep[];
   readonly rows?: readonly ServedRow[] | undefined;
 }
 

@@ -148,7 +148,7 @@ export function changeFact(draft: LaunchDraft, snapshot: RerunValuesSnapshot | n
   field: string, next: StepOmissionFactDraft): LaunchDraft {
   const copiedOmissions = Object.fromEntries(Object.entries(draft.copiedOmissions).filter(([index]) => {
     const candidate = snapshot?.values[Number(index)];
-    return candidate?.targetStepKey !== row.stepKey || candidate.targetFieldPath !== field;
+    return candidate === undefined || candidate.targetStepKey !== row.stepKey || candidate.targetFieldPath !== field;
   }));
   return { ...draft, copiedOmissions, stepDrafts: { ...draft.stepDrafts, [row.key]: { ...(draft.stepDrafts[row.key] ?? initialStepOmissionDraft(form)), [field]: next } } };
 }

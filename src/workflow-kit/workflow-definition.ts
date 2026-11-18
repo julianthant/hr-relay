@@ -102,6 +102,8 @@ export interface WorkflowEntryScope<
   readonly dryRun?: DryRunScope;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: EntryOutputs<References>;
+  /** The scope's dependencies the operator typed by hand in this run; absent when none was typed. */
+  readonly asserted?: readonly string[];
 }
 
 /* ── entry identities — what an author (or a shared step identity value) writes ── */

@@ -15,9 +15,10 @@ import {
   delegatedStepOmissions,
   planStepOmissions,
   type StartRowDeclaration,
+  type StepOmissionEntry,
   type StepManualDeclaration,
 } from "../../../../src/models/workflow/step-omission.js";
-import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
@@ -27,17 +28,19 @@ import { WriteFixtureCommit, WriteFixturePrepare } from "../../../support/fixtur
 const Input = z.strictObject({ emplId: EidSchema, text: z.string(), mode: z.enum(["ok", "fail", "repeat", "confirmed"]), extra: z.boolean() });
 const CanonicalInput = defineCanonicalInput(Input, Input, [{ emplId: "10800000", text: "same", mode: "ok", extra: true }]);
 const Result = z.strictObject({ eid: EidSchema });
-const CHILD = "child-rows-member";
+const CHILD = WorkflowIdSchema.parse("child-rows-member");
 const SUBMISSION = { emplId: "10800000", text: "same", mode: "ok" };
+/** Not `as const`: the parser's rule and constant lists are mutable in the spec. */
+const surfaces = { inputRun: { placeholder: "Enter an EID", parser: {
+  split: { kind: "whole-text" as const }, rules: [{ when: { kind: "pattern" as const, pattern: "eid" as const }, emit: "emplId" }],
+  constants: [{ field: "extra", value: { kind: "boolean" as const, value: true } }],
+} } };
 const common = {
   version: 1, icon: "Search", category: "operations", input: Input, canonicalInput: CanonicalInput, inputSubject: "eid",
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, details: [],
   scenarios: ["write-fixture/happy"], role: defineWorkflowRole({ kind: "standalone" }),
   identity: { matchKey: (input: { emplId: string }) => `eid:${input.emplId}` }, presentation: { title: (input: { emplId: string }) => `EID ${input.emplId}` },
-  surfaces: { inputRun: { placeholder: "Enter an EID", parser: {
-    split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }],
-    constants: [{ field: "extra", value: { kind: "boolean", value: true } }],
-  } } },
+  surfaces,
 } as const;
 
 const READ_TYPED: StepManualDeclaration = {
@@ -166,7 +169,7 @@ describe("child rows at start", () => {
   });
 
   it("hands a released child the parent's entries for its workflow only, without the workflow", () => {
-    const entries = [
+    const entries: readonly StepOmissionEntry[] = [
       { step: "members", facts: { own: "x" } },
       { workflow: CHILD, step: "reading", facts: { disposition: "typed" }, labels: { disposition: "Disposition" } },
       { workflow: "other", step: "reading", facts: { disposition: "no" } },

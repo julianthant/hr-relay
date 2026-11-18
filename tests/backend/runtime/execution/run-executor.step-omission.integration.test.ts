@@ -162,7 +162,10 @@ function inputConditionedDescriptor(id: string, code: string, manual: StepManual
   const conditionedFlow = flow(FixtureInput)
     .step("read", fixtureContract, { dependsOn: [], replay: "checkpoint", when: { kind: "equals", of: { from: "input", path: "name" }, value: "Battistessa, Johnnie" }, bind: () => ({ disposition: "observed" }) })
     .step("other", fixtureContract, { dependsOn: [], replay: "checkpoint", when: { kind: "equals", of: { from: "input", path: "name" }, value: "Someone, Else" }, bind: () => ({ disposition: "other" }) })
-    .step("fold", fixtureContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ outputs }) => ({ disposition: outputs.read.providerState }) })
+    .step("fold", fixtureContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ outputs }) => {
+      if (outputs.read === undefined) throw new Error("fold reads read, which did not run");
+      return { disposition: outputs.read.providerState };
+    } })
     .build({ schema: z.strictObject({ folded: z.string().min(1) }), dependsOn: ["read", "other", "fold"], derive: ({ outputs }) => ({ folded: outputs.fold.providerState }) });
   return defineWorkflowDescriptor({
     id, version: 1, contractFingerprint: HASH_A, code, label: "Input-conditioned omission fixture", icon: "Search", category: "operations",
