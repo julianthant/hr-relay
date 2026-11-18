@@ -37,6 +37,7 @@ export interface QueueRowActionFacts {
   /** ref dashboard-surfaces's `has-review-panel` condition input */
   readonly hasReviewPanel: boolean;
   readonly batchMemberRetryAvailable?: boolean;
+  readonly aggregateMemberRetryAvailable?: boolean;
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
@@ -45,7 +46,7 @@ type ServedCommand = "cancel" | "bump" | "rename" | "delete";
 
 const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts) => boolean>> = {
   /* `executeCancel`: "already terminal; there is nothing to cancel". */
-  cancel: (facts) => !TERMINAL_QUEUE_STATUSES.has(facts.status),
+  cancel: (facts) => !TERMINAL_QUEUE_STATUSES.has(facts.status) && !facts.parkedWrite,
 
   bump: (facts) => facts.status === "queued",
 
@@ -84,10 +85,8 @@ function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] 
   return ["footer", "menu"];
 }
 
-// Cancellation of parked writes cannot promise to cancel an unresolved external action.
 function cancelBody(facts: QueueRowActionFacts): string {
   const scope = facts.memberCount > 0 ? `Cancels the group and its ${String(facts.memberCount)} delegated members. ` : "";
-  if (facts.parkedWrite) return `${scope}REFUSED until the parked write, outcome UNKNOWN, is answered present or absent.`;
   return `${scope}Final: a cancelled run is never resumed.`;
 }
 
@@ -148,6 +147,10 @@ export function queueRowActions(
   facts: QueueRowActionFacts,
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
+  const memberRetry = facts.aggregateMemberRetryAvailable === true && facts.status === "failed" && facts.isChild && !facts.parkedWrite
+    && policyEnables(policy, "retry", facts)
+    ? [ActionDescriptorWireSchema.parse({ key: "retry-member", label: "Retry failed member", kind: "command", command: "retry",
+      expectedVersion: facts.rowRevision, intent: "primary", icon: "retry", placement: ["footer", "menu"] })] : [];
   const retry = facts.batchMemberRetryAvailable === true && facts.status === "failed" && !facts.isChild && !facts.parkedWrite
     && policyEnables(policy, "retry", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "retry-batch-member", label: "Retry", kind: "command", command: "retry",
@@ -155,7 +158,7 @@ export function queueRowActions(
   const recover = facts.recoverySource !== undefined && !facts.isChild && !facts.parkedWrite
     && policyEnables(policy, "recover-run", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: facts.crashed ? "Rerun" : "Recover completed steps", kind: "command",
-      command: "recover-run", expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["footer", "menu"],
+      command: "recover-run", expectedVersion: facts.rowRevision, intent: "neutral", icon: facts.crashed ? "retry" : "resume", placement: ["footer", "menu"],
       confirm: { title: "Recover completed steps", body: "Unfinished steps run again; uncertain writes stay parked.",
         confirmLabel: "Recover", tone: "neutral" } })] : [];
   const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
@@ -169,7 +172,7 @@ export function queueRowActions(
     key: pause, kind: "command", command: pause, expectedVersion: facts.pauseControl?.expectedVersion,
     label: pause === "pause" ? "Pause after this step" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
   })];
-  return [...pauseActions, ...retry, ...rerun, ...recover, ...SERVED_ORDER
+  return [...pauseActions, ...memberRetry, ...retry, ...rerun, ...recover, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
     .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];
 }

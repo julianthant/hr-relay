@@ -49,6 +49,7 @@ export function createDashboardModelFixtures() {
     startedAt: NOW,
     updatedAt: NOW,
     endedAt: { state: "absent", reason: "run is running" },
+    operatorWait: { state: "absent" },
     gateOpenedAt: { state: "absent", reason: "run is running and is not waiting on a gate" },
     displayName: { state: "absent", reason: "the operator has not renamed this run" },
     title: "Onboard employee",

@@ -59,7 +59,7 @@ function ToastContent({ className, ...props }: ToastPrimitive.Content.Props) {
     <ToastPrimitive.Content
       data-slot="toast-content"
       className={cn(
-        "flex h-full items-center gap-2 overflow-hidden px-3 py-2 transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100",
+        "flex h-full items-start gap-2 overflow-hidden px-3 py-2.5 transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100",
         className
       )}
       {...props}
@@ -71,7 +71,7 @@ function ToastTitle({ className, ...props }: ToastPrimitive.Title.Props) {
   return (
     <ToastPrimitive.Title
       data-slot="toast-title"
-      className={cn("truncate text-[13px] leading-[18px] font-medium", className)}
+      className={cn("text-[13px] leading-[18px] font-medium break-words", className)}
       {...props}
     />
   )
@@ -84,7 +84,7 @@ function ToastDescription({
   return (
     <ToastPrimitive.Description
       data-slot="toast-description"
-      className={cn("truncate text-xs leading-4 text-muted-foreground", className)}
+      className={cn("text-xs leading-4 text-muted-foreground break-words", className)}
       {...props}
     />
   )

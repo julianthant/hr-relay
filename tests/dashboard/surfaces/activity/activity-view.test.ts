@@ -76,10 +76,10 @@ const withAssistant = (messages: readonly number[], proposed: readonly number[])
 };
 const headings = () => [...document.querySelectorAll('h2, h3')].map(item => item.textContent);
 
-it('draws Messages, Tools used and Actions after Why runs failed, with the served counts', async () => {
+it('draws Messages, Tools used and Actions, with the served counts', async () => {
   await render(withAssistant([1, 2, 3, 0, 0, 4, 5], [0, 1, 0, 0, 2, 0, 0]));
   const order = headings().filter(text => ['Why runs failed', 'Messages', 'Tools used', 'Actions'].includes(text ?? ''));
-  assert.deepEqual(order, ['Why runs failed', 'Messages', 'Tools used', 'Actions']);
+  assert.deepEqual(order, ['Messages', 'Tools used', 'Actions'], 'Why runs failed is no longer drawn');
   assert.match(document.body.textContent, /Messages sent to the assistant each day\./);
   const messages = document.querySelector('figure[aria-label="Messages per day"]'); assert(messages);
   assert.match(messages.textContent ?? '', /Messages\s*15/);
@@ -111,4 +111,29 @@ it('leaves the run sections as they were', async () => {
   assert.match(document.body.textContent, /finished runs/);
   assert(document.querySelector('figure[aria-label="Runs per day"]'));
   assert(document.querySelector('table[aria-label="Workflows"]'));
+});
+
+it('offers one Retry beneath a plain sentence when the report cannot be shown', async () => {
+  const onRetry = vi.fn();
+  await act(async () => { if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); } root.render(createElement(ActivityView, { data: { state: 'unavailable', reason: 'x' }, range: ACTIVITY_SAMPLE_RANGE, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onRetry })); });
+  const retries = [...document.querySelectorAll('button')].filter(item => item.textContent === 'Retry');
+  assert.equal(retries.length, 1);
+  assert.match(document.body.textContent, /Relay could not load Analytics\./);
+  assert.doesNotMatch(document.body.textContent, /Copy details/);
+  await act(async () => retries[0]?.click()); assert.equal(onRetry.mock.calls.length, 1);
+});
+
+it('says one plain sentence for an empty period and keeps the period control', async () => {
+  await render(activitySample(ACTIVITY_SAMPLE_RANGE, 'empty'));
+  assert.match(document.body.textContent, /No runs in this period/);
+  assert.doesNotMatch(document.body.textContent, /0 finished runs|Open a row to see what went wrong/);
+  assert([...document.querySelectorAll('fieldset legend')].some(item => item.textContent === 'Report period'));
+});
+
+it('a bad range keeps the period control and never echoes the raw value', async () => {
+  await render();
+  await act(async () => root?.render(createElement(ActivityReport, { source: 'mock', range: 'not-a-range', onRange() {} })));
+  assert.doesNotMatch(document.body.textContent, /not-a-range/);
+  assert.match(document.body.textContent, /That date range is not valid/);
+  assert(['7d', '30d', '90d'].every(value => document.querySelector(`fieldset input[type="radio"][value="${value}"]`)));
 });
