@@ -151,7 +151,7 @@ it("applies a task's outcome explanation to every decision that owns it", () => 
   const entry = buildWorkflowExplorer({ ...deps, modules: deps.modules.map(candidate => candidate === original ? module : candidate) })
     .workflows.find(workflow => workflow.id === "onboarding"); assert.ok(entry);
   for (const id of ["write-path", "existing-write-path"]) {
-    const outcome = decision(entry.reviewSpec, id).outcomes.find(outcome => outcome.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
+    const outcome = decision(entry.reviewSpec, id).outcomes.find(item => item.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
     assert.ok(outcome);
     assert.deepEqual([outcome.then, outcome.stops], [`${operatorFailureSentence("ONBOARDING_WRITE_REVIEW_REFUSED")} ${then}`, true]);
   }

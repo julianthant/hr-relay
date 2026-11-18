@@ -88,10 +88,10 @@ it('adds an empty selection authority at 25 and preserves prior mappings, metada
     expect(f.repository.revision(merge.libraryId, 2)).toEqual(mergedRevision);
     expect(f.repository.revision('historical-source', 1)).toEqual(sourceRevision);
     expect(f.repository.libraryState('historical-source').removed).toBe(true);
-    expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+    expect(validateWorkbookLibrary(f.database, true, true, true, false)).toBeGreaterThan(0);
     expect(f.repository.lastUsed('person-lookup')).toBeUndefined();
     expect(f.database.prepare('SELECT * FROM workflow_workbook_selections').all()).toEqual([]);
-    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(35);
+    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(36);
     expect(migrationTableNames(25).filter(table => !migrationTableNames(24).includes(table))).toEqual(['workflow_workbook_selections']);
     expect(tableClassification('workflow_workbook_selections')).toBe('authority');
     expect(auditMigrationTableCoverage()).toEqual([]);

@@ -43,7 +43,7 @@ describe("Explorer spec resolution", () => {
     assert.equal(applies({ when: [{ mode: ["match"] }] }, byName), false);
   });
   it("names a fill row's source and leaves out a read from a step that is not shown", () => {
-    const row = cards("cross-verify").find(card => card.mode === "fill")!.rows[0]!;
+    const row = cards("cross-verify").find(card => card.mode === "fill")!.rows[0];
     const shown = fieldSource(spec, row, id => id === "searching" ? 2 : undefined);
     assert.deepEqual(shown.reads, [{ system: "UCPath", page: "Person Organizational Summary detail", field: "Name", step: 2 }]);
     assert.deepEqual(fieldSource(spec, row, () => undefined).reads, []);

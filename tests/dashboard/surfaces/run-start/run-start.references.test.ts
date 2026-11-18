@@ -135,3 +135,7 @@ it('refuses missing returned references and selections outside the input vector'
   await expect(launch(proposed).preview(request)).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });
   await expect(launch(plan).preview({ ...request, workbookReferences: [...(request.workbookReferences ?? []), { entry: 4, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 }] })).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });
 });
+
+it('names a required reference with no selection as a plain refusal, not a malformed workbook', () => {
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], {}, 1, sources, false)).toThrow('Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.');
+});

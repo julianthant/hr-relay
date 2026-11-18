@@ -1,6 +1,7 @@
 import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
 import { ReadI9CheckRequests } from "../../../../models/workflows/i9-check-start/read-requests.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../models/workflows/i9-check/start.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -23,7 +24,7 @@ const step = Object.freeze({
         fields: [
           { id: "version", label: "Reference version", taskFields: [{ nodeId: "read-reference", kind: "output", fieldPath: "reference.snapshot.versionName" }], example: "Fictional retention roster",
             source: { origin: "Selected reference spreadsheet", detail: "The named version captured when the run starts.", chain: [] } },
-          { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-requests", kind: "output", fieldPath: "people.eid" }], example: "10000001",
+          { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-requests", kind: "output", fieldPath: "people.eid" }], example: PERSON_LOOKUP_EXAMPLE_EID,
             source: { origin: "Approved PDF records", detail: "Look up each approved Employee ID in the captured roster.",
               read: { stepKey: "documents", page: "I-9 PDFs and approved records", field: "Employee ID" }, chain: [] } },
           { id: "pps", label: "PPS ID", taskFields: [{ nodeId: "read-requests", kind: "output", fieldPath: "children.roster.rows.ppsEid" }], example: "700001",

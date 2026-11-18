@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { ArrowUp, ChevronDown, Hand, Paperclip, Mic, Plus, ShieldAlert, X } from 'lucide-react';
-import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
+import { Skeleton, InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';
 import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODEL, FULL_ACCESS, composerEnterAction, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
@@ -12,8 +12,8 @@ import { usePersonPreferences } from '../../lib/person-preferences.js';
 import type { AssistantModelCatalog, AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from '../../../models/config/assistant-model-preference.js';
 
-export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference, models, onModelChoice }: AssistantPorts & {
-  modelPreference?: AssistantModelPreferenceView['preference']; models?: AssistantModelCatalog['models']; onModelChoice?: (preference: AssistantModelPreference) => void; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
+export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelLoading = false, modelPreference, models, onModelChoice }: AssistantPorts & {
+  modelLoading?: boolean; modelPreference?: AssistantModelPreferenceView['preference']; models?: AssistantModelCatalog['models']; onModelChoice?: (preference: AssistantModelPreference) => void; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
   const { sendShortcut } = usePersonPreferences().value;
@@ -24,9 +24,13 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   const focusMessageOnClose = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
-  async function attach(load: () => Promise<AssistantFile | null | void>) {
+  const sources = useRef(new Map<string, File>());
+  async function attach(load: () => Promise<AssistantFile | null | void>, source?: File, replaces?: string) {
     setAttaching(true); setError(null);
-    try { const file = await load(); if (file) composer.setFiles(files => [...files.filter(existing => existing.id !== file.id), file]); }
+    try {
+      const file = await load();
+      if (file) { if (source) sources.current.set(file.id, source); composer.setFiles(files => [...files.filter(existing => existing.id !== file.id && existing.id !== replaces), file]); }
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not attach the file. Try again.'); }
     finally { setAttaching(false); composer.textarea.current?.focus(); }
   }
@@ -38,7 +42,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   const servedChoice = !preview && modelPreference !== undefined && onModelChoice !== undefined;
   function menu(kind: ComposerMenu, label: string, trigger: React.ReactNode, children: React.ReactNode, size: 'sm' | 'icon-sm' = 'icon-sm', className?: string) {
     return <DropdownMenu open={composer.menu === kind} onOpenChange={open => { if (open) focusMessageOnClose.current = false; composer.setMenu(open ? kind : null); }}>
-      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} className={className} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach' && !(kind === 'model' && servedChoice) && !(kind === 'approval' && modelPreference !== undefined)}>{trigger}</InputGroupButton></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} className={className} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach' && !(kind === 'model' && servedChoice) && !(kind === 'approval' && modelPreference !== undefined)}>{kind === 'model' && modelLoading ? <><Skeleton className="h-3.5 w-20" /><span className="hub-effort"><Skeleton className="h-3.5 w-10" /></span></> : trigger}</InputGroupButton></DropdownMenuTrigger>
       <DropdownMenuContent ref={composer.popup} finalFocus={() => kind === 'voice' && focusMessageOnClose.current ? composer.textarea.current : true} side="top" align="start" sideOffset={8} collisionAvoidance={{ side: 'none', align: 'shift' }} collisionPadding={8} className="hub-assistant-menu hub-menu" data-menu={kind}>
         <DropdownMenuGroup>{children}</DropdownMenuGroup>
       </DropdownMenuContent>
@@ -46,7 +50,11 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   }
   return <div className="hub-composer-wrap">
     <InputGroup aria-label="Message composer" onSubmit={event => { event.preventDefault(); void composer.send(); }}>
-      {composer.files.map(file => <div key={file.id} className="hub-attachment"><Paperclip aria-hidden /><span>{file.name}</span><button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
+      {composer.files.map(file => <div key={file.id} className="hub-attachment" data-stage={file.stage?.state}><Paperclip aria-hidden /><span>{file.name}</span>
+        {file.stage?.state === 'spreadsheet' && <small className="hub-caption">Added to Spreadsheets only. Not sent to the assistant.</small>}
+        {file.stage?.state === 'failed' && <><small className="hub-attachment-failure" role="alert">{file.stage.message}</small>
+          {sources.current.has(file.id) && onAttachFile && <button className="hub-btn" type="button" disabled={attaching} onClick={() => { const source = sources.current.get(file.id)!; void attach(() => onAttachFile(source), source, file.id); }}>Retry</button>}</>}
+        <button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
       <label className="hub-sr-only" htmlFor={id}>Message Relay</label>
       <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={1} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
         onChange={event => { composer.setText(event.target.value); onEdit?.(event.target.value); }} onKeyDown={event => {
@@ -79,7 +87,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
     </InputGroup>
     <input type="file" hidden ref={composer.fileInput} onChange={event => {
       const file = event.target.files?.[0]; event.target.value = '';
-      if (file) void attach(() => onAttachFile ? onAttachFile(file) : readAssistantAttachment(file));
+      if (file) void attach(() => onAttachFile ? onAttachFile(file) : readAssistantAttachment(file), file);
     }} />
     {error ? <p className="hub-composer-error" role="alert">{error}</p> : null}
   </div>;

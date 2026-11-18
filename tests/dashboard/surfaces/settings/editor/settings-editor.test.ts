@@ -18,22 +18,25 @@ function inputNamed(host: HTMLElement, name: string): HTMLInputElement {
   assert(input, `Missing ${name} input`);
   return input;
 }
+const FAILURE = { tone: 'danger', title: "Settings weren't saved", description: 'The previous value is back.', key: 'settings-save' } as const;
 describe('confirmed Settings feedback through the current editor', () => {
-  for (const family of ["ordinary", "protected"] as const) it(`uses the catalog refusal when ${family} envelope composition fails before dispatch`, async () => {
+  it("toasts a failure and reverts when the ordinary envelope cannot be composed before dispatch", async () => {
     const h = await setup();
-    const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
-    await act(async () => {
-      if (family === "ordinary") h.controller().update("actor.label", "Synthetic operator");
-      else h.controller().protectedEditor.update("ucpathUserId", "Synthetic operator");
-    });
+    await act(async () => h.controller().update("actor.label", "Synthetic operator"));
     const uuid = vi.spyOn(crypto, "randomUUID").mockReturnValue("invalid-envelope" as ReturnType<typeof crypto.randomUUID>);
-    try { await act(async () => control().submit()); } finally { uuid.mockRestore(); }
-    const save = control().save; assert.equal(save.state, "refused");
+    try { await act(async () => h.controller().submit()); } finally { uuid.mockRestore(); }
+    assert.deepEqual(h.problems, [FAILURE]); assert.equal(h.commands.length, 0); assert.equal(h.controller().dirtyCount, 0);
+  });
+  it("uses the catalog refusal when protected envelope composition fails before dispatch", async () => {
+    const h = await setup();
+    await act(async () => h.controller().protectedEditor.update("ucpathUserId", "Synthetic operator"));
+    const uuid = vi.spyOn(crypto, "randomUUID").mockReturnValue("invalid-envelope" as ReturnType<typeof crypto.randomUUID>);
+    try { await act(async () => h.controller().protectedEditor.submit()); } finally { uuid.mockRestore(); }
+    const save = h.controller().protectedEditor.save; assert.equal(save.state, "refused");
     if (save.state !== "refused") throw new Error("expected refusal");
-    const code = family === "ordinary" ? "SETTINGS_DRAFT_INVALID" : "PROTECTED_SETTINGS_DRAFT_INVALID";
-    assert.equal(save.code, code);
-    assert.equal(save.message, formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text);
-    assert.equal(h.commands.length, 0); assert.equal(control().dirtyCount, 1);
+    assert.equal(save.code, "PROTECTED_SETTINGS_DRAFT_INVALID");
+    assert.equal(save.message, formatErrorCatalogFailure(createErrorCatalogFailure("PROTECTED_SETTINGS_DRAFT_INVALID", {})).text);
+    assert.equal(h.commands.length, 0); assert.equal(h.controller().protectedEditor.dirtyCount, 1);
   });
   it('waits until ordinary typing stops and saves the final value once', async () => {
     const { controller, commands, notices } = await setup();
@@ -44,7 +47,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.equal(commands.length, 0); assert.deepEqual(notices, []);
     await act(async () => vi.advanceTimersByTimeAsync(1));
     assert.equal(commands.length, 1);
-    assert.deepEqual(notices, [{ title: 'Saved Operator label' }]);
+    assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved Operator label' }]);
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     assert.equal(commands.length, 1); assert.equal(notices.length, 1);
   });
@@ -56,7 +59,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     await act(async () => controller().update('timeouts.taskMs', '210'));
     assert.equal(commands.length, 0); assert.deepEqual(notices, []);
     await act(async () => input.blur());
-    assert.equal(commands.length, 1); assert.deepEqual(notices, [{ title: 'Saved Task' }]);
+    assert.equal(commands.length, 1); assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved Task' }]);
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     assert.equal(commands.length, 1); assert.equal(notices.length, 1);
   });
@@ -98,7 +101,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.equal(commands.length, 0); assert.deepEqual(notices, []);
     await act(async () => input.focus());
     await act(async () => input.blur());
-    assert.equal(commands.length, 1); assert.deepEqual(notices, [{ title: 'Saved UCPath username' }]);
+    assert.equal(commands.length, 1); assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved UCPath username' }]);
     assert.doesNotMatch(JSON.stringify(notices), /private-blur-sentinel/);
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     assert.equal(commands.length, 1); assert.equal(notices.length, 1);
@@ -108,15 +111,14 @@ describe('confirmed Settings feedback through the current editor', () => {
     ports.response = () => new Response(JSON.stringify({ state: 'error', code: 'OPERATOR_MUTATION_ORIGIN_REFUSED', message: 'raw-server-sentinel', retryable: false }), { status: 403 });
     await act(async () => controller().update('actor.label', 'private-draft-sentinel'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.equal(controller().save.state, 'refused');
-    assert.equal(commands.length, 1); assert.deepEqual(notices, []);
-    assert.deepEqual(problems, [{ tone: 'danger', title: "Settings weren't saved", description: 'Your draft is retained. Review the save details before retrying.' }]);
+    assert.equal(commands.length, 1); assert.deepEqual(notices, []); assert.equal(controller().dirtyCount, 0);
+    assert.deepEqual(problems, [FAILURE]);
     assert.doesNotMatch(JSON.stringify(problems), /private-draft-sentinel|raw-server-sentinel/);
     await render('performance');
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     assert.equal(problems.length, 1); assert.equal(commands.length, 1);
   });
-  it('retains Saved after confirmed active readback, time and section navigation', async () => {
+  it('toasts Saved once after confirmed active readback, time and section navigation', async () => {
     const { controller, host, render, commands, notices } = await setup();
     await act(async () => controller().update('display.screenWidth', '1980'));
     assert.doesNotMatch(host.textContent ?? '', /Unsaved changes/);
@@ -124,14 +126,11 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.deepEqual(notices, []);
     await act(async () => vi.advanceTimersByTimeAsync(701));
     assert.equal(commands.length, 1);
-    assert.deepEqual(notices, [{ title: 'Saved settings' }]);
-    assert.equal(controller().save.state, 'applied');
+    assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved settings' }]);
     assert.equal(controller().dirtyCount, 0);
-    assert.match(host.textContent ?? '', /Saved/);
-    assert.doesNotMatch(host.textContent ?? '', /Restart required/);
+    assert.doesNotMatch(host.textContent ?? '', /Saving|Saved|Restart required/);
     await act(async () => vi.advanceTimersByTimeAsync(10000));
     await render('performance');
-    assert.match(host.textContent ?? '', /Saved/);
     const current = controller().editor;
     assert.equal(current.state, 'loaded');
     if (current.state !== 'loaded') throw new Error('settings-not-loaded');
@@ -155,27 +154,37 @@ describe('confirmed Settings feedback through the current editor', () => {
     };
     await act(async () => controller().update('display.screenWidth', '1980'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.equal(controller().save.state, 'applied');
-    assert.match(host.textContent ?? '', /Saved · Restart required/);
-    assert.deepEqual(notices, [{ title: 'Saved settings', description: 'Restart required to use these changes.' }]);
-    await act(async () => vi.advanceTimersByTimeAsync(10000));
-    assert.match(host.textContent ?? '', /Saved · Restart required/);
+    assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved settings', description: 'Restart required to use these changes.' }]);
+    assert.match(host.textContent ?? '', /Restart required/);
+    assert.doesNotMatch(host.textContent ?? '', /Saved(?! settings apply after Relay restarts)|Saving/, 'no inline saved row');
   });
-  it('retains uncertain drafts and retries the same command before reporting Saved', async () => {
+  it('reverts an unknown outcome with a failure toast and never retries it', async () => {
     const { controller, host, ports, commands, notices, problems } = await setup();
     ports.execute = () => { throw new Error('synthetic-response-lost'); };
     await act(async () => controller().update('display.screenWidth', '1980'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.equal(controller().save.state, 'unconfirmed');
-    assert(controller().locked); assert(controller().dirtyCount > 0);
-    assert.match(host.textContent ?? '', /Retry exact attempt/);
-    assert.doesNotMatch(host.textContent ?? '', /Saved · Restart required/);
-    await act(async () => controller().retry());
-    assert.equal(commands.length, 2); assert.deepEqual(commands[1], commands[0]);
-    assert.equal(controller().save.state, 'unconfirmed');
-    assert.deepEqual(notices, []);
-    assert.equal(problems.length, 2);
-    assert(problems.every(problem => problem.tone === 'warning' && problem.title === 'Settings save unconfirmed'));
+    assert.equal(commands.length, 1); assert.equal(controller().dirtyCount, 0); assert.equal(controller().locked, false);
+    assert.deepEqual(notices, []); assert.deepEqual(problems, [FAILURE]);
+    assert.doesNotMatch(host.textContent ?? '', /Retry|Saving/);
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    assert.equal(commands.length, 1);
+  });
+  it('keeps the last of two quick edits made while the first save is in flight', async () => {
+    const { controller, ports, authority, commands, notices } = await setup();
+    let release: (() => void) | undefined;
+    ports.execute = request => new Promise(resolve => { release = () => resolve(authority.execute(request)); });
+    await act(async () => controller().update('actor.label', 'First'));
+    await act(async () => vi.advanceTimersByTimeAsync(701));
+    assert.equal(commands.length, 1); assert.equal(controller().locked, false);
+    await act(async () => controller().update('actor.label', 'Second'));
+    await act(async () => controller().update('actor.label', 'Third'));
+    assert.deepEqual(controller().draft['actor.label'], { kind: 'set', raw: 'Third' });
+    ports.execute = request => authority.execute(request);
+    await act(async () => release?.());
+    await act(async () => vi.advanceTimersByTimeAsync(701));
+    assert.equal(commands.length, 2);
+    assert.equal(authority.read().sections.flatMap(section => section.leaves).find(leaf => leaf.path === 'actor.label')?.effectiveValue, 'Third');
+    assert.equal(notices.length, 2); assert.equal(controller().dirtyCount, 0);
   });
   it('names a confirmed typed field without repeating its value or notifying on refresh', async () => {
     const { controller, notices, render } = await setup();
@@ -183,43 +192,33 @@ describe('confirmed Settings feedback through the current editor', () => {
     await act(async () => controller().update('actor.label', 'Private operator sentinel'));
     assert.deepEqual(notices, []);
     await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.deepEqual(notices, [{ title: `Saved ${label}` }]);
+    assert.deepEqual(notices, [{ key: 'settings-save', title: `Saved ${label}` }]);
     assert.doesNotMatch(JSON.stringify(notices), /Private operator sentinel/);
     await act(async () => controller().reload());
     await render('routes');
     assert.equal(notices.length, 1);
   });
-  it('notifies once after a lost acknowledgement resolves through the exact replay', async () => {
-    const { controller, ports, authority, notices, commands } = await setup();
-    let loseResponse = true;
-    ports.execute = request => {
-      const result = authority.execute(request);
-      if (loseResponse) { loseResponse = false; throw new Error('synthetic-response-lost'); }
-      return result;
-    };
-    const label = 'Operator label';
-    await act(async () => controller().update('actor.label', 'Retry sentinel'));
-    await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.equal(controller().save.state, 'unconfirmed');
-    assert.deepEqual(notices, []);
-    await act(async () => controller().retry());
-    assert.deepEqual(commands[1], commands[0]);
-    assert.deepEqual(controller().save, { state: 'applied', replayed: true });
-    assert.deepEqual(notices, [{ title: `Already saved ${label}` }]);
-    await act(async () => vi.advanceTimersByTimeAsync(5000));
-    assert.equal(notices.length, 1);
-  });
   it('withholds success when the acknowledgement and field readback disagree', async () => {
-    const { controller, ports, authority, notices } = await setup();
+    const { controller, ports, authority, notices, problems } = await setup();
+    let reads = 0;
     ports.read = () => {
+      reads += 1;
       const document = authority.read();
       return { ...document, sections: document.sections.map(section => ({ ...section,
-        leaves: section.leaves.map(leaf => leaf.path === 'actor.label' ? { ...leaf, settingsValue: 'Other operator', effectiveValue: 'Other operator' } : leaf) })) };
+        leaves: section.leaves.map(leaf => leaf.path === 'actor.label' ? { ...leaf, settingsValue: 'Other operator', effectiveValue: 'Other operator', activeValue: 'Other operator' } : leaf) })) };
     };
     await act(async () => controller().update('actor.label', 'Intended operator'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.equal(controller().save.state, 'unconfirmed');
-    assert(controller().locked); assert.equal(controller().dirtyCount, 1);
+    assert.equal(controller().dirtyCount, 0);
+    assert.deepEqual(notices, []); assert.deepEqual(problems, [FAILURE]);
+    // The failed save re-reads the backend; the page unlocks only once that fresh read is held.
+    for (let flush = 0; flush < 20 && controller().locked; flush++) await act(async () => vi.advanceTimersByTimeAsync(0));
+    assert.equal(reads, 2, 'one readback for the save and one fresh read after the failure');
+    assert.equal(controller().locked, false);
+    const editor = controller().editor;
+    assert.equal(editor.state, 'loaded');
+    if (editor.state !== 'loaded') throw new Error('expected a loaded editor');
+    assert.equal(editor.document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === 'actor.label')?.settingsValue, 'Other operator');
     assert.deepEqual(notices, []);
   });
   it('confirms a protected typed field without disclosing its value', async () => {
@@ -234,13 +233,13 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.deepEqual(notices, []);
     await act(async () => vi.advanceTimersByTimeAsync(1201));
     assert.equal(controller().protectedEditor.save.state, 'applied');
-    assert.deepEqual(notices, [{ title: `Saved ${label}` }]);
+    assert.deepEqual(notices, [{ key: 'settings-save', title: `Saved ${label}` }]);
     assert.doesNotMatch(JSON.stringify(notices), /secret-toast-sentinel/);
     await render('credentials');
     assert.equal(notices.length, 1);
     await act(async () => controller().protectedEditor.update('ucpathUserId', 'private-username-sentinel'));
     await act(async () => vi.advanceTimersByTimeAsync(1201));
-    assert.deepEqual(notices[1], { title: 'Saved UCPath username' });
+    assert.deepEqual(notices[1], { key: 'settings-save', title: 'Saved UCPath username' });
     assert.doesNotMatch(JSON.stringify(notices), /private-username-sentinel/);
   });
   it('withholds a protected toast on conflict and readback failure', async () => {

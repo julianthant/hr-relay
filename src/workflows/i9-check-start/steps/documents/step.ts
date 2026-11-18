@@ -3,6 +3,7 @@ import { ReadI9CheckPeople } from "../../../../models/workflows/i9-check-start/r
 import { I9CheckStartInput } from "../../../../models/workflows/i9-check/start.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
 import { OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { NodeIdSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
@@ -24,7 +25,7 @@ const step = Object.freeze({
           source: { origin: "Attached PDFs", detail: "The original file selected when the run starts.", chain: [] } },
         { id: "person", label: "Approved person", taskFields: [{ nodeId: "read-people", kind: "output", fieldPath: "people.person.name" }], example: "Morrow, Bea",
           source: { origin: "Approved PDF records", detail: "The name on the I-9 sections you approved in Logs.", chain: [] } },
-        { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-people", kind: "output", fieldPath: "people.eid" }], example: "10000001",
+        { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-people", kind: "output", fieldPath: "people.eid" }], example: PERSON_LOOKUP_EXAMPLE_EID,
           source: { origin: "Approved PDF records", detail: "The employee identity approved with the source-bound record.", chain: [] } },
       ],
     }],

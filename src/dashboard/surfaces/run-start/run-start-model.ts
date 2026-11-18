@@ -7,6 +7,7 @@ import {
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
 import { z } from "zod";
+import type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 import { inputRunValueNoun, parseInputRunText, splitEntries, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
@@ -152,7 +153,7 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
   }
   const parser = mode.parser;
   if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), ...named, ...options }));
-  return text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+  return splitTupleEntries(text, parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
     const fields = entry.split(",").map(field => field.trim());
     const fail = (sentence?: string) => new Error(sentence ?? formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
     if (fields.length < parser.identifiers.length + 1 || fields.some(field => field === "")) throw fail(parser.shapeRefusal);
@@ -214,7 +215,7 @@ function refusedRows(surface: InputRunSurface, text: string, draft: TypedInputDr
   const parser = typed?.modes.find(candidate => candidate.value === chosen)?.parser;
   const texts = parser === undefined ? splitEntries(surface.parser, text)
     : parser.kind === "entries" ? splitEntries(parser.spec, text)
-      : text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+      : splitTupleEntries(text, parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
         const fields = entry.split(",").map(field => field.trim());
         return fields.length > parser.identifiers.length && fields.at(-1)?.toLowerCase() !== parser.missing.toLowerCase() && fields.at(-1) !== ""
           ? [...fields.slice(0, -1), "[masked]"].join(", ") : fields.join(", ");
@@ -225,6 +226,11 @@ function refusedRows(surface: InputRunSurface, text: string, draft: TypedInputDr
 export function inputRunFieldLabel(parser: InputParserSpec): string {
   const noun = inputRunValueNoun(parser);
   return noun === "Kuali document numbers" ? "Kuali ID" : noun.charAt(0).toUpperCase() + noun.slice(1);
+}
+
+/** Name-tuple entries end at the declared delimiter or a new line, as the hint says. */
+function splitTupleEntries(text: string, delimiter: string): string[] {
+  return text.split(delimiter).flatMap(part => part.split("\n"));
 }
 
 export function inputRunDelimiterHint(parser: InputParserSpec): string {
@@ -490,11 +496,17 @@ export function toggleStepSelection(
   return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
 }
 
+/** The footer's short reason while Continue is held; the sentence below stays as the refusal text. */
+export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
+/** The one sentence for a required reference spreadsheet that was never chosen. */
+export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
+
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
   eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
   selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] },
   checks?: { typeId: string; picks: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[] }) {
+  if (requiredTypes.some(typeId => selections[typeId] === undefined)) throw new Error(MISSING_REFERENCE_TEXT);
   if (requiredTypes.length > 1 || selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
   const checkEntries = (index: number) => (checks?.picks ?? []).map(pick => {
     const entry = catalog.find(candidate => candidate.libraryId === pick.libraryId);
@@ -517,4 +529,20 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
       sheetId: selection.sheetId, expectedVersion: entry.version,
       ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
   }), ...checkEntries(index)]).flat();
+}
+
+/** The one plain sentence for the first refused entry of a plan, shown in the dialog's notice slot; no code, trace id or server text. */
+export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: RunInputPreview["entries"]): { sentence: string; goesToQueue: boolean } | null {
+  const entry = refused[0];
+  if (entry === undefined) return null;
+  const source = sources?.find(candidate => candidate.index + 1 === entry.entry)?.sourceText;
+  const name = source ?? (refused.length > 1 || entry.entry > 1 ? `Entry ${String(entry.entry)}` : "This item");
+  if (entry.code === "active-run-exists") {
+    if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
+    return { sentence: `${name} already has a run in progress. Find it in the queue or wait for it to finish.`, goesToQueue: true };
+  }
+  if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: "This workflow cannot do a dry run. Turn Dry run off to start it.", goesToQueue: false };
+  if (entry.code === "preflight-failed") return { sentence: "A check failed for this run. Go back to Checks to fix it.", goesToQueue: false };
+  return { sentence: "Relay cannot run this right now. Try again later.", goesToQueue: false };
 }

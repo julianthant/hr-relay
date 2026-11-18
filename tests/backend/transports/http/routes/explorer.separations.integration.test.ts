@@ -220,7 +220,9 @@ it("serves fictional examples and operator wording without task identifiers or f
   const text = [spec.unlistedFailure, ...spec.options.flatMap(option => [option.label, ...option.choices.map(choice => choice.label)]),
     ...spec.steps.flatMap(entry => [entry.title, ...entry.description.map(line => line.text), ...entry.checks.map(line => line.text),
       ...entry.blocks.flatMap(block => block.kind === "decision" ? [block.label, ...block.outcomes.flatMap(outcome => [outcome.label, outcome.then])]
-        : block.kind === "click" ? [block.target] : [block.title, ...block.rows.flatMap(row => [row.label, ...sampleValues(row.value)])])]),
+        : block.kind === "click" ? [block.target] : block.kind === "starts" ? [block.title, block.each]
+        : block.kind === "pick" ? [block.title, ...block.columns, ...block.rows.flatMap(row => row.cells)]
+        : [block.title, ...block.rows.flatMap(row => [row.label, ...sampleValues(row.value)])])]),
     ...Object.values(spec.sources).flatMap(source => [source.origin, source.detail, ...source.reads.flatMap(read => [read.page, read.field])])].join("\n");
   assert.doesNotMatch(text, /nodeId|taskId|fieldPath|workflow:|INCONSISTENT_INPUTS/u);
   for (const node of workflow.nodes) for (const task of node.tasks) {

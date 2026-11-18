@@ -412,7 +412,8 @@ function taskWire(
 }
 
 /** The control shape of one node, one arm per graph node kind. */
-function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
+/** The served control-shape of one runtime node. */
+export function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
   switch (node.kind) {
     case "task":
       return {

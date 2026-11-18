@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";

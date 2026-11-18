@@ -5,7 +5,7 @@ export type NotificationFilter = "all" | "unread" | "attention" | "failed";
 export type NotificationKind = "storage" | "chatgpt" | "run" | "command";
 export type NotificationDestination = NotificationTarget
   | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
-  | Readonly<{ kind: "settings"; section: "subscription" }>
+  | Readonly<{ kind: "settings"; section: "general"; target?: "chatgpt.account" }>
   | Readonly<{ kind: "local-recovery"; key: string }>
   | Readonly<{ kind: "local-command-result"; id: string }>
   | Readonly<{ kind: "local-bulk-result" }>
@@ -15,6 +15,8 @@ export type NotificationItem = Readonly<{
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
   kind?: NotificationKind;
+  /** Repeats folded into this notice; shown only above one. */
+  count?: number;
   /** Priority: still needs the operator. Resolved items fall into their day group. */
   priority?: boolean;
   /** Day group label once out of Priority: Today, Yesterday, a weekday or a date. */

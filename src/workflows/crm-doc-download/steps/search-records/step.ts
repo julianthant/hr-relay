@@ -1,5 +1,6 @@
 import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
 import { CrmDocDownloadInput, type CrmDocDownloadInputValue } from "../../../../models/workflows/crm-doc-download/input.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-document-records.js";
@@ -7,7 +8,7 @@ import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "search-records", label: "Find latest CRM records" }), system: "crm",
   operatorFields: [
-    { label: "Employee ID", example: "10000001", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.eid" }] },
+    { label: "Employee ID", example: PERSON_LOOKUP_EXAMPLE_EID, sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.eid" }] },
     { label: "Work email", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.workEmail" }] },
     { label: "Personal email", example: "fixture.personal@example.test", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.personalEmail" }] },
     { label: "CRM record", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.recordId" }] },
