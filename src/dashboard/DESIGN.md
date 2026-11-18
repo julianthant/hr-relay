@@ -216,7 +216,10 @@ Explorer is a generated review spec of what a workflow does. It never shows simu
 - Run options sit above the step list as a "Run options" section: a label above each select, in one row.
 - Step 1 is "Open browser sessions", with a chip for each system the run signs in to. Logs never show this step.
 - A step reads: title and system, one description line, check lines (outside page cards), page cards, clicks as plain lines ("Clicks Search").
-- A decision point is a select under the evidence it reads, including terminal reads such as employment status (Active, Inactive, Not found). It lists every outcome declared there, ending with "Anything else", with what happens next beside it. Changing it changes the steps below.
+- A decision point is a select under the evidence it reads, including terminal reads such as employment status (Active, Inactive, Not found). It lists only the outcomes the workflow declares there, with what happens next beside it; there is no "Anything else" entry. Changing it changes the steps below.
+- The line for a failure the workflow does not list shows once, at the top, above the first step.
+- The workflow picker in the heading lists child workflows indented under their parent.
+- Explorer renders steps, page cards, field rows, click lines, pick tables and notes through the shared components in `surfaces/shared/steps/`, the same ones the Logs panel uses. It holds no copy of them; a change to their look is made there once.
 - When an outcome stops the run, the steps after it are hidden and the run's end line states the stop in the danger colour, once.
 - There is no "If" label. Fill values keep their source button. Sample values come from the definition's examples.
 

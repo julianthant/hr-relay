@@ -22,7 +22,34 @@ const group = Object.freeze({
       display: { cases: [{ value: "signed", text: "Signed" }, { value: "unsigned", text: "Unsigned" }, { value: "historical", text: "Historical" },
         { value: "not-found", text: "Not found" }, { value: "unable-to-access", text: "Unable to access" }] } },
   ] as const,
-  review: { pages: [], branchLabels: [] } as const
+  review: {
+    pages: [{ id: "lookup-result", title: "I-9 lookup result", mode: "Read only", nodeIds: ["i9-lookup"],
+      lines: [{ id: "retain-result", kind: "read", text: "Retain the exact I-9 Lookup result, or the explicit existing-person path that needs no lookup.", nodeIds: ["i9-lookup"] }],
+      fields: [{ id: "status", label: "I-9 status", example: "Not found", when: [{ "i9-lookup-result": ["checked"] }],
+        display: { cases: [{ value: "not-found", text: "Not found" }, { value: "signed", text: "Signed" }, { value: "unsigned", text: "Unsigned" },
+          { value: "historical", text: "Historical" }, { value: "unable-to-access", text: "Unable to access" }] },
+        taskFields: [{ nodeId: "i9-lookup", kind: "output", fieldPath: "result.i9Status" }],
+        source: { origin: "I-9 Lookup", detail: "The status retained from the exact successful child lookup; a failed child never proves profile absence.", chain: [] } }],
+      when: [{ "i9-lookup-result": ["checked"] }],
+    }], branchLabels: [],
+    starts: [{ nodeId: "i9-lookup-child", each: "Each person", when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"], "i9-lookup-result": ["checked"] }] }],
+    outcomes: [{ nodeId: "i9-lookup-child", value: "child-failed", then: "The I-9 lookup did not establish a verified result; the run stops before hire approval.", stops: true }],
+    decisions: [
+      { id: "i9-lookup-result", label: "I-9 lookup", reads: { nodeId: "i9-lookup", fieldPath: "state" },
+        nodeIds: ["i9-lookup"], initial: { by: "hire-match", values: { "existing-person": "not-required", "review-required": "not-required" }, otherwise: "checked" }, outcomes: [
+          { value: "checked", label: "Lookup completed", then: "Retains the exact child result for the hire review.", when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"] }] },
+          { value: "not-required", label: "Lookup not required", then: "Continues to review the existing person's hire findings.", when: [{ "hire-match": ["existing-person", "review-required"] }] },
+        ] },
+      { id: "i9-status", label: "I-9 status", reads: { nodeId: "i9-lookup", fieldPath: "result.i9Status" },
+        nodeIds: ["i9-lookup"], initial: "not-found", when: [{ "i9-lookup-result": ["checked"] }], outcomes: [
+          { value: "not-found", label: "No profile found", then: "Plans a new profile and remote record after hire approval." },
+          { value: "signed", label: "Signed", then: "Checks whether the existing profile and record can be reused for the approved hire." },
+          { value: "unsigned", label: "Unsigned", then: "Checks the existing profile and record before creating or reusing the remote record." },
+          { value: "historical", label: "Historical", then: "Retains the historical profile evidence for the approved hire plan." },
+          { value: "unable-to-access", label: "Unable to access", then: "A new hire cannot pass the reviewed hire check; an approved existing-person hire needs no I-9 creation." },
+        ] },
+    ],
+  } as const
 });
 const entries = defineStepEntries(group);
 const target = Object.freeze({ id: WorkflowIdSchema.parse(i9LookupWorkflow.id), input: I9LookupInputSchema, result: I9SignerOutputSchema });

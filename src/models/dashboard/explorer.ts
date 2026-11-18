@@ -1,6 +1,7 @@
 /** The read-only Workflow Explorer wire: a projection of registration state derived at the server from the one composition root, never a second authority. */
 import { z } from "zod";
-import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
+import { failureCodeFromTaskCode, operatorFailureSentence } from "../failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../failures/failure-labels.js";
 import { ExplorerReviewSpecSchema } from "./explorer-review-spec.js";
 import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
 
@@ -401,33 +402,24 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   }),
 }).superRefine((workflow, context) => {
   const reviewSteps = workflow.reviewSpec.steps;
-  if (JSON.stringify(reviewSteps.map(step => step.id)) !== JSON.stringify(workflow.timeline.map(group => group.key))) {
-    context.addIssue({ code: "custom", path: ["reviewSpec", "steps"], message: "review steps must cover the ordered timeline exactly" });
+  if (JSON.stringify(reviewSteps.map(step => [step.id, step.title])) !== JSON.stringify(workflow.timeline.map(group => [group.key, group.label]))) {
+    context.addIssue({ code: "custom", path: ["reviewSpec", "steps"], message: "review steps must cover the ordered timeline exactly, titled by its labels" });
   }
   for (const [stepIndex, step] of reviewSteps.entries()) {
     const group = workflow.timeline.find(candidate => candidate.key === step.id);
     if (group === undefined) continue;
-    const ownNodes = workflow.nodes.filter(node => group.nodes.includes(node.id));
-    const ids = step.decisions.map(decision => decision.id);
-    if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: "review repeats decision id" });
-    for (const decision of step.decisions) {
-      const node = ownNodes.find(candidate => candidate.id === decision.nodeId);
-      if (node === undefined) context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: `review decision names unknown or outside node ${decision.nodeId}` });
-      if (decision.kind === "failure" && (decision.action !== "stop"
-        || !node?.tasks.some(task => task.taskId === decision.taskId && task.errorCodes.some(code => code === decision.outcome))
-        || decision.failureCode !== failureCodeFromTaskCode(decision.outcome))) {
-        context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: "review failure must stop for an exact declared task code" });
-      }
-    }
-    for (const node of ownNodes) {
+    const decisions = step.blocks.flatMap(block => block.kind === "decision" ? [block] : []);
+    const issue = (message: string) => { context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "blocks"], message }); };
+    for (const node of workflow.nodes.filter(candidate => group.nodes.includes(candidate.id))) {
       if (node.shape.kind === "branch") for (const branch of node.shape.cases) {
-        if (!step.decisions.some(decision => decision.nodeId === node.id && decision.kind === "branch" && decision.outcome === branch.name)) {
-          context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: `review omits branch outcome ${node.id}/${branch.name}` });
-        }
+        if (!decisions.some(decision => decision.id === node.id && decision.outcomes.some(outcome => outcome.value === branch.name))) issue(`review omits branch outcome ${node.id}/${branch.name}`);
       }
       for (const task of node.tasks) for (const code of task.errorCodes) {
-        if (!step.decisions.some(decision => decision.nodeId === node.id && decision.kind === "failure" && decision.taskId === task.taskId && decision.outcome === code)) {
-          context.addIssue({ code: "custom", path: ["reviewSpec", "steps", stepIndex, "decisions"], message: `review omits declared failure ${node.id}/${task.taskId}/${code}` });
+        const catalogCode = failureCodeFromTaskCode(code);
+        if (isUnlistedStorageFailure(catalogCode)) continue;
+        const [label, sentence] = [operatorFailureLabel(catalogCode), `${operatorFailureSentence(catalogCode)} `];
+        if (!decisions.some(decision => decision.outcomes.some(outcome => outcome.value === code && outcome.stops && outcome.label === label && outcome.then.startsWith(sentence)))) {
+          issue(`review omits declared failure ${node.id}/${task.taskId}/${code}`);
         }
       }
     }

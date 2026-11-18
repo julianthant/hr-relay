@@ -25,11 +25,19 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
       id: "reference-spreadsheets", title: "Reference spreadsheets", mode: "Read only", nodeIds: [REFERENCE_CHECK_NODE, REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE],
       lines: [
         { id: "check-person", kind: "check", text: "Confirm the approved Employee ID, and the name when the sheet has one, in each picked spreadsheet.", nodeIds: [REFERENCE_CHECK_NODE] },
-        { id: "ask-before-filing", kind: "check", text: "In a live run, ask before filing when a picked spreadsheet does not hold the person or names them differently.", nodeIds: [REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE] },
+        { id: "ask-before-filing", kind: "check", text: "In a live run, ask before filing when a picked spreadsheet does not hold the person or names them differently.", nodeIds: [REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE], when: [{ "reference-result": ["true"] }] },
       ],
       fields: [],
     }],
     branchLabels: [],
+    decisions: [{
+      id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_STOP_NODE, fieldPath: "ask" },
+      nodeIds: [REFERENCE_CHECK_NODE, REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE], initial: "null",
+      outcomes: [
+        { value: "null", label: "No review needed", then: "Continues when the spreadsheets confirm the person, none were picked, or this is a dry run." },
+        { value: "true", label: "Reference needs review", then: "Waits for you to review the reference spreadsheets in Logs before anything is filed.", stops: true, when: [{ "dry-run": ["false"] }] },
+      ],
+    }],
   } as const,
 });
 

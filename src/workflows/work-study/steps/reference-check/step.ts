@@ -24,9 +24,23 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
         { id: "check-person", kind: "check", text: "Confirm the Employee ID, and the name when the sheet has one, in each picked spreadsheet.", nodeIds: [REFERENCE_CHECK_NODE] },
         { id: "ask-before-filing", kind: "check", text: "In a live run, ask before filing when a picked spreadsheet does not hold the employee or names them differently.", nodeIds: [REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE] },
       ],
-      fields: [],
+      fields: [{ id: "reference-line", label: "Reference spreadsheet", example: "Example eligibility · Awards: name differs in row 3",
+        taskFields: [{ nodeId: REFERENCE_CHECK_NODE, kind: "output", fieldPath: "checks.line" }],
+        source: { origin: "Picked reference spreadsheets", detail: "The Employee ID and name check against the spreadsheet versions picked for this run.", chain: [] } }],
     }],
     branchLabels: [],
+    decisions: [
+      { id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" },
+        nodeIds: [REFERENCE_CHECK_NODE, REFERENCE_STOP_NODE], initial: "confirmed", outcomes: [
+          { value: "confirmed", label: "Person confirmed", then: "Continues to the planned PayPath transaction." },
+          { value: "unconfirmed", label: "Person not confirmed", then: "In a live run, waits for your review in Logs before filing; a dry run continues without asking." },
+          { value: "no-person", label: "No person to check", then: "Continues without a reference match." },
+        ] },
+      { id: "reference-check-review", label: "Review reference spreadsheets", reads: { nodeId: REFERENCE_CHECK_REVIEW_GATE, fieldPath: "decision" },
+        nodeIds: [REFERENCE_CHECK_REVIEW_GATE], initial: "continue", when: [{ "dry-run": ["false"], "reference-result": ["unconfirmed"] }],
+        outcomes: [{ value: "continue", label: "Continue anyway", then: "Continues to the planned PayPath transaction after you approve in Logs." }],
+        cancellation: { label: "Cancel run", then: "Cancels the run before anything is filed." } },
+    ],
   } as const,
 });
 
