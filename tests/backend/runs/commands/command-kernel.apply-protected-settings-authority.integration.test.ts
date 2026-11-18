@@ -139,7 +139,8 @@ describe("apply-protected-settings authority", () => {
 
   it("journals only marked operations while the independent store owns credential values", async () => {
     const harness = await createHarness();
-    const protectedValue = "https://roster.example.test/protected-value-that-must-never-reach-sqlite";
+    const protectedMarker = "protected-value-that-must-never-reach-sqlite";
+    const protectedValue = `https://roster.example.test/${protectedMarker}`;
     const revision = harness.credentials.read().revision;
     const command = protectedSettingsCommand({ value: protectedValue, expectedRevision: revision });
     const result = harness.kernel.execute(command);
@@ -155,7 +156,7 @@ describe("apply-protected-settings authority", () => {
     assert.ok(journal !== undefined);
     assert.ok(audit !== undefined);
     const durableBytes = JSON.stringify({ journal, audit, current: harness.database.authority.settingsCurrent.get() });
-    assert.equal(durableBytes.includes(protectedValue), false);
+    assert.equal(durableBytes.includes(protectedMarker), false);
     assert.equal(durableBytes.includes(sha256Hex(protectedValue)), false);
     assert.equal(durableBytes.includes('"set":"<set>"'), true);
     assert.equal(harness.database.authority.settingsCurrent.get(), undefined);

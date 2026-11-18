@@ -111,10 +111,10 @@ afterEach(_afterEachFixture0);
     assert.equal(requireSecret("sharepointOnboardingRosterUrl", createCredentialSecretSource(renewed.store)), "https://roster.example.test/synthetic-private-value");
     const doctor = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["doctor", "--json"], f.clock, f.repoRoot, renewed.admission, renewed.store);
     assert.equal(doctor.exitCode, 0, doctor.output);
-    for (const value of ["https://roster.example.test/synthetic-private-value", "https://roster.example.test/divergent-after-restore"]) {
-      assert.equal(doctor.output.includes(value), false); assert.equal(restore.output.includes(value), false);
-      assert.equal(readFileSync(f.path).includes(Buffer.from(value)), false);
-      for (const bytes of Object.values(backupFiles)) assert.equal(bytes.includes(Buffer.from(value)), false);
+    for (const marker of ["synthetic-private-value", "divergent-after-restore"]) {
+      assert.equal(doctor.output.includes(marker), false); assert.equal(restore.output.includes(marker), false);
+      assert.equal(readFileSync(f.path).includes(Buffer.from(marker)), false);
+      for (const bytes of Object.values(backupFiles)) assert.equal(bytes.includes(Buffer.from(marker)), false);
     }
     for (const [entry, bytes] of Object.entries(backupFiles)) assert.deepEqual(readFileSync(join_m0(directory, entry)), bytes);
   });

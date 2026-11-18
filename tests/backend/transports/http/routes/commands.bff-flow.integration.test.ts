@@ -306,7 +306,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     if (current.state !== "available") throw new Error("protected-settings-unavailable");
     const revision = current.readback.revision;
     const commandId = "00000000-0000-4000-8000-000000000903";
-    const rosterUrl = "https://roster.example.test/synthetic-http-retry-private";
+    const rosterMarker = "synthetic-http-retry-private";
+    const rosterUrl = `https://roster.example.test/${rosterMarker}`;
     const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision + (operation === "clear" ? 1 : 0) },
       payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000904",
         entries: { sharepointOnboardingRosterUrl: operation === "clear" ? { clear: true } : { set: rosterUrl } } } };
@@ -346,7 +347,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(readFileSync(privatePath), bytes);
     const audit = h.database.authority.commandAudits.findByCommand(commandId); assert.ok(audit);
     assert.equal(audit.request.requestedAt, acceptedAt);
-    assert.equal(JSON.stringify(audit).includes(rosterUrl), false);
+    assert.equal(JSON.stringify(audit).includes(rosterMarker), false);
   });
 
   it("returns invalid-value for an ordinary settings leaf before authority access", async () => {

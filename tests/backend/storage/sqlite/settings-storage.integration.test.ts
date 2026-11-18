@@ -149,8 +149,8 @@ describe("SQLite settings authority", () => {
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try {
       const rows = JSON.stringify(raw.prepare("SELECT request_json FROM commands UNION ALL SELECT payload_json FROM command_audits").all());
-      assert.equal(rows.includes("https://roster.example.test/synthetic-private-value"), false);
-      assert.equal(rows.includes("https://roster.example.test/different-private-value"), false);
+      assert.equal(rows.includes("synthetic-private-value"), false);
+      assert.equal(rows.includes("different-private-value"), false);
       assert.ok(rows.includes("<set>"));
     } finally { raw.close(); }
   });
