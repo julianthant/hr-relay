@@ -239,7 +239,7 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
       throw new RerunRefusedError("schema-mismatch", "copied-value source does not match its descriptor output");
     }
     const target = coordinate.targetStepKey === undefined ? entry?.rawInput
-      : stepOmissions?.find((omission) => omission.step === coordinate.targetStepKey)?.facts;
+      : stepOmissions?.find((omission) => omission.workflow === undefined && omission.step === coordinate.targetStepKey)?.facts;
 
     if (checkpoint === undefined || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
       || canonicalJsonStringify(field(checkpoint.output.value, coordinate.fieldPath))

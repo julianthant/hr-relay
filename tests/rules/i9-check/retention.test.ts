@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { I9CheckInput } from "../../../src/models/workflows/i9-check/input.js";
-import { i9MatchOutcome, i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
+import { i9EmploymentCandidates, i9MatchOutcome, i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
 import { i9CheckInput, i9Candidate, i9Search } from "../../support/fixtures/i9-check.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 
@@ -16,26 +16,26 @@ describe("I-9 identity and retention", () => {
   });
   it.each([[-8, "not-found"], [-7, "found"], [0, "found"], [7, "found"], [8, "not-found"]])("corroborates hire date offset %i", (offset, status) => {
     const startDate = new Date(Date.parse("2020-06-15") + Number(offset) * 86400000).toISOString().slice(0, 10);
-    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search([{ ...i9Candidate, startDate }]) }).identity.status).toBe(status);
+    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, candidates: i9EmploymentCandidates(i9Search([{ ...i9Candidate, startDate }])).candidates }).identity.status).toBe(status);
   });
   it("does not accept a name-only hit without hire date or choose multiple dated people", () => {
     const input = I9CheckInput.parse({ ...i9CheckInput, person: { name: "Example, Person", sourcePages: [3] } });
-    expect(i9RetentionRow({ input, initial: absent, search: i9Search() })).toMatchObject({ identity: { status: "ambiguous", reason: "missing-hire-date" }, row: { action: "", ucpathEmplId: "" } });
-    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search([i9Candidate, { ...i9Candidate, emplId: "10000002" }]) }).identity.status).toBe("ambiguous");
+    expect(i9RetentionRow({ input, initial: absent, candidates: i9EmploymentCandidates(i9Search()).candidates })).toMatchObject({ identity: { status: "ambiguous", reason: "missing-hire-date" }, row: { action: "", ucpathEmplId: "" } });
+    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, candidates: i9EmploymentCandidates(i9Search([i9Candidate, { ...i9Candidate, emplId: "10000002" }])).candidates }).identity.status).toBe("ambiguous");
   });
   it("never turns confirmed identifier ambiguity into Shred or accepts an unrelated name hit", () => {
     const initial = i9MatchOutcome({ hits: [], confirmed: [i9Candidate, { ...i9Candidate, emplId: EidSchema.parse("10000002") }], dropped: [] });
     for (const search of [i9Search([]), i9Search([{ ...i9Candidate, startDate: "01/01/2000" }]), i9Search([{ ...i9Candidate, emplId: "10000003" }])]) {
-      expect(i9RetentionRow({ input: i9CheckInput, initial, search })).toMatchObject({ identity: { status: "ambiguous" }, row: { action: "", ucpathEmplId: "" } });
+      expect(i9RetentionRow({ input: i9CheckInput, initial, candidates: i9EmploymentCandidates(search).candidates })).toMatchObject({ identity: { status: "ambiguous" }, row: { action: "", ucpathEmplId: "" } });
     }
-    expect(i9RetentionRow({ input: i9CheckInput, initial, search: i9Search() }).identity).toMatchObject({ status: "found", eid: "10000001" });
+    expect(i9RetentionRow({ input: i9CheckInput, initial, candidates: i9EmploymentCandidates(i9Search()).candidates }).identity).toMatchObject({ status: "found", eid: "10000001" });
   });
   it("counts every appointment before deduplication and allows the verified blank Last Hire case", () => {
     const candidates = [{ ...i9Candidate, startDate: "01/01/2000" }, i9Candidate];
-    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search(candidates) }).identity.status).toBe("found");
-    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search([{ ...i9Candidate, startDate: "" }]) }).identity.status).toBe("found");
+    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, candidates: i9EmploymentCandidates(i9Search(candidates)).candidates }).identity.status).toBe("found");
+    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, candidates: i9EmploymentCandidates(i9Search([{ ...i9Candidate, startDate: "" }])).candidates }).identity.status).toBe("found");
     expect(() => i9RetentionRow({ input: i9CheckInput, initial: absent })).toThrow(/observation is missing/u);
-    expect(() => i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search([{ ...i9Candidate, startDate: "02/30/2020" }]) })).toThrow(/date is invalid/u);
+    expect(() => i9RetentionRow({ input: i9CheckInput, initial: absent, candidates: i9EmploymentCandidates(i9Search([{ ...i9Candidate, startDate: "02/30/2020" }])).candidates })).toThrow(/date is invalid/u);
   });
   it("rematches EID first, preserves padded PPS IDs and chooses the latest termination", () => {
     const input = I9CheckInput.parse({ ...i9CheckInput, roster: { seed: { ppsEid: "99999", separationDate: "2025-01-01" }, rows: [
@@ -76,7 +76,7 @@ describe("I-9 identity and retention", () => {
     expect(JSON.stringify(output)).not.toContain("2000-01-15");
   });
   it("keeps not-found distinct from unavailable and rejects malformed roster/date input", () => {
-    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search([]) }).row.action).toBe("Shred");
+    expect(i9RetentionRow({ input: i9CheckInput, initial: absent, candidates: i9EmploymentCandidates(i9Search([])).candidates }).row.action).toBe("Shred");
     expect(I9CheckInput.safeParse({ ...i9CheckInput, roster: undefined }).success).toBe(false);
     expect(I9CheckInput.safeParse({ ...i9CheckInput, asOf: "2026-02-30" }).success).toBe(false);
     expect(I9CheckInput.safeParse({ ...i9CheckInput, roster: { rows: [{ eid: "bad" }] } }).success).toBe(false);

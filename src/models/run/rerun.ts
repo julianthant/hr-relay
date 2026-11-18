@@ -6,6 +6,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { SchemaBoundCanonicalValue } from "../validation/schema-bound-value.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
+import { ValueFieldPathSchema } from "../workflow/rerun-values.js";
 
 /** Refusals of the source-bound plan service, shared with its HTTP consumer. */
 export const RerunPlanRefusalCodeSchema = z.enum(["target-deleted", "target-not-found", "source-stale", "invalid-state", "schema-mismatch", "invalid-value"]);
@@ -22,7 +23,7 @@ export const RerunSourceSchema = z.strictObject({
   selectedStepKeys: z.array(z.string().min(1)).min(1),
   copiedFrom: z.array(z.strictObject({
     nodeId: NodeIdSchema,
-    fieldPath: ContractFieldPathSchema,
+    fieldPath: ValueFieldPathSchema,
     targetFieldPath: ContractFieldPathSchema,
     targetStepKey: z.string().min(1).optional(),
   })).optional(),

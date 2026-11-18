@@ -12,6 +12,7 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import type { WorkbookActiveSelectionSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
+import type { StepOmissions } from "../../../../src/models/workflow/step-omission.js";
 import type { UcpathPersonOrgDriver } from "../../../../src/models/ui/ucpath-person-org.js";
 import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { i9Search } from "../../fixtures/i9-check.js";
@@ -37,9 +38,15 @@ const CRM_RECORD = CrmDiscoveredRecordSchema.parse({ recordId: "ONB-1", recordUr
 export function createPersonLookupReferenceWorld() {
   const world = createRunExecutorTestWorld();
   return { cleanup: world.cleanup, async fixture() {
-    const sessions = sessionFactoryHarness({ crm: () => createDeterministicCrmOnboardingDriver({ discovery: [CRM_RECORD],
+    /** Every CRM onboarding search this world served; a search finds the record under its Employee ID, else under its name. */
+    const crmQueries: Readonly<{ name?: string; eid?: string }>[] = [];
+    const sessions = sessionFactoryHarness({ crm: () => ({ ...createDeterministicCrmOnboardingDriver({ discovery: [CRM_RECORD],
       record: { state: "found", record: { recordId: CRM_RECORD.recordId, emplId: CRM_RECORD.emplId, fullName: CRM_RECORD.name, rawStage: "Completed" } },
-      dates: ReadOnboardingDatesOutputSchema.parse({ emplId: REFERENCE_PERSON.emplId, state: "read", employmentDate: "2026-07-01", oathDate: "2026-06-25", reason: "" }) }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
+      dates: ReadOnboardingDatesOutputSchema.parse({ emplId: REFERENCE_PERSON.emplId, state: "read", employmentDate: "2026-07-01", oathDate: "2026-06-25", reason: "" }) }),
+      async searchOnboardingRecords(query: Readonly<{ name?: string; eid?: string }>) {
+        crmQueries.push(query);
+        return [CRM_RECORD].filter(record => query.eid === undefined ? record.name === query.name : record.emplId === query.eid);
+      } }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
       async searchPersonOrg(input) { return i9Search([REFERENCE_PERSON].filter(person => input.kind === "by-name" ? person.name === input.name : person.emplId === input.emplId)); },
       async searchPersonMatch(input) {
         const confirmed = [REFERENCE_PERSON].filter(person => person.name === `${input.lastName}, ${input.firstName}`).map(({ emplId, name }) => ({ emplId, name }));
@@ -70,14 +77,14 @@ export function createPersonLookupReferenceWorld() {
       return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version };
     };
-    const run = async (input: unknown, picks: readonly z.infer<typeof WorkbookActiveSelectionSchema>[], selectedStepKeys?: readonly string[]) => {
+    const run = async (input: unknown, picks: readonly z.infer<typeof WorkbookActiveSelectionSchema>[], selectedStepKeys?: readonly string[], stepOmissions?: StepOmissions) => {
       const started = canonical.start(descriptor, input, { dryRun: false, ...(picks.length === 0 ? {} : { workbookReferences: picks }),
-        ...(selectedStepKeys === undefined ? {} : { selectedStepKeys }) });
+        ...(selectedStepKeys === undefined ? {} : { selectedStepKeys }), ...(stepOmissions === undefined ? {} : { stepOmissions }) });
       const { run: settled, outcomes } = await canonical.execute(started, new AbortController().signal);
       assert.ok(settled);
       const events = database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === started.envelope.runId);
       return { run: settled, outcomes, events };
     };
-    return { harness, database, descriptor, spreadsheet, run };
+    return { harness, database, descriptor, spreadsheet, run, canonical, crmQueries };
   } };
 }
