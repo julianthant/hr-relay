@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
-import { chromium, type BrowserContext, type ConnectOverCDPTransport } from "playwright";
+import { chromium, type BrowserContext, type CDPSession, type ConnectOverCDPTransport, type Page } from "playwright";
 import type { Clock } from "../../../rules/time/clock.js";
 import { BrowserSessionClosureUnprovedError, BrowserProfileStillClosingError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -92,6 +92,91 @@ export function nativeSsoGuardKeys(context: BrowserContext): NativeSsoGuardKeys 
   const guard = ssoGuards.get(context);
   if (guard && "error" in guard) throw new Error("UCSD_SSO_GUARD_UNAVAILABLE", { cause: guard.error });
   return guard?.keys;
+}
+
+const submittingPages = new WeakSet<Page>();
+
+export async function withPinnedSsoPost(page: Page, destination: string, assertCurrent: () => void,
+  submit: (allowPost: () => void) => Promise<void>): Promise<void> {
+  assertCurrent();
+  const source = new URL(page.url()), pin = new URL(destination);
+  if (source.origin !== "https://a5.ucsd.edu" || source.username || source.password
+    || !["/tritON/profile/SAML2/Redirect/SSO", "/idp/profile/SAML2/Redirect/SSO"].includes(source.pathname)
+    || pin.origin !== source.origin || pin.username || pin.password || pin.pathname !== source.pathname
+    || submittingPages.has(page)) throw new Error("UCSD_SSO_SCOPE");
+  pin.hash = "";
+  submittingPages.add(page);
+  let session: CDPSession | undefined;
+  let armed = false, complete = false, bypassRequested = false;
+  let postedId: string | undefined;
+  let refused: Promise<unknown> | undefined;
+  let failure: { error: unknown } | undefined;
+  const cleanup: unknown[] = [];
+  try {
+    const pipe = await page.context().newCDPSession(page);
+    session = pipe;
+    const { frameTree } = await pipe.send("Page.getFrameTree");
+    pipe.on("Fetch.requestPaused", event => {
+      const { requestId, request } = event;
+      let command: Promise<unknown>;
+      if (event.responseStatusCode !== undefined || event.responseErrorReason !== undefined) {
+        // A 307 or 308 can resend this POST before the next document commits.
+        if (event.responseStatusCode === 307 || event.responseStatusCode === 308) {
+          failure ??= { error: new Error("UCSD_SSO_POST_REDIRECT_REFUSED") };
+          command = pipe.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+          refused = command;
+        } else command = pipe.send("Fetch.continueResponse", { requestId });
+      } else if (event.frameId === frameTree.frame.id && request.method !== "GET" && request.method !== "HEAD") {
+        try {
+          assertCurrent();
+          if (failure || !armed || postedId || event.redirectedRequestId || request.method !== "POST" || request.url !== pin.href) {
+            throw new Error("UCSD_SSO_POST_REFUSED");
+          }
+          postedId = requestId;
+          command = pipe.send("Fetch.continueRequest", { requestId, interceptResponse: true });
+        } catch (error) {
+          failure ??= { error };
+          command = pipe.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+          if (!postedId || event.redirectedRequestId === postedId) refused = command;
+        }
+      } else command = pipe.send("Fetch.continueRequest", { requestId });
+      void command.catch((error: unknown) => { failure ??= { error }; });
+    });
+    await pipe.send("Network.enable", { maxPostDataSize: 0 });
+    await pipe.send("Fetch.enable", { patterns: [{ resourceType: "Document", requestStage: "Request" }] });
+    assertCurrent();
+    if (page.url() !== source.href) throw new Error("UCSD_SSO_SCOPE");
+    bypassRequested = true;
+    await pipe.send("Network.setBypassServiceWorker", { bypass: true });
+    assertCurrent();
+    await submit(() => {
+      assertCurrent();
+      if (failure) throw failure.error;
+      if (armed || page.url() !== source.href) throw new Error("UCSD_SSO_SCOPE");
+      armed = true;
+    });
+    if (!postedId) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
+    complete = failure === undefined;
+  } catch (error) { failure ??= { error }; }
+  finally {
+    if (session) {
+      let stopPending = armed && !complete;
+      armed = false;
+      if (refused) {
+        try { await refused; stopPending = false; } catch (error) { cleanup.push(error); }
+      }
+      if (stopPending) {
+        try { await session.send("Page.stopLoading"); } catch (error) { cleanup.push(error); }
+      }
+      if (bypassRequested) {
+        try { await session.send("Network.setBypassServiceWorker", { bypass: false }); } catch (error) { cleanup.push(error); }
+      }
+      try { await session.detach(); } catch (error) { cleanup.push(error); }
+    }
+    submittingPages.delete(page);
+  }
+  if (cleanup.length) throw new AggregateError(failure ? [failure.error, ...cleanup] : cleanup, "UCSD_SSO_CLEANUP");
+  if (failure) throw failure.error;
 }
 
 function installDocumentSsoGuard({ installationId, actionKey }: NativeSsoGuardKeys): void {

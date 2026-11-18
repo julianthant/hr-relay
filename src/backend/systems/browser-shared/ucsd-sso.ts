@@ -1,4 +1,4 @@
-import { nativeSsoGuardKeys, type NativeSsoGuardKeys } from "../../runtime/browser/native-browser.js";
+import { nativeSsoGuardKeys, withPinnedSsoPost, type NativeSsoGuardKeys } from "../../runtime/browser/native-browser.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 // Select SSO submit by name: the enrollment navigation also looks like a Login button.
 import type { Frame, JSHandle, Locator, Page } from "playwright";
@@ -247,24 +247,27 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
     await act({ kind: "username", value: credentials.userId });
     onAction?.("typed", "ucsd.sso.username");
     await act({ kind: "check-worker" });
-    await act({ kind: "password", value: credentials.password });
-    onAction?.("typed", "ucsd.sso.password");
-    const stop = new AbortController();
-    const navigation = page.waitForNavigation({ waitUntil: "commit", timeout, signal: stop.signal })
-      .then(response => ({ response }), (error: unknown) => ({ error }));
-    try {
-      const destination = await act({ kind: "submit", keys });
-      const outcome = await navigation;
-      if ("error" in outcome) throw outcome.error;
-      let request = outcome.response?.request();
-      while (request) {
-        const prior = request.redirectedFrom();
-        if (!prior) break;
-        if (request.method() !== "GET") throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
-        request = prior;
-      }
-      if (!request || request.method() !== "POST" || request.url() !== destination) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
-    } finally { stop.abort(); }
+    await withPinnedSsoPost(page, destination, assertCurrent, async allowPost => {
+      await act({ kind: "password", value: credentials.password });
+      onAction?.("typed", "ucsd.sso.password");
+      const stop = new AbortController();
+      const navigation = page.waitForNavigation({ waitUntil: "commit", timeout, signal: stop.signal })
+        .then(response => ({ response }), (error: unknown) => ({ error }));
+      try {
+        allowPost();
+        const postedUrl = await act({ kind: "submit", keys });
+        const outcome = await navigation;
+        if ("error" in outcome) throw outcome.error;
+        let request = outcome.response?.request();
+        while (request) {
+          const prior = request.redirectedFrom();
+          if (!prior) break;
+          if (request.method() !== "GET") throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
+          request = prior;
+        }
+        if (!request || request.method() !== "POST" || request.url() !== postedUrl) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
+      } finally { stop.abort(); }
+    });
     assertCurrent();
     onAction?.("clicked", "ucsd.sso.submit");
   } catch (error) { failure = { error }; }

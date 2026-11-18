@@ -99,7 +99,21 @@ function classify(kind: string, argument: string): FakeElementName | undefined {
   return undefined;
 }
 
+export function createFakeSsoNetwork() {
+  type Paused = { frameId: string; requestId: string; request: { method: string; url: string } };
+  let paused: ((event: Paused) => void) | undefined;
+  return {
+    newCDPSession: async () => ({
+      on(_event: "Fetch.requestPaused", listener: (event: Paused) => void) { paused = listener; },
+      send: async (method: string) => method === "Page.getFrameTree" ? { frameTree: { frame: { id: "main" } } } : {},
+      async detach() { paused = undefined; },
+    }),
+    post(url: string) { paused?.({ frameId: "main", requestId: "fixture", request: { method: "POST", url } }); },
+  };
+}
+
 export function fakeLoginPage(script: FakePageScript): FakePageHarness {
+  const network = createFakeSsoNetwork();
   let current = script.url;
   const actions: string[] = [];
   const filled: string[] = [];
@@ -115,6 +129,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const frameObservers = new Set<(frame: typeof mainFrame) => void>();
   const navigate = (url: string, method = "GET"): void => {
     const source = current;
+    if (method === "POST") network.post(source);
     current = url;
     navigationGeneration += 1;
     for (const listener of navigationListeners) listener(source, method);
@@ -224,6 +239,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   }
 
   const browserContext = {
+    newCDPSession: network.newCDPSession,
     cookies: async (): Promise<readonly FakeCookie[]> => {
       if (script.cookieStoreFailsWith !== undefined) throw new Error(script.cookieStoreFailsWith);
       return [...(script.cookies ?? []), ...(script.cookiesByUrl?.[current] ?? [])];

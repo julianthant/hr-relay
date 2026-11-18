@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempDisposable, readFile } from "node:fs/promises";
+import { createServer as createSecureServer } from "node:https";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServer } from "node:http";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it, vi } from "vitest";
-import { installNativeSsoGuard } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { installNativeSsoGuard, withPinnedSsoPost } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
 import { submitPinnedUcsdSsoCredentials, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 import { BrowserLandingStallError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
@@ -247,6 +252,77 @@ it.each(["GET", "POST"] as const)("verifies the committed redirect receipt after
   } finally {
     try { await context.close(); } finally { await server[Symbol.asyncDispose](); }
   }
+});
+
+it("checks a normally worker-handled SSO navigation and restores the tab after success and refusal", async () => {
+  await using directory = await mkdtempDisposable(join(tmpdir(), "relay-sso-"));
+  const key = join(directory.path, "key.pem"), cert = join(directory.path, "cert.pem");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost",
+    "-keyout", key, "-out", cert], { stdio: "ignore" });
+  let posts = 0, status = 200;
+  await using server = createSecureServer({ key: await readFile(key), cert: await readFile(cert) }, (request, response) => {
+    if (request.url === "/sw.js") {
+      response.setHeader("content-type", "application/javascript");
+      response.end('self.addEventListener("fetch", event => event.respondWith(new Response("worker")));');
+    } else if (request.method === "POST") {
+      posts++;
+      if (status !== 200 && request.url === new URL(SSO).pathname) response.writeHead(status, { location: "/refused" });
+      response.end("network");
+    } else response.end("network");
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  await using ownedBrowser = await chromium.launch({ channel: "chromium", headless: true, args: ["--no-proxy-server",
+    "--ignore-certificate-errors", `--host-resolver-rules=MAP a5.ucsd.edu 127.0.0.1:${address.port}, MAP * ~NOTFOUND`] });
+  const context = await ownedBrowser.newContext();
+  await installNativeSsoGuard(context);
+  const page = await context.newPage();
+  const other = await context.newPage();
+  await page.goto(SSO);
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+  });
+  await other.goto(SSO);
+  for (const scenario of ["mismatched pin", "success", "307", "308"] as const) {
+    status = scenario === "307" ? 307 : scenario === "308" ? 308 : 200;
+    const before = posts;
+    const original = await page.goto(SSO);
+    assert.ok(original?.fromServiceWorker());
+    await page.locator("body").evaluate((body, html) => { body.innerHTML = html; }, form());
+    const destination = scenario === "mismatched pin" ? SSO + "?execution=other" : SSO;
+    const signing = withPinnedSsoPost(page, destination, () => undefined, async allowPost => {
+      assert.ok((await other.reload())?.fromServiceWorker());
+      allowPost();
+      await Promise.all([page.waitForNavigation({ waitUntil: "commit", timeout: 3000 }), page.locator("button").click()]);
+    });
+    if (scenario === "mismatched pin") await assert.rejects(signing, /UCSD_SSO_POST_REFUSED/);
+    else if (status !== 200) await assert.rejects(signing, /UCSD_SSO_POST_REDIRECT_REFUSED/);
+    else {
+      await signing;
+      assert.equal(await page.locator("body").textContent(), "network");
+    }
+    assert.equal(posts - before, scenario === "mismatched pin" ? 0 : 1);
+    assert.ok((await page.goto(SSO))?.fromServiceWorker());
+  }
+});
+
+it("refuses to fill the password if the native submit guard cannot attach", async () => {
+  const context = await guardedContext();
+  try {
+    await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: form() }));
+    const page = await context.newPage();
+    await page.goto(SSO);
+    const unavailable = new Error("fixture network guard unavailable");
+    vi.spyOn(context, "newCDPSession").mockRejectedValue(unavailable);
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "fixture-password" }),
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO"), error => error === unavailable);
+    assert.equal(await page.locator("#ssopassword").inputValue(), "");
+  } finally { await context.close(); }
 });
 
 it("requires the pinned POST to complete before recording submission", async () => {
