@@ -603,7 +603,7 @@ export async function verifyUcsdAuthenticatedApplication(
 ): Promise<AuthenticationProbe> {
   input.assertCurrent();
   const url = page.url();
-  if (!input.urlIsApplication(url)) return { authenticated: false, reason: input.urlRefusal, check: "application-route" };
+  if (!input.urlIsApplication(url)) return { authenticated: false, observedUrl: url, reason: input.urlRefusal, check: "application-route" };
 
   let navigated = false;
   const onNavigation = (frame: Frame): void => {
@@ -614,7 +614,7 @@ export async function verifyUcsdAuthenticatedApplication(
     input.assertCurrent();
     const positive = await input.positive();
     input.assertCurrent();
-    if (!positive.holds) return { authenticated: false, reason: positive.detail, check: "positive-evidence" };
+    if (!positive.holds) return { authenticated: false, observedUrl: url, reason: positive.detail, check: "positive-evidence" };
 
     const absences = [await probeSsoFormAbsent(page, input.assertCurrent)];
     for (const absence of input.additionalAbsences ?? []) {
@@ -622,11 +622,12 @@ export async function verifyUcsdAuthenticatedApplication(
       absences.push(await absence());
     }
     input.assertCurrent();
-    if (navigated || page.url() !== url) {
-      return { authenticated: false, reason: "the application page navigated during verification", check: "application-route" };
+    const observedUrl = page.url();
+    if (navigated || observedUrl !== url) {
+      return { authenticated: false, observedUrl, reason: "the application page navigated during verification", check: "application-route" };
     }
     const present = absences.find((fact) => !fact.holds);
-    if (present !== undefined) return { authenticated: false, reason: present.detail, check: "sign-in-form-absent" };
+    if (present !== undefined) return { authenticated: false, observedUrl: url, reason: present.detail, check: "sign-in-form-absent" };
 
     return {
       authenticated: true,
