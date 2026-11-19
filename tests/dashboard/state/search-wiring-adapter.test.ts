@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
+import { WorkbookLibraryEntrySchema } from "../../../src/models/dashboard/workbook-library.js";
 import { SEARCH_PAUSE_MS, paletteSheets, readSearchSnapshot, searchResults, withQueueSubjects, useLibrarySheets, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
-import { IsoInstantSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { NavbarData } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -47,28 +48,34 @@ it("shows the queue's display label for a raw run state", async () => {
   const snapshot = await readSearchSnapshot({ searchRuns: async () => labelled }, { q: "x" }, new AbortController().signal);
   assert.deepEqual(searchResults(snapshot).map(row => row.state), ["Review", "Write parked", "Done", "Failed", "Queued", "Write parked"]);
 });
+const entry = (libraryId: string, name: string, selected: string, versions: readonly (readonly [string, number, string])[]) => WorkbookLibraryEntrySchema.parse({
+  libraryId, version: Math.max(...versions.map(version => version[1])), name, updatedAt: versions.find(version => version[0] === selected)![2], rowCount: 1,
+  worksheets: [{ id: "people", name: "People" }], metadata: { typeId: "roster-type", sharePoint: null },
+  type: { id: "roster-type", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: libraryId },
+  state: { libraryId, revision: 1, selectedVersionId: selected, removed: false, pinned: false, tags: [], origin: { kind: "local" },
+    versions: versions.map(([id, version, savedAt]) => ({ id, name: id, snapshotId: id, version, savedAt, source: "operator" })) } });
 it("tells a rejected library read apart from an empty library", async () => {
   let reject = true;
-  const client = { workbookList: async () => { if (reject) throw new Error("storage"); return []; } };
+  const client = { workbookCatalog: async () => { if (reject) throw new Error("storage"); return []; } };
   let seen: ReturnType<typeof useLibrarySheets> | undefined;
   function Probe({ tick }: { tick: number }) { seen = useLibrarySheets(client, tick >= 0); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { tick: 0 })));
   assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
-  reject = false; const next = { workbookList: async () => [] };
+  reject = false; const next = { workbookCatalog: async () => [] };
   function Retry() { seen = useLibrarySheets(next, true); return null; }
   await act(async () => root?.render(createElement(Retry)));
   assert.equal(seen?.unavailable, undefined); assert.deepEqual(seen?.sheets, []);
 });
 it("reports a pending library read as loading and keeps loaded rows through a failed re-read", async () => {
   const reads: { finish: (records: never[]) => void; fail: () => void }[] = [];
-  const client = { workbookList: () => new Promise<never[]>((resolve, reject) => { reads.push({ finish: resolve, fail: () => reject(new Error("storage")) }); }) };
+  const client = { workbookCatalog: () => new Promise<never[]>((resolve, reject) => { reads.push({ finish: resolve, fail: () => reject(new Error("storage")) }); }) };
   let seen: ReturnType<typeof useLibrarySheets> | undefined;
   function Probe({ open }: { open: boolean }) { seen = useLibrarySheets(client, open); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { open: true })));
   assert.equal(seen?.sheets.length, 0); assert.equal(seen?.unavailable, undefined);
-  const sheet = { libraryId: "x", version: 1, savedAt: "2026-11-01T12:00:00Z", name: "Roster" } as never;
+  const sheet = entry("x", "Roster", "v1", [["v1", 1, "2026-11-01T12:00:00Z"]]) as never;
   await act(async () => reads[0].finish([sheet]));
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
   await act(async () => root?.render(createElement(Probe, { open: false })));
@@ -153,8 +160,13 @@ it("fills unknown subjects from queue titles and lists library sheets", () => {
   const row = (id: string, subject: string) => ({ id, subject, workflow: "W", day: "2026-08-03", state: "Done" });
   const out = withQueueSubjects([row("a", searchMessage("SEARCH_SUBJECT_UNAVAILABLE")), row("b", searchMessage("SEARCH_SUBJECT_UNAVAILABLE")), row("c", "Kept")], new Map([["a", "EID 1"], ["c", "Other"]]));
   assert.deepEqual(out.map(result => result.subject), ["EID 1", searchMessage("SEARCH_SUBJECT_UNAVAILABLE"), "Kept"]);
-  const sheet = (libraryId: string, name: string, version: number, savedAt: string) => ({ libraryId, version, savedAt: IsoInstantSchema.parse(savedAt), name });
-  assert.deepEqual(paletteSheets([sheet("x", "Old", 1, "2026-11-01T12:00:00Z"), sheet("y", "New", 3, "2026-11-08T12:00:00Z")]).map(item => [item.name, item.detail]), [["New", "v3 · Updated Nov 8"], ["Old", "v1 · Updated Nov 1"]]);
+  assert.deepEqual(paletteSheets([entry("x", "Old", "v1", [["v1", 1, "2026-11-01T12:00:00Z"]]), entry("y", "New", "v3", [["v3", 3, "2026-11-08T12:00:00Z"]])]).map(item => [item.name, item.detail]), [["New", "v3 · Updated Nov 8"], ["Old", "v1 · Updated Nov 1"]]);
+});
+it("shows the version the Spreadsheets page shows after a rollback", () => {
+  const rolledBack = entry("r", "Roster", "v1", [["v1", 1, "2026-11-01T12:00:00Z"], ["v2", 2, "2026-11-05T12:00:00Z"]]);
+  assert.equal(rolledBack.version, 2);
+  assert.deepEqual(paletteSheets([rolledBack]).map(item => item.detail), ["v1 · Updated Nov 1"]);
+  assert.deepEqual(paletteSheets([{ ...rolledBack, state: { ...rolledBack.state, removed: true } }]), []);
 });
 
 it("uses the durable display name before indexed subject text", async () => {

@@ -1,0 +1,6 @@
+.hub-btn { font-size: 15px; font-weight: 650; color: #245d9e; }
+.btn { margin-left: -0.5px; }
+.hub-modal { font-weight: bold; }
+.hub-field { font-size: 18px; background: #fff; }
+.orphan-rule { color: var(--ui-primary); }
+.log-time { font-family: var(--ds-font-mono); }

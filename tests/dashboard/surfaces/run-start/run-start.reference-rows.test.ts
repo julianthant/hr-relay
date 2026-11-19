@@ -42,16 +42,31 @@ async function click(name: string) {
   const button = h.buttons().find(candidate => h.buttonName(candidate) === name); assert.ok(button, `no button ${name}`);
   await act(async () => { button.click(); }); await h.settle();
 }
+async function add(region: string, name: string) {
+  const root = document.body.querySelector(`[role="region"][aria-label="${region}"]`); assert.ok(root, `no section ${region}`);
+  const open = [...root.querySelectorAll("button")].find(candidate => ["Add spreadsheet", "Change spreadsheet"].includes(candidate.textContent?.trim() ?? "")); assert.ok(open, `no Add spreadsheet in ${region}`);
+  await act(async () => { open.click(); });
+  const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a spreadsheet"]'); assert.ok(search);
+  const descriptor: { set?: (this: unknown, value: string) => void } | undefined = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  await act(async () => { descriptor?.set?.call(search, name); search.dispatchEvent(new Event("input", { bubbles: true })); });
+  const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.includes(name)); assert.ok(item, `no spreadsheet ${name}`);
+  await act(async () => { item.click(); }); await h.settle();
+}
 async function start(dialog: Awaited<ReturnType<typeof h.openDialog>>) { await dialog.type(h.TYPED); await dialog.press("Continue"); await dialog.press("Start run"); }
 
-it("lists the library spreadsheets that fit as rows with their worksheet and version, and leaves out one without the key column", async () => {
+it("offers the library spreadsheets that fit in the picker and leaves out one without the key column; a picked row shows its version and update date", async () => {
   await h.openDialog(h.stubClient({ ...served }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
   await h.settle();
   assert.match(text(), /Reference spreadsheets/u);
-  assert.match(text(), /Contact roster/u); assert.match(text(), /First, Second · v6/u);
-  assert.match(text(), /I-9 tracker/u); assert.match(text(), /Sheet1 · v6/u);
-  assert.equal(text().includes("Notes"), false);
   assert.ok(h.buttons().some(button => button.textContent?.trim() === "Add spreadsheet"));
+  await click("Add spreadsheet");
+  const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(node => node.textContent ?? "");
+  assert.match(items().join(" "), /Contact roster.*First, Second/u);
+  assert.equal(text().includes("Notes"), false);
+  await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  await add("Reference spreadsheets", "I-9 tracker");
+  assert.match(text(), /I-9 tracker/u); assert.match(text(), /v6 · Updated /u);
+  assert.equal(text().includes("Sheet1 · v6"), false, "the worksheet list lives in the picker, not the row");
 });
 
 it("picks and removes a row in place; the optional check starts with no pick and sends each pick with its declaration", async () => {
@@ -60,11 +75,10 @@ it("picks and removes a row in place; the optional check starts with no pick and
     { workflows: [lookup], panelWorkflowId: lookup.workflowId });
   await h.settle();
   await dialog.type(h.TYPED); assert.equal(dialog.disabled("Continue"), false, "no pick is valid");
-  await click("Use Contact roster"); await click("Use I-9 tracker");
+  await add("Reference spreadsheets", "Contact roster"); await add("Reference spreadsheets", "I-9 tracker");
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Remove Contact roster"));
-  assert.equal(h.buttons().some(button => h.buttonName(button) === "Use Contact roster"), false);
   await click("Remove I-9 tracker");
-  assert.ok(h.buttons().some(button => h.buttonName(button) === "Use I-9 tracker"));
+  assert.equal(h.buttons().some(button => h.buttonName(button) === "Remove I-9 tracker"), false);
   await dialog.press("Continue"); await dialog.press("Start run");
   assert.deepEqual(planned?.workbookReferences, [{ typeId: "reference-check", entry: 1, libraryId: "roster", versionId: "v", sheetId: "First", expectedVersion: 2 }]);
 });
@@ -73,7 +87,7 @@ it("offers the version select on a picked row and sends the named version's work
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...served, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
     { workflows: [lookup], panelWorkflowId: lookup.workflowId });
-  await h.settle(); await click("Use Contact roster");
+  await h.settle(); await add("Reference spreadsheets", "Contact roster");
   const trigger = h.buttons().find(button => h.buttonName(button) === "Contact roster version"); assert.ok(trigger);
   await act(async () => { trigger.click(); });
   const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes("v5")); assert.ok(option);
@@ -87,7 +101,7 @@ it("picks several worksheets of one spreadsheet as separate references", async (
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...served, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
     { workflows: [lookup], panelWorkflowId: lookup.workflowId });
-  await h.settle(); await click("Use Contact roster");
+  await h.settle(); await add("Reference spreadsheets", "Contact roster");
   await click("Contact roster worksheets, First");
   const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(node => node.textContent?.includes("Second")); assert.ok(item);
   await act(async () => { item.click(); }); await h.settle();
@@ -126,7 +140,7 @@ it("sends no reference when nothing is picked", async () => {
 it("shows only Add spreadsheet when the library holds no spreadsheet that fits", async () => {
   await h.openDialog(h.stubClient({ ...reads([plain], [source("plain", { Notes: ["fullName"] })]) }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
   await h.settle();
-  assert.equal(h.buttons().some(button => h.buttonName(button).startsWith("Use ")), false);
+  assert.equal(h.buttons().some(button => h.buttonName(button).startsWith("Remove ")), false);
   assert.ok(h.buttons().some(button => button.textContent?.trim() === "Add spreadsheet"));
 });
 
@@ -136,18 +150,19 @@ it("opens Onboarding with its required reference unpicked, the check rows beside
   await h.settle();
   assert.equal(text().includes("Selected rows need attention"), false);
   assert.equal(text().includes("Fix the refused entry first."), false);
-  assert.match(text(), /I-9 tracker/u);
+  assert.match(text(), /Also check/u);
   assert.equal(dialog.disabled("Continue"), true, "the required reference keeps Continue off until picked");
 });
 
-it("keeps the required roster and the optional check picks in separate lists, so Use never reads as the roster", async () => {
+it("keeps the required roster and the optional check picks in separate lists, so each has its own Add spreadsheet button", async () => {
   await h.openDialog(h.stubClient({ ...reads([roster, tracker], [source("roster", { First: ["eid", "email"] }), source("tracker", { Sheet1: ["eid"] })], [onboarding]) }),
     { workflows: [onboardingFlow], panelWorkflowId: onboarding.id });
   await h.settle();
   const lists = [...document.querySelectorAll<HTMLElement>('[role="region"]')];
   const required = lists.find(list => list.textContent?.includes("Reference spreadsheets")), check = lists.find(list => list.textContent?.includes("Also check"));
   assert.ok(required && check && required !== check, "two separate lists");
-  assert.equal(required.textContent?.includes("I-9 tracker"), false, "check rows are not in the required list");
-  assert.ok(check.textContent?.includes("I-9 tracker") && check.textContent?.includes("Optional"));
-  assert.ok(h.buttons().some(button => h.buttonName(button) === "Add spreadsheet"), "the roster is added with Add spreadsheet");
+  assert.equal(required.textContent?.includes("Optional"), false, "the required list is not optional");
+  assert.ok(check.textContent?.includes("Optional"));
+  const adders = (list: HTMLElement) => [...list.querySelectorAll("button")].filter(button => button.textContent?.trim() === "Add spreadsheet");
+  assert.equal(adders(required).length, 1); assert.equal(adders(check).length, 1);
 });

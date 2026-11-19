@@ -183,8 +183,15 @@ const controlShell = cn(
   "disabled:cursor-not-allowed disabled:opacity-50",
 );
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  function Input({ className, ...props }, ref) {
+export type DsInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & {
+  /** `md` 28px (default) or `lg` 32px for a dialog or sign-in form. */
+  size?: "md" | "lg";
+};
+
+const INPUT_HEIGHT = { md: "h-[var(--ds-h-md)]", lg: "h-[var(--ds-h-lg)]" } as const;
+
+export const Input = forwardRef<HTMLInputElement, DsInputProps>(
+  function Input({ className, size = "md", ...props }, ref) {
     const field = useFieldControl();
     return (
       <HeroInput
@@ -194,7 +201,8 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
         variant="secondary"
         className={cn(
           controlShell,
-          "ds-control-input h-[var(--ds-h-md)] px-[var(--ds-space-base)]",
+          "ds-control-input px-[var(--ds-space-base)]",
+          INPUT_HEIGHT[size],
           dsText.ui,
           className,
         )}
@@ -207,15 +215,12 @@ export function PathControl({ value, label, onChange, disabled = false, busy = f
   value: string; label: string; onChange: () => void; disabled?: boolean; busy?: boolean;
 }) {
   const field = useFieldControl();
-  const separator = value.lastIndexOf("/");
-  const prefix = separator < 0 ? "" : value.slice(0, separator + 1);
-  const basename = separator < 0 ? value : value.slice(separator + 1);
+  const basename = value.replace(/[\\/]+$/u, "").split(/[\\/]/u).pop() || value;
   return <div className="ds-path-control">
     <TooltipProvider delayDuration={250}>
       <Tooltip content={<span className="break-all whitespace-normal">{value}</span>}>
         <span className={cn("ds-path-value", dsFocus)} tabIndex={0} aria-label={value}>
           <span className="sr-only">{value}</span>
-          <span aria-hidden="true" className="ds-path-prefix">{prefix}</span>
           <span aria-hidden="true" className="ds-path-basename">{basename}</span>
         </span>
       </Tooltip>
@@ -226,7 +231,7 @@ export function PathControl({ value, label, onChange, disabled = false, busy = f
   </div>;
 }
 
-export type UnitFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "aria-describedby"> & {
+export type UnitFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "aria-describedby" | "size"> & {
   unit: string;
   "aria-describedby"?: string;
   /** Body-scope width. Use `stretch` for a unit control inside a paired wide field. */
@@ -255,7 +260,9 @@ export const UnitField = forwardRef<HTMLInputElement, UnitFieldProps>(function U
   );
 });
 
-export type SecretFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+export type SecretFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "size"> & {
+  /** `md` 28px (default) or `lg` 32px, the same as `Input`. */
+  size?: "md" | "lg";
   /** Accessible name when the control is used without a surrounding Field. */
   label: string;
   /** Stable credential identity. Changing it immediately hides a revealed value. */
@@ -267,7 +274,7 @@ export type SecretFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type
 
 /** A masked value with an in-control reveal action and a separate remove action. */
 export const SecretField = forwardRef<HTMLInputElement, SecretFieldProps>(function SecretField(
-  { label, identity: explicitIdentity, onRemove, removeLabel, onChange, className, "aria-describedby": describedBy, ...props },
+  { label, identity: explicitIdentity, onRemove, removeLabel, onChange, size = "md", className, "aria-describedby": describedBy, ...props },
   ref,
 ) {
   const field = useFieldControl();
@@ -289,7 +296,7 @@ export const SecretField = forwardRef<HTMLInputElement, SecretFieldProps>(functi
   const mergedDescription = [field["aria-describedby"], describedBy].filter(Boolean).join(" ") || undefined;
   return (
     <div className={cn("ds-secret-field", className)}>
-      <div className="ds-secret-input flex h-[var(--ds-h-md)] min-w-0 flex-1 items-center">
+      <div className={cn("ds-secret-input flex min-w-0 flex-1 items-center", INPUT_HEIGHT[size])}>
         <Input
           ref={ref}
           {...props}
@@ -531,14 +538,16 @@ export function Switch({
   );
 }
 
-/** The one search field: a pill with its icon, an optional shortcut hint and a clear × while it has text. `menu` is the 28px size for a field inside a dropdown menu; `sidebar` is the borderless 36px field above a sidebar's rows. */
+/** The one search field, with its icon, an optional shortcut hint and a clear × while it has text.
+ * `sidebar`: the filled 36px pill above a list of rows (Settings sidebar, workflow picker).
+ * `field`: the 28px bordered 8px field inside a page, toolbar or menu; `menu` is the same field and stays only until the surfaces that pass it drop it. */
 export const SearchInput = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' | 'menu' | 'sidebar' }
+  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'sidebar' | 'menu' }
 >(function SearchInput({ className, onClear, shortcut, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
-    <HeroSearchField className={cn("ds-search-field", variant === 'menu' && 'ds-search-field--menu', variant === 'sidebar' && 'ds-search-field--sidebar', className)} aria-label={props["aria-label"]}
+    <HeroSearchField className={cn("ds-search-field", variant === 'sidebar' && 'ds-search-field--sidebar', className)} aria-label={props["aria-label"]}
       value={value === undefined ? undefined : String(value)} defaultValue={defaultValue === undefined ? undefined : String(defaultValue)}
       isDisabled={disabled ?? field.disabled} isReadOnly={readOnly} isInvalid={field["aria-invalid"] || props["aria-invalid"] === true} onClear={onClear}>
       <HeroSearchField.Group>

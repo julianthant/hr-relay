@@ -45,6 +45,8 @@ export {
   Separator,
   VisuallyHidden,
 } from "./primitives/primitives-core.js";
+export { NavRow } from "./primitives/nav-row.js";
+export type { DsNavRowProps } from "./primitives/nav-row.js";
 export type {
   DsButtonProps,
   DsButtonLinkProps,

@@ -29,10 +29,7 @@ export type SettingsNavIcon =
   | "routes"
   | "capabilities"
   | "keyboard"
-  | "unrendered"
-  | "spreadsheets"
-  | "explorer"
-  | "activity";
+  | "unrendered";
 
 
 /** The glyph for each SERVED section this build renders, keyed by the id the
@@ -91,7 +88,7 @@ export interface SettingsNavEntry {
 
 
 export interface SettingsNavGroup {
-  readonly id: "personal" | "advanced" | "data" | "status" | "help";
+  readonly id: "personal" | "advanced" | "help";
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
@@ -103,7 +100,6 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
 
 /** Route token kept only for compatibility notices */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
-export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
 
 
 /** The gear's stable DOM id, and the app shell's main region behind the
@@ -134,11 +130,6 @@ export function buildSettingsNav(
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
     .map(section => servedEntry(section.id, section.label)) ?? [];
   if (advanced.length > 0) groups.push({ id: "advanced", heading: "Advanced", entries: advanced });
-  groups.push({ id: "data", heading: "Data", entries: [
-    clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
-    clientEntry("explorer", "Explorer", "explorer"),
-    clientEntry("activity", "Analytics", "activity"),
-  ] });
   groups.push({
     id: "help",
     heading: "Help",

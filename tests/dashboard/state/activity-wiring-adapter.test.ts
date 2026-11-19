@@ -11,7 +11,6 @@ import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { projectActivityPopulation, projectActivityBrowse, useActivityWiring, type ActivityClient } from "../../../src/dashboard/state/activity-wiring-adapter.js";
 import { ActivityView } from "../../../src/dashboard/surfaces/activity/activity-view.js";
-import { workflowDurationChart } from "../../../src/dashboard/surfaces/activity/activity-duration-model.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import { createActivityReportFixtures } from "../../support/helpers/dashboard/activity-report-fixtures.js";
@@ -66,7 +65,6 @@ it("preserves full populations, successful root timing, all-terminal duration, n
   assert.deepEqual(projected.transactions.map(row => [row.environment, row.count]), [["production", 2], ["test", 1]]);
   const child = projectActivityPopulation(selection([{ status: "done", durationMs: 1000, parentRunId: RunIdSchema.parse("11111111-1111-4111-8111-111111111111") }]));
   assert.equal(child.workflows[0]?.completed, 1); assert.equal(child.durationWorkflows?.[0]?.completed, 0);
-  assert.equal(workflowDurationChart(child.durationWorkflows).rows[0]?.averageSeconds, null);
   const missing = projectActivityPopulation(selection([{ status: "done", durationMs: null }]));
   assert.equal(missing.duration.totalSeconds, null); assert.deepEqual(missing.workflows[0]?.successfulTiming, { totalSeconds: null, measured: 0, unmeasured: 1 });
   const empty = projectActivityPopulation(selection([]));
@@ -135,14 +133,14 @@ it("retains search focus and stale rows while superseding browse requests, guard
     const change = async (value: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
     await change("Person 1");
     assert.equal(document.activeElement, input); assert.equal(host.querySelector('input[aria-label="Search runs"]'), input);
-    assert.match(host.textContent ?? "", /Refreshing Analytics selection/); assert.equal(host.querySelectorAll('button[aria-label^="Open logs for"]:disabled').length, 2);
+    assert.match(host.textContent ?? "", /Refreshing Analytics selection/); assert.equal(host.querySelectorAll('a[aria-label^="Open logs for"][aria-disabled="true"]').length, 2);
     await assert.rejects(state!.exportCsv(), (error: unknown) => error instanceof DashboardClientError && error.code === "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
     await change("Person 2");
     assert.equal(pending.length, 2);
     await act(async () => pending[1].resolve({ selection: selected, browse: browseResult(selected, pending[1].browse) }));
-    assert.equal(document.activeElement, input); assert.equal(host.querySelectorAll('button[aria-label^="Open logs for"]').length, 1); assert.match(host.textContent ?? "", /Person 2/);
+    assert.equal(document.activeElement, input); assert.equal(host.querySelectorAll('a[aria-label^="Open logs for"]').length, 1); assert.match(host.textContent ?? "", /Person 2/);
     await act(async () => pending[0].resolve({ selection: selected, browse: browseResult(selected, pending[0].browse) }));
-    assert.equal(host.querySelectorAll('button[aria-label^="Open logs for"]').length, 1); assert.match(host.textContent ?? "", /Person 2/);
+    assert.equal(host.querySelectorAll('a[aria-label^="Open logs for"]').length, 1); assert.match(host.textContent ?? "", /Person 2/);
     await state!.exportCsv(); assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls[0]?.[0], selected);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
@@ -188,9 +186,9 @@ it("uses the served calendar for the product producer and never substitutes work
     assert.match(host.textContent ?? "", /1 finished runs/);
     const details = host.querySelector<HTMLButtonElement>('button[aria-label^="Show "]'); assert.ok(details);
     await act(async () => details.click());
-    const openRuns = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Open runs"); assert.ok(openRuns);
+    const openRuns = [...host.querySelectorAll<HTMLAnchorElement>("a")].find(link => link.textContent?.trim() === "Open runs"); assert.ok(openRuns);
     await act(async () => openRuns.click());
-    const run = host.querySelector<HTMLButtonElement>('button[aria-label^="Open logs for"]'); assert.ok(run);
+    const run = host.querySelector<HTMLAnchorElement>('a[aria-label^="Open logs for"]'); assert.ok(run);
     await act(async () => run.click());
     assert.match(host.textContent ?? "", /Logs unavailable/);
     assert.equal(host.querySelector('section[aria-label="Selected run logs"]'), null);
@@ -283,7 +281,7 @@ it("keeps the exact report rendered while the first browse is held and gates exp
     assert.equal(vi.mocked(client.readActivityPopulation).mock.calls.length, 1);
     assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(selected) });
     assert.ok(host.querySelector('section[aria-label="Analytics runs"]'));
-    assert.equal(host.querySelector('button[aria-label^="Open logs for"]'), null);
+    assert.equal(host.querySelector('a[aria-label^="Open logs for"]'), null);
     assert.equal(state!.pending, true); assert.equal(state!.browse, undefined); assert.equal(state!.exportReady, false);
     await assert.rejects(state!.exportCsv());
     await act(async () => held.resolve({ selection: selected, browse: browseResult(selected, { metric: "completed", page: 0 }) }));
@@ -367,7 +365,7 @@ it("retains a coherent completed report and browse across population refresh, fa
     assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
     assert.equal(state!.notice, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
     assert.equal(state!.pending, false); assert.equal(state!.exportReady, false);
-    assert.ok(host.querySelector('button[aria-label^="Open logs for"]:disabled'));
+    assert.ok(host.querySelector('a[aria-label^="Open logs for"][aria-disabled="true"]'));
     await act(async () => root.render(render(false)));
     await act(async () => root.render(render(true)));
     assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(b) });

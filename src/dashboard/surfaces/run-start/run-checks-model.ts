@@ -7,7 +7,7 @@ import type { SettingsQueries } from "../../client/queries/settings-queries.js";
 import { useDashboardCommandBinding } from "../../state/client-context.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { CHECK_COPY } from "../settings/preflight/preflight-check-copy.js";
-import { runCheckFix, runCheckHint } from "../settings/preflight/preflight-remedy-model.js";
+import { runCheckFix } from "../settings/preflight/preflight-remedy-model.js";
 
 export type RunCheckVerdict = "pass" | "warning" | "fail";
 export interface RunCheckRow {
@@ -33,8 +33,7 @@ export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
     const copy = CHECK_COPY[result.check];
     if (copy === undefined) throw new Error(`Run check "${result.check}" has no readiness copy`);
     const fix = result.status === "fail" ? runCheckFix(result.check) : null;
-    const description = result.status === "pass" ? copy.description
-      : result.status === "fail" && fix === null ? `${runCheckHint(result.check)} ${result.summary}` : result.summary;
+    const description = result.status === "fail" && fix === null ? copy.description : result.summary;
     return { check: result.check, title: copy.name, description,
       verdict: result.status, ...(fix === null ? {} : { fix }) };
   });

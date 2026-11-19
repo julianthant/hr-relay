@@ -7,7 +7,7 @@ import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-st
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 const workflow: RunStartWorkflow = {
-  workflowId: "rerun-proof", version: 1, label: "Rerun proof", categoryId: "operations", role: { kind: "standalone" },
+  workflowId: "rerun-proof", version: 1, label: "Rerun proof", categoryId: "operations", role: { kind: "standalone" }, icon: "Search",
   enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [], referenceSources: [],
   inputRun: { state: "present", surface: { placeholder: "Employee ID", parser: {
     split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }],

@@ -19,7 +19,7 @@ export function LinkedRunsButton({ entries, onOpen }: { entries: readonly Linked
     rows[(at + step + rows.length) % rows.length]?.focus();
   };
   return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild><IconButton size="md" variant="outline" label={`Linked runs (${entries.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
+    <PopoverTrigger asChild><IconButton size="md" label={`Linked runs (${entries.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
     <PopoverContent title="Linked runs" align="end" width="md" hideClose>
       <ul ref={list} onKeyDown={move} className="m-0 list-none space-y-1 p-0">{entries.map(entry => <li key={entry.target.runId}>
         <button type="button" onClick={() => { setOpen(false); onOpen?.(entry.target); }} className={cn("flex min-h-10 w-full items-center gap-3 rounded-md px-2 py-2 text-left text-body hover:bg-ui-hover", dsFocus)}>

@@ -1,6 +1,6 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { ChevronDown, Download, Loader2, LogOut, MoreHorizontal, Search, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
-import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
+import { ChevronDown, Download, Loader2, LogOut, MoreHorizontal, Search, UserPlus, Users, type LucideIcon } from 'lucide-react';
+import { Button, Chip, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus, dsIcon, dsText } from '../../../ds/ui.js';
 import { type Sheet, addTag, stamp, syncFailureWhy, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
 import { MENU } from './sheets-v2-menu.js';
 
@@ -14,16 +14,16 @@ export const V2Icon = forwardRef<HTMLButtonElement, { label: string; children: R
   return <IconButton ref={ref} label={label} icon={children} {...props} />;
 });
 export const Picker = forwardRef<HTMLButtonElement, Omit<ComponentProps<typeof Button>, 'variant' | 'iconAfter'> & { children: ReactNode }>(function Picker({ children, className = '', ...props }, ref) {
-  return <Button ref={ref} variant="outline" className={`ds-menu-trigger min-w-0 justify-between ${className}`} iconAfter={<ChevronDown size={14} aria-hidden className="shrink-0 text-ui-muted" />} {...props}><span className="min-w-0 truncate">{children}</span></Button>;
+  return <Button ref={ref} variant="outline" className={`ds-menu-trigger min-w-0 justify-between ${className}`} iconAfter={<ChevronDown aria-hidden className={`${dsIcon.md} shrink-0 text-ui-muted`} />} {...props}><span className="min-w-0 truncate">{children}</span></Button>;
 });
 
-export const Grey = ({ children, className = '' }: { children: ReactNode; className?: string }) => <span className={`text-[12px] text-ui-muted ${className}`}>{children}</span>;
+export const Grey = ({ children, className = '' }: { children: ReactNode; className?: string }) => <span className={`${dsText.body} text-ui-muted ${className}`}>{children}</span>;
 // The workflow chip carries the workflow's sidebar icon (category icons where the rail has one, the workflow's own icon otherwise).
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
-export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon size={14} aria-hidden className="shrink-0" /> : null; };
+export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon aria-hidden className={`${dsIcon.md} shrink-0`} /> : null; };
 export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;
-  return <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{Icon && <Icon size={11} aria-hidden />}{children}{onRemove && <button type="button" aria-label={`Remove tag ${children}`} className={`rounded-sm ${dsFocus}`} onClick={onRemove}><X size={11} aria-hidden /></button>}</span>;
+  return <Chip icon={Icon && <Icon aria-hidden className={dsIcon.sm} />} onRemove={onRemove} removeLabel="Remove tag">{children}</Chip>;
 };
 /** Chips for a spreadsheet: the automatic workflow chip first, then its own tags. */
 export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{tagsOf(sheet).map(tag => <Tag key={tag} workflow={tag === sheet.workflow}>{tag}</Tag>)}</>;
@@ -48,7 +48,7 @@ export function TagsFit({ sheet }: { sheet: Sheet }) {
   return <div ref={box} className="relative flex h-5 min-w-0 flex-1 items-center gap-1 overflow-hidden">
     <div ref={probe} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 flex gap-1 whitespace-nowrap"><SheetChips sheet={sheet} /><Tag>{`+${tags.length}`}</Tag></div>
     {tags.slice(0, count).map(tag => <Tag key={tag} workflow={tag === sheet.workflow}>{tag}</Tag>)}
-    {hidden > 0 && <Tooltip content={<span className="grid gap-0.5">{tags.map(tag => <span key={tag}>{tag}</span>)}</span>}><button type="button" aria-label={`${hidden} more tags: ${tags.join(', ')}`} className={`inline-flex h-5 shrink-0 items-center rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary ${dsFocus}`}>+{hidden}</button></Tooltip>}
+    {hidden > 0 && <Tooltip content={<span className="grid gap-0.5">{tags.map(tag => <span key={tag}>{tag}</span>)}</span>}><span tabIndex={0} role="img" aria-label={`${hidden} more tags: ${tags.join(', ')}`} className={`shrink-0 rounded-[var(--ds-radius-sm)] ${dsFocus}`}><Chip>{`+${hidden}`}</Chip></span></Tooltip>}
   </div>;
 }
 
@@ -59,7 +59,7 @@ export function TagEditor({ tags, onChange }: { tags: readonly string[]; onChang
   return <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border border-ui-stroke px-2 py-1">
     {tags.map(tag => <Tag key={tag} onRemove={() => onChange(tags.filter(item => item !== tag))}>{tag}</Tag>)}
     <input aria-label="Add a tag" maxLength={MAX_TAG_LENGTH} placeholder={tags.length ? '' : 'Add a tag'} value={draft} onChange={event => setDraft(event.target.value)} onBlur={add}
-      onKeyDown={event => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); } }} className="h-5 min-w-16 flex-1 bg-transparent text-[13px] outline-none placeholder:text-ui-muted" />
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); } }} className="h-5 min-w-16 flex-1 bg-transparent ds-text-ui outline-none placeholder:text-ui-muted" />
   </div>;
 }
 
@@ -67,7 +67,7 @@ export function TagEditor({ tags, onChange }: { tags: readonly string[]; onChang
 export function SyncStatus({ sheet }: { sheet: Sheet }) {
   const sync = sheet.sync;
   if (!sync) return null;
-  if (sync.state === 'running') return <span data-sync="running" className="inline-flex items-center gap-1 text-ui-info"><Loader2 size={11} aria-hidden className="shrink-0 animate-spin motion-reduce:animate-none" /><span className="truncate">Syncing…</span></span>;
+  if (sync.state === 'running') return <span data-sync="running" className="inline-flex items-center gap-1 text-ui-info"><Loader2 aria-hidden className={`${dsIcon.sm} shrink-0 animate-spin motion-reduce:animate-none`} /><span className="truncate">Syncing…</span></span>;
   const failed = sync.lastResult === 'failed', never = sync.lastFinishedAt === undefined;
   const text = never ? 'Not synced yet' : failed ? 'Sync failed' : `Synced ${stamp(sync.lastFinishedAt!)}`;
   const line = <span data-sync={never ? 'never' : failed ? 'failed' : 'ok'} title={failed || never ? undefined : `Synced ${stamp(sync.lastFinishedAt!)}`} tabIndex={failed ? 0 : undefined} className={`inline-flex min-w-0 items-center gap-1.5 ${failed ? `text-ui-danger ${dsFocus}` : ''}`}>
@@ -79,7 +79,7 @@ export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'rename' | 'tags' |
 /** Same menu on every row and on the detail page. */
 export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
   const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
-  return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
+  return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal aria-hidden className={dsIcon.lg} /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
     {withDownload && item('download', 'Download')}
     {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
     {sheet.sharePoint && (sheet.sync?.state === 'running' ? <DropdownMenuItem disabled>Syncing…</DropdownMenuItem> : item('sync', sheet.sync?.lastResult === 'failed' ? 'Retry sync' : 'Sync now'))}
@@ -91,4 +91,4 @@ export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: She
     <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
   </DropdownMenuContent></DropdownMenu>;
 }
-export const DownloadIcon = ({ name, onClick }: { name: string; onClick: () => void }) => <V2Icon label={`Download ${name}`} onClick={onClick}><Download size={16} aria-hidden /></V2Icon>;
+export const DownloadIcon = ({ name, onClick }: { name: string; onClick: () => void }) => <V2Icon label={`Download ${name}`} onClick={onClick}><Download aria-hidden className={dsIcon.lg} /></V2Icon>;

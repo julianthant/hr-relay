@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { EmptyState, FailureNotice, Skeleton } from "../../ds/ui.js";
 import type { AssistantActivityWire } from "../../../models/dashboard/assistant.js";
 import { cn } from "../../lib/utils.js";
+import { formatTime } from "../../lib/date-format.js";
 interface Row { readonly primary: string; readonly secondary?: string; readonly value?: string }
 
 export function AssistantReply({ children }: { children: React.ReactNode }) {
@@ -49,8 +50,6 @@ function ActivitySkeleton() {
       <span className="flex min-w-0 flex-1 flex-col"><Skeleton className="my-1 h-4 w-2/3" /></span><Skeleton className="my-1 h-4 w-10 shrink-0" /></div>)}</div>;
 }
 
-const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
-
 /** The served Activity list: read once when it opens, filtered in place by the search; a failed read shows one notice with Retry. */
 export function AssistantServedActivity({ query, read }: { query: string; read: (signal: AbortSignal) => Promise<AssistantActivityWire> }) {
   const [rows, setRows] = useState<readonly Row[] | "failed">();
@@ -58,7 +57,7 @@ export function AssistantServedActivity({ query, read }: { query: string; read: 
   useEffect(() => {
     const abort = new AbortController();
     setRows(undefined);
-    read(abort.signal).then(view => setRows(view.rows.map(row => ({ primary: row.label, value: clock.format(new Date(row.at)) }))), () => {
+    read(abort.signal).then(view => setRows(view.rows.map(row => ({ primary: row.label, value: formatTime(row.at) }))), () => {
       if (!abort.signal.aborted) setRows("failed");
     });
     return () => abort.abort();

@@ -172,7 +172,7 @@ describe("Settings > Account Relay login rows", () => {
   it("explains an unreadable username row", async () => {
     await mount(login({ username: undefined }));
     assert.match(rowText(), /Not set/u);
-    assert.match(rowText(), /UCPath sign-in below/u);
-    assert.match(rowText(), /cannot run without a UCPath username and password/u);
+    assert.match(rowText(), /UCPath sign-in/u);
+    assert.match(rowText(), /workflows need it/u);
   });
 });

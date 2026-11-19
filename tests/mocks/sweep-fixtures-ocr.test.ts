@@ -34,9 +34,7 @@ for (const width of [1280, 1024]) for (const mode of ["review", "member-retry"] 
   });
 }
 
-// Known product bug owned by dashboard-fixes-01: the parent run's review resolves to the child's run id, so Records opens "Review unavailable".
 for (const width of [1280, 1024]) test(`served OCR parent Records opens the review at ${width}`, async ({ page }) => {
-  test.fail();
   const server = await startOcrSweepServer("review");
   try {
     await page.setViewportSize({ width, height: 720 });
