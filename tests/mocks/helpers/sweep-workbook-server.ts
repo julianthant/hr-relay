@@ -26,10 +26,10 @@ export async function startWorkbookSweepServer(profile?: FixtureDashboardProfile
     const filled = library.create({ name: "Status board.xlsx", themes: [], hasFormulas: false,
       sheets: [{ id: "board", name: "Board", width: 3, hidden: [], headerRow: 1,
         columnBindings: ["Project", "Status", "Owner"].map((sourceHeader, sourceColumn) => ({ id: `column-${sourceColumn}`, sourceColumn, sourceHeader, fieldId: null, basis: "manual" })), rows: [
-        { id: "header", cells: ["Project", "Status", "Owner"].map(value => ({ value, fill: solid("FFD9E1F2") })) },
-        { id: "done", cells: [{ value: "Fixture intake" }, { value: "Done", fill: solid("FFC6EFCE") }, { value: "Example, Avery" }] },
-        { id: "waiting", cells: [{ value: "Fixture review" }, { value: "Waiting", fill: solid("FFFFEB9C") }, { value: "Example, Blake" }] },
-        { id: "failed", cells: [{ value: "Fixture sync" }, { value: "Failed", fill: solid("FFFFC7CE") }, { value: "Example, Casey" }] },
+        { id: "header", cells: ["Project", "Status", "Owner"].map(value => ({ value, fill: solid("FFD9E1F2"), background: "#D9E1F2" })) },
+        { id: "done", cells: [{ value: "Fixture intake" }, { value: "Done", fill: solid("FFC6EFCE"), background: "#C6EFCE" }, { value: "Example, Avery" }] },
+        { id: "waiting", cells: [{ value: "Fixture review" }, { value: "Waiting", fill: solid("FFFFEB9C"), background: "#FFEB9C" }, { value: "Example, Blake" }] },
+        { id: "failed", cells: [{ value: "Fixture sync" }, { value: "Failed", fill: solid("FFFFC7CE"), background: "#FFC7CE" }, { value: "Example, Casey" }] },
       ] }] });
     const roster = library.create({ name: "Fixture roster.xlsx", themes: [], hasFormulas: false,
       sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,

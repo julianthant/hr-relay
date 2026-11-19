@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Checkbox, SearchInput, Popover, PopoverContent, PopoverTrigger, Tooltip, useToasts } from '../../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
 import { samplesOf, type Cell, type Dataset, type Field, type Mapping } from './sheets-v2-model.js';
@@ -44,7 +44,7 @@ function WorksheetPicker({ control }: { control: WorksheetControl }) {
 
 const Highlight = ({ text, query }: { text: string; query: string }) => {
   const at = query ? text.toLowerCase().indexOf(query) : -1;
-  return at < 0 ? <>{text}</> : <>{text.slice(0, at)}<mark className="rounded-sm bg-[color-mix(in_srgb,var(--warning)_45%,transparent)] text-inherit">{text.slice(at, at + query.length)}</mark>{text.slice(at + query.length)}</>;
+  return at < 0 ? <>{text}</> : <>{text.slice(0, at)}<mark className="rounded-sm bg-[color-mix(in_srgb,var(--ds-fg)_22%,transparent)] text-inherit">{text.slice(at, at + query.length)}</mark>{text.slice(at + query.length)}</>;
 };
 
 /** The sheet read through its own mapping; `worksheets` adds the dropdown that switches the view. */
@@ -102,11 +102,11 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, colum
       </Popover>
     </div>
     <div className={`${maxHeight} overflow-auto sv2-card border border-ui-stroke`}>
-      <table className="sv2-grid w-full select-none border-collapse text-[12px]">
-        <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => <th key={header} className="whitespace-nowrap px-2.5 py-1.5 text-left text-[11px] font-medium text-ui-muted">{header}</th>)}</tr></thead>
-        <tbody>{view.length === 0 && <tr><td /><td colSpan={Math.max(shown.length, 1)} className="px-2.5 py-2 text-ui-muted">No rows match.</td></tr>}{view.map(({ row, i }, r) => <tr key={i} className="border-t border-ui-stroke"><td className="px-2 py-1 text-right text-[11px] tabular-nums text-ui-muted">{i + 1}</td>
+      <table className="sv2-grid w-full select-none border-collapse ds-text-body">
+        <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => <th key={header} className="whitespace-nowrap px-2.5 py-1.5 text-left ds-text-meta font-medium text-ui-muted">{header}</th>)}</tr></thead>
+        <tbody>{view.length === 0 && <tr><td /><td colSpan={Math.max(shown.length, 1)} className="px-2.5 py-2 text-ui-muted">No rows match.</td></tr>}{view.map(({ row, i }, r) => <tr key={i} className="border-t border-ui-stroke"><td className="px-2 py-1 text-right ds-text-meta tabular-nums text-ui-muted">{i + 1}</td>
           {shown.map(({ index }, c) => { const cell = row[index], on = inside(r, c); return <td key={c} onMouseDown={event => { setDragging(true); setSelection(event.shiftKey && selection ? { ...selection, r1: r, c1: c } : { r0: r, c0: c, r1: r, c1: c }); }} onMouseEnter={() => { if (dragging) setSelection(current => current && { ...current, r1: r, c1: c }); }}
-            style={on ? { boxShadow: edge(r, c) } : { background: cell.fill, color: cell.fill ? 'rgb(31 41 55)' : undefined }} data-selected={on || undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
+            style={on ? { boxShadow: edge(r, c) } : cell.fill ? { '--sv2-fill': cell.fill } as CSSProperties : undefined} data-selected={on || undefined} data-fill={cell.fill && !on ? '' : undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
       </table>
     </div>
   </section>;

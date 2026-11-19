@@ -1,5 +1,4 @@
 .hub-sheets-library { color:var(--ui-primary); font-family:var(--font-sans); font-size:13px; }
-.hub-sheets-library h1 { font-size:var(--ds-text-body-page); line-height:var(--ds-lh-body-page); font-weight:400; letter-spacing:-.02em; margin:0 0 4px; }
 
 .hub-sheets-library :is(button,a,select):focus-visible { background:var(--hub-focus-fill)!important; color:var(--hub-focus-ink)!important; outline:none!important; box-shadow:none!important; }
 html[data-motion=off] .hub-sheets-library * { transition:none!important; animation:none!important; transform:none!important; }

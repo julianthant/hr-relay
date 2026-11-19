@@ -40,7 +40,7 @@ export function syncFailureWhy(sheet: Sheet): string | undefined {
   return ERROR_CATALOG[code].text;
 }
 
-export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Created' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Created';
+export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Spreadsheets' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Spreadsheets';
 export const newestFirst = (sheets: readonly Sheet[]): readonly Sheet[] => sheets.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 /** A run's workflow is an automatic tag, always first; the operator's own tags follow. */
 export const tagsOf = (sheet: Sheet): readonly string[] => sheet.workflow ? [sheet.workflow, ...sheet.tags] : sheet.tags;
