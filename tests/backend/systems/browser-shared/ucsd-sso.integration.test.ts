@@ -266,6 +266,7 @@ it.each(["GET", "POST"] as const)("verifies the committed redirect receipt after
       () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO", kind => actions.push(kind));
     if (recordedMethod === "POST") {
       await assert.rejects(signing, /UCSD_SSO_SUBMIT_UNPROVED/);
+      assert.equal(page.url(), landing);
       assert.deepEqual(actions, ["typed", "typed"]);
       return;
     }
@@ -323,10 +324,11 @@ it("checks a normally worker-handled SSO navigation and restores the tab after s
     assert.ok(original?.fromServiceWorker());
     await page.locator("body").evaluate((body, html) => { body.innerHTML = html; }, form());
     const destination = scenario === "mismatched pin" ? SSO + "?execution=other" : SSO;
-    const signing = withPinnedSsoPost(page, destination, () => undefined, async allowPost => {
+    const signing = withPinnedSsoPost(page, destination, () => undefined, async (allowPost, verifyCommit) => {
       assert.ok((await other.reload())?.fromServiceWorker());
       allowPost();
-      await Promise.all([page.waitForNavigation({ waitUntil: "commit", timeout: 3000 }), page.locator("button").click()]);
+      const [response] = await Promise.all([page.waitForNavigation({ waitUntil: "commit", timeout: 3000 }), page.locator("button").click()]);
+      verifyCommit(response);
     });
     if (scenario === "mismatched pin") await assert.rejects(signing, /UCSD_SSO_POST_REFUSED/);
     else if (status !== 200) await assert.rejects(signing, /UCSD_SSO_POST_REDIRECT_REFUSED/);
