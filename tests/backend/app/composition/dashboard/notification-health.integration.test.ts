@@ -38,6 +38,18 @@ describe("canonical notification producers", () => {
     } finally { inspect.mockRestore(); await f.close(); }
   });
 
+  it("reports an unavailable inspection source without raising an integrity alert", async () => {
+    const f = await fixture();
+    const root = mkdtempSync(join(tmpdir(), "relay-health-verdict-"));
+    try {
+      const { observer, inbox } = createTrustNotifications({ admission: syntheticStateRoot(root), database: f.db, clock: f.clock, ids: sequentialIdFactory("b"), reader: f.reader, stateRoot: root });
+      await observer.observe();
+      expect(inbox.list("local-operator").filter(row => row.title.includes("integrity-check"))).toEqual([]);
+      expect(f.db.authority.notificationHealth.get("integrity-check")).toBeUndefined();
+      expect(observer.status()).toEqual({ state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 });
+    } finally { rmSync(root, { recursive: true, force: true }); await f.close(); }
+  });
+
   it.each([
     { failure: "a foreign-key violation", damage: (database: DatabaseSync, at: string) => {
       database.prepare("INSERT INTO command_audits (id, command_id, payload_json, created_at) VALUES (?, ?, ?, ?)")
@@ -48,6 +60,9 @@ describe("canonical notification producers", () => {
     } },
     { failure: "an invalid authority generation", damage: (database: DatabaseSync) => {
       database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET authority_generation=-1");
+    } },
+    { failure: "missing authority metadata", damage: (database: DatabaseSync) => {
+      database.exec("DELETE FROM database_states WHERE id=1");
     } },
     { failure: "an extra run reference", damage: (database: DatabaseSync) => {
       database.prepare("INSERT INTO run_references (run_id, table_name, row_key) VALUES (?, 'command_audits', json_array(?))")

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { inspectAuthorityOffThread } from "../../../storage/sqlite/authority-inspection-off-thread.js";
+import { hasInspectionIntegrityFailureCode } from "../../../storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
@@ -15,52 +16,12 @@ import { isAuthoritySourceChanged } from "../../../storage/sqlite/readonly-autho
 
 type InspectionVerdict = "sound" | "failed" | "overtaken";
 
-const integrityFailureMessages = new Set([
-  "authority-native-schema-shape-mismatch",
-  "run-references-mismatch",
-  "notification-publication-owner-mismatch",
-  "notification-publication-identity-mismatch",
-  "notification-publication-source-conflict",
-  "notification-health-identity-mismatch",
-  "search-generation-mismatch",
-  "run-search-owner-missing",
-  "run-search-actor-source-invalid",
-  "run-search-actor-source-duplicate",
-  "run-search-actor-ambiguous",
-  "run-search-declaration-identity-mismatch",
-  "run-search-build-prefix-invalid",
-  "run-search-source-coverage-invalid",
-  "run-search-source-metadata-invalid",
-  "run-search-index-corrupt",
-  "run-search-retained-actor-source-mismatch",
-  "run-search-retained-actor-source-missing",
-  "run-search-subject-invalid",
-]);
-
-/** The inspection worker preserves error messages and string codes. Only diagnostics from a failed integrity check count as a verdict. */
-function isStoreIntegrityFailure(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const { message } = error;
-  if ("code" in error) {
-    if (error.code === "WORKBOOK_STORAGE_CORRUPT") return true;
-    if (error.code === "ERR_SQLITE_ERROR") return message === "database disk image is malformed" || message === "file is not a database";
-  }
-  const recordFailure = /^authority table \w+ failed native record validation: (.+)$/su.exec(message)?.[1];
-  return integrityFailureMessages.has(recordFailure ?? message)
-    || /^authority database foreign-key validation failed for [1-9]\d* row\(s\)$/u.test(message)
-    || message.startsWith("authority database invariant validation failed: ")
-    || message.startsWith("authority database tables do not match registry: ")
-    || /^authority schema metadata \d+ disagrees with user_version \d+$/u.test(message)
-    || (recordFailure !== undefined && /^\[\s*\{/u.test(recordFailure))
-    || (message.startsWith("[") && /"path":\s*\[\s*"(?:quick_check|authority_generation)"\s*\]/u.test(message));
-}
-
 async function inspectStore(admission: RuntimeAdmission, path: string, signal: AbortSignal | undefined): Promise<InspectionVerdict> {
   try { await inspectAuthorityOffThread(admission, path, { signal }); return "sound"; }
   catch (error) {
     if (signal?.aborted === true) throw error;
     if (isAuthoritySourceChanged(error)) return "overtaken";
-    if (isStoreIntegrityFailure(error)) return "failed";
+    if (hasInspectionIntegrityFailureCode(error)) return "failed";
     throw error;
   }
 }
