@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { profileActivationResponse } from "../../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -76,7 +77,7 @@ it("resumes a signed-in start behind the loading screen without ever mounting th
     assert.equal(loadingLabel(app.host), "Starting Relay");
     assert.equal(app.host.querySelector("form"), null);
     assert.ok(resumed, "the resume starts from the loading screen");
-    await act(async () => resumed?.(Response.json(active)));
+    await act(async () => resumed?.(profileActivationResponse(active)));
     assert.equal(loadingLabel(app.host), undefined);
     assert.equal(app.signInFrames(), 0);
   } finally { await app.stop(); }
@@ -87,7 +88,7 @@ it("hands a signed-in start to the dashboard without ever mounting the sign-in p
   const server = dashboardServer();
   const app = await start({
     "/api/v1/profile/state": () => Response.json(resumes === 0 ? { state: "signed-out", resumable: true } : active),
-    "/api/v1/profile/resume": () => { resumes++; return Response.json(active); },
+    "/api/v1/profile/resume": () => { resumes++; return profileActivationResponse(active); },
   }, server);
   try {
     await vi.waitFor(() => assert.ok(app.host.querySelector(".dashboard-shell")));

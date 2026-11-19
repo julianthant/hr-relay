@@ -192,13 +192,13 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
       const draft = PublicProfileStateSchema.parse(await response.json()); assert.equal(draft.state, "onboarding");
       if (draft.state !== "onboarding") throw new Error("actual onboarding required");
-      let cookie = response.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+      let credential = response.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
       const onboarding = async (path: string, body: unknown) => {
-        assert.ok(cookie);
+        assert.ok(credential);
         const result = await fetch(`${origin}/api/v1/profile/onboarding/${path}`, { method: "POST",
-          headers: { origin, cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+          headers: { origin, "x-relay-session": credential, "content-type": "application/json" }, body: JSON.stringify(body) });
         assert.equal(result.status, 200);
-        cookie = result.headers.get("set-cookie")?.split(";", 1)[0] ?? cookie;
+        credential = result.headers.get("x-relay-session") ?? credential;
         return PublicProfileStateSchema.parse(await result.json());
       };
       for (const method of ["key", "touch"] as const) {
@@ -214,8 +214,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       assert.equal(machine.readProfileRegistry().profiles.length, 1);
       assert.equal(existsSync(join(machine.stateRoot, "profiles", active.profileId, "state.db")), true);
       assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
-      assert.ok(cookie);
-      assert.equal((await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie } })).status, 200);
+      assert.ok(credential);
+      assert.equal((await fetch(`${origin}/api/v1/bootstrap`, { headers: { "x-relay-session": credential } })).status, 200);
     } finally { await application?.stop(); machine.release(); rmSync(repoRoot, { recursive: true, force: true }); }
   });
 

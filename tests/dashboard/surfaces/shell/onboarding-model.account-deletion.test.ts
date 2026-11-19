@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { profileActivationResponse } from "../../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -19,7 +20,7 @@ function clientFor(initial: PublicProfileState, deletion: () => Promise<Response
     calls.push({ path, body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : null });
     if (path.endsWith("/state")) return Response.json(initial);
     if (path.endsWith("/delete-account")) return deletion();
-    if (path.endsWith("/sign-in")) return Response.json(login);
+    if (path.endsWith("/sign-in")) return profileActivationResponse(login);
     if (path.endsWith("/logout")) return Response.json({ state: "signed-out" });
     throw new Error(`unexpected fixture request ${path}`);
   } });
