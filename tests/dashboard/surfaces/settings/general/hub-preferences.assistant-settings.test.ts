@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
-import { ChatGptAccountContext, type ChatGptAccountPort } from "../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
-import { AssistantSettings } from "../../../../src/dashboard/surfaces/settings/general/hub-preferences.js";
-import { publishAssistantModelChoice } from "../../../../src/dashboard/surfaces/shell/assistant-approval-model.js";
-import type { AssistantModelPreference } from "../../../../src/models/config/assistant-model-preference.js";
+import { ChatGptAccountContext, type ChatGptAccountPort } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+import { AssistantSettings } from "../../../../../src/dashboard/surfaces/settings/general/hub-preferences.js";
+import { publishAssistantModelChoice } from "../../../../../src/dashboard/surfaces/shell/assistant-approval-model.js";
+import type { AssistantModelPreference } from "../../../../../src/models/config/assistant-model-preference.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;

@@ -57,7 +57,7 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
   const selectMethod = (method: "key" | "touch") => { setup.cancel(); setup.setMethod(method); };
   useEffect(() => {
     if (setup.methods[setup.method] && !both) setup.setMethod(setup.method === "key" ? "touch" : "key");
-  }, [setup.methods.key, setup.methods.touch, setup.method]);
+  }, [both, setup]);
   const instruction = failedMethod ? "In Duo, open Manage devices and remove any device you do not recognize, then add this one again."
     : both ? "Both devices are added. Go back to Relay to finish."
     : setup.listening ? "In Duo, add the matching device. Relay moves on once it sees it."

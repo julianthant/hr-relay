@@ -67,6 +67,11 @@ export function sessionStateColor(state: SessionWorkerState): string {
   return state === "failed" ? "text-ui-danger" : state === "waiting" || state === "starting" || state === "unavailable" ? "text-ui-warning"
     : state === "running" ? "text-ui-positive" : "text-ui-muted";
 }
+/** An idle worker with no run, no reason and nothing to sign in to is a tally row, not a card. */
+export function isQuietIdle(worker: SessionWorker): boolean {
+  return worker.state === "idle" && worker.subject === undefined && worker.problem === undefined && worker.note === undefined;
+}
+
 export function sessionTallies(workers: readonly SessionWorker[]): readonly { state: SessionWorkerState; count: number }[] {
   const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "stopped", "failed", "unavailable"];
   return order.map(state => ({ state, count: workers.filter(worker => worker.state === state).length }))

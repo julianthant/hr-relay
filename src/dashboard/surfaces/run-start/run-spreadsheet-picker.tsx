@@ -58,7 +58,7 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, onChange }: 
 }
 
 /** "v2 · Updated Nov 18, 2026": the version in use and when it was saved. */
-export function versionLine(versions: readonly SheetVersion[], versionId: string): string | undefined {
+function versionLine(versions: readonly SheetVersion[], versionId: string): string | undefined {
   const version = versions.find(candidate => candidate.id === versionId);
   return version === undefined ? undefined : `${version.name} · Updated ${formatDay(version.savedAt)}`;
 }

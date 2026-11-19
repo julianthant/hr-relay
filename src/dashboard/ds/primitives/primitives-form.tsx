@@ -231,7 +231,7 @@ export function PathControl({ value, label, onChange, disabled = false, busy = f
   </div>;
 }
 
-export type UnitFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "aria-describedby"> & {
+export type UnitFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "aria-describedby" | "size"> & {
   unit: string;
   "aria-describedby"?: string;
   /** Body-scope width. Use `stretch` for a unit control inside a paired wide field. */

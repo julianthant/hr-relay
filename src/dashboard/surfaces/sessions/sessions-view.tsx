@@ -6,9 +6,9 @@ import { ChevronDown, ChevronUp, LogOut, Minus, Plus, Settings, UsersRound } fro
 import { BareButton, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, dsFocus, Field, IconButton, Input, Select, Skeleton, Tooltip } from "../../ds/ui.js";
 import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 import { cn } from "../../lib/utils.js";
-import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
+import { isQuietIdle, SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
-import { IdleWorkerRow, isQuietIdle, WorkerCard } from "./worker-card.js";
+import { IdleWorkerRow, WorkerCard } from "./worker-card.js";
 import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 
 /** The bar's counts: one quiet summary line; only the running count is green, like the rail's running pill. */

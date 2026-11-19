@@ -70,7 +70,7 @@ describe("canonical Settings navigation", () => {
   it("holds preferences only: the data pages and Status have left Settings", () => {
     const groups = buildSettingsNav();
     assert.deepEqual(groups.flatMap(group => group.entries.map(entry => entry.id)), ["general", "account", "keyboard"]);
-    assert.ok(!groups.some(group => group.id === "status"));
+    assert.deepEqual(groups.map(group => group.id), ["personal", "help"]);
   });
 
   it("folds legacy section URLs to their new page and keeps unknown requests explicit", () => {

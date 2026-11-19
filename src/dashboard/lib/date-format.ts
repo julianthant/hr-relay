@@ -80,7 +80,7 @@ export function formatDuration(seconds: number): string {
 
 /** `Sun` or `Sunday`. */
 export function formatWeekday(value: string | Date, timeZone: string | undefined, style: 'short' | 'long'): string {
-  return parts({ weekday: style }, value, timeZone).weekday!;
+  return parts({ weekday: style }, value, timeZone).weekday;
 }
 
 /** `Sep 20` or `September 20`. */

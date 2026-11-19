@@ -13,7 +13,7 @@ const DATA_ROWS: readonly { readonly page: DataPage; readonly label: string; rea
   { page: "activity", label: "Analytics", Icon: ChartNoAxesColumn },
 ];
 
-export const dataRowId = (page: DataPage): string => `rail-data-${page}`;
+const dataRowId = (page: DataPage): string => `rail-data-${page}`;
 
 /** The data pages sit under the workflows; opening one swaps the main region and leaves the rail in place. */
 function DataSection({ current, onOpen, collapsed }: { current?: DataPage; onOpen: (page: DataPage) => void; collapsed?: boolean }) {

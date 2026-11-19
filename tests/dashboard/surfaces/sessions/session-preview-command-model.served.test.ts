@@ -31,6 +31,8 @@ function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
 
 const catalog = SERVED_CATALOG;
 const now = FIXTURE_NOW;
+/** A worker is a card (`article`) or, while idle with nothing to show, a one-line row (`li`). */
+const WORKER_ENTRY = 'article, li[aria-label*=" · "]';
 const LIFETIME = uuidOf(7001), NEXT_LIFETIME = uuidOf(7002);
 function basis(lifetimeId: string | null, version = 0) {
   return { basis: { state: "present", value: { lifetimeId, version } } } as const;
@@ -185,7 +187,7 @@ it.each([
       assert(check);
       await act(async () => check.click());
     }
-    const card = document.querySelector("article"); assert(card);
+    const card = document.querySelector(WORKER_ENTRY); assert(card);
     assert.ok(card.textContent?.includes(code), card.textContent ?? "");
     assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? "");
     assert.doesNotMatch(card.textContent ?? "", /PRIVATE_SERVER_DETAIL|Check outcome/u);
@@ -209,7 +211,7 @@ it("removes the card when a lost Remove reply is confirmed by its audit and serv
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
-    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -229,9 +231,9 @@ it("keeps both removed cards gone when their readbacks arrive out of order", asy
     assert(first && second);
     await act(async () => first.click());
     await act(async () => second.click());
-    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
     await act(async () => release());
-    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
     assert.equal(h.sent.length, 2);
   } finally { release(); await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -335,11 +337,11 @@ it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flig
     await act(async () => { release(outcome === "pending" ? { state: "pending", commandId: original!.commandId } : outcome === "lost" ? new Error("connection reset") : applied(original!)); await Promise.resolve(); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.match(text(), /Check outcome/u, "the settled unknown outcome is checkable on the new mount");
-    assert.equal(document.querySelectorAll("article").length, 1);
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     h.setDay(effectOf(h.day(), original));
     const check = [...document.querySelectorAll("button")].find(button => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === "Check outcome"); assert(check);
     await act(async () => check.click());
-    assert.equal(document.querySelectorAll("article").length, outcome === "applied" ? 0 : 1, outcome === "applied" ? "its own applied reply confirms once served" : "a served removal is no proof for a command with no applied reply");
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, outcome === "applied" ? 0 : 1, outcome === "applied" ? "its own applied reply confirms once served" : "a served removal is no proof for a command with no applied reply");
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -366,19 +368,19 @@ it("hydrates mounted Remove after remount, retains it through outage and a faile
     assert(button, label); await act(async () => button.click());
   };
   try {
-    await act(async () => render()); assert.equal(document.querySelectorAll("article").length, 1);
+    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     await click("Remove worker"); assert.equal(h.sent.length, 1); assert(original);
     const pendingDay = h.day();
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
     assert.match(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing member", members: pendingDay.workerAuthority.members }, workerCards: [] }));
-    await act(async () => render()); assert.equal(document.querySelectorAll("article").length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
+    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
     await act(async () => render()); assert.match(document.body.textContent ?? "", /Check outcome/);
     const retry = document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert(retry?.disabled, "same Remove still locks newest failed card");
     h.setDay(effectOf(pendingDay, original));
-    await click("Check outcome"); assert.equal(document.querySelectorAll("article").length, 0); assert.equal(h.sent.length, 1);
+    await click("Check outcome"); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
@@ -441,9 +443,9 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
-    assert.equal(document.querySelectorAll("article").length, 1);
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], binding, open: true, onOpenChange() {} })));
-    assert.equal(document.querySelectorAll("article").length, 0);
+    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
     assert.match(document.body.textContent ?? "", /Session information is unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);
     assert.equal(h.sent.length, 0);
@@ -549,7 +551,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
       await act(async () => render());
       assert.doesNotMatch(host.textContent ?? "", /No current claimed run|Run timeline is not served|No steps are served|states unavailable/);
       assert.equal(host.querySelector('[role="progressbar"]'), null);
-      if (state === "idle") assert.match(host.textContent ?? "", /Idle.*No run assigned/s);
+      if (state === "idle") { assert.match(host.textContent ?? "", /Idle/); assert.doesNotMatch(host.textContent ?? "", /No run assigned/); }
       if (state === "starting") assert.match(host.textContent ?? "", /Starting.*No run assigned/s);
       if (state === "failed") assert(host.textContent?.includes("Its run is no longer on record."));
     }
@@ -572,13 +574,13 @@ it("distinguishes unopened browser requirements from observed unavailable health
     for (const observation of [undefined, { state: "unavailable", reason: "Browser health was not served" },
       { state: "present", health: "unknown", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) },
       { state: "present", health: "failed", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) }]) {
-      h.setDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card,
+      h.setDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, state: "starting",
         browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [{ sessionId: uuidOf(9200), system: "crm", openedAt: now, observation }] }] }));
       const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
       assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPath", "unopened"]]);
       await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
       assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : observation?.state === "unavailable" ? "CRMUnavailable. Browser health was not served" : "CRMUnavailable", "UCPathNot opened"]);
-      assert.match(host.querySelector("article")?.textContent ?? "", /Idle.*No run assigned/s);
+      assert.match(host.querySelector("article")?.textContent ?? "", /Starting.*No run assigned/s);
       assert.equal(h.sent.length, 0);
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }

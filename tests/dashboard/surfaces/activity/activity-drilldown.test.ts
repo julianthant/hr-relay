@@ -57,7 +57,7 @@ afterEach_m0(_afterEachFixture1);
         if (scenario.selection.metric === 'timed') {
           assert_m0.match(host.textContent ?? '', /24 completed runs with recorded duration/);
           assert_m0.doesNotMatch(table.textContent ?? '', /Separations|Done/);
-          await act_m0(async () => table.querySelector<HTMLButtonElement>('tbody button')!.click());
+          await act_m0(async () => table.querySelector<HTMLAnchorElement>('tbody a[aria-label^="Open logs for"]')!.click());
           assert_m0.deepEqual(onSelection.mock.calls[0], [{ ...scenario.selection, run: value.runs.find(row => row.workflowId === 'sample-separations' && row.status === 'completed' && row.seconds !== null)!.id }]);
         }
         if (scenario.selection.metric === 'outstanding') {

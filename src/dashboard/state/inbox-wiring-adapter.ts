@@ -182,8 +182,8 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
     const owner = current.current.binding;
     const key = foldKey(row);
-    const repeats = action === "read" && key !== undefined ? (rowsRef.current ?? []).filter(other => other.kind === "notification" && other.notificationId !== id && other.readState !== "read" && foldKey(other) === key)
-      .map(other => ({ notificationId: other.notificationId, revision: other.revision })) : [];
+    const repeats = action === "read" && key !== undefined ? (rowsRef.current ?? []).flatMap(other => other.kind === "notification" && other.notificationId !== id && other.readState !== "read" && foldKey(other) === key
+      ? [{ notificationId: other.notificationId, revision: other.revision }] : []) : [];
     const members = [...(row.group?.members ?? [{ notificationId: id, revision: row.revision }]), ...repeats];
     for (const member of members) {
       const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
