@@ -6,7 +6,7 @@ import { afterEach,it,vi } from "vitest";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { PreflightActionsProvider } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-actions.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider, useDashboardCommandExecutor } from "../../../../../src/dashboard/state/client-context.js";
-import { projectPreflight,useSettingsPreflight } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
+import { projectPreflight,useSettingsPreflight,type PreflightRerunState } from "../../../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
 import type { EditableSettingsState } from "../../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { preflightVerdict } from "../../../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
@@ -53,6 +53,51 @@ it("pending readiness retains prior evidence without inventing a current verdict
   assert.equal(projectPreflight({state:"running"},now.valueOf()).state,"running");
   assert.equal(projectPreflight({state:"running",lastCompleted:{...served,results:[]}},now.valueOf()).state,"running");
   assert.equal(projectPreflight({state:"running",lastCompleted:served},now.valueOf()-1).state,"running");
+});
+it("restart-required settings refuse without rerunning an obsolete identity",async()=>{
+  vi.useFakeTimers();vi.setSystemTime(now);
+  let reads=0,reruns=0;
+  const client={preflightScopes:()=>Promise.resolve([]),readPreflight:()=>{reads++;return Promise.resolve({state:"unavailable",reason:"Settings restart required"});},rerunPreflight:()=>{reruns++;throw new Error("unexpected rerun");}} as unknown as DashboardClient;
+  const documentWithRestart=structuredClone(FIXTURE_EDITABLE_SETTINGS);
+  Reflect.set(documentWithRestart,"runtimeStatus",{state:"restart-required"});
+  function Subscriber(){const state=useSettingsPreflight({state:"loaded",document:documentWithRestart},{actorId:"local-operator",descriptorFingerprint:"a".repeat(64)});return createElement("button",{onClick:state.rerunPreflight},state.preflight.state==="refused"?state.preflight.message:state.preflight.state);}
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(Subscriber)}));});
+  assert.match(host.textContent??"",/restart required/u);await act(async()=>host?.querySelector("button")?.click());assert.equal(reads,1);assert.equal(reruns,0);
+});
+for(const outcome of ["success","failure"] as const)it(`refresh keeps the report through command and readback ${outcome}`,async()=>{
+  vi.useFakeTimers();vi.setSystemTime(now);
+  const served=await report();
+  const command=Promise.withResolvers<unknown>(),readback=Promise.withResolvers<unknown>();
+  let reruns=0,reads=0,latest:ReturnType<typeof useSettingsPreflight>|undefined;
+  const client={preflightScopes:()=>Promise.resolve([]),readPreflight:()=>{reads++;return reruns===0?Promise.resolve({state:"present",report:served}):readback.promise;},rerunPreflight:()=>{reruns++;return command.promise;}} as unknown as DashboardClient;
+  const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,showSettings(){},showSessions(){}};
+  function Subscriber(){latest=useSettingsPreflight({state:"loaded",document:FIXTURE_EDITABLE_SETTINGS},actions);return createElement("span",null,latest.preflight.state);}
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(Subscriber)})}));});
+  const checkedAt=(state:PreflightRerunState|undefined)=>state!==undefined&&"report" in state?state.report.checkedAt:undefined;
+  assert.equal(latest?.preflight.state,"completed");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+  await act(async()=>latest?.rerunPreflight());assert.equal(reruns,1);
+  assert.equal(latest?.preflight.state,"refreshing");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+  await act(async()=>{command.resolve({});});assert.equal(reads,2);
+  assert.equal(latest?.preflight.state,"refreshing");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+  await act(async()=>{if(outcome==="success")readback.resolve({state:"present",report:served});else readback.reject(new Error("Readback unavailable"));});
+  assert.equal(latest?.preflight.state,outcome==="success"?"completed":"historical");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+});
+it("two subscribers show the same state and command readback, then expire together",async()=>{
+  vi.useFakeTimers();vi.setSystemTime(now);
+  const served=await report();let reads=0;let reruns=0;let unavailable=false;
+  const client={preflightScopes:()=>Promise.resolve([]),readPreflight:()=>{reads++;return Promise.resolve(unavailable?{state:"unavailable",reason:"Expired on server"}:{state:"present",report:served});},rerunPreflight:()=>{reruns++;return Promise.resolve({});}} as unknown as DashboardClient;
+  const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,showSettings(){},showSessions(){}};
+  const latest:Record<string,ReturnType<typeof useSettingsPreflight>>={};
+  function Subscriber({name}:{name:string}){latest[name]=useSettingsPreflight({state:"loaded",document:FIXTURE_EDITABLE_SETTINGS},actions);return createElement("span",null,latest[name].preflight.state);}
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:[createElement(Subscriber,{key:"setup",name:"setup"}),createElement(Subscriber,{key:"doctor",name:"doctor"})]})}));});
+  assert.equal(latest.setup?.preflight.state,"completed");assert.deepEqual(latest.setup?.preflight,latest.doctor?.preflight);
+  await act(async()=>latest.setup?.rerunPreflight());assert.equal(reruns,1);assert.equal(reads,2);assert.deepEqual(latest.setup?.preflight,latest.doctor?.preflight);
+  unavailable=true;await act(async()=>{await vi.advanceTimersByTimeAsync(60_000);});
+  assert.equal(latest.setup?.preflight.state,"historical");assert.deepEqual(latest.setup?.preflight,latest.doctor?.preflight);
+  assert.match(host.textContent??"",/historical/u);
 });
 function Bound({ client, actorId, nowIso, children }: { client: DashboardClient; actorId: string; nowIso: string; children: ReactNode }) {
   const executor = useDashboardCommandExecutor();
