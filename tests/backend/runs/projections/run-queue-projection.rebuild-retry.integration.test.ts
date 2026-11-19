@@ -364,13 +364,13 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.equal(afterMonthInsertion.status, 200);
     assert.deepEqual(DashboardDayWireSchema.parse(await afterMonthInsertion.json()).monthCounts,
       [{ day: DAY, count: 2 }, { day: "2026-08-04", count: 1 }]);
-    assert.equal(queueReads, 4, "a different day's insertion invalidates the shared month counts");
+    assert.equal(queueReads, 3, "new month counts reuse the untouched selected-day summaries");
 
     w.database.authority.runs.holdAdmission({ commandId: uuidOf(96), runtimeGeneration: configIdentity.generation, reason: "shutdown" });
     assert.equal(w.database.authority.runs.admission().state, "draining");
     assert.equal(projection.cursor(), cursorBeforeDiagnostics);
     assert.equal((await readDay()).status, 200);
-    assert.equal(queueReads, 5, "a journaled application admission hold invalidates the day before polling");
+    assert.equal(queueReads, 4, "a journaled application admission hold invalidates the day before polling");
   } finally {
     hub.close();
   }
