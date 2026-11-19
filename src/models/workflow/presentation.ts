@@ -108,6 +108,8 @@ export const WorkflowCapabilitiesSchema = z.strictObject({
   editData: EditDataPolicySchema,
   /** How this workflow's children render when it delegates. */
   delegationDisplay: z.enum(["inline", "linked", "hidden-unless-failed"]).optional(),
+  /** Each home-worker claim may acquire a browser once per system, including any guarded Duo recovery. */
+  singleAcquisitionPerSystemPerClaim: z.literal(true).optional(),
 });
 export type WorkflowCapabilities = z.infer<typeof WorkflowCapabilitiesSchema>;
 

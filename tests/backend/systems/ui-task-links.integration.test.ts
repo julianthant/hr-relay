@@ -8,16 +8,15 @@ import { buildUiTaskLinks } from "../../../src/backend/systems/ui-task-links.js"
 import { type ExplorerNodeWire } from "../../../src/models/dashboard/explorer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
-import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../support/fixtures/explorer-seams.js";
 
 
 describe("Explorer registered graph and service acceptance", () => {
   it("matches each runtime dependency, condition and dry-run boundary and resolves all printed sources", async () => {
 
       const query = explorerQueryDeps(manualClock(new Date("2026-09-13T10:00:00Z")), FingerprintSchema.parse("b".repeat(64)));
-      const wire = buildWorkflowExplorer(query);
+      const wire = readFixtureExplorer(query);
       const uiTaskLinks = buildUiTaskLinks();
       assert.deepEqual(wire.workflows.map(w => w.id), query.modules.map(m => m.descriptor.id));
       let conditional = 0;

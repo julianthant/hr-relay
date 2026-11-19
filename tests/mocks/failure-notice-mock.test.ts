@@ -8,7 +8,7 @@ import { test } from "./helpers/fixtures.js";
 import { NOTICE_COPY, NOTICE_SCENES } from "./helpers/failure-notice-scenes.js";
 import { mockOutDir } from "./helpers/out-dir.js";
 
-// Failure-notice scenes (the approved beneath notice) in the parity mock harness; frames are evidence, never test references.
+// Failure-notice scenes for the one-line strip in the parity mock harness.
 const repoRoot = resolve(import.meta.dirname, "../..");
 const fixtureRoot = join(repoRoot, `tests/mocks/.output/failure-notice-fixture-${process.pid}`);
 const OUT = mockOutDir(process.env.FAILURE_NOTICE_MOCK_OUT, "failure-notice-mock");
@@ -40,21 +40,20 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`failure notice fra
   await page.emulateMedia({ reducedMotion: "reduce" });
   for (const scene of NOTICE_SCENES) for (const copy of NOTICE_COPY) {
     await page.goto(`${baseUrl}/?scene=${scene}&copy=${copy}&theme=${theme}`);
-    const notice = page.locator(".fn-sentence");
+    const notice = page.getByRole("alert");
     const action = page.getByRole("button", { name: /^(Retry|Reload|Start again|Open existing run)/ }).first();
     await expect(notice).toBeVisible();
     await expect(action).toBeVisible();
-    // The action keeps a gap from the sentence and the notice says what still works.
-    const gap = await page.evaluate(() => {
-      const button = [...document.querySelectorAll("button")].find(b => /^(Retry|Reload|Start again|Open existing run)/.test(b.textContent ?? ""))!.getBoundingClientRect();
-      const still = document.querySelector(".fn-still")!.getBoundingClientRect();
-      const sentence = document.querySelector(".fn-sentence")!.getBoundingClientRect();
-      const overlap = !(button.right <= sentence.left || button.left >= sentence.right || button.bottom <= sentence.top || button.top >= sentence.bottom);
-      return { overlap, horizontal: button.left - sentence.right, vertical: button.top - Math.max(still.bottom, sentence.bottom), stillText: document.querySelector(".fn-still")!.textContent };
+    // One line: the sentence truncates, the button sits to its right and nothing wraps.
+    const layout = await page.evaluate(() => {
+      const strip = document.querySelector("[role=alert]")!.getBoundingClientRect();
+      const text = document.querySelector("[role=alert] > span")!.getBoundingClientRect();
+      const button = document.querySelector("[role=alert] button")!.getBoundingClientRect();
+      return { height: strip.height, gap: button.left - text.right, below: button.top >= text.bottom };
     });
-    expect(gap.overlap, `${scene}/${copy} action overlaps the sentence`).toBe(false);
-    expect(Math.max(gap.horizontal, gap.vertical), `${scene}/${copy} action gap`).toBeGreaterThanOrEqual(8);
-    expect(gap.stillText).toBeTruthy();
+    expect(layout.gap, `${scene}/${copy} horizontal action gap`).toBeGreaterThanOrEqual(8);
+    expect(layout.below, `${scene}/${copy} button wrapped below`).toBe(false);
+    expect(layout.height, `${scene}/${copy} strip is more than one line`).toBeLessThan(48);
     await expect(page.getByText("Copy details")).toHaveCount(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(overflow, `${scene}/${copy} horizontal overflow`).toBe(false);

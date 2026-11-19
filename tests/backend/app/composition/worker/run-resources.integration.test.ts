@@ -48,7 +48,9 @@ describe("F actual four-way baseline independence",()=>{
    const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
    const factory=createRunResourcesFactory({admission,database:f.db,nominatim:createNominatimWorkerAdapter(f.clock),ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
    const first=factory.forRun(f.run);
-   assert.equal(factory.forRun(f.run),first);
+   const sameRun=factory.forRun(f.run);
+   assert.equal(sameRun.sessionFactory,first.sessionFactory);
+   assert.notEqual(sameRun.providers?.adapters["workbooks.library"],first.providers?.adapters["workbooks.library"]);
    const reclaimed=factory.forRun(RunRecordSchema.parse({...f.run,claimGeneration:Number(f.run.claimGeneration)+1}));
    assert.notEqual(reclaimed.providers?.adapters["workbooks.library"],first.providers?.adapters["workbooks.library"]);
    assert.equal(first.providers?.adapters["workbooks.library"]?.capability,"workbooks.library");
@@ -59,7 +61,11 @@ describe("F actual four-way baseline independence",()=>{
    const next=factory.forRun({...f.run,envelope:{...f.run.envelope,configSnapshotId:snapshot.configSnapshotId,configFingerprint:snapshot.fingerprint}});
    assert.equal(next.taskDeadlineMs,config.timeouts.taskMs);assert.equal(next.sessionAcquireMs,config.timeouts.sessionAcquireMs);assert.notEqual(next.defaultBrowserMode,first.defaultBrowserMode);assert.notEqual(next.sessionFactory,first.sessionFactory);assert.equal(next.providers?.adapters["geocode.nominatim"],first.providers?.adapters["geocode.nominatim"]);
    assert.equal(first.providers?.adapters["ocr.extract"],ocr);assert.equal(next.providers?.adapters["ocr.extract"],ocr);
-   assert.equal(factory.forRun(f.run),first);assert.equal(first.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);
+   assert.equal(first.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);
+   const restored=factory.forRun(f.run);
+   assert.equal(restored.taskDeadlineMs,first.taskDeadlineMs);
+   assert.equal(restored.sessionAcquireMs,first.sessionAcquireMs);
+   assert.equal(restored.defaultBrowserMode,first.defaultBrowserMode);
    assert.throws(()=>factory.forRun({...f.run,envelope:{...f.run.envelope,configFingerprint:FingerprintSchema.parse(HASH)}}),/snapshot-mismatch/u);
   }finally{await account?.cleanup();await f.dispose();}
  });

@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { buildWorkflowExplorer } from "../../../../src/backend/runs/queries/explorer.js";
 import type { ExplorerReviewSpec } from "../../../../src/models/dashboard/explorer-review-spec.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../../support/fixtures/explorer-seams.js";
 
 function spec(id: string): ExplorerReviewSpec {
-  const workflow = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("e".repeat(64))))
+  const workflow = readFixtureExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("e".repeat(64))))
     .workflows.find(candidate => candidate.id === id);
   assert.ok(workflow, id);
   return workflow.reviewSpec;

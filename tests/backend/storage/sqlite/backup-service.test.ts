@@ -62,7 +62,7 @@ describe("native authority backup", () => {
     const command = ProtectedSettingsCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: NOW,
       requestedBy: LOCAL_OPERATOR_ACTOR_ID, source: "settings-surface", family: "settings", type: "apply-protected-settings",
       target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-        writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-native-restore-private-value" } } } });
+        writeId: randomUUID(), entries: { sharepointOnboardingRosterUrl: { set: "https://roster.example.test/native-restore" } } } });
     const execute = (database: AuthorityDatabase) => executeSettingsCommand({ authority: database, clock: f.clock,
       ids: { uuid: randomUUID }, settings: createSettingsApplicationExecutor(() => { throw new Error("protected command reached ordinary settings"); }, f.credentials) }, command);
     const accepted = execute(f.database); expect(accepted.state).toBe("applied");

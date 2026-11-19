@@ -14,7 +14,7 @@ import { queueParentFixture } from '../../support/helpers/dashboard/queue-parent
 import { FrontendBootstrapWireSchema } from '../../../src/models/dashboard/bootstrap.js';
 import { FIXTURE_NOW } from '../../support/fixtures/dashboard/fixture-identity.js';
 import { FIXTURE_DAY_WIRE } from '../../mocks/helpers/fixture-queue.js';
-import { MOCK_WORKFLOW_COMPOSITION } from '../../mocks/helpers/workflow-composition.js';
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -108,17 +108,16 @@ it.each(['ready','read-failed'] as const)('leaves a new dirty Settings draft unt
   const settings = f.host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');assert.ok(settings);
   await act(async () => settings.click());
   await vi.waitFor(() => assert.ok(f.host.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')));
-  const select = f.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');assert.ok(select);
-  await act(async () => select.click());
-  const option = document.querySelector<HTMLElement>('[role="option"][data-value="Small"]');assert.ok(option);
-  await act(async () => option.click());
+  const date = () => f.host.querySelector<HTMLInputElement>('[data-settings-path="annualDates.FY2027.jobEndDate"] input[type="date"]');assert.ok(date());
+  const edited = date()!.value === '2027-06-29' ? '2027-06-28' : '2027-06-29';
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(date()!, edited); date()!.dispatchEvent(new Event('input', { bubbles: true })); });
   const before = window.location.search,preference = f.preferences.snapshot().value.selectedWorkflowId;
-  assert.equal(f.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value,'Small');
+  assert.equal(date()?.value,edited);
   await act(async () => { release();await pending; });
   if (outcome === 'ready') await vi.waitFor(() => assert.ok(f.reads.includes(`run:${f.child.runId}`)));
   assert.equal(window.location.search,before);
   assert.equal(f.preferences.snapshot().value.selectedWorkflowId,preference);
-  assert.equal(f.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value,'Small');
+  assert.equal(date()?.value,edited);
   assert.equal(f.host.textContent?.includes('Discard unsaved settings?'),false);
   assert.equal(f.host.textContent?.includes('Workflow unavailable'),false);
 });
@@ -174,7 +173,7 @@ async function relatedFixture(options: Readonly<{ failure?: 'missing' | 'wrong-p
   window.history.replaceState(null,'',`/?day=${parentDay}`);
   const preferences = createPersonPreferences('preview',{ ...NEUTRAL_PERSON_PREFERENCES,workflowPanelMode: 'sidebar' });
   const host = document.createElement('div');document.body.append(host);root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => { const composition = MOCK_WORKFLOW_COMPOSITION(workflows);return { ...composition,logsSources: composition.sources }; },
+  await act(async () => root?.render(createElement(DashboardClientProvider,{ client,children: createElement(DashboardApp,{ workflowComposition: workflows => servedLogsComposition(workflows),
     previewPreferences: preferences }) })));
   const chip = () => { const chip = host.querySelector<HTMLButtonElement>(`[data-demo-row-id="${parent.runId}"] button[data-demo-row-link]`);assert.ok(chip);return chip; };
   await vi.waitFor(() => assert.ok(chip()));

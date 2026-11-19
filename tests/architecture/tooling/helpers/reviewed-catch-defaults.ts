@@ -135,13 +135,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/notification-health.ts",
-    "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read.",
+    "reason": "A failed backup verification sets the failed-backup boolean that triggers an explicit failed health notification; it never claims a healthy read, and an aborted pass rethrows before the boolean is set.",
     "statements": [
-      {
-        "kind": "try",
-        "sha256": "ab17fb3fde0f559f8d5fd8667fc0fe8e8397089a9c9a0e711312d1ad3a5351fa",
-        "occurrences": 1
-      },
       {
         "kind": "try",
         "sha256": "ba28eb28fce3d9dd3921f53b2b6de53c44e456e7bca5cf225e1fe861a3338003",
@@ -308,18 +303,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "try",
-        "sha256": "a9f46b892ae9f83022af52bae910f774b5d09cc5b542e1672bd5b4f1df1135f1",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
-    "path": "src/dashboard/state/activity-wiring-adapter.ts",
-    "reason": "The population observation consumes a rejection only after createSettingsRead publishes failed with its held selection. useActivityWiring exposes the catalog notice and revokes exports/navigation, preserving a coherent completed report and browse as history; superseded reads cannot publish or replace the current pair.",
-    "statements": [
-      {
-        "kind": "promise",
-        "sha256": "2aeb83d1ee3c28a041cfb4da4cd848df507e08bff34f34478ccf0c6b039692ed",
+        "sha256": "9f252f9116a72867e93e9fa9d2111e3ced5cc76f20ea35c0864ac9b0515c0af0",
         "occurrences": 1
       }
     ]

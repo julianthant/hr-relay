@@ -56,14 +56,14 @@ describe("SQLite settings authority", () => {
       const revision = store.read().revision;
       const request = { family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z",
         requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision },
-        payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-private-value" } } } };
+        payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { sharepointOnboardingRosterUrl: { set: "https://roster.example.test/synthetic-private-value" } } } };
       assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, request).state, "applied");
       const credentialPath = join(profile.stateRoot, "credentials", "protected.json"), credentialBytes = readFileSync(credentialPath);
       database.close(); copyFileSync(snapshot, profile.path);
       restored = AuthorityDatabase.open(profile.admission, options, clock, undefined, undefined, undefined, store);
       assert.equal(restored.authority.commands.get(request.commandId), undefined);
       assert.equal(store.read().revision, revision + 1);
-      assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(store)), "synthetic-private-value");
+      assert.equal(requireSecret("sharepointOnboardingRosterUrl", createCredentialSecretSource(store)), "https://roster.example.test/synthetic-private-value");
       assert.equal(executeSettingsCommand({ authority: restored, clock, ids: { uuid: randomUUID }, settings }, request).state, "applied");
       assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     } finally { restored?.close(); database.close(); await profile.close(); }

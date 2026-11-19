@@ -105,14 +105,38 @@ export function chooseLatestHireRecord(rows: readonly HireSearchRow[]): HireSear
   return latest.row;
 }
 
+export async function countCrmSearchRowsWhenReady(
+  assertCurrent: () => void,
+  rows: Locator,
+  rowCellsSelector: string,
+  empty: Locator,
+): Promise<number> {
+  assertCurrent();
+  const rowCount = await rows.count();
+  assertCurrent();
+  if (rowCount > 1 || (rowCount === 1 && await rows.first().locator(rowCellsSelector).count() !== 2)) {
+    return rowCount;
+  }
+  assertCurrent();
+  if (await empty.count() !== 0) return rowCount;
+  assertCurrent();
+  const stageCell = rows.locator(`${rowCellsSelector}:nth-of-type(5)`).filter({ visible: true });
+  await stageCell.or(empty.filter({ visible: true })).first().waitFor({ state: "attached", timeout: BOUND_MS });
+  assertCurrent();
+  return rows.count();
+}
+
 async function search(assertCurrent: () => void, page: Page, email: string): Promise<HireSearchRow[]> {
   const url = new URL(`https://${HOST}/hr/ONB_SearchOnboardings`);
   url.searchParams.set("q", email);
+  const assertSearch = (): void => {
+    assertCurrent();
+    assertLocation(page, url.pathname);
+    if (new URL(page.url()).searchParams.get("q") !== email) throw new Error("CRM rendered different search criteria");
+  };
   assertCurrent();
   await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
-  assertCurrent();
-  assertLocation(page, url.pathname);
-  if (new URL(page.url()).searchParams.get("q") !== email) throw new Error("CRM rendered different search criteria");
+  assertSearch();
   await page.getByRole("heading", { name: "Search Results", exact: true }).waitFor({ state: "visible", timeout: BOUND_MS });
   const rowsRecipe = recipe("crm.onboarding.search-result-rows");
   const cellsRecipe = recipe("crm.onboarding.search-result-row-cells");
@@ -121,9 +145,10 @@ async function search(assertCurrent: () => void, page: Page, email: string): Pro
     throw new Error("CRM search recipes changed shape");
   }
   const rows = page.locator(rowsRecipe.selector);
+  const empty = page.getByRole("heading", { name: "No search results were found.", exact: true });
   const result: HireSearchRow[] = [];
-  assertCurrent();
-  const count = await rows.count();
+  const count = await countCrmSearchRowsWhenReady(assertCurrent, rows, cellsRecipe.selector, empty);
+  assertSearch();
   let auxiliaryCount = 0;
   for (let index = 0; index < count; index += 1) {
     const row = rows.nth(index);
@@ -150,7 +175,6 @@ async function search(assertCurrent: () => void, page: Page, email: string): Pro
       processStage: await text(assertCurrent, cells.nth(4)),
     }));
   }
-  const empty = page.getByRole("heading", { name: "No search results were found.", exact: true });
   if (result.length === 0) await empty.waitFor({ state: "visible", timeout: BOUND_MS });
   else if (await empty.count() !== 0) throw new Error("CRM rendered results and the empty state together");
   assertCurrent();

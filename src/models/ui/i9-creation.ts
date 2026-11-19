@@ -34,7 +34,7 @@ export const I9CreationStagingSchema = z.strictObject({ stagedPageState: PageSta
 export type I9CreationStaging = z.infer<typeof I9CreationStagingSchema>;
 
 export function i9ProfileKey(input: I9ProfileTarget): string {
-  return ["i9:profile", input.email.toLowerCase(), input.firstName.toLowerCase(), input.lastName.toLowerCase(), input.dob].join("|");
+  return ["i9:profile", input.firstName.toLowerCase(), input.lastName.toLowerCase(), input.dob].join("|");
 }
 export function i9RemoteKey(input: I9RemoteTarget): string {
   return ["i9:remote", input.profileId, input.startDate].join("|");

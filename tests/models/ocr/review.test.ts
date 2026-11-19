@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { initialOcrReviewRecords, rebuildOcrReviewRecords } from "../../../src/models/ocr/review.js";
+import { initialOcrReviewRecords, ocrIdentityHolds, rebuildOcrReviewRecords } from "../../../src/models/ocr/review.js";
 import { OcrResultSchema } from "../../../src/models/workflows/ocr/result.js";
 import { buildOcrReviewSeed } from "../../../src/models/workflows/ocr/review-seed.js";
 import { accountOcrPages, bindOcrPageReading, ocrExtractionItemId, OcrPageOutcomeSchema } from "../../../src/models/workflows/ocr/page-accounting.js";
@@ -10,10 +10,10 @@ import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/re
 import { EidSchema, PositiveIntSchema } from "../../../src/rules/identity/ids.js";
 import { correctOcrField, donePage, sourceFixture, submittedPage, READING_ID } from "../../support/fixtures/ocr/source-pages.js";
 
-function result(documentEid?: string) {
+function result(documentEid?: string, documentName?: string) {
   const { manifest, inputs } = sourceFixture(1);
   const page = inputs[0]; assert.ok(page);
-  const submitted = submittedPage(page); assert.ok(submitted.record);
+  const submitted = submittedPage(page, documentName); assert.ok(submitted.record);
   const admission = admitOcrExtraction({ ...submitted, record: { answers: { ...submitted.record.answers,
     ...(documentEid === undefined ? {} : { "employee.employeeId": { state: "read", raw: documentEid, confidence: 1 } }) } } });
   assert.ok(admission.admitted);
@@ -55,6 +55,40 @@ it("holds a conflicting document identity and an unresolved lookup for explicit 
   identity.outcome.output.activeStatus.ucpathSelection = "resolved";
   identity.outcome.output.activeStatus.details.foundInUcpath = false;
   assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, null);
+});
+
+it("asserts an agreeing searched EID whose UCPath name lacks the form's extra given or family names", () => {
+  assert.equal(initialOcrReviewRecords(result("10800000", "Avery Quinn Example Rowan"))[0]?.assertedEid, "10800000");
+  assert.equal(initialOcrReviewRecords(result(undefined, "Avery Quinn Example Rowan"))[0]?.assertedEid, null);
+  assert.equal(initialOcrReviewRecords(result("10800000", "Avery Morgan"))[0]?.assertedEid, null);
+});
+it("names why each record has no asserted identity", () => {
+  const hold = (seed: ReturnType<typeof result>) => {
+    const holds = ocrIdentityHolds({ seed, records: initialOcrReviewRecords(seed) });
+    return holds.length === 0 ? null : holds[0]?.reason;
+  };
+  const status = (seed: ReturnType<typeof result>) => {
+    const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done" && "activeStatus" in identity.outcome.output);
+    return identity.outcome.output.activeStatus;
+  };
+  assert.equal(hold(result("10800000")), null);
+  assert.equal(hold(result(undefined, "Avery Quinn Example Rowan")), "name-differs");
+  assert.equal(hold(result("10800001")), "eid-differs");
+  let seed = result(); status(seed).ucpathSelection = "ambiguous";
+  assert.equal(hold(seed), "multiple-matches");
+  seed = result(); status(seed).ucpathSelection = "not-found";
+  assert.equal(hold(seed), "no-match");
+  seed = result(); status(seed).details.foundInUcpath = false;
+  assert.equal(hold(seed), "no-match");
+  seed = result();
+  const identity = seed.identities[0]; assert.ok(identity);
+  const failed = OcrResultSchema.parse({ ...seed, identities: [{ ...identity, outcome: { state: "failed", itemId: identity.outcome.itemId,
+    runId: identity.outcome.runId, failureId: "00000000-0000-4000-8000-000000000779" } }] });
+  assert.equal(hold(failed), "lookup-failed");
+  assert.equal(hold(OcrResultSchema.parse({ ...seed, identities: [] })), "not-looked-up");
+  seed = result();
+  const cleared = initialOcrReviewRecords(seed).map(record => ({ ...record, assertedEid: null }));
+  assert.deepEqual(ocrIdentityHolds({ seed, records: cleared }).map(entry => entry.reason), ["awaiting-assertion"]);
 });
 
 function correctedReview() {

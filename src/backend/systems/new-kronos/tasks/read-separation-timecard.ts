@@ -17,6 +17,11 @@ export const readSeparationTimecardTask = defineTask(
         employeeId: input.emplId,
         rangeStart: input.rangeStart,
         rangeEnd: input.rangeEnd,
+      }).catch((error: unknown) => {
+        if (error instanceof Error && "code" in error && error.code === "timecard-unreadable") {
+          return ctx.fail(error.code, error.message, { cause: error });
+        }
+        throw error;
       });
 
       // S37: the timecard displaying a different person is the wrong-person

@@ -39,12 +39,12 @@ async function signedIn(base: string) {
   const state = PublicProfileStateSchema.parse(await finished.json());
   assert.equal(state.state, "active");
   if (state.state !== "active") throw new Error("active session required");
-  const cookie = finished.headers.get("set-cookie")?.split(";", 1)[0];
-  assert.ok(cookie);
-  return { post: ready.post, cookie, state };
+  const credential = finished.headers.get("x-relay-session") ?? undefined;
+  assert.ok(credential);
+  return { post: ready.post, credential, state };
 }
 
-it("refuses every Duo re-enrolment route without the session cookie or the mutation guard, then returns the session result", async () => {
+it("refuses every Duo re-enrolment route without the session credential or the mutation guard, then returns the session result", async () => {
   let generation = 0;
   const synthetic = syntheticOnboardingDuo();
   const started = await boot({ ...synthetic,
@@ -52,48 +52,48 @@ it("refuses every Duo re-enrolment route without the session cookie or the mutat
     async recoverBrowser() { generation += 1; },
   });
   try {
-    const { post, cookie, state } = await signedIn(started.base);
+    const { post, credential, state } = await signedIn(started.base);
     for (const [route, body] of DOORS) {
       const path = `/api/v1/profile/duo/reenrol/${route}`;
-      const missingCookie = await post(path, body);
-      assert.deepEqual([route, missingCookie.status, await missingCookie.json()], [route, 409, { state: "refused", code: "PROFILE_SESSION_STALE" }]);
-      const missingOrigin = await fetch(`${started.base}${path}`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) });
+      const missingCredential = await post(path, body);
+      assert.deepEqual([route, missingCredential.status, await missingCredential.json()], [route, 409, { state: "refused", code: "PROFILE_SESSION_STALE" }]);
+      const missingOrigin = await fetch(`${started.base}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-relay-session": credential }, body: JSON.stringify(body) });
       assert.equal(missingOrigin.status, 403, route);
       assert.equal(z.object({ code: z.string() }).parse(await missingOrigin.json()).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
-      const plain = await fetch(`${started.base}${path}`, { method: "POST", headers: { origin: started.base, "content-type": "text/plain", cookie }, body: "not-json" });
+      const plain = await fetch(`${started.base}${path}`, { method: "POST", headers: { origin: started.base, "content-type": "text/plain", "x-relay-session": credential }, body: "not-json" });
       assert.equal(plain.status, 415, route);
       assert.equal(z.object({ code: z.string() }).parse(await plain.json()).code, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED");
     }
-    assert.equal((await post("/api/v1/profile/duo/reenrol/begin", { extra: true }, cookie)).status, 400);
-    const begun = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, cookie)).json());
+    assert.equal((await post("/api/v1/profile/duo/reenrol/begin", { extra: true }, credential)).status, 400);
+    const begun = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
     assert.deepEqual([begun.state, begun.profileId, begun.step, begun.methods.key.state, begun.methods.touch.state], ["duo-reenrol", state.profileId, "duo", "idle", "idle"]);
-    const read = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/read", { operationId: begun.operationId }, cookie)).json());
+    const read = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/read", { operationId: begun.operationId }, credential)).json());
     assert.deepEqual(read, begun);
-    assert.equal((await post("/api/v1/profile/duo/reenrol/read", { operationId: "nope" }, cookie)).status, 400);
-    assert.equal((await post("/api/v1/profile/duo/reenrol/browser", { operationId: begun.operationId }, cookie)).status, 200);
-    const reopened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/reopen", { operationId: begun.operationId, generation: 0 }, cookie)).json());
+    assert.equal((await post("/api/v1/profile/duo/reenrol/read", { operationId: "nope" }, credential)).status, 400);
+    assert.equal((await post("/api/v1/profile/duo/reenrol/browser", { operationId: begun.operationId }, credential)).status, 200);
+    const reopened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/reopen", { operationId: begun.operationId, generation: 0 }, credential)).json());
     assert.equal(reopened.browser.generation, 1);
-    assert.equal((await post("/api/v1/profile/duo/reenrol/portal", { operationId: begun.operationId }, cookie)).status, 200);
-    const pending = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: begun.operationId, method: "key" }, cookie)).json());
+    assert.equal((await post("/api/v1/profile/duo/reenrol/portal", { operationId: begun.operationId }, credential)).status, 200);
+    const pending = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: begun.operationId, method: "key" }, credential)).json());
     assert.equal(pending.methods.key.state, "pending");
     const attemptId = pending.methods.key.attemptId;
     assert.ok(attemptId);
-    const cancelledAttempt = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/cancel-attempt", { operationId: begun.operationId, method: "key", attemptId }, cookie)).json());
+    const cancelledAttempt = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/cancel-attempt", { operationId: begun.operationId, method: "key", attemptId }, credential)).json());
     assert.equal(cancelledAttempt.methods.key.state, "unknown");
-    const abandoned = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/cancel", { operationId: begun.operationId }, cookie)).json());
+    const abandoned = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/cancel", { operationId: begun.operationId }, credential)).json());
     assert.equal(abandoned.state, "active");
-    const fresh = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, cookie)).json());
-    const startedKey = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: fresh.operationId, method: "key" }, cookie)).json());
+    const fresh = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
+    const startedKey = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: fresh.operationId, method: "key" }, credential)).json());
     const confirmed = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/confirm", {
-      operationId: fresh.operationId, method: "key", attemptId: startedKey.methods.key.attemptId, operatorConfirmed: true }, cookie)).json());
+      operationId: fresh.operationId, method: "key", attemptId: startedKey.methods.key.attemptId, operatorConfirmed: true }, credential)).json());
     assert.equal(confirmed.methods.key.state, "complete");
-    const touch = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: fresh.operationId, method: "touch" }, cookie)).json());
+    const touch = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/start", { operationId: fresh.operationId, method: "touch" }, credential)).json());
     assert.equal(touch.step, "ready");
-    const committed = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/commit", { operationId: fresh.operationId }, cookie)).json());
+    const committed = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/commit", { operationId: fresh.operationId }, credential)).json());
     assert.equal(committed.state, "active", JSON.stringify(committed));
     if (committed.state !== "active") throw new Error("committed re-enrolment required");
     assert.equal(committed.duoState, "ready");
-    const gone = await post("/api/v1/profile/duo/reenrol/read", { operationId: fresh.operationId }, cookie);
+    const gone = await post("/api/v1/profile/duo/reenrol/read", { operationId: fresh.operationId }, credential);
     assert.deepEqual([gone.status, await gone.json()], [409, { state: "refused", code: "PROFILE_SESSION_STALE" }]);
     const foreign = await post("/api/v1/profile/duo/reenrol/begin", {}, "relay-profile-session=foreign");
     assert.deepEqual([foreign.status, await foreign.json()], [409, { state: "refused", code: "PROFILE_SESSION_STALE" }]);
@@ -103,12 +103,12 @@ it("refuses every Duo re-enrolment route without the session cookie or the mutat
 it("closes an open Duo re-enrolment on logout and before a non-macOS account deletion refusal", async () => {
   const started = await boot();
   try {
-    const { post, cookie, state } = await signedIn(started.base);
-    const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, cookie)).json());
-    assert.equal((await post("/api/v1/profile/duo/reenrol/start", { operationId: opened.operationId, method: "key" }, cookie)).status, 200);
+    const { post, credential, state } = await signedIn(started.base);
+    const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
+    assert.equal((await post("/api/v1/profile/duo/reenrol/start", { operationId: opened.operationId, method: "key" }, credential)).status, 200);
     const operation = join(started.f.machine.stateRoot, "machine", "operations", `${opened.operationId}.json`);
     assert.equal(existsSync(operation), true);
-    const loggedOut = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json());
+    const loggedOut = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, credential)).json());
     assert.deepEqual(loggedOut, { state: "signed-out", signUpRequired: false });
     assert.equal(existsSync(operation), false);
     const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
@@ -116,7 +116,7 @@ it("closes an open Duo re-enrolment on logout and before a non-macOS account del
     assert.equal(again.state, "active");
     if (again.state !== "active") throw new Error("sign-in after logout required");
     assert.equal(again.profileId, state.profileId);
-    const session = login.headers.get("set-cookie")?.split(";", 1)[0];
+    const session = login.headers.get("x-relay-session") ?? undefined;
     assert.ok(session);
     if (process.platform !== "darwin") {
       const reopened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, session)).json());
@@ -137,18 +137,18 @@ it("leaves the session signed in when closing a re-enrolment for logout cannot p
     return uncertain ? { state: "uncertain" } : synthetic.closeBrowser(...args);
   } });
   try {
-    const { post, cookie } = await signedIn(started.base);
-    const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, cookie)).json());
-    assert.equal((await post("/api/v1/profile/duo/reenrol/browser", { operationId: opened.operationId }, cookie)).status, 200);
+    const { post, credential } = await signedIn(started.base);
+    const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
+    assert.equal((await post("/api/v1/profile/duo/reenrol/browser", { operationId: opened.operationId }, credential)).status, 200);
     uncertain = true;
-    const logout = await post("/api/v1/profile/logout", {}, cookie);
+    const logout = await post("/api/v1/profile/logout", {}, credential);
     assert.deepEqual([logout.status, await logout.json()], [409, { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" }]);
-    const still = PublicProfileStateSchema.parse(await (await fetch(`${started.base}/api/v1/profile/state`, { headers: { cookie } })).json());
+    const still = PublicProfileStateSchema.parse(await (await fetch(`${started.base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json());
     assert.equal(still.state, "active");
     const deleting = await post("/api/v1/profile/delete-account", { confirmed: true, expectedProfileId: still.state === "active" ? still.profileId : opened.profileId,
-      expectedEpoch: still.state === "active" ? still.epoch : 1 }, cookie);
+      expectedEpoch: still.state === "active" ? still.epoch : 1 }, credential);
     assert.deepEqual([deleting.status, await deleting.json()], [409, { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" }]);
-    const kept = PublicProfileStateSchema.parse(await (await fetch(`${started.base}/api/v1/profile/state`, { headers: { cookie } })).json());
+    const kept = PublicProfileStateSchema.parse(await (await fetch(`${started.base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json());
     assert.equal(kept.state, "active");
   } finally {
     // An unproved setup-browser close is retained custody, so shutdown refuses after the HTTP refusal.

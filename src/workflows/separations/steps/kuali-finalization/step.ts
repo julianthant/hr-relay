@@ -350,8 +350,10 @@ export const SeparationsKualiFinalizationResultSchema = z.strictObject({
 export function buildFinalization({ task, transaction, group }: Author, extraction: Extraction, jobs: Jobs, timecard: Timecard, identity: Identity, termination: Termination) {
   const { action, document, plan } = extraction, { employment, departmentOption } = jobs;
   const { dates } = timecard, { approval } = identity, { receipt } = termination;
-  const filingPresence = task(filingPresenceNode, [receipt], ({ outputs }) =>
-    outputs["receipt"]);
+  const filingPresence = task(filingPresenceNode, [receipt, employment], ({ outputs }) => ({
+    ...outputs["receipt"],
+    expectedEmplRecord: outputs["employment"].emplRecord,
+  }));
   const finalizationDependencies = [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence] as const;
   const finalizationTarget = (
     { input, outputs, protectedInputBindings }: WorkflowEntryScope<typeof SeparationsCanonicalInput, typeof finalizationDependencies>,
