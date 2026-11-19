@@ -91,7 +91,12 @@ const sharedConfig = defineConfig({
     // Node's process-global experimental localStorage is neither browser state
     // nor isolated test state. Disable it in workers instead of suppressing its
     // warning; browser tests exercise real window.localStorage in Playwright.
-    execArgv: [...REBUILD_TEST_EXEC_ARGV],
+    execArgv: [
+      ...REBUILD_TEST_EXEC_ARGV,
+      "--heap-prof",
+      `--heap-prof-dir=${process.env.ACCOUNT_PROFILES}`,
+      `--require=${resolve("scripts/test/account-probe.cjs")}`,
+    ],
     // Each test file runs in its own isolated fork, so process.env mutations
     // and module-level caches are per-file no matter the scheduling.
     pool: "forks",

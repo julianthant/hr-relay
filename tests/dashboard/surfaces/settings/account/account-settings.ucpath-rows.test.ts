@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { writeSync } from "node:fs";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -9,6 +10,8 @@ import { ProtectedPencilRow } from "../../../../../src/dashboard/surfaces/settin
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
 let host: HTMLElement | undefined;
+beforeEach(({ task }) => { writeSync(1, `[case start] ${Date.now()} pid=${process.pid} rssKiB=${Math.round(process.memoryUsage.rss() / 1024)} ${task.name}\n`); });
+afterEach(({ task }) => { writeSync(1, `[case end] ${Date.now()} pid=${process.pid} rssKiB=${Math.round(process.memoryUsage.rss() / 1024)} ${task.name}\n`); });
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
@@ -65,6 +68,8 @@ describe("Settings > Account UCPath rows", () => {
     await act(async () => pencil("Edit UCPath password")?.click());
     await press("Cancel");
     assert.deepEqual(calls, ["reset ucpathPassword"]);
-    assert.equal(document.activeElement, pencil("Edit UCPath password"));
+    const expectedFocus = pencil("Edit UCPath password");
+    writeSync(1, `[focus comparison] ${Date.now()} pid=${process.pid} actual=${document.activeElement?.tagName} equal=${document.activeElement === expectedFocus}\n`);
+    assert.equal(document.activeElement, expectedFocus);
   });
 });

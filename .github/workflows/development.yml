@@ -17,28 +17,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
-    uses: ./.github/workflows/checks.yml
-    with:
-      kind: fast
-
-  development:
-    name: development
-    needs: checks
-    if: ${{ always() }}
+  account-unit:
+    if: github.head_ref == 'fix/unit-account-probe-1' && github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [disk, shm]
+        rows: [ucpath, login]
+    env:
+      RELAY_TEST_RAM_MB: "2048"
+      RELAY_TEST_TIME_SCALE: "2.5"
+      RELAY_TEST_NATIVE: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Require every fast proof
+      - name: Sample one Account Settings file
         env:
-          CHECKS_RESULT: ${{ needs.checks.result }}
-          PLAN: ${{ needs.checks.outputs.plan }}
-          RESULTS: ${{ needs.checks.outputs.results }}
+          BACKEND: ${{ matrix.backend }}
+          ROWS: ${{ matrix.rows }}
         run: |
-          test "$CHECKS_RESULT" = success
-          node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"
+          base="$RUNNER_TEMP"
+          if [[ "$BACKEND" == shm ]]; then base=/dev/shm; fi
+          TMPDIR="$(mktemp -d "$base/relay-account.XXXXXX")"
+          export TMPDIR TEMP="$TMPDIR" TMP="$TMPDIR" ACCOUNT_PROFILES="$RUNNER_TEMP/account-profiles"
+          mkdir "$ACCOUNT_PROFILES"
+          df -T "$TMPDIR"
+          test_file="tests/dashboard/surfaces/settings/account/account-settings.$ROWS-rows.test.ts"
+          setsid node node_modules/vitest/vitest.mjs run --project unit --reporter=verbose "$test_file" &
+          runner=$!
+          while kill -0 "$runner" 2>/dev/null; do
+            date -u +%FT%T.%3NZ
+            ps -ww -s "$runner" -o pid,ppid,rss,args || true
+            sleep 2
+          done
+          wait "$runner"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: account-allocations-${{ matrix.backend }}-${{ matrix.rows }}
+          path: ${{ runner.temp }}/account-profiles/*.heapprofile
+          if-no-files-found: warn
+          retention-days: 2

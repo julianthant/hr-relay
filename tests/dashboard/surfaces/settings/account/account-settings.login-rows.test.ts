@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { writeSync } from "node:fs";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -10,6 +11,8 @@ import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
 let host: HTMLElement | undefined;
+beforeEach(({ task }) => { writeSync(1, `[case start] ${Date.now()} pid=${process.pid} rssKiB=${Math.round(process.memoryUsage.rss() / 1024)} ${task.name}\n`); });
+afterEach(({ task }) => { writeSync(1, `[case end] ${Date.now()} pid=${process.pid} rssKiB=${Math.round(process.memoryUsage.rss() / 1024)} ${task.name}\n`); });
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
@@ -90,7 +93,9 @@ describe("Settings > Account Relay login rows", () => {
     assert.equal(button("Save").disabled, false);
     await click("Cancel");
     assert.deepEqual(sent, []);
-    assert.equal(document.activeElement, button("Change Relay password"));
+    const expectedFocus = button("Change Relay password");
+    writeSync(1, `[focus comparison] ${Date.now()} pid=${process.pid} actual=${document.activeElement?.tagName} equal=${document.activeElement === expectedFocus}\n`);
+    assert.equal(document.activeElement, expectedFocus);
   });
 
   it("opens the username dialog titled Edit username with Cancel and Save", async () => {
