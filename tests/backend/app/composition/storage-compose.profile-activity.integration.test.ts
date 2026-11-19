@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
 import { composeProfileActivity, composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { requireLifecycleApplied, RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -143,6 +144,27 @@ it("holds shutdown admission before stopping workers and rejects a late enqueue"
     assert.equal(activity.hasUnquiescedWork(f.profileId), false);
     assert.equal(f.context.database.authority.runs.admission().state, "draining");
   } finally { pool.release(); await f.cleanup(); }
+});
+
+it("refuses shutdown when another connection settles a paused run between the custody reads", async () => {
+  const f = await fixture();
+  const peer = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "shutdown-custody-peer" },
+    f.input.clock, undefined, undefined, undefined, f.context.credentials);
+  try {
+    enqueueQueuedRun(f);
+    const activity = composeProfileActivity({ ...f.input, supervisor: { stopAll: async () => [], snapshot() {
+      const run = peer.authority.runs.get(QUEUED_RUN.envelope.runId);
+      assert.equal(run?.pause?.state, "paused");
+      assert.ok(run);
+      const settled = peer.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version, now: AT,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: AT } });
+      assert.equal(settled.state, "applied");
+      return [];
+    } } });
+    activity.requestShutdown(f.profileId);
+    await activity.awaitCancellation();
+    assert.throws(() => activity.hasUnquiescedWork(f.profileId), /profile-resource-custody-changed/u);
+  } finally { peer.close(); await f.cleanup(); }
 });
 
 it("fails shutdown when a member's exit was never observed", async () => {

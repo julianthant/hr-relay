@@ -4,6 +4,7 @@ import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailable
 import { createSessionBackups } from "../../storage/maintenance/session-backups.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
+import type { DebugEvent } from "../../../models/events/timeline.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
@@ -127,11 +128,12 @@ export function createSlowOperationEvents(category: "http" | "worker", clock: Cl
   type Sample = Readonly<{ name: string; durationMs: number; omitted?: number }>;
   const pending: Sample[] = [];
   let lastReadReport = -Infinity, omittedReads = 0, worstReadMs = 0;
-  let emit: ((input: unknown) => unknown) | undefined;
+  type TimingEvent = Omit<DebugEvent, "build" | "pid" | "pinned">;
+  let emit: ((input: TimingEvent) => unknown) | undefined;
   const deliver = (operation: Sample): void => {
     try {
       emit?.({ category, phase: "settled", area: "storage", reason: "slow-operation", code: operation.name,
-        durationMs: operation.durationMs, omitted: operation.omitted, correlationId: randomUUID() });
+        durationMs: operation.durationMs, ...(operation.omitted === undefined ? {} : { omitted: operation.omitted }), correlationId: randomUUID() });
     } catch { /* a debug row never changes the storage operation */ }
   };
   return Object.freeze({
@@ -149,7 +151,7 @@ export function createSlowOperationEvents(category: "http" | "worker", clock: Cl
       if (emit === undefined) pending.push(sample);
       else deliver(sample);
     },
-    attach(debugEvents: { emit(input: unknown): unknown }) {
+    attach(debugEvents: { emit(input: TimingEvent): unknown }) {
       emit = input => debugEvents.emit(input);
       for (const operation of pending.splice(0)) deliver(operation);
     },
@@ -989,7 +991,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
       },
     });
     return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings, sessionBackups,
-      attachSlowOperations: (debugEvents: { emit(input: unknown): unknown }) => { slowOperations.attach(debugEvents); } });
+      attachSlowOperations: slowOperations.attach });
   } catch (error) {
     sessionBackups.requestCancellation();
     try { database.close(); }
@@ -1259,7 +1261,14 @@ export function composeProfileRuntime(input: Readonly<{
       try { if (ordinary.activity === undefined || ordinary.inventory === undefined) initializeOwners(profileId, ordinary.admission); }
       catch (error) { initializationFailure = { error }; break; }
     }
-    for (const entry of resources.values()) if (entry.ordinary?.state === "open") entry.ordinary.state = "closing";
+    for (const { ordinary } of resources.values()) {
+      if (ordinary?.state !== "open") continue;
+      ordinary.state = "closing";
+      // A slow custody read must not advance the generation it just observed.
+      if (purpose === "shutdown") ordinary.context?.attachSlowOperations({ emit: event => appendLocalDebug({
+        stateRoot: ordinary.admission.stateRoot, build: buildVersion(), now: input.clock.now(), event: { ...event, category: "boot", pinned: false },
+      }) });
+    }
     if (initializationFailure !== undefined) throw new RuntimeCustodyUncertainError([initializationFailure.error]);
     try {
       for (const [profileId, entry] of resources) {

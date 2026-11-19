@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { StoppedAuthorityBackupManifestSchema } from "../../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { ApplicationLifecycleSchema } from "../../../../../src/models/dashboard/application-lifecycle.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
@@ -127,6 +128,20 @@ async function interruptMidRun(emplIds: readonly string[]) {
   assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
   return { runs: runs(), diagnostics: diagnostics() };
 }
+
+it("an applied Pause all and quit closes the store and exits the dashboard process cleanly", async () => {
+  const { exited, post, origin, credential, diagnostics, output } = await startDashboard();
+  const state = ApplicationLifecycleSchema.parse(await (await fetch(`${origin}/api/v1/application-lifecycle`,
+    { headers: { "x-relay-session": credential } })).json());
+  const quit = await post("commands", { commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "application", type: "pause-all-and-quit",
+    target: { runtimeGeneration: state.runtimeGeneration }, payload: { targets: state.targets, confirmed: true } }, credential);
+  assert.equal(quit.status, 200);
+  assert.equal(CommandResultSchema.parse(await quit.json()).state, "applied");
+  assert.deepEqual(await exited, { code: 0, signal: null }, diagnostics());
+  assert.match(output(), /"phase":"closing store"/u);
+  assert.match(output(), /"phase":"done"/u);
+}, 180_000);
 
 it("Ctrl+C parks the in-flight run at its next step boundary, then the observed worker exit and a verified clean-shutdown backup end the dashboard with exit 0", async () => {
   const { runs, diagnostics } = await interruptMidRun([EXECUTOR_EID]);
