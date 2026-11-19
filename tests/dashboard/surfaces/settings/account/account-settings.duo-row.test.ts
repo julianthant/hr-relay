@@ -25,10 +25,10 @@ async function mount(over: Partial<AccountPage>): Promise<void> {
 const button = (name: string) => [...document.body.querySelectorAll("button")].find(item => item.textContent === name);
 
 describe("Settings > Account Security group", () => {
-  it("shows the served Duo state, Set up again and Sign out", async () => {
+  it("shows the served Duo state, Set up again and Log out", async () => {
     await mount({});
     assert.match(document.body.textContent ?? "", /DuoReadySet up again/u);
-    assert.ok(button("Sign out"));
+    assert.ok(button("Log out"));
   });
 
   it("runs the served re-enrolment from Set up again", async () => {

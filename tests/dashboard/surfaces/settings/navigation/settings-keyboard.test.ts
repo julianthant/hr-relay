@@ -17,7 +17,7 @@ it('shows Send shortcut from the person preference and saves the pick through it
     await act(async () => root.render(createElement(PersonPreferencesContext.Provider, { value: port },
       createElement(KeyboardSection, { onSaved: notice => { saved.push(notice.title); } }))));
     const trigger = () => host.querySelector<HTMLButtonElement>('button[aria-label="Send shortcut"]');
-    expect(trigger()?.closest('.shortcut-reference-row')?.textContent).toContain('Choose which keys send a message in the assistant.');
+    expect(trigger()?.closest('.ds-result-row')?.textContent).toContain('Choose which keys send a message in the assistant.');
     expect(trigger()?.dataset.value).toBe('enter');
     await act(async () => trigger()!.click());
     expect([...document.querySelectorAll<HTMLElement>('[role="option"]')].map(option => [option.dataset.value, option.textContent])).toEqual([['enter', 'Enter'], ['mod-enter', '⌘Enter']]);
