@@ -62,9 +62,11 @@ describe("Settings > Account UCPath rows", () => {
     assert.deepEqual(calls, ["submit"]);
     assert.equal(dialog(), null);
     calls.length = 0;
-    await act(async () => pencil("Edit UCPath password")?.click());
+    const trigger = pencil("Edit UCPath password");
+    assert.ok(trigger);
+    await act(async () => trigger.click());
     await press("Cancel");
     assert.deepEqual(calls, ["reset ucpathPassword"]);
-    assert.equal(document.activeElement, pencil("Edit UCPath password"));
+    await vi.waitFor(() => assert.ok(document.activeElement === trigger, "Cancel restores focus to the UCPath password pencil"));
   });
 });

@@ -51,12 +51,13 @@ const outcome = (spec: ExplorerReviewSpec, stepId: string, value: string) => {
   return found;
 };
 
-it("serves PDF-start choices without inventing an OCR switch or a default filing choice", async () => {
+it("serves PDF-start choices with OCR enabled and the filing choice unset", async () => {
   const workflow = (await served()).find(candidate => candidate.id === "emergency-contact"); assert.ok(workflow);
   assert.deepEqual(workflow.reviewSpec.options, [
     { id: "onbaseFiling", label: "File to OnBase", initial: "unselected", choices: [
       { value: "unselected", label: "Choose…" }, { value: "file", label: "File" }, { value: "skip", label: "Do not file" },
     ] },
+    { id: "extractWithOcr", label: "Extract with OCR", initial: "true", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }] },
     { id: "dry-run", label: "Dry run", initial: "false", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }] },
   ]);
 });

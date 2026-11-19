@@ -159,6 +159,9 @@ it("refuses a changed full revision whose compact checkpoint still matches retai
     revision: (id, revision) => id === runId && revision === 1 ? changed : repositories.ocrReviews.revision(id, revision),
   } };
   assert.throws(() => readOcrReviewAuthority(tampered, f.canonical.lifecycle, runId), /OCR_REVIEW_REFUSED/u);
+  const matchingArtifact: AuthorityRepositories = { ...tampered, ocrExtractions: { ...repositories.ocrExtractions,
+    get: id => id === reading.extractionId ? { ...reading, binding: "source-bound" } : repositories.ocrExtractions.get(id) } };
+  assert.throws(() => readOcrReviewAuthority(matchingArtifact, f.canonical.lifecycle, runId), /OCR_REVIEW_REFUSED/u);
 });
 
 it("hydrates compact review checkpoints only from retained source-bound readings", async () => {

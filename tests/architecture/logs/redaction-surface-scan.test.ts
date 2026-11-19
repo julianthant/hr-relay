@@ -121,7 +121,7 @@ describe("redaction surface scan — the declaration audit", () => {
   for (const id of ["wire/run-detail-section", "wire/ocr-command-result"]) {
     it(`reviews every OCR leaf and refuses missing origins or foreign egress (${id})`, () => {
       const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id && (entry.path.includes(".ocr.") || id === "wire/ocr-command-result"));
-      assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 49);
+      assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 50);
       const surface = REDACTION_SURFACES.find(surface => surface.id === id); assert.ok(surface);
       assert.equal(surface.egress, "operator-loopback");
       const sameSurfaceOrigins = SURFACE_LEAF_ORIGINS.filter(candidate => candidate.surface === id);

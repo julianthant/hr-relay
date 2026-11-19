@@ -8,7 +8,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { DRY_RUN_I9_PROFILE_ID } from "../../../../../src/models/workflow/dry-run.js";
 import { fakeI9CreationPage } from "../../../../support/helpers/browser/fake-i9-creation-page.js";
 
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 function fixture(options: Parameters<typeof fakeI9CreationPage>[0] = {}) {
   const world = fakeI9CreationPage(options);
   const driver = createI9CreationOperations(() => undefined, world.page, manualClock(new Date("2026-09-01T18:00:00.000Z")), world.reads);
@@ -57,22 +57,17 @@ describe("I-9 creation browser operations against a fake page", () => {
     assert.equal(h.actions.includes("click:save-profile"), false);
   });
 
-  it("creates the remote record only after its exact profile, date and independent summary agree", async () => {
+  it("stages the exact profile and date but refuses creation without an independent saved-mode read", async () => {
     const h = fixture(); await h.driver.prepareRemote(remote, h.capture);
+    assert.equal(await h.driver.read(I9_PROFILE_SUBJECT), "Fixture Hire");
+    assert.equal(h.actions.includes("remote:section1"), true);
     assert.equal(h.fields.get("Start Date*"), remote.startDate);
     assert.equal(h.actions.includes("click:create-remote"), false);
-    const proof = await h.driver.createRemote(capability());
-    assert.equal(proof.profileId, remote.profileId); assert.equal(proof.i9Id, "900002");
-    assert.equal(h.actions.filter(value => value === "click:create-remote").length, 1);
+    await assert.rejects(h.driver.createRemote(capability()), /i9-remote-saved-mode-unverified/u);
+    assert.equal(h.actions.includes("click:create-remote"), false);
+    await assert.rejects(h.driver.createRemote(capability()), /i9-remote-not-staged/u);
   });
 
-  for (const options of [{ remoteOutcome: "error" as const }, { remoteOutcome: "both" as const }, { summaryProfileId: "900003" }]) {
-    it(`refuses remote completion for ${JSON.stringify(options)}`, async () => {
-      const h = fixture(options); await h.driver.prepareRemote(remote, h.capture);
-      await assert.rejects(h.driver.createRemote(capability()));
-      assert.equal(h.actions.filter(value => value === "click:create-remote").length, 1);
-    });
-  }
   it("refuses another saved-profile route before preparing a remote record", async () => {
     const h = fixture({ redirectProfileId: "900003" });
     await assert.rejects(h.driver.prepareRemote(remote, h.capture), /route-mismatch/u);

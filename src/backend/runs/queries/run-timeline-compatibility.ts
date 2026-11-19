@@ -13,23 +13,32 @@ export type RunTimelineEvidenceSource = Pick<RunDetailQueryDeps, "timeline"> & {
 };
 type RecordedAction = NonNullable<NonNullable<NoteWire["action"]>["operation"]> | DeclaredActionOccurrence;
 
+export function hasRunDescriptorDrift(run: RunRecord,
+  descriptor: Pick<RunDetailDescriptorView, "version" | "contractFingerprint"> | undefined): boolean {
+  return descriptor?.version !== undefined && descriptor.contractFingerprint !== undefined
+    && (descriptor.version !== run.envelope.descriptorVersion || descriptor.contractFingerprint !== run.envelope.contractFingerprint);
+}
+
 export function assertRunTimelineCompatible(
   run: RunRecord,
   timeline: RunDetailDescriptorView["timeline"],
   source: RunTimelineEvidenceSource,
   row?: RunFoldRecord,
   records?: readonly TimelineEventRecord[],
-): void {
-  if (timeline === undefined) return;
+  allowHistoricalNodes = false,
+): ReadonlySet<string> {
+  const historicalNodes = new Set<string>();
+  if (timeline === undefined) return historicalNodes;
   const categories = new Map<string, string | null>();
   for (const category of timeline) {
     if (category.key === undefined) throw new LogIdentityRefusedError("timeline category identity is missing");
     for (const node of category.nodes) categories.set(node.id, categories.has(node.id) ? null : category.key);
   }
   const node = (id: string | undefined) => {
-    if (id === undefined || categories.get(id) === undefined || categories.get(id) === null) {
+    if (id === undefined || categories.get(id) === null || !allowHistoricalNodes && !categories.has(id)) {
       throw new LogIdentityRefusedError("timeline node has no unique declared category");
     }
+    if (!categories.has(id)) historicalNodes.add(id);
   };
   const identity = (value: Readonly<{ runId: string; nodeId: string }> | undefined) => {
     if (value?.runId === run.envelope.runId) node(value.nodeId);
@@ -99,4 +108,5 @@ export function assertRunTimelineCompatible(
       }
     }
   }
+  return historicalNodes;
 }

@@ -18,7 +18,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
-    await h.app.request("/api/v1/commands", {
+    const started = await h.app.request("/api/v1/commands", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
@@ -37,6 +37,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
 
+    assert.equal(started.status, 200, await started.text());
     const report = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );

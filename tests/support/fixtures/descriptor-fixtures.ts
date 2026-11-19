@@ -204,3 +204,26 @@ export const fixtureDescriptor = defineWorkflowDescriptor({
   scenarios: ["fixture-graph/happy"],
   flow: fixtureFlow,
 });
+
+export const fixtureChildDescriptor = defineWorkflowDescriptor({
+  id: FixtureChildWorkflow.id,
+  version: 1,
+  contractFingerprint: FingerprintSchema.parse("b".repeat(64)),
+  code: "fc",
+  label: "Fixture child",
+  icon: "ShieldCheck",
+  category: "operations",
+  canonicalInput: defineCanonicalInput(FixtureChildInput, FixtureChildInput, [{ eid: "10800000", note: "Fixture" }]),
+  inputSubject: "eid",
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  surfaces: {},
+  details: [],
+  identity: { matchKey: input => input.note },
+  presentation: { title: input => input.note },
+  scenarios: ["fixture-graph/happy"],
+  flow: flow(FixtureChildInput)
+    .step("probe", FixtureReadReceipt, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
+    .build({ schema: FixtureChildResult, dependsOn: ["probe"], derive: ({ outputs }) => ({ acknowledged: outputs.probe.present }) }),
+});

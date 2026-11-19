@@ -2,11 +2,10 @@ import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
 import { createDashboardClient,DashboardClientError } from "../../../src/dashboard/client/index.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../support/fixtures/explorer-seams.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("d".repeat(64));
@@ -30,7 +29,7 @@ function clientOver(respond: (url: string, method: string) => { status: number; 
 
 describe("the explorer queries", () => {
   it("GET the Explorer route and parse the real projection", async () => {
-    const explorer = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const explorer = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     const { client, calls } = clientOver(() => ({
       status: 200,
       body: explorer,

@@ -2,22 +2,41 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { rmSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
-import { beforeEach, describe, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, it, vi } from "vitest";
 import { z } from "zod";
 import { testProcessImport } from "../../support/compiled-process.js";
+import { createEmergencyContactRetryWorld } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 import { credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
 
 const launch = (args: string[]) => spawn(process.execPath,
   ["--import", testProcessImport(), fileURLToPath(new URL("../../support/processes/ec-member-retry-controller.ts", import.meta.url)), ...args],
   { env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
 
-for (const boundary of ["before-commit", "retry", "resume", "resume-rollback", "fence", "commit", "resume-failed", "settlement", "settlement-failed", "parent-requested"]) describe(`EC crash at ${boundary}`, () => {
+vi.setConfig({ maxConcurrency: Math.min(5, availableParallelism()) });
+
+const world = createEmergencyContactRetryWorld();
+let singleFailure: string;
+let twoFailures: string;
+beforeAll(async () => {
+  const [one, two] = await Promise.allSettled([world.prepareTemplate({ failures: 1 }), world.prepareTemplate({ failures: 2 })]);
+  if (one.status === "rejected") throw one.reason;
+  if (two.status === "rejected") throw two.reason;
+  singleFailure = JSON.stringify(one.value);
+  twoFailures = JSON.stringify(two.value);
+  await world.cleanup();
+});
+afterAll(() => world.releaseSources());
+
+// Start settlement cases first so their extra steps overlap the other crash cases.
+for (const boundary of ["settlement", "settlement-failed", "parent-requested", "resume", "resume-rollback", "resume-failed", "before-commit", "retry", "fence", "commit"]) describe.concurrent(`EC crash at ${boundary}`, () => {
   let owner: ReturnType<typeof launch>;
   let closed: Promise<unknown[]>;
   let latest: unknown;
   beforeEach(async context => {
-    owner = launch([boundary]);
+    const template = boundary.startsWith("settlement") || boundary === "parent-requested" ? twoFailures : singleFailure;
+    owner = launch(["owner", boundary, template]);
     const errors: string[] = []; owner.stderr?.on("data", chunk => errors.push(String(chunk)));
     closed = once(owner, "close");
     owner.on("message", value => { latest = value; });
@@ -31,7 +50,7 @@ for (const boundary of ["before-commit", "retry", "resume", "resume-rollback", "
   });
   it("retains immutable evidence through an actual process crash and fresh admitted reopen", async () => {
     const [, termination] = await closed; assert.equal(termination, "SIGKILL");
-    const successor = launch([boundary, JSON.stringify(latest)]);
+    const successor = launch(["successor", boundary, JSON.stringify(latest)]);
     const successorClosed: Promise<unknown[]> = once(successor, "close");
     const errors: string[] = []; successor.stderr?.on("data", chunk => errors.push(String(chunk)));
     try {

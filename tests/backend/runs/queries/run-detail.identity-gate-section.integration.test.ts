@@ -23,6 +23,7 @@ import { IDENTITY_REVIEW_TEXT } from "../../../../src/backend/runs/decisions/dec
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { IdentityGateAnswerRequestSchema, type CommandRequest, type IdentityGateAnswerRequest } from "../../../../src/rules/commands/commands.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
+import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { ApprovedIdentitySubjectSchema, IdentityApprovalResultSchema, verifyIdentityApproval } from "../../../../src/rules/separations/identity-approval.js";
 import { VerifyIdentityApprovalOutputSchema } from "../../../../src/models/workflows/separations/verify-identity-approval.js";
@@ -89,6 +90,7 @@ const GATE_NODES = [{
 function packetOf(overrides: Readonly<{
   differentName?: boolean;
   searchEid?: string;
+  searchedEmployeeId?: string;
   eid?: string;
   documentName?: string;
   ucpathName?: string;
@@ -107,6 +109,7 @@ function packetOf(overrides: Readonly<{
     documentEidText: source === "document-eid" ? eid : "the separation document carried no EID",
     emplIdSource: source,
     documentEidConflicts: false,
+    ...(overrides.searchedEmployeeId === undefined ? {} : { searchedEmployeeId: EidSchema.parse(overrides.searchedEmployeeId) }),
     jobSummary: {
       pageStateId: "ucpath.workforce-job-summary.detail-ready",
       emplId: eid as never,
@@ -120,7 +123,7 @@ function packetOf(overrides: Readonly<{
       status: "resolved",
       selected: {
         emplId: (overrides.searchEid ?? eid) as never,
-        name: overrides.differentName === true ? "Hernandez, Maria" : ucpathName,
+        name: overrides.differentName === true && overrides.searchedEmployeeId === undefined ? "Hernandez, Maria" : ucpathName,
         department: "Housing Dining Hospitality",
         jobTitle: "STDT 3",
         employeeStatus: "active",
@@ -194,6 +197,7 @@ function depsOf(
   attemptingWriteIntents: readonly unknown[] = [],
 ): RunDetailQueryDeps {
   const timelineEvents = {
+    ...w.timeline,
     get: (eventId: string) => checkpointEvents.get(w)?.get(eventId),
   };
   const canonical = {
@@ -401,6 +405,22 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.deepEqual(command.target, { runId: RUN_ID, gateId: "identity-approval", expectedVersion: 4 });
     // The value the kernel will parse through the descriptor's gate schema.
     assert.deepEqual(resolvedValue(command), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
+  });
+
+  it("reports a retained gate as historical and refuses a fresh answer after descriptor drift", async () => {
+    const w = await world();
+    seed(w);
+    putCheckpoint(w, checkpointOf(packetOf()));
+    const { value } = available(gateSection(w));
+    const request = answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) });
+    const descriptor = { ...IDENTITY_DESCRIPTOR, version: IDENTITY_DESCRIPTOR.version + 1 };
+    const deps = depsOf(w, GATE_NODES, true, descriptor);
+    const before = w.authority.getRun(RUN_ID);
+
+    assert.deepEqual(gateSection(w, deps), { state: "missing",
+      reason: "This gate was opened under an earlier workflow definition. Its identity review is unavailable." });
+    assert.equal(resolveIdentityGateAnswer(deps, request, undefined).state, "refused");
+    assert.deepEqual(w.authority.getRun(RUN_ID), before);
   });
 
   it("labels every option with the choice the post-gate node will verify", async () => {
@@ -710,6 +730,33 @@ describe("the typed Employee ID lookup served with the Separations pick-person g
     assert.equal(value.decision?.type, "identity-mismatch");
     assert.equal(JSON.stringify(value.decision).includes("typed"), false);
     assert.equal(value.correction, undefined);
+  });
+
+  it("serves Employee ID lookup proof alongside a separate name disagreement", async () => {
+    const packet = packetOf({ source: "operator-entered", searchedEmployeeId: EID, differentName: true });
+    const retained = packetOf({ source: "operator-entered", differentName: true });
+    const { w, value } = await separationsWorld(packet);
+    const { value: retainedValue } = await separationsWorld(retained);
+    assert.deepEqual(value.comparisons.find(({ label }) => label === "Name"), {
+      label: "Name", request: "Hernandez, Maria", ucpath: "Hernandez, Jose Santos", agrees: false,
+    });
+    assert.deepEqual(value.comparisons.find(({ label }) => label === "Employee ID lookup"), {
+      label: "Employee ID lookup", request: "••••3507", ucpath: "Hernandez, Jose Santos · ••••3507", agrees: true,
+    });
+    assert.equal(value.comparisons.some(({ label }) => label === "Name search"), false);
+    assert.deepEqual(retainedValue.comparisons.find(({ label }) => label === "Name search"), {
+      label: "Name search", request: "Hernandez, Maria", ucpath: "Hernandez, Maria · ••••3507", agrees: true,
+    });
+    assert.equal(value.approvalShape, retainedValue.approvalShape);
+    assert.deepEqual(value.decision, retainedValue.decision);
+    const gate = descriptorRuntimeNodes(separationsDescriptor).find(node => String(node.id) === "identity-approval");
+    assert.ok(gate?.kind === "gate" && "when" in gate);
+    assert.deepEqual(gate.when, { kind: "is-true", of: { from: "node", nodeId: "comparison", path: "approvalRequired" } });
+    const deps = depsOf(w, SEPARATIONS_GATE_NODES, true, separationsDescriptor);
+    const approval = accepted(resolveIdentityGateAnswer(deps,
+      answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) }), undefined));
+    assert.deepEqual(resolvedValue(approval), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
+    assert.equal(JSON.stringify(value).includes(EID), false, "the searched EID is served in full");
   });
 
   it.each([

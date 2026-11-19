@@ -9,7 +9,7 @@ import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it, vi } from "vitest";
 import { installNativeSsoGuard, withPinnedSsoPost } from "../../../../src/backend/systems/browser-shared/ucsd-sso-guard.js";
 import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
-import { submitPinnedUcsdSsoCredentials, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials, submitSsoForm, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 import { BrowserLandingStallError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { crmLoginRecipe } from "../../../../src/backend/systems/crm/session.js";
 import { i9LoginRecipe } from "../../../../src/backend/systems/i9/login.js";
@@ -33,6 +33,34 @@ async function guardedContext() {
   await installNativeSsoGuard(context);
   return context;
 }
+
+const kronosSso = "https://a5.ucsd.edu/tritON/profile/SAML2/POST/SSO";
+it.each([
+  ["new-kronos", kronosSso, kronosSso, true],
+  ["new-kronos", kronosSso, SSO, false],
+  ["new-kronos", kronosSso + "/", kronosSso + "/", false],
+  ["ucpath", kronosSso, kronosSso, false],
+] as const)("pins the New Kronos POST binding (%s, page %s, action %s)", async (system, landing, destination, allowed) => {
+  const browserContext = await guardedContext();
+  try {
+    const posts: string[] = [];
+    await browserContext.route("**/*", route => {
+      if (route.request().method() === "POST") posts.push(route.request().url());
+      return route.fulfill({ contentType: "text/html", body: form(destination) });
+    });
+    const page = await browserContext.newPage();
+    await page.goto(landing);
+    const { context } = await contextFor({ url: landing }, undefined, system);
+    let reads = 0;
+    const signing = context.duoCeremony.withCeremony(token => submitSsoForm(system, {
+      ...context, page, get credentials() { reads++; return context.credentials; },
+    }, token));
+    if (allowed) await signing;
+    else await assert.rejects(signing, { name: "BrowserLoginError", system, step: "credential-fill", detail: "the pinned UCSD SSO form could not be proved or submitted" });
+    assert.equal(reads, allowed ? 1 : 0);
+    assert.deepEqual(posts, allowed ? [destination] : []);
+  } finally { await browserContext.close(); }
+});
 
 it.each(["missing guard", "late installation", "worker-controlled document", "registered worker"] as const)("refuses credentials before filling an unguarded form (%s)", async scenario => {
   const context = scenario === "missing guard" || scenario === "late installation" ? await browser.newContext() : await guardedContext();
@@ -238,6 +266,7 @@ it.each(["GET", "POST"] as const)("verifies the committed redirect receipt after
       () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO", kind => actions.push(kind));
     if (recordedMethod === "POST") {
       await assert.rejects(signing, /UCSD_SSO_SUBMIT_UNPROVED/);
+      assert.equal(page.url(), landing);
       assert.deepEqual(actions, ["typed", "typed"]);
       return;
     }
@@ -295,10 +324,11 @@ it("checks a normally worker-handled SSO navigation and restores the tab after s
     assert.ok(original?.fromServiceWorker());
     await page.locator("body").evaluate((body, html) => { body.innerHTML = html; }, form());
     const destination = scenario === "mismatched pin" ? SSO + "?execution=other" : SSO;
-    const signing = withPinnedSsoPost(page, destination, () => undefined, async allowPost => {
+    const signing = withPinnedSsoPost(page, destination, () => undefined, async (allowPost, verifyCommit) => {
       assert.ok((await other.reload())?.fromServiceWorker());
       allowPost();
-      await Promise.all([page.waitForNavigation({ waitUntil: "commit", timeout: 3000 }), page.locator("button").click()]);
+      const [response] = await Promise.all([page.waitForNavigation({ waitUntil: "commit", timeout: 3000 }), page.locator("button").click()]);
+      verifyCommit(response);
     });
     if (scenario === "mismatched pin") await assert.rejects(signing, /UCSD_SSO_POST_REFUSED/);
     else if (status !== 200) await assert.rejects(signing, /UCSD_SSO_POST_REDIRECT_REFUSED/);

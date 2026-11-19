@@ -22,6 +22,7 @@ import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artif
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
 import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
+import { emitOptionalDiagnostic } from "../../logs/debug-events.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import {
@@ -71,6 +72,7 @@ export interface WorkerRunResources {
  readonly providers?: RunProviderWiring;
 }
 const PREFLIGHT_RETRY_CAP_MS = 60_000;
+const WORKER_REPORT_OUTCOME_LIMIT = 32;
 
 export interface WorkerLoopDependencies {
   readonly debugEvents?: import("../execution/run-executor.js").RunExecutorDependencies["debugEvents"];
@@ -143,6 +145,7 @@ export interface WorkerLoopDependencies {
 export const WorkerLoopReportSchema = z.strictObject({
   workerId: z.string().min(1),
   workflowId: z.string().min(1),
+  /** Recent outcomes in execution order; the run store owns full history. */
   outcomes: z.array(RunExecutionOutcomeSchema),
   /** `stop-directive` = the durable lease directive said stop, between items. */
   stopped: z.enum(["idle", "stop-signal", "stop-directive", "preflight-refused"]),
@@ -164,32 +167,37 @@ function startHeartbeat(input: Readonly<{
   clock: Clock;
   scheduler: MonotonicDeadlineScheduler;
   intervalMs: number;
-  onLost: (message: string) => void;
+  onLost: () => void;
+  onFailure: (cause: unknown) => void;
 }>): Readonly<{ stop: () => void }> {
   let stopped = false;
   let handle = { cancel: (): void => undefined };
+  const stop = (): void => {
+    stopped = true;
+    handle.cancel();
+  };
   const tick = (): void => {
     if (stopped) return;
-    const outcome = input.lifecycle.renewClaim({
-      commandId: lifecycleCommandId("heartbeat", { runId: input.runId, claim: input.claim, nonce: input.ids.uuid() }),
-      runId: input.runId,
-      claim: input.claim,
-    });
-    if (outcome.state === "refused" && outcome.refusal.reason === "lost") {
-      stopped = true;
-      input.onLost("lost");
-      return;
+    try {
+      const outcome = input.lifecycle.renewClaim({
+        commandId: lifecycleCommandId("heartbeat", { runId: input.runId, claim: input.claim, nonce: input.ids.uuid() }),
+        runId: input.runId,
+        claim: input.claim,
+      });
+      if (outcome.state === "refused" && outcome.refusal.reason === "lost") {
+        stopped = true;
+        input.onLost();
+        return;
+      }
+      requireLifecycleApplied(outcome);
+      handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+    } catch (error) {
+      stop();
+      input.onFailure(error);
     }
-    requireLifecycleApplied(outcome);
-    handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
   };
   handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
-  return Object.freeze({
-    stop: (): void => {
-      stopped = true;
-      handle.cancel();
-    },
-  });
+  return Object.freeze({ stop });
 }
 
 async function boundedWait(
@@ -226,9 +234,23 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     emitter.emit(ExecutorSpanEventSchema.parse({ ts: instant(), workflow: workflowId, ...event }));
   };
 
+  const undeliveredTransitions: string[] = [];
+  const recordTransition = (reason: "worker-idle" | "worker-active" | "sessions-parking"): void => {
+    try {
+      deps.debugEvents?.emit({
+        category: "worker", phase: "started", area: "worker-lifecycle", reason, correlationId: streamId,
+      }, { kind: "worker", workerId });
+    } catch {
+      // Report after the claim turn so diagnostic delivery cannot interrupt execution or parking.
+      undeliveredTransitions.push(reason);
+    }
+  };
+
   const sessions = new WorkerSessionManager({
+    onParking: () => recordTransition("sessions-parking"),
     workerId,
     workflowId,
+    singleAcquisitionPerSystemPerClaim: deps.descriptor.capabilities?.singleAcquisitionPerSystemPerClaim,
     stores: deps.stores,
     factory: deps.sessionFactory,
     clock,
@@ -288,12 +310,25 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     void operation.then(() => { callbacks.delete(operation); }, () => { callbacks.delete(operation); });
   };
   const outcomes: RunExecutionOutcome[] = [];
-  let closure: WorkerLoopReport["closure"];
+  const drainFailures: unknown[] = [];
+  let heartbeatFailure: Error | undefined;
   let stopped: WorkerLoopReport["stopped"] = "stop-signal";
   let preflightRefusal: WorkerPreflightRefusal | undefined;
   try {
     const parksWhenIdle = descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run");
+    let idle = false;
     let refusalStreak = 0;
+    let lastRefusal: { refusal: WorkerPreflightRefusal; correlationId: string; omitted: number } | undefined;
+    const reportRefusal = (refusal: WorkerPreflightRefusal, correlationId: string, omitted: number) =>
+      emitOptionalDiagnostic(() => deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId,
+        area: "worker-admission", code: refusal.code, reason: "operation-refused",
+        ...(refusal.summary === undefined ? {} : { message: refusal.summary }), ...(omitted > 0 ? { omitted } : {}) }, { kind: "worker", workerId }));
+    const finishRefusal = () => {
+      if (lastRefusal !== undefined && lastRefusal.omitted > 0) {
+        reportRefusal(lastRefusal.refusal, lastRefusal.correlationId, lastRefusal.omitted);
+      }
+      lastRefusal = undefined;
+    };
     const clearRefusal = (): void => {
       refusalStreak = 0;
       deps.onStanding?.(undefined);
@@ -322,9 +357,14 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       const claimed = await deps.claimNext(claimRequest, sessions);
       if (claimed.state === "preflight-refused") {
         preflightRefusal = WorkerPreflightRefusalSchema.parse(claimed);
-        deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId: claimRequest.commandId,
-          area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused",
-          ...(preflightRefusal.summary === undefined ? {} : { message: preflightRefusal.summary }) }, { kind: "worker", workerId });
+        if (refusalStreak > 0 && lastRefusal !== undefined && lastRefusal.refusal.code === preflightRefusal.code
+          && lastRefusal.refusal.summary === preflightRefusal.summary && lastRefusal.refusal.runId === preflightRefusal.runId) {
+          lastRefusal.omitted++;
+        } else {
+          finishRefusal();
+          const result = reportRefusal(preflightRefusal, claimRequest.commandId, 0);
+          lastRefusal = { refusal: preflightRefusal, correlationId: claimRequest.commandId, omitted: result === "budget-full" ? 1 : 0 };
+        }
         if (deps.exitWhenIdle) { stopped = "preflight-refused"; break; }
         // A pool worker stays up. Each consecutive refusal doubles the idle cadence, capped at a minute.
         refusalStreak += 1;
@@ -339,6 +379,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
         clearRefusal();
+        if (!idle) recordTransition("worker-idle");
+        idle = true;
         const notBefore = claimed.refusal.notBefore;
         const decision = deps.exitWhenIdle
           ? decideIdleClaim({ exitWhenIdle: true, notBefore })
@@ -357,6 +399,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 
       clearRefusal();
       const run = requireLifecycleApplied(claimed);
+      if (idle) recordTransition("worker-active");
+      idle = false;
       const claim = {
         workerId,
         claimGeneration: run.claimGeneration,
@@ -391,8 +435,12 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         clock,
         scheduler: deps.scheduler,
         intervalMs: deps.heartbeatIntervalMs,
-        onLost: (message: string): void => {
-          runController.abort(new Error(`claim lost during heartbeat renewal: ${message}`));
+        onLost: (): void => {
+          runController.abort(new Error("claim lost during heartbeat renewal: lost"));
+        },
+        onFailure: (cause): void => {
+          heartbeatFailure = new Error("worker claim heartbeat renewal failed", { cause });
+          runController.abort(heartbeatFailure);
         },
       });
       try {
@@ -443,6 +491,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             descriptorFingerprint: run.envelope.contractFingerprint,
           },
         );
+        if (heartbeatFailure !== undefined) break;
+        if (outcomes.length === WORKER_REPORT_OUTCOME_LIMIT) outcomes.shift();
         outcomes.push(outcome);
       } finally {
         workPolling = false;
@@ -452,25 +502,49 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       } finally {
         deps.claimTurn?.end();
+        for (const state of undeliveredTransitions.splice(0)) {
+          deps.log.warn("Worker lifecycle diagnostic delivery failed.", { workerId, state });
+        }
         if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
       }
     }
-  } finally {
-    closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
+    finishRefusal();
+  } catch (error) {
+    drainFailures.push(error);
+  }
+
+  let closureFailure: WorkerSessionClosureUnprovedError | undefined;
+  try {
+    closureFailure = await sessions.closeAll("worker-stop").then(() => undefined, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
-      deps.onClosureUnproved?.(error);
-      return "unproved" as const;
+      return error;
     });
+    if (closureFailure !== undefined) deps.onClosureUnproved?.(closureFailure);
+    const errorSummary = closureFailure !== undefined ? `worker ${workerId} browser session closure is unproved`
+      : heartbeatFailure?.message ?? (preflightRefusal === undefined ? undefined : ERROR_CATALOG[preflightRefusal.code].text);
     emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath,
-      outcome: closure === "proved" && preflightRefusal === undefined ? "done" : "failed",
-      ...(closure === "proved" && preflightRefusal === undefined ? {} : {
+      outcome: errorSummary === undefined ? "done" : "failed",
+      ...(errorSummary === undefined ? {} : {
         diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
-        errorSummary: closure === "unproved" ? `worker ${workerId} browser session closure is unproved`
-          : ERROR_CATALOG[preflightRefusal?.code ?? "PREFLIGHT_OBSERVATION_CHANGED"].text,
+        errorSummary,
       }),
     });
+  } catch (error) {
+    drainFailures.push(error);
   }
-  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped, closure,
+  if (heartbeatFailure !== undefined) {
+    const causes = closureFailure === undefined
+      ? [heartbeatFailure, ...drainFailures]
+      : [heartbeatFailure, closureFailure, ...drainFailures];
+    if (causes.some(cause => cause instanceof WorkerSessionClosureUnprovedError)) {
+      throw new WorkerSessionClosureUnprovedError(workerId, causes);
+    }
+    if (causes.length > 1) throw new AggregateError(causes, heartbeatFailure.message, { cause: heartbeatFailure.cause });
+    throw heartbeatFailure;
+  }
+  if (drainFailures.length > 0) throw drainFailures.at(-1);
+  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped,
+    closure: closureFailure === undefined ? "proved" : "unproved",
     ...(preflightRefusal === undefined ? {} : { preflightRefusal }) });
 }
 

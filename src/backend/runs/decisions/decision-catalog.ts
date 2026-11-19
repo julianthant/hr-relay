@@ -114,6 +114,10 @@ export const IDENTITY_REVIEW_TEXT = Object.freeze({
     agreed: "All checks agree.",
   },
   label: { name: "Name", eid: "Employee ID", employment: "Active jobs", "name-search": "Name search" },
+  employeeIdLookup: {
+    label: "Employee ID lookup",
+    reason: "The Employee ID lookup did not confirm this person.",
+  },
   origin: {
     "name-resolved": "Name",
     "operator-entered": "Entered ID",

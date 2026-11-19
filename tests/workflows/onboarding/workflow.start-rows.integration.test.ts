@@ -39,7 +39,7 @@ describe("Onboarding Start run rows", () => {
   it("plans nothing new and keeps today's node list", () => {
     assert.equal(resolveStartStepOmissions(descriptor, projectStartSteps(descriptor).map(({ key }) => key), undefined), undefined);
     const nodes = descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node.kind, node.dependsOn.map(String), "dryRun" in node ? node.dryRun ?? null : null]);
-    // Today's 23 nodes with their kinds, dependencies and dry-run stops.
-    assert.equal(createHash("sha256").update(JSON.stringify(nodes)).digest("hex"), "c8c20434eb90fd2fc73516f6c864c57663c7f405c499188e9da40229010ceb7f");
+    assert.deepEqual(nodes.find(([id]) => id === "reference-check")?.[2], ["hire-plan", "hire-subject", "hire-review"]);
+    assert.equal(createHash("sha256").update(JSON.stringify(nodes)).digest("hex"), "5b266b94ba8f6729841e17b828b9be64a03009bb84c96053812559b31c2e53cc");
   });
 });

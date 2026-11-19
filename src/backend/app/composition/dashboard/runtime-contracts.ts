@@ -17,13 +17,15 @@ import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-w
 import { composeProfileAssistantAuthorization,composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
 import { startDashboardHttpServer,type DashboardHttpListener,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 
+export type DashboardStopFailure = Readonly<{ step: "transport-close" | "stream-close" | "loop-monitor-stop" | "worker-stop"; cause: unknown }>;
+
 export interface DashboardRuntime {
   readonly shutdownRequested?: Promise<void>;
   readonly assistantAuthorization?: ReturnType<typeof composeProfileAssistantAuthorization>;
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
-  detach(): Promise<void>;
+  detach(onStopFailure?: (failure: DashboardStopFailure) => void): Promise<void>;
   stop(): Promise<void>;
 }
 

@@ -10,29 +10,45 @@ import type { RunInputPreview } from "./run-start-model.js";
 
 type Pdf = { source: ReturnType<typeof OcrSourceUploadSchema.parse>; readingId: string };
 export type PdfRunDraft = { files: readonly Pdf[]; asOf: string; reviewer: string };
-/** The operator's choice for each declared launch field of a PDF workflow, keyed by input field; a field with no entry is unpicked. */
-export type PdfRunPicks = Readonly<Record<string, string>>;
+/** The operator's choice for each declared launch field of a PDF workflow, keyed by input field; a select with no entry is unpicked, a switch with no entry holds its declared initial value. */
+export type PdfRunPicks = Readonly<Record<string, string | boolean>>;
 class WrongPdfType extends Error { constructor() { super("Choose valid PDF files."); } }
 const refused = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure("OCR_SOURCE_REFUSED", {})).text);
 const uploadFailed = () => formatErrorCatalogFailure(createErrorCatalogFailure("OCR_UPLOAD_FAILED", {})).text;
 
-/** The declared launch fields of a PDF workflow. The Run dialog offers choices only, so any other declared kind is refused. */
+/** The declared launch fields of a PDF workflow: choices and switches. Any other declared kind is refused. */
 export function pdfRunLaunchFields(surface: UploadRunSurface) {
   return surface.fields.map(field => {
-    if (field.kind !== "select") throw new Error(`The Run dialog cannot offer the ${field.kind} launch field ${field.field}`);
+    if (field.kind !== "select" && field.kind !== "boolean") throw new Error(`The Run dialog cannot offer the ${field.kind} launch field ${field.field}`);
     return field;
   });
 }
+/** A declared switch's current value: the operator's pick, else its declared initial value. */
+export function pdfRunSwitchValue(field: Readonly<{ field: string; initial: boolean }>, picks: PdfRunPicks): boolean {
+  const pick = picks[field.field];
+  return typeof pick === "boolean" ? pick : field.initial;
+}
+/** The pick of a select launch field; empty when unpicked. */
+export function pdfRunSelectValue(field: Readonly<{ field: string }>, picks: PdfRunPicks): string {
+  const pick = picks[field.field];
+  return typeof pick === "string" ? pick : "";
+}
+/** The footer's OCR state: "OCR off" only when the declared switch is off; a PDF workflow without the switch always reads. */
+export function pdfRunOcrFooter(surface: UploadRunSurface, picks: PdfRunPicks): string {
+  const field = pdfRunLaunchFields(surface).find(candidate => candidate.kind === "boolean" && candidate.field === "extractWithOcr");
+  return field?.kind === "boolean" && !pdfRunSwitchValue(field, picks) ? "OCR off" : "OCR on";
+}
 /** The first required launch field without a pick, which blocks planning; null when every required field is picked. */
 export function unpickedPdfRunField(surface: UploadRunSurface, picks: PdfRunPicks) {
-  return pdfRunLaunchFields(surface).find(field => field.required && !field.options.some(option => option.value === picks[field.field])) ?? null;
+  return pdfRunLaunchFields(surface).flatMap(field => field.kind === "select" ? [field] : []).find(field => field.required && !field.options.some(option => option.value === picks[field.field])) ?? null;
 }
 
 export function previewPdfRun(surface: UploadRunSurface, draft: PdfRunDraft | null, picks: PdfRunPicks = {}): RunInputPreview {
   const input = surface.pdfInput;
   if (input === undefined) throw refused();
   if (draft === null || draft.files.length === 0) return { entries: [], submissions: [], problem: null };
-  const picked = Object.fromEntries(pdfRunLaunchFields(surface).flatMap(field => field.options.some(option => option.value === picks[field.field]) ? [[field.field, picks[field.field]]] : []));
+  const picked = Object.fromEntries(pdfRunLaunchFields(surface).flatMap(field => field.kind === "boolean" ? [[field.field, pdfRunSwitchValue(field, picks)]]
+    : field.options.some(option => option.value === picks[field.field]) ? [[field.field, picks[field.field]]] : []));
   if ("documentField" in input) return { entries: draft.files.map((file, index) => ({ index, sourceText: file.source.fileName })), problem: null,
     submissions: unpickedPdfRunField(surface, picks) !== null ? [] : draft.files.map(({ source, readingId }) => JsonValueSchema.parse({ ...input.fixed, ...picked, [input.documentField]: source.artifact, [input.fileNameField]: source.fileName, [input.readingIdField]: readingId })) };
   return { entries: [{ index: 0, sourceText: draft.files.map(file => file.source.fileName).join(", ") }], problem: null,
@@ -80,7 +96,7 @@ export function usePdfRunInput(client: DashboardClient, binding: DashboardComman
       }
     } finally { if (current.current === operation) { current.current = null; setLoading(false); } }
   }, [client]);
-  return { draft, picks, pick: (field: string, value: string) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, retryable: error !== null && failed.current !== null, retry: () => { const last = failed.current; if (last !== null) void choose(last.surface, last.files); }, clear: () => { setError(null); setDraft(previous => previous === null ? null : { ...previous, files: [] }); }, remove: (index: number) => {
+  return { draft, picks, pick: (field: string, value: string | boolean) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, retryable: error !== null && failed.current !== null, retry: () => { const last = failed.current; if (last !== null) void choose(last.surface, last.files); }, clear: () => { setError(null); setDraft(previous => previous === null ? null : { ...previous, files: [] }); }, remove: (index: number) => {
     setError(null);
     setDraft(previous => previous === null ? null : { ...previous, files: previous.files.filter((_file, position) => position !== index) });
   } };
