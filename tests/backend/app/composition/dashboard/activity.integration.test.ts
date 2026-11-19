@@ -134,13 +134,14 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
   const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(scratch, ".tracker"), join(scratch, ".tracker/data/artifacts"))});
+  const withSearchSnapshot = <Result>(read: () => Result) => database.withAuthorityReadSnapshot(read);
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
-    search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
+    search,withSearchSnapshot,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
   app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
   registerActivityRoutes(app,{activity,activityPopulation});
   registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"]});
-  return {database,clock,activity,activityPopulation,search,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
+  return {database,clock,activity,activityPopulation,search,withSearchSnapshot,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }
 
 it("serves Analytics on Pacific days when the machine zone is not Pacific",async()=>{
@@ -384,7 +385,7 @@ it("retains complete unregistered open results and distinctive absence reasons i
     metadata: { ...result.metadata, version: 23 },
   }));
   const collectedPage = { ...page, results };
-  const deps = { sourceIdentity: f.sourceIdentity, search: { ...f.search, searchSelected: () => collectedPage } };
+  const deps = { sourceIdentity: f.sourceIdentity, withSearchSnapshot: f.withSearchSnapshot, search: { ...f.search, searchSelected: () => collectedPage } };
   const selection = { kind: "search" as const, query, snapshot: { ...page.snapshot, generatedAt: page.generatedAt } };
   const diagnostic: unknown = await exportSearchMetadata(deps, { format: "diagnostic", selection }).json();
   assert.ok(typeof diagnostic === "object" && diagnostic !== null && "rows" in diagnostic);
