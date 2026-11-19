@@ -25,7 +25,7 @@ for (const width of [1280, 1024]) {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${server.baseUrl}/?fixture=product-workflows&settings=activity&activity=`);
       await expect.poll(() => responseOk).toBe(false);
-      await expect(page.getByText("Relay could not load Analytics.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Couldn't load Analytics.", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
     } finally {
       try {

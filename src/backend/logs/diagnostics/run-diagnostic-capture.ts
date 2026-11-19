@@ -32,7 +32,7 @@ export function classifiedFailureFields(failure: FailureRecord): readonly unknow
     { key: "workflowId", classification: "safe-diagnostic", transform: "allow", value: failure.workflowId },
     { key: "attempt", classification: "safe-diagnostic", transform: "allow", value: failure.attempt },
     { key: "traceId", classification: "safe-diagnostic", transform: "allow", value: failure.traceId },
-    { key: "causeChainLength", classification: "safe-diagnostic", transform: "count", value: failure.causeChain },
+    { key: "causeChainLength", classification: "safe-diagnostic", transform: "allow", value: failure.causeChain.length },
     ...(failure.nodeId === undefined
       ? []
       : [{ key: "nodeId", classification: "safe-diagnostic", transform: "allow", value: failure.nodeId }]),

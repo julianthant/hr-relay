@@ -6,6 +6,8 @@ import { DuoReenrolStateSchema, type DeleteProfileAccountRequest } from "../../.
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { healthyDashboardPreflightReport } from "../../support/fixtures/preflight-seams.js";
 
+const activationHeaders = { "x-relay-session": "fixture-session", "x-relay-resume": "fixture-proof" };
+
 it("keeps real profile responses and fixed failures distinct without retry or token projection", async () => {
   const requests: { path: string; origin: unknown; body: unknown }[] = [];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:5174", fetchImpl: async (url, init) => {
@@ -26,7 +28,7 @@ it("preserves first-run report and unavailable results through the shared comple
     { state: "error", code: "RUNTIME_CUSTODY_UNCERTAIN", firstRunCheck },
     { state: "error", code: "INTERNAL_FAILURE", firstRunCheck: { scope: "local-startup", profileId, epoch: 7, state: "unavailable", code: "PROFILE_FIRST_RUN_CHECK_UNAVAILABLE" } },
   ]) {
-    const fetchImpl = async () => Response.json(body, { status: body.state === "active" ? 200 : 500 });
+    const fetchImpl = async () => Response.json(body, body.state === "active" ? { status: 200, headers: activationHeaders } : { status: 500 });
     const client = createDashboardClient({ baseUrl: "http://127.0.0.1:5174", fetchImpl });
     assert.deepEqual(await client.completeProfileOnboarding({ operationId }), body);
   }
@@ -208,7 +210,7 @@ it("binds a served re-enrolment to the requested operation and the selected prof
   const served = (operation: string, profile: string) => DuoReenrolStateSchema.parse({ state: "duo-reenrol", operationId: operation, profileId: profile, step: "duo",
     methods: { key: idle, touch: idle }, browser: { state: "checking", generation: 0 } });
   const responses: unknown[] = [];
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json(responses.shift()) });
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async url => Response.json(responses.shift(), { headers: url.endsWith("/sign-in") ? activationHeaders : {} }) });
   const mismatch = async (call: () => Promise<unknown>) => {
     await assert.rejects(call, (error: unknown) => {
       assert.ok(error instanceof DashboardClientError);
@@ -269,7 +271,7 @@ it("binds a completed re-enrolment to the selected profile", async () => {
   const operationId = "00000000-0000-4000-8000-000000000001";
   const profileId = "00000000-0000-4000-8000-000000000003", otherProfile = "00000000-0000-4000-8000-000000000004";
   const responses: unknown[] = [];
-  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => Response.json(responses.shift()) });
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async url => Response.json(responses.shift(), { headers: url.endsWith("/sign-in") ? activationHeaders : {} }) });
   const mismatch = async (call: () => Promise<unknown>) => {
     await assert.rejects(call, (error: unknown) => {
       assert.ok(error instanceof DashboardClientError);

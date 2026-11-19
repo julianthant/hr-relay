@@ -6,8 +6,8 @@ import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-lo
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { recordBrowserAction, withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
-import { fillSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
-import type { Page } from "playwright";
+import { submitSsoForm } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { fakeLoginPage } from "../../../support/helpers/browser/fake-login-page.js";
 import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
 import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
@@ -49,13 +49,7 @@ describe("cold login action note secrecy", () => {
       const { run, claim } = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
       const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
       const credentials = { userId: "synthetic-cold-username-proof", password: "synthetic-cold-password-proof" };
-      const filled: string[] = [];
-      function field() {
-        const value = { first: () => value, or: () => value, count: async () => 1,
-          fill: async (value: string) => { filled.push(value); } };
-        return value;
-      }
-      const page = { locator: field, getByLabel: field, url: () => "https://sso.example.invalid/login" } as unknown as Page;
+      const harness = fakeLoginPage({ url: "https://a5.ucsd.edu/idp/profile/SAML2/Redirect/SSO" });
       const envelopeDeadline = clock.monotonicMs() + 60_000;
       const gate = duoCeremonyGatesOver(database, clock, h.scheduler).openGate({
         workerId: WorkerIdSchema.parse(claim.workerId),
@@ -64,7 +58,7 @@ describe("cold login action note secrecy", () => {
       let capturedBytes = "";
       try {
         const operation = gate.withCeremony(token => withBrowserActionNotes(clock, async () => {
-          await fillSsoCredentials("ucpath", { page, config: ConfigSchema.parse(CONFIG_SNAPSHOT.config), credentials,
+          await submitSsoForm("ucpath", { page: harness.page, config: ConfigSchema.parse(CONFIG_SNAPSHOT.config), credentials,
             instance: "prod", label: "synthetic-cold-login", signal: SIGNAL, duoCeremony: gate,
             assertCurrent: () => undefined, recordEvidence: () => undefined }, token);
           if (failed) throw new Error("synthetic downstream login failure");
@@ -77,9 +71,10 @@ describe("cold login action note secrecy", () => {
         if (failed) await assert.rejects(operation, /synthetic downstream/u); else await operation;
       } finally { gate.dispose(); }
       const notes = readPersistedNotes(database);
-      assert.equal(notes.length, 2);
+      assert.equal(notes.length, 3);
+      assert.deepEqual(harness.filled(), [`sso-username=${credentials.userId}`, `sso-password=${credentials.password}`]);
+      assert.deepEqual(harness.actions(), ["click:sso-submit"]);
       for (const value of Object.values(credentials)) {
-        assert.equal(filled.includes(value), true);
         assert.equal(capturedBytes.includes(value), false);
         assert.equal(JSON.stringify(notes).includes(value), false);
       }

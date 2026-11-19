@@ -6,7 +6,7 @@ import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js'
 import { ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantRequest, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
 import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
-import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
+import { type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 
 import assert from 'node:assert/strict';
 import { afterEach, it, vi } from 'vitest';
@@ -132,7 +132,6 @@ it('clears only the submitted composer version on a valid reply and retains newe
 
 it('gives the automatic chat title only after the first reply settles, never racing the send', async () => {
   const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
-  const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };
   const reply = Promise.withResolvers<AssistantResult>(), titles: string[] = [];
@@ -140,7 +139,7 @@ it('gives the automatic chat title only after the first reply settles, never rac
   let current!: ReturnType<typeof useAssistantController>;
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) },
+    return createElement(AssistantPanel, { conversationPort: { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) },
       served: current, title: 'New chat', onAutomaticTitle: title => { titles.push(title); } });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -153,7 +152,6 @@ it('gives the automatic chat title only after the first reply settles, never rac
 
 it.each(['run-action', 'workflow'] as const)('renders the existing served %s card with truthful local facts and confirms only its server identity', async kind => {
   const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
-  const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };
   let current!: ReturnType<typeof useAssistantController>, confirmations = 0;
@@ -166,10 +164,10 @@ it.each(['run-action', 'workflow'] as const)('renders the existing served %s car
       assert.equal(reviewedDigest, await assistantProposalDigest(proposal)); confirmations++;
       return { state: 'applied' as const, actionId: input.actionId };
     } });
-  const producer = createAssistantMockProducer();
+  const producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer, accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+    return createElement(AssistantPanel, { conversationPort: producer, served: current, title: 'New chat' });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
@@ -224,12 +222,11 @@ it('refuses setup attachments before send callbacks, file readers and registrati
     Object.defineProperty(file, 'workbook', { get() { reads++; throw new Error('unexpected-file-read'); } });
     let retained: ComposerDraft = { text, files: [file] };
     const draft = { read: () => retained, retain(value: ComposerDraft) { retained = value; } };
-    const producer = createSetupAssistantProducer();
+    const producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
     const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } });
     function Harness() {
       current = useAssistantController(client, 'profile', undefined, false);
-      return createElement(ShellAssistantPanel, { producer, served: current, draft,
-        accountClient: { async chatGptAccount() { return chatGptStatusFixture(ChatGptAccountStateSchema.parse({ state: "signed-out" })); } },
+      return createElement(ShellAssistantPanel, { conversationPort: producer, served: current, draft,
         async onSendMessage() { sends++; }, async onRegisterSpreadsheet() { registrations++; },
         async onAttachFile() { attachments++; return null; } });
     }
@@ -310,16 +307,16 @@ it('shows one retryable failure after a lost chat response', async () => {
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
   const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } });
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
+  const account = { ...preview, mode: 'live' as const }, producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
   function Harness() {
     current = useAssistantController(client, 'current', undefined, false);
-    return createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return chatGptStatusFixture({ state: 'signed-out' as const }); } } });
+    return createElement(ShellAssistantPanel, { conversationPort: producer, served: current });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'failed');
-  assert.match(document.body.textContent ?? '', /Reply unavailable\. Your request is kept\./u);
+  assert.match(document.body.textContent ?? '', /Reply unavailable\./u);
   assert.equal(document.body.textContent?.includes('lost workflow proposal response'), false);
   await act(async () => { current.onAction({ type: 'confirm' }); });
   assert.equal(calls, 1);
@@ -332,29 +329,28 @@ it('shows a refused reply as one failure notice whose Retry sends the kept promp
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
   const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; return { state: 'refused', code: 'ASSISTANT_RESPONSE_FAILED', message: 'raw server text' }; } });
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
+  const account = { ...preview, mode: 'live' as const }, producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
   function Harness() {
     current = useAssistantController(client, 'current', undefined, false);
-    return createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return chatGptStatusFixture({ state: 'signed-out' as const }); } } });
+    return createElement(ShellAssistantPanel, { conversationPort: producer, served: current });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'idle');
-  assert.match(document.body.textContent ?? '', /The assistant could not reply\. Send your message again\./u);
+  assert.match(document.body.textContent ?? '', /The assistant could not reply\./u);
   assert.equal(document.body.textContent?.includes('raw server text'), false);
   assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
   await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
   assert.equal(calls, 2);
   assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
-  assert.equal((document.body.textContent?.match(/The assistant could not reply\. Send your message again\./gu) ?? []).length, 1);
+  assert.equal((document.body.textContent?.match(/The assistant could not reply\./gu) ?? []).length, 1);
   assert.equal(document.body.textContent?.includes('Restored chat'), false);
   assert.equal(current.state.messages.filter(message => message.role === 'operator' && message.text === 'start selected workflow').length, 2);
 });
 
 it('disables Cancel and Confirm once a refused decision leaves the issued card stale', async () => {
   const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
-  const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   let current!: ReturnType<typeof useAssistantController>, decisions = 0;
   const proposal = ASSISTANT_PAUSE_PROPOSAL;
@@ -362,7 +358,7 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
     async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_UNAVAILABLE' as const }; } });
   function Harness() {
     current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => chatGptStatusFixture({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+    return createElement(AssistantPanel, { conversationPort: { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) }, served: current, title: 'New chat' });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: { ...preview, mode: 'live' as const }, children: createElement(Harness) })));
@@ -412,12 +408,12 @@ it.each([
 });
 
 it('shows a failed activity read as one notice, not "No activity today", and Retry reads again', async () => {
-  const { AssistantServedActivity } = await import('../../../../src/dashboard/surfaces/shell/assistant-mock-thread.js');
+  const { AssistantServedActivity } = await import('../../../../src/dashboard/surfaces/shell/assistant-thread.js');
   let reads = 0;
   const read = async () => { reads++; if (reads === 1) throw Error('activity raw failure'); return { rows: [] } as never; };
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(AssistantServedActivity, { query: '', read })));
-  assert.match(host.textContent ?? '', /Activity did not load\./u);
+  assert.match(host.textContent ?? '', /Couldn't load activity\./u);
   assert.equal(host.textContent?.includes('No activity today'), false);
   assert.equal(host.textContent?.includes('activity raw failure'), false);
   await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });

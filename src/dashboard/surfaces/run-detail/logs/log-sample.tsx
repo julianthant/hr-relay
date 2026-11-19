@@ -1,25 +1,20 @@
 import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { ListChecks, RotateCcw, RotateCw } from "lucide-react";
 import { LogFooterButton } from "./log-action-button.js";
 import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
-import type { WorkflowSource } from "../../../app/workflow-sources.js";
 import { Badge, Banner, Button, FailureNotice, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
 import { linkedRunEntries } from "../linked-runs-model.js";
 import type { LinkedRunWire } from "../../queue/queue-model.js";
 import type { LogDecisionHandler } from "./log-feed.js";
-import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
-import { answeredRow, isCancelOption, type LogDecision } from "./log-decision-model.js";
+import { isCancelOption } from "./log-decision-model.js";
 import type { ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
-import type { LogStep } from "./log-feed-model.js";
-import { decisionScenarios, previewScenarios } from "./log-fixture.js";
-import { selectedLogPresentation, selectedLogSample, type LogSelection } from "./log-selection-model.js";
-import { continuedLookupTimeline } from "./log-selected-fixture.js";
-import { pauseTimeline, type LogTimelineStage } from "./log-timeline-model.js";
+import { rerunFooterAction, type LogSelection } from "./log-selection-model.js";
+import { pauseTimeline } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogFeedPadding, LogSkeleton, LogTimelineSkeleton } from "../../shared/loading/loading.js";
@@ -32,23 +27,14 @@ import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.j
 
 type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler; onOpenLinked?: (target: LinkedRunWire) => void; onRetryLogs?: () => void }>;
 
-/** Rerun sits in the Logs footer when the row serves a rerun action. */
 function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
   if (action.kind !== "command") return action;
   const { confirm: _confirm, ...direct } = action;
   return direct;
 }
 
-function rerunFooterButton(selection: LogSelection | undefined, onAction?: DashboardActionHandler) {
-  const action = selection?.row.actions.find(candidate => candidate.kind === "navigation" && candidate.navigate.kind === "rerun");
-  if (selection === undefined || action === undefined || onAction === undefined) return undefined;
-  const target = { runId: selection.row.runId, expectedVersion: selection.row.rowRevision };
-  return <LogFooterButton label={action.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={() => onAction(action, target)} />;
-}
-
-export function LogSample({ selection, source = "served", initialStepId, confirm, ...navigation }: { selection?: LogSelection; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
-  if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} initialStepId={initialStepId} confirm={confirm} {...navigation} />;
-  return <PreviewLogSample selection={selection} onAction={navigation.onAction} />;
+export function LogSample({ selection, initialStepId, confirm, ...navigation }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+  return <ServedLogSample selection={selection} initialStepId={initialStepId} confirm={confirm} {...navigation} />;
 }
 
 function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction, onOpenLinked, onRetryLogs }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
@@ -65,6 +51,11 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const failureMissing = resource.snapshot !== undefined && initialStepId !== undefined && !projection.steps.some(step => step.id === initialStepId);
   const preview = resource.snapshot?.logs.dryRunPreview;
   const lastStepId = projection.steps.at(-1)?.id;
+  const previewRegion = useMemo(() => preview?.state === "available" ? <FullDryRunPreview
+    stages={preview.stages.map(stage => ({ ...stage, state: stage.submitNotClicked ? "not-clicked" : stage.state }))}
+    facts={preview.stages.flatMap(stage => stage.sample === undefined ? [] : [{ label: stage.label, value: stage.sample.value, sample: true }])} />
+    : preview?.state === "unavailable" ? <Notice tone="warning" title="Dry-run preview unavailable" description={preview.reason === "preview-not-completed" ? "The dry run did not complete." : preview.reason === "preview-result-unreadable" ? "The result could not be read." : "Preview is unavailable."} /> : undefined, [preview]);
+  const emptyPreview = lastStepId === undefined && previewRegion !== undefined ? <div className="mt-4 min-w-0">{previewRegion}</div> : undefined;
   const reviewAvailable = resource.snapshot?.detail.availableSections.includes("review") === true;
   const batchRetry = batchMemberRetryAction(selection.row);
   const retry = selection.row.parent === null || resource.snapshot?.detail.childRetry !== undefined ? undefined : selection.row.actions.find(action => action.kind === "command" && action.command === "retry");
@@ -82,27 +73,27 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     if (action !== undefined) onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description="Relay could not refresh these logs." /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, logsReadFailedTitle]);
-  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence="Relay could not load this run's logs." stillWorks="The queue and the other runs still work."
+  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence="Couldn't load logs."
     action={onRetryLogs === undefined ? undefined : { label: "Retry", onClick: onRetryLogs }} /></div> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, onRetryLogs]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;
     const showFindings = findings?.stepId === id;
-    const showPreview = id === lastStepId && (preview?.state === "available" || preview?.state === "unavailable");
+    const showPreview = id === lastStepId && previewRegion !== undefined;
     if (!showFindings && !showPreview) return undefined;
     return <>{showFindings && findings !== undefined ? <UcpathFoundTransactions key={`${selection.row.runId}:${findings.stepId}`} attemptLabel={findings.attemptLabel}
       presentation={resource.command?.state === "pending" ? { state: "checking" } : findings.presentation}
       onDecision={resource.onUcpathDecision} /> : undefined}
-      {showPreview ? <div className="col-start-2 mt-4 min-w-0">{preview?.state === "available" ? <FullDryRunPreview
-        stages={preview.stages.map(stage => ({ ...stage, state: stage.submitNotClicked ? "not-clicked" : stage.state }))}
-        facts={preview.stages.flatMap(stage => stage.sample === undefined ? [] : [{ label: stage.label, value: stage.sample.value, sample: true }])} />
-        : preview?.state === "unavailable" ? <Notice tone="warning" title="Dry-run preview unavailable" description={preview.reason === "preview-not-completed" ? "The dry run did not complete." : preview.reason === "preview-result-unreadable" ? "The result could not be read." : "Preview is unavailable."} /> : undefined}</div> : undefined}</>;
-  }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, preview]);
+      {showPreview ? <div className="col-start-2 mt-4 min-w-0">{previewRegion}</div> : undefined}</>;
+  }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, previewRegion]);
   const retryRun = useCallback(() => {
     if (retry !== undefined) onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
   const linkedRuns = useMemo(() => linkedRunEntries(selection.row), [selection.row]);
   const recordCount = resource.snapshot?.detail.ocrRecordCount;
-  const rerun = rerunFooterButton(selection, onAction);
+  const rerun = useMemo(() => {
+    const action = rerunFooterAction(selection, onAction);
+    return action === undefined ? undefined : <LogFooterButton label={action.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={action.run} />;
+  }, [selection, onAction]);
   const footerActions = useMemo(() => {
     const records = reviewAvailable && recordCount !== undefined && onReview !== undefined;
     const members = selection.row.parent !== null && selection.row.status === "running";
@@ -119,44 +110,9 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} footerActions={footerActions}
     content={content}
-    afterStep={afterStep} />
+    afterStep={afterStep} trailingContent={emptyPreview} />
     {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.row.title}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
 }
-
-function PreviewLogSample({ selection, onAction }: { selection?: LogSelection; onAction?: DashboardActionHandler }) {
-  const scenarioId = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview") ?? (selection ? "preview" : "separation");
-  const [edited, setEdited] = useState<{ basis: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }>();
-  const scenarios = [...previewScenarios, ...decisionScenarios];
-  const row = selection?.row, workflowLabel = selection?.workflowLabel;
-  const selected = useMemo(() => row && workflowLabel !== undefined ? selectedLogPresentation({ row, workflowLabel }) : undefined, [row, workflowLabel]);
-  const preview = useMemo(() => row && workflowLabel !== undefined ? selectedLogSample({ row, workflowLabel }) : undefined, [row, workflowLabel]);
-  const scenario = scenarioId === "preview" && preview ? preview : scenarioId === "selected" && selected
-    ? { ...selected, id: "selected", label: "Queue facts", subject: "" } : scenarios.find(item => item.id === scenarioId);
-  if (!scenario) throw new Error("log-sample-scenario-missing");
-  const basis = scenarioId === "preview" && selection ? `${scenarioId}:${selection.row.updatedAt}:${selection.row.status}` : scenarioId;
-  const steps = edited?.basis === basis ? edited.steps : scenario.steps;
-  const timeline = edited?.basis === basis ? edited.timeline : scenario.timeline;
-  // A fixture has no server: answering records a preview answer on the decision, and the lookup preview continues past its approval.
-  const answerSteps = (current: typeof edited, id: string, optionId: string, label: string, answeredInput?: string) => (current?.basis === basis ? current.steps : scenario.steps).map(step => ({ ...step, entries: step.entries.map(entry => entry.id !== id || entry.kind !== "decision" ? entry
-    : { ...entry, decision: { ...withoutServed(entry.decision), ...(answeredInput ? { answeredInput } : {}), answered: { optionId, label, at: PREVIEW_ANSWERED_AT, actor: { kind: "person" as const, name: "Alex Rivera" } } } }) }));
-  const decide: LogDecisionHandler = (id, option, answer) => {
-    const label = answeredRow(option, answer)?.name ?? option.label;
-    setEdited(current => {
-      const nextSteps = answerSteps(current, id, option.id, label, option.input?.kind === "text" ? answer.text?.trim() : undefined);
-      if (scenarioId === "preview" && option.id === "approve-lookup-match" && !nextSteps.some(step => step.id === "lookup-job")) {
-        nextSteps.push({ id: "lookup-job", time: "09:40:20", title: "Read employment record", system: "UCPath", entries: [{ kind: "note", id: "lookup-job-started", time: "09:40:20", message: `Reading the employment record for ${preview?.subject}.`, tone: "info" }] });
-      }
-      return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, option.id) : scenario.timeline, steps: nextSteps };
-    });
-  };
-  const cancelPreview = (id: string) => setEdited(current => ({ basis, timeline: current?.basis === basis ? current.timeline : scenario.timeline, steps: answerSteps(current, id, "cancel-run", "Cancel run") }));
-  return <LogPanel key={basis} status={selection === undefined ? undefined : <RunStateChips row={selection.row} />} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
-}
-
-/** A fixture has no clock; the preview answer carries a fixed instant. */
-const PREVIEW_ANSWERED_AT = IsoInstantSchema.parse("2026-08-03T16:41:05.000Z");
-
-const withoutServed = ({ served: _served, ...rest }: LogDecision): LogDecision => rest;
 
 export function FullDryRunPreview({ stages, facts }: { stages: readonly DryRunPreviewStage[]; facts: readonly { label: string; value: string; sample?: boolean }[] }) {
   const applicable = stages.filter(stage => stage.state !== "skipped");

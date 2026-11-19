@@ -53,20 +53,55 @@ export function runRecordColumns(input: PredecessorRunRecord, schema: z.ZodType<
   };
 }
 
+let nativeRecordReadScope: object | undefined;
+
+/** Keeps decoded rows inside one synchronous SQL read snapshot. */
+export function withNativeRecordReadScope<Result>(read: () => Result): Result {
+  const previous = nativeRecordReadScope;
+  nativeRecordReadScope = {};
+  try { return read(); }
+  finally { nativeRecordReadScope = previous; }
+}
+
+export function createNativeRecordReadMemo<Result>() {
+  type PhysicalRow = Readonly<Record<string, string | number | null>>;
+  const scopes = new WeakMap<object, Map<string, { row: PhysicalRow; columnCount: number; value: Result }>>();
+  return (row: PhysicalRow, read: () => Result, discriminator = ""): Result => {
+    if (nativeRecordReadScope === undefined || typeof row.id !== "string") return read();
+    let records = scopes.get(nativeRecordReadScope);
+    if (records === undefined) {
+      records = new Map();
+      scopes.set(nativeRecordReadScope, records);
+    }
+    const key = discriminator + row.id;
+    const cached = records.get(key);
+    const columns = Object.keys(row);
+    if (cached !== undefined && columns.length === cached.columnCount
+      && columns.every(column => Object.hasOwn(cached.row, column) && Object.is(row[column], cached.row[column]))) {
+      return structuredClone(cached.value);
+    }
+    const record = read();
+    records.set(key, { row, columnCount: columns.length, value: structuredClone(record) });
+    return record;
+  };
+}
+
+const readRunRecord = createNativeRecordReadMemo<RunRecord>();
+
 const ScalarSchema = z.union([z.string(), z.number(), z.null()]);
 const RowSchema = z.record(z.string(), ScalarSchema);
 
 export function runRecordFromRow(input: unknown): RunRecord {
-  return readRunRow(input, RunRecordSchema);
+  const row = RowSchema.parse(input);
+  return Object.freeze(readRunRecord(row, () => readRunRow(row, RunRecordSchema)));
 }
 
 /** Reads a run stored before envelopes carried a build id, for the stopped upgrade that deletes it. */
 export function predecessorRunRecordFromRow(input: unknown): PredecessorRunRecord {
-  return readRunRow(input, PredecessorRunRecordSchema);
+  return readRunRow(RowSchema.parse(input), PredecessorRunRecordSchema);
 }
 
-function readRunRow<Record extends PredecessorRunRecord>(input: unknown, schema: z.ZodType<Record>): Record {
-  const row = RowSchema.parse(input);
+function readRunRow<Record extends PredecessorRunRecord>(row: z.infer<typeof RowSchema>, schema: z.ZodType<Record>): Record {
   if (typeof row.envelope_json !== "string" || typeof row.lifecycle_json !== "string") {
     throw new Error("run row is missing whole-record JSON");
   }
@@ -76,9 +111,8 @@ function readRunRow<Record extends PredecessorRunRecord>(input: unknown, schema:
     || Object.hasOwn(lifecycle, "envelope")) throw new Error("run lifecycle JSON must contain exactly the non-envelope record");
   const record = schema.parse({ ...lifecycle, envelope });
   const columns = runRecordScalarColumns(record);
-  const actualKeys = Object.keys(row).sort();
-  const expectedKeys = [...Object.keys(columns), "envelope_json", "lifecycle_json"].sort();
-  if (canonicalJsonStringify(actualKeys) !== canonicalJsonStringify(expectedKeys)) {
+  const expectedKeys = [...Object.keys(columns), "envelope_json", "lifecycle_json"];
+  if (Object.keys(row).length !== expectedKeys.length || !expectedKeys.every(key => Object.hasOwn(row, key))) {
     throw new Error("run row columns do not match the native schema");
   }
   for (const [key, expected] of Object.entries(columns)) {

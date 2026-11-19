@@ -1,4 +1,4 @@
-import { CHATGPT_COMPLETION_READ_DEADLINE_MS, readWithDeadline } from "../../../client/read-deadline.js";
+import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, readWithDeadline } from "../../../client/read-deadline.js";
 import type { ChatGptAccountQueries } from "../../../client/queries/chatgpt-account-queries.js";
 import { ChatGptAuthorizationUrlSchema, type ChatGptAccountState, type ChatGptAccountView, type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
@@ -83,6 +83,8 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   const listeners = new Set<() => void>();
   const nowMs = options.nowMs ?? (() => systemClock.nowMs());
+  const queryAccount = (signal?: AbortSignal) => readWithDeadline(async () => (await client.chatGptAccount()).account,
+    "CHATGPT_AUTH_UNAVAILABLE", CHATGPT_ACCOUNT_READ_DEADLINE_MS, signal);
   const current = (request: number) => !disposed && request === epoch;
   const notify = () => { for (const listener of listeners) listener(); };
   const problem = (state: "failed" | "refused" | "uncertain", code: ErrorCatalogCode, account: ChatGptAccountView | undefined = "account" in resource ? resource.account : undefined) => {
@@ -133,7 +135,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   const reconcileProblem = async (request: number, code: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE", state: "uncertain" | "refused" = "uncertain") => {
     if (!current(request)) return;
     try {
-      const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
+      const account = await queryAccount();
       if (current(request)) {
         problem(state, code, account);
       }
@@ -141,7 +143,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   };
   const reread = async (request: number) => {
     try {
-      const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
+      const account = await queryAccount();
       if (current(request) && account.state !== "signing-in") accept(account);
     } catch { /* the failure code is already being reported; the row keeps the account it showed */ }
   };
@@ -161,7 +163,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
           const result: ChatGptSignInCompletion = await readWithDeadline(signal => client.completeChatGptSignIn(attemptId, signal), "CHATGPT_AUTH_UNAVAILABLE", Math.min(2_147_483_647, Math.max(CHATGPT_COMPLETION_READ_DEADLINE_MS, Date.parse(expiresAt) - nowMs())), controller.signal);
           if (!current(request)) return;
           if (result.state === "completed") {
-            const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE", undefined, controller.signal);
+            const account = await queryAccount(controller.signal);
             if (!current(request)) return;
             if (account.state === "signing-in") problem("refused", "CHATGPT_AUTH_CANCELLED", account);
             else accept(account);
@@ -191,7 +193,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
     completionController?.abort();
     busy = true; notify();
     try {
-      const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
+      const account = await queryAccount();
       if (!current(request)) return;
       loaded = true;
       if (account.state === "signing-in") {
@@ -277,7 +279,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         if (!current(request)) return;
         if (result.state === "cancelled") {
           closePopup();
-          const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
+          const account = await queryAccount();
           if (!current(request)) return;
           if (account.state === "signing-in") problem("uncertain", "CHATGPT_AUTH_UNAVAILABLE", account);
           else accept(account);

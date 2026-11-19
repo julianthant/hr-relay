@@ -280,7 +280,7 @@ export interface WriteFixtureWorld {
   /** Called when the staged page's subject observation is read (beat ③). */
   onSubjectRead?: () => void;
   /** The exact capability the last commit click received (beat ⑤ witness). */
-  lastCapability?: unknown;
+  lastCapability?: MutationCapability;
   /** Called during prepare, before it returns (budget-expiry injection). */
   onPrepare?: () => void;
   prepareSteps?: (captureScreenshot: () => Promise<void>) => Promise<void>;

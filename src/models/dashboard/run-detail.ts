@@ -1,5 +1,5 @@
 import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
-import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrReviewChangeSchema } from "../ocr/review.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrReviewChangeSchema, OcrIdentityHoldSchema } from "../ocr/review.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { StartPlanRequestSchema } from "./start-plan.js";
@@ -519,6 +519,8 @@ export const ReviewPageSchema = z.strictObject({
   records: z.array(ReviewRecordWireSchema),
   ocr: z.strictObject({ revision: OcrReviewRevisionSchema, digest: FingerprintSchema,
     approvedSnapshots: z.array(OcrApprovedSnapshotSchema), invalidatedCorrections: z.array(OcrReviewChangeSchema).min(1).optional(),
+    /** One entry per record with no asserted identity, naming why the lookup did not assert it. */
+    identityHolds: z.array(OcrIdentityHoldSchema),
     editing: z.discriminatedUnion("state", [
       z.strictObject({ state: z.literal("available"), runVersion: RowRevisionSchema }),
       z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["approved", "run-busy", "retained-workflow"]) }),

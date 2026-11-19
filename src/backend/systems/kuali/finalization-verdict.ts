@@ -6,10 +6,12 @@ import { KualiFinalizationVerdictSchema } from "../../../models/systems/kuali/ma
 import { kualiFinalizationIdempotencyKey } from "../../../models/systems/kuali/save-separation-finalization.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { KUALI_RRSS_DOCUMENT_READY } from "../../../models/ui/kuali-rrss-document.js";
+import { KUALI_BLANK_OPTION_TEXT } from "../../../models/ui/kuali-separation-document.js";
 import { KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER } from "../../../models/ui/kuali-separation-finalization.js";
 import type {
   KualiFinalizationReadBack,
   KualiFinalizationTarget,
+  KualiObservedFinalizationFields,
 } from "../../../models/ui/kuali-separation-finalization.js";
 import { deriveIdempotencyKeyDigest } from "../../../rules/write-safety/write-safety.js";
 
@@ -38,6 +40,30 @@ function kualiFinalizationAbsenceEvidenceId(
   ].join("-");
 }
 
+export function kualiFinalizationConflictReason(
+  target: KualiFinalizationTarget,
+  observed: KualiObservedFinalizationFields,
+): string | undefined {
+  const prefix = `Kuali finalization conflict on document ${target.documentNumber}`;
+  if (observed.transactionNumber !== "") {
+    const detail = observed.transactionNumber === target.variables.transactionNumber
+      ? "a saved transaction number is already present"
+      : "a different saved transaction number is already present";
+    return `${prefix}: ${detail}; review the saved form before continuing`;
+  }
+
+  // The request can supply dates and prior comments before finalization starts.
+  if (observed.submittedTerminationTemplate || observed.finalPay !== null
+    || observed.requestAcknowledged || observed.timekeeperName !== ""
+    || (observed.department !== "" && observed.department !== KUALI_BLANK_OPTION_TEXT)
+    || observed.payrollTitleCode !== "" || observed.payrollTitle !== ""
+    || observed.terminationEffectiveDate !== ""
+    || observed.timekeeperComments !== target.variables.observedExistingComments) {
+    return `${prefix}: the form shows a partial finalization; review the saved form before continuing`;
+  }
+  return undefined;
+}
+
 export function kualiFinalizationVerdict(
   target: KualiFinalizationTarget,
   readBack: KualiFinalizationReadBack,
@@ -49,6 +75,14 @@ export function kualiFinalizationVerdict(
     return KualiFinalizationVerdictSchema.parse({
       state: "unknown",
       reason: readBack.reason,
+      observedAt: readBack.observedAt,
+    });
+  }
+  const conflict = kualiFinalizationConflictReason(target, readBack.observedFields);
+  if (conflict !== undefined) {
+    return KualiFinalizationVerdictSchema.parse({
+      state: "unknown",
+      reason: conflict,
       observedAt: readBack.observedAt,
     });
   }

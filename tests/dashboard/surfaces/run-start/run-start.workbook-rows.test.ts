@@ -87,7 +87,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
       children: createElement(DashboardClientProvider, { client,
         children: createElement(ToastProvider, { children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID,
           children: createElement(RunStartDialog, { open: route.start === true, onOpenChange() {},
-            catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)),
+            catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)),
             panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} }) }) }) }) });
   }
   await act(async () => root.render(createElement(Harness)));
@@ -102,6 +102,19 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
   assert.equal(planned.selectedStepKeys.length, 8, "Onboarding defaults include all eight steps, with the reference check");
+});
+
+it("reads catalog and compatibility without the workbook list while the launcher moves between stages", async () => {
+  const reads = { workbookList: 0, workbookCatalog: 0, workbookCompatibility: 0 };
+  const counted = { ...libraryReads,
+    workbookList: async () => { reads.workbookList += 1; return []; },
+    workbookCatalog: async () => { reads.workbookCatalog += 1; return libraryReads.workbookCatalog(); },
+    workbookCompatibility: async () => { reads.workbookCompatibility += 1; return libraryReads.workbookCompatibility(); } };
+  const dialog = await h.openDialog(h.stubClient({ ...counted }), { workflows: [workflow], panelWorkflowId: descriptor.id });
+  await h.settle(); await chooseCurrent(); await select(0); await mode("rehire");
+  await dialog.press("Continue"); await h.settle(); await dialog.press("Continue"); await h.settle();
+  assert.equal(reads.workbookList, 0, "Start run never lists whole workbooks");
+  assert.deepEqual([reads.workbookCatalog, reads.workbookCompatibility], [1, 1], "each reference read happens once per dialog open");
 });
 
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {
@@ -172,7 +185,7 @@ it("keeps the row selection silently when the dialog is reopened for the same sp
   const client = h.stubClient({ ...libraryReads });
   const render = (open: boolean) => act(async () => reopenRoot?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
     children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID, children: createElement(RunStartDialog, { open, onOpenChange() {}, panelWorkflowId: descriptor.id, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {},
-      catalog: buildWorkflowCatalog([workflow], false, servedFixtureSources([workflow])) }) }) }) })));
+      catalog: buildWorkflowCatalog([workflow], servedFixtureSources([workflow])) }) }) }) })));
   await render(true); await h.settle(); await chooseCurrent(); await select(0);
   await render(false); await h.settle(); await render(true); await h.settle();
   assert.equal(document.body.textContent?.includes("Previous row selection"), false);

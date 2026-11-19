@@ -26,7 +26,7 @@ async function mount(read: () => Promise<AssistantActivityWire>) {
   const client = { ...base, assistantActivity };
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(TooltipProvider, null, createElement(ToastProvider, null,
-    createElement(HubShell, { source: "served", settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {}, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }) }),
+    createElement(HubShell, { settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {} }),
     createElement(AssistantLauncher))) })));
   const button = (label: string) => { const found = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`); assert.ok(found, label); return found; };
   const openHistory = async () => {
@@ -89,8 +89,7 @@ it("shows one plain notice with Retry when the read fails, never an empty day", 
   const view = await mount(async () => { throw new Error("down"); });
   try {
     await view.openActivity();
-    assert.ok(view.text().includes("Activity did not load."));
-    assert.ok(view.text().includes("Your chats are not affected."));
+    assert.ok(view.text().includes("Couldn't load activity."));
     assert.equal(view.text().includes("No activity today"), false);
     assert.equal(view.text().includes("down"), false);
     const reads = view.assistantActivity.mock.calls.length;

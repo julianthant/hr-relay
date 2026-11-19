@@ -26,7 +26,7 @@ describe("parkedWriteDecision", () => {
     ]);
     assert.deepEqual(decision.options[0]?.input, { kind: "text", label: "Transaction number", placeholder: "T00000000", pattern: "^T\\d+$" });
     assert.equal(decision.options[1]?.input, undefined);
-    assert.deepEqual(decision.options.map(({ hint }) => hint), ["Relay checks this number, then the run continues.", "Relay files the termination once more."]);
+    assert.deepEqual(decision.options.map(({ hint }) => hint), ["Relay verifies this number first.", undefined]);
     assert.deepEqual(decision.options.map(({ confirm }) => confirm), [confirmOf("recheck-write"), confirmOf("resolve-write-absent")]);
   });
 
@@ -38,14 +38,14 @@ describe("parkedWriteDecision", () => {
     assert.deepEqual(decision.options.map(({ id, label, recommended }) => [id, label, recommended]), [
       ["saved", "Saved in Kuali", true], ["not-saved", "Not saved, save it again", undefined]]);
     assert.equal(decision.options[0]?.input, undefined, "Kuali issues no number; Relay re-reads the document");
-    assert.equal(decision.options[0]?.hint, "Relay checks Kuali, then the run continues.");
+    assert.equal(decision.options[0]?.hint, "Relay verifies first.");
   });
 
   it("offers Check again first only as the held UCPath check, which files nothing", () => {
     const decision = parkedWriteDecision(TERMINATION, [RECHECK, ABSENT, HELD]);
     assert.deepEqual(decision.options.map(({ id, recommended }) => [id, recommended]), [["check-again", undefined], ["saved", true], ["not-saved", undefined]]);
     assert.deepEqual(decision.options[0]?.send, { via: "action", actionKey: "check-parked-write" });
-    assert.equal(decision.options[0]?.hint, "Reads Smart HR Transactions again; files nothing.");
+    assert.equal(decision.options[0]?.hint, "Files nothing.");
     assert.deepEqual(decision.options[0]?.confirm, confirmOf("check-parked-write"));
   });
 
@@ -57,7 +57,7 @@ describe("parkedWriteDecision", () => {
   it("says the system accepted the write but its status could not be read when the saved-effect read failed", () => {
     const decision = parkedWriteDecision({ ...TERMINATION, readBack: true, recordId: "10807012" }, [RECHECK, ABSENT]);
     assert.equal(decision.title, "Termination saved, but the read-back failed");
-    assert.equal(decision.context, "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions for 10807012.");
+    assert.equal(decision.context, "UCPath accepted the submit; status unreadable. Check Smart HR Transactions for 10807012.");
     assert.deepEqual(decision.options.map(({ id, recommended }) => [id, recommended]), [["saved", true], ["not-saved", undefined]], "the same answers; the copy changes, not the commands");
     assert.deepEqual(parkedWriteDecision({ ...TERMINATION, readBack: true }, [RECHECK, ABSENT, HELD]).options.map(({ id, recommended }) => [id, recommended]),
       [["check-again", true], ["saved", undefined], ["not-saved", undefined]], "where the held check is served, it is preselected");
@@ -91,8 +91,8 @@ describe("parkedWriteDecision", () => {
     assert.equal(decision.title, "Did the write save?");
     assert.equal(decision.context, undefined);
     assert.deepEqual(decision.options.map(({ id, label, hint }) => [id, label, hint]), [
-      ["saved", "Saved", "Relay checks it, then the run continues."],
-      ["not-saved", "Not saved, write it again", "Relay writes it once more."],
+      ["saved", "Saved", "Relay verifies first."],
+      ["not-saved", "Not saved, write it again", undefined],
     ]);
   });
 });

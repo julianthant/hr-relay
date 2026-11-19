@@ -40,7 +40,7 @@ it('shows a loading frame with the table header', async () => {
 
 it('shows a failure notice with one Retry button when the list cannot be read', async () => {
   wiring.error = 'down'; await render();
-  assert.match(host.textContent ?? '', /Spreadsheets couldn't be loaded\./);
+  assert.match(host.textContent ?? '', /Couldn't load spreadsheets\./);
   const retry = [...host.querySelectorAll('button')].filter(node => node.textContent?.trim() === 'Retry');
   assert.equal(retry.length, 1);
   await click(retry[0]);
@@ -67,4 +67,9 @@ it('puts the unconfirmed notice under the heading, not above it', async () => {
 it('offers Import inside an empty library', async () => {
   wiring.catalog = []; await render();
   assert.ok(host.querySelector('[class*="border-ui-stroke"] button')?.textContent?.includes('Import'));
+});
+
+it('hides the search box in an empty library', async () => {
+  wiring.catalog = []; await render();
+  assert.equal(host.querySelector('input[aria-label="Search spreadsheets"]'), null);
 });

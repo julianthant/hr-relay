@@ -4,7 +4,7 @@ import { Button, ChoicePicker } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export type DecisionAnswered = Readonly<{ outcome: string; kind: "done" | "retry" | "rejected" | "cancelled"; time: string; by: string }>;
-export type DecisionChoiceOption = Readonly<{ value: string; label: string; hint: string }>;
+export type DecisionChoiceOption = Readonly<{ value: string; label: string; hint?: string }>;
 
 const answeredGlyph = {
   done: <Check aria-hidden className="size-4 shrink-0 text-ui-positive" />,
@@ -50,13 +50,13 @@ export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", c
   </form>;
 }
 
-/** A short choice list as a dropdown at a fixed narrow width; every option carries a one-line hint, and the recommended one comes preselected. */
+/** A short choice list as a dropdown at a fixed narrow width; an option may carry a one-line hint, and the recommended one comes preselected. */
 export function DecisionChoice({ label, options, value, onChange, disabled }: {
   label: string; options: readonly DecisionChoiceOption[]; value: string; onChange: (value: string) => void; disabled?: boolean;
 }) {
   const selected = options.find(option => option.value === value);
   return <div className="flex w-80 max-w-full flex-col gap-1 self-start">
     <ChoicePicker label={label} value={value} disabled={disabled} onChange={onChange} options={options.map(option => ({ value: option.value, label: option.label, description: option.hint }))} />
-    {selected && <p className="m-0 text-caption text-ui-muted">{selected.hint}</p>}
+    {selected?.hint && <p className="m-0 text-caption text-ui-muted">{selected.hint}</p>}
   </div>;
 }

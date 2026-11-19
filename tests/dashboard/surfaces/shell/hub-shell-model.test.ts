@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { chatAge, createMockHubChatsPort } from "../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
+import { chatAge, createLocalHubChatsPort } from "../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 
 it("chat operations retain exact identities and reject unavailable or blank renames", async () => {
-  const port = createMockHubChatsPort();
+  const port = createLocalHubChatsPort();
   const first = port.read()[0];
   await port.rename(first.id, "  Reviewed record  ");
   assert.equal(port.read()[0]?.title, "Reviewed record");
