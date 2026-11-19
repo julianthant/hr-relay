@@ -75,13 +75,6 @@
 .launch-dialog aside.launch-workflow-rail dd { @apply mt-0.5; }
 .launch-dialog aside.launch-workflow-rail > p:last-child { @apply pt-3 text-ui-primary; }
 
-.command-confirm-dialog { @apply max-w-md border-ui-stroke-control bg-ui-panel text-ui-primary; }
-.command-confirm-dialog > header { @apply border-0 px-6 pb-0 pt-6; }
-.command-confirm-dialog > header h2 { @apply text-section font-medium; }
-.command-confirm-dialog > header p { @apply mt-3 max-w-[48ch] text-body leading-relaxed text-ui-secondary; }
-.command-confirm-target { @apply mx-6 my-5 flex min-w-0 flex-col gap-1 rounded-lg border border-ui-stroke bg-ui-table p-3; }
-.command-confirm-reference { @apply mt-2 break-all border-t border-ui-stroke pt-2; }
-.command-confirm-dialog > footer { @apply border-ui-stroke bg-ui-panel px-6 py-4; }
 
 .launch-dialog .launch-picker { background: var(--ds-surface-1); }
 .launch-dialog .launch-picker-search { @apply shrink-0 p-3; }

@@ -81,9 +81,7 @@
 .log-capture--unavailable figcaption { border-top-style: dashed; color: var(--ui-muted); }
 .log-capture-missing { display: flex; height: 152px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ui-muted); font-size: var(--text-body); }
 
-.log-controls [aria-label="Run logs"] .text-body { font-size: var(--text-control); }
 
-.log-control-content { grid-column: 2; min-width: 0; margin-top: var(--ds-space-loose); }
 @container (max-width: 448px) {
   .log-compare thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .log-compare, .log-compare tbody { display: block; }

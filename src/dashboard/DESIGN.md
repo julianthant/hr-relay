@@ -6,6 +6,10 @@
 
 Product mock workflows start with empty queues; the mock composition supplies the sample runs. Automatic backups and repairs stay invisible in the dashboard.
 
+## Guarded rules
+
+`tests/architecture/dashboard/dashboard-design-rules.test.ts` fails a change under `surfaces/` or `app/` that adds a font weight outside 400/500/600, a px font size off the type scale, a fractional px value, a raw hex colour outside `ds/theme`, a date formatted outside `lib/date-format.ts`, a `.btn`, `.hub-btn`, `.hub-modal` or `.hub-field` rule, a CSS class no `.ts`, `.tsx` or `.html` names, `font-mono` or `font-data` in Logs or the queue, or a click handler on a non-button in the Duo setup window. Each failure says what to use instead (a `dsText` step, a `--ds-*` token, `formatInstantDate`, the ds `Button`, `Dialog` or `Input`). A kept exception sits in that file with its reason: the mark's SVG offsets and the standalone icon colours.
+
 ## Tokens
 
 The neutral palette resolves through `--ui-canvas`, `--ui-panel`, `--ui-table`, `--ui-hover`,

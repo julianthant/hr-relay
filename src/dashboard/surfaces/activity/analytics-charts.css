@@ -4,7 +4,7 @@
   --chart-lift: brightness(0.92);
 }
 [data-demo-theme="dark"] .ds-chart { --chart-lift: brightness(1.12); }
-.ds-chart-guide { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; pointer-events: none; background: var(--chart-tip-edge); }
+.ds-chart-guide { position: absolute; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); pointer-events: none; background: var(--chart-tip-edge); }
 .ds-chart-dot { position: absolute; box-sizing: border-box; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid var(--ui-canvas); border-radius: 9999px; pointer-events: none; }
 .ds-chart-tip { position: absolute; z-index: 10; box-sizing: border-box; width: 256px; padding: 8px 12px; border-radius: 12px; pointer-events: none; }
 .ds-chart-tip-rows { margin: 0; padding: 4px 0 0; list-style: none; border-top: 1px solid var(--chart-tip-edge); }
