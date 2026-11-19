@@ -437,5 +437,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
 }
