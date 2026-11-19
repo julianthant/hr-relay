@@ -436,6 +436,7 @@ export async function harness(options: {
       artifacts,
       authority: database.authority.operatorXlsxExports,
       search,
+      withSearchSnapshot: read => database.withAuthorityReadSnapshot(read),
       activityReport: (from, to, token) => activity.readSelected(from, to, token),
     }),
     resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),

@@ -71,7 +71,7 @@ function bucketForInstant(buckets:readonly {start:string;endExclusive:string}[],
 export function queryActivitySummaries(database:AuthorityDatabase,input:{from:string;to:string;generatedAt:string},deps:{
   descriptors:{resolve(workflow:string):AnyWorkflowDescriptor|undefined};
   ledger:{foldActivityRange(from:string,to:string):ActivityReportWire["ledger"]};
-}):ActivityReportWire {
+}, visitTopLevel?: (row: SummaryRow) => void):ActivityReportWire {
   const bounds=z.strictObject({from:z.iso.date(),to:z.iso.date(),generatedAt:z.iso.datetime({offset:true})}).parse(input);
   if(bounds.from>bounds.to)throw new Error("run-summary-range-invalid");
   return database.withAuthorityReadSnapshot(()=>{
@@ -92,6 +92,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       if(enqueuedAt<volumeStart||enqueuedAt>=volumeEnd)throw new Error("activity-volume-enqueue-outside-interval");
       volumeCounts[bucketForInstant(volumeSkeleton.buckets,enqueuedAt)]+=1;
       inRange.push(row);
+      visitTopLevel?.(row);
     });
     const people=unavailableRows===0?{state:"present",distinct:identities.size,evidenceRows}:{state:"absent",evidenceRows,unavailableRows,
       reason:`${String(unavailableRows)} of ${String(evidenceRows+unavailableRows)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
