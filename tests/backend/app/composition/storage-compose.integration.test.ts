@@ -102,19 +102,19 @@ afterEach(_afterEachFixture0);
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
     assert.equal(restored.authority.commandAudits.findByCommand(request.commandId), undefined);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    const divergent = structuredClone(request); divergent.payload.entries.ucpathPassword.set = "divergent-after-restore";
+    const divergent = structuredClone(request); divergent.payload.entries.sharepointOnboardingRosterUrl.set = "https://roster.example.test/divergent-after-restore";
     assert.equal(renewed.execute(divergent, restored).state, "rejected");
     assert.equal(restored.getMeta().authorityGeneration, generation);
     assert.equal(renewed.execute(request, restored).state, "applied");
     assert.equal(renewed.execute(request, restored).state, "already-applied");
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(renewed.store)), "synthetic-private-value");
+    assert.equal(requireSecret("sharepointOnboardingRosterUrl", createCredentialSecretSource(renewed.store)), "https://roster.example.test/synthetic-private-value");
     const doctor = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["doctor", "--json"], f.clock, f.repoRoot, renewed.admission, renewed.store);
     assert.equal(doctor.exitCode, 0, doctor.output);
-    for (const value of ["synthetic-private-value", "divergent-after-restore"]) {
-      assert.equal(doctor.output.includes(value), false); assert.equal(restore.output.includes(value), false);
-      assert.equal(readFileSync(f.path).includes(Buffer.from(value)), false);
-      for (const bytes of Object.values(backupFiles)) assert.equal(bytes.includes(Buffer.from(value)), false);
+    for (const marker of ["synthetic-private-value", "divergent-after-restore"]) {
+      assert.equal(doctor.output.includes(marker), false); assert.equal(restore.output.includes(marker), false);
+      assert.equal(readFileSync(f.path).includes(Buffer.from(marker)), false);
+      for (const bytes of Object.values(backupFiles)) assert.equal(bytes.includes(Buffer.from(marker)), false);
     }
     for (const [entry, bytes] of Object.entries(backupFiles)) assert.deepEqual(readFileSync(join_m0(directory, entry)), bytes);
   });
@@ -240,8 +240,10 @@ afterEach(_afterEachFixture0);
     await assert.rejects(repairAutomatically(p), /automatic-repair-verified-backup-missing/u);
     assert.deepEqual(readFileSync(p.authorityPath), before);
     assert.equal(existsSync(join_m0(p.repoRoot, ".tracker", "control", "journal.json")), false);
-    const retained = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, p.authorityPath, 500, true);
-    assert.deepEqual(retained.records.map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
+    const retained: string[] = [];
+    AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, p.authorityPath,
+      record => retained.push(record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), 500, true);
+    assert.deepEqual(retained, ["run.queued", "transaction.fenced"]);
     const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-source-retained" }, CLOCK);
     try { assert.ok(current.authority.runs.get(e.runId)); } finally { current.close(); }
   });

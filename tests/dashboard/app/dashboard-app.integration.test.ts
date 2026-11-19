@@ -48,7 +48,8 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 let root: Root_m0 | undefined;
 let library: BackendHarness | undefined;
 const libraryHeaders = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
-const savedWorkbooks = async () => (await library!.app.request("http://localhost/api/v1/workbooks/list", { headers: libraryHeaders })).json() as Promise<readonly { workbook: { name: string; sheets: readonly { rows: readonly { cells: readonly { value: unknown }[] }[] }[] } }[]>;
+const savedWorkbooks = async () => (await library!.app.request("http://localhost/api/v1/workbooks/list", { headers: libraryHeaders })).json() as Promise<readonly { libraryId: string; name: string }[]>;
+const openedWorkbook = async (libraryId: string) => (await library!.app.request(`http://localhost/api/v1/workbooks/${encodeURIComponent(libraryId)}`, { headers: libraryHeaders })).json() as Promise<{ workbook: { name: string; sheets: readonly { rows: readonly { cells: readonly { value: unknown }[] }[] }[] } }>;
 const _afterEachFixture0 = async () => {
   await act_m0(async () => root?.unmount()); root = undefined;
   await disposeHttpRouteHarness(); library = undefined;
@@ -147,8 +148,8 @@ try {
   await click(button("Add to library"));
   await settle();
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster"); assert_m0.ok(imported);
-  assert_m0.equal(imported.workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
+  const imported = (await savedWorkbooks()).find(record => record.name === "Focus roster"); assert_m0.ok(imported);
+  assert_m0.equal((await openedWorkbook(imported.libraryId)).workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
   assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
 await _afterEachFixture0();
@@ -159,12 +160,12 @@ try {
   let starts = 0;
   await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
-  const before = (await savedWorkbooks()).map(record => record.workbook.name);
+  const before = (await savedWorkbooks()).map(record => record.name);
   await click(button("Import"));
   await chooseSpreadsheet();
   if (dismissal === "Escape") await key("Escape"); else await click(button("Cancel"));
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
+  assert_m0.deepEqual((await savedWorkbooks()).map(record => record.name), before);
   assert_m0.equal(starts, 0);
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
@@ -337,7 +338,7 @@ afterEach_m1(_afterEachFixture0);
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
-      return { ...composition, inbox: "served" as const, dataSources: { ...composition.dataSources, separations: "served" } };
+      return { ...composition, harness: { ...composition.harness, useInbox: undefined }, dataSources: { ...composition.dataSources, separations: "served" } };
     });
     await editHeadlessPreference();
     if (surface === "search") await click(button("Search"));
@@ -507,7 +508,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
       runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.ok(reads > 0);
-    assert_m1.ok(document.body.textContent?.includes("Relay could not load this run's logs."));
+    assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."));
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
     const retryLogs = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Retry");
     assert_m1.ok(retryLogs, "the logs notice offers Retry");
@@ -516,7 +517,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     await settle();
     assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
     const failedReads = reads;
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
@@ -525,9 +526,9 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
     assert_m1.ok(workflow);
     const composition = MOCK_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
-    assert_m1.equal(composition.sources["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
+    assert_m1.equal(composition.sources["person-lookup"], "hidden");
+    assert_m1.ok(composition.harness?.LogPreview);
+    assert_m1.equal(composition.sources["generic-served-workflow"], "served");
   } finally { await _afterEachFixture0(); }
 });
 it_m1("offers a Skip to run logs link that moves focus to the selected run logs", async () => {
@@ -579,7 +580,7 @@ it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
 try {
 
 
-  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), catalogIncludesMocks: false, servedDay: true }));
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
   assert_m1.match(document.body.textContent??"",/No workflows available/);
 
 } finally {
@@ -592,7 +593,7 @@ try {
 
   const {DashboardClientError}=await import("../../../src/dashboard/client/index.js");
   await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`,{subscribeDay(input){input.onState({state:"stopped",error:new DashboardClientError({kind:"network",message:"Queue transport failed"})});return{close(){}};}});
-  assert_m1.equal((document.body.textContent??"").split("Relay could not load the queue.").length-1,1,"one queue failure notice");
+  assert_m1.equal((document.body.textContent??"").split("Couldn't load the queue.").length-1,1,"one queue failure notice");
   assert_m1.doesNotMatch(document.body.textContent??"",/Run unavailable/);
   assert_m1.ok([...document.querySelectorAll("button")].some(button => button.textContent?.trim()==="Retry"),"the queue notice offers Retry");
   assert_m1.doesNotMatch(document.body.textContent ?? "", /Queue transport failed/);

@@ -17,7 +17,7 @@ const SNAPSHOTS: Record<GeneralState, ChatGptAccountSnapshot> = {
   "not-connected": { state: "signed-out" },
   "signing-in": { state: "signing-in", attemptId: "attempt-1", expiresAt: "2026-11-17T18:30:00Z", authorizationUrl: "https://auth.example/authorize" },
   "limit-reached": { state: "connected", name: "Jordan Lee", email: "jordan.lee@ucsd.example", planUsage: "limit-reached" },
-  "check-failed": { state: "unavailable", message: "Relay couldn't check ChatGPT." },
+  "check-failed": { state: "unavailable", message: "Couldn't check ChatGPT." },
 };
 
 function fixturePort(state: GeneralState): ChatGptAccountPort {
@@ -32,7 +32,7 @@ const SUMMARY: Record<GeneralState, { label: string; detail: string; action?: st
   "not-connected": { label: "Not connected", detail: "The assistant and OCR need a ChatGPT account.", action: "Connect" },
   "signing-in": { label: "Signing in", detail: "Finish signing in to ChatGPT in your browser.", action: "Cancel" },
   "limit-reached": { label: "Usage limit reached", detail: "Jordan Lee · jordan.lee@ucsd.example", action: "Manage usage" },
-  "check-failed": { label: "Could not check", detail: "Relay couldn't check ChatGPT. Nothing was changed.", action: "Retry" },
+  "check-failed": { label: "Could not check", detail: "Couldn't check ChatGPT. Nothing was changed.", action: "Retry" },
 };
 
 function PermissionsRows() {

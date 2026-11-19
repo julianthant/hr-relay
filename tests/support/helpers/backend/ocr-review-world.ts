@@ -65,7 +65,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; onbaseFiling?: "file" | "skip"; record?: boolean; release?: boolean; pageCount?: number;
       retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule; ocrPage?: WorkflowModule;
-      lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
+      lookupNames?: readonly string[]; employeeIds?: readonly (string | null)[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
@@ -249,7 +249,8 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           : i9PageSubmission(page, { eid: "10800000", firstName: options.signerLookup.firstNames[index], kind: "i9-section1" });
         const valid = { ...original, source: { kind: "operator" as const, actorId },
           record: original.record === null ? null : { answers: { ...original.record.answers,
-            ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.contactName, confidence: 0.9 } }) } } };
+            ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.contactName, confidence: 0.9 } }),
+            ...(options.employeeIds?.[index] == null ? {} : { "employee.employeeId": { state: "read" as const, raw: options.employeeIds[index], confidence: 0.9 } }) } } };
         const corrected = { ...valid, record: valid.record === null ? null : { answers: { ...valid.record.answers,
           ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.correctedContactName, confidence: 1 } }) } } };
         return { reading: bindManualOcrPageReading(page, actorId, { ...valid,

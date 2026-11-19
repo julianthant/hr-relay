@@ -11,9 +11,11 @@ import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail
 import { UCPATH_HIRE_PROOF_EXAMPLE } from "../../../src/models/ui/ucpath-hire.js";
 import { I9CreateRemoteRecord } from "../../../src/models/systems/i9/create-remote-record.js";
 import { createOnboardingWriteWorld } from "../../support/helpers/backend/onboarding-write-world.js";
-import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
+import { RunDryRunPreviewResultSchema, terminalEvidenceResult } from "../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID } from "../../../src/models/workflow/dry-run.js";
-import { I9ProfileProofSchema, I9RemoteProofSchema, i9ProfileKey, i9RemoteKey } from "../../../src/models/ui/i9-creation.js";
+import { I9ProfileProofSchema, I9RemoteProofSchema, I9_PROFILE_PROOF_EXAMPLE, I9_REMOTE_PROOF_EXAMPLE, i9ProfileKey, i9RemoteKey } from "../../../src/models/ui/i9-creation.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
@@ -42,7 +44,7 @@ import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i
 import { TaskRefusal, createSeparationTaskFixtures } from "../../support/helpers/separation-task-fixtures.js";
 import { classifyEvidenceLeaf, evidenceLeaves, redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { DataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
-import { FingerprintSchema, GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { FingerprintSchema, GateIdSchema, IsoInstantSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 
@@ -287,6 +289,85 @@ for (const role of ["profile", "remote"] as const) it(`parks an UNKNOWN ${role} 
   assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", key)?.generation, 1);
 });
 
+it("keeps the unresolved I-9 profile fence after an email correction", async () => {
+  const h = await harness({ profileSubmitFailure: new Error("synthetic lost profile response") });
+  const initial = await h.run();
+  assert.equal(initial.lifecycle.state, "parked-write");
+  const [intent] = h.database.authority.writeIntents.listByRun(initial.envelope.runId);
+  assert.equal(intent?.status, "parked");
+  const events = h.driver.events.slice();
+
+  const retry = await h.run(false, { ...h.example, email: "hire.corrected@example.test" });
+  assert.ok(retry.lifecycle.state === "terminal" && retry.lifecycle.outcome === "failed");
+  assert.deepEqual(h.driver.events, events, "the existing fence refuses before another Tracker probe or save");
+  assert.deepEqual(h.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
+  assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", i9ProfileKey(h.example))?.generation, 1);
+});
+
+for (const dryRun of [false, true]) it(`refuses a legacy remote I-9 receipt in a fresh ${dryRun ? "preview" : "hire"}`, async () => {
+  const h = await harness({}, {});
+  const legacyProof = { ...I9_REMOTE_PROOF_EXAMPLE, startDate: h.example.startDate, email: h.example.email };
+  const key = i9RemoteKey({ ...h.example, profileId: legacyProof.profileId });
+  const observedAt = IsoInstantSchema.parse("2026-08-03T09:00:00.000Z");
+  const old = h.database.authority.writeIntents.recordObservedPresent({
+    writeIntentId: randomUUID(), workflowId: "onboarding-write-proof", itemId: randomUUID(),
+    taskId: I9CreateRemoteRecord.id, system: "i9", idempotencyKey: key,
+    idempotencyKeyDigest: deriveIdempotencyKeyDigest("i9", key), generation: 1, status: "observed-present",
+    observedProof: { schemaHash: deriveSchemaHash(I9RemoteProofSchema, "output"), value: legacyProof },
+    observedAt, createdAt: observedAt, updatedAt: observedAt, version: 1,
+  });
+  assert.ok(old.state === "recorded-observed-present");
+  h.driver.probeRemote = async () => ({ state: "unknown", reason: "i9-remote-saved-mode-unverified", observedAt });
+
+  const fresh = dryRun ? await h.run(true, { ...h.example, existingProfileId: legacyProof.profileId }) : await h.run();
+  const checkpoints = h.database.authority.runCheckpoints.listByItem(fresh.envelope.workflow, fresh.envelope.itemId);
+  assert.equal(checkpoints.some(checkpoint => checkpoint.nodeId === "remote-create"), false);
+  assert.ok(fresh.lifecycle.state === "terminal" && fresh.lifecycle.outcome === "failed");
+  const result = h.database.authority.runResults.get(fresh.envelope.runId);
+  assert.ok(result);
+  assert.equal(terminalEvidenceResult(result)?.kind, "failed-evidence");
+  assert.deepEqual(h.hire.events, []);
+  assert.deepEqual(h.database.authority.writeIntents.findByPermanentKey("i9", key), old.intent);
+});
+
+it("re-probes a foreign remote I-9 checkpoint before a fresh run can replay it", async () => {
+  const h = await harness({ records: [I9_REMOTE_PROOF_EXAMPLE] }, {});
+  const first = await h.run();
+  assert.ok(first.lifecycle.state === "terminal" && first.lifecycle.outcome === "done");
+  const { itemId, workflow } = first.envelope;
+  const retained = h.database.authority.runCheckpoints.latest(workflow, itemId, "remote-create");
+  assert.equal(retained?.runId, first.envelope.runId);
+  const priorHireEvents = h.hire.events.slice();
+  h.driver.probeRemote = async () => ({ state: "unknown", reason: "i9-remote-saved-mode-unverified",
+    observedAt: IsoInstantSchema.parse("2026-08-03T09:00:00.000Z") });
+
+  const fresh = await h.run(false, h.example, itemId);
+  assert.ok(fresh.lifecycle.state === "terminal" && fresh.lifecycle.outcome === "failed");
+  const [failure] = h.database.authority.failures.listByRun(fresh.envelope.runId);
+  assert.equal(failure?.nodeId, "remote-create");
+  assert.deepEqual(h.hire.events, priorHireEvents);
+  assert.deepEqual(h.database.authority.runCheckpoints.latest(workflow, itemId, "remote-create"), retained);
+});
+
+it("refuses to reuse a settled I-9 profile for a distinct person sharing its key", async () => {
+  const h = await harness({}, {});
+  const first = await h.run(false, { ...h.example, ssn: "123456789" });
+  assert.ok(first.lifecycle.state === "terminal" && first.lifecycle.outcome === "done");
+  const key = i9ProfileKey(h.example);
+  const settled = h.database.authority.writeIntents.findByPermanentKey("i9", key);
+  assert.equal(settled?.status, "committed");
+  const priorHireEvents = h.hire.events.slice();
+
+  const nextPerson = { ...h.example, ssn: "000000000", email: "other.hire@example.test" };
+  h.driver.profiles.push({ ...I9_PROFILE_PROOF_EXAMPLE, profileId: "900003", email: nextPerson.email });
+  const distinct = await h.run(false, nextPerson);
+  const checkpoints = h.database.authority.runCheckpoints.listByItem(distinct.envelope.workflow, distinct.envelope.itemId);
+  assert.equal(checkpoints.some(checkpoint => checkpoint.nodeId === "profile-create"), false);
+  assert.ok(distinct.lifecycle.state === "terminal" && distinct.lifecycle.outcome === "failed");
+  assert.deepEqual(h.hire.events, priorHireEvents);
+  assert.deepEqual(h.database.authority.writeIntents.findByPermanentKey("i9", key), settled);
+});
+
 it("files the hire through the sequencer after both I-9 receipts and reuses all three saved effects", async () => {
   const h = await harness({}, {}), run = await h.run();
   assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify({ lifecycle: run.lifecycle, failures: h.database.authority.failures.listByRun(run.envelope.runId), intents: h.database.authority.writeIntents.listByRun(run.envelope.runId) }));
@@ -294,7 +375,9 @@ it("files the hire through the sequencer after both I-9 receipts and reuses all 
   assert.deepEqual(h.hire.events.filter(event => event === "commit:hire"), ["commit:hire"]);
   assert.ok(h.captures.filter(value => value === "hire-create:step").length >= 30);
   assert.ok(h.captures.includes("hire-create:before-submit") && h.captures.includes("hire-create:after-submit"));
+  const firstEvents = h.driver.events.length;
   const again = await h.run(); assert.ok(again.lifecycle.state === "terminal" && again.lifecycle.outcome === "done");
+  assert.deepEqual(h.driver.events.slice(firstEvents), ["probe:profile", "probe:remote"]);
   assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
   assert.equal(h.hire.rows[0]?.approvalStatus, "Pending");
 });
@@ -368,7 +451,7 @@ describe("onboarding roster names in a real run", () => {
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps as unknown as RunDetailQueryDeps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined);
     assert.deepEqual(gate.decision.options.map(option => option.id), ["new-hire"]);
-    assert.equal(gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire.");
+    assert.equal(gate.decision.context, "Legal: last Hire, first Fixture, middle Marie · Preferred: last Hire, first Fix");
   });
 
   const allDroppedMatch = () => {
@@ -469,7 +552,7 @@ describe("onboarding roster names in a real run", () => {
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined, "the dead end is explained instead of a bare Waiting");
     assert.deepEqual(gate.decision.options, []);
-    assert.match(gate.decision.context ?? "", /Under another name: Other, Person \(••••0001\): Last name does not match; HIRE,FIXTURE \(••••0002\): Last name does not match\..*file the rehire by hand in UCPath\./u);
+    assert.match(gate.decision.context ?? "", /Other name: Other, Person \(••••0001, Last name does not match\) · Other name: HIRE,FIXTURE \(••••0002, Last name does not match\) · .*file the rehire by hand in UCPath$/u);
     for (const payload of [{ arm: "new-hire" }, { arm: "existing-person", rowId: "10800002" }, { arm: "existing-person", rowId: "10800001" }]) {
       const resolution = resolveGateArmAnswer(deps, GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
         source: "run-detail", family: "gate", type: "answer-gate-arm", target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion: parked.run.version }, payload }), undefined);

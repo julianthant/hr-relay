@@ -4,7 +4,7 @@ import type { RunDetailQueryDeps } from "./run-detail-types.js";
 import { hostedOcrRun } from "./ocr-record-members.js";
 import { SectionUnavailableError } from "../commands/refusals.js";
 import { deterministicUuid } from "../lifecycle/support.js";
-import { ocrRecordName } from "../../../models/ocr/review.js";
+import { ocrIdentityHolds, ocrRecordName } from "../../../models/ocr/review.js";
 import { runClaim } from "../../../models/run/record.js";
 import { GateIdSchema } from "../../../rules/identity/ids.js";
 import { ocrRecordSourcePages } from "../../../models/ocr/review-record.js";
@@ -44,6 +44,6 @@ export function buildOcrReviewSection(deps: RunDetailQueryDeps, requestedRunId: 
       ocr: { revision: review.revision, digest: review.digest,
         editing, ...(editing.state === "available" && run.lifecycle.state === "parked-gate" && String(run.lifecycle.gateId) === "approve-records"
           ? { approval: { runId, gateId: GateIdSchema.parse("approve-records"), expectedVersion: run.version } } : {}),
-        approvedSnapshots: snapshots, ...(review.invalidatedCorrections.length === 0 ? {} : { invalidatedCorrections: review.invalidatedCorrections }) } }) };
+        approvedSnapshots: snapshots, identityHolds: ocrIdentityHolds(review.revision), ...(review.invalidatedCorrections.length === 0 ? {} : { invalidatedCorrections: review.invalidatedCorrections }) } }) };
   });
 }
