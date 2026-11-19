@@ -171,6 +171,10 @@ function startHeartbeat(input: Readonly<{
 }>): Readonly<{ stop: () => void }> {
   let stopped = false;
   let handle = { cancel: (): void => undefined };
+  const stop = (): void => {
+    stopped = true;
+    handle.cancel();
+  };
   const tick = (): void => {
     if (stopped) return;
     try {
@@ -187,17 +191,12 @@ function startHeartbeat(input: Readonly<{
       requireLifecycleApplied(outcome);
       handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
     } catch (error) {
-      stopped = true;
+      stop();
       input.onFailure(error);
     }
   };
   handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
-  return Object.freeze({
-    stop: (): void => {
-      stopped = true;
-      handle.cancel();
-    },
-  });
+  return Object.freeze({ stop });
 }
 
 async function boundedWait(

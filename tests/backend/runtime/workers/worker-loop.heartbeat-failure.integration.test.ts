@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
+import { z } from "zod";
 import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { WorkerSessionClosureUnprovedError } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -96,7 +97,7 @@ it.each([
       assert.equal(result.error.cause, failure);
     } else {
       assert.ok(result.error instanceof WorkerSessionClosureUnprovedError);
-      const [heartbeatError, browserError, ...drainErrors]: unknown[] = result.error.errors;
+      const [heartbeatError, browserError, ...drainErrors] = z.array(z.unknown()).parse(result.error.errors);
       assert.ok(heartbeatError instanceof Error);
       assert.equal(heartbeatError.cause, failure);
       assert.ok(browserError instanceof WorkerSessionClosureUnprovedError);
