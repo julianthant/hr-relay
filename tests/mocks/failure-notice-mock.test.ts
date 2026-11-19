@@ -6,12 +6,13 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { test } from "./helpers/fixtures.js";
 import { NOTICE_COPY, NOTICE_SCENES } from "./helpers/failure-notice-scenes.js";
+import { mockOutDir } from "./helpers/out-dir.js";
 
-// Failure-notice scenes (the dark one-line strip) in the parity mock harness; frames are evidence, never test references.
+// Failure-notice scenes for the one-line strip in the parity mock harness.
 const repoRoot = resolve(import.meta.dirname, "../..");
-const fixtureRoot = join(repoRoot, "tests/mocks/.output/failure-notice-fixture");
-const OUT = process.env.FAILURE_NOTICE_MOCK_OUT ?? "/home/julian/Projects/hr-relay/.work/evidence/ui-state-fixes/failure-notice-mock";
-const THEMES = ["dark"] as const;
+const fixtureRoot = join(repoRoot, `tests/mocks/.output/failure-notice-fixture-${process.pid}`);
+const OUT = mockOutDir(process.env.FAILURE_NOTICE_MOCK_OUT, "failure-notice-mock");
+const THEMES = ["light", "dark"] as const;
 const WIDTHS = [1280, 1024] as const;
 
 let server: PreviewServer;
@@ -48,9 +49,9 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`failure notice fra
       const strip = document.querySelector("[role=alert]")!.getBoundingClientRect();
       const text = document.querySelector("[role=alert] > span")!.getBoundingClientRect();
       const button = document.querySelector("[role=alert] button")!.getBoundingClientRect();
-      return { height: strip.height, overlap: !(button.left >= text.right), below: button.top >= text.bottom };
+      return { height: strip.height, gap: button.left - text.right, below: button.top >= text.bottom };
     });
-    expect(layout.overlap, `${scene}/${copy} button not right of the sentence`).toBe(false);
+    expect(layout.gap, `${scene}/${copy} horizontal action gap`).toBeGreaterThanOrEqual(8);
     expect(layout.below, `${scene}/${copy} button wrapped below`).toBe(false);
     expect(layout.height, `${scene}/${copy} strip is more than one line`).toBeLessThan(48);
     await expect(page.getByText("Copy details")).toHaveCount(0);

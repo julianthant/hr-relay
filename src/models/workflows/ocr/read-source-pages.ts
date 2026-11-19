@@ -11,8 +11,14 @@ export const OCR_SOURCE_MANIFEST_EXAMPLE = buildOcrSourceManifest(OCR_INPUT_EXAM
   pages: [{ sourcePage: 1, image: OCR_PAGE_EXAMPLE.page.image }] });
 
 /** Every original page paired with its reading, derived from the rendered pages; throws when manual assertions do not cover every page once. */
-export function ocrPageWorkInputs(request: Pick<z.infer<typeof OcrInputSchema>, "document" | "readingId" | "formType" | "reading">, rendered: z.infer<typeof ExtractPdfPagesOutputSchema>) {
+export function ocrPageWorkInputs(request: Pick<z.infer<typeof OcrInputSchema>, "document" | "readingId" | "formType" | "reading" | "extractWithOcr">, rendered: z.infer<typeof ExtractPdfPagesOutputSchema>) {
   const manifest = buildOcrSourceManifest(request.document, rendered);
+  if (request.extractWithOcr === false) {
+    if (request.formType !== "emergency-contact" || request.reading.kind !== "subscription") {
+      throw new Error("Starting without OCR requires Emergency Contact and no manual reading assertions.");
+    }
+    return { manifest, pages: [] };
+  }
   const pages = ocrPageInputs(manifest, request.readingId, request.formType);
   const reading = request.reading;
   if (reading.kind === "manual" && (reading.assertions.length !== pages.length
