@@ -664,6 +664,19 @@ export type AuthorityRepositories = Readonly<{
   artifactSinkHeads: ArtifactSinkHeadRepository;
 }>;
 
+export function authenticateStoredParkedWriteRecheck(
+  repositories: Pick<AuthorityRepositories, "writeAttempts" | "commands" | "commandAudits">,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+  recheck: NonNullable<typeof intent.recheck>,
+) {
+  return authenticateParkedWriteRecheck(
+    intent,
+    repositories.writeAttempts.get(intent.currentAttemptId),
+    repositories.commands.get(recheck.commandId),
+    repositories.commandAudits.get(recheck.auditId),
+  ).intent;
+}
+
 const JsonRowSchema = z.strictObject({ payload_json: z.string() });
 // Native diagnostics and notes are the timeline's high-volume streams; storage inspection never reads them.
 const INSPECTED_TIMELINE_KINDS = "kind NOT IN ('debug','note')";
