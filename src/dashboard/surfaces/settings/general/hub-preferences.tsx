@@ -40,7 +40,7 @@ export function AssistantSettings() {
     <ChatGptAccountSettings grouped />
     <AssistantModelRows />
     <div data-settings-path="assistant.fullAccess" className="settings-compact-row">
-      <Switch name="assistant.fullAccess" label="Full access" description="Off, every action waits for your confirmation." checked={fullAccess} onCheckedChange={setFullAccessAllowed} />
+      <Switch name="assistant.fullAccess" label="Full access" description="Lets the assistant act without asking first." checked={fullAccess} onCheckedChange={setFullAccessAllowed} />
     </div>
   </FormGroup></BodySection>;
 }

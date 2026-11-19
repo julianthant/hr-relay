@@ -354,7 +354,10 @@ for (const theme of THEMES) test(`assistant model and effort in Settings @ ${the
   const effort = page.getByRole("combobox", { name: "Effort", exact: true });
   await expect(page.getByRole("combobox", { name: "Model", exact: true })).toHaveAttribute("data-value", "gpt-6.1-sol");
   await expect(effort).toHaveAttribute("data-value", "medium");
-  const rows = await page.locator('[data-settings-path^="assistant."], [data-settings-path="chatgpt.account"]').evaluateAll(items => items.map(item => ({ path: item.getAttribute("data-settings-path"), height: Math.round(item.getBoundingClientRect().height) })));
+  const rows = await page.locator('[data-settings-path]').evaluateAll(items => items.map(item => {
+    const style = getComputedStyle(item), row = item.firstElementChild?.getBoundingClientRect().height ?? 0;
+    return { path: item.getAttribute("data-settings-path"), wrapper: item.getBoundingClientRect().height, row, borderTop: style.borderTopWidth, borderBottom: style.borderBottomWidth, paddingTop: style.paddingTop };
+  }));
   writeFileSync(join(OUT, `settings-assistant-rows-${theme}-${WIDTH}.json`), JSON.stringify(rows, null, 1));
   await page.screenshot({ path: join(OUT, `settings-assistant-group-${theme}-${WIDTH}.png`) });
   await effort.click();
