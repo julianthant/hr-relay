@@ -18,17 +18,20 @@ import { fixtureWorkerLaunch } from "../helpers/backend/dashboard-child-world.js
 // The dashboard entry as secure bootstrap runs it, on a fixture workspace with OS-assigned ports and fixture pool workers; it owns the real SIGINT/SIGTERM.
 const [workspace, barrier, fault] = process.argv.slice(2);
 if (workspace === undefined || barrier === undefined) throw new Error("dashboard-signal-child requires <workspace> <barrier>");
-if (fault === "stream-close") {
-  const close = DashboardStreamHub.prototype.close;
-  mock.method(DashboardStreamHub.prototype, "close", async function (this: DashboardStreamHub) {
-    close.call(this);
-    throw new TypeError("private synthetic shutdown detail");
-  });
-}
-if (fault === "transport-close") {
-  const close = Server.prototype.close;
-  mock.method(Server.prototype, "close", function (this: Server, callback?: (error?: Error) => void) {
-    return close.call(this, error => callback?.(error ?? new TypeError("private synthetic shutdown detail")));
+if (fault === "stream-close" || fault === "transport-close") {
+  process.once("SIGINT", () => {
+    if (fault === "stream-close") {
+      mock.method(DashboardStreamHub.prototype, "close", async function (this: DashboardStreamHub) {
+        mock.restoreAll();
+        this.close();
+        throw new TypeError("private synthetic shutdown detail");
+      });
+    } else {
+      mock.method(Server.prototype, "close", function (this: Server, callback?: (error?: Error) => void) {
+        mock.restoreAll();
+        return this.close(error => callback?.(error ?? new TypeError("private synthetic shutdown detail")));
+      });
+    }
   });
 }
 const lifetime = await RuntimeLifetimeLock.acquire(0);

@@ -215,7 +215,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       }
       if (record.state === "exited") {
         try { deps.onStopChannelClosed?.(record.member, error); }
-        catch (failure) { throw new AggregateError([error, failure], "worker stop channel observation failed", { cause: error }); }
+        catch (failure) { throw new AggregateError([error, failure], "worker stop channel observation failed", { cause: failure }); }
         return;
       }
     }
@@ -328,7 +328,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   };
 
   return Object.freeze({
-    readStopFailures(): readonly unknown[] { return Object.freeze([...stopFailures]); },
+    readStopFailures: (): readonly unknown[] => Object.freeze([...stopFailures]),
     snapshot(): readonly WorkerMemberView[] { return Object.freeze([...records.values()].map(view)); },
 
     async start(member: WorkerPoolMember): Promise<WorkerMemberView> {

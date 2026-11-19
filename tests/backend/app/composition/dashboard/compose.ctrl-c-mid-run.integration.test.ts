@@ -181,7 +181,7 @@ it.each(["stream-close", "transport-close", "worker-stop"] as const)("Ctrl+C com
   const backups = join(f.stateRoot, "backups", "authority");
   const manifests = readdirSync(backups).filter(name => name.endsWith(".shutdown.sqlite.manifest.json"));
   assert.equal(manifests.length, 1);
-  const manifest = StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backups, manifests[0]!), "utf8")));
+  const manifest = StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backups, manifests[0]), "utf8")));
   assert.equal(manifest.verification.quickCheck, "ok");
   assert.equal(manifest.sha256, createHash("sha256").update(readFileSync(join(backups, manifest.backupFileName))).digest("hex"));
   const released = await RuntimeLifetimeLock.acquire(lockPort);
