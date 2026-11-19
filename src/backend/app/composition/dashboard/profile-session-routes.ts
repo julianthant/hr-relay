@@ -228,23 +228,33 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
-    guarded.use("*", async (c, next) => {
-      try { current(c.req.raw); } catch (error) {
-        if (!(error instanceof ProfileSessionRefusedError)) throw error;
-        debugEvents.emit({ code: error.code, reason: "profile-session-refused" });
-        return c.json(PublicProfileStateSchema.parse({ state: "refused", code: error.code }), 401);
-      }
-      return next();
-    });
     guarded.onError((error, c) => {
       const failure = publicFailure(error);
       debugEvents.emit({ ...failure.body, reason: "profile-request-failed" });
       return c.json(failure.body, failure.status);
     });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
-    guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
+    const admitted = new WeakSet<Request>();
+    guarded.all("*", c => {
+      const request = c.req.raw;
+      try {
+        const active = current(request);
+        if (active.token !== result.token || active.profileId !== result.profileId || active.epoch !== result.epoch) {
+          throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        }
+      } catch (error) {
+        if (!(error instanceof ProfileSessionRefusedError)) throw error;
+        debugEvents.emit({ code: error.code, reason: "profile-session-refused" });
+        return c.json(PublicProfileStateSchema.parse({ state: "refused", code: error.code }), 401);
+      }
+      if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      admitted.add(request);
+      try { return dispatchMountedRequest(selectedApp, request); }
+      finally { admitted.delete(request); }
+    });
     const runtime = await composeDashboardRuntime({ ...input, onInitialPreflight, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
-      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } })
+      applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath,
+        consumeAdmission: request => { if (!admitted.delete(request)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE"); } } })
       .catch((error: unknown) => {
         if (error instanceof RuntimeCustodyUncertainError || error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) throw error;
         throw new ProfileRuntimeStartFailedError({ cause: error });

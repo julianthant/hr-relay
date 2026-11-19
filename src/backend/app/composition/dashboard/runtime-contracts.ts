@@ -57,7 +57,11 @@ export interface DashboardComposeInput {
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   /** Test-only replacement for injecting an HTTP bind failure after startup admission. */
   readonly httpServerStarter?: (input: Parameters<typeof startDashboardHttpServer>[0]) => Promise<DashboardHttpServer>;
-  readonly applicationTransport?: Readonly<{ listener: DashboardHttpListener; accepts: (request: Request) => boolean }>;
+  readonly applicationTransport?: Readonly<{
+    listener: DashboardHttpListener;
+    accepts: (request: Request) => boolean;
+    consumeAdmission(request: Request): void;
+  }>;
   /** Tests may name their own frontend listener. Zero disables the frontend preflight port check. */
   readonly frontendPortOverride?: number;
   /** Test-only replacement for the dev-frontend ownership probe of profile requests. */

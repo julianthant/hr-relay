@@ -1105,35 +1105,46 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       && (error instanceof PrivateFileLockUnavailableError || error instanceof PrivateFileReadTransitionError);
     throw new CanonicalCredentialError(busy ? "CREDENTIAL_BUSY" : code, { cause: error });
   }
-  function readHead(): { head: Head; key: Buffer } {
+  type HeadFile = ReturnType<typeof readPrivateFile>;
+  type ReadHeadProof = { head: Head; file: HeadFile };
+  function authenticateReadHead(file: HeadFile, prior?: ReadHeadProof) {
+    if (file !== undefined && prior?.file !== undefined && sameDirectory(file.identity, prior.file.identity) && file.bytes.equals(prior.file.bytes)) {
+      // Exact head bytes retain their MAC proof. Native key custody can change independently.
+      return { head: prior.head, key: keyBytes(prior.head) };
+    }
+    const parsed = file === undefined ? undefined : CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
+    const reading = canonicalCredentialHeadReading(parsed === undefined ? "absent" : parsed.success ? parsed.data : "unparseable", "absent");
+    // An unparseable head is a person that still needs conversion, as an absent one does.
+    if ("inconsistent" in reading) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
+    if ("head" in reading && (reading.head.installationId !== binding.installationId || reading.head.profileId !== binding.profileId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const access = credentialHeadTransition(reading.state, "read");
+    if ("refused" in access) throw headRefusal(access.refused);
+    if (reading.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    return { head: reading.head, key: authenticateHead(reading.head) };
+  }
+  function readHead(prior?: ReadHeadProof) {
     return withOperationProof(() => {
       assertRead();
       assertAccess();
       if (readPrivateFile(operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
       const file = readPrivateFile(headPath, { label: "lock", maxBytes });
-      const parsed = file === undefined ? undefined : CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
-      const reading = canonicalCredentialHeadReading(parsed === undefined ? "absent" : parsed.success ? parsed.data : "unparseable", "absent");
-      // An unparseable head is a person that still needs conversion, as an absent one does.
-      if ("inconsistent" in reading) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-      if ("head" in reading && (reading.head.installationId !== binding.installationId || reading.head.profileId !== binding.profileId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const access = credentialHeadTransition(reading.state, "read");
-      if ("refused" in access) throw headRefusal(access.refused);
-      if (reading.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const head = reading.head, key = authenticateHead(head);
+      const { head, key } = authenticateReadHead(file, prior);
       inspectCanonicalNamespace(canonical, head, key, ownedStages, assertAccess, ancestry);
       if (capturedGeneration !== undefined && (head.generation !== capturedGeneration.generation || head.key.keyId !== capturedGeneration.keyId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       capturedGeneration ??= { generation: head.generation, keyId: head.key.keyId };
-      assertAccess(); assertRead(); return { head, key };
+      assertAccess(); assertRead(); return { head, key, file };
     });
   }
   function assertCurrent(): void { try { readHead(); } catch (error) { translate(error); } }
   function read(kind: CanonicalCredentialKind): CanonicalCredentialRecord | undefined {
     return withOperationProof(() => {
-      const { head, key } = readHead();
+      const proof = readHead();
       if (!noSymlinkAncestry(dirname(paths[kind]), ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       const file = readPrivateFile(paths[kind], { label: "protected.json", maxBytes });
       if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const record = open(head, key, kind, file.bytes); assertCurrent(); return record;
+      const record = open(proof.head, proof.key, kind, file.bytes);
+      try { readHead(proof); } catch (error) { translate(error); }
+      return record;
     });
   }
   function publish(path: string, bytes: Buffer, kind?: CanonicalCredentialKind,
