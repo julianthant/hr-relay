@@ -1560,8 +1560,8 @@ function assertRunReferences(database: DatabaseSync): void {
 }
 
 /** The logged changes after `after`, strictly parsed, in commit order. */
-export function readAuthorityChanges(database: DatabaseSync, after: number): readonly ChangeEntry[] {
-  return z.array(ChangeEntrySchema).parse(database.prepare(`SELECT seq,table_name,row_key,op,keys_json FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq`).all(after));
+export function readAuthorityChanges(database: DatabaseSync, after: number, limit = -1): readonly ChangeEntry[] {
+  return z.array(ChangeEntrySchema).parse(database.prepare(`SELECT seq,table_name,row_key,op,keys_json FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq LIMIT ?`).all(after, limit));
 }
 
 /** The singleton fields a reader compares with the image it last validated; a missing singleton is refused. */
@@ -1572,6 +1572,40 @@ export function readSingletonImage(database: DatabaseSync): SingletonImage {
 /** The newest sequence number the change log ever issued; entries above a reader's cursor must run contiguously up to it. */
 function changeLogHighWater(database: DatabaseSync): number {
   return z.object({ seq: z.number().int().nonnegative() }).optional().parse(database.prepare("SELECT seq FROM sqlite_sequence WHERE name=?").get(CHANGE_LOG_TABLE))?.seq ?? 0;
+}
+
+function authorityChangeClosure() {
+  return { keys: new Set<DependencyKey>(), rows: new Map<string, { table: AuthorityTableName; rowKey: ChangeEntry["rowKey"] }>(), searchRuns: new Set<string>() };
+}
+
+function includeAuthorityChange(closure: ReturnType<typeof authorityChangeClosure>, entry: ChangeEntry): void {
+  const { table, rowKey } = entry;
+  for (const key of entry.keys) closure.keys.add(key);
+  if (table === "run_search") closure.searchRuns.add(String(rowKey[0]));
+  if (entry.op !== "delete" && table !== RUN_REFERENCES_TABLE && validatedRowByRow(table)) {
+    closure.rows.set(`${table}:${JSON.stringify(rowKey)}`, { table, rowKey });
+  }
+}
+
+function readAuthorityChangeClosure(database: DatabaseSync, after: number, high: number) {
+  const tail = z.strictObject({ first: z.number().nullable(), last: z.number().nullable() }).parse(database.prepare(`SELECT
+    (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq LIMIT 1) AS first,
+    (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq DESC LIMIT 1) AS last`).get(after, after));
+  if (high < after || (high === after ? tail.first !== null : tail.first !== after + 1 || tail.last !== high)) return undefined;
+
+  const closure = authorityChangeClosure();
+  const pageSize = 1_000;
+  let cursor = after;
+  while (cursor < high) {
+    const page = readAuthorityChanges(database, cursor, pageSize);
+    if (page.length !== Math.min(high - cursor, pageSize)) return undefined;
+    for (const entry of page) {
+      if (entry.seq !== cursor + 1) return undefined;
+      includeAuthorityChange(closure, entry);
+      cursor = entry.seq;
+    }
+  }
+  return closure;
 }
 
 /** Entries kept for readers that fall behind; older ones are pruned, and a reader below the floor runs the whole-store check. */
@@ -1605,7 +1639,14 @@ export type AuthorityChangeRoute = "scoped" | "whole";
  */
 export function validateAuthorityChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
   search: "all" | "progress" | "none" = "all"): AuthorityChangeRoute {
-  const keys = new Set<DependencyKey>([...entries.flatMap(entry => entry.keys), ...singletonKeys]);
+  const closure = authorityChangeClosure();
+  for (const entry of entries) includeAuthorityChange(closure, entry);
+  return validateAuthorityChangeClosure(database, closure, singletonKeys, search);
+}
+
+function validateAuthorityChangeClosure(database: DatabaseSync, closure: ReturnType<typeof authorityChangeClosure>,
+  singletonKeys: readonly DependencyKey[], search: "all" | "progress" | "none"): AuthorityChangeRoute {
+  const keys = new Set<DependencyKey>([...closure.keys, ...singletonKeys]);
   const searchReady = z.object({ search_state: z.string() }).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   if (keys.has("profile") || (keys.has("search-publication") && searchReady)) {
     validateAuthorityStore(database, search);
@@ -1633,10 +1674,9 @@ export function validateAuthorityChanges(database: DatabaseSync, entries: readon
   const singleton = database.prepare("SELECT * FROM database_states WHERE id=1").get();
   if (singleton === undefined) throw new Error("authority-singleton-missing");
   addUnit("database_states", singleton);
-  for (const entry of entries) {
-    if (entry.op === "delete" || entry.table === RUN_REFERENCES_TABLE || !validatedRowByRow(entry.table)) continue;
-    const current = database.prepare(`SELECT * FROM ${entry.table} WHERE ${currentRowKey(entry.table).map(column => `${column}=?`).join(" AND ")}`).get(...entry.rowKey);
-    if (current !== undefined) addUnit(entry.table, current);
+  for (const { table, rowKey } of closure.rows.values()) {
+    const current = database.prepare(`SELECT * FROM ${table} WHERE ${currentRowKey(table).map(column => `${column}=?`).join(" AND ")}`).get(...rowKey);
+    if (current !== undefined) addUnit(table, current);
   }
   for (const key of keys) for (const table of AuthorityTableNameSchema.options) {
     if (validatedRowByRow(table)) for (const row of tableDependents(database, table, key)) addUnit(table, row);
@@ -1651,7 +1691,7 @@ export function validateAuthorityChanges(database: DatabaseSync, entries: readon
   if (search === "none") return "scoped";
   const index = createRunSearchIndex(database);
   if (keys.has("search-publication")) index.validateCoverage();
-  else index.validateCoverageOf(runs, new Set(entries.flatMap(entry => entry.table === "run_search" ? [String(entry.rowKey[0])] : [])));
+  else index.validateCoverageOf(runs, closure.searchRuns);
   return "scoped";
 }
 
@@ -4779,9 +4819,13 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #assertOpen(): void {
+  #assertAdmissionLive(): void {
     if (this.#closed || !this.#database.isOpen) throw new Error("authority database is closed");
     this.#admission.assertLive();
+  }
+
+  #assertOpen(): void {
+    this.#assertAdmissionLive();
     const expected = this.#admission.profileBinding;
     const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
     if (actual.installationId !== expected.installationId || actual.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
@@ -4889,12 +4933,12 @@ export class AuthorityDatabase implements Disposable {
     // Entries may be missing while the schema differed, so a schema move is checked whole.
     if (schemaMoved) reader.wholeStore = true;
     const high = changeLogHighWater(database);
-    const entries = reader.wholeStore ? [] : readAuthorityChanges(database, reader.cursor);
-    if (!reader.wholeStore && !(entries.length === high - reader.cursor && entries.every((entry, index) => entry.seq === reader.cursor + 1 + index))) reader.wholeStore = true;
+    const closure = reader.wholeStore ? undefined : readAuthorityChangeClosure(database, reader.cursor, high);
+    if (closure === undefined) reader.wholeStore = true;
     const singleton = readSingletonImage(database);
-    const check = reader.wholeStore
+    const check = closure === undefined
       ? (value: typeof search) => { validateAuthorityStore(database, value); }
-      : (value: typeof search) => { validateAuthorityChanges(database, entries, singletonChangeKeys(reader.singleton, singleton), value); };
+      : (value: typeof search) => { validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value); };
     try { check(search); }
     catch (error) {
       // The refusal is rethrown either way; this only names which half failed.
@@ -5102,9 +5146,13 @@ export class AuthorityDatabase implements Disposable {
 
   #withReadSnapshot<Result>(read: () => Result): Result {
     return withOperationProof(() => {
-      if (this.#transactionDepth === 0) clearOperationProofSlots();
-      this.#assertOpen();
-      if (this.#transactionDepth > 0) return read();
+      if (this.#transactionDepth > 0) {
+        if (this.#transactionMode === "read") this.#assertAdmissionLive();
+        else this.#assertOpen();
+        return read();
+      }
+      clearOperationProofSlots();
+      this.#assertAdmissionLive();
 
       const slow = this.#beginSlowOperation("read-snapshot");
       try {
@@ -5116,6 +5164,7 @@ export class AuthorityDatabase implements Disposable {
         this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
         this.#authorityDirty = false;
         try {
+          this.#assertOpen();
           const result = read();
           revalidateOperationProof(witnesses);
           this.#assertOpen();
