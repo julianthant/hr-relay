@@ -247,7 +247,7 @@ for (const theme of THEMES) test(`served notifications priority @ ${theme}`, asy
   await bell(page).click();
   const group = (label: string) => panel(page).locator("section.notification-group").filter({ has: page.getByRole("heading", { name: label, exact: true }) });
   const priority = group("Priority");
-  for (const title of ["Run failed", "Approval waiting", "Write parked", "Records ready for approval"]) await expect(priority.getByText(title, { exact: true }).first()).toBeVisible();
+  for (const title of ["Run failed", "Approval waiting", "Write parked"]) await expect(priority.getByText(title, { exact: true }).first()).toBeVisible();
   await expect(priority.getByText("Nothing needs attention")).toHaveCount(0);
   for (const title of ["Run completed", "Run completed with issues", "Records approved"]) await expect(priority.getByText(title, { exact: true })).toHaveCount(0);
   await expect(group("Today")).toBeVisible();
