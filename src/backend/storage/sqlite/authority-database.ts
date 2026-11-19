@@ -475,6 +475,7 @@ type RunRepository = Readonly<{
   listByWorkflow(workflow: string): readonly RunRecord[];
   listActiveOwners(workflow: string): readonly Readonly<{ workerId: string; runId: string }>[];
   listPage(input: Readonly<{ workflow?: string; offset: number; limit: number }>): readonly RunRecord[];
+  listNonTerminal(): readonly RunRecord[];
 
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
   listByPauseState(state: "requested" | "paused"): readonly RunRecord[];
@@ -1587,8 +1588,8 @@ function assertRunReferences(database: DatabaseSync): void {
 }
 
 /** The logged changes after `after`, strictly parsed, in commit order. */
-export function readAuthorityChanges(database: DatabaseSync, after: number): readonly ChangeEntry[] {
-  return z.array(ChangeEntrySchema).parse(database.prepare(`SELECT seq,table_name,row_key,op,keys_json FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq`).all(after));
+export function readAuthorityChanges(database: DatabaseSync, after: number, limit = -1): readonly ChangeEntry[] {
+  return z.array(ChangeEntrySchema).parse(database.prepare(`SELECT seq,table_name,row_key,op,keys_json FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq LIMIT ?`).all(after, limit));
 }
 
 /** The singleton fields a reader compares with the image it last validated; a missing singleton is refused. */
@@ -1599,6 +1600,40 @@ export function readSingletonImage(database: DatabaseSync): SingletonImage {
 /** The newest sequence number the change log ever issued; entries above a reader's cursor must run contiguously up to it. */
 function changeLogHighWater(database: DatabaseSync): number {
   return z.object({ seq: z.number().int().nonnegative() }).optional().parse(database.prepare("SELECT seq FROM sqlite_sequence WHERE name=?").get(CHANGE_LOG_TABLE))?.seq ?? 0;
+}
+
+function authorityChangeClosure() {
+  return { keys: new Set<DependencyKey>(), rows: new Map<string, { table: AuthorityTableName; rowKey: ChangeEntry["rowKey"] }>(), searchRuns: new Set<string>() };
+}
+
+function includeAuthorityChange(closure: ReturnType<typeof authorityChangeClosure>, entry: ChangeEntry): void {
+  const { table, rowKey } = entry;
+  for (const key of entry.keys) closure.keys.add(key);
+  if (table === "run_search") closure.searchRuns.add(String(rowKey[0]));
+  if (entry.op !== "delete" && table !== RUN_REFERENCES_TABLE && validatedRowByRow(table)) {
+    closure.rows.set(`${table}:${JSON.stringify(rowKey)}`, { table, rowKey });
+  }
+}
+
+function readAuthorityChangeClosure(database: DatabaseSync, after: number, high: number) {
+  const tail = z.strictObject({ first: z.number().nullable(), last: z.number().nullable() }).parse(database.prepare(`SELECT
+    (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq LIMIT 1) AS first,
+    (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq DESC LIMIT 1) AS last`).get(after, after));
+  if (high < after || (high === after ? tail.first !== null : tail.first !== after + 1 || tail.last !== high)) return undefined;
+
+  const closure = authorityChangeClosure();
+  const pageSize = 1_000;
+  let cursor = after;
+  while (cursor < high) {
+    const page = readAuthorityChanges(database, cursor, pageSize);
+    if (page.length !== Math.min(high - cursor, pageSize)) return undefined;
+    for (const entry of page) {
+      if (entry.seq !== cursor + 1) return undefined;
+      includeAuthorityChange(closure, entry);
+      cursor = entry.seq;
+    }
+  }
+  return closure;
 }
 
 /** Entries kept for readers that fall behind; older ones are pruned, and a reader below the floor runs the whole-store check. */
@@ -1632,7 +1667,14 @@ export type AuthorityChangeRoute = "scoped" | "whole";
  */
 export function validateAuthorityChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
   search: "all" | "progress" | "none" = "all"): AuthorityChangeRoute {
-  const keys = new Set<DependencyKey>([...entries.flatMap(entry => entry.keys), ...singletonKeys]);
+  const closure = authorityChangeClosure();
+  for (const entry of entries) includeAuthorityChange(closure, entry);
+  return validateAuthorityChangeClosure(database, closure, singletonKeys, search);
+}
+
+function validateAuthorityChangeClosure(database: DatabaseSync, closure: ReturnType<typeof authorityChangeClosure>,
+  singletonKeys: readonly DependencyKey[], search: "all" | "progress" | "none"): AuthorityChangeRoute {
+  const keys = new Set<DependencyKey>([...closure.keys, ...singletonKeys]);
   const searchReady = z.object({ search_state: z.string() }).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   if (keys.has("profile") || (keys.has("search-publication") && searchReady)) {
     validateAuthorityStore(database, search);
@@ -1660,10 +1702,9 @@ export function validateAuthorityChanges(database: DatabaseSync, entries: readon
   const singleton = database.prepare("SELECT * FROM database_states WHERE id=1").get();
   if (singleton === undefined) throw new Error("authority-singleton-missing");
   addUnit("database_states", singleton);
-  for (const entry of entries) {
-    if (entry.op === "delete" || entry.table === RUN_REFERENCES_TABLE || !validatedRowByRow(entry.table)) continue;
-    const current = database.prepare(`SELECT * FROM ${entry.table} WHERE ${currentRowKey(entry.table).map(column => `${column}=?`).join(" AND ")}`).get(...entry.rowKey);
-    if (current !== undefined) addUnit(entry.table, current);
+  for (const { table, rowKey } of closure.rows.values()) {
+    const current = database.prepare(`SELECT * FROM ${table} WHERE ${currentRowKey(table).map(column => `${column}=?`).join(" AND ")}`).get(...rowKey);
+    if (current !== undefined) addUnit(table, current);
   }
   for (const key of keys) for (const table of AuthorityTableNameSchema.options) {
     if (validatedRowByRow(table)) for (const row of tableDependents(database, table, key)) addUnit(table, row);
@@ -1678,7 +1719,7 @@ export function validateAuthorityChanges(database: DatabaseSync, entries: readon
   if (search === "none") return "scoped";
   const index = createRunSearchIndex(database);
   if (keys.has("search-publication")) index.validateCoverage();
-  else index.validateCoverageOf(runs, new Set(entries.flatMap(entry => entry.table === "run_search" ? [String(entry.rowKey[0])] : [])));
+  else index.validateCoverageOf(runs, closure.searchRuns);
   return "scoped";
 }
 
@@ -2483,6 +2524,10 @@ export function configureWritableConnection(database: DatabaseSync, busyTimeoutM
   database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
 }
 
+export function parseDiagnosticPageCount(value: unknown, limit: number): number {
+  return z.number().int().min(1).max(Math.min(32, Math.floor(1000 / limit))).parse(value);
+}
+
 export class AuthorityDatabase implements Disposable {
   static async withUpgradeInspections<T>(work: () => Promise<T>): Promise<T> {
     if (upgradeInspections.getStore()?.active) return work();
@@ -2514,7 +2559,7 @@ export class AuthorityDatabase implements Disposable {
   /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
   #changeReader: ChangeLogReader | undefined;
   #lastChangePruneMs: number | undefined;
-  #pageCacheChanges = 0;
+  #temporaryProjectionChanges = 0;
   #transactionDepth = 0;
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
@@ -3321,8 +3366,9 @@ export class AuthorityDatabase implements Disposable {
     return withDirectReaderAdmission(admission, () => inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs));
   }
 
-  static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown) {
+  static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown, pageCount = 1) {
     const request = TimelinePageRequestSchema.parse(input);
+    const pages = parseDiagnosticPageCount(pageCount, request.limit);
     return withAuthorityDatabaseReadOnly(admission, path, database => {
       if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID
         || !isCurrentAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("timeline-diagnostic-authority-unsupported");
@@ -3337,13 +3383,20 @@ export class AuthorityDatabase implements Disposable {
       const highWaterMark = repository.highWaterMark();
       const through = Math.min(request.through ?? highWaterMark, highWaterMark);
       if (request.after > through) throw new Error("timeline-diagnostic-cursor-out-of-range");
-      const scanned = repository.page({ ...request, through });
-      for (const record of scanned) assertTimelineOwner(database, record);
+      const records: TimelineEventRecord[] = [];
+      let nextCursor = request.after;
+      for (let page = 0; page < pages; page += 1) {
+        const scanned = repository.page({ ...request, after: nextCursor, through });
+        for (const record of scanned) {
+          assertTimelineOwner(database, record);
+          if (record.payload.kind === "debug") records.push(record);
+        }
+        nextCursor = scanned.at(-1)?.cursor ?? through;
+        if (nextCursor === through) break;
+      }
       const failureCauses = request.runId === undefined ? [] : database.prepare("SELECT * FROM run_failures WHERE run_id = ? ORDER BY created_at, id").all(request.runId)
         .map(raw => { const failure = FailureRecordSchema.parse(nativeOrdinaryRecordFromRow("run_failures", raw)); return { failureId: failure.failureId, ...failureCauseNames(failure) }; });
-      return { records: scanned.filter(record => record.payload.kind === "debug"), failureCauses,
-        after: request.after, nextCursor: scanned.at(-1)?.cursor ?? through, through, highWaterMark,
-        hasMore: (scanned.at(-1)?.cursor ?? through) < through };
+      return { records, failureCauses, after: request.after, nextCursor, through, highWaterMark, hasMore: nextCursor < through };
     });
   }
 
@@ -3744,11 +3797,11 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Generation, other connections' commits, and this connection's commits except the run-page cache's own. Reads nothing else. */
+  /** Generation, other connections' commits, and this connection's commits excluding temporary projections. */
   changeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
     this.#assertOpen();
     const key = this.#rawChangeKey();
-    return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#pageCacheChanges });
+    return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#temporaryProjectionChanges });
   }
 
   #rawChangeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
@@ -4808,9 +4861,13 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #assertOpen(): void {
+  #assertAdmissionLive(): void {
     if (this.#closed || !this.#database.isOpen) throw new Error("authority database is closed");
     this.#admission.assertLive();
+  }
+
+  #assertOpen(): void {
+    this.#assertAdmissionLive();
     const expected = this.#admission.profileBinding;
     const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
     if (actual.installationId !== expected.installationId || actual.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
@@ -4918,12 +4975,12 @@ export class AuthorityDatabase implements Disposable {
     // Entries may be missing while the schema differed, so a schema move is checked whole.
     if (schemaMoved) reader.wholeStore = true;
     const high = changeLogHighWater(database);
-    const entries = reader.wholeStore ? [] : readAuthorityChanges(database, reader.cursor);
-    if (!reader.wholeStore && !(entries.length === high - reader.cursor && entries.every((entry, index) => entry.seq === reader.cursor + 1 + index))) reader.wholeStore = true;
+    const closure = reader.wholeStore ? undefined : readAuthorityChangeClosure(database, reader.cursor, high);
+    if (closure === undefined) reader.wholeStore = true;
     const singleton = readSingletonImage(database);
-    const check = reader.wholeStore
+    const check = closure === undefined
       ? (value: typeof search) => { validateAuthorityStore(database, value); }
-      : (value: typeof search) => { validateAuthorityChanges(database, entries, singletonChangeKeys(reader.singleton, singleton), value); };
+      : (value: typeof search) => { validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value); };
     try { check(search); }
     catch (error) {
       // The refusal is rethrown either way; this only names which half failed.
@@ -5184,9 +5241,13 @@ export class AuthorityDatabase implements Disposable {
 
   #withReadSnapshot<Result>(read: () => Result): Result {
     return withOperationProof(() => {
-      if (this.#transactionDepth === 0) clearOperationProofSlots();
-      this.#assertOpen();
-      if (this.#transactionDepth > 0) return read();
+      if (this.#transactionDepth > 0) {
+        if (this.#transactionMode === "read") this.#assertAdmissionLive();
+        else this.#assertOpen();
+        return read();
+      }
+      clearOperationProofSlots();
+      this.#assertAdmissionLive();
 
       const slow = this.#beginSlowOperation("read-snapshot");
       try {
@@ -5199,6 +5260,7 @@ export class AuthorityDatabase implements Disposable {
         this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
         this.#authorityDirty = false;
         try {
+          this.#assertOpen();
           const result = withNativeRecordReadScope(read);
           revalidateOperationProof(witnesses);
           this.#assertOpen();
@@ -6776,6 +6838,61 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  #refreshClaimRoutes(): void {
+    const database = this.#database;
+    database.exec(`CREATE TEMP TABLE IF NOT EXISTS claim_routes(run_id TEXT PRIMARY KEY,home TEXT);
+      CREATE INDEX IF NOT EXISTS temp.claim_routes_home_idx ON claim_routes(home);
+      CREATE TEMP TABLE IF NOT EXISTS claim_route_ancestors(ancestor_id TEXT NOT NULL,
+        run_id TEXT NOT NULL REFERENCES claim_routes(run_id) ON DELETE CASCADE,PRIMARY KEY(ancestor_id,run_id));
+      CREATE INDEX IF NOT EXISTS temp.claim_route_ancestors_run_idx ON claim_route_ancestors(run_id);
+      CREATE TEMP TABLE IF NOT EXISTS claim_route_state(id INTEGER PRIMARY KEY CHECK(id=1),schema_cookie INTEGER NOT NULL,cursor INTEGER NOT NULL);`);
+    const prior = z.strictObject({ schema_cookie: z.number(), cursor: z.number() }).optional()
+      .parse(database.prepare("SELECT schema_cookie,cursor FROM temp.claim_route_state WHERE id=1").get());
+    const schemaCookie = readIntPragma(database, "schema_version"), high = changeLogHighWater(database);
+    if (prior?.schema_cookie === schemaCookie && prior.cursor === high) return;
+    if ((prior?.schema_cookie ?? this.#changeReader?.schemaCookie) !== schemaCookie) assertNativeSchema(database);
+    const cursor = prior?.schema_cookie === schemaCookie ? prior.cursor : undefined;
+    const tail = cursor === undefined ? undefined : z.strictObject({ count: z.number(), newest: z.number().nullable() })
+      .parse(database.prepare(`SELECT count(*) AS count,max(seq) AS newest FROM ${CHANGE_LOG_TABLE} WHERE seq>?`).get(cursor));
+    const reset = cursor === undefined || tail?.count !== high - cursor || (tail.newest ?? cursor) !== high;
+    const before = this.#rawChangeKey().totalChanges;
+    try {
+      if (reset) database.exec("DELETE FROM temp.claim_routes");
+      const affected = reset
+        ? database.prepare(`SELECT id FROM runs INDEXED BY runs_owner_idx
+            WHERE owner_worker_id IS NULL AND state='queued' AND pause_state IS NULL`).all()
+        : database.prepare(`WITH changed(id) AS (
+            SELECT DISTINCT json_extract(row_key,'$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq>? AND table_name='runs'
+          ) SELECT id FROM changed UNION SELECT ancestor.run_id FROM changed
+            JOIN temp.claim_route_ancestors AS ancestor ON ancestor.ancestor_id=changed.id`).all(cursor);
+      const remove = database.prepare("DELETE FROM temp.claim_routes WHERE run_id=?");
+      const queued = database.prepare("SELECT * FROM runs WHERE id=? AND state='queued' AND pause_state IS NULL");
+      const parent = database.prepare("SELECT * FROM runs WHERE id=?");
+      const route = database.prepare("INSERT INTO temp.claim_routes VALUES(?,?)");
+      const link = database.prepare("INSERT INTO temp.claim_route_ancestors VALUES(?,?)");
+      for (const { id } of z.array(z.strictObject({ id: RunIdSchema })).parse(affected)) {
+        if (!reset) remove.run(id);
+        const anchor = queued.get(id);
+        if (anchor === undefined) continue;
+        const ancestors = new Set<string>();
+        let row: unknown = anchor, current: string | undefined = id, home: string | null = null;
+        while (current !== undefined && ancestors.size < 16 && !ancestors.has(current)) {
+          ancestors.add(current);
+          if (row === undefined) break;
+          let run: RunRecord;
+          try { run = runRecordFromRow(row); } catch { break; }
+          current = run.envelope.parent?.runId;
+          if (current === undefined) home = run.envelope.workflow;
+          else if (ancestors.size < 16 && !ancestors.has(current)) row = parent.get(current);
+        }
+        // Unknown routes stay in every home's ordered candidates and go through the original refusal checks.
+        route.run(id, home);
+        for (const ancestor of ancestors) link.run(ancestor, id);
+      }
+      database.prepare("INSERT OR REPLACE INTO temp.claim_route_state VALUES(1,?,?)").run(schemaCookie, high);
+    } finally { this.#temporaryProjectionChanges += this.#rawChangeKey().totalChanges - before; }
+  }
+
   #claimNextRun(input: unknown, canonical: false): RunClaimOutcome;
   #claimNextRun(input: unknown, canonical: true, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean): CanonicalRunClaimOutcome;
   #claimNextRun(input: unknown, canonical: boolean, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean): CanonicalRunClaimOutcome {
@@ -6807,11 +6924,13 @@ export class AuthorityDatabase implements Disposable {
         if (canonical) return { state: "refused", refusal: { reason: "worker-busy", runId: RunIdSchema.parse(held.run_id) } };
         throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
       }
+      if (eligible !== undefined) this.#refreshClaimRoutes();
       const candidates = eligible === undefined
         ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued' AND pause_state IS NULL
           ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all(request.workflow)
-        : this.#database.prepare(`SELECT * FROM runs WHERE state='queued' AND pause_state IS NULL
-          ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all();
+        : this.#database.prepare(`SELECT run.* FROM temp.claim_routes AS route INDEXED BY claim_routes_home_idx
+          CROSS JOIN runs AS run ON run.id=route.run_id WHERE route.home=? OR route.home IS NULL
+          ORDER BY CASE run.priority WHEN 'interactive' THEN 0 ELSE 1 END,run.created_at,run.id`).all(slot.workflow);
       let current: RunRecord | undefined;
       let nextEligibleAt: string | undefined;
       for (const row of candidates) {
@@ -7011,11 +7130,15 @@ export class AuthorityDatabase implements Disposable {
             .run(...(workflow === undefined ? [] : [workflow]));
           // The temp-table writes advance total_changes, so the stored count is one past this statement.
           this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(key.authorityGeneration, key.dataVersion, workflow ?? null);
-          this.#pageCacheChanges += this.#rawChangeKey().totalChanges - key.totalChanges;
+          this.#temporaryProjectionChanges += this.#rawChangeKey().totalChanges - key.totalChanges;
         }
         return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
       },
+      // Either representation can reveal active membership when a row's state has drifted.
+      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs
+        WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
+        ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),

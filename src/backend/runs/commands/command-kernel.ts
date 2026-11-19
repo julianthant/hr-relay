@@ -2400,16 +2400,11 @@ function dispatchActive(
       if (request.type === "pause-all-and-quit" && dependencies.applicationQuitAvailable !== true) reject(request, "capability-unavailable", "Application quit host is unavailable.");
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", "Application commands require the dashboard operator.");
       if (repositories.runtimeConfig.get()?.generation !== request.target.runtimeGeneration) reject(request, "runtime-stale", "Application runtime changed.");
-      const active: RunRecord[] = [];
-      const pageSize = 1000;
-      for (let offset = 0; ; offset += pageSize) {
-        const page = repositories.runs.listPage({ offset, limit: pageSize });
-        active.push(...page.filter(run => run.lifecycle.state !== "terminal"));
-        if (page.length < pageSize) break;
-      }
-      if (new Set(request.payload.targets.map(target => target.runId)).size !== request.payload.targets.length
+      const active = repositories.runs.listNonTerminal();
+      const targets = new Map(request.payload.targets.map(target => [target.runId, target.expectedVersion]));
+      if (targets.size !== request.payload.targets.length
         || active.length !== request.payload.targets.length
-        || active.some(run => !request.payload.targets.some(target => target.runId === run.envelope.runId && target.expectedVersion === run.version))) {
+        || active.some(run => targets.get(run.envelope.runId) !== run.version)) {
         reject(request, "policy-refused", "Active run membership changed; reload before pausing all.");
       }
       const changes: VersionChange[] = [];
