@@ -164,7 +164,7 @@ export function startSettingsKeepAwake(input: KeepAwakeOptions & Readonly<{
       const needed = database.withAuthorityReadSnapshot(() => {
         const settings = readSettings(database.authority);
         return resolvePersonPreferences(settings.settings.preferences).preventSleepWhileRunning
-          && database.readNonTerminalRuns().length > 0;
+          && database.readApplicationActivity("non-terminal-runs").length > 0;
       });
       lastObservation = { key, needed };
     }

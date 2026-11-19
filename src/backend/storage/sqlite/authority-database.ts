@@ -3804,17 +3804,34 @@ export class AuthorityDatabase implements Disposable {
     return { authorityGeneration: this.#readMetaRow().authority_generation, dataVersion: readIntPragma(this.#database, "data_version"), totalChanges };
   }
 
-  readNonTerminalRuns(): RunRecord[] {
-    return this.#withReadSnapshot(() => this.#database.prepare("SELECT * FROM runs WHERE state <> 'terminal' ORDER BY id")
-      .all().map(runRecordFromRow));
-  }
-
-  readApplicationActivity(runScope: "all" | "non-terminal" = "all") {
+  readApplicationActivity(runScope: "non-terminal-runs"): RunRecord[];
+  readApplicationActivity(runScope?: "all" | "non-terminal"): Readonly<{
+    runs: PredecessorRunRecord[];
+    writeIntents: WriteIntentRecord[];
+    duoLeases: DuoCeremonyLeaseRecord[];
+    pendingArtifacts: readonly ArtifactOutboxStorageRecord[];
+  }>;
+  readApplicationActivity(runScope: "all" | "non-terminal" | "non-terminal-runs" = "all") {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
+      // Only omit a terminal row when a single stored lifecycle state confirms it.
+      const runs = runScope === "all"
+        ? this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow)
+        : this.#database.prepare(`SELECT * FROM runs
+          WHERE state <> 'terminal' OR (
+            SELECT count(*) = 1 AND min(CASE lifecycle.type WHEN 'object' THEN (
+              SELECT count(*) = 1 AND min(state.value IS 'terminal')
+              FROM json_each(lifecycle.value) AS state WHERE state.key = 'state'
+            ) ELSE 0 END)
+            FROM json_each(runs.lifecycle_json) AS lifecycle WHERE lifecycle.key = 'lifecycle'
+          ) IS NOT 1
+          ORDER BY id`).all().map(row => {
+          if (row.state === "terminal") throw new Error("run row state does not match its whole-record JSON");
+          return runRecordFromRow(row);
+        });
+      if (runScope === "non-terminal-runs") return runs;
       return Object.freeze({
-        runs: runScope === "non-terminal" ? this.readNonTerminalRuns()
-          : this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw): PredecessorRunRecord => runRecordFromRow(raw)),
+        runs,
         writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
           .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
         duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()

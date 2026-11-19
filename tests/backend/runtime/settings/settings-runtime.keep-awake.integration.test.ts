@@ -114,16 +114,17 @@ it("keeps awake for live work without decoding terminal runs and rereads after p
     expectedVersion: queued.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
   const active = f.create({ matchKey: "active" });
   const events: unknown[] = [];
-  let starts = 0;
+  let starts = 0, kills = 0;
   const observer = startSettingsKeepAwake({ database: f.database, platform: "darwin", startProcess: () => {
     starts++;
     const child = new ChildProcess();
-    child.kill = () => { child.emit("close", 0, "SIGTERM"); return true; };
+    child.kill = () => { kills++; child.emit("close", 0, "SIGTERM"); return true; };
     Object.defineProperty(child, "pid", { value: 456 });
     return child;
   }, debugEvents: { emit: event => events.push(event) } });
   const peer = new DatabaseSync(f.path);
   const update = peer.prepare("UPDATE runs SET version=? WHERE id=?");
+  const move = peer.prepare("UPDATE runs SET state=?, outcome=? WHERE id=?");
   try {
     await observer.observe();
     assert.equal(starts, 1);
@@ -141,6 +142,18 @@ it("keeps awake for live work without decoding terminal runs and rereads after p
       update.run(active.version, active.envelope.runId);
     }
     await observer.observe();
+
+    move.run("terminal", "cancelled", active.envelope.runId);
+    try {
+      assert.throws(() => f.service.read(active.envelope.runId), /state.*whole-record JSON/u);
+      await assert.rejects(observer.observe(), /state.*whole-record JSON/u);
+      await assert.rejects(observer.observe(), /state.*whole-record JSON/u);
+      assert.equal(kills, 0);
+    } finally {
+      move.run("queued", null, active.envelope.runId);
+    }
+    await observer.observe();
+    assert.equal(starts, 1);
   } finally {
     update.run(terminal.version, terminal.envelope.runId);
     peer.close();

@@ -59,6 +59,31 @@ it("refuses changed physical run evidence on the next lifecycle poll", async () 
   }
 });
 
+it("refuses a queued run whose scalar state claims it is terminal", async () => {
+  const f = await settingsFixture(); cleanups.push(f.close);
+  const run = f.create();
+  const lifecycle = createApplicationLifecycle({ database: f.database, requestQuit() {}, onFailure: error => { throw error; } });
+  cleanups.push(lifecycle.dispose);
+  assert.equal(lifecycle.snapshot().targets[0]?.runId, run.envelope.runId);
+  const peer = new DatabaseSync(f.path);
+  const move = peer.prepare("UPDATE runs SET state=?, outcome=? WHERE id=?");
+  const updateJson = peer.prepare("UPDATE runs SET lifecycle_json=? WHERE id=?");
+  const row = peer.prepare("SELECT lifecycle_json FROM runs WHERE id=?").get(run.envelope.runId);
+  assert.ok(typeof row?.lifecycle_json === "string");
+  try {
+    move.run("terminal", "cancelled", run.envelope.runId);
+    assert.throws(() => f.service.read(run.envelope.runId), /state.*whole-record JSON/u);
+    assert.throws(() => lifecycle.snapshot(), /state.*whole-record JSON/u);
+    updateJson.run(`{"lifecycle":{"state":"terminal"},${row.lifecycle_json.slice(1)}`, run.envelope.runId);
+    assert.throws(() => lifecycle.snapshot(), /state.*whole-record JSON/u);
+  } finally {
+    updateJson.run(row.lifecycle_json, run.envelope.runId);
+    move.run("queued", null, run.envelope.runId);
+    peer.close();
+  }
+  assert.equal(lifecycle.snapshot().targets[0]?.runId, run.envelope.runId);
+});
+
 it("keeps the same active targets and update state without decoding terminal runs", async () => {
   const f = await settingsFixture(); cleanups.push(f.close);
   const queued = f.create({ matchKey: "terminal" });
@@ -158,6 +183,22 @@ async function pendingQuitWorld() {
     claim: { workerId: member.workerId, claimGeneration: claim.run.claimGeneration } }).state;
   return { f, lifecycle, runtime, stuck, waiting, acknowledgeStuck, quits: () => quits };
 }
+
+it("refuses to quit when a claimed run has a terminal scalar state", async () => {
+  const { f, stuck, quits } = await pendingQuitWorld();
+  const claimed = f.database.authority.runs.get(stuck.envelope.runId);
+  assert.ok(claimed?.lifecycle.state === "claimed");
+  const peer = new DatabaseSync(f.path);
+  const move = peer.prepare("UPDATE runs SET state=?, outcome=?, owner_worker_id=?, heartbeat_at=? WHERE id=?");
+  try {
+    move.run("terminal", "cancelled", null, null, stuck.envelope.runId);
+    await assert.rejects(vi.advanceTimersByTimeAsync(50), /state.*whole-record JSON/u);
+    assert.equal(quits(), 0);
+  } finally {
+    move.run("claimed", null, claimed.lifecycle.workerId, claimed.lifecycle.heartbeatAt, stuck.envelope.runId);
+    peer.close();
+  }
+});
 
 it("ends a Pause all and quit that cannot complete when the operator resumes a paused run", async () => {
   const { f, lifecycle, waiting, quits } = await pendingQuitWorld();
