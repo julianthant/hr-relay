@@ -123,23 +123,23 @@ async function routeFixture() {
 
 it("serves confirmed account deletion through the guarded dashboard route and signals an empty machine", async () => {
   const { f, base } = await routeFixture();
-  const post = (path: string, body: unknown, cookie?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
-    method: "POST", headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body),
+  const post = (path: string, body: unknown, credential?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
+    method: "POST", headers: { origin, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body),
   });
   for (const email of ["fixture@ucsd.edu", "other@ucsd.edu"]) {
     const login = await post("sign-in", { email, password: "disposable-fixture-password" });
     const active = PublicProfileStateSchema.parse(await login.json()); assert.ok(active.state === "active");
     const confirmation = { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch };
     const otherBefore = email === "fixture@ucsd.edu" ? fixedLayoutEntries(f.otherRoot) : undefined;
-    const cookie = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
-    assert.equal((await post("delete-account", confirmation, cookie, "http://foreign.invalid")).status, 403);
-    assert.equal((await post("delete-account", { ...confirmation, confirmed: false }, cookie)).status, 400);
-    assert.equal((await post("delete-account", { confirmed: true }, cookie)).status, 400);
-    assert.equal((await post("delete-account", { ...confirmation, expectedEpoch: 0 }, cookie)).status, 400);
+    const credential = login.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
+    assert.equal((await post("delete-account", confirmation, credential, "http://foreign.invalid")).status, 403);
+    assert.equal((await post("delete-account", { ...confirmation, confirmed: false }, credential)).status, 400);
+    assert.equal((await post("delete-account", { confirmed: true }, credential)).status, 400);
+    assert.equal((await post("delete-account", { ...confirmation, expectedEpoch: 0 }, credential)).status, 400);
     assert.equal(f.machine.readProfileRegistry().profiles.length, email === "fixture@ucsd.edu" ? 2 : 1);
-    const response = await post("delete-account", confirmation, cookie); assert.equal(response.status, 200);
+    const response = await post("delete-account", confirmation, credential); assert.equal(response.status, 200);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: email === "other@ucsd.edu" });
-    assert.equal((await post("delete-account", confirmation, cookie)).status, 409);
+    assert.equal((await post("delete-account", confirmation, credential)).status, 409);
     assert.equal(existsSync(email === "fixture@ucsd.edu" ? f.root : f.otherRoot), false);
     assert.equal(FakeKeyringEntry.snapshot().some(([account]) => account === `Relay:${f.machine.locator.installationId}:${active.profileId}`), false);
     if (otherBefore !== undefined) {
@@ -152,7 +152,7 @@ it("serves confirmed account deletion through the guarded dashboard route and si
   assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: true });
 });
 
-for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-cookie deletion after ${replacement} without touching either account`, async () => {
+for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-credential deletion after ${replacement} without touching either account`, async () => {
   const { f, base } = await routeFixture();
   const { tabA, tabB } = sharedProfileCookieTabs(base);
   const old = PublicProfileStateSchema.parse(await (await tabA.post("sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" })).json());
@@ -178,7 +178,7 @@ for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses s
 
   assert.equal(response.status, 409);
   assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_SESSION_STALE" });
-  assert.equal(response.headers.get("set-cookie"), null);
+  assert.equal(response.headers.get("x-relay-session"), null);
   assert.deepEqual(snapshot(), before, "stale confirmation changed profile, backup, credential or journal authority");
   assert.deepEqual(fixedLayoutEntries(control), controlBefore, "stale confirmation changed installation control or journals");
   const bootLog = join(logs, "boot.jsonl");

@@ -60,7 +60,7 @@ export function createSettingsAuthorityTestWorld() {
 
   function protectedCommand(expectedRevision: number) {
     return { family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
-      target: { expectedRevision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-private-value" } } } };
+      target: { expectedRevision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { sharepointOnboardingRosterUrl: { set: "https://roster.example.test/synthetic-private-value" } } } };
   }
 
   function failAudit(database: AuthorityDatabase): CommandAuthority {

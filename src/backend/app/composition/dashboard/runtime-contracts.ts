@@ -53,13 +53,13 @@ export interface DashboardComposeInput {
   readonly frontendBuildScript?: DashboardBuildCommand;
   readonly startPlanTtlMs?: number;
   // Port 0 requests an ephemeral test port.
-  readonly backendPortOverride?: 0;
+  readonly backendPortOverride?: number;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   /** Test-only replacement for injecting an HTTP bind failure after startup admission. */
   readonly httpServerStarter?: (input: Parameters<typeof startDashboardHttpServer>[0]) => Promise<DashboardHttpServer>;
   readonly applicationTransport?: Readonly<{ listener: DashboardHttpListener; accepts: (request: Request) => boolean }>;
-  /** Test-only preflight probe override; production always checks the isolated frontend port. */
-  readonly frontendPortOverride?: 0;
+  /** Tests may name their own frontend listener. Zero disables the frontend preflight port check. */
+  readonly frontendPortOverride?: number;
   /** Test-only replacement for the dev-frontend ownership probe of profile requests. */
   readonly frontendProbe?: typeof probeOwnedViteServer;
 
