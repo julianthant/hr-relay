@@ -3,10 +3,11 @@ import { Hono } from "hono";
 import { default as assert } from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
-import { DESCRIPTORS, WORKFLOW_DEFINITIONS, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { composeRegisteredWorkflow, DASHBOARD_CATALOG_MODULES, DESCRIPTORS, WORKFLOW_DEFINITIONS, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
@@ -56,6 +57,15 @@ describe("workflow definition registry conformance", () => {
     }])).toThrow("workflow separations registers a definition that did not compile its own descriptor");
   });
 
+  it("refuses to register a workflow definition without an icon", () => {
+    const definition = { ...personLookupWorkflow };
+    Reflect.deleteProperty(definition, "icon");
+
+    assert.throws(() => composeRegisteredWorkflow(definition), (error: unknown) =>
+      error instanceof ZodError && error.issues.some(issue =>
+        issue.code === "invalid_value" && issue.values.includes(personLookupWorkflow.icon)));
+  });
+
   it("keeps every registered definition's tuple groups and entries equal to its compiled descriptor and generic projections", () => {
     for (const { descriptor, definition } of WORKFLOW_DEFINITIONS) {
       const expectedGroups = definition.steps.map(([group, entries]) => ({
@@ -87,8 +97,8 @@ describe("workflow definition registry conformance", () => {
       const bootstrap = buildBootstrap({
         appVersion: "0.1.0",
         clock: manualClock(AT),
-        modules: WORKFLOW_MODULES,
-        descriptorSetHash: descriptorSetHash_m0(WORKFLOW_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
+        modules: DASHBOARD_CATALOG_MODULES,
+        descriptorSetHash: descriptorSetHash_m0(DASHBOARD_CATALOG_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
         settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
         projection: world.projection,
         actorLabel: () => "Fixture Operator",
@@ -98,6 +108,8 @@ describe("workflow definition registry conformance", () => {
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
+      expect(bootstrapWorkflows.map(({ id, icon }) => ({ id, icon })))
+        .toEqual(DASHBOARD_CATALOG_MODULES.map(({ definition: { id, icon } }) => ({ id, icon })));
       const starts = new Map(bootstrapWorkflows.map((workflow) => [String(workflow.id), workflow.start]));
       const explorer = readFixtureExplorer(explorerQueryDeps(manualClock(AT), EXPLORER_HASH));
       const explorerWorkflows = new Map(explorer.workflows.map((workflow) => [String(workflow.id), workflow]));

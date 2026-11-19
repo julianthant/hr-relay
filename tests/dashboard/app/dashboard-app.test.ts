@@ -82,6 +82,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
     id: "fixture-workflow",
     code: "fw",
     label: "Fixture workflow",
+    icon: "ClipboardCheck",
     categoryId: "operations",
     descriptorFingerprint: FIXTURE_FINGERPRINT,
     availability: { state: "available" },
