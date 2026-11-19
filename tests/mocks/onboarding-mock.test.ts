@@ -16,7 +16,7 @@ const THEMES = ["dark", "light"] as const;
 const WIDTHS = [1280, 1024] as const;
 /** The control each scene must show, so a broken scene names what it looked for. */
 const LOOKED_FOR = (id: keyof typeof ONBOARDING_SCENES) => ONBOARDING_SCENES[id].setup === true
-  ? { role: "heading", name: "Set up Duo for Relay" } as const
+  ? { role: "heading", name: "Set up Duo" } as const
   : ONBOARDING_SCENES[id].step === "login" ? { role: "button", name: "Log in" } as const
   : ONBOARDING_SCENES[id].step === "signup" ? { role: "button", name: "Create profile" } as const
   : ONBOARDING_SCENES[id].step === "ready" ? { role: "button", name: "Go to dashboard" } as const

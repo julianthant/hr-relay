@@ -6,13 +6,13 @@ import { Onboarding } from "../../../src/dashboard/surfaces/shell/onboarding.js"
 import { OnboardingSetup } from "../../../src/dashboard/surfaces/shell/onboarding-setup.js";
 import { validateOnboarding, type OnboardingStep, type ServedOnboardingPort } from "../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
-type MethodKind = "idle" | "pending" | "complete";
+type MethodKind = "idle" | "pending" | "complete" | "unknown";
 const OPERATION = "00000000-0000-4000-8000-000000000001";
 const PROFILE = "00000000-0000-4000-8000-000000000002";
 const ATTEMPT = "00000000-0000-4000-8000-000000000003";
 
 const method = (state: MethodKind): ProfileOnboardingMethodState => ({
-  state, ...(state === "pending" ? { attemptId: ATTEMPT } : {}),
+  state, ...(state === "pending" || state === "unknown" ? { attemptId: ATTEMPT } : {}),
   ceremonyObserved: state === "complete", portalAccepted: state === "complete", operatorConfirmed: state === "complete", exactCredentialRequestObserved: state === "complete",
 });
 
@@ -45,6 +45,8 @@ export const ONBOARDING_SCENES = {
   "setup-not-started": { setup: true, draft: draft("idle", "idle") },
   "setup-key-pending": { setup: true, draft: draft("pending", "idle") },
   "setup-key-complete": { setup: true, draft: draft("complete", "idle") },
+  "setup-both-complete": { setup: true, draft: draft("complete", "complete") },
+  "setup-key-failed": { setup: true, draft: draft("unknown", "idle") },
 } as const satisfies Record<string, Scene>;
 export type OnboardingSceneId = keyof typeof ONBOARDING_SCENES;
 export const ONBOARDING_SCENE_IDS = Object.keys(ONBOARDING_SCENES) as OnboardingSceneId[];
