@@ -10,7 +10,7 @@ export function ExplorerSource({ label, destination, source, onClose, onJump }: 
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus({ preventScroll: true }); }, []);
   return <Card role="dialog" aria-modal="false" aria-label={`${label} source`} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}
-    className={`fixed right-[var(--ds-space-loose)] top-[calc(var(--ds-h-topbar)+var(--ds-space-section))] max-h-[calc(100dvh-var(--ds-h-topbar)-var(--ds-space-section)*2)] w-[var(--ds-w-body-control-wide)] overflow-hidden ${dsLayer.drawer} ${dsElev.mid}`}>
+    className={`fixed right-[var(--ds-space-loose)] top-[calc(var(--ds-h-topbar)+var(--ds-space-section)*3)] max-h-[calc(100dvh-var(--ds-h-topbar)-var(--ds-space-section)*4)] w-[var(--ds-w-body-control-wide)] overflow-hidden ${dsLayer.drawer} ${dsElev.mid}`}>
     <div className="flex items-center gap-2 border-b border-ui-stroke px-4 py-3"><h2 className="min-w-0 flex-1 text-heading">{label}</h2><IconButton ref={close} label="Close field source" size="sm" onClick={onClose} icon={<X aria-hidden className="size-4" />} /></div>
     <div className="flex flex-col gap-4 overflow-y-auto px-4 py-3 text-body">
       <p className="m-0 flex items-start gap-2 text-caption text-ui-muted"><PencilLine aria-hidden className="mt-0.5 size-3.5 shrink-0" />{destination}</p>
