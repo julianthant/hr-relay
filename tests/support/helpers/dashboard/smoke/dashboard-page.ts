@@ -20,7 +20,8 @@ export class DashboardPage {
     this.workflows = page.getByRole("navigation", { name: "Workflows" });
     this.queue = page.getByRole("region", { name: "Queue" });
     this.runPanel = page.getByRole("region", { name: "Selected run logs" });
-    this.startRunButton = page.getByRole("button", { name: "Start run", exact: true });
+    // An empty queue offers a second Start run in its body; the toolbar's is always present.
+    this.startRunButton = page.getByRole("group", { name: "Action panel controls" }).getByRole("button", { name: "Start run", exact: true });
     this.dialog = page.getByRole("dialog");
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
