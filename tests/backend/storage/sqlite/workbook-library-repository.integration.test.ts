@@ -106,10 +106,11 @@ function preCatalogueWorkbook(database: DatabaseSync) {
     insert.run(sequence, id, request.operationId, sha256Hex(json), json, JSON.stringify(receipt));
   }
   settle(1, { operationId: "assign-type", at: savedAt, source: { kind: "operator" }, change: { kind: "metadata", expectedVersion: 1, metadata } }, {});
-  function migrate(head: typeof first, ownerRow: string, value: string) {
+  function migrate(head: typeof first, ownerRow: string, value: string, operatorRow?: string) {
     database.prepare("UPDATE workbook_library SET version=?, payload_json=?, metadata_json=?, ownership_json=? WHERE id=?")
       .run(head.version, JSON.stringify(head), JSON.stringify(metadata), JSON.stringify({
         [JSON.stringify(["people", ownerRow, "fullName"])]: { owner: "relay", value },
+        ...(operatorRow === undefined ? {} : { [JSON.stringify(["people", operatorRow, "fullName"])]: { owner: "operator" } }),
       }), id);
     for (const migration of [WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
       for (const statement of migration.statements) database.exec(statement);
@@ -161,10 +162,14 @@ it.each([[4, false], [5, false], [5, true]] as const)("reads revision %s after a
   { changes: [{ sheetId: "people", rowId: "numeric-key", fieldId: "fullName", oldValue: null, newValue: external }] });
   const synced = { ...first, version: 4, workbook: structuredClone(incoming) };
   synced.workbook.sheets[0].rows[1].cells[1].value = name;
-  const saved = { ...synced, version: 5, workbook: { ...synced.workbook, name: "Earlier save.xlsx" } };
+  const saved = { ...synced, version: 5, workbook: structuredClone(synced.workbook) };
+  saved.workbook.name = "Earlier save.xlsx";
+  const savedName = "Independent save cell";
+  saved.workbook.sheets[0].rows[2].cells[1].value = savedName;
   settle(4, { operationId: "earlier-save", at: savedAt, source: { kind: "operator" },
-    change: { kind: "save", expectedVersion: 4, workbook: saved.workbook } }, {});
-  const service = migrate(saved, "imported-key", name);
+    change: { kind: "save", expectedVersion: 4, workbook: saved.workbook } },
+  { changes: [{ sheetId: "people", rowId: "numeric-key", fieldId: "fullName", oldValue: external, newValue: savedName }] });
+  const service = migrate(saved, "imported-key", name, "numeric-key");
 
   if (corruptSync) {
     database.exec("DROP TRIGGER workbook_operations_immutable");
@@ -172,6 +177,10 @@ it.each([[4, false], [5, false], [5, true]] as const)("reads revision %s after a
     expect(() => service.revision(id, synced.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
   }
   expect(service.revision(id, version)).toEqual(version === 4 ? synced : saved);
+  if (corruptSync) {
+    database.prepare("UPDATE workbook_operations SET receipt_json=json_set(receipt_json,'$.changes[0].newValue','Wrong fixture') WHERE operation_id='earlier-save'").run();
+    expect(() => service.revision(id, saved.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
+  }
 });
 
 it.each(["oldValue", "newValue"] as const)("rejects a retained patch receipt with a contradictory %s", field => {
@@ -193,6 +202,29 @@ it.each(["oldValue", "newValue"] as const)("rejects a retained patch receipt wit
     .run(`$.changes[0].${field}`, "Contradictory Name", patch.sequence);
   expect(() => service.revision(id, patch.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
 });
+
+it.each([["save", "oldValue"], ["save", "newValue"], ["sync", "oldValue"], ["sync", "newValue"]] as const)(
+  "rejects a snapshot-backed %s receipt with a contradictory %s", (kind, field) => {
+    using database = new DatabaseSync(":memory:");
+    const { id, repository, service } = workbookFixture(database);
+    const before = service.read(id), workbook = structuredClone(before.workbook);
+    workbook.sheets[0].rows[1].cells[1].value = "Saved Fixture";
+    if (kind === "save") service.save(id, before.version, workbook);
+    else repository.operation(id, { operationId: "fixture-sync", at: savedAt, source: { kind: "sync", syncId: "fixture-sync" },
+      change: { kind: "sync", expectedVersion: before.version, workbook: encodeSavedWorkbook({ ...before, workbook }).workbook } });
+    const settled = repository.journal(id).at(-1);
+    if (settled === undefined) throw new Error("fixture content receipt missing");
+    expect(settled).toMatchObject({ state: "applied", changes: [{ oldValue: "Fixture Person", newValue: "Saved Fixture" }] });
+    const after = service.read(id);
+    service.save(id, after.version, { ...after.workbook, name: "Latest.xlsx" });
+    expect(service.revision(id, settled.version)).toEqual(after);
+
+    database.exec("DROP TRIGGER workbook_operations_immutable");
+    database.prepare("UPDATE workbook_operations SET receipt_json=json_set(receipt_json,?,?) WHERE sequence=?")
+      .run(`$.changes[0].${field}`, "Wrong Fixture", settled.sequence);
+    expect(() => service.revision(id, settled.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
+  },
+);
 
 it("retains recorded key matches while authenticating the values against the named sheet", () => {
   using database = new DatabaseSync(":memory:");
