@@ -14,7 +14,7 @@ The browser application starts at `app/main.tsx` and mounts `DashboardApp` from
 | `surfaces/queue/` | Queue rows, focus mode, filters, sorting, grouping, selection, and local preview mutations |
 | `surfaces/run-detail/` | Logs, timeline, decisions, image workspace, run headers, and identity models |
 | `surfaces/run-start/` | Launcher, plan, options, steps, rerun, and recovery |
-| `surfaces/workflows/` | Shared workflow catalog; `mocks/` contains preview runs, definitions, documents, and Records |
+| `surfaces/workflows/` | Shared served workflow catalog and category grouping |
 | `surfaces/sessions/` | Worker strip, cards, local command port, idle refresh, and samples |
 | `surfaces/notifications/` | Bell, inbox, destination models, and local preview producer |
 | `surfaces/settings/` | Settings composition and local styles |
@@ -48,9 +48,9 @@ from their subfolders. Canonical wire contracts live under `src/models/dashboard
 live under `src/rules/commands/`. Browser imports never reach backend composition or task registries.
 
 `app/workflow-sources.ts` reads `config/dashboard-workflow-sources.json`. Each workflow is explicitly
-`mock`, `served` or `hidden`. Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and the public I-9 Check PDF parent select `served`.
+`served` or `hidden`. Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and the public I-9 Check PDF parent select `served`.
 OCR and I-9 Lookup are hidden children. The I-9 Check person child has no source entry.
-Other configured workflows select `mock`. An undeclared ID throws `WORKFLOW_SOURCE_UNDECLARED`.
+An undeclared ID throws `WORKFLOW_SOURCE_UNDECLARED`.
 A served failure never falls back to a mock. I-9 Check's live acceptance is blocked pending the
 operator's choice of ordinary execution with local publication or a separate preview implementation.
 

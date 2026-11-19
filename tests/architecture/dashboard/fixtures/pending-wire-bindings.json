@@ -10,6 +10,16 @@
       "binding": "RunDetailSectionResponseSchema#context-evidence",
       "direction": "declared-unserved",
       "note": "Ref dashboard-surfaces \u00a71.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the receipt section serves the trust content that exists today."
+    },
+    {
+      "binding": "route:GET /api/v1/storage/doctor",
+      "direction": "served-unconsumed",
+      "note": "The storage doctor read is served; the dashboard no longer shows a storage doctor surface, so no client calls it."
+    },
+    {
+      "binding": "route:GET /api/v1/storage/doctor/latest",
+      "direction": "served-unconsumed",
+      "note": "The latest storage doctor report is served; the dashboard no longer shows a storage doctor surface, so no client calls it."
     }
   ]
 }

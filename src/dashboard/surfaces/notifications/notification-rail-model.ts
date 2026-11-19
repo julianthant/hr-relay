@@ -1,19 +1,12 @@
 import type { InboxWiring } from "../../state/inbox-wiring-adapter.js";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useToasts } from "../../ds/ui.js";
 import { usePersonPreferences } from "../../lib/person-preferences.js";
-import { applyNotificationReads, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 import type { PersonPreferences } from "../../../models/config/person-preferences.js";
-import { mockParam } from "../../app/mock-surfaces.js";
-
-/** Read marks live with the caller: Settings replaces the rail, and the marks must survive the visit. */
-export type NotificationReads = Readonly<Record<string, boolean>>;
 
 type NotificationRailInput = Readonly<{
-  notifications: NotificationsState;
-  reads: NotificationReads;
-  setReads: Dispatch<SetStateAction<NotificationReads>>;
-  served?: InboxWiring;
+  served: InboxWiring;
   /** Whether the list is open: publications that arrive meanwhile are in front of the operator and raise no alert. */
   open?: boolean;
   setOpen: (open: boolean) => void;
@@ -28,8 +21,6 @@ type NotificationRailInput = Readonly<{
 export type NotificationRailModel = Readonly<{
   state: NotificationsState;
   unread: number | undefined;
-  ping: boolean;
-  pingItem: NotificationItem | undefined;
   changeOpen: (next: boolean) => void;
   onControl: (id: string, control: NotificationControl) => void;
   onReadAll: () => void;
@@ -47,41 +38,21 @@ export function alertSwitch(item: NotificationItem, preferences: PersonPreferenc
 
 const unreadCount = (state: NotificationsState) => state.state === "ready" ? state.items.filter(item => !item.read).length : undefined;
 
-export function useNotificationRailModel({ notifications, reads, setReads, open = false, setOpen, onAlert, setNotice, onOpenNotification, onActive, served }: NotificationRailInput): NotificationRailModel {
-  const state = useMemo(() => applyNotificationReads(notifications, reads), [notifications, reads]);
-  const [ping, setPing] = useState(() => mockParam("notificationsPreview") === "ping");
-  const pingItem = state.state === "ready" ? state.items.find(item => item.destination.kind === "run" && item.title === "Run completed") : undefined;
+export function useNotificationRailModel({ open = false, setOpen, onAlert, setNotice, onOpenNotification, onActive, served }: NotificationRailInput): NotificationRailModel {
   const { notifications: switches } = usePersonPreferences().value;
   const alert = useRef(onAlert); alert.current = onAlert;
   const live = useRef({ open, switches }); live.current = { open, switches };
-  const onPublication = served?.onPublication;
-  useEffect(() => onPublication?.(({ item }) => {
+  const onPublication = served.onPublication;
+  useEffect(() => onPublication(({ item }) => {
     if (live.current.open || !alertSwitch(item, live.current.switches)) return;
     alert.current?.(item, live.current.switches.sound !== "none");
   }), [onPublication]);
-  const changeOpen = (next: boolean) => { setOpen(next); if (next) setPing(false); };
-  if (served !== undefined) return {
+  return {
     state: served.state, unread: unreadCount(served.state),
-    ping: false, pingItem: undefined,
-    changeOpen,
+    changeOpen: setOpen,
     onControl: (id, action) => { setNotice(""); void served.control(id, action); },
     onReadAll: () => { setNotice(""); void served.readAll(); },
     onOpenItem: item => { setNotice(""); served.open(item, onOpenNotification, () => onActive?.(item.id), setNotice); },
-  };
-  return {
-    state,
-    unread: unreadCount(state),
-    ping,
-    pingItem,
-    changeOpen,
-    onControl: (id, control) => setReads(current => ({ ...current, [id]: control === "read" })),
-    onReadAll: () => { if (state.state === "ready") setReads(current => ({ ...current, ...Object.fromEntries(state.items.map(item => [item.id, true])) })); },
-    onOpenItem: item => {
-      setNotice("");
-      const markRead = () => setReads(current => ({ ...current, [item.id]: true }));
-      if (item.destination.kind === "none") markRead();
-      else onOpenNotification(item.destination, () => { markRead(); onActive?.(item.id); }, setNotice);
-    },
   };
 }
 

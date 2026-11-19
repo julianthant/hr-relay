@@ -6,7 +6,7 @@ import { afterEach, describe, it } from "vitest";
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { PersonPreferencesContext, type PersonPreferencesPort } from "../../../../src/dashboard/lib/person-preferences.js";
 import type { InboxWiring } from "../../../../src/dashboard/state/inbox-wiring-adapter.js";
-import { useNotificationAlert, useNotificationRailModel, type NotificationReads } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
+import { useNotificationAlert, useNotificationRailModel } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import type { NotificationItem, NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { NEUTRAL_PERSON_PREFERENCES, resolvePersonPreferences, type PersonPreferences } from "../../../../src/models/config/person-preferences.js";
 
@@ -42,9 +42,8 @@ async function mount(initial: NotificationsState, notifications: Partial<PersonP
   function Harness() {
     const [state, set] = useState(initial); setState = set;
     const [open, setOpen] = useState(false);
-    const [reads, setReads] = useState<NotificationReads>({});
     const deliver = useNotificationAlert(() => { probe.sounds += 1; });
-    const model = useNotificationRailModel({ notifications: { state: "loading" }, reads, setReads, open, setOpen, setNotice: () => undefined, onOpenNotification: () => undefined, served: served(state, listeners),
+    const model = useNotificationRailModel({ open, setOpen, setNotice: () => undefined, onOpenNotification: () => undefined, served: served(state, listeners),
       onAlert: (arrived, sound) => { probe.alerts.push({ id: arrived.id, sound }); deliver(arrived, sound); } });
     probe.unread = model.unread; probe.open = model.changeOpen;
     probe.listed = model.state.state === "ready" ? model.state.items.map(entry => entry.id) : [];

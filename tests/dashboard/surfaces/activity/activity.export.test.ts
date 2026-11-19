@@ -39,7 +39,7 @@ it.each([
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const button = () => { const node = [...host.querySelectorAll("button")].find(node => node.textContent === "Export"); assert(node); return node; };
   try {
-    await act(async () => root.render(createElement(ActivityReport, { source: "served", client, range: `${report.from}..${report.to}`, today: report.to, onRange() {} })));
+    await act(async () => root.render(createElement(ActivityReport, { client, range: `${report.from}..${report.to}`, today: report.to, onRange() {} })));
     assert.equal(button().disabled, false);
     await act(async () => button().click());
     assert.equal(button().disabled, true); assert.equal(button().getAttribute("aria-busy"), "true");

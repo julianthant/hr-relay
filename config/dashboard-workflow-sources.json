@@ -4,13 +4,9 @@
   "person-lookup": "served",
   "i9-lookup": "hidden",
   "work-study": "served",
-  "kronos-pay-rule": "mock",
   "ocr": "hidden",
-  "oath-signature": "mock",
-  "oath-upload": "mock",
   "emergency-contact": "served",
   "onbase": "hidden",
   "i9-check-start": "served",
-  "crm-doc-download": "mock",
-  "old-kronos-reports": "mock"
+  "crm-doc-download": "hidden"
 }

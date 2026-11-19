@@ -9,13 +9,13 @@ import { createDashboardClient, type DashboardClient } from "../../../../src/das
 import { CommandExecutor, type CommandExecutionScope } from "../../../../src/dashboard/app/commands/command-executor.js";
 import { IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
 import { createSessionPreviewPort, useSessionPreviewCommands, type SessionCommandBinding, type SessionPreviewCommandPort, type SessionPreviewRequest } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
-import { sessionsSample } from "../../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 import { sessionWorkerAuthorityKey } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../mocks/helpers/fixture-day.js";
 import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { sessionsSample } from "../../../support/fixtures/dashboard/sessions-sample.js";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -70,7 +70,7 @@ function servedWorld(count: number, gateReads = 0) {
   const executor = new CommandExecutor(() => scope);
   const binding = (): SessionCommandBinding => ({ client, executor, scope, day: base.day, nowIso: FIXTURE_NOW,
     dayState: { subscribePublications: () => { throw new Error("not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
-  const port = createSessionPreviewPort(() => ({ binding: binding(), catalog: buildWorkflowCatalog([], true, servedFixtureSources([])) }));
+  const port = createSessionPreviewPort(() => ({ binding: binding(), catalog: buildWorkflowCatalog([], servedFixtureSources([])) }));
   const control = (index: number, action: "pause" | "resume") => { const card = day.workerCards[index]; return port.send({ id: crypto.randomUUID(), target: card.workerId, action, authorityKey: sessionWorkerAuthorityKey(card) }); };
   return { control, served };
 }

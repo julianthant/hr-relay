@@ -17,20 +17,25 @@ const unavailableExplorerClient = {};
 export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number): Readonly<{ state: ExplorerWiringState; retry: () => void; workflows: WorkflowExplorerWire["workflows"] | undefined }> {
   const resource = useSettingsRead<WorkflowExplorerWire>(client ?? unavailableExplorerClient, "explorer");
   const result = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
+  const readScope = useRef<AbortController | undefined>(undefined);
   const retry = useCallback(() => {
-    if (client === undefined) return;
-    void resource.read(() => client.workflowExplorer(), "DASHBOARD_READ_FAILED").catch(() => resource.snapshot());
+    const signal = readScope.current?.signal;
+    if (client === undefined || signal === undefined) return;
+    void resource.read(requestSignal => client.workflowExplorer(requestSignal), "DASHBOARD_READ_FAILED", undefined, signal).catch(() => resource.snapshot());
   }, [client, resource]);
-  const held = result.value?.workflows.find(candidate => candidate.id === workflowId);
-  // The one wire serves every workflow; it is read on mount, on a client change and when the held version is not the catalog's.
-  const mismatched = held !== undefined && version !== undefined && held.version !== version;
   const selected = workflowId !== undefined;
-  const readBy = useRef<unknown>(undefined);
   useEffect(() => {
-    if (!selected || (readBy.current === retry && !mismatched)) return;
-    readBy.current = retry;
+    if (!selected) return;
+    const controller = new AbortController();
+    readScope.current = controller;
     retry();
-  }, [retry, selected, mismatched]);
+    return () => { readScope.current = undefined; controller.abort(); };
+  }, [retry, selected]);
+  const held = result.value?.workflows.find(candidate => candidate.id === workflowId);
+  const mismatched = held !== undefined && version !== undefined && held.version !== version;
+  useEffect(() => {
+    if (mismatched) retry();
+  }, [mismatched, retry, version, workflowId]);
   const projected = useMemo((): ExplorerWiringState => {
     const workflow = result.value?.workflows.find(candidate => candidate.id === workflowId);
     if (result.value === undefined) return { state: "loading" };

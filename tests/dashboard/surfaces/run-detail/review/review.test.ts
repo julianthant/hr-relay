@@ -1,9 +1,9 @@
 import type { RecordReviewProps } from "../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
-import { mockReviewProps } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { mockReviewProps } from "../../../../mocks/workflows/workflow-review-model.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
-import { approveMockRun,initialMockDraft,mockRunsForDraft } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun,initialMockDraft,mockRunsForDraft } from "../../../../mocks/workflows/workflow-mock-model.js";
 import { RecordReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);
@@ -34,4 +34,15 @@ it("keeps an unknown boolean distinct from an observed No in editable and read-o
   const readOnly = renderToStaticMarkup(createElement(RecordReview, { ...view, readOnly: true }));
   expect(readOnly).not.toContain('>No<');
   expect(readOnly).toContain('—');
+});
+
+it("marks an unconfirmed card and names each blocking record beside the disabled Approve", () => {
+  const view: RecordReviewProps = { runId: "synthetic-run", subject: "Synthetic document", readOnly: false, discarded: false, selectedCount: 0,
+    onApprove: () => {}, approvalError: "Resolve the selected records before approval.",
+    cards: [{ name: "Example, Avery", pages: [], record: { id: "synthetic-record", page: 3, kind: "emergency-contact", selected: true, warnings: [],
+      unconfirmed: "No UCPath match", blockers: ["No UCPath match"], fields: [] } }] };
+  const markup = renderToStaticMarkup(createElement(RecordReview, view));
+  expect(markup).toContain("Unconfirmed");
+  expect(markup).toContain("Identity not confirmed: No UCPath match");
+  expect(markup).toContain("Page 3 · Example, Avery: No UCPath match");
 });

@@ -11,7 +11,7 @@ import { DashboardClientProvider } from '../../../src/dashboard/state/client-con
 import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../mocks/helpers/fixture-queue.js';
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
-import { MOCK_WORKFLOW_COMPOSITION } from '../../mocks/helpers/workflow-composition.js';
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -39,7 +39,7 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   assert.ok(text.includes('No run open'), text);
   assert.ok(text.includes('Select a run once the queue loads.'), text);
   assert.equal(text.includes('Run unavailable'), false);
-  assert.ok((host.textContent ?? '').includes('Relay could not load the queue.'), 'the queue column says the day failed');
+  assert.ok((host.textContent ?? '').includes("Couldn't load the queue."), 'the queue column says the day failed');
   assert.equal(text.includes('is not in the loaded queue'), false);
 });
 
@@ -58,8 +58,7 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
     executeCommand: async (raw: unknown) => { sent.push(DashboardCommandRequestSchema.parse(raw)); return transport.executeCommand(raw); } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  const servedLogs = (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => { const composition = MOCK_WORKFLOW_COMPOSITION(workflows); return Object.freeze({ ...composition, logsSources: composition.sources }); };
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogsComposition }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
   const block = host.querySelector('form[aria-label="Is this the right person?"]');
   assert(block, host.querySelector('.dashboard-log-column')?.textContent ?? '');
@@ -123,11 +122,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
   };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  const servedLogs = (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => {
-    const composition = MOCK_WORKFLOW_COMPOSITION(workflows);
-    return Object.freeze({ ...composition, logsSources: composition.sources });
-  };
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogs }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogsComposition }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
   const block = host.querySelector('form[aria-label="Is this the right person?"]');
   assert(block);

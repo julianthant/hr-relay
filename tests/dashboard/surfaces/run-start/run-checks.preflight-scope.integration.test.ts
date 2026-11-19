@@ -85,7 +85,7 @@ const checksUnavailable = () => [...document.querySelectorAll("button")].some(bu
 function Checks({ client, workflowId }: { client: DashboardClient; workflowId: string }) {
   const checks = useRunChecks(client, workflowId, true);
   return createElement("div", null,
-    checks.state.state === "unavailable" && createElement(FailureNotice, { sentence: checks.state.message, stillWorks: "Your choices are kept.",
+    checks.state.state === "unavailable" && createElement(FailureNotice, { sentence: checks.state.message,
       action: { label: "Check again", onClick: checks.recheck } }),
     createElement(RunChecksStage, { checks: checks.state, onFix: () => undefined }),
     createElement("button", { disabled: runChecksBlocked(checks.state), "data-checks-start": true }, "Start dry run"));
