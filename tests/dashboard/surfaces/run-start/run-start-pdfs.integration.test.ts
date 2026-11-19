@@ -169,6 +169,14 @@ it("keeps the accepted selection and refuses invalid PDFs before planning or upl
   expect(dialog.text()).toContain("No PDFs selected"); expect(dialog.disabled("Continue")).toBe(true);
 });
 
+/** The failure strip (8580181254) shows the first sentence on one line and keeps the full catalog text as its title. */
+function expectFailureStrip(full: string): void {
+  const strip = document.querySelector<HTMLElement>('[role="alert"]');
+  expect(strip).not.toBeNull();
+  expect(strip?.querySelector("span[title]")?.getAttribute("title")).toBe(full);
+  expect(strip?.textContent).toContain(full.split(/(?<=[.!?])\s/u)[0]);
+}
+
 it("refuses the same PDF bytes under another filename without replacing the accepted draft", async () => {
   let calls = 0;
   const dialog = await h.openDialog(client({ uploadOcrSource: async request => {
@@ -179,7 +187,7 @@ it("refuses the same PDF bytes under another filename without replacing the acce
   await attach([pdf("original.pdf", "%PDF same content")]);
   await attach([pdf("renamed.pdf", "%PDF same content")]);
   expect(dialog.text()).not.toContain("PDF selection refused");
-  expect(dialog.text()).toContain(ERROR_CATALOG.OCR_SOURCE_REFUSED.text);
+  expectFailureStrip(ERROR_CATALOG.OCR_SOURCE_REFUSED.text);
   expect(dialog.text()).toContain("original.pdf");
   expect(document.querySelector('[aria-label="Remove original.pdf"]')).not.toBeNull();
   expect(document.querySelector('[aria-label="Remove renamed.pdf"]')).toBeNull();
@@ -311,10 +319,10 @@ it("shows a plain upload failure in the notice slot with one Retry that sends th
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
   } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await attach([pdf("report.pdf", "%PDF report")]);
-  expect(dialog.text()).toContain(ERROR_CATALOG.OCR_UPLOAD_FAILED.text);
+  expectFailureStrip(ERROR_CATALOG.OCR_UPLOAD_FAILED.text);
   for (const raw of ["ENOSPC", "/var/relay", "PDF selection refused"]) expect(dialog.text()).not.toContain(raw);
   await dialog.press("Retry");
   expect(calls).toBe(2);
-  expect(dialog.text()).not.toContain(ERROR_CATALOG.OCR_UPLOAD_FAILED.text);
+  expect(document.querySelector('[role="alert"]')).toBeNull();
   expect(dialog.text()).toContain("report.pdf");
 });

@@ -139,7 +139,7 @@ it("hides old authority and retains drafts while blocking writes when replacemen
 
 it("refuses protected revision rollback independently of an unchanged ordinary revision", async () => {
   const h = await setup();
-  h.authority.protectedApply({ ucpathUserId: { set: "Current credential" } });
+  h.authority.protectedApply({ sharepointOnboardingRosterUrl: { set: "https://example.test/current-credential" } });
   const current = h.authority.read();
   assert.equal(current.revision, h.newer.revision);
   h.setRead(() => Promise.resolve(current));

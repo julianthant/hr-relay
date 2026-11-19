@@ -8,7 +8,6 @@ import { describe as describe_m2,it as it_m2 } from "vitest";
 import type { UcpathPersonSelection as UcpathPersonSelection_m2 } from "../../../src/models/systems/ucpath/search-person-org.js";
 import type { KualiEidField as KualiEidField_m2 } from "../../../src/models/ui/kuali-separation-document.js";
 import { EidSchema as EidSchema_m2 } from "../../../src/rules/identity/ids.js";
-import { directIdentifierDisplay as directIdentifierDisplay_m2 } from "../../../src/rules/redaction/redaction.js";
 import { resolveSeparationSubject as resolveSeparationSubject_m2 } from "../../../src/rules/separations/separation-subject.js";
 
 
@@ -101,37 +100,31 @@ describe_m1("complete classified evidence", () => {
 
 const DOCUMENT_EID = EidSchema_m2.parse("10873698");
 const OTHER_EID = EidSchema_m2.parse("10401814");
-const noCell = (reason: string) => ({ state: "absent" as const, reason });
 
 function resolveSubject(
   documentEid: KualiEidField_m2,
-  nameSelection: UcpathPersonSelection_m2,
+  searchSelection: UcpathPersonSelection_m2,
 ) {
   return resolveSeparationSubject_m2({
     documentNumber: "4510",
-    employeeName: "Battistessa, Johnnie",
     documentEid,
-    nameSelection,
+    searchSelection,
   });
 }
 
-describe_m2("the separation SUBJECT fork", () => {
+describe_m2("separation subject failure text", () => {
 
-  it_m2("refuses a blank EID whose name resolves several people, naming them", () => {
-    const resolution = resolveSubject(noCell("the EID control was empty"), {
+  it_m2("masks the document Employee ID and omits any other candidates", () => {
+    const resolution = resolveSubject({ state: "present", value: DOCUMENT_EID }, {
       status: "ambiguous",
       selected: null,
       candidateEids: [DOCUMENT_EID, OTHER_EID],
-      searchName: "Battistessa, Johnnie",
+      searchName: DOCUMENT_EID,
     });
     assert_m2.equal(resolution.state, "refused");
-    if (resolution.state !== "refused") return;
-    assert_m2.equal(resolution.code, "subject-ambiguous");
-    assert_m2.match(
-      resolution.reason,
-      new RegExp(`${directIdentifierDisplay_m2(DOCUMENT_EID)}, ${directIdentifierDisplay_m2(OTHER_EID)}`, "u"),
-    );
-    assert_m2.match(resolution.reason, /10873698, 10401814/u);
+    assert_m2.equal(resolution.code, "employee-id-no-match");
+    assert_m2.match(resolution.reason, /Employee ID ••••3698/u);
+    assert_m2.doesNotMatch(resolution.reason, /10873698|10401814/u);
   });
 });
 }

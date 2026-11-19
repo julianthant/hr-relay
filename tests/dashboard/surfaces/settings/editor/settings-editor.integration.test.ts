@@ -40,6 +40,8 @@ async function chooseBrowserWindow(trigger: HTMLElement, value: string): Promise
   await settingsAction(() => option.click());
 }
 
+const patchOf = (command: unknown): unknown => (command as { payload: { patch: unknown } }).payload.patch;
+
 describe("typed Settings catalog controls", () => {
   it("omits the actor label control while retaining the General settings", async () => {
     const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
@@ -66,11 +68,11 @@ describe("typed Settings catalog controls", () => {
     const h = await setup("general");
     const select = h.host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
     assert.ok(select); assert.equal(select.hasAttribute("disabled"), false);
+    // dd20a218a6: a choice saves at once, so no draft is left to submit.
     await chooseBrowserWindow(select, "Medium");
-    assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
-    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1440" });
-    assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "1000" });
-    await settingsAction(() => h.controller().submit());
+    await settingsAction(() => undefined);
+    assert.equal(h.commands.length, 1);
+    assert.deepEqual(patchOf(h.commands[0]), { "browser.headless": { set: false }, "display.screenWidth": { set: 1440 }, "display.screenHeight": { set: 1000 } });
     assert.equal(h.controller().dirtyCount, 0);
     const leaves = h.authority.read().sections.flatMap(section => section.leaves);
     assert.equal(leaves.find(leaf => leaf.path === "display.screenWidth")?.effectiveValue, 1440);
@@ -86,12 +88,10 @@ describe("typed Settings catalog controls", () => {
     assert.equal(select.dataset.value, "Hidden");
     await chooseBrowserWindow(select, "Small");
     assert.equal(select.dataset.value, "Small");
-    assert.deepEqual(h.controller().draft["browser.headless"], { kind: "set", raw: "false" });
-    assert.deepEqual(h.controller().draft["display.screenWidth"], { kind: "set", raw: "1280" });
-    assert.deepEqual(h.controller().draft["display.screenHeight"], { kind: "set", raw: "800" });
-    await settingsAction(() => h.controller().submit());
-    assert.equal(h.controller().dirtyCount, 0);
+    await settingsAction(() => undefined);
     assert.equal(h.commands.length, 1);
+    assert.deepEqual(patchOf(h.commands[0]), { "browser.headless": { set: false }, "display.screenWidth": { set: 1280 }, "display.screenHeight": { set: 800 } });
+    assert.equal(h.controller().dirtyCount, 0);
     assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
     assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);
   });

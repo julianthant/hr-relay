@@ -47,17 +47,16 @@ function proof(overrides: Partial<UcpathTerminationProof_m0> = {}): UcpathTermin
 
 function resolveSubject(
   documentEid: KualiEidField_m0,
-  nameSelection: UcpathPersonSelection_m0,
+  searchSelection: UcpathPersonSelection_m0,
 ) {
   return resolveSeparationSubject_m0({
     documentNumber: "4510",
-    employeeName: "Battistessa, Johnnie",
     documentEid,
-    nameSelection,
+    searchSelection,
   });
 }
 
-describe_m0("the separation SUBJECT fork", () => {
+describe_m0("the separation subject search", () => {
   it_m0("takes the document's own EID and says so — the one-click-eligible shape", () => {
     const resolution = resolveSubject(eidCell(DOCUMENT_EID), {
       status: "resolved",
@@ -71,41 +70,37 @@ describe_m0("the separation SUBJECT fork", () => {
     assert_m0.equal(resolution.subject.candidateCount, 1);
   });
 
-  it_m0("takes the NAME SEARCH when the document names nobody, and labels it so", () => {
+  it_m0("requires the Employee ID on the document even if UCPath returned a person", () => {
 
     const resolution = resolveSubject(noCell("the EID control was empty"), {
       status: "resolved",
       selected: CANDIDATE,
       candidateEids: [OTHER_EID],
     });
-    assert_m0.equal(resolution.state, "resolved");
-    if (resolution.state !== "resolved") return;
-    assert_m0.equal(resolution.subject.emplId, OTHER_EID);
-    assert_m0.equal(resolution.subject.emplIdSource, "name-resolved");
+    assert_m0.equal(resolution.state, "refused");
+    assert_m0.equal(resolution.code, "employee-id-absent");
   });
 
-  it_m0("prefers the DOCUMENT's EID even when the name resolves somebody else", () => {
+  it_m0("refuses a UCPath result for a different Employee ID", () => {
 
     const resolution = resolveSubject(eidCell(DOCUMENT_EID), {
       status: "resolved",
       selected: CANDIDATE,
       candidateEids: [OTHER_EID],
     });
-    assert_m0.equal(resolution.state, "resolved");
-    if (resolution.state !== "resolved") return;
-    assert_m0.equal(resolution.subject.emplId, DOCUMENT_EID);
+    assert_m0.equal(resolution.state, "refused");
+    assert_m0.equal(resolution.code, "employee-id-no-match");
   });
 
-  it_m0("refuses a blank EID whose name resolves nobody", () => {
-    const resolution = resolveSubject(noCell("the EID control was empty"), {
+  it_m0("refuses a document Employee ID with no UCPath match", () => {
+    const resolution = resolveSubject(eidCell(DOCUMENT_EID), {
       status: "not-found",
       selected: null,
       candidateEids: [],
-      searchName: "Battistessa, Johnnie",
+      searchName: DOCUMENT_EID,
     });
     assert_m0.equal(resolution.state, "refused");
-    if (resolution.state !== "refused") return;
-    assert_m0.equal(resolution.code, "subject-not-resolvable");
+    assert_m0.equal(resolution.code, "employee-id-no-match");
   });
 });
 
