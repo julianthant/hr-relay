@@ -17,6 +17,7 @@ import { DashboardClientError } from '../../../../../src/dashboard/client/errors
 import assert from "node:assert/strict";
 import { afterEach, expect, it, vi } from "vitest";
 import { WorkbookImportResultSchema, encodeEditableWorkbook, decodeSavedWorkbook } from "../../../../../src/models/dashboard/workbooks.js";
+import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema } from "../../../../../src/models/dashboard/workbook-library.js";
 import { assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, foreignOriginCases, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 
 afterEach(disposeHttpRouteHarness);
@@ -145,6 +146,26 @@ it('serves current workbook compatibility from server workflow declarations befo
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), projectWorkbookCompatibilityFromRepository(h.database.authority.workbooks, [fixtureDescriptor]));
 });
+
+it('retires workbook routes with no mounted consumer', async () => {
+  const h = await harness();
+  const base = 'http://localhost/api/v1/workbooks';
+  const created = await h.app.request(base, { method: 'POST', headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
+  assert.equal(created.status, 201);
+  const { libraryId } = decodeSavedWorkbook(await created.json());
+  const path = `${base}/${libraryId}`;
+  const post = { method: 'POST', headers, body: '{}' };
+  const retired = [
+    await h.app.request(`${base}/results`),
+    await h.app.request(`${path}/metadata`),
+    await h.app.request(`${path}/versions`),
+    await h.app.request(`${path}/changes`),
+    await h.app.request(`${path}/operations`, post),
+    await h.app.request(`${path}/sync`, post),
+  ];
+  assert.deepEqual(retired.map(response => response.status), [404, 404, 404, 404, 404, 404]);
+});
+
 it("serves create/list/open/save/conflict/history with exact Date transport and durable CAS", async () => {
   const h = await harness();
   const created = await h.app.request("http://localhost/api/v1/workbooks", { method: "POST", headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
@@ -177,14 +198,14 @@ it('returns a named conflict and retains the master when formula metadata makes 
   assert.equal((await response.json() as { code: string }).code, 'WORKBOOK_METADATA_UNSUPPORTED');
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), first);
 });
-it.each(["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"])("requires JSON before effects for %s", async path => {
+it.each(["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"])("requires JSON before effects for %s", async path => {
   const h = await harness(), beforeFault = faultAuthoritySnapshot(h);
   const response = await h.app.request(`http://localhost${path}`, { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/plain" }, body: "{}" });
   assert.equal(response.status, 415); assertHttpFaultOnly(h, beforeFault, 1);
 });
 it.each(foreignOriginCases())("rejects foreign workbook mutation %s before reading the body", async (_label, originHeaders) => {
   const h = await harness();
-  for (const path of ["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"]) {
+  for (const path of ["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"]) {
     const request = new Request(`http://localhost${path}`, { method: "POST", headers: { ...originHeaders, "content-type": "application/json" }, body: "{}" });
     const read = vi.spyOn(request, "json");
     assert.equal((await h.app.request(request)).status, 403); assert.equal(request.bodyUsed, false); assert.equal(read.mock.calls.length, 0);
@@ -209,22 +230,38 @@ it('serves persisted types and manual named versions, refusing forged sources an
   const create = await h.app.request('http://localhost/api/v1/workbooks', { method: 'POST', headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
   const first = decodeSavedWorkbook(await create.json()), path = `http://localhost/api/v1/workbooks/${first.libraryId}`;
   assert.equal((await h.app.request('http://localhost/api/v1/workbooks/types')).status, 200);
-  const post = (suffix: string, body: unknown) => h.app.request(path + suffix, { method: 'POST', headers, body: JSON.stringify(body) });
-  const request = { operationId: 'reviewed', change: { kind: 'version', expectedVersion: 1, name: 'Reviewed' } };
-  assert.equal((await post('/operations', request)).status, 200);
-  assert.equal((await post('/operations', request)).status, 200);
-  const versions = await (await h.app.request(path + '/versions')).json() as { name: string; provenance: string }[];
-  assert.deepEqual(versions.map(({ name, provenance }) => ({ name, provenance })), [{ name: 'Reviewed', provenance: 'operator' }]);
-  for (const forged of [{ ...request, source: { kind: 'run', runId: 'foreign' } }, { ...request, at: '2099-01-01T00:00:00.000Z' }, { operationId: 'run', change: { kind: 'patch', key: '001', values: { 'roster.notes': 'forged' } } }])
-    assert.equal((await post('/operations', forged)).status, 400);
-  const sync = await post('/sync', { operationId: 'sync' });
+  const catalog = async () => {
+    const response = await h.app.request('http://localhost/api/v1/workbooks/catalog');
+    assert.equal(response.status, 200);
+    const entry = WorkbookLibraryCatalogSchema.parse(await response.json()).find(item => item.libraryId === first.libraryId);
+    assert.ok(entry);
+    return entry;
+  };
+  const post = (body: unknown) => h.app.request(`${path}/library-actions`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const before = await catalog();
+  const request = { operationId: 'reviewed', expectedVersion: first.version, expectedRevision: before.state.revision,
+    change: { kind: 'create-version', name: 'Reviewed', from: { kind: 'version', versionId: before.state.selectedVersionId }, useNow: false } };
+  assert.equal((await post(request)).status, 200);
+  const after = await catalog();
+  assert.deepEqual(after.state.versions.map(({ id, name, source }) => ({ id, name, source })), [
+    ...before.state.versions.map(({ id, name, source }) => ({ id, name, source })),
+    { id: request.operationId, name: 'Reviewed', source: 'operator' },
+  ]);
+  assert.equal((await post(request)).status, 200);
+  assert.deepEqual(await catalog(), after);
+  const view = await h.app.request(`${path}/versions/${request.operationId}`);
+  assert.equal(view.status, 200);
+  assert.equal(WorkbookLibraryVersionViewSchema.parse(await view.json()).version.name, 'Reviewed');
+  for (const forged of [{ ...request, source: { kind: 'run', runId: 'foreign' } }, { ...request, at: '2099-01-01T00:00:00.000Z' }, { ...request, operationId: 'run', change: { kind: 'patch', key: '001', values: { 'roster.notes': 'forged' } } }])
+    assert.equal((await post(forged)).status, 400);
+  const sync = await post({ operationId: 'sync', expectedVersion: first.version, expectedRevision: after.state.revision, change: { kind: 'sync' } });
   assert.equal(sync.status, 409);
   assert.equal((await sync.json() as { code: string }).code, 'WORKBOOK_SYNC_LINK_REQUIRED');
   assert.equal(h.database.authority.workbooks.read(first.libraryId)?.version, 1);
 });
 
 
-it('rejects retired import purpose input and serves a plain import with admitted mutation and grouped reads', async () => {
+it('rejects retired import purpose input and serves a plain import with admitted mutation and a catalog entry', async () => {
   const h = await harness(), wire = encodeEditableWorkbook(workbook);
   const post = (body: unknown) => h.app.request('http://localhost/api/v1/workbooks/import', { method: 'POST', headers, body: JSON.stringify(body) });
   for (const purpose of [{ kind: 'other' }, { kind: 'workflow-reference', workflowId: 'unknown', typeId: 'general' }]) {
@@ -237,7 +274,9 @@ it('rejects retired import purpose input and serves a plain import with admitted
   const result = WorkbookImportResultSchema.parse(await imported.json());
   assert.deepEqual(Object.keys(result), ['workbook']);
   assert.equal(result.workbook.version, 1);
-  assert.deepEqual(await (await h.app.request('http://localhost/api/v1/workbooks/results')).json(), { workflows: [], unavailable: [] });
+  const catalog = await h.app.request('http://localhost/api/v1/workbooks/catalog');
+  assert.equal(catalog.status, 200);
+  assert.deepEqual(WorkbookLibraryCatalogSchema.parse(await catalog.json()).map(entry => entry.libraryId), [result.workbook.libraryId]);
 });
 
 it('serves clone as a new import result and refuses an existing name without creating another spreadsheet', async () => {
