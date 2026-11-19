@@ -47,7 +47,7 @@ describe("groupWorkflowsByCategory — the category half", () => {
       entry("person-lookup", "search", STANDALONE),
       entry("separations", "separation", COMPOSITION),
     ]);
-    assert.deepEqual(groups.map((group) => group.label), ["Separations", "Lookup", "Work Study"]);
+    assert.deepEqual(groups.map((group) => group.label), ["Separations", "Lookup", "Work-Study"]);
   });
 
   it("appends an unlisted category after the listed ones, headed by its raw id", () => {

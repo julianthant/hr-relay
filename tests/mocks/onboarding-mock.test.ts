@@ -42,6 +42,8 @@ test.afterAll(async () => { await new Promise<void>((done, reject) => server.htt
 for (const theme of THEMES) for (const width of WIDTHS) test(`onboarding frames @ ${theme} ${width}`, async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
+  const measured: string[] = [];
+  const anchors = new Set<string>();
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width, height: 720 });
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -51,9 +53,14 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`onboarding frames 
     await expect(page.getByRole(looked.role, { name: looked.name }), `${id}: ${looked.role} "${looked.name}"`).toBeVisible({ timeout: 5_000 });
     if (ONBOARDING_SCENES[id].submit === true) {
       await page.getByRole("button", { name: looked.name }).click();
-      await expect(page.locator(".hub-auth-error").filter({ hasText: /\S/ }).first(), `${id}: field error`).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator(".ds-field-error").filter({ hasText: /\S/ }).first(), `${id}: field error`).toBeVisible({ timeout: 5_000 });
     }
+    const box = await page.evaluate(() => ({ title: document.querySelector("h1")?.getBoundingClientRect().top, column: document.querySelector(".auth-layout")?.getBoundingClientRect().left }));
+    if (box.column !== undefined) measured.push(`${id}: title top ${box.title}, column left ${box.column}`);
+    if (box.column !== undefined) anchors.add(`${box.title}/${box.column}`);
     await page.screenshot({ path: join(OUT, `${id}-${theme}-${width}.png`) });
   }
+  writeFileSync(join(OUT, `measurements-${theme}-${width}.txt`), measured.join("\n") + "\n");
+  expect([...anchors], "title top and column left are the same in every step").toHaveLength(1);
   expect(errors, "page errors").toEqual([]);
 });

@@ -7,7 +7,7 @@ import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
 import { createServedOnboardingPort } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
-import { workflowInitials, workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
+import { flatWorkflowGroup, workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
 import { WorkflowNavigation } from "../../../../src/dashboard/surfaces/shell/workflow-navigation.js";
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { SessionWorker } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
@@ -32,14 +32,24 @@ it("names the lookup category Lookup, not Search", () => {
   assert.ok(labels.includes("Lookup")); assert.ok(!labels.includes("Search"));
 });
 
-it("gives every collapsed code the full workflow name as accessible name and keeps it keyboard-focusable", async () => {
-  const groups = workflowNavigationGroups(entries);
+it("renders the collapsed rail as an icon per workflow with the full name as accessible name, no letters, keyboard-focusable", async () => {
+  const groups = flatWorkflowGroup(entries);
   const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows", collapsed: true })));
-  const codes = workflowInitials(entries.map(entry => entry.label));
   for (const entry of entries) {
     const tile = host.querySelector<HTMLButtonElement>(`button[aria-label="${entry.label}"]`); assert.ok(tile, entry.label);
-    assert.equal(tile.textContent, codes.get(entry.label)); assert.ok(tile.tabIndex >= 0);
+    assert.equal(tile.textContent, ""); assert.ok(tile.querySelector("svg")); assert.ok(tile.tabIndex >= 0);
   }
+  assert.equal(host.querySelector<HTMLButtonElement>('button[aria-current="page"]')?.getAttribute("aria-label"), "OCR");
+});
+
+it("renders the expanded rail flat: one icon row per workflow, no category headings, selected row announced", async () => {
+  const groups = flatWorkflowGroup(entries);
+  const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows" })));
+  assert.equal(host.querySelectorAll("h3").length, 0);
+  const rows = [...host.querySelectorAll<HTMLButtonElement>("li > button")];
+  assert.equal(rows.length, entries.length);
+  for (const row of rows) assert.ok(row.querySelector("svg"));
+  assert.equal(host.querySelector('button[aria-current="page"]')?.textContent, "OCR");
 });
 
 it("offers the details step from the deep-link page that asks for the details", async () => {
