@@ -51,7 +51,7 @@ export function visitActivitySummaryRange(database: AuthorityDatabase, from: str
 export function queryActivitySummaries(database: AuthorityDatabase, input: { from: string; to: string; generatedAt: string }, deps: {
   descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
   ledger: { foldActivityRange(from: string, to: string): ActivityReportWire["ledger"] };
-}): ActivityReportWire {
+}, visitTopLevel?: (row: SummaryRow) => void): ActivityReportWire {
   const bounds = z.strictObject({ from: z.iso.date(), to: z.iso.date(), generatedAt: z.iso.datetime({ offset: true }) }).parse(input);
   if (bounds.from > bounds.to) throw new Error("run-summary-range-invalid");
 
@@ -60,7 +60,9 @@ export function queryActivitySummaries(database: AuthorityDatabase, input: { fro
     const people: RunSummary["person"][] = [];
     visitActivitySummaryRange(database, bounds.from, bounds.to, PACIFIC_TIME_ZONE, row => {
       if (row.workflow === "separations" && row.shape !== "operation") people.push(row.person);
-      if (isQueueTopLevel(row)) inRange.push(row);
+      if (!isQueueTopLevel(row)) return;
+      inRange.push(row);
+      visitTopLevel?.(row);
     });
 
     function* rows(): Generator<ActivityReportRow> {

@@ -167,36 +167,67 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       const { month, day, today } = CalendarQuerySchema.extend({ today: z.iso.date() }).parse(input);
       if (day > today) throw new Error("calendar-future-day");
       const countRow = z.object({ day: z.iso.date(), count: z.number().int().positive() });
+      const monthStart = `${month}-01`, monthEnd = `${month}-31`;
       const counts = new Map(database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
-        WHERE parent_id IS NULL AND local_day<=? GROUP BY local_day ORDER BY local_day`).all(today)
+        WHERE parent_id IS NULL AND local_day BETWEEN ? AND ? AND local_day<=? GROUP BY local_day ORDER BY local_day`)
+        .all(monthStart, monthEnd, today)
         .map(raw => { const row = countRow.parse(raw); return [row.day, row.count] as const; }));
+      const date = z.iso.date().nullable();
+      const roots = z.strictObject({ first: date, last: date, previous: date, next: date }).parse(database.prepare(`
+        SELECT min(local_day) AS first,max(local_day) AS last,
+          max(CASE WHEN local_day<? THEN local_day END) AS previous,
+          min(CASE WHEN local_day>? THEN local_day END) AS next
+        FROM runs INDEXED BY runs_day_idx WHERE parent_id IS NULL AND local_day<=?`).get(day, day, today));
+      const days = new Set(counts.keys());
+      for (const boundary of Object.values(roots)) if (boundary !== null) days.add(boundary);
+      const dateBindings: string[] = [];
+      let childDays = "";
+      // A child can only change month counts or extend a boundary already established by a root.
+      if (roots.first !== null && roots.last !== null) {
+        const relevant = ["local_day BETWEEN ? AND ?", "local_day<?", "local_day>?"];
+        dateBindings.push(monthStart, monthEnd, roots.first, roots.last);
+        if (roots.previous !== null) {
+          relevant.push("(local_day>? AND local_day<?)");
+          dateBindings.push(roots.previous, day);
+        }
+        if (roots.next !== null) {
+          relevant.push("(local_day>? AND local_day<?)");
+          dateBindings.push(day, roots.next);
+        }
+        childDays = `AND (${relevant.join(" OR ")})`;
+      }
       const parentRow = z.object({ parentId: RunIdSchema, childRunId: RunIdSchema });
+      const selectParents = database.prepare(`SELECT parent_id AS parentId,min(id) AS childRunId FROM runs INDEXED BY runs_parent_idx
+        WHERE parent_id IS NOT NULL AND parent_id>? AND local_day<=? ${childDays}
+        GROUP BY parent_id ORDER BY parent_id LIMIT ?`);
+      const selectEnvelope = database.prepare("SELECT envelope_json FROM runs WHERE id=?");
+      const selectLinkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+        WHERE id IN (SELECT value FROM json_each(?)) AND parent_id=? AND local_day<=? ${childDays} GROUP BY local_day ORDER BY local_day`);
       let afterParent = "";
       for (;;) {
-        const parents = database.prepare(`SELECT parent_id AS parentId,min(id) AS childRunId FROM runs INDEXED BY runs_parent_idx
-          WHERE parent_id IS NOT NULL AND parent_id>? AND local_day<=?
-          GROUP BY parent_id ORDER BY parent_id LIMIT ?`).all(afterParent, today, 500).map(raw => parentRow.parse(raw));
+        const parents = selectParents.all(afterParent, today, ...dateBindings, 500).map(raw => parentRow.parse(raw));
         for (const parent of parents) {
-          const raw = z.object({ envelope_json: z.string() }).parse(database.prepare("SELECT envelope_json FROM runs WHERE id=?").get(parent.childRunId));
+          const raw = z.object({ envelope_json: z.string() }).parse(selectEnvelope.get(parent.childRunId));
           const envelope = RunEnvelopeSchema.parse(JSON.parse(raw.envelope_json));
           if (envelope.runId !== parent.childRunId || envelope.parent?.runId !== parent.parentId) throw new Error("queue-parent-source-unavailable");
           const linked = [...parentage([envelope])].filter(([, fact]) => fact?.runId === parent.parentId && fact.visibility === "linked").map(([runId]) => runId);
           if (linked.length === 0) continue;
-          const linkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
-            WHERE id IN (SELECT value FROM json_each(?)) AND parent_id=? AND local_day<=? GROUP BY local_day ORDER BY local_day`)
-            .all(JSON.stringify(linked), parent.parentId, today).map(raw => countRow.parse(raw));
-          for (const row of linkedCounts) counts.set(row.day, (counts.get(row.day) ?? 0) + row.count);
+          const linkedCounts = selectLinkedCounts.all(JSON.stringify(linked), parent.parentId, today, ...dateBindings).map(raw => countRow.parse(raw));
+          for (const row of linkedCounts) {
+            days.add(row.day);
+            if (row.day >= monthStart && row.day <= monthEnd) counts.set(row.day, (counts.get(row.day) ?? 0) + row.count);
+          }
         }
         const last = parents.at(-1);
         if (parents.length < 500 || last === undefined) break;
         afterParent = last.parentId;
       }
-      const days = [...counts.keys()].sort();
-      const next = days.find(candidate => candidate > day) ?? null;
+      const ordered = [...days].sort();
+      const next = ordered.find(candidate => candidate > day) ?? null;
       return CalendarWireSchema.parse({ month, day, today, authorityGeneration: sourceGeneration,
-        monthCounts: days.filter(candidate => candidate.startsWith(`${month}-`)).map(day => ({ day, count: counts.get(day) })),
-        firstDay: days.at(0) ?? null, lastDay: days.at(-1) ?? null,
-        previousDay: days.filter(candidate => candidate < day).at(-1) ?? null,
+        monthCounts: [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count })),
+        firstDay: ordered.at(0) ?? null, lastDay: ordered.at(-1) ?? null,
+        previousDay: ordered.findLast(candidate => candidate < day) ?? null,
         nextDay: day < today && (next === null || today < next) ? today : next });
     },
   };

@@ -289,6 +289,15 @@ describe("dashboard stream hub", () => {
     const generationAt = w.projection.generation();
     first.close();
 
+    const buildDay = vi.spyOn(w.projection, "buildDashboardDayWire");
+    const atHead = await hub.connect({
+      day: DAY,
+      lastEventId: cursorAt,
+      lastProjectionGeneration: generationAt,
+    });
+    assert.deepEqual(atHead.initial.map(({ type }) => type), ["hello", "health"]);
+    atHead.close();
+
     taskEventsOf(w, 1, "searching"); // count-neutral -> retained patch
     const resumed = await hub.connect({
       day: DAY,
@@ -298,6 +307,7 @@ describe("dashboard stream hub", () => {
     const types = resumed.initial.map(({ type }) => type);
     assert.deepEqual(types, ["hello", "patch", "health"]);
     resumed.close();
+    assert.equal(buildDay.mock.calls.length, 0);
   });
 
   it("reports the exact historical cursor transition when a retained snapshot forces replacement", async () => {
@@ -319,12 +329,14 @@ describe("dashboard stream hub", () => {
     const heldGeneration = w.projection.generation();
     queuedEventOf(w, { seed: 2 });
 
+    const buildDay = vi.spyOn(w.projection, "buildDashboardDayWire");
     const replaced = await hub.connect({
       day: DAY,
       lastEventId: heldCursor,
       lastProjectionGeneration: heldGeneration,
     });
     assert.deepEqual(replaced.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
+    assert.equal(buildDay.mock.calls.length, 1);
     assert.deepEqual(observed, [{
       kind: "backfill-gap",
       detector: "server-resume",

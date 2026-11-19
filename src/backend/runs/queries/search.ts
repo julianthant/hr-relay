@@ -37,6 +37,7 @@ interface CrossDateSearchDescriptorView {
 interface CrossDateSearchAuthoritySnapshot {
   readonly authorityGeneration: number;
   readonly searchRuns: (input: unknown) => unknown;
+  readonly displayTitle?: (run: RunRecord) => string;
 }
 
 export interface CrossDateSearchQueryDeps {
@@ -410,32 +411,30 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
           );
         }
         const { day, ...facets } = query.facets;
-        const readPage = (after: CrossDateSearchCursorPayload["after"] | undefined) => {
-          const authorityPage = RunSearchAuthorityPageSchema.parse(snapshot.searchRuns({
-            q: query.q,
-            scope: query.scope,
-            facets: {
-              ...facets,
-              ...(day === undefined ? {} : {
-                day: {
-                  startsAt: pacificMidnight(day),
-                  endsBefore: pacificMidnight(nextCalendarDay(day)),
-                },
-              }),
-            },
-            limit: Math.min(query.limit + 1, CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
-            ...(after === undefined ? {} : { after }),
+        const sourceQuery = {
+          q: query.q,
+          scope: query.scope,
+          facets: { ...facets, ...(day === undefined ? {} : {
+            day: { startsAt: pacificMidnight(day), endsBefore: pacificMidnight(nextCalendarDay(day)) },
+          }) },
+        };
+        const readRows = (after: CrossDateSearchCursorPayload["after"] | undefined, pages = 1) =>
+          RunSearchAuthorityPageSchema.parse(snapshot.searchRuns({
+            ...sourceQuery, limit: pages * query.limit + 1, ...(after === undefined ? {} : { after }),
           }));
-          const visibleRows = authorityPage.rows.slice(0, query.limit);
+        const projectPage = (authorityPage: ReturnType<typeof readRows>, offset = 0) => {
+          const end = offset + query.limit;
+          const visibleRows = authorityPage.rows.slice(offset, end);
           const lastVisible = visibleRows.at(-1);
-          const hasLaterPage = authorityPage.rows.length > query.limit;
+          const hasLaterPage = authorityPage.rows.length > end;
           if (hasLaterPage && lastVisible === undefined) {
             throw new Error("authority search reported a later page without one visible cursor anchor");
           }
           return {
             totalMatches: authorityPage.totalMatches,
             coverage: authorityPage.coverage,
-            results: visibleRows.map(({ record, matchRank, metadata, displayTitle }) => resultOf(deps, record, matchRank, metadata, displayTitle)),
+            results: visibleRows.map(({ record, matchRank, metadata, displayTitle }) =>
+              resultOf(deps, record, matchRank, metadata, snapshot.displayTitle?.(record) ?? displayTitle)),
             next: lastVisible === undefined || !hasLaterPage ? undefined : {
               matchRank: lastVisible.matchRank,
               enqueuedAt: canonicalUtcInstant(lastVisible.record.envelope.enqueuedAt),
@@ -445,16 +444,24 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
         };
         // Every authority write advances the generation, so a cursor continues a later generation
         // only when the pages it already served read back unchanged there.
-        // shortcut: re-reads the served pages on each generation change; move to a search-corpus
-        // generation kept by storage if paging large corpora under constant writes gets slow.
+        let readAhead: { rows: ReturnType<typeof readRows>; offset: number } | undefined;
         if (cursor !== undefined && cursor.served.generation !== authorityGeneration) {
           let digest: z.infer<typeof FingerprintSchema> | null = null;
           let after: CrossDateSearchCursorPayload["after"] | undefined;
-          for (let page = 0; page < cursor.served.pages; page += 1) {
-            const served = readPage(after);
-            digest = servedDigest(digest, served);
-            after = served.next;
+          const pagesPerRead = Math.floor(CROSS_DATE_SEARCH_PAGE_LIMIT / query.limit);
+          for (let checked = 0; checked < cursor.served.pages;) {
+            const count = Math.min(pagesPerRead, cursor.served.pages - checked);
+            const includesNext = count < pagesPerRead;
+            const rows = readRows(after, count + (includesNext ? 1 : 0));
+            for (let index = 0; index < count; index += 1) {
+              const served = projectPage(rows, index * query.limit);
+              digest = servedDigest(digest, served);
+              after = served.next;
+              if (after === undefined) break;
+            }
             if (after === undefined) break;
+            checked += count;
+            if (includesNext) readAhead = { rows, offset: count * query.limit };
           }
           if (digest !== cursor.served.digest || after === undefined
             || canonicalJsonStringify(after) !== canonicalJsonStringify(cursor.after)) {
@@ -464,7 +471,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
             );
           }
         }
-        const page = readPage(cursor?.after);
+        const page = readAhead === undefined ? projectPage(readRows(cursor?.after)) : projectPage(readAhead.rows, readAhead.offset);
         const snapshotGeneration = selectedSnapshot?.authorityGeneration ?? cursor?.authorityGeneration ?? authorityGeneration;
         const nextCursor = page.next === undefined
           ? { state: "absent" as const, reason: "the snapshot has no later matching run" }
