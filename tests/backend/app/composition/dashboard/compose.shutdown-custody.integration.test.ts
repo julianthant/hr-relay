@@ -37,11 +37,12 @@ it.each(["Pause all and quit", "SIGINT during logout"] as const)("%s closes and 
     assert.equal(PublicProfileStateSchema.parse(await resumed.json()).state, "active");
     const credential = resumed.headers.get("x-relay-session"); assert.ok(credential);
     const headers = { origin, "content-type": "application/json", "x-relay-session": credential };
-    const read = AuthorityDatabase.prototype.readManagedArtifactReferences;
-    const slowReads = () => vi.spyOn(AuthorityDatabase.prototype, "readManagedArtifactReferences").mockImplementation(function (this: AuthorityDatabase, candidate) {
-      clock.advanceMonotonic(51);
-      return read.call(this, candidate);
-    });
+    const slowReads = () => {
+      const started = clock.monotonicMs();
+      const reads = vi.spyOn(AuthorityDatabase.prototype, "readManagedArtifactReferences");
+      vi.spyOn(clock, "monotonicMs").mockImplementation(() => started + 51 * reads.mock.calls.length);
+      return reads;
+    };
     if (entry === "Pause all and quit") {
       const activity = ApplicationLifecycleSchema.parse(await (await fetch(`${origin}/api/v1/application-lifecycle`, { headers })).json());
       const quit = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers, body: JSON.stringify({
