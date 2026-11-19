@@ -9,6 +9,7 @@ import { PNG } from "pngjs";
 import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { tsImport } from "tsx/esm/api";
 import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -81,7 +82,7 @@ describe("worker browser session factory", () => {
     const f = await foundationFixture();
     try {
       const timeline = f.db.authority.timelineEvents;
-      fillDiagnosticBudget(f.path, timeline, f.clock);
+      fillDiagnosticBudget(DatabaseSync, f.path, timeline, f.clock);
       const before = timeline.highWaterMark();
       const report = workerSessionDiagnostics(createDebugEventWriter({ repository: timeline, clock: f.clock, build: "test" }));
       const phases: string[] = [];

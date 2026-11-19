@@ -390,7 +390,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("opens, serves and closes the dashboard event stream with a full diagnostic budget", async () => {
     const h = await harness({ profileFixture: profileFixtures.create });
     const timeline = h.database.authority.timelineEvents;
-    fillDiagnosticBudget(join(h.stateRoot, "state.db"), timeline, h.clock);
+    fillDiagnosticBudget(DatabaseSync, join(h.stateRoot, "state.db"), timeline, h.clock);
     const before = timeline.highWaterMark();
     const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, { headers: { host: "localhost" } });
     assert.equal(response.status, 200);

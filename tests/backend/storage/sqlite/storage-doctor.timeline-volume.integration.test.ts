@@ -166,7 +166,7 @@ describe("storage doctor on a long-lived timeline", () => {
     try {
       const timeline = database.authority.timelineEvents;
       const debugEvents = createDebugEventWriter({ repository: timeline, clock, build: "test" });
-      fillDiagnosticBudget(f.authorityPath, timeline, clock);
+      fillDiagnosticBudget(DatabaseSync, f.authorityPath, timeline, clock);
       const beforeStall = timeline.highWaterMark();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
       const monitorClock = manualClock(new Date(NOW));

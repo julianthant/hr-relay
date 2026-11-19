@@ -1405,7 +1405,7 @@ function validatedRowByRow(table: AuthorityTableName | "explorer_overrides" | ty
 
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
   const context = storedRowContext(database, expectedSchemaVersion);
-  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertAssistantHistoryRetirable(database);
+  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
@@ -1972,7 +1972,7 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) deletePreBuildRuns(database, input.now, input.captureFile, settleEvidence);
       if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
       if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) {
-        assertAssistantHistoryRetirable(database);
+        assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
         database.exec("DELETE FROM assistant_actions");
       }
       execMigrationStatement(database, statement);
