@@ -132,6 +132,14 @@ export interface ServedSummaryQueries {
   activity(from: string, to: string): ActivityReportWire;
 }
 
+interface QueueDaySources {
+  readonly through: number;
+  readonly runIds: readonly string[];
+  readonly commandIds: readonly string[];
+  readonly items: readonly { workflowId: string; itemId: string }[];
+  readonly month: { from: string; to: string; counts: DashboardDayWire["monthCounts"] };
+}
+
 export interface RunQueueProjectionDeps {
   readonly assistantUsage?: (from: string, to: string, generatedAt: string) => ActivityAssistantUsage;
   readonly timeline: TimelineRepository;
@@ -172,7 +180,7 @@ export interface RunQueueProjectionDeps {
     writeInFlight?(runId: string): boolean;
     /** An unchanged key skips the live-run read. */
     changeKey?(): number | undefined;
-    dayChangeKey?(): number | undefined;
+    checkDaySources?(day: string, previous?: QueueDaySources): { through: number; changed: boolean } | undefined;
     nextDuoLeaseExpiry?(nowMs: number): number;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
@@ -295,10 +303,9 @@ export class RunQueueProjection {
   readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedRows = new Map<string, { status: string; surface: string }>();
-  readonly #dayCache = new Map<string, { wire: DashboardDayWire; builtAt: number; validUntil: number }>();
+  readonly #dayCache = new Map<string, { wire: DashboardDayWire; sources: QueueDaySources; builtAt: number; validUntil: number }>();
 
   #timelineCursor = 0;
-  #dayCacheKey: string | undefined;
 
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
@@ -491,10 +498,10 @@ export class RunQueueProjection {
     });
   }
 
-  #workerLastRun(workerId: string): NonNullable<WorkerCardWire["lastRun"]> {
+  #workerLastRun(workerId: string, readRun: RunQueueProjectionDeps["reader"]["read"]): NonNullable<WorkerCardWire["lastRun"]> {
     const record = this.#deps.timeline.lastWorkerClaim(workerId);
     const claim = record?.payload.kind === "span" && record.payload.event.t === "run.claimed" ? record.payload.event : undefined;
-    const read = claim === undefined ? undefined : this.#deps.reader.read(claim.runId);
+    const read = claim === undefined ? undefined : readRun(claim.runId);
     const run = read?.state === "present" && read.disposition === "live" ? read.run : undefined;
     return lastRunOf({ claim: claim === undefined ? undefined : { runId: claim.runId, attempt: claim.attempt }, run,
       spans: claim === undefined ? undefined : this.#rows.get(claim.runId)?.taskSpans,
@@ -514,8 +521,8 @@ export class RunQueueProjection {
     return contract === undefined ? undefined : "id" in contract ? String(contract.id) : String(contract.taskId);
   }
 
-  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[]): NonNullable<WorkerCardWire["timeline"]> {
-    const read = this.#deps.reader.read(runId);
+  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[], readRun: RunQueueProjectionDeps["reader"]["read"]): NonNullable<WorkerCardWire["timeline"]> {
+    const read = readRun(runId);
     if (read.state !== "present" || read.disposition !== "live") return { state: "unavailable", reason: "run-unavailable" };
     const descriptor = this.#deps.descriptors.resolve(read.run.envelope.workflow);
     if (descriptor !== undefined && (descriptor.version !== read.run.envelope.descriptorVersion
@@ -1409,18 +1416,19 @@ export class RunQueueProjection {
     const summaries = this.#deps.reader.summaries;
     const read = () => {
       const now = this.#deps.clock.nowMs();
-      const revision = summaries === undefined ? undefined : this.#deps.authority.dayChangeKey?.();
-      const key = revision === undefined ? undefined : `${this.#generationValue}:${this.#cursorValue}:${revision}`;
-      if (key !== this.#dayCacheKey) {
-        this.#dayCache.clear();
-        this.#dayCacheKey = key;
-      }
       const saved = this.#dayCache.get(parsedDay);
-      if (saved !== undefined && saved.builtAt <= now && now < saved.validUntil) return saved.wire;
+      const current = saved !== undefined && saved.wire.projectionGeneration === this.#generationValue
+        && saved.wire.snapshotCursor === this.cursor() && saved.builtAt <= now && now < saved.validUntil ? saved : undefined;
+      const revision = summaries === undefined ? undefined : this.#deps.authority.checkDaySources?.(parsedDay, current?.sources);
+      if (current !== undefined && revision?.changed === false) {
+        current.sources = { ...current.sources, through: revision.through };
+        return current.wire;
+      }
 
       const notifications = this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
-      const wire = this.#buildDashboardDayWire(parsedDay, notifications, now);
-      if (key === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return wire;
+      this.#dayCache.delete(parsedDay);
+      const { wire, sources } = this.#buildDashboardDayWire(parsedDay, notifications, now);
+      if (revision === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return wire;
 
       let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
       for (const notice of notifications) {
@@ -1428,28 +1436,31 @@ export class RunQueueProjection {
         const until = Date.parse(notice.snooze.until);
         if (until > now) validUntil = Math.min(validUntil, until);
       }
-      this.#dayCache.delete(parsedDay);
       const oldest = this.#dayCache.keys().next().value;
       if (this.#dayCache.size >= DAY_CACHE_LIMIT && oldest !== undefined) this.#dayCache.delete(oldest);
       deepFreeze(wire);
-      this.#dayCache.set(parsedDay, { wire, builtAt: now, validUntil });
+      this.#dayCache.set(parsedDay, { wire, sources: { ...sources, through: revision.through }, builtAt: now, validUntil });
       return wire;
     };
     return summaries === undefined ? read() : summaries.withSnapshot(read);
   }
 
-  #buildDashboardDayWire(parsedDay: string, notifications: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>, now: number): DashboardDayWire {
+  #buildDashboardDayWire(parsedDay: string, notifications: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>, now: number): {
+    wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">;
+  } {
     const surfaces: QueueSurfaceWire[] = [];
     let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);
+    const monthFrom = `${monthPrefix}-01`;
+    const monthEnd = new Date(`${monthFrom}T00:00:00.000Z`);
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+    const monthTo = monthEnd.toISOString().slice(0, 10);
     const monthCounts = new Map<string, number>();
     const summaries = this.#deps.reader.summaries;
     let context: QueueReadContext;
     if (summaries !== undefined) {
       context = this.#readContext();
-      const monthEnd = new Date(`${monthPrefix}-01T00:00:00.000Z`);
-      monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
-      for (const [countDay, count] of summaries.dayCounts(`${monthPrefix}-01`, monthEnd.toISOString().slice(0, 10))) {
+      for (const [countDay, count] of summaries.dayCounts(monthFrom, monthTo)) {
         monthCounts.set(countDay, count);
       }
       let after: { localDay: string; runId: string } | undefined;
@@ -1544,6 +1555,12 @@ export class RunQueueProjection {
 
 
     let members: readonly WorkerSlotRecord[] | undefined;
+    const sharedRuns = new Set<string>();
+    const notificationCommands = new Set<string>();
+    const readSharedRun: RunQueueProjectionDeps["reader"]["read"] = runId => {
+      sharedRuns.add(runId);
+      return this.#deps.reader.read(runId);
+    };
     let workerAuthority: DashboardDayWire["workerAuthority"];
     const workerCards: DashboardDayWire["workerCards"] = [];
     const unavailableWorkerCards: NonNullable<DashboardDayWire["unavailableWorkerCards"]> = [];
@@ -1559,17 +1576,17 @@ export class RunQueueProjection {
           const view = views.find(candidate => candidate.member.workerId === member.workerId);
           const runId = view?.activity?.runId;
           const lastRun = runId === undefined && (view === undefined || view.state === "exited"
-            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle")) ? this.#workerLastRun(member.workerId) : undefined;
+            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle")) ? this.#workerLastRun(member.workerId, readSharedRun) : undefined;
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
           workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
             startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
             duoSystems: this.#deps.authority.heldDuoLeases?.(member.workerId).map(lease => lease.system),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),
-            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
+            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces, readSharedRun) }
               : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
             resolveRun: runId => {
-              const read = this.#deps.reader.read(runId);
+              const read = readSharedRun(runId);
               return read.state === "present" && read.disposition === "live" ? read.run : undefined;
             } }));
         } catch (error) {
@@ -1583,7 +1600,7 @@ export class RunQueueProjection {
         reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
     }
 
-    return DashboardDayWireSchema.parse({
+    const wire = DashboardDayWireSchema.parse({
       day: parsedDay,
       descriptorHash: this.#deps.descriptorSetHash,
       projectionGeneration: this.#generationValue,
@@ -1618,16 +1635,31 @@ export class RunQueueProjection {
       })),
       notifications: notificationListProjection(notifications, now, {
         display: {
-          read: id => this.#deps.reader.read(id),
+          read: readSharedRun,
           descriptor: id => this.#deps.descriptors.resolve(id),
           receipt: id => this.#deps.authority.getReceipt(id),
           presentation: this.#deps,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
-          command: id => this.#deps.authority.command?.(id),
+          command: id => {
+            notificationCommands.add(id);
+            return this.#deps.authority.command?.(id);
+          },
         },
         source: id => this.#deps.authority.latestNotificationSource?.(id),
       }),
     });
+    const runIds = new Set([...context.runs.keys(), ...sharedRuns]);
+    for (const surface of surfaces) {
+      if (surface.surfaceKind !== "operation" || surface.recordMembers === undefined) continue;
+      for (const runId of surface.recordMembers.runIds) runIds.add(runId);
+      for (const member of surface.recordMembers.members) {
+        runIds.add(member.kind === "record" ? member.record.runId : member.ownerRunId);
+      }
+    }
+    const items = new Map([...context.runs.values()].map(({ envelope: { workflow, itemId } }) =>
+      [itemKey(workflow, itemId), { workflowId: workflow, itemId }] as const));
+    return { wire, sources: { runIds: [...runIds], commandIds: [...notificationCommands], items: [...items.values()],
+      month: { from: monthFrom, to: monthTo, counts: wire.monthCounts } } };
   }
 
 

@@ -3802,15 +3802,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
-  trackAuthorityTables(tables: readonly AuthorityTableName[], options?: { runTimelineEvidence: true }): () => number | undefined {
+  trackAuthorityTables(tables: readonly AuthorityTableName[]): () => number | undefined {
     const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
-    const relevantChange = `table_name IN (SELECT value FROM json_each(?))${options?.runTimelineEvidence === true ? `
-      OR (table_name = 'timeline_events'
-        AND EXISTS (SELECT 1 FROM json_each(keys_json) WHERE value LIKE 'run:%')
-        AND (op = 'delete' OR EXISTS (SELECT 1 FROM timeline_events
-          WHERE cursor = CAST(json_extract(row_key, '$[0]') AS INTEGER)
-          AND kind IN ('note','transaction.previewed','checkpoint-recorded','checkpoint-replayed','operation-confirmed','write-parked'))))
-    ` : ""}`;
     let cursor: number | undefined;
     let revision = 0;
     return () => {
@@ -3824,7 +3817,7 @@ export class AuthorityDatabase implements Disposable {
             this.#database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
           if (through < cursor || (first ?? through + 1) > cursor + 1
             || this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
-              WHERE seq > ? AND (${relevantChange}) LIMIT 1`).get(cursor, selected) !== undefined) {
+              WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) !== undefined) {
             revision += 1;
           }
         }
@@ -3832,6 +3825,70 @@ export class AuthorityDatabase implements Disposable {
         return revision;
       });
     };
+  }
+
+  checkQueueDaySources(day: string, previous?: Readonly<{
+    through: number;
+    runIds: readonly string[];
+    commandIds: readonly string[];
+    items: readonly { workflowId: string; itemId: string }[];
+    month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
+  }>): { through: number; changed: boolean } | undefined {
+    if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
+    return this.#withReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const through = changeLogHighWater(this.#database);
+      if (previous === undefined) return { through, changed: true };
+      if (through === previous.through) return { through, changed: false };
+      const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
+        this.#database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
+      if (through < previous.through || (first ?? through + 1) > previous.through + 1) return { through, changed: true };
+
+      // The run update covers a rename unless the command itself is an inbox source.
+      const sharedChange = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE} change WHERE seq > ? AND (
+        table_name IN ('run_batches','deleted_runs','run_delegations','delegation_dependencies','run_checkpoints',
+          'gate_results','run_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
+          'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
+          'notifications','settings','settings_snapshots')
+        OR (table_name IN ('commands','command_audits') AND NOT EXISTS (
+          SELECT 1 FROM json_each(change.keys_json) key JOIN commands command ON key.value = 'command:' || command.id
+          WHERE command.target_id IS NOT NULL AND command.id NOT IN (SELECT value FROM json_each(?))
+            AND ((command.family = 'run' AND json_extract(command.request_json, '$.type') = 'rename')
+              OR (command.family = 'run-lifecycle' AND json_extract(command.request_json, '$.operation') = 'transition'
+                AND json_type(command.request_json, '$.request.displayName') IN ('text','null')))
+        ))
+        OR (table_name = 'timeline_events'
+          AND EXISTS (SELECT 1 FROM json_each(keys_json) WHERE value LIKE 'run:%')
+          AND (op = 'delete' OR EXISTS (SELECT 1 FROM timeline_events
+            WHERE cursor = CAST(json_extract(row_key, '$[0]') AS INTEGER)
+            AND kind IN ('note','transaction.previewed','checkpoint-recorded','checkpoint-replayed','operation-confirmed','write-parked'))))
+      ) LIMIT 1`).get(previous.through, JSON.stringify(previous.commandIds));
+      if (sharedChange !== undefined) return { through, changed: true };
+
+      const changedRuns = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
+        WHERE seq > ? AND table_name = 'runs' LIMIT 1`).get(previous.through);
+      if (changedRuns === undefined) return { through, changed: false };
+      // Old observations catch deletions. Current rows also catch arrivals on the day, new descendants,
+      // and other attempts whose eligibility is visible on a cached row.
+      const relatedChange = this.#database.prepare(`WITH RECURSIVE changed(id) AS (
+          SELECT DISTINCT json_extract(row_key, '$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
+        ), ancestry(id) AS (
+          SELECT id FROM changed
+          UNION
+          SELECT runs.parent_id FROM ancestry JOIN runs ON runs.id = ancestry.id WHERE runs.parent_id IS NOT NULL
+        )
+        SELECT 1 FROM ancestry JOIN json_each(?) observed ON observed.value = ancestry.id
+        UNION ALL
+        SELECT 1 FROM changed JOIN runs ON runs.id = changed.id WHERE runs.local_day = ? OR EXISTS (
+          SELECT 1 FROM json_each(?) item WHERE runs.workflow = json_extract(item.value, '$.workflowId')
+            AND runs.item_id = json_extract(item.value, '$.itemId')
+        ) LIMIT 1`).get(previous.through, JSON.stringify(previous.runIds), day, JSON.stringify(previous.items));
+      if (relatedChange !== undefined) return { through, changed: true };
+
+      const { from, to, counts } = previous.month;
+      const current = this.readQueueDayCounts(from, to);
+      return { through, changed: current.size !== counts.length || counts.some(entry => current.get(entry.day) !== entry.count) };
+    });
   }
 
   #rawChangeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
