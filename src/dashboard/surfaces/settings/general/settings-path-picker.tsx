@@ -1,13 +1,12 @@
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
-import { Button, Tooltip, TooltipProvider, useFieldControl } from "../../../ds/ui.js";
+import { PathControl } from "../../../ds/ui.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 
 export function SettingsPathPicker({ field, label, value, disabled, onSelected }: {
   field: NativePathField; label: string; value: string; disabled: boolean; onSelected: (path: string) => void;
 }) {
-  const control = useFieldControl();
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const request = useMemo(() => ({ client, scope: binding?.scope, field, value, disabled }), [client, binding?.scope, field, value, disabled]);
@@ -39,16 +38,8 @@ export function SettingsPathPicker({ field, label, value, disabled, onSelected }
       if (active.current) setBusy(false);
     }
   };
-  const folder = value.replace(/[\\/]+$/u, "").split(/[\\/]/u).pop() || value;
   return <div className="settings-path-picker">
-    <div className="ds-path-control">
-      <TooltipProvider delayDuration={250}>
-        <Tooltip content={<span className="break-all whitespace-normal">{value}</span>}>
-          <span className="ds-path-value ds-path-basename" tabIndex={0} aria-label={value}>{folder}</span>
-        </Tooltip>
-      </TooltipProvider>
-      <Button id={control.id} aria-label={`Change ${label}`} size="md" variant="secondary" onClick={() => { void pick(); }} disabled={disabled} loading={busy}>Change</Button>
-    </div>
+    <PathControl value={value} label={label} onChange={() => { void pick(); }} disabled={disabled} busy={busy} />
     {error !== undefined && <p role="alert" className="settings-path-picker-error">{error}</p>}
   </div>;
 }
