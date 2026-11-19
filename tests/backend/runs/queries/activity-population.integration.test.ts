@@ -112,7 +112,14 @@ describe("selected Analytics population", () => {
     f.add(8, { workflow: "separations" });
     f.add(9, { workflow: "separations", shape: "operation-member", parentSeed: 8 });
     f.publish();
+    const readSummaryPages = vi.spyOn(f.database, "queryRunSummaries");
+    const report = f.service.reports.read(range.from, range.to);
+    const reportPages = readSummaryPages.mock.calls.slice();
+    readSummaryPages.mockClear();
     const selected = f.service.read(range);
+    expect(selected.report).toEqual(report);
+    expect(readSummaryPages.mock.calls).toEqual(reportPages);
+    readSummaryPages.mockClear();
     expect(selected.population).toHaveLength(9);
     expect(selected.successfulTiming).toEqual([
       { workflowId: "missing-timing", totalMs: null, measured: 0, unmeasured: 1 },
@@ -134,6 +141,7 @@ describe("selected Analytics population", () => {
     expect(selected.population.every(row => row.readback === null)).toBe(true);
     expect(JSON.stringify(selected.population)).not.toContain("identity");
     expect(f.service.readSelected(range, selected.snapshot.token, { metric: "failed", page: 0 }).browse?.rows.map(row => row.runId)).toEqual([uuidOf(10)]);
+    expect(readSummaryPages.mock.calls).toEqual(reportPages);
     const browse = f.service.readSelected(range, selected.snapshot.token, { metric: "timed", page: 0 }).browse;
     expect(browse?.rows.map(row => row.runId)).toEqual([uuidOf(1), uuidOf(2)]);
   });
