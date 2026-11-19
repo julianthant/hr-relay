@@ -212,8 +212,8 @@
   --ds-lh-section: 22px;
   --ds-text-display: 20px; /* the one big number on a summary surface */
   --ds-lh-display: 26px;
-  --ds-text-body-page: 28px;
-  --ds-lh-body-page: 34px;
+  --ds-text-body-page: var(--ds-text-display);
+  --ds-lh-body-page: var(--ds-lh-display);
   --ds-text-body-section: 16px;
   --ds-lh-body-section: 22px;
   --ds-text-body-row: var(--ds-row-title);
@@ -275,7 +275,7 @@
   --ds-queue-info-border: color-mix(in srgb, var(--ui-info) 28%, transparent);
   --ds-queue-danger-bg: color-mix(in srgb, var(--ui-danger) 12%, transparent);
   --ds-queue-danger-border: color-mix(in srgb, var(--ui-danger) 28%, transparent);
-  --ds-space-queue-top: 14px;
+  --ds-space-queue-top: 12px;
   --ds-tracking-brand: 0.035em;
   --ds-w-queue-counter: 30px;
   --ds-h-queue-member-head: 28px;
@@ -304,18 +304,18 @@
   --ds-lh-settings-sidebar-title: 28px;
   --ds-space-body-catalog-record: 24px;
   --ds-space-body-catalog-option-gap: 6px;
-  --ds-space-body-catalog-search-gap: 9px;
+  --ds-space-body-catalog-search-gap: 8px;
   --ds-space-body-catalog-group-top: 16px;
   --ds-space-body-catalog-group-inline: 8px;
   --ds-space-body-catalog-row-gap: 12px;
-  --ds-space-body-catalog-row-block: 9px;
+  --ds-space-body-catalog-row-block: 8px;
   --ds-space-body-catalog-title-bottom: 6px;
   --ds-space-body-catalog-section-gap: 24px;
   --ds-text-body-catalog-small: 11px;
   --ds-space-body-group-inline: var(--ds-row-pad-x);
   --ds-space-body-section-gap: 32px;
   --ds-space-body-section-heading-gap: 8px;
-  --ds-space-body-caption-gap: 10px;
+  --ds-space-body-caption-gap: 8px;
   --ds-space-body-toolbar-inline: 8px;
   --ds-text-body-caption: 13px;
   --ds-lh-body-caption: 18px;
