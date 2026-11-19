@@ -1,3 +1,4 @@
+import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { randomUUID } from "node:crypto";
 import { createWorkerChildChannel } from "../../../../src/backend/runtime/workers/worker-child-channel.js";
 import type { WorkerChildMessage } from "../../../../src/backend/runtime/workers/worker-messages.js";
@@ -239,6 +240,33 @@ describe("worker run loop", () => {
     assert.equal(h.authority.database.authority.runs.get(queued.envelope.runId)?.lifecycle.state, "queued");
   });
 
+  for (const recover of [false, true]) it(`authenticates both systems needed for a cold Person Lookup (Duo recovery ${recover})`, async () => {
+    const h = await loopHarness();
+    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    const starts: string[] = [];
+    const discards: string[] = [];
+    const report = await runWorkerLoop({
+      ...h.deps,
+      sessionFactory: {
+        ...h.sessions.factory,
+        discardProfile: async input => { discards.push(input.system); return { profileDirectory: "/fixture/profile" }; },
+        open: async input => {
+          const resource = await h.sessions.factory.open(input);
+          return { ...resource, authentication: { authenticate: (system, options) => input.duoCeremony.withCeremony(async () => {
+            starts.push(system);
+            if (recover && starts.length === 1) {
+              throw new DuoTerminalRefusalError(system, "synthetic refusal", "https://duosecurity.com/");
+            }
+            return resource.authentication.authenticate(system, options);
+          }) } };
+        },
+      },
+    });
+    assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
+    assert.deepEqual(starts, recover ? ["ucpath", "ucpath", "crm"] : ["ucpath", "crm"]);
+    assert.deepEqual(discards, recover ? ["ucpath"] : []);
+  });
+
   it("keeps sessions across consecutive child runs of one workflow under a parent-workflow home", async () => {
     const harness = await loopHarness();
     const home = emergencyContactModule.descriptor;
@@ -257,8 +285,18 @@ describe("worker run loop", () => {
   it("parks sessions once when a parent-workflow worker finds nothing eligible", async () => {
     const harness = await loopHarness();
     harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    const transitions: [string, string, number][] = [];
+    const writer = createDebugEventWriter({ clock: harness.authority.clock, repository: harness.authority.database.authority.timelineEvents, build: "test" });
     let claims = 0;
     const looping = runWorkerLoop({ ...harness.deps, exitWhenIdle: false, descriptor: emergencyContactModule.descriptor,
+      debugEvents: { emit: (...args) => {
+        const written = writer.emit(...args);
+        const { payload, occurredAt } = written.record;
+        if (payload.kind === "debug" && payload.event.area === "worker-lifecycle" && payload.event.reason !== undefined) {
+          transitions.push([payload.event.reason, occurredAt, harness.sessions.closeReasons().length]);
+        }
+        return written;
+      } },
       resolveExecution: run => run.envelope.workflow === personLookupDescriptor.id ? { descriptor: personLookupDescriptor, stores: taskStoreRegistry } : undefined,
       claimNext: (request, sessions) => {
         claims += 1;
@@ -272,6 +310,8 @@ describe("worker run loop", () => {
     const report = await looping;
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     assert.equal(report.closure, "proved");
+    const at = harness.authority.clock.now().toISOString();
+    assert.deepEqual(transitions, [["worker-idle", at, 0], ["sessions-parking", at, 0]]);
     assert.equal(harness.sessions.opens("ucpath"), 1);
     assert.deepEqual(harness.sessions.closeReasons(), ["parked", "parked"]);
   });
