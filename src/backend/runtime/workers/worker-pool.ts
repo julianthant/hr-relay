@@ -438,7 +438,8 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
         if (open.length === 0) break;
         await Promise.all(open.map(record => record.state === "exited" ? record.settled : escalate(record, reason, false)));
       }
-      await Promise.all([...records.values()].map(record => record.stopping));
+      const stops = [...records.values()].map(record => record.stopping);
+      await Promise.all(stops.filter(stop => stop !== undefined));
       const views = Object.freeze([...records.values()].map(view));
       if (reason !== "shutdown") {
         const failures = takeStopFailures(reason);

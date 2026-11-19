@@ -231,7 +231,8 @@ describe("the composed worker pool through the kernel", () => {
     requireStoppedPool(await h.workers.pool.stopAll("shutdown"));
     assert.deepEqual(h.workers.pool.takeShutdownStopFailures(), []);
     assert.ok(operatorResult instanceof AggregateError);
-    const [report]: unknown[] = operatorResult.errors;
+    const reports: readonly unknown[] = operatorResult.errors;
+    const [report] = reports;
     assert.ok(report instanceof AggregateError && report.cause === failure);
     assert.deepEqual(h.settled, [WORKER_1]);
   });
