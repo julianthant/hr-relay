@@ -14,7 +14,7 @@ export function SheetDetail({ sheet, document, fields, onBack, onMap, onVersion,
   useEffect(() => { if (why) toast({ tone: 'danger', key: `sheets-sync-${sheet.id}`, title: 'Sync failed', description: why }); }, [why, failedAt, sheet.id]);
   return <div className="min-w-0">
     <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: onBack }, { label: sheet.name }]} />
-    <PageHeading title={sheet.name} description={<span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+    <PageHeading className="mb-[var(--ds-space-page-heading-content)]" title={sheet.name} description={<span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
       {(sheet.workflow || sheet.tags.length > 0) && <><SheetChips sheet={sheet} /><span aria-hidden>·</span></>}
       {sheet.sharePoint ? <a href={sheet.sharePoint} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:underline">SharePoint<ExternalLink aria-hidden className={dsIcon.sm} /></a> : <span>{sheet.run ? 'Run output' : 'Imported'}</span>}
       <span aria-hidden>·</span><span className="truncate">Updated {stamp(sheet.updatedAt)}</span></span>}
