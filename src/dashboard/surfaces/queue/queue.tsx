@@ -1,4 +1,5 @@
 import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
+import { DryRunMark } from "../run-detail/run-state-chips.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { Fragment, memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -168,14 +169,12 @@ function QueueProgress({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] })
 }
 
 
-type RowChipTone = "neutral" | "info" | "warning" | "rehearsal";
+type RowChipTone = "neutral" | "info" | "warning";
 
 const ROW_CHIP_TONE: Record<RowChipTone, string> = {
   neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg-quiet)]",
   info: "border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]",
   warning: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
-  /* Give rehearsals a distinct hue from warning and test-instance chips. */
-  rehearsal: "border-[color:var(--ds-rehearsal-border)] bg-[var(--ds-rehearsal-bg)] text-[color:var(--ds-rehearsal-fg)]",
 };
 
 const rowChip = (tone: RowChipTone, extra?: string): string =>
@@ -235,14 +234,7 @@ function HeaderChips({
         </span>
       )}
       {/* Display served dryRun visibly so rehearsals cannot be mistaken for real filing. */}
-      {surface.dryRun && (
-        <span
-          title="Dry run — this rehearsal reads the systems and writes nothing."
-          className={rowChip("rehearsal", dsText.caps)}
-        >
-          dry run
-        </span>
-      )}
+      {surface.dryRun && <DryRunMark />}
       {/* Missing warning counts imply at least one only for warning-complete rows; other statuses invent no count. */}
       {(surface.warnings.state === "present" || status === "doneWarnings") && (
         <span
@@ -838,8 +830,7 @@ export function QueueRow({
             <div className="flex min-w-0 flex-wrap items-center gap-x-[var(--ds-space-snug)] gap-y-[var(--ds-space-tight)]">
               {batch !== undefined ? <>
                 <StatusBadge status={status} presentation="queue" />
-                {batch.members.some(member => member.dryRun) && <span className={rowChip("rehearsal")}
-                  title="Includes dry-run people — rehearsals read the systems and write nothing.">dry run</span>}
+                {batch.members.some(member => member.dryRun) && <DryRunMark title="Includes dry-run people — rehearsals read the systems and write nothing." />}
                 {batchTestSystems.length > 0 && <span title={testInstanceHazardTitle(batchTestSystems)} className={rowChip("info")}>test</span>}
                 {batchWarnings.length > 0 && <span className={rowChip("warning")} title={batchWarnings.map(warning => warning.first).join("; ")}>
                   <AlertTriangle aria-hidden className={dsIcon.sm} />{batchWarnings.reduce((total, warning) => total + warning.count, 0)}

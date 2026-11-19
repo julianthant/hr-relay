@@ -150,8 +150,9 @@ describe_m1("approved mixed queue presentation", () => {
     const body = host.querySelector("[data-queue-body]");
     assert_m1.ok(body);
     assert_m1.equal(body.querySelector("[data-demo-row-title]")?.textContent, row.title);
-    assert_m1.equal(body.firstElementChild?.querySelector("svg"), null);
-    assert_m1.ok(host.textContent?.includes("dry run"));
+    assert_m1.equal(body.firstElementChild?.querySelector("svg:not(.lucide-flask-conical)"), null);
+    assert_m1.ok(body.querySelector("svg.lucide-flask-conical"));
+    assert_m1.ok(host.textContent?.includes("Dry run"));
     assert_m1.ok(host.textContent?.includes("test"));
     assert_m1.ok(host.textContent?.includes("Done"));
     assert_m1.equal(host.querySelector('[aria-label^="What is this row"]'), null);

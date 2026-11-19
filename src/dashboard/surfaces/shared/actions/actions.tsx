@@ -187,7 +187,6 @@ export function OutcomeActionButton({
           dsRadius.sm,
           dsFocus,
           dsMotion.fast,
-          "active:translate-y-px",
           className,
         )}
       >
