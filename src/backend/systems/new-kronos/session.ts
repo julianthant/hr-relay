@@ -49,10 +49,18 @@ function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
 export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
   context, phase,
 ): Promise<AuthenticationProbe> => {
-  const { page, assertCurrent } = context;
+  const { page } = context;
   const deadline = systemClock.monotonicMs() + LANDING_TIMEOUT_MS;
+  const stop = new AbortController();
+  const assertCurrent = (): void => {
+    context.assertCurrent();
+    if (stop.signal.aborted || systemClock.monotonicMs() >= deadline) {
+      throw new BrowserLoginError(SYSTEM, "verify-landing", "WFD landing proof exceeded its 20-second deadline", "");
+    }
+  };
   const probe = () => verifyUcsdAuthenticatedApplication(SYSTEM, page, {
     assertCurrent,
+    signal: stop.signal,
     urlIsApplication: isAuthenticatedNewKronosUrl,
     urlRefusal:
       "the observed URL is not the UKG Dimensions (WFD) application; the ForgeRock sign-on host shares the mykronos.com domain and is refused here",
@@ -63,27 +71,40 @@ export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVe
       issuer: "UKG Dimensions (WFD)",
     }),
     additionalAbsences: [
-      () => probeAbsentControl(page, {
-        assertCurrent,
-        selector: SSO_FORM_SELECTOR,
-        description: "the UCSD single sign-on form and the ForgeRock XUI login shell",
-      }),
+      async () => {
+        const absent = await probeAbsentControl(page, {
+          assertCurrent,
+          selector: SSO_FORM_SELECTOR,
+          description: "the UCSD single sign-on form and the ForgeRock XUI login shell",
+        });
+        assertCurrent();
+        if (absent.holds && phase === "landing") {
+          // Locator waits settle pending main-frame navigation; the verifier rejects a changed document.
+          await page.locator(":root").waitFor({ state: "attached", timeout: 0, signal: stop.signal });
+          assertCurrent();
+        }
+        return absent;
+      },
     ],
   });
-  let result = await probe();
-  assertCurrent();
-  while (!result.authenticated) {
-    const awaitingLanding = phase === "landing" && result.check === "application-route";
-    if (!awaitingLanding && result.check !== "positive-evidence") break;
-    if (deadline - systemClock.monotonicMs() <= LANDING_POLL_MS) break;
-    await new Promise<void>(resolve => setTimeout(resolve, LANDING_POLL_MS));
+  const timer = setTimeout(() => stop.abort(), LANDING_TIMEOUT_MS);
+  try {
+    let result = await probe();
     assertCurrent();
-    if (systemClock.monotonicMs() >= deadline) break;
-    // A redirect invalidates the prior poll's cookie and form observations.
-    result = await probe();
-    assertCurrent();
+    while (!result.authenticated) {
+      const awaitingLanding = phase === "landing" && result.check === "application-route";
+      if (!awaitingLanding && result.check !== "positive-evidence") break;
+      if (deadline - systemClock.monotonicMs() <= LANDING_POLL_MS) break;
+      await new Promise<void>(resolve => setTimeout(resolve, LANDING_POLL_MS));
+      assertCurrent();
+      // A redirect invalidates the prior poll's cookie and form observations.
+      result = await probe();
+      assertCurrent();
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
   }
-  return result;
 };
 
 export const newKronosLoginRecipe = defineVerifiedLoginRecipe({

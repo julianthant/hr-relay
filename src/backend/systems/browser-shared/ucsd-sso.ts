@@ -595,6 +595,7 @@ export async function verifyUcsdAuthenticatedApplication(
   page: Page,
   input: Readonly<{
     assertCurrent: () => void;
+    signal?: AbortSignal;
     urlIsApplication: (url: string) => boolean;
     urlRefusal: string;
     positive: () => Promise<ObservedFact>;
@@ -610,7 +611,7 @@ export async function verifyUcsdAuthenticatedApplication(
     if (frame === page.mainFrame()) navigated = true;
   };
   page.on("framenavigated", onNavigation);
-  try {
+  const verifyDocument = async (): Promise<AuthenticationProbe> => {
     input.assertCurrent();
     const positive = await input.positive();
     input.assertCurrent();
@@ -622,9 +623,8 @@ export async function verifyUcsdAuthenticatedApplication(
       absences.push(await absence());
     }
     input.assertCurrent();
-    const observedUrl = page.url();
-    if (navigated || observedUrl !== url) {
-      return { authenticated: false, observedUrl, reason: "the application page navigated during verification", check: "application-route" };
+    if (navigated || page.url() !== url) {
+      return { authenticated: false, observedUrl: url, reason: "the application page navigated during verification", check: "application-route" };
     }
     const present = absences.find((fact) => !fact.holds);
     if (present !== undefined) return { authenticated: false, observedUrl: url, reason: present.detail, check: "sign-in-form-absent" };
@@ -638,6 +638,12 @@ export async function verifyUcsdAuthenticatedApplication(
         negative: absences.map((fact) => fact.detail).join("; "),
       },
     };
+  };
+  try {
+    if (input.signal === undefined) return await verifyDocument();
+    return await raceCancellation(verifyDocument, system, "verify-landing", {
+      page, signal: input.signal, assertCurrent: input.assertCurrent,
+    });
   } finally {
     page.off("framenavigated", onNavigation);
   }
