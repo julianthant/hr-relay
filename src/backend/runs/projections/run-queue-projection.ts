@@ -1419,17 +1419,20 @@ export class RunQueueProjection {
     }
     const parsedDay = z.iso.date().parse(day);
     const summaries = this.#deps.reader.summaries;
+    const saved = this.#dayCache.get(parsedDay);
+    if (saved !== undefined && saved.wire.projectionGeneration === this.#generationValue && saved.wire.snapshotCursor === this.cursor()) {
+      // The authority checks its journal and observed sources in its own admitted snapshot.
+      const revision = this.#deps.authority.checkDaySources?.(parsedDay, saved.sources);
+      const now = this.#deps.clock.nowMs();
+      if (revision?.changed === false && saved.builtAt <= now && now < saved.validUntil) {
+        if (revision.through !== saved.sources.through) saved.sources = { ...saved.sources, through: revision.through };
+        return saved.wire;
+      }
+    }
     const read = () => {
       const now = this.#deps.clock.nowMs();
-      const saved = this.#dayCache.get(parsedDay);
-      const current = saved !== undefined && saved.wire.projectionGeneration === this.#generationValue
-        && saved.wire.snapshotCursor === this.cursor() && saved.builtAt <= now && now < saved.validUntil ? saved : undefined;
-      const revision = summaries === undefined ? undefined : this.#deps.authority.checkDaySources?.(parsedDay, current?.sources);
-      if (current !== undefined && revision?.changed === false) {
-        current.sources = { ...current.sources, through: revision.through };
-        return current.wire;
-      }
-
+      // Sample the rebuild position in the same snapshot as its rows.
+      const revision = summaries === undefined ? undefined : this.#deps.authority.checkDaySources?.(parsedDay);
       const notifications = this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
       this.#dayCache.delete(parsedDay);
       const { wire, sources } = this.#buildDashboardDayWire(parsedDay, notifications, now);

@@ -233,6 +233,7 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
   const unrelated = queuedEventOf(w, { seed: 3, enqueuedAt: "2026-07-31T17:00:00.000Z" });
   const summaries = composeQueueSummaries(w.database);
   let queueReads = 0;
+  let daySnapshots = 0;
   let runLists = 0;
   const unexpected = (): never => { throw new Error("unexpected write or Activity read"); };
   const runReader = new RunRecordService({ database: w.database, clock: w.clock, ids: { uuid: unexpected }, publishQueued: unexpected });
@@ -256,7 +257,10 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
         runLists += 1;
         return runReader.list(input);
       },
-      summaries: { ...summaries, activity: unexpected, queue(input) {
+      summaries: { ...summaries, activity: unexpected, withSnapshot(read) {
+        daySnapshots += 1;
+        return summaries.withSnapshot(read);
+      }, queue(input) {
         assert.equal(input.fromDay, DAY);
         assert.equal(input.toDay, DAY);
         queueReads += 1;
@@ -307,11 +311,13 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.equal(repeated.status, 200);
     assert.deepEqual(await repeated.json(), wire);
     assert.equal(repeated.headers.get("ETag"), tag);
+    const beforeValidation = daySnapshots;
     const validated = await readDay(`"older", W/${tag}`);
     assert.equal(validated.status, 304);
     assert.equal(validated.headers.get("ETag"), tag);
     assert.equal(validated.headers.get("Cache-Control"), "private, no-cache");
     assert.equal(await validated.text(), "");
+    assert.equal(daySnapshots, beforeValidation, "the SQLite source check already owns the snapshot for a cache hit");
     assert.equal(queueReads, 1, "every unchanged request reuses the day build");
 
     const preferenceId = uuidOf(97);
