@@ -194,6 +194,7 @@ function depsOf(
   attemptingWriteIntents: readonly unknown[] = [],
 ): RunDetailQueryDeps {
   const timelineEvents = {
+    ...w.timeline,
     get: (eventId: string) => checkpointEvents.get(w)?.get(eventId),
   };
   const canonical = {
