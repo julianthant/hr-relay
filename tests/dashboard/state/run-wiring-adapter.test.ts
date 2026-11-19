@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
@@ -769,6 +769,13 @@ describe("served Logs wiring", () => {
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
     assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
+  });
+  it("opens the detail and logs reads once under StrictMode", async () => {
+    const paths: string[] = [];
+    const client = clientFor(path => { paths.push(path); return path.endsWith("/logs") ? { section: "logs", payload: page() } : detail(); });
+    await mount(createElement(StrictMode, null, createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) })));
+    assert.equal(paths.filter(path => path.endsWith("/logs")).length, 1);
+    assert.equal(paths.filter(path => /\/runs\/[^/]+$/.test(path)).length, 1);
   });
   it("does not turn a failed served read into a mock or a verified empty result", async () => {
     const client = clientFor(() => { throw new Error("offline"); });

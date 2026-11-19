@@ -615,7 +615,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
-    void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
+    const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
       if (active.current === request && !controller.signal.aborted) { ended(); setSettled({ request, value: { state: "loaded", snapshot } }); }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
@@ -637,6 +637,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
           : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
+    // Start after the mount settles: a mount cancelled in the same tick sends nothing.
+    queueMicrotask(() => { if (!controller.signal.aborted) read(); });
     return () => { controller.abort(); reading.current = false; };
   }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
