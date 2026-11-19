@@ -35,6 +35,47 @@ it("projects a declaration's typed scalar text without changing raw values, miss
   });
 });
 
+it.each(["display case", "producer", "producer with conflicting span"] as const)("reads retained observations only with their recorded identity (%s)", async removed => {
+  const w = await world();
+  const earlier = personLookupModule.descriptor;
+  queuedEventOf(w, { seed: 87, descriptor: earlier });
+  const run = w.authority.records.get(uuidOf(87));
+  assert.ok(run);
+  const at = w.clock.now().toISOString();
+  const taskId = "workflow:person-lookup/read-active-status";
+  const spanNode = removed === "producer with conflicting span" ? "searching" : "active-status";
+  w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: run.envelope.workflow,
+    runId: run.envelope.runId, attempt: 1, traceId: run.envelope.traceId,
+    spanPath: `${run.envelope.traceId}/${spanNode}#1`, nodeId: "active-status", taskId,
+    points: [{ direction: "read", field: "status", values: [{ key: "status", state: "allowed",
+      classification: "safe-diagnostic", transform: "allow", value: "retired-status" }] }] });
+  w.projection.ingestFromTimeline();
+  const dataOrigins = dataOriginViewsOf(personLookupModule).flatMap(origin => {
+    if (origin.taskId !== taskId) return [origin];
+    if (removed !== "display case") return [];
+    return [{ ...origin, operatorFields: [{ label: "Status", kind: "output" as const, fieldPath: "status",
+      display: { cases: [{ value: "active", text: "Active" }] } }] }];
+  });
+  const deps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot,
+    projection: w.projection, authority: w.authority, descriptors: { resolve: () => ({
+      version: earlier.version + 1, contractFingerprint: earlier.contractFingerprint, dataOrigins,
+    }) } };
+
+  if (removed === "producer with conflicting span") {
+    const reason = /node active-status disagrees with the recorded span/u;
+    assert.throws(() => buildRunLogsSection(deps, run.envelope.runId, undefined, run), reason);
+    assert.throws(() => runDataObservationsForRun(deps, run, run.envelope.runId), reason);
+    return;
+  }
+  const section = buildRunLogsSection(deps, run.envelope.runId, undefined, run);
+  assert.ok(section.section === "logs");
+  const observation = section.payload.rows?.find(row => row.kind === "observed");
+  assert.equal(observation?.producer.taskId, taskId);
+  assert.equal(observation?.displayFields?.[0]?.label, removed === "producer" ? "Historical observation" : "Status");
+  assert.match(JSON.stringify(observation), /Unavailable for this historical run/u);
+  assert.doesNotMatch(JSON.stringify(section), /retired-status/u);
+});
+
 it("flags each declared field a failed read task never observed, on the node's last observed row", async () => {
   const w = await world(); queuedEventOf(w, { seed: 86, descriptor: personLookupModule.descriptor });
   const queued = w.authority.records.get(uuidOf(86)); assert.ok(queued); const at = w.clock.now().toISOString();

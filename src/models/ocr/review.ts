@@ -2,6 +2,8 @@ import { OcrReviewRecordSchema, OcrOperatorPagesSchema } from "./review-record.j
 import { z } from "zod";
 import { admitOcrExtraction, answersFingerprint, SubmittedAnswerSchema, type AdmittedRecord } from "./extraction.js";
 import { fieldOnPageKind, ocrForm } from "./form-registry.js";
+import { hasRetainedAnswerEvidence } from "../workflows/ocr/page-accounting.js";
+import { RetainedOcrReviewSeedSchema } from "../workflows/ocr/review-seed.js";
 import { OcrResultSchema } from "../workflows/ocr/result.js";
 import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema, type StableRecordId } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -37,7 +39,7 @@ function namesAgree(documentName: string | null, observedName: string | null, ei
   return fewer.every(token => more.includes(token));
 }
 
-function assessOcrIdentity(seed: OcrSeed, recordId: StableRecordId, subjectName: string | null, fields: AdmittedRecord): IdentityAssessment {
+function assessOcrIdentity(seed: OcrSeed, recordId: StableRecordId, subjectName: string | null, fields: AdmittedRecord, nameRule: "exact" | "subset"): IdentityAssessment {
   const identities = seed.identities.filter(identity => identity.recordIds.includes(recordId));
   const outcome = identities.length === 1 ? identities[0]?.outcome : undefined;
   if (outcome === undefined) return { hold: "not-looked-up" };
@@ -49,12 +51,12 @@ function assessOcrIdentity(seed: OcrSeed, recordId: StableRecordId, subjectName:
   const observed = EidSchema.parse(status.details.eid);
   const fieldEid = fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
   if (fieldEid?.state === "read" && fieldEid.value !== observed) return { hold: "eid-differs" };
-  return namesAgree(subjectName, status.details.name, fieldEid?.state === "read") ? { eid: observed } : { hold: "name-differs" };
+  return namesAgree(subjectName, status.details.name, nameRule === "subset" && fieldEid?.state === "read") ? { eid: observed } : { hold: "name-differs" };
 }
 
-export function initialOcrReviewRecords(seed: OcrSeed): z.output<typeof OcrReviewRecordSchema>[] {
+export function initialOcrReviewRecords(seed: OcrSeed, nameRule: "exact" | "subset" = "subset"): z.output<typeof OcrReviewRecordSchema>[] {
   return seed.review.records.map(record => {
-    const assessment = assessOcrIdentity(seed, record.recordId, record.subjectName, record.fields);
+    const assessment = assessOcrIdentity(seed, record.recordId, record.subjectName, record.fields, nameRule);
     return { recordId: record.recordId, fields: record.fields, assertedEid: "eid" in assessment ? assessment.eid : null, discarded: false };
   });
 }
@@ -63,7 +65,7 @@ export function initialOcrReviewRecords(seed: OcrSeed): z.output<typeof OcrRevie
 export function ocrIdentityHolds(revision: Pick<OcrReviewRevision, "seed" | "records">): z.output<typeof OcrIdentityHoldSchema>[] {
   return revision.records.flatMap(record => {
     if (record.assertedEid !== null) return [];
-    const assessment = record.provenance === undefined ? assessOcrIdentity(revision.seed, record.recordId, ocrRecordName(record.fields), record.fields)
+    const assessment = record.provenance === undefined ? assessOcrIdentity(revision.seed, record.recordId, ocrRecordName(record.fields), record.fields, "subset")
       : { hold: "not-looked-up" as const };
     return [{ recordId: record.recordId, reason: "eid" in assessment ? "awaiting-assertion" as const : assessment.hold }];
   });
@@ -104,9 +106,32 @@ export function blankOperatorOcrFields(seed: z.output<typeof OcrResultSchema>, p
   return operatorOcrFields(seed, pages, Object.fromEntries(ocrForm(seed.review.formType).fields.map(field => [field.path,
     field.localKind === "boolean" ? { state: "read", raw: "false", confidence: 1 } : { state: "absent", reason: "blank" }])), readAt);
 }
+// A pages-only add command produces one of these blank layouts. The emergency-contact layouts differ by one optional field.
+const operatorLayouts = {
+  "emergency-contact": {
+    optional: ["employee.employeeId", "employee.dateCompleted", "employee.address1", "employee.city", "employee.state", "employee.postalCode",
+      "employee.cellPhone", "employee.homePhone", "contact.cellPhone", "contact.homePhone", "contact.workPhone", "contact.address1",
+      "contact.city", "contact.state", "contact.postalCode"],
+    required: ["contact.name", "contact.relationship", "employee.name"], flags: [],
+  },
+  oath: { optional: ["employeeId", "signatureDate"], required: ["printedName"], flags: ["employeeSigned", "officerSigned"] },
+  i9: { optional: ["middleInitial", "dateOfBirth", "ssn", "hireDate"], required: ["firstName", "lastName"], flags: [] },
+} as const;
+
+export function retainedBlankOperatorFields(formType: OcrSeed["review"]["formType"], saved: AdmittedRecord): AdmittedRecord {
+  const { optional, required, flags } = operatorLayouts[formType];
+  const hasPid = saved.answers.some(answer => answer.path === "employee.pid");
+  const paths = [...optional, ...required].map(path => path === "employee.dateCompleted" && hasPid ? "employee.pid" : path);
+  const answers = [
+    ...paths.map(path => ({ state: "absent" as const, path, reason: "blank" as const })),
+    ...flags.map(path => ({ state: "read" as const, path, raw: "false", value: false, confidence: 1 })),
+  ].sort((left, right) => left.path.localeCompare(right.path));
+  return { answers, answersFingerprint: answersFingerprint(answers), blockingPaths: [...required] };
+}
+
 export const OcrReviewRevisionSchema = z.strictObject({
   id: z.string().min(1), sourceRunId: RunIdSchema, revision: PositiveIntSchema,
-  seed: OcrResultSchema,
+  seed: OcrResultSchema.extend({ review: RetainedOcrReviewSeedSchema }),
   records: z.array(OcrReviewRecordSchema),
   origin: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("checkpoint"), key: z.string().min(1), digest: FingerprintSchema, checkpoint: TimelineCheckpointReferenceSchema }),
@@ -129,31 +154,44 @@ export const OcrReviewRevisionSchema = z.strictObject({
     if (entry.assertedEid !== null && fieldEid?.state === "read" && fieldEid.value !== entry.assertedEid) {
       context.addIssue({ code: "custom", message: "The asserted identity must agree with the corrected employee ID" });
     }
+    if (!hasRetainedAnswerEvidence(entry.fields)) context.addIssue({ code: "custom", message: "OCR correction answer fingerprint or paths conflict" });
     if (entry.provenance !== undefined) {
-      try {
-        const admitted = operatorOcrFields(record.seed, entry.provenance.pages,
-          Object.fromEntries(entry.fields.answers.map(answer => [answer.path, answer.state === "absent" ? { state: "absent", reason: answer.reason }
-            : { state: "read", raw: answer.raw, confidence: answer.confidence }])), entry.provenance.createdAt);
-        if (canonicalJsonStringify(admitted) !== canonicalJsonStringify(entry.fields)) throw new Error("ocr-operator-record-fields-invalid");
-      } catch {
-        context.addIssue({ code: "custom", message: "Operator-added OCR records require canonical fields and exact source bindings" });
+      const { pages } = entry.provenance;
+      const form = ocrForm(record.seed.review.formType);
+      const blank = retainedBlankOperatorFields(form.formType, entry.fields);
+      const creation = record.origin.kind === "command" && record.origin.commandId === entry.provenance.commandId;
+      if (pages.length !== form.pageKinds.length || form.pageKinds.some((kind, index) => pages[index]?.pageKind !== kind)
+        || pages.some(page => !record.seed.review.accounting.manifest.pages.some(source => source.sourcePage === page.sourcePage))
+        || blank.answers.length !== entry.fields.answers.length || blank.answers.some((answer, index) => answer.path !== entry.fields.answers[index]?.path)
+        || creation && canonicalJsonStringify(entry.fields) !== canonicalJsonStringify(blank)) context.addIssue({ code: "custom", message: "Operator-added OCR records require their exact fields and original page bindings" });
+    } else {
+      const source = record.seed.review.records.find(seed => seed.recordId === entry.recordId);
+      if (source === undefined || entry.fields.answers.length !== source.fields.answers.length
+        || entry.fields.answers.some((answer, index) => answer.path !== source.fields.answers[index]?.path)) {
+        context.addIssue({ code: "custom", message: "OCR correction fields do not match their source record" });
       }
-      continue;
-    }
-    const source = record.seed.review.records.find(seed => seed.recordId === entry.recordId);
-    const outcome = source === undefined ? undefined : record.seed.review.accounting.outcomes.find(outcome =>
-      outcome.state === "done" && outcome.output.extractionId === source.extractionId);
-    if (outcome?.state !== "done") continue;
-    const { record: _fields, pageFingerprint: _fingerprint, ...metadata } = outcome.output.extraction;
-    const admitted = admitOcrExtraction({ ...metadata, record: { answers: Object.fromEntries(entry.fields.answers.map(answer => [answer.path,
-      answer.state === "absent" ? { state: "absent", reason: answer.reason }
-        : { state: "read", raw: answer.raw, confidence: answer.confidence }])) } });
-    if (!admitted.admitted || canonicalJsonStringify(admitted.extraction.record) !== canonicalJsonStringify(entry.fields)) {
-      context.addIssue({ code: "custom", message: "OCR corrections must retain complete canonical fields for their source form" });
     }
   }
 });
 export type OcrReviewRevision = z.infer<typeof OcrReviewRevisionSchema>;
+export function validateOcrCorrection(seed: OcrSeed, entry: OcrReviewRevision["records"][number]): void {
+  const answers = Object.fromEntries(entry.fields.answers.map(answer => [answer.path, answer.state === "absent"
+    ? { state: "absent" as const, reason: answer.reason } : { state: "read" as const, raw: answer.raw, confidence: answer.confidence }]));
+  let fields: AdmittedRecord | null;
+  if (entry.provenance !== undefined) {
+    fields = operatorOcrFields(seed, entry.provenance.pages, answers, entry.provenance.createdAt);
+  } else {
+    const source = seed.review.records.find(record => record.recordId === entry.recordId);
+    const outcome = seed.review.accounting.outcomes.find(page => page.state === "done" && page.output.extractionId === source?.extractionId);
+    if (outcome?.state !== "done") throw new Error("ocr-review-record-source-missing");
+    const { record: _record, pageFingerprint: _fingerprint, ...metadata } = outcome.output.extraction;
+    const admitted = admitOcrExtraction({ ...metadata, record: { answers } });
+    if (!admitted.admitted) throw new Error("ocr-review-correction-invalid");
+    fields = admitted.extraction.record;
+  }
+  if (canonicalJsonStringify(fields) !== canonicalJsonStringify(entry.fields)) throw new Error("ocr-review-correction-invalid");
+}
+
 export const OcrReviewChangeSchema = z.strictObject({ sourcePage: PositiveIntSchema, revision: PositiveIntSchema });
 
 function recordEvidence(seed: OcrReviewRevision["seed"], recordId: OcrReviewRevision["records"][number]["recordId"]) {
@@ -164,10 +202,10 @@ function recordEvidence(seed: OcrReviewRevision["seed"], recordId: OcrReviewRevi
     identities: seed.identities.filter(identity => identity.recordIds.includes(recordId)).map(({ recordIds: _recordIds, ...identity }) => identity) };
 }
 
-export function rebuildOcrReviewRecords(seed: OcrReviewRevision["seed"], previous?: Pick<OcrReviewRevision, "seed" | "records" | "revision">) {
-  const initial = initialOcrReviewRecords(seed);
+export function rebuildOcrReviewRecords(seed: OcrReviewRevision["seed"], previous?: Pick<OcrReviewRevision, "seed" | "records" | "revision">,
+  nameRule: "exact" | "subset" = "subset", previousInitial = previous === undefined ? [] : initialOcrReviewRecords(previous.seed, nameRule)) {
+  const initial = initialOcrReviewRecords(seed, nameRule);
   const unchanged = new Set<string>();
-  const previousInitial = previous === undefined ? [] : initialOcrReviewRecords(previous.seed);
   const manual = previous?.records.filter(record => record.provenance !== undefined) ?? [];
   if (manual.some(record => record.provenance?.pages.some(binding => {
     const original = previous?.seed.review.accounting.manifest.pages.find(page => page.sourcePage === binding.sourcePage);

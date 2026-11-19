@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { WorkerSessionManager, type WorkerBrowserSessionFactory, type WorkerSessionEvent } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserLoginError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { taskId } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
@@ -41,6 +41,36 @@ function manager(factory: WorkerBrowserSessionFactory, events: WorkerSessionEven
 }
 
 describe("Emergency Contact worker claim authentication", () => {
+  it("replaces an expired browser from a prior claim but refuses a second acquisition in the current claim", async () => {
+    const harness = world.sessionFactory();
+    const expired = new BrowserLoginError("ucpath", "verify-landing", "session expired", "about:blank", undefined, undefined, "positive-evidence");
+    let expiredThrough = 0;
+    const sessions = manager({ ...harness.factory, open: async input => {
+      const resource = await harness.factory.open(input);
+      const acquisition = harness.opens();
+      return { ...resource, async reset(options) {
+        if (acquisition <= expiredThrough) throw expired;
+        await resource.reset(options);
+      } };
+    } });
+    try {
+      await sessions.withDriver(need, "prod", signal, async () => undefined);
+      sessions.releaseRunConfigFingerprint();
+      expiredThrough = 1;
+      sessions.bindRunConfigFingerprint(world.RUN_FINGERPRINT, "headless", context);
+      await sessions.withDriver(need, "prod", signal, async () => undefined);
+      assert.equal(harness.opens(), 2);
+      assert.equal(harness.closes(), 1);
+
+      expiredThrough = 2;
+      const lease = () => sessions.withDriver(need, "prod", signal, async () => assert.fail("expired browser reached the task"));
+      await assert.rejects(lease(), error => error === expired);
+      await assert.rejects(lease(), error => error === expired);
+      assert.equal(harness.opens(), 2);
+      assert.equal(harness.closes(), 2);
+    } finally { sessions.releaseRunConfigFingerprint(); await sessions.closeAll("worker-stop"); }
+  });
+
   it("keeps the authenticated CRM session after its required capture fails", async () => {
     const harness = world.sessionFactory();
     const events: WorkerSessionEvent[] = [];

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
+import { retainedOcrModule } from "../../../support/fixtures/ocr/retained-review-producer.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
@@ -25,7 +27,7 @@ import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpa
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { scaledMs } from "../../../support/time-scale.js";
-import { ocrForm } from "../../../../src/models/ocr/form-registry.js";
+import * as forms from "../../../../src/models/ocr/form-registry.js";
 import { sourceFixture, submittedPage } from "../../../support/fixtures/ocr/source-pages.js";
 
 const world = createOcrReviewWorld();
@@ -48,7 +50,7 @@ function add(f: Fixture, expectedRevision = 1, sourcePage = 2) {
 it.each(["oath", "emergency-contact", "i9"] as const)("creates and approves an operator-added %s record when no record was extracted", async formType => {
   const f = await world.fixture({ release: true, pageCount: 2, formType }), read = reviewReader(f), before = read(); assert.ok(before.ocr);
   assert.equal(before.ocr.revision.records.length, 0);
-  const form = ocrForm(formType), source = sourceFixture(2, formType);
+  const form = forms.ocrForm(formType), source = sourceFixture(2, formType);
   const pages = form.pageKinds.map((pageKind, index) => ({ pageKind, sourcePage: index + 1 }));
   const request = CommandRequestSchema.parse({ ...add(f), payload: { pages } });
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
@@ -209,4 +211,53 @@ it("refuses stale/foreign additions and missing or altered original creation evi
     assert.deepEqual(observe(), before);
     assert.equal(f.database.getMeta().authorityGeneration, generation + 6);
   }
+});
+
+it("opens an operator addition and correction saved with the original emergency-contact field list", async () => {
+  const f = await world.fixture({ release: true, pageCount: 2 });
+  const form = forms.ocrForm("emergency-contact");
+  const earlier = vi.spyOn(forms, "ocrForm").mockReturnValue({ ...form, fields: form.fields.map(field =>
+    field.path === "employee.dateCompleted" ? { ...field, path: "employee.pid", canonicalFieldId: "pid", localKind: null } : field) });
+  try {
+    const request = add(f);
+    assert.equal(f.canonical.kernel.execute(request).state, "applied");
+    const created = reviewReader(f)();
+    const manual = created.ocr?.revision.records[0]; assert.ok(manual?.provenance);
+    const correction = CommandRequestSchema.parse({ ...request, commandId: randomUUID(), type: "correct-ocr-record",
+      target: { ...request.target, expectedRevision: 2 },
+      payload: correctedOcrRecord(created, manual.recordId, { "employee.name": "Example, Manual" }) });
+    assert.equal(f.canonical.kernel.execute(correction).state, "applied");
+  } finally { earlier.mockRestore(); }
+  const review = readOcrReviewAuthority(f.database.authority, f.canonical.lifecycle, f.run.envelope.runId);
+  assert.ok(review);
+  assert.equal(review.revision.revision, 3);
+  assert.ok(review.revision.records[0].fields.answers.some(answer => answer.path === "employee.pid"));
+  assert.ok(review.revision.records[0].fields.answers.some(answer => answer.path === "employee.name" && answer.state === "read"));
+  const restore = CommandRequestSchema.parse({ ...add(f, 3), type: "restore-ocr-record", payload: { recordId: review.revision.records[0].recordId } });
+  assert.equal(f.canonical.kernel.execute(restore).state, "rejected");
+  assert.deepEqual(f.database.authority.ocrReviews.latest(f.run.envelope.runId), review.revision);
+});
+
+it("refuses fresh OCR edits when the registered workflow is missing or differs from the saved one", async () => {
+  const f = await world.fixture({ release: true, record: true });
+  const saved = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(saved);
+  assert.notEqual(retainedOcrModule.descriptor.contractFingerprint, f.run.envelope.contractFingerprint);
+  for (const replacement of [undefined, retainedOcrModule.descriptor]) {
+    const kernel = canonicalChildExecution(f.harness.deps, f.database, f.path, id => id === "ocr" ? replacement : f.resolve(id)).kernel;
+    assert.equal(kernel.execute(f.command("discard-ocr-record", 1)).state, "rejected");
+    assert.deepEqual(f.database.authority.ocrReviews.latest(f.run.envelope.runId), saved);
+  }
+});
+
+it("refuses removal of an operator-add blocker with the original command intact", async () => {
+  const f = await world.fixture({ release: true, pageCount: 2 });
+  assert.equal(f.canonical.kernel.execute(add(f)).state, "applied");
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  const saved = repositories.ocrReviews.latest(runId); assert.ok(saved);
+  const [entry] = saved.records;
+  assert.equal(entry.fields.blockingPaths.length, 3);
+  const altered = { ...saved, records: [{ ...entry, fields: { ...entry.fields, blockingPaths: entry.fields.blockingPaths.slice(1) } }] };
+  assert.throws(() => readOcrReviewAuthority({ ...repositories, ocrReviews: { ...repositories.ocrReviews,
+    latest: () => altered, revision: (id, revision) => revision === saved.revision ? altered : repositories.ocrReviews.revision(id, revision),
+  } }, f.canonical.lifecycle, runId), /OCR_REVIEW_REFUSED/u);
 });

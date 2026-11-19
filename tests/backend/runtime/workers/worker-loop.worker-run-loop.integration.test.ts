@@ -25,6 +25,7 @@ import { OcrPublicationRefusedError } from "../../../../src/backend/runs/lifecyc
 import { requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
 import { createPreflightAdmission, PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const ocr = createOcrReviewWorld();
 afterEach(ocr.cleanup);
@@ -32,6 +33,42 @@ afterEach(ocr.cleanup);
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
+
+it("rejects stale and duplicate worker control sequences", async () => {
+  const clock = manualClock(new Date("2026-11-06T12:00:00.000Z"));
+  const actions: string[] = [];
+  const replies: WorkerChildMessage[] = [];
+  const unexpected = (): never => { throw new Error("unexpected worker control"); };
+  const child = createWorkerChildChannel({
+    clock, send: message => { replies.push(message); }, onStop: unexpected,
+    handlers: {
+      refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+      pause: () => { actions.push("pause"); return { directive: "pause" }; },
+      resume: () => { actions.push("resume"); return { directive: "run" }; },
+      closeForRemoval: async () => { actions.push("close"); return null; },
+    },
+  });
+  const first = { kind: "worker-pause", requestId: randomUUID(), sequence: 1 };
+  const second = { kind: "worker-request", requestId: randomUUID(), sequence: 2,
+    sentAt: clock.now().toISOString(), deadlineMs: 1_000, request: { type: "close-for-removal" } };
+  const stale = { kind: "worker-resume", requestId: randomUUID(), sequence: 1 };
+  const duplicate = { kind: "worker-resume", requestId: randomUUID(), sequence: 2 };
+  const fresh = { kind: "worker-resume", requestId: randomUUID(), sequence: 3 };
+
+  child.receive(first);
+  child.receive(second);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  for (const message of [first, stale, duplicate, fresh]) child.receive(message);
+
+  const refusal = { state: "refused", code: "WORKER_IPC_PROTOCOL_INVALID", message: "WORKER_IPC_PROTOCOL_INVALID" };
+  assert.deepEqual(actions, ["pause", "close", "resume"]);
+  assert.deepEqual(replies, [
+    { kind: "worker-reply", requestId: first.requestId, outcome: { state: "done", result: { directive: "pause" } } },
+    { kind: "worker-reply", requestId: second.requestId, outcome: { state: "done", result: null } },
+    ...[first, stale, duplicate].map(message => ({ kind: "worker-reply", requestId: message.requestId, outcome: refusal })),
+    { kind: "worker-reply", requestId: fresh.requestId, outcome: { state: "done", result: { directive: "run" } } },
+  ]);
+});
 
 describe("worker run loop", () => {
   it("stops with a typed preflight refusal before sessions or execution and never repeats the claim", async () => {
@@ -161,7 +198,7 @@ describe("worker run loop", () => {
     try {
       await new Promise<void>(resolve => setImmediate(resolve));
       const requestId = randomUUID();
-      child.receive({ kind: "worker-request", requestId, sentAt: h.authority.clock.now().toISOString(), deadlineMs: 10_000,
+      child.receive({ kind: "worker-request", requestId, sequence: 1, sentAt: h.authority.clock.now().toISOString(), deadlineMs: 10_000,
         request: { type: "refresh-browser", browserSessionId: randomUUID() } });
       assert.equal(refreshStarted, true);
       assert.equal(child.beginRun(), false);

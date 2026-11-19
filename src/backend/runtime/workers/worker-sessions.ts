@@ -14,7 +14,7 @@ import type { TaskId } from "../../../rules/identity/ids.js";
 import type { TaskLogger, BrowserDriver } from "../../../workflow-kit/task.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
+import { BrowserLoginError, DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
 import { withBrowserActionSession, withoutBrowserActionNotes } from "../../systems/browser-shared/action-notes.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
@@ -196,6 +196,14 @@ function requiredCaptureFailed(error: unknown): boolean {
 
 function abortError(system: BrowserSystemId): Error {
   return new Error(`${system} driver lease was aborted before acquisition`);
+}
+
+function retainedSessionUnavailable(system: BrowserSystemId, error: unknown): boolean {
+  if (error instanceof BrowserLoginError) {
+    return error.system === system && error.step === "verify-landing"
+      && (error.check === "application-route" || error.check === "positive-evidence" || error.check === "sign-in-form-absent");
+  }
+  return error instanceof Error && /^TargetClosedError\d*$/u.test(error.constructor.name);
 }
 
 
@@ -663,9 +671,12 @@ export class WorkerSessionManager {
     if (browserMode === undefined) {
       throw new Error(`${need.system} driver lease requires the claimed run's bound browser presentation; none is bound`);
     }
+    const session = this.#session(need.system);
+    // An active lease must reset or close before this turn. An idle browser's last proof predates the request.
+    const idleAtRequest = session.state.state === "authenticated" && session.state.lease === "idle"
+      ? heldResource(session) : undefined;
     const acquisitions = this.#claimAcquisitions;
     return this.#withSystemTurn(need.system, signal, async () => {
-      const session = this.#session(need.system);
       const prior = acquisitions?.get(need.system);
       if (prior !== undefined) {
         if (session.failure !== undefined) throw session.failure;
@@ -680,7 +691,24 @@ export class WorkerSessionManager {
       }
       let resource: WorkerBrowserResource;
       try {
-        resource = await withoutBrowserActionNotes(() => this.#acquireBounded(need, instance, configFingerprint, browserMode, signal));
+        resource = await withoutBrowserActionNotes(async () => {
+          const acquire = () => this.#acquireBounded(need, instance, configFingerprint, browserMode, signal);
+          const candidate = await acquire();
+          if (candidate !== idleAtRequest) return candidate;
+          try {
+            await candidate.reset({ signal });
+            return candidate;
+          } catch (error) {
+            const failures = [error];
+            try { await this.#closeSystem(need.system, "poisoned"); }
+            catch (closeError) { failures.push(closeError); }
+            if (failures.length > 1) {
+              throw new AggregateError(failures, `${need.system} retained session check and poison-close both failed`, { cause: error });
+            }
+            if (prior !== undefined || signal.aborted || !retainedSessionUnavailable(need.system, error)) throw error;
+            return acquire();
+          }
+        });
       } catch (error) {
         acquisitions?.set(need.system, { error });
         throw error;
@@ -709,27 +737,31 @@ export class WorkerSessionManager {
           throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text, { cause: failure });
         }
       };
+      let diagnosticsActive = false;
       let operationCompleted = false;
       let mayReset = false;
       try {
+        signal.throwIfAborted();
         this.#apply(need.system, { type: "lease" });
         this.#observe(need.system, resource);
         resource.beginDiagnostics?.();
+        diagnosticsActive = true;
         mayReset = acquisitions !== undefined;
         let result: Result;
         try { result = await withBrowserActionSession(resource.sessionId, () => use(resource.driver, captureScreenshot)); }
         finally { leaseActive = false; }
         resource.endDiagnostics?.();
+        diagnosticsActive = false;
         operationCompleted = true;
         if (screenshotOwner === undefined) await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, { kind: "lease-end", outcome: "succeeded" }, configFingerprint));
         mayReset = false;
         await this.#resetLease(resource, signal);
         return result;
       } catch (leaseError) {
-        resource.endDiagnostics?.();
         const failures: unknown[] = [leaseError];
         const failedSteps = ["operation"];
-        if (!operationCompleted) {
+        if (diagnosticsActive) {
+          resource.endDiagnostics?.();
           try {
             await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, { kind: "lease-end", outcome: "failed" }, configFingerprint, undefined, screenshotOwner?.sampleLabels));
           } catch (captureError) {
@@ -879,14 +911,16 @@ export class WorkerSessionManager {
     const current = new Promise<void>((resolve) => {
       releaseTurn = resolve;
     });
-    const tail = previous.then(() => current);
+    const tail = previous.then(async () => {
+      await current;
+      if (session.turn === tail) session.turn = undefined;
+    });
     session.turn = tail;
     try {
       await waitForTurn(previous, signal, system);
       return await operation();
     } finally {
       releaseTurn();
-      if (session.turn === tail) session.turn = undefined;
     }
   }
 

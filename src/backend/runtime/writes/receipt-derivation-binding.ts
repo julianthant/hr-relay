@@ -4,12 +4,13 @@ import { z } from "zod";
 import {
   descriptorRuntimeNodes,
   workflowPreviewDependencyIds,
+  workflowDryRunSupport,
   workflowTerminalResultExecution,
   type AnyWorkflowDescriptor,
 } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { readRunPreviewResult, terminalEvidenceResult, terminalDelegationDependencyRecord, type RunResultRecord, type DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
+import { deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, terminalGateDependencyRecord, readRunPreviewResult, terminalEvidenceResult, terminalDelegationDependencyRecord, type RunResultRecord, type DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -216,17 +217,21 @@ export function evaluateReceiptDerivationBinding(
   } else {
     // Preview terminal dependencies bind the preview boundary, not ordinary workflow success dependencies.
     const preview = readRunPreviewResult(result);
-    const declared = preview === undefined ? [...new Set([...workflowTerminalResultExecution(descriptor).dependsOn.map(String), ...delegationIds])]
-      : [...new Set([...workflowPreviewDependencyIds(descriptor, preview.steps).map(String), ...delegationIds])];
-    const retained = result.dependencies.map((dependency) => String(dependency.nodeId));
-    checks.push(canonicalJsonStringify([...declared].sort()) === canonicalJsonStringify([...retained].sort())
-      ? held("terminal-dependency-set", `both depend on [${declared.join(", ")}]`)
-      : moved(
-        "terminal-dependency-set",
-        `the stored result was built from [${retained.join(", ")}] and this build's `
-        + `${preview === undefined ? "terminal execution" : "dry-run preview"} depends on `
-        + `[${declared.join(", ")}]; the mandatory-evidence set would move`,
-      ));
+    if (preview !== undefined && workflowDryRunSupport(descriptor).state !== "supported") {
+      checks.push(moved("terminal-dependency-set", "the stored preview boundary is absent from the registered workflow"));
+    } else {
+      const declared = preview === undefined ? [...new Set([...workflowTerminalResultExecution(descriptor).dependsOn.map(String), ...delegationIds])]
+        : [...new Set([...workflowPreviewDependencyIds(descriptor, preview.steps).map(String), ...delegationIds])];
+      const retained = result.dependencies.map((dependency) => String(dependency.nodeId));
+      checks.push(canonicalJsonStringify([...declared].sort()) === canonicalJsonStringify([...retained].sort())
+        ? held("terminal-dependency-set", `both depend on [${declared.join(", ")}]`)
+        : moved(
+          "terminal-dependency-set",
+          `the stored result was built from [${retained.join(", ")}] and this build's `
+          + `${preview === undefined ? "terminal execution" : "dry-run preview"} depends on `
+          + `[${declared.join(", ")}]; the mandatory-evidence set would move`,
+        ));
+    }
   }
 
   return checks.some((check) => check.state === "moved")
@@ -239,6 +244,65 @@ export function evaluateReceiptDerivationBinding(
     });
 }
 
+
+/** Check the producer's recorded dependency identities against their native rows. */
+export function assertRetainedReceiptDependencies(input: ReceiptDerivationBindingInput, result: RunResultRecord): void {
+  const envelope = input.run.envelope;
+  if (result.runId !== envelope.runId || result.workflowId !== envelope.workflow || result.attempt !== envelope.attempt
+    || result.contractFingerprint !== envelope.contractFingerprint || result.configSnapshotId !== envelope.configSnapshotId
+    || result.configFingerprint !== envelope.configFingerprint || result.descriptorVersion !== envelope.descriptorVersion
+    || canonicalJsonStringify(result.continuation ?? null) !== canonicalJsonStringify(envelope.continuation ?? null)
+    || input.run.lifecycle.state !== "terminal" || result.createdAt !== input.run.lifecycle.endedAt
+    || (input.run.lifecycle.outcome === "done" && (input.run.completion?.kind !== "done"
+      || input.run.completion.resultDigest !== result.resultDigest))) throw new Error("receipt-settlement-owner-mismatch");
+
+  const delegations = input.delegations ?? [];
+  const cited = result.dependencies.filter(dep => dep.state === "child-resolved" || dep.state === "delegation-resolved");
+  if (cited.length !== delegations.length) throw new Error("receipt-delegation-citation-mismatch");
+  for (const dependency of result.dependencies) {
+    const matches = input.checkpoints.filter(row => row.nodeId === dependency.nodeId);
+    switch (dependency.state) {
+      case "resolved": {
+        const row = matches.find(candidate => candidate.runId === dependency.checkpoint.runId
+          && candidate.itemId === dependency.checkpoint.itemId && candidate.attempt === dependency.checkpoint.attempt
+          && candidate.claimGeneration === dependency.checkpoint.claimGeneration);
+        if (row === undefined || row.assertion !== undefined || row.contractFingerprint !== dependency.contractFingerprint
+          || row.descriptorVersion !== dependency.descriptorVersion || row.implFingerprint !== dependency.implFingerprint
+          || row.output.schemaHash !== dependency.outputSchemaHash || deriveCheckpointOutputDigest(row.output) !== dependency.outputDigest
+          || deriveCheckpointProvenanceDigest(row.provenance) !== dependency.provenanceDigest
+          || canonicalJsonStringify(row.operationSources ?? null) !== canonicalJsonStringify(dependency.operationSources ?? null)) {
+          throw new Error(`receipt-checkpoint-citation-mismatch: ${dependency.nodeId}`);
+        }
+        break;
+      }
+      case "asserted":
+        if (!matches.some(row => row.runId === result.runId && row.attempt === result.attempt
+          && row.assertion?.step === dependency.step && row.assertion.assertedAt === dependency.assertedAt
+          && row.output.schemaHash === dependency.outputSchemaHash && deriveCheckpointOutputDigest(row.output) === dependency.outputDigest)) {
+          throw new Error(`receipt-assertion-citation-mismatch: ${dependency.nodeId}`);
+        }
+        break;
+      case "not-run":
+        if (matches.some(row => row.runId === result.runId && row.attempt === result.attempt)) throw new Error(`receipt-not-run-conflict: ${dependency.nodeId}`);
+        break;
+      case "gate-resolved": {
+        const gate = input.gateResults?.find(row => row.runId === dependency.gate.runId && row.nodeId === dependency.nodeId);
+        if (gate === undefined || canonicalJsonStringify(terminalGateDependencyRecord(dependency.nodeId, gate)) !== canonicalJsonStringify(dependency)) {
+          throw new Error(`receipt-gate-citation-mismatch: ${dependency.nodeId}`);
+        }
+        break;
+      }
+      case "child-resolved":
+      case "delegation-resolved": {
+        const evidence = delegations.find(row => row.nodeId === dependency.nodeId);
+        if (evidence === undefined || canonicalJsonStringify(terminalDelegationDependencyRecord(evidence)) !== canonicalJsonStringify(dependency)) {
+          throw new Error("receipt-delegation-citation-mismatch");
+        }
+        break;
+      }
+    }
+  }
+}
 
 /* ── the re-derivation check (6) ─────────────────────────────────────────── */
 

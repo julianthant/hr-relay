@@ -461,15 +461,6 @@ function readIdentityGate(
     throw new Error(`run ${runId} advertises an identity-gate section while it is ${lifecycle.state}`);
   }
   const missing = { state: "missing" as const, reason: IDENTITY_REVIEW_TEXT.unavailable };
-  const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
-  if (descriptor === undefined) {
-    return missing;
-  }
-  const gate = (descriptor.gateNodes ?? [])
-    .find(({ nodeId }) => nodeId === String(lifecycle.gateId));
-  if (gate === undefined) {
-    return missing;
-  }
   if (deps.canonical === undefined) {
     return missing;
   }
@@ -479,8 +470,11 @@ function readIdentityGate(
   }
   if (runtimeDescriptor.version !== authority.envelope.descriptorVersion
     || runtimeDescriptor.contractFingerprint !== authority.envelope.contractFingerprint) {
-    return missing;
+    return { state: "missing", reason: "This gate was opened under an earlier workflow definition. Its identity review is unavailable." };
   }
+  const gate = deps.descriptors.resolve(authority.envelope.workflow)?.gateNodes
+    ?.find(({ nodeId }) => nodeId === String(lifecycle.gateId));
+  if (gate === undefined) return missing;
   const runtimeGate = descriptorRuntimeNodes(runtimeDescriptor)
     .find((candidate) => candidate.kind === "gate" && String(candidate.id) === gate.nodeId);
   if (runtimeGate === undefined || runtimeGate.kind !== "gate"
