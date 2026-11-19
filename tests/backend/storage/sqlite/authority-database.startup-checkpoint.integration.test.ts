@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { appendFileSync, copyFileSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
+import { composeProfileRuntime, composeSelectedProfileStorage, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { readStartupFile } from "../../../../src/backend/storage/sqlite/startup-file-proof.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -179,6 +181,51 @@ it("carries the registered startup inspection through the second startup pass an
       expect(scansRuns(() => AuthorityDatabase.inspectExistingReadOnly(profile, f.profile.path))).toBe(true);
     } finally { profile.release(); }
   } finally { machine.release(); }
+});
+
+it("carries inspection through production startup recovery and checks the recovered rows on first Resume", async () => {
+  const f = await createBoundProfileFixture();
+  cleanups.push(() => f.close());
+  const { profileId } = f.admission.profileBinding;
+  const clock = manualClock(new Date("2026-11-01T20:00:00Z"));
+  const hostFacts = { primaryDisplay: null };
+  const initial = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
+    credentials: boundProfileCredentials(f.admission), hostFacts, clock });
+  const run = runRecordOf({ seed: 1 });
+  try {
+    const config = initial.database.authority.runtimeConfig.get();
+    if (config === undefined) throw new Error("fixture runtime config missing");
+    initial.database.authority.runs.enqueue({ ...run, envelope: { ...run.envelope,
+      configSnapshotId: config.configSnapshotId, configFingerprint: config.configFingerprint } });
+  } finally { await initial.account.close(); initial.database.close(); }
+  await f.closeController();
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  cleanups.push(() => lifetime.close());
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const fullScan = "SELECT * FROM runs ORDER BY id";
+  const openRecovery = AuthorityDatabase.openStoppedStartupRecovery;
+  const recoveryScans: boolean[] = [];
+  vi.spyOn(AuthorityDatabase, "openStoppedStartupRecovery").mockImplementation((...args) => {
+    const start = prepare.mock.calls.length;
+    const db = openRecovery(...args);
+    recoveryScans.push(prepare.mock.calls.slice(start).some(([sql]) => sql === fullScan));
+    return db;
+  });
+  await initializeRegisteredPersonStores(f.workspace, lifetime, hostFacts, clock);
+  expect(recoveryScans).toEqual([false]);
+  prepare.mockClear();
+  const machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts });
+  try {
+    const active = runtime.session.resumeSignedInProfile({ at: clock.now().toISOString() });
+    expect(active).toMatchObject({ state: "active", profileId });
+    if (active.state !== "active") throw new Error("fixture Resume refused");
+    const db = runtime.selectedContext(active.token).database;
+    const statements = prepare.mock.calls.map(([sql]) => sql);
+    expect(statements).toContain("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes WHERE seq>? ORDER BY seq");
+    expect(statements).not.toContain(fullScan);
+    expect(db.authority.runs.get(run.envelope.runId)?.lifecycle).toMatchObject({ state: "terminal", outcome: "cancelled" });
+  } finally { await runtime.close("shutdown"); machine.release(); }
 });
 
 it("reuses the inspection after an identical rewrite and fully inspects a byte appended beyond the database pages", async () => {

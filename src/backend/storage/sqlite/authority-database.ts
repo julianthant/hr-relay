@@ -2741,7 +2741,7 @@ export class AuthorityDatabase implements Disposable {
       }
       this.#database.exec("BEGIN");
       if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
-      else this.#validateDatabase(purpose === "ordinary" && existed, admittedDataVersion);
+      else this.#validateDatabase(existed && (purpose === "ordinary" || purpose === "stopped-startup-recovery"), admittedDataVersion);
       readAppSettings(this.#database);
       if (readIntPragma(this.#database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) this.#changeReader ??= changeLogBaseline(this.#database);
       this.#database.exec("COMMIT");
@@ -5205,11 +5205,11 @@ export class AuthorityDatabase implements Disposable {
     inspectOpenDatabase(this.#database, false);
   }
 
-  #validateDatabase(ordinary: boolean, dataVersion: number): void {
+  #validateDatabase(useStartupCheckpoint: boolean, dataVersion: number): void {
     const migrationViolations = auditMigrationTableCoverage();
     if (migrationViolations.length > 0) throw new Error(migrationViolations.join("; "));
     const db = this.#database;
-    if (!ordinary) { inspectOpenDatabase(db, true); return; }
+    if (!useStartupCheckpoint) { inspectOpenDatabase(db, true); return; }
     const checkpoints = checkpointsFor(this.#admission);
     const prior = checkpoints.get(this.#path);
     checkpoints.delete(this.#path);
