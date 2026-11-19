@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, DuoReenrolStateSchema, PublicProfileStateSchema, type DuoReenrolState, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfilePasswordChangeRequestSchema, ProfileUsernameChangeRequestSchema, ProfileLoginChangeResultSchema, ProfileDetailsChangeRequestSchema, ProfileDetailsChangeResultSchema, DuoReenrolStateSchema, PROFILE_ONBOARDING_STATE, PublicProfileStateSchema, type DuoReenrolState, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 type ProfilePasswordChangeRequest = z.infer<typeof ProfilePasswordChangeRequestSchema>;
 type ProfileUsernameChangeRequest = z.infer<typeof ProfileUsernameChangeRequestSchema>;
 type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
@@ -116,7 +116,7 @@ export function createDashboardClient(input: Readonly<{
   };
   const transport = createDashboardTransport({ ...input, profileHeaders(path) {
     const state = path === "/api/v1/profile/state";
-    const credential = path.startsWith("/api/v1/profile/onboarding/") ? draft() : session ?? (state ? draft() : null);
+    const credential = /^\/api\/v1\/profile\/onboarding\//u.test(path) ? draft() : session ?? (state ? draft() : null);
     const proof = state || path === "/api/v1/profile/resume" ? resumeProof() : null;
     const headers: Record<string, string> = {};
     if (credential !== null) headers["x-relay-session"] = credential;
@@ -152,7 +152,7 @@ export function createDashboardClient(input: Readonly<{
           session = next;
           browser?.sessionStorage.removeItem(endingKey);
           profileAuthority = { profileId: state.profileId, epoch: state.epoch };
-        } else if (state.state === "onboarding") {
+        } else if (state.state === PROFILE_ONBOARDING_STATE) {
           const next = response.headers.get("x-relay-session");
           if (next === null) throw schemaError(path, "missing onboarding credential");
           saveDraft(next);

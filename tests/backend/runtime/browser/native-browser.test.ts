@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { chromium, type BrowserContext } from "playwright";
 import { it, vi } from "vitest";
-import { DEFAULT_BROWSER_LAUNCHER, nativeSsoGuardKeys } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { nativeSsoGuardKeys } from "../../../../src/backend/systems/browser-shared/ucsd-sso-guard.js";
 
 it("uses bundled full Chromium for extension sessions and native closure probes", async () => {
   const addInitScript = vi.fn(async () => undefined);

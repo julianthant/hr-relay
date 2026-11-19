@@ -6,7 +6,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH,type ProtectedSettingsPatch } from "../../../../src/models/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema,type ProtectedSettingsPatch } from "../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -107,8 +107,8 @@ describe("native settings domain invariants", () => {
     const { revision, entries: saved } = store.read();
     assert.ok(saved.ucpathPassword);
     const command = protectedCommand(revision, { ucpathPassword: { set: saved.ucpathPassword.value } });
-    const committed = store.apply({ ...command.payload, commandId: command.commandId,
-      commandFingerprint: deriveSettingsCommandFingerprint(command), expectedRevision: revision, updatedAt: command.requestedAt });
+    const committed = store.apply(ProtectedSettingsApplyInputSchema.parse({ ...command.payload, commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command), expectedRevision: revision, updatedAt: command.requestedAt }));
     assert.equal(committed.state, "applied");
 
     const result = execute(command);

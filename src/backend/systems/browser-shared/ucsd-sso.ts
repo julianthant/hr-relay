@@ -1,4 +1,4 @@
-import { nativeSsoGuardKeys, withPinnedSsoPost, type NativeSsoGuardKeys } from "../../runtime/browser/native-browser.js";
+import { nativeSsoGuardKeys, withPinnedSsoPost, type NativeSsoGuardKeys } from "./ucsd-sso-guard.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 // Select SSO submit by name: the enrollment navigation also looks like a Login button.
 import type { Frame, JSHandle, Locator, Page } from "playwright";
@@ -228,8 +228,7 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
     formHandle = await pinnedUser.evaluateHandle(el => el instanceof HTMLInputElement ? el.form : null);
     check();
     const pinnedForm = formHandle;
-    let pinnedDestination: string | undefined;
-    const act = async (action: SsoFormAction) => {
+    const evaluateAction = async (action: SsoFormAction, pinnedDestination: string | undefined) => {
       check();
       const valid = await pinnedUser.evaluate(applyPinnedSsoAction, { password: pinnedSecret, button: pinnedSubmit, form: pinnedForm, action, path, url, pinnedDestination,
         selectors: { user: SSO_USERNAME_SELECTOR, password: SSO_PASSWORD_SELECTOR, button: SSO_SUBMIT_SELECTOR } });
@@ -238,9 +237,9 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
       return valid;
     };
     const keys = nativeSsoGuardKeys(page.context());
-    const destination = await act({ kind: "prove" });
+    const destination = await evaluateAction({ kind: "prove" }, undefined);
     if (typeof destination !== "string") throw new Error("UCSD_SSO_FIELDS");
-    pinnedDestination = destination;
+    const act = (action: SsoFormAction) => evaluateAction(action, destination);
     await act({ kind: "arm", keys });
     check();
     const credentials = await acquire();
@@ -357,7 +356,7 @@ export async function submitSsoForm(
     const detail = error instanceof Error && error.message === "UCSD_SSO_USERNAME_MISSING"
       ? `the SSO username field matched no element (${SSO_USERNAME_SELECTOR})`
       : error instanceof Error && error.message === "UCSD_SSO_PASSWORD_MISSING"
-        ? `the SSO password field matched no element (${SSO_PASSWORD_SELECTOR})`
+        ? "the SSO password field matched no element"
         : "the pinned UCSD SSO form could not be proved or submitted";
     throw new BrowserLoginError(system, step, detail, page.url(), { cause: error });
   }
