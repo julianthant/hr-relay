@@ -357,3 +357,66 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
  if (result === undefined) throw new Error("authority-read-only-result-missing");
  return result.value;
 }
+
+const RestoreFenceIndexRow = z.strictObject({
+  row_key: z.union([z.string(), z.number()]),
+  canonical: z.instanceof(Uint8Array),
+});
+
+export function createRestoreFenceIndex() {
+  const prefix = join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-fences-`);
+  const path = process.platform === "win32" ? `${prefix}${randomUUID()}` : mkdtempSync(prefix);
+  if (process.platform === "win32") createPrivateDirectory(path, { mode: 0o700 });
+  const directory = { path };
+  let database: DatabaseSync | undefined;
+  const dispose = () => {
+    if (database !== undefined) {
+      try { database.close(); }
+      catch (error) { throw retainAuthoritySourceClosure([error], { database, directory }); }
+    }
+    try { rmSync(path, { recursive: true }); }
+    catch (error) { throw retainAuthoritySourceClosure([error], { directory }); }
+  };
+  try {
+    const index = new DatabaseSync(join(path, "fences.sqlite"));
+    database = index;
+    index.exec(`
+      PRAGMA journal_mode=OFF;
+      PRAGMA cache_size=-2048;
+      PRAGMA cache_spill=ON;
+      PRAGMA temp_store=MEMORY;
+      CREATE TABLE evidence (
+        table_id INTEGER NOT NULL,
+        canonical BLOB NOT NULL,
+        row_key ANY NOT NULL,
+        PRIMARY KEY(table_id,canonical)
+      ) STRICT, WITHOUT ROWID;
+      BEGIN;
+    `);
+    const insert = index.prepare("INSERT INTO evidence (table_id,canonical,row_key) VALUES (?,?,?)");
+    const rows = index.prepare("SELECT row_key, canonical FROM evidence WHERE table_id=? ORDER BY canonical");
+    let sealed = false;
+    return Object.freeze({
+      append(tableId: number, rowKey: string | number, canonical: string) {
+        // Index UTF-16 code units in JavaScript sort order to preserve the restore journal digest.
+        insert.run(tableId, Buffer.from(canonical, "utf16le").swap16(), rowKey);
+      },
+      seal() {
+        index.exec("COMMIT; PRAGMA query_only=ON");
+        sealed = true;
+      },
+      *orderedRows(tableId: number) {
+        if (!sealed) throw new Error("restore-fence-index-unsealed");
+        for (const raw of rows.iterate(tableId)) {
+          const { row_key, canonical } = RestoreFenceIndexRow.parse(raw);
+          yield { key: row_key, canonical: Buffer.from(canonical).swap16().toString("utf16le") };
+        }
+      },
+      dispose,
+    });
+  } catch (error) {
+    try { dispose(); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-index-setup-failed"); }
+    throw error;
+  }
+}

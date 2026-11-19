@@ -11,6 +11,7 @@ import { constants as systemConstants } from "node:os";
 import { basename,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
+import type { TimelineEventRecord } from "../../../models/events/timeline.js";
 import {
 type RunQueuedWire,
 type SpanEventWire,
@@ -23,7 +24,7 @@ import { type RuntimeAdmission } from "../admission/admission.js";
 import { withOperationProof } from "../configuration/credential-safe-file.js";
 import { observeCredentialPresence } from "../configuration/credential-store.js";
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { AuthorityDatabase } from "./authority-database.js";
+import { AuthorityDatabase, type EarlierRunEvents } from "./authority-database.js";
 import { verifyBackupManifestAtPath } from "./backup-service.js";
 import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
@@ -354,31 +355,29 @@ type SpanAuthorityCorpus = Readonly<
 
 function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: string, busyTimeoutMs: number, includeRecoveryEvidence = false): SpanAuthorityCorpus & Readonly<{
   authorityGeneration: number; authorityContentFingerprint: string;
+  databaseBytes: number;
   recoveryEvidence: ReturnType<typeof AuthorityDatabase.inspectTimelineReadOnly>["recoveryEvidence"];
 }> {
   const file = fileStatus(authorityPath);
   if (!file.isFile() || file.isSymbolicLink()) throw new SafeSpanCorpusError("timeline authority is not a regular no-follow file");
-  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(admission, authorityPath, busyTimeoutMs, includeRecoveryEvidence);
-  const after = fileStatus(authorityPath);
-  if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
-  const rows = snapshot.records;
   const roots: MutableSpanAuthorityRoot[] = [];
   const firstRoot = new Map<string, MutableSpanAuthorityRoot>();
   const attempts = new Map<string, number>();
-  const pending = new Map<string, typeof rows[number][]>();
-  const validate = (root: MutableSpanAuthorityRoot, row: typeof rows[number]): void => {
+  // Last cursor of each run's events seen before its root; the events themselves are re-read from the snapshot.
+  const pending = new Map<string, number>();
+  const validate = (root: MutableSpanAuthorityRoot, row: TimelineEventRecord): void => {
     if (row.payload.kind !== "span" || row.payload.event.t === "run.queued") return;
     validateRunEventAgainstRoot(root, row.payload.event, `timeline:${row.workflow}:${row.retentionDate}`,
       row.cursor, attempts, row.source.kind === "native");
   };
-  for (const row of rows) {
-    if (row.payload.kind !== "span" || !("runId" in row.payload.event)) continue;
+  const visit = (row: TimelineEventRecord, earlier: EarlierRunEvents): void => {
+    if (row.payload.kind !== "span" || !("runId" in row.payload.event)) return;
     const event = row.payload.event;
     if (event.t !== "run.queued") {
       const root = firstRoot.get(event.runId);
       if (root !== undefined) validate(root, row);
-      else pending.set(event.runId, [...(pending.get(event.runId) ?? []), row]);
-      continue;
+      else pending.set(event.runId, row.cursor);
+      return;
     }
     const root: MutableSpanAuthorityRoot = { queued: event, finalAttempt: event.attempt, possibleExternalWrite: false,
       streamIssues: [], lastTimestampMs: Date.parse(event.ts), terminal: false, taskSpans: new Set() };
@@ -398,24 +397,26 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
       addStreamIssue(root, `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previous)}`);
     }
     attempts.set(key, event.attempt);
-    const prior = pending.get(event.runId) ?? [];
+    const lastPrior = pending.get(event.runId);
     pending.delete(event.runId);
-    if (prior.length > 0) {
+    if (lastPrior !== undefined) {
       if (event.repair !== undefined) {
         const repair = event.repair;
-        if (repair.kind === "timeline-authority-reconstruction"
-          && prior.some((entry) => entry.cursor > repair.priorCursor)) {
+        if (repair.kind === "timeline-authority-reconstruction" && lastPrior > repair.priorCursor) {
           addStreamIssue(root, "timeline repair does not cover the preceding event cursor");
         }
-        for (const entry of prior) validate(root, entry);
+        earlier(event.runId, row.cursor, (entry) => validate(root, entry));
       } else addStreamIssue(root, "run.queued appears after prior run event(s) without authority-reconstruction repair");
     }
-  }
+  };
+  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(admission, authorityPath, visit, busyTimeoutMs, includeRecoveryEvidence);
+  const after = fileStatus(authorityPath);
+  if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
   // Retention may remove an ordinary queued root while retaining later events.
   // The canonical reconciliation reports that missing root without inventing it.
   return { state: "present", roots: roots.map(immutableSpanRoot),
     authorityGeneration: snapshot.authorityGeneration, authorityContentFingerprint: snapshot.authorityContentFingerprint,
-    recoveryEvidence: snapshot.recoveryEvidence };
+    databaseBytes: privateFileNumber(file.size), recoveryEvidence: snapshot.recoveryEvidence };
 }
 
 /** Quarantined SQLite is diagnostic recovery evidence only; it never feeds a current view. */
@@ -428,6 +429,8 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
     if (databases.length > 128) throw new SafeSpanCorpusError("preserved authority database count exceeds the inspection limit");
     const accepted = new Set(databases.flatMap((name) => [name, `${name}-wal`, `${name}-shm`]));
     if (names.some((name) => !accepted.has(name))) throw new SafeSpanCorpusError("preserved authority directory contains an unexpected entry");
+    // Allow three current-size images with room for their SQLite companions.
+    const maxBytes = Math.max(256 * 1024 * 1024, 4 * current.databaseBytes);
     let bytes = 0;
     const observed = new Map<string, Stats | BigIntStats>();
     for (const name of names) {
@@ -436,7 +439,7 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
         throw new SafeSpanCorpusError("preserved authority is not a direct regular file");
       }
       bytes += privateFileNumber(file.size);
-      if (bytes > 256 * 1024 * 1024) throw new SafeSpanCorpusError("preserved authority bytes exceed the inspection limit");
+      if (bytes > maxBytes) throw new SafeSpanCorpusError("preserved authority bytes exceed the inspection limit");
       observed.set(name, file);
     }
     const currentEvidence = current.recoveryEvidence;

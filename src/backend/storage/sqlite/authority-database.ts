@@ -30,7 +30,7 @@ import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
-import { TimelineEventRecordSchema,TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
+import { TimelineEventRecordSchema,TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineEventRecord,type TimelineRepository } from "../../../models/events/timeline.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
@@ -71,8 +71,7 @@ import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-roo
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
 import { fileIdentityObservation,sameDirectory,type DirectoryIdentity, clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
-import { readTimelineRecords } from "../events/timeline-reader.js";
-import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
+import { stoppedLogoutAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,readFixedLayoutIntent,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { privatePathRejects } from "../private-path.js";
@@ -132,7 +131,7 @@ import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } f
 import { ASSISTANT_HISTORY_MIGRATION, assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
 import { FAILURE_NOTE_REMOVAL_CONVERSION_ID, FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, convertFailureNoteRow, migrateFailureNotes } from "./failure-note-removal-migration.js";
-import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
+import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertAssistantHistoryRetirable } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS } from "../../../models/config/authority-schema-versions.js";
 import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,COMMAND_ROW_STATE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
@@ -394,6 +393,7 @@ type RunCheckpointRepository = Readonly<{
     nodeId: string,
     attempt: number,
   ): readonly RunCheckpointRecord[];
+  listByRunAttempt(workflowId: string, itemId: string, runId: string, attempt: number): readonly RunCheckpointRecord[];
   /** Ref operator-trust §2.3: a receipt explains one logical item across every attempt. */
   listByItem(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
 }>;
@@ -665,7 +665,23 @@ export type AuthorityRepositories = Readonly<{
   artifactSinkHeads: ArtifactSinkHeadRepository;
 }>;
 
+export function authenticateStoredParkedWriteRecheck(
+  repositories: Pick<AuthorityRepositories, "writeAttempts" | "commands" | "commandAudits">,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+  recheck: NonNullable<typeof intent.recheck>,
+) {
+  return authenticateParkedWriteRecheck(
+    intent,
+    repositories.writeAttempts.get(intent.currentAttemptId),
+    repositories.commands.get(recheck.commandId),
+    repositories.commandAudits.get(recheck.auditId),
+  ).intent;
+}
+
 const JsonRowSchema = z.strictObject({ payload_json: z.string() });
+// Native diagnostics and notes are the timeline's high-volume streams; storage inspection never reads them.
+const INSPECTED_TIMELINE_KINDS = "kind NOT IN ('debug','note')";
+export type EarlierRunEvents = (runId: string, beforeCursor: number, each: (record: TimelineEventRecord) => void) => void;
 const RecordKeyRowSchema = z.strictObject({ id: z.string() });
 const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
   writeId: z.uuid(),
@@ -1362,12 +1378,12 @@ function validatedRowByRow(table: AuthorityTableName | "explorer_overrides" | ty
 
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
   const context = storedRowContext(database, expectedSchemaVersion);
-  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
+  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertAssistantHistoryRetirable(database);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
     // The custody conversion validates the tables it drops.
-    if (!validatedRowByRow(table)) continue;
+    if (!validatedRowByRow(table) || table === "assistant_actions" && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
@@ -1791,10 +1807,10 @@ function isSqliteDamage(error: unknown): boolean {
   return false;
 }
 
-function runSearchDefinitions(): readonly string[] {
+function runSearchDefinitions(version: number): readonly string[] {
   const expected = new DatabaseSync(":memory:");
   try {
-    for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) execMigrationStatement(expected, statement);
+    for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) execMigrationStatement(expected, statement);
     return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type='table' DESC,type,name").all()).map(row => row.sql);
   } finally { expected.close(); }
 }
@@ -1928,7 +1944,10 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       }
       if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) deletePreBuildRuns(database, input.now, input.captureFile, settleEvidence);
       if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
-      if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) assertNoAssistantGrantHistory(database);
+      if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) {
+        assertAssistantHistoryRetirable(database);
+        database.exec("DELETE FROM assistant_actions");
+      }
       execMigrationStatement(database, statement);
       if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
@@ -1961,7 +1980,7 @@ function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaC
   return sha256Hex(`relay:evidence-schema-conversion:v1\0${upgradeId}\0${canonicalJsonStringify(conversion)}`);
 }
 
-/** Each conversion id is recorded at most once, sealed for this profile, settled at the current schema version. */
+/** Each conversion id is recorded at most once and remains sealed at the schema where it settled. */
 function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: RuntimeAdmission,
   binding: Readonly<{ installationId?: string; profileId?: string }>): ReadonlyMap<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord> {
   const records = new Map<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord>();
@@ -1970,7 +1989,7 @@ function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: Runtim
     admission.assertEvidenceSchemaConversion(stored);
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(stored), conversion = record.evidenceSchemas;
     if (records.has(conversion.id)) throw new Error("evidence-schema-conversion-duplicate");
-    if (record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+    if (record.toSchemaVersion > readIntPragma(database, "user_version")
       || record.planDigest !== evidenceSchemaPlanDigest(record.upgradeId, conversion)) throw new Error("evidence-schema-conversion-unproved");
     if (conversion.installationId !== binding.installationId || conversion.profileId !== binding.profileId) throw new Error("evidence-schema-conversion-foreign");
     records.set(conversion.id, record);
@@ -2291,6 +2310,17 @@ function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): reado
   return issues;
 }
 
+function* readRunPages(database: DatabaseSync) {
+  const next = database.prepare("SELECT * FROM runs WHERE id > ? ORDER BY id LIMIT 500");
+  let rows = database.prepare("SELECT * FROM runs ORDER BY id LIMIT 500").all();
+  while (rows.length > 0) {
+    yield* rows;
+    if (rows.length < 500) return;
+    const { id } = z.object({ id: z.string() }).parse(rows.at(-1));
+    rows = next.all(id);
+  }
+}
+
 function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly SpanAuthorityRunRoot[], busyTimeoutMs: number): SpanAuthorityReadSnapshot {
   const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
   const rootIssues = structuralSpanRootIssues(roots);
@@ -2310,40 +2340,52 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
     assertNativeSchema(database);
     const meta = readMetaRow(database);
     if (meta.schema_version !== version) throw new Error("span-authority-schema-metadata-mismatch");
-    const queuedRunIds = new Set(roots.map(root => root.runId));
-    const runs = new Map<string,RunRecord>();
+    const rootsByRun = new Map(roots.map(root => [root.runId, root]));
+    const liveIssues = new Map<string, readonly string[]>();
+    const malformedRunIds = new Set<string>();
+    const missingSpanRunIds: RunRecord["envelope"]["runId"][] = [];
+    let liveRunCount = 0;
     const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
-    for (const raw of database.prepare("SELECT * FROM runs ORDER BY id").all()) {
-      const key = z.object({id:z.string()}).parse(raw).id;
-      try { runs.set(key,runRecordFromRow(raw)); }
-      catch { malformedRecords.push({state:"malformed-authority",source:"current",recordKey:key,summary:"runs authority failed its strict native row validation"}); }
+    for (const raw of readRunPages(database)) {
+      const key = z.object({ id: z.string() }).parse(raw).id;
+      let run: RunRecord;
+      try { run = runRecordFromRow(raw); }
+      catch {
+        malformedRunIds.add(key);
+        malformedRecords.push({ state: "malformed-authority", source: "current", recordKey: key, summary: "runs authority failed its strict native row validation" });
+        continue;
+      }
+      liveRunCount += 1;
+      const root = rootsByRun.get(run.envelope.runId);
+      if (root === undefined) missingSpanRunIds.push(run.envelope.runId);
+      else liveIssues.set(key, liveSpanRootMismatches(root, run));
     }
+    const deletedById = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?");
     const resolutions = roots.map((root,index) => {
       const issues = rootIssues[index];
       if (issues === undefined) throw new Error("span-authority-structural-issues-missing");
       if (issues.length > 0) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"span_stream",summary:issues.join("; ")});
-      const deletedRow = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(root.runId);
+      const deletedRow = deletedById.get(root.runId);
       if (deletedRow !== undefined) {
         try {
           const {receipt} = deletedRunFromRow(deletedRow);
           const mismatches = [mismatchSummary("workflow",root.workflow,receipt.workflow,"deleted_runs"),
             mismatchSummary("itemId",root.itemId,receipt.itemId,"deleted_runs"),mismatchSummary("traceId",root.traceId,receipt.traceId,"deleted_runs"),
             mismatchSummary("finalAttempt",root.finalAttempt,receipt.attempt,"deleted_runs")].filter((issue):issue is string=>issue !== undefined);
-          if (runs.has(root.runId) || mismatches.length > 0) throw new Error("deleted-run-span-identity-mismatch");
+          if (liveIssues.has(root.runId) || mismatches.length > 0) throw new Error("deleted-run-span-identity-mismatch");
           return SpanAuthorityRunResolutionSchema.parse({state:"deleted",runId:receipt.runId,workflow:receipt.workflow,traceId:receipt.traceId,
             origin:receipt.origin,commandId:receipt.commandId,deletedAt:receipt.deletedAt});
         } catch { return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"deleted_runs",summary:"deletion receipt failed native row or span identity validation"}); }
       }
-      if (malformedRecords.some(record=>record.recordKey === root.runId)) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"runs",summary:"runs authority failed its strict native row validation"});
-      const run = runs.get(root.runId);
-      if (run === undefined) return SpanAuthorityRunResolutionSchema.parse({state:"missing",runId:root.runId});
-      const mismatches = liveSpanRootMismatches(root,run);
+      if (malformedRunIds.has(root.runId)) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"runs",summary:"runs authority failed its strict native row validation"});
+      const mismatches = liveIssues.get(root.runId);
+      if (mismatches === undefined) return SpanAuthorityRunResolutionSchema.parse({state:"missing",runId:root.runId});
       return SpanAuthorityRunResolutionSchema.parse(mismatches.length === 0 ? {state:"live",runId:root.runId}
         : {state:"malformed",runId:root.runId,table:"runs",summary:mismatches.join("; ")});
     });
     const snapshot = SpanAuthorityReadSnapshotSchema.parse({authorityGeneration:meta.authority_generation,authorityContentFingerprint:authorityContentFingerprint(database),
-      liveRunCount:runs.size,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
-      missingSpanRunIds:malformedRecords.length === 0 ? [...runs.keys()].filter(id=>!queuedRunIds.has(RunIdSchema.parse(id))).map(id=>RunIdSchema.parse(id)) : []});
+      liveRunCount,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
+      missingSpanRunIds:malformedRecords.length === 0 ? missingSpanRunIds : []});
     database.exec("COMMIT");transactionOpen = false;
     return Object.freeze(snapshot);
   } finally {
@@ -2991,7 +3033,7 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  /** Recreates the exact current run_search table and rebuilds it in one stopped transaction; nothing else may change. */
+  /** Recreates the exact source schema’s run_search table and rebuilds it in one stopped transaction; nothing else may change. */
   static repairMissingRunSearchProjection(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock): void {
     admission.assertStoppedProfile(operation);
     const path = join(admission.stateRoot, "state.db");
@@ -3002,13 +3044,16 @@ export class AuthorityDatabase implements Disposable {
     try {
       database.exec("PRAGMA synchronous=FULL; BEGIN IMMEDIATE"); open = true;
       const version = readIntPragma(database, "user_version");
-      if (version !== CURRENT_AUTHORITY_SCHEMA_VERSION || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
+      if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version) || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
       const before = nonProjectionFingerprint(database);
-      for (const statement of runSearchDefinitions()) database.exec(statement);
+      for (const statement of runSearchDefinitions(version)) database.exec(statement);
       database.exec("UPDATE database_states SET search_generation=NULL,search_state='invalid' WHERE id=1");
       const index = createRunSearchIndex(database), generation = readMetaRow(database).authority_generation, now = clock.now().toISOString();
-      let published = index.rebuild({ restart: true, limit: 500 }, generation, now);
-      while (published.state === "building") published = index.rebuild({ limit: 500 }, generation, now);
+      const readRun = inspectionRunReader(version);
+      index.installTracking();
+      let published = index.rebuild({ restart: true, limit: 500 }, generation, now, readRun);
+      while (published.state === "building") published = index.rebuild({ limit: 500 }, generation, now, readRun);
+      index.validateCoverage(readRun);
       if (normalizedNativeSchema(database) !== expectedNativeSchema(version, false) || nonProjectionFingerprint(database) !== before
         || readMetaRow(database).authority_generation !== generation) throw new Error("run-search-projection-repair-mutated-authority");
       database.exec("COMMIT"); open = false;
@@ -3145,7 +3190,7 @@ export class AuthorityDatabase implements Disposable {
     const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
       fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
       planDigest: evidenceSchemaPlanDigest(expectedFingerprint, conversion),
-      evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
+      evidenceSchemas: conversion, backup: { manifestPath: `backups/authority/${backup.manifest.backupFileName}.manifest.json`, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
@@ -3273,29 +3318,61 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Event evidence and its complete authority identity from one read-only snapshot. */
-  static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250, includeRecoveryEvidence = false) {
+  /**
+   * Visits, in cursor order, every timeline record except native diagnostics and notes, with the
+   * complete authority identity of the same read-only snapshot. Records are read a page at a time,
+   * so the inspection holds no more than one page however long ordinary retention lets the timeline grow.
+   * `earlier` re-reads, from the same snapshot, one run's run-scoped events before a cursor.
+   */
+  static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, visit: (record: TimelineEventRecord, earlier: EarlierRunEvents) => void,
+    busyTimeoutMs = 250, includeRecoveryEvidence = false) {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    let timeline: ReturnType<typeof readTimelineRecords> | undefined;
+    let visited = false;
     let recoveryEvidence: Readonly<{
       runs: readonly Readonly<{ runId: RunRecord["envelope"]["runId"]; workflow: string; traceId: string; version: number;
         possibleExternalWrite: boolean; attemptIds: readonly string[]; confirmations: readonly string[] }>[];
       deleted: readonly DeletedRunRecord[];
     }> | undefined;
     const identity = withDirectReaderAdmission(admission, () => inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
-      const metrics = z.object({ records: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(),
-        largest: z.number().int().nonnegative(), runs: z.number().int().nonnegative() }).parse(database.prepare(`
-        SELECT count(*) AS records, COALESCE(sum(length(CAST(payload_json AS BLOB))),0) AS bytes,
-          COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest, count(DISTINCT run_id) AS runs
-        FROM timeline_events
+      const metrics = z.object({ largest: z.number().int().nonnegative() }).parse(database.prepare(`
+        SELECT COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest
+        FROM timeline_events WHERE ${INSPECTED_TIMELINE_KINDS}
       `).get());
-      if (metrics.records > 100_000) throw new TimelineRecordError("timeline-doctor-record-limit-exceeded: 100000 records");
-      if (metrics.bytes > 16 * 1024 * 1024) throw new TimelineRecordError("timeline-doctor-payload-limit-exceeded: 16777216 bytes");
       if (metrics.largest > 256 * 1024) throw new TimelineRecordError("timeline-doctor-event-limit-exceeded: 262144 bytes");
-      if (metrics.runs > 10_000) throw new TimelineRecordError("timeline-doctor-run-limit-exceeded: 10000 run IDs");
-      const repository = createTimelineRepository({ database, read: (work) => work(),
-        mutate: () => { throw new Error("timeline-doctor-read-only"); }, assertOwner: () => {} });
-      timeline = readTimelineRecords(repository);
+      // Confirmations survive ordinary retention. Compare their immutable content,
+      // independently of mutable run versions and database-local delivery cursors.
+      const confirmationsByRun = new Map<string, string[]>();
+      const fenced = new Set<string>();
+      const page = database.prepare(`SELECT * FROM timeline_events WHERE cursor > ? AND ${INSPECTED_TIMELINE_KINDS} ORDER BY cursor LIMIT 500`);
+      const runPage = database.prepare(`SELECT * FROM timeline_events WHERE run_id = ? AND cursor > ? AND cursor < ?
+        AND kind <> 'run.queued' AND ${INSPECTED_TIMELINE_KINDS} ORDER BY cursor LIMIT 500`);
+      const earlier: EarlierRunEvents = (runId, before, each) => {
+        for (let after = 0; ;) {
+          const rows = runPage.all(runId, after, before);
+          for (const raw of rows) {
+            const record = timelineEventFromRow(raw);
+            after = record.cursor;
+            each(record);
+          }
+          if (rows.length < 500) return;
+        }
+      };
+      for (let after = 0; ;) {
+        const rows = page.all(after);
+        for (const raw of rows) {
+          const record = timelineEventFromRow(raw);
+          after = record.cursor;
+          if (record.payload.kind === "operation-confirmed" && record.scope.kind === "run") {
+            const digest = createHash("sha256").update(timelineAppendContent(record)).digest("hex");
+            const owned = confirmationsByRun.get(record.scope.runId);
+            if (owned === undefined) confirmationsByRun.set(record.scope.runId, [digest]);
+            else owned.push(digest);
+          } else if (record.payload.kind === "span" && record.payload.event.t === "transaction.fenced") fenced.add(record.payload.event.runId);
+          visit(record, earlier);
+        }
+        if (rows.length < 500) break;
+      }
+      visited = true;
       if (!includeRecoveryEvidence) return;
       const attempts = database.prepare("SELECT * FROM write_attempts").all().map((row) =>
         WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", row)));
@@ -3305,19 +3382,7 @@ export class AuthorityDatabase implements Disposable {
         if (owned === undefined) attemptsByRun.set(attempt.runId, [attempt]);
         else owned.push(attempt);
       }
-      // Confirmations survive ordinary retention. Compare their immutable content,
-      // independently of mutable run versions and database-local delivery cursors.
-      const confirmationsByRun = new Map<string, string[]>();
-      for (const record of timeline.records) {
-        if (record.payload.kind !== "operation-confirmed" || record.scope.kind !== "run") continue;
-        const digest = createHash("sha256").update(timelineAppendContent(record)).digest("hex");
-        const owned = confirmationsByRun.get(record.scope.runId);
-        if (owned === undefined) confirmationsByRun.set(record.scope.runId, [digest]);
-        else owned.push(digest);
-      }
-      const fenced = new Set(timeline.records.flatMap((row) => row.payload.kind === "span"
-        && row.payload.event.t === "transaction.fenced" ? [row.payload.event.runId] : []));
-      const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw) => {
+      const runs = Array.from(readRunPages(database), (raw) => {
         const run = runRecordFromRow(raw);
         const owned = attemptsByRun.get(run.envelope.runId) ?? [];
         return { runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,
@@ -3328,8 +3393,8 @@ export class AuthorityDatabase implements Disposable {
       const deleted = database.prepare("SELECT * FROM deleted_runs").all().map((row) => deletedRunFromRow(row).receipt);
       recoveryEvidence = { runs, deleted };
     }));
-    if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
-    return { ...identity, ...timeline, recoveryEvidence };
+    if (!visited || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
+    return { ...identity, recoveryEvidence };
   }
 
   /** Recovery evidence of a preserved suspect at any openable schema, from columns every such schema has. */
@@ -3527,13 +3592,13 @@ export class AuthorityDatabase implements Disposable {
         cold.inspection.snapshot.assertUnchanged(); cold.inspection.dispose();
         restore = cold.restore; admission = cold.admission;
       }
-      const afterClose = profileAuthorityFileWitnesses(admission.stateRoot);
+      const afterClose = stoppedLogoutAuthorityFileWitnesses(admission.stateRoot);
       const closedSource = fileStatus(path);
       if (!sameDirectory({ device: closedSource.dev, inode: closedSource.ino }, operation.source.database)) throw new Error("profile-logout-native-source-changed");
       const copied = withAuthorityDatabaseReadOnly(admission, path, native => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION));
       if (copied.installationId !== observed.installationId || copied.profileId !== observed.profileId || copied.schemaVersion !== observed.schemaVersion
         || copied.authorityGeneration !== observed.authorityGeneration || copied.authorityContentFingerprint !== observed.authorityContentFingerprint
-        || canonicalJsonStringify(profileAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
+        || canonicalJsonStringify(stoppedLogoutAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
       inspection = admission.capturePendingLogoutSnapshot(); snapshot = inspection.snapshot; copyAdmission = inspection.admission;
       database = new AuthorityDatabase(copyAdmission, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, this.#clock,
         undefined, undefined, undefined, undefined, "stopped-logout-inspection");
@@ -3541,7 +3606,7 @@ export class AuthorityDatabase implements Disposable {
       await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
       admission.assertPendingLogoutSettlementDatabase(path);
       if (inspectNativeAuthority(database.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint !== copied.authorityContentFingerprint
-        || canonicalJsonStringify(profileAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
+        || canonicalJsonStringify(stoppedLogoutAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
       if (operation.settlement === undefined) {
         const facts = database.readProfileResourceCustody();
         const stoppedAt = this.#clock.now().toISOString();
@@ -6196,6 +6261,14 @@ export class AuthorityDatabase implements Disposable {
             WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ?
             ORDER BY claim_generation
           `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId), nodeId, attempt);
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema)));
+        },
+        listByRunAttempt: (workflowId: string, itemId: string, runId: string, attempt: number) => {
+          const rows = this.#database.prepare(`
+            SELECT * FROM run_checkpoints
+            WHERE workflow = ? AND item_id = ? AND run_id = ? AND attempt = ?
+            ORDER BY claim_generation, node_id
+          `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId), RunIdSchema.parse(runId), PositiveIntSchema.parse(attempt));
           return Object.freeze(rows.map((row) => this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema)));
         },
         listByItem: (workflowId: string, itemId: string) => {

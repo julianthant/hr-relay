@@ -121,20 +121,33 @@ function causedByUnresolvedWrites(error: unknown): boolean {
 
 const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
 
-/** Buffers events that fire before a debug writer exists, then emits one storage row per slow operation. */
-export function createSlowOperationEvents(category: "http" | "worker") {
-  const pending: Array<Readonly<{ name: string; durationMs: number }>> = [];
+const SLOW_READ_REPORT_INTERVAL_MS = 60_000;
+
+export function createSlowOperationEvents(category: "http" | "worker", clock: Clock) {
+  type Sample = Readonly<{ name: string; durationMs: number; omitted?: number }>;
+  const pending: Sample[] = [];
+  let lastReadReport = -Infinity, omittedReads = 0, worstReadMs = 0;
   let emit: ((input: unknown) => unknown) | undefined;
-  const deliver = (operation: Readonly<{ name: string; durationMs: number }>): void => {
+  const deliver = (operation: Sample): void => {
     try {
       emit?.({ category, phase: "settled", area: "storage", reason: "slow-operation", code: operation.name,
-        durationMs: operation.durationMs, correlationId: randomUUID() });
+        durationMs: operation.durationMs, omitted: operation.omitted, correlationId: randomUUID() });
     } catch { /* a debug row never changes the storage operation */ }
   };
   return Object.freeze({
     hook(operation: Readonly<{ name: string; durationMs: number }>) {
-      if (emit === undefined) pending.push(operation);
-      else deliver(operation);
+      let sample: Sample = operation;
+      if (operation.name === "read-snapshot") {
+        const now = clock.monotonicMs();
+        worstReadMs = Math.max(worstReadMs, operation.durationMs);
+        if (now - lastReadReport < SLOW_READ_REPORT_INTERVAL_MS) { omittedReads++; return; }
+        sample = { ...operation, durationMs: worstReadMs, omitted: omittedReads || undefined };
+        lastReadReport = now;
+        worstReadMs = 0;
+        omittedReads = 0;
+      }
+      if (emit === undefined) pending.push(sample);
+      else deliver(sample);
     },
     attach(debugEvents: { emit(input: unknown): unknown }) {
       emit = input => debugEvents.emit(input);
@@ -299,7 +312,7 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
     let database: AuthorityDatabase | undefined, primary: { error: unknown } | undefined;
     try {
       await probeRestoreProfileBrowsersClosed(admission, join(workspace, rebuildRuntimeIsolation.processLockRoot), machine.maintenanceOperation(), clock, profileBrowserClosure);
-      const slowOperations = createSlowOperationEvents("http");
+      const slowOperations = createSlowOperationEvents("http", clock);
       database = AuthorityDatabase.openStoppedStartupRecovery(admission, clock, slowOperations.hook);
       attachStorageSlowOperations(slowOperations, database, clock, admission.stateRoot);
       const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID },
@@ -696,7 +709,7 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
           const backup = await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "schema-migration");
           const manifest = backup.manifests[0];
           if (backup.manifests.length !== 1 || manifest === undefined || manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-backup-required");
-          const slowOperations = createSlowOperationEvents("http");
+          const slowOperations = createSlowOperationEvents("http", clock);
           const database = AuthorityDatabase.openFixedLayoutSource(machine, admission, clock, slowOperations.hook);
           attachStorageSlowOperations(slowOperations, database, clock, admission.stateRoot);
           let primary: { error: unknown } | undefined;
@@ -933,7 +946,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
     assertProfileBrowserRoot(admission, resolved.config.paths.browserProfileRoot);
     return resolved;
   };
-  const slowOperations = createSlowOperationEvents("http");
+  const slowOperations = createSlowOperationEvents("http", input.clock);
   const database = AuthorityDatabase.open(admission, {
     path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "selected-profile-runtime",
   }, input.clock, undefined, undefined, undefined, input.credentials, slowOperations.hook);
@@ -1549,7 +1562,7 @@ function rebuildStagedProjections(
     const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission);
     let staged: AuthorityDatabase;
     try {
-      const slowOperations = createSlowOperationEvents("http");
+      const slowOperations = createSlowOperationEvents("http", clock);
       staged = AuthorityDatabase.openStoppedRestoreProjection(
         stagedAdmission,
         { path: stagedPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-storage-restore" },
