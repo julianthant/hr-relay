@@ -85,7 +85,7 @@ import { createOcrReviewRepository } from "./ocr-review.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createGeneratedArtifactRepository,generatedArtifactFromRow } from "./generated-artifacts.js";
 import { createImportedArtifactRepositories,importedArtifactFromRow } from "./imported-artifacts.js";
-import { isNativeOrdinaryTable,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
+import { isNativeOrdinaryTable,isNativeRecordIntegrityFailure,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
 import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
 import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
@@ -1863,7 +1863,7 @@ function storedDataFailedValidation(error: unknown): boolean {
       if (/^(?:ERR_|E[A-Z0-9]+$)/u.test(failure.code)) return false;
       if (failure.code === "WORKBOOK_STORAGE_CORRUPT") confirmed = true;
     }
-    if (integrityFailures.has(failure) || failure instanceof z.ZodError || failure instanceof SyntaxError
+    if (integrityFailures.has(failure) || isNativeRecordIntegrityFailure(failure) || failure instanceof z.ZodError || failure instanceof SyntaxError
       || importedIntegrityFailures.has(failure.message)) confirmed = true;
     seen.add(failure);
   }

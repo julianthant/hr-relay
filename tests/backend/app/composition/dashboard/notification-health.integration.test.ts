@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import * as authorityInspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
 import * as backupInspection from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { nativeOrdinaryRecordFromRow } from "../../../../../src/backend/storage/sqlite/native-record-row.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
@@ -74,8 +75,30 @@ describe("canonical notification producers", () => {
     { failure: "a published search generation that disagrees with authority", damage: (database: DatabaseSync) => {
       database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET search_state='ready', search_generation=authority_generation+1");
     } },
+    { failure: "a corrupt retained run result",
+      beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => {
+        const run = seedRun(f, QUEUED_RUN);
+        expect(f.reader.transition({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }).state).toBe("applied");
+      },
+      damage: (database: DatabaseSync) => {
+        const trigger = database.prepare("SELECT sql FROM sqlite_schema WHERE name='run_results_immutable'").get()?.sql;
+        if (typeof trigger !== "string") throw new Error("missing retained result trigger in fixture");
+        database.exec("DROP TRIGGER run_results_immutable");
+        const update = database.prepare("UPDATE run_results SET payload_json=?").run(JSON.stringify({ privateNote: "synthetic malformed result" }));
+        expect(Number(update.changes)).toBe(1);
+        database.exec(trigger);
+        const result = database.prepare("SELECT * FROM run_results").get();
+        try {
+          nativeOrdinaryRecordFromRow("run_results", result);
+          throw new Error("the malformed retained result decoded successfully");
+        } catch (error) {
+          expect(error).toHaveProperty("message", "run-result-payload-invalid");
+          expect(error).not.toHaveProperty("cause");
+        }
+      } },
     { failure: "an invalid SQLite file", damage: undefined },
-  ])("raises an integrity alert for $failure", async ({ damage }) => {
+  ])("raises an integrity alert for $failure", async ({ damage, beforeCopy }) => {
     const f = await fixture();
     const root = mkdtempSync(join(tmpdir(), "relay-health-verdict-"));
     const path = join(root, "state.db");
@@ -83,6 +106,7 @@ describe("canonical notification producers", () => {
       if (damage === undefined) {
         writeFileSync(path, Buffer.alloc(4096, 1), { mode: 0o600 });
       } else {
+        beforeCopy?.(f);
         const source = new DatabaseSync(f.path, { readOnly: true });
         try { source.prepare("VACUUM INTO ?").run(path); } finally { source.close(); }
         const damaged = new DatabaseSync(path, { enableForeignKeyConstraints: false });
