@@ -247,6 +247,13 @@ export const TimelinePageRequestSchema = z.strictObject({
   spanTypes: z.array(TimelineSpanTypeSchema).min(1).max(TimelineSpanTypeSchema.options.length).optional(),
 });
 
+export class TimelineDiagnosticBudgetError extends Error {
+  constructor() {
+    super("timeline-diagnostic-cap-exceeded");
+    this.name = "TimelineDiagnosticBudgetError";
+  }
+}
+
 export interface TimelineRepository {
   withReadSnapshot<T>(read: () => T): T;
   append(input: unknown): Readonly<{ state: "inserted" | "existing"; record: TimelineEventRecord }>;

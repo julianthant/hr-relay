@@ -9,7 +9,7 @@ export const readOcrReviewSeedTask = defineTask(ReadOcrReviewSeed, {
     let output;
     try {
       output = compactOcrReviewSeed(buildOcrReviewSeed({ ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster,
-        accounting: accountOcrPages(input.manifest, input.readingId, input.outcomes, input.formType) }));
+        accounting: accountOcrPages(input.manifest, input.readingId, input.outcomes, input.formType, input.extractWithOcr) }));
     } catch (error) {
       return ctx.fail("INCONSISTENT_INPUTS", "OCR child outcomes do not account for the original document.", { cause: error });
     }

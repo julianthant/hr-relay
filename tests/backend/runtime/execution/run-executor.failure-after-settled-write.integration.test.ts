@@ -73,7 +73,7 @@ it("records the run's committed write on a later node failure and serves it as a
     resolution: { capture: { failureId: failure.failureId, runId: run.envelope.runId, resolution: { status: "unresolved", version: 1 } } } });
   const decision = failureDecision(wire);
   assert.equal(decision.type, "failed-after-write");
-  assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed", "add-note"]);
+  assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed"]);
 });
 
 it("a plain Start after another run's committed write replays its outcome and never clicks Save again", async () => {

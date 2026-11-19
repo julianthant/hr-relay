@@ -9,7 +9,7 @@ import { IdentityApprovalResultSchema, type IdentityApprovalResult } from "../..
 import { requireParkedWriteCheckTarget } from "../../../runtime/writes/write-recovery.js";
 import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
-import { protectIdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
+import { employeeIdFromLookupComparison, protectIdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
 import {
   retainedRunProtectedBindings,
   hasProtectedTransactionInput,
@@ -461,15 +461,6 @@ function readIdentityGate(
     throw new Error(`run ${runId} advertises an identity-gate section while it is ${lifecycle.state}`);
   }
   const missing = { state: "missing" as const, reason: IDENTITY_REVIEW_TEXT.unavailable };
-  const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
-  if (descriptor === undefined) {
-    return missing;
-  }
-  const gate = (descriptor.gateNodes ?? [])
-    .find(({ nodeId }) => nodeId === String(lifecycle.gateId));
-  if (gate === undefined) {
-    return missing;
-  }
   if (deps.canonical === undefined) {
     return missing;
   }
@@ -479,8 +470,11 @@ function readIdentityGate(
   }
   if (runtimeDescriptor.version !== authority.envelope.descriptorVersion
     || runtimeDescriptor.contractFingerprint !== authority.envelope.contractFingerprint) {
-    return missing;
+    return { state: "missing", reason: "This gate was opened under an earlier workflow definition. Its identity review is unavailable." };
   }
+  const gate = deps.descriptors.resolve(authority.envelope.workflow)?.gateNodes
+    ?.find(({ nodeId }) => nodeId === String(lifecycle.gateId));
+  if (gate === undefined) return missing;
   const runtimeGate = descriptorRuntimeNodes(runtimeDescriptor)
     .find((candidate) => candidate.kind === "gate" && String(candidate.id) === gate.nodeId);
   if (runtimeGate === undefined || runtimeGate.kind !== "gate"
@@ -619,7 +613,7 @@ function identityReviewReason(packet: IdentityEvidencePacket, candidates: number
   if (packet.emplIdSource === "operator-entered") return reason["eid-entered"];
   const first = packet.comparisons.find(({ agrees }) => !agrees);
   if (first === undefined) return reason.agreed;
-  if (first.field === "eid") return reason.eid;
+  if (employeeIdFromLookupComparison(first) !== undefined) return IDENTITY_REVIEW_TEXT.employeeIdLookup.reason;
   return reason[first.field];
 }
 
@@ -637,7 +631,14 @@ function identityComparisons(packet: IdentityEvidencePacket): readonly Readonly<
     "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ${maskedEid(nameSearch.candidate.eid)}`
       : nameSearch.status === "ambiguous" ? `${String(nameSearch.candidateEids.length)} people` : value.noMatch],
   };
-  return packet.comparisons.map(({ field, agrees }) => ({ label: label[field], request: cells[field][0], ucpath: cells[field][1], agrees }));
+  return packet.comparisons.map(comparison => {
+    const { field, agrees } = comparison;
+    const searchedEmployeeId = employeeIdFromLookupComparison(comparison);
+    const [request, ucpath] = cells[field];
+    return searchedEmployeeId === undefined
+      ? { label: label[field], request, ucpath, agrees }
+      : { label: IDENTITY_REVIEW_TEXT.employeeIdLookup.label, request: maskedEid(searchedEmployeeId), ucpath, agrees };
+  });
 }
 
 /** D1 (one candidate): approve or, where the gate declares it, reject. D2 (several): pick a served candidate, or cancel the run. */

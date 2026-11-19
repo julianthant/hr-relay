@@ -256,6 +256,45 @@ describe("read-only Context Data projection", () => {
     });
   });
 
+  it("reads a paused run's archived checkpoint with compatible output and leaves its hold intact", async () => {
+    const current = await world();
+    const source = sourceRun(current, { seed: 64, claimGeneration: 1, version: 2 });
+    storeCheckpoint(current, checkpointFor(source, { provenance: [
+      { path: "invitedOn.value", source: "live", observedAt: NOW, originalObservedAt: NOW },
+    ] }));
+    const pausedAt = source.updatedAt;
+    current.database.authority.runs.setPause({ runId: source.envelope.runId, expectedVersion: source.version, now: pausedAt,
+      pause: { state: "paused", requestedAt: pausedAt, pausedAt, commandId: uuidOf(640) } });
+    const before = current.database.authority.runs.get(source.envelope.runId);
+    assert.equal(before?.pause?.state, "paused");
+    const generation = current.database.getMeta().authorityGeneration;
+
+    const exactDescriptor = { ...EXACT_DESCRIPTOR, version: EXACT_DESCRIPTOR.version + 1 };
+    const payload = contextData(current, source.envelope.runId, { exactDescriptor });
+    assert.equal(payload.state, "archived");
+    const retained = payload.entries.find(entry => entry.label === "Invited on");
+    assert.equal(retained?.valueRedacted, "2026-06-01");
+    assert.equal(retained?.source, "live");
+    assert.equal(retained?.observedAt, NOW);
+    assert.equal(retained?.origin, undefined);
+    assert.equal(retained?.freshness, undefined);
+    assert.equal(retained?.checkpoint.state, "present");
+    assert.equal(retained?.checkpoint.state === "present" && retained.checkpoint.descriptorVersion, source.envelope.descriptorVersion);
+    assert.deepEqual(current.database.authority.runs.get(source.envelope.runId), before);
+    assert.equal(current.database.getMeta().authorityGeneration, generation);
+  });
+
+  it("withholds an archived checkpoint whose output no longer has a matching schema", async () => {
+    const current = await world();
+    const source = sourceRun(current, { seed: 65, claimGeneration: 1, version: 2 });
+    storeCheckpoint(current, checkpointFor(source, { schemaHash: HASH_B }));
+    const exactDescriptor = { ...EXACT_DESCRIPTOR, version: EXACT_DESCRIPTOR.version + 1 };
+    const payload = contextData(current, source.envelope.runId, { exactDescriptor });
+    assert.equal(payload.state, "unavailable");
+    assert.equal(payload.reason, "descriptor-mismatch");
+    assert.deepEqual(payload.entries, []);
+  });
+
   it("refuses stale editable prefill fields and leaves checkpoint/source authority untouched", async () => {
     const current = await world();
     const source = sourceRun(current, { seed: 71, claimGeneration: 1, version: 2 });

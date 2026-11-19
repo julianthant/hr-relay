@@ -30,7 +30,7 @@ import { JobSummaryClassificationSchema } from "../../../../rules/separations/jo
 import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
 import type { StepProofSpec, WorkflowAuthor, WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
-import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
 import type { SeparationsInput } from "../../workflow.js";
 import type { buildTimecard } from "../kronos-timecard/step.js";
 import type { buildExtraction } from "../kuali-extraction/step.js";
@@ -47,10 +47,10 @@ export const IDENTITY_CHECK_STEP = defineWorkflowStep({
 
 /** Operator text and fields for this group in Explorer and Logs. */
 const IDENTITY_CHECK_DISPLAY = {
-  description: "Search UCPath for the employee named on the document, read their job summary, choose the active job and match its department to the Kuali option.",
+  description: "Search UCPath by the Employee ID on the Kuali document, read the job summary, choose the active job and match its department to the Kuali option.",
   system: "ucpath",
   operatorFields: [
-    { label: "Searched name", example: "Quillan, Petra A.", sources: [{ nodeId: "subject", kind: "output", fieldPath: "searchedName" }] },
+    { label: "Searched Employee ID", example: "10000001", sources: [{ nodeId: "subject", kind: "output", fieldPath: "searchedEmployeeId" }] },
     { label: "Employee ID", example: "10000001", sources: [{ nodeId: "subject", kind: "output", fieldPath: "emplId" }] },
     { label: "HR status", example: "Active", sources: [{ nodeId: "employment", kind: "output", fieldPath: "hrStatus" }] },
     { label: "Department", example: "CAMPUS DINING OPERATIONS", sources: [{ nodeId: "employment", kind: "output", fieldPath: "department" }] },
@@ -65,25 +65,25 @@ const IDENTITY_CHECK_DISPLAY = {
         mode: "Read only",
         nodeIds: ["name-search", "subject"],
         lines: [
-          { id: "search-name", kind: "action", text: "Search UCPath for the employee named on the Kuali document.", nodeIds: ["name-search"] },
+          { id: "search-employee-id", kind: "action", text: "Search UCPath for the employee by the Employee ID on the Kuali document.", nodeIds: ["name-search"] },
           { id: "search", kind: "click", target: "Search", nodeIds: ["name-search"] },
-          { id: "select-subject", kind: "check", text: "Resolve the exact employee ID and name match.", nodeIds: ["subject"] }
+          { id: "select-subject", kind: "check", text: "Confirm the exact Employee ID in UCPath.", nodeIds: ["subject"] }
         ],
         fields: [
           {
-            id: "searched-name",
-            operatorField: "Searched name",
+            id: "searched-employee-id",
+            operatorField: "Searched Employee ID",
             source: {
               origin: "Kuali document",
-              detail: "Name used for the UCPath search.",
+              detail: "Employee ID used for the UCPath search.",
               chain: [
                 {
-                  label: "Document name",
+                  label: "Document Employee ID",
                   detail: "Read on the Kuali separation request.",
-                  read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Employee" }
+                  read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Employee ID" }
                 }
               ],
-              read: { stepKey: "identity-check", page: "Person Organizational Summary search", field: "Searched name" }
+              read: { stepKey: "identity-check", page: "Person Organizational Summary search", field: "Searched Employee ID" }
             }
           },
           {
@@ -232,9 +232,11 @@ export const APPROVAL_NODE = "approval";
 const identityCheckEntries = defineStepEntries(IDENTITY_CHECK_STEP);
 const identityReviewEntries = defineStepEntries(IDENTITY_REVIEW_STEP);
 
-export const nameSearchNode = identityCheckEntries.task(NAME_SEARCH_NODE, SearchPersonOrg, {
-  label: "Name Search",
-  replay: "checkpoint",
+const employeeIdSearch = { label: "Employee ID Search", replay: "checkpoint" } as const;
+const employeeIdSearchNode = identityCheckEntries.task(NAME_SEARCH_NODE, SearchPersonOrg, employeeIdSearch);
+const documentEmployeeIdSearchNode = identityCheckEntries.task(NAME_SEARCH_NODE, SearchPersonOrg, {
+  ...employeeIdSearch,
+  when: { kind: "equals", of: { from: "node", nodeId: "document", path: "employee.eid.state" }, value: "present" },
 });
 
 const subjectNode = identityCheckEntries.task(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
@@ -357,23 +359,22 @@ const SeparationsIdentityCheckResultSchema = z.strictObject({
 });
 
 export function resolveSubject({ task }: Author, extraction: Extraction) {
-  const { document, plan } = extraction;
-  const nameSearch = task(nameSearchNode, [plan], ({ outputs }) => ({
-    kind: "by-name" as const,
-    name: outputs["plan"].employeeName,
-    keepNonHdh: true,
-  }));
-  const subject = task(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
+  const { document } = extraction;
+  const eidSearch = task(documentEmployeeIdSearchNode, [document], ({ outputs }) => {
+    const eid = outputs["document"].employee.eid;
+    if (eid.state !== "present") throw new Error("Person Org search is missing the document Employee ID");
+    return { kind: "by-eid" as const, emplId: eid.value };
+  });
+  const subject = task(subjectNode, [document, eidSearch], ({ input, outputs }) => ({
     documentNumber: input.documentNumber,
-    employeeName: outputs["plan"].employeeName,
     ...(input.operatorEmployeeId === undefined ? {} : { operatorEmployeeId: input.operatorEmployeeId }),
     documentEid: outputs["document"].employee.eid,
-    nameSelection: outputs[NAME_SEARCH_NODE].selection,
+    searchSelection: outputs[NAME_SEARCH_NODE]?.selection,
   }));
-  return { nameSearch, subject };
+  return { eidSearch, subject };
 }
 export function readJobs({ task, group }: Author, extraction: Extraction, resolved: Subject) {
-  const { document } = extraction, { nameSearch, subject } = resolved;
+  const { document } = extraction, { eidSearch, subject } = resolved;
   const jobSummary = task(jobSummaryNode, [document, subject], ({ outputs }) => {
     const separationDate = outputs["document"].separation.separationDate;
     return {
@@ -401,15 +402,15 @@ export function readJobs({ task, group }: Author, extraction: Extraction, resolv
   );
   return {
     jobSummary, employment, departmentOption,
-    steps: [[group(IDENTITY_CHECK_STEP, { ...IDENTITY_CHECK_DISPLAY, locked: "guard-read" }), [nameSearch, subject, jobSummary, employment, departmentOption]]] as const,
+    steps: [[group(IDENTITY_CHECK_STEP, { ...IDENTITY_CHECK_DISPLAY, locked: "guard-read" }), [eidSearch, subject, jobSummary, employment, departmentOption]]] as const,
   };
 }
 export function buildIdentity({ task, gate, group }: Author, extraction: Extraction, resolved: Subject, jobs: Jobs, timecard: Timecard) {
-  const { document, plan, terminationType } = extraction, { nameSearch, subject } = resolved;
+  const { document, plan, terminationType } = extraction, { eidSearch, subject } = resolved;
   const { jobSummary, employment, departmentOption } = jobs, { dates } = timecard;
   const comparison = task(
     comparisonNode,
-    [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
+    [document, plan, subject, jobSummary, eidSearch, terminationType, departmentOption, employment, dates],
     ({ input, outputs, protectedInputBindings }) => {
       const timekeeperBinding = protectedInputBindings?.find(({ name }) => name === "timekeeperName");
       if (timekeeperBinding === undefined) throw new Error("protected input timekeeperName binding is absent");
@@ -421,7 +422,8 @@ export function buildIdentity({ task, gate, group }: Author, extraction: Extract
         emplId: outputs[SUBJECT_NODE].emplId,
         emplIdSource: outputs[SUBJECT_NODE].emplIdSource,
         jobSummary: outputs[JOB_SUMMARY_NODE],
-        nameSelection: outputs[NAME_SEARCH_NODE].selection,
+        nameSelection: requireFact(outputs[NAME_SEARCH_NODE]?.selection, NAME_SEARCH_NODE, "selection"),
+        searchedEmployeeId: outputs[SUBJECT_NODE].searchedEmployeeId,
         plan: {
           state: "planned" as const,
           termination: {
@@ -553,9 +555,7 @@ export const separationsIdentityCheckDefinition = defineStep({
         },
         {
           nodeId: "name-search",
-          purpose:
-            "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator " +
-            "sees every person that name matches rather than only the ones a similarity threshold selected.",
+          purpose: "Searches UCPath Person Organizational Summary by the Employee ID bound to this identity check.",
         },
         {
           nodeId: "comparison",
@@ -595,14 +595,13 @@ export const separationsIdentityCheckDefinition = defineStep({
         const jobSummary = task(jobSummaryNode, [], ({ input }) => ({
           emplId: input.emplId,
         }));
-        const nameSearch = task(nameSearchNode, [], ({ input }) => ({
-          kind: "by-name" as const,
-          name: input.employeeName,
-          keepNonHdh: true,
+        const eidSearch = task(employeeIdSearchNode, [], ({ input }) => ({
+          kind: "by-eid" as const,
+          emplId: input.emplId,
         }));
         const comparison = task(
           comparisonNode,
-          [jobSummary, nameSearch],
+          [jobSummary, eidSearch],
           ({ input, outputs }) => ({
             documentNumber: input.documentNumber,
             documentName: input.employeeName,
@@ -611,6 +610,7 @@ export const separationsIdentityCheckDefinition = defineStep({
             emplIdSource: input.emplIdSource,
             jobSummary: outputs[JOB_SUMMARY_NODE],
             nameSelection: outputs[NAME_SEARCH_NODE].selection,
+            searchedEmployeeId: input.emplId,
             plan: noSeparationWritePlan(
               "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
             ),
@@ -628,7 +628,7 @@ export const separationsIdentityCheckDefinition = defineStep({
         );
         return {
           steps: [
-            [IDENTITY_CHECK_STEP, [nameSearch, jobSummary]],
+            [IDENTITY_CHECK_STEP, [eidSearch, jobSummary]],
             [IDENTITY_REVIEW_STEP, [comparison, identityGate, approval]],
           ],
           result: result(

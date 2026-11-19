@@ -9,6 +9,7 @@ import {
 } from "../../../src/workflow-kit/workflow-definition.js";
 import { CrmReadOnboardingDates } from "../../../src/models/systems/crm/read-onboarding-dates.js";
 import { CrmReadOnboardingRecord } from "../../../src/models/systems/crm/read-onboarding-record.js";
+import { CrmSearchOnboardingRecords } from "../../../src/models/systems/crm/search-onboarding-records.js";
 import { UcpathDeletePendingTerminations } from "../../../src/models/systems/ucpath/delete-pending-terminations.js";
 import { UcpathReadPendingTerminationSet } from "../../../src/models/systems/ucpath/read-pending-termination-set.js";
 import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
@@ -75,7 +76,7 @@ export const everyEntryKindWorkflow = defineWorkflow({
     }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
     const crmRecord = task({
       id: "crm-record",
-      contract: CrmReadOnboardingRecord,
+      contract: CrmSearchOnboardingRecords,
       label: "CRM Record",
       replay: "checkpoint",
     }, [], ({ input }) => ({ eid: input.emplId, name: input.expectedName }));

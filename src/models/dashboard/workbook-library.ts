@@ -322,22 +322,3 @@ export type WorkbookLibraryVersion = z.infer<typeof WorkbookLibraryVersionSchema
 export type WorkbookLibraryAction = z.infer<typeof WorkbookLibraryActionSchema>;
 export type WorkbookLibraryActionResult = z.infer<typeof WorkbookLibraryActionResultSchema>;
 export type WorkbookLibraryActionRecord = z.infer<typeof WorkbookLibraryActionRecordSchema>;
-
-export const WorkbookResultsSchema = z.strictObject({
-  workflows: z.array(z.strictObject({ workflowId: WorkflowIdSchema, workflowLabel: NameSchema,
-    runs: z.array(z.strictObject({ runId: RunIdSchema, partitionDay: DateOnlySchema,
-      enqueuedAt: IsoInstantSchema.nullable(), entries: z.array(WorkbookLibraryEntrySchema).min(1),
-    })).min(1),
-  })),
-  unavailable: z.array(WorkbookLibraryEntrySchema),
-}).superRefine((results, ctx) => {
-  const runs = results.workflows.flatMap(workflow => workflow.runs.map(run => run.runId));
-  const entries = [...results.workflows.flatMap(workflow => workflow.runs.flatMap(run => run.entries)), ...results.unavailable];
-  if (new Set(results.workflows.map(workflow => workflow.workflowId)).size !== results.workflows.length || new Set(runs).size !== runs.length
-    || new Set(entries.map(entry => entry.libraryId)).size !== entries.length || results.unavailable.some(entry => entry.state.origin.kind !== "unavailable")
-    || results.workflows.some(workflow => workflow.runs.some(run => run.entries.some(entry => {
-      const origin = entry.state.origin;
-      return origin.kind !== "workflow" || origin.workflowId !== workflow.workflowId
-        || origin.runId !== run.runId || origin.partitionDay !== run.partitionDay;
-    })))) ctx.addIssue({ code: "custom", message: "workbook result group identity mismatch" });
-});
