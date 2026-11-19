@@ -47,7 +47,7 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
 }
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
-  for (const outcome of ["failed", "interrupted"] as const) it(`${outcome} defaults preserve required completed work and select unfinished work`, async () => {
+  for (const outcome of ["failed", "interrupted"] as const) it(`${outcome} reruns initially select every step and explain missing source values`, async () => {
     const h = await setup(); const source = h.start(h.proposal(undefined, undefined, true));
     if (outcome === "failed") {
       h.world.onPrepare = () => { throw new Error("synthetic prepare failure"); };
@@ -70,8 +70,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     }
     await mount(h, h.fresh(source)); assert.equal(checkbox("Read employee").checked, true);
     assert.equal(checkbox("File transaction").checked, true);
-    assert.equal(checkbox("Check employee").checked, outcome !== "failed");
-    await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /Unavailable/u);
+    assert.equal(checkbox("Check employee").checked, true);
+    await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /The earlier run did not (?:get far enough to record|record) this\./u);
   });
 
 });

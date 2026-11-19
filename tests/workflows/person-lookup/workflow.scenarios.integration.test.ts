@@ -22,7 +22,6 @@ import { searchPersonMatchWithPort } from "../../../src/backend/systems/ucpath/d
 import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
 import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
 import { previewRunInput } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { CrmDiscoveredRecordSchema } from "../../../src/models/systems/crm/search-onboarding-records.js";
@@ -344,7 +343,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.ok(surface);
     const refused = previewRunInput(surface, "Example, Person, x, X", { mode: "match" });
     assert.deepEqual(refused.submissions, []);
-    assert.ok(refused.problem?.includes(ERROR_CATALOG.PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS.text));
+    assert.equal(refused.problem, "Match needs DOB or SSN; both cannot be x.");
     assert.equal(PersonLookupInput.safeParse({ mode: "match", lastName: "Example", firstName: "Person", dob: "x" }).success, false);
   });
   it("F3", async () => {
