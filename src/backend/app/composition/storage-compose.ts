@@ -1262,7 +1262,7 @@ export function composeProfileRuntime(input: Readonly<{
       catch (error) { initializationFailure = { error }; break; }
     }
     for (const { ordinary } of resources.values()) {
-      if (ordinary?.state !== "open") continue;
+      if (ordinary === undefined || ordinary.state === "closed") continue;
       ordinary.state = "closing";
       // A slow custody read must not advance the generation it just observed.
       if (purpose === "shutdown") ordinary.context?.attachSlowOperations({ emit: event => appendLocalDebug({
