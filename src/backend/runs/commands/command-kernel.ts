@@ -23,7 +23,7 @@ import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-recor
 import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { executeFailureResolution } from "../lifecycle/failure-resolution.js";
-import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
+import { assertOcrReviewChildrenCurrent,assertOcrSelectionCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
 import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
 import { admitProtectedInput,protectedSubjectDisplay } from "../start/protected-input.js";
@@ -1771,6 +1771,7 @@ function executeResolveGate(
       approvedBy: request.requestedBy, approvedAt: now });
     if (!parsed.success) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     const snapshot = parsed.data;
+    assertOcrSelectionCurrent(review.revision.seed, snapshot.records);
     if (canonicalJsonStringify(parsedValue.data) !== canonicalJsonStringify({ snapshotId: snapshot.snapshotId,
       sourceRunId: snapshot.sourceRunId, revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) })) reject(request, "schema-mismatch", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     repositories.ocrReviews.approve(snapshot);
@@ -2435,6 +2436,9 @@ function dispatchActive(
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const current = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
       if (current === undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      const descriptors = dependencies.readableDescriptors ?? dependencies.descriptors;
+      const descriptor = resolveDescriptorOrReject({ ...dependencies, descriptors }, request, current.run.envelope.workflow);
+      requireDescriptorMatchesEnvelope(request, descriptor, current.run);
       if (readOcrSnapshotsAuthority(repositories, current).length > 0) throw new OcrReviewRefusedError();
       if (current.revision.revision !== request.target.expectedRevision) conflict(request, current.revision.revision, ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const revision = repositories.ocrReviews.append(reviseOcrReview(current.revision, request, now), current.revision.revision);
