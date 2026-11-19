@@ -33,20 +33,13 @@
 .settings-tab-body .ds-switch-copy { gap:0; }
 .settings-tab-body .ds-switch-control { min-width:36px; }
 .settings-tab-body .ds-body-stack > .ds-body-section + .ds-body-section { margin-top:var(--ds-settings-section-gap); }
-.hub-settings-row { min-height:var(--ds-row-h-2);padding:var(--ds-row-pad-y) 0;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,300px);gap:24px;align-items:center; }
-.hub-row-label { font-size:var(--ds-text-body-row);line-height:var(--ds-lh-body-row);font-weight:400; }
-.hub-row-note { display:block;color:var(--ui-muted);font-size:var(--ds-row-desc);line-height:var(--ds-row-desc-lh);font-weight:400;margin-top:var(--ds-row-gap); }
-.hub-setting-control { display:flex;gap:7px;justify-content:flex-end;align-items:center;min-width:0; }
-.hub-setting-control > button { display:flex;align-items:center;gap:6px; }
-.hub-window-size { display:flex;align-items:center;gap:7px;min-width:0; }
-.hub-window-size > input { width:0;min-width:0;flex:1; }
-@media(max-width:1440px) { .settings-tab-body .ds-form-group .ds-body-row,.hub-settings-row { grid-template-columns:minmax(0,1fr) minmax(130px,290px); } }
-@media(max-width:1100px) { .hub-settings-row { grid-template-columns:1fr;gap:9px; }.hub-setting-control { justify-content:flex-start; } }
 
+.hub-row-note { display:block;color:var(--ui-muted);font-size:var(--ds-row-desc);line-height:var(--ds-row-desc-lh);font-weight:400;margin-top:var(--ds-row-gap); }
+
+@media(max-width:1440px) { .settings-tab-body .ds-form-group .ds-body-row { grid-template-columns:minmax(0,1fr) minmax(130px,290px); } }
 
 .settings-takeover .settings-compact-control [data-slot="date-input-group"] { height:var(--ds-row-control-h);border-color:var(--ds-soft-border);border-radius:8px;background:var(--ds-picker-bg);font-size:13px; }
 .settings-takeover .ds-field-label>span[aria-hidden="true"][class*="--ds-danger"] { display:none; }
-
 
 .settings-nav-header button { width:28px;height:28px;min-width:28px;min-height:28px;border-radius:8px; }
 .settings-nav-header button svg { width:16px;height:16px; }
@@ -55,10 +48,6 @@
   .settings-takeover [aria-label="Loading analytics report"] .activity-summary > div > div:last-child { height:1lh; }
 }
 
-.app-data-path-control { width:300px;max-width:100%; }
-.app-data-path-control .app-data-path { flex:1;min-width:0; }
-.app-data-path-control input { font-family:var(--font-data);font-size:12px;color:var(--ui-muted);text-overflow:ellipsis; }
-.app-data-path-control > button { width:var(--ds-row-control-h);height:var(--ds-row-control-h);flex:none; }
 .settings-takeover .ds-path-control { gap:12px; }
 .settings-takeover .ds-path-control > button { min-width:70px;height:28px; }
 .settings-takeover [data-settings-path^="annualDates."] .settings-compact-control { width:153px;margin-left:auto; }

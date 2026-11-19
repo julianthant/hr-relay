@@ -90,7 +90,7 @@ describe("dashboard refresh boundary (ref frontend-backend-integration)", () => 
   it("every surface and app module exports components only", () => {
     const files = surfaceFiles();
     expect(files.length).toBeGreaterThan(20);
-    expect(files).toContain("src/dashboard/surfaces/settings/preflight/settings-preflight.tsx");
+    expect(files).toContain("src/dashboard/surfaces/settings/preflight/preflight-actions.tsx");
     expect(files).toContain("src/dashboard/surfaces/run-detail/log-panel.tsx");
     const report = files.flatMap((file) => {
       const violations = refreshBoundaryViolations(file, readFileSync(join(REPO_ROOT, file), "utf8"));
