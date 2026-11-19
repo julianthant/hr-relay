@@ -2,17 +2,204 @@ import { randomUUID } from "node:crypto";
 import { WorkflowWorkbookSelectionInputSchema, WorkflowWorkbookSelectionRecordSchema, WorkbookLibraryStateSchema, WorkbookLibraryEntrySchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryActionResultSchema, WorkbookLibrarySyncRecordSchema, type WorkbookLibrarySyncRecord, type WorkbookLibraryState, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches, type WorkbookReplayContext } from "../../workbooks/master-changes.js";
+import { applyMasterChange, WorkbookOwnershipSchema, workbookKey, workbookMatches, type WorkbookOwnership, type WorkbookReplayContext } from "../../workbooks/master-changes.js";
 import { WorkbookSnapshotRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookNamedReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
-import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type SavedWorkbook } from "../../../models/dashboard/workbooks.js";
+import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type EditableWorkbookWire, type SavedWorkbook, type WorkbookOperation, type WorkbookOperationReceipt, type WorkbookType } from "../../../models/dashboard/workbooks.js";
 import { WorkbookOperationRecordSchema } from "../../../models/dashboard/workbooks.js";
 import { IsoInstantSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 const serializeSavedWorkbook = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
+
+type KeyedWorkbookChange = Extract<WorkbookOperation['change'], { kind: 'patch' | 'add' }>;
+type SettledWorkbookOperation = { operation: WorkbookOperation; settled: WorkbookOperationReceipt };
+type WorkbookSheet = EditableWorkbookWire['sheets'][number];
+type WorkbookRow = WorkbookSheet['rows'][number];
+type CellEffect = WorkbookOperationReceipt['changes'][number];
+type CellKey = (value: unknown) => string | undefined;
+const literalKey: CellKey = value => typeof value === 'string' ? value : undefined;
+
+function fieldColumns(sheet: WorkbookSheet, field: string) {
+  return sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
+}
+
+function replayKeyedSettlement(workbook: EditableWorkbookWire, version: number, change: KeyedWorkbookChange,
+  receipt: WorkbookOperationReceipt, type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined): EditableWorkbookWire {
+  if (type === undefined || type.keyFieldId === null || Object.keys(change.values).length === 0
+    || Object.keys(change.values).some(field => !type.fields.includes(field))) {
+    throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  }
+  const keyField = type.keyFieldId;
+  const address = change.kind === 'add' ? change : change.selection ?? receipt.candidates[0];
+  const sheetIndex = workbook.sheets.findIndex(sheet => sheet.id === address?.sheetId);
+  const sheet = workbook.sheets[sheetIndex];
+  if (address === undefined || sheet === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  const rowIndex = sheet.rows.findIndex(row => row.id === address.rowId);
+  if (change.kind === 'add' ? rowIndex !== -1 || receipt.candidates.length !== 0
+    : rowIndex < (sheet.headerRow ?? 1) || (change.selection === undefined ? receipt.candidates.length !== 1
+      : change.selection.expectedVersion !== version || !receipt.candidates.some(candidate => candidate.sheetId === address.sheetId && candidate.rowId === address.rowId))) {
+    throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  }
+  const sourceRow = sheet.rows[rowIndex];
+  const values = new Map(Object.entries(change.values));
+  if (change.kind === 'add' && !values.has(keyField)) values.set(keyField, change.key);
+  const hasRecordedKey = (value: unknown) => value === change.key || workbookKey(value) === change.key;
+  if ((change.kind === 'patch' && !sheet.columnBindings?.some((binding, index) => binding.fieldId === keyField
+    && hasRecordedKey(sourceRow.cells[index]?.value))) || (values.has(keyField) && !hasRecordedKey(values.get(keyField)))) {
+    throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  }
+  const cells: (typeof sourceRow)['cells'] = change.kind === 'add'
+    ? Array.from({ length: sheet.width }, () => ({ value: null })) : [...sourceRow.cells];
+  for (const effect of receipt.changes) {
+    const indexes = fieldColumns(sheet, effect.fieldId);
+    const cell = indexes.length === 1 ? cells[indexes[0]] : undefined;
+    if (effect.sheetId !== address.sheetId || effect.rowId !== address.rowId || (effect.key !== undefined && effect.key !== change.key)
+      || cell === undefined || !values.has(effect.fieldId)
+      || canonicalJsonStringify(cell.value) !== canonicalJsonStringify(effect.oldValue)
+      || canonicalJsonStringify(values.get(effect.fieldId)) !== canonicalJsonStringify(effect.newValue)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    const { richText: _richText, hyperlink: _hyperlink, tooltip: _tooltip, ...format } = cell;
+    cells[indexes[0]] = { ...format, value: effect.newValue };
+    values.delete(effect.fieldId);
+  }
+  if (values.size !== 0) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  const rows = [...sheet.rows];
+  if (change.kind === 'add') rows.push({ id: address.rowId, cells });
+  else rows[rowIndex] = { ...sourceRow, cells };
+  const sheets = [...workbook.sheets];
+  sheets[sheetIndex] = { ...sheet, rows };
+  return { ...workbook, sheets };
+}
+
+function rowsByKey(workbook: EditableWorkbookWire, keyField: string, keyOf: CellKey) {
+  const byKey = new Map<string, { sheet: WorkbookSheet; row: WorkbookRow }[]>();
+  for (const sheet of workbook.sheets) {
+    const columns = fieldColumns(sheet, keyField);
+    for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
+      for (const key of new Set(columns.map(index => keyOf(row.cells[index].value)))) {
+        if (key === undefined) continue;
+        const matches = byKey.get(key);
+        if (matches === undefined) byKey.set(key, [{ sheet, row }]);
+        else matches.push({ sheet, row });
+      }
+    }
+  }
+  return byKey;
+}
+
+function workbookCells(workbook: EditableWorkbookWire, keyField: string | null, keyOf: CellKey) {
+  const rows = keyField === null ? undefined : rowsByKey(workbook, keyField, keyOf);
+  const cells = new Map<string, { sheetId: string; rowId: string; fieldId: string; key?: string; value: WorkbookRow['cells'][number]['value'] }>();
+  for (const sheet of workbook.sheets) {
+    const keyColumn = keyField === null ? undefined : fieldColumns(sheet, keyField)[0];
+    sheet.rows.forEach((row, index) => {
+      const key = keyColumn === undefined ? undefined : keyOf(row.cells[keyColumn].value);
+      const uniqueKey = index >= (sheet.headerRow ?? 1) && key !== undefined && rows?.get(key)?.length === 1 ? key : undefined;
+      row.cells.forEach((cell, column) => {
+        const fieldId = sheet.columnBindings?.[column]?.fieldId ?? `column:${column}`;
+        const address = uniqueKey === undefined ? ['row', sheet.id, row.id, fieldId] : ['key', uniqueKey, fieldId];
+        cells.set(JSON.stringify(address), { sheetId: sheet.id, rowId: row.id, fieldId, ...(uniqueKey === undefined ? {} : { key: uniqueKey }), value: cell.value });
+      });
+    });
+  }
+  return cells;
+}
+
+function workbookCellEffects(before: EditableWorkbookWire, after: EditableWorkbookWire, keyField: string | null, keyOf: CellKey): CellEffect[] {
+  const oldCells = workbookCells(before, keyField, keyOf), newCells = workbookCells(after, keyField, keyOf);
+  return [...new Set([...oldCells.keys(), ...newCells.keys()])].flatMap(id => {
+    const old = oldCells.get(id), next = newCells.get(id), location = next ?? old;
+    const oldValue = old?.value ?? null, newValue = next?.value ?? null;
+    if (location === undefined || canonicalJsonStringify(oldValue) === canonicalJsonStringify(newValue)) return [];
+    const { value: _value, ...address } = location;
+    return [{ ...address, oldValue, newValue }];
+  });
+}
+
+function verifySnapshotEffects(workbook: EditableWorkbookWire, receipt: WorkbookOperationReceipt,
+  keyField: string | null, previous: EditableWorkbookWire | undefined) {
+  if (previous !== undefined) {
+    const stable = (changes: readonly CellEffect[]) => canonicalJsonStringify(changes.map(({ key: _key, ...effect }) => effect));
+    const expected = stable(receipt.changes);
+    if (stable(workbookCellEffects(previous, workbook, keyField, workbookKey)) !== expected
+      && (keyField === null || stable(workbookCellEffects(previous, workbook, keyField, literalKey)) !== expected)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    return;
+  }
+
+  // With no independent predecessor, the exact output still proves the recorded resulting values.
+  const addressOf = ({ sheetId, rowId, fieldId }: CellEffect) => JSON.stringify(['row', sheetId, rowId, fieldId]);
+  const cells = workbookCells(workbook, null, literalKey);
+  const written = new Map<string, CellEffect>();
+  for (const effect of receipt.changes) {
+    if (effect.newValue === null) continue;
+    const address = addressOf(effect), cell = cells.get(address);
+    if (cell === undefined || written.has(address) || canonicalJsonStringify(cell.value) !== canonicalJsonStringify(effect.newValue)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    written.set(address, effect);
+  }
+  for (const effect of receipt.changes) {
+    if (canonicalJsonStringify(effect.oldValue) === canonicalJsonStringify(effect.newValue)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    if (effect.newValue !== null) continue;
+    const address = addressOf(effect), cell = cells.get(address), replacement = written.get(address);
+    // A row or field that changed identity can emit a removal and a replacement at the same address.
+    if (cell !== undefined && cell.value !== null && (replacement === undefined || replacement.key === effect.key)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+  }
+}
+
+// Journal-only Sync predates catalogue snapshots. Its string-key result must prove the exact stored cell changes.
+function replayLiteralKeySync(input: Parameters<typeof applyMasterChange>[0], settled: WorkbookOperationReceipt) {
+  const keyField = input.type?.keyFieldId;
+  if (keyField === undefined || keyField === null || input.type === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  const { workbook, receipt } = applyMasterChange({ ...input, ownership: {} });
+  if (receipt.state !== 'applied') throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  const before = rowsByKey(input.workbook, keyField, literalKey), after = rowsByKey(workbook, keyField, literalKey);
+  const ownership: WorkbookOwnership = {};
+  for (const sheet of input.workbook.sheets) {
+    const [keyColumn] = fieldColumns(sheet, keyField);
+    for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
+      for (const field of input.type.fields) {
+        const owner = input.ownership[JSON.stringify([sheet.id, row.id, field])];
+        if (owner === undefined) continue;
+        const key = row.cells[keyColumn]?.value;
+        const matches = typeof key === 'string' && before.get(key)?.length === 1 ? after.get(key) : undefined;
+        const sourceColumns = fieldColumns(sheet, field);
+        if (matches?.length !== 1 || sourceColumns.length !== 1) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        const target = matches[0], targetColumns = fieldColumns(target.sheet, field);
+        const cell = row.cells[sourceColumns[0]];
+        if (targetColumns.length > 1 || owner.owner === 'relay' && canonicalJsonStringify(owner.value) !== canonicalJsonStringify(cell.value)) {
+          throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        }
+        if (targetColumns.length === 0) {
+          const binding = sheet.columnBindings?.[sourceColumns[0]];
+          if (binding === undefined || target.sheet.columnBindings === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+          targetColumns.push(target.sheet.width++);
+          target.sheet.columnBindings.push(binding);
+          target.sheet.rows.forEach((item, index) => item.cells.push({ value: index === (target.sheet.headerRow ?? 1) - 1 ? binding.sourceHeader : null }));
+        }
+        const targetCell = target.row.cells[targetColumns[0]];
+        const { richText: _richText, hyperlink: _hyperlink, tooltip: _tooltip, ...format } = targetCell;
+        target.row.cells[targetColumns[0]] = { ...format, ...cell };
+        ownership[JSON.stringify([target.sheet.id, target.row.id, field])] = owner;
+      }
+    }
+  }
+  const changes = workbookCellEffects(input.workbook, workbook, keyField, literalKey);
+  if (settled.candidates.length !== 0 || canonicalJsonStringify(changes) !== canonicalJsonStringify(settled.changes)) {
+    throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  }
+  return { workbook, ownership };
+}
 
 export const WORKBOOK_LIBRARY_MIGRATION = Object.freeze({
   id: "workbook-library",
@@ -100,6 +287,7 @@ export const WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION = Object.freeze({ version: 3
 ]) });
 
 const RowSchema = z.object({ id: z.string(), version: z.number().int().positive(), created_at: z.string(), saved_at: z.string(), payload_json: z.string() });
+const SnapshotRowSchema = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() });
 function selectionFromRow(value: unknown) {
   const row = z.object({ workflow_id: z.string(), revision: z.number(), accepted_command_id: z.string(), used_at: z.string(), payload_json: z.string() }).parse(value);
   const record = WorkflowWorkbookSelectionRecordSchema.parse(JSON.parse(row.payload_json));
@@ -150,10 +338,54 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   database: DatabaseSync;
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
   read<T>(work: () => T): T;
+  changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> | undefined;
   /** Reads a store from before schema 30, whose states carry no pin or tags yet. */
   beforePinTags?: boolean;
 }>): WorkbookLibraryRepository {
   const { database } = deps;
+  const decodedRecords = new Map<string, { row: z.infer<typeof RowSchema>; record: SavedWorkbook }>();
+  const decodedSnapshots = new Map<string, { row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema> }>();
+  let cache: {
+    key: string;
+    records: Map<string, SavedWorkbook>;
+    snapshots: Map<string, z.infer<typeof WorkbookLibrarySnapshotSchema>>;
+    list?: readonly SavedWorkbook[];
+    catalog?: readonly z.infer<typeof WorkbookLibraryEntrySchema>[];
+  } | undefined;
+  const readCache = () => {
+    const change = deps.changeKey?.();
+    if (change === undefined) return undefined;
+    const key = `${change.authorityGeneration}:${change.dataVersion}:${change.totalChanges}`;
+    if (cache?.key !== key) cache = { key, records: new Map(), snapshots: new Map() };
+    return cache;
+  };
+  const cachedFromRow = (value: unknown) => stored(() => {
+    const entry = readCache(), row = RowSchema.parse(value);
+    const cached = entry?.records.get(row.id);
+    if (cached !== undefined) return cached;
+    const previous = decodedRecords.get(row.id);
+    if (entry !== undefined && previous !== undefined && row.id === previous.row.id && row.version === previous.row.version
+      && row.created_at === previous.row.created_at && row.saved_at === previous.row.saved_at && row.payload_json === previous.row.payload_json) {
+      entry.records.set(row.id, previous.record);
+      return previous.record;
+    }
+    const record = fromRow(row);
+    if (entry === undefined) return record;
+    // Frozen Dates still have setters; each cell read gets its own Date.
+    const frozen = deepFreeze({ ...record, workbook: { ...record.workbook,
+      sheets: record.workbook.sheets.map(sheet => ({ ...sheet, rows: sheet.rows.map(row => ({ ...row,
+        cells: row.cells.map(cell => {
+          const value = cell.value;
+          if (!(value instanceof Date)) return cell;
+          const time = value.getTime();
+          return { ...cell, get value() { return Object.freeze(new Date(time)); } };
+        }),
+      })) })),
+    } });
+    entry.records.set(row.id, frozen);
+    decodedRecords.set(row.id, { row, record: frozen });
+    return frozen;
+  });
   const withPinTags = (state: unknown) => {
     if (deps.beforePinTags !== true) return state;
     // A predecessor state is strict: a pin or tags already present is not schema-29 data.
@@ -166,8 +398,10 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     return row === undefined ? undefined : selectionFromRow(row);
   });
   const current = (id: string) => {
+    const cached = readCache()?.records.get(id);
+    if (cached !== undefined) return cached;
     const row = database.prepare('SELECT * FROM workbook_library WHERE id=?').get(id);
-    return row === undefined ? undefined : fromRow(row);
+    return row === undefined ? undefined : cachedFromRow(row);
   };
   const required = (id: string) => {
     const record = current(id);
@@ -181,6 +415,14 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     if (state.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return state;
   });
+  const listCurrent = () => {
+    const cached = readCache();
+    if (cached?.list !== undefined) return cached.list;
+    const records = database.prepare('SELECT * FROM workbook_library ORDER BY saved_at DESC,id').all().map(cachedFromRow).filter(record => !libraryState(record.libraryId).removed);
+    if (cached === undefined) return records;
+    cached.list = Object.freeze(records);
+    return cached.list;
+  };
   const lastSync = (id: string): WorkbookLibrarySyncRecord | undefined => stored(() => {
     const row = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(id));
     return row.sync_json === null ? undefined : WorkbookLibrarySyncRecordSchema.parse(JSON.parse(row.sync_json));
@@ -189,11 +431,22 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     const value = WorkbookLibraryStateSchema.parse(state);
     if (database.prepare('UPDATE workbook_library_state SET payload_json=? WHERE id=?').run(canonicalJsonStringify(value), value.libraryId).changes !== 1) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
   };
-  const librarySnapshot = (id: string, snapshotId: string) => stored(() => {
-    const row = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() }).parse(database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE id=?').get(snapshotId));
-    const snapshot = WorkbookLibrarySnapshotSchema.parse(JSON.parse(row.payload_json));
+  const librarySnapshot = (id: string, snapshotId: string, cacheSnapshot = true) => stored(() => {
+    const entry = cacheSnapshot ? readCache() : undefined, cached = entry?.snapshots.get(snapshotId);
+    if (cached !== undefined) {
+      if (cached.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      return cached;
+    }
+    const row = SnapshotRowSchema.parse(database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE id=?').get(snapshotId));
+    const previous = entry === undefined ? undefined : decodedSnapshots.get(id);
+    const snapshot = previous !== undefined && row.id === previous.row.id && row.workbook_id === previous.row.workbook_id && row.payload_json === previous.row.payload_json
+      ? previous.snapshot : WorkbookLibrarySnapshotSchema.parse(JSON.parse(row.payload_json));
     if (row.id !== snapshot.id || row.workbook_id !== id || snapshot.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-    return snapshot;
+    if (entry === undefined) return snapshot;
+    const frozen = deepFreeze(snapshot);
+    entry.snapshots.set(snapshotId, frozen);
+    decodedSnapshots.set(id, { row, snapshot: frozen });
+    return frozen;
   });
   const putLibrarySnapshot = (id: string, versionId: string, workbook: z.infer<typeof WorkbookLibrarySnapshotSchema>["workbook"]) => {
     const snapshotId = JSON.stringify([id, versionId]);
@@ -275,7 +528,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       if (sha256Hex(canonicalJsonStringify(JSON.parse(JSON.stringify(operation)))) !== row.digest) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       const before = required(id), meta = metadata(id);
       const owners = WorkbookOwnershipSchema.parse(JSON.parse(z.object({ ownership_json: z.string() }).parse(database.prepare('SELECT ownership_json FROM workbook_library WHERE id=?').get(id)).ownership_json));
-      const context = operation.change.kind === 'sync' ? reconstructVersion(id, before.version) : undefined;
+      const context = operation.change.kind === 'sync' ? reconstructVersion(id, before.version, before) : undefined;
       if (context !== undefined && (canonicalJsonStringify(encodeSavedWorkbook(context.record)) !== canonicalJsonStringify(encodeSavedWorkbook(before))
         || canonicalJsonStringify(context.ownership) !== canonicalJsonStringify(owners)
         || context.typeId !== meta.typeId)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
@@ -334,25 +587,39 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     const sequence = enqueue(id, value); drain(id);
     return storage(() => deps.read(() => receipt(z.object({ receipt_json: z.string() }).parse(database.prepare('SELECT receipt_json FROM workbook_operations WHERE sequence=?').get(sequence)).receipt_json)));
   };
-  const reconstructVersion = (id: string, version: number) => {
-    const live = required(id);
-    if (version > live.version) throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
+  const revisionBaseline = (id: string, version: number, live: SavedWorkbook) => {
     const creationRow = database.prepare('SELECT payload_json FROM workbook_creations WHERE id=?').get(id);
     const creation = decodeSavedWorkbook(JSON.parse(z.object({ payload_json: z.string() }).parse(creationRow).payload_json));
     if (creation.libraryId !== id || creation.version !== 1 || creation.createdAt !== live.createdAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     const migration = database.prepare("SELECT * FROM workbook_library_history WHERE workbook_id=? AND provenance='migration' AND version<=? ORDER BY version DESC LIMIT 1").get(id, version);
     const baseline = migration === undefined ? creation : fromRow({ ...migration, id });
     if (baseline.createdAt !== live.createdAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-    let record = encodeSavedWorkbook(baseline), ownership = WorkbookOwnershipSchema.parse({}), typeId = 'general';
+    return baseline;
+  };
+  const readSettlement = (id: string, raw: unknown): SettledWorkbookOperation | undefined => {
+    const row = queueRow.parse(raw), operation = WorkbookOperationSchema.parse(JSON.parse(row.request_json));
+    if (operation.operationId !== row.operation_id || sha256Hex(canonicalJsonStringify(JSON.parse(JSON.stringify(operation)))) !== row.digest) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    if (row.receipt_json === null) return undefined;
+    const settled = receipt(row.receipt_json);
+    if (settled.libraryId !== id || settled.operationId !== operation.operationId || settled.sequence !== row.sequence
+      || settled.at !== operation.at || canonicalJsonStringify(settled.source) !== canonicalJsonStringify(operation.source)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return { operation, settled };
+  };
+  function* settledOperations(id: string, after = 0, through: number | null = null) {
+    // Sorting the journal sequence can retain only row IDs, even when SQLite uses a temporary sort.
+    const coordinates = database.prepare('SELECT sequence FROM workbook_operations WHERE workbook_id=? AND sequence>? AND (? IS NULL OR sequence<=?) ORDER BY sequence');
+    const operationRow = database.prepare('SELECT * FROM workbook_operations WHERE workbook_id=? AND sequence=?');
+    for (const { sequence } of coordinates.iterate(id, after, through, through)) {
+      const entry = readSettlement(id, operationRow.get(id, z.number().parse(sequence)));
+      if (entry === undefined) break;
+      yield entry;
+    }
+  }
+  const reconstructVersion = (id: string, version: number, live: SavedWorkbook) => {
+    let record = encodeSavedWorkbook(revisionBaseline(id, version, live)), ownership = WorkbookOwnershipSchema.parse({}), typeId = 'general';
     const context: WorkbookReplayContext = { witnesses: [], captured: false };
     if (record.version === version && version !== live.version) return { record: decodeSavedWorkbook(record), ownership, typeId, context };
-    for (const raw of database.prepare('SELECT * FROM workbook_operations WHERE workbook_id=? ORDER BY sequence').all(id)) {
-      const row = queueRow.parse(raw), operation = WorkbookOperationSchema.parse(JSON.parse(row.request_json));
-      if (operation.operationId !== row.operation_id || sha256Hex(canonicalJsonStringify(JSON.parse(JSON.stringify(operation)))) !== row.digest) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      if (row.receipt_json === null) break;
-      const settled = receipt(row.receipt_json);
-      if (settled.libraryId !== id || settled.operationId !== operation.operationId || settled.sequence !== row.sequence
-        || settled.at !== operation.at || canonicalJsonStringify(settled.source) !== canonicalJsonStringify(operation.source)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    for (const { operation, settled } of settledOperations(id)) {
       if (settled.state !== 'applied') {
         if (settled.version !== record.version) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
         continue;
@@ -360,7 +627,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       const workbookType = operation.source.kind === 'run-reference' ? undefined : type(typeId);
       if ((operation.source.kind !== 'run-reference' && !workbookType) || Date.parse(operation.at) < Date.parse(record.savedAt)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       const applied = applyMasterChange({ workbook: record.workbook, ownership, version: record.version, type: workbookType,
-        operation, libraryId: id, sequence: row.sequence, context });
+        operation, libraryId: id, sequence: settled.sequence, context });
       const advances = operation.change.kind !== 'version';
       const expected = { ...applied.receipt, version: record.version + (advances ? 1 : 0) };
       if (applied.receipt.state !== 'applied' || canonicalJsonStringify(expected) !== canonicalJsonStringify(settled)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
@@ -375,8 +642,167 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     if (record.version === version) return { record: decodeSavedWorkbook(record), ownership, typeId, context };
     throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
   };
-  const revisionValue = (id: string, version: number): SavedWorkbook => version === required(id).version
-    ? required(id) : reconstructVersion(id, version).record;
+  const retainedRevisionWorkbook = (id: string, version: number, savedAt: string, createdAt: string) => {
+    const snapshotId = JSON.stringify([id, `revision:${version}`]);
+    if (database.prepare('SELECT 1 FROM workbook_library_snapshots WHERE id=?').get(snapshotId) !== undefined) {
+      return librarySnapshot(id, snapshotId, false).workbook;
+    }
+    const migration = libraryState(id).versions.find(entry => entry.id === 'current' && entry.version === version);
+    if (migration !== undefined) {
+      if (migration.snapshotId !== JSON.stringify([id, 'current']) || migration.source !== 'retained' || migration.savedAt !== savedAt) {
+        throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      }
+      return librarySnapshot(id, migration.snapshotId, false).workbook;
+    }
+    const named = database.prepare('SELECT * FROM workbook_library_history WHERE workbook_id=? AND version=? ORDER BY name LIMIT 1').get(id, version);
+    if (named === undefined) return undefined;
+    const proof = fromRow({ ...named, id });
+    if (proof.createdAt !== createdAt || proof.savedAt !== savedAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return encodeSavedWorkbook(proof).workbook;
+  };
+  type RevisionStep = SettledWorkbookOperation & { typeId: string };
+  type ContentPosition = { kind: 'save' | 'sync' | 'patch' | 'add'; sequence: number; version: number; at: string };
+  const settlementAt = (id: string, position: ContentPosition) => {
+    const row = database.prepare('SELECT * FROM workbook_operations WHERE workbook_id=? AND sequence=?').get(id, position.sequence);
+    const entry = readSettlement(id, row);
+    if (entry === undefined || entry.operation.change.kind !== position.kind || entry.settled.state !== 'applied'
+      || entry.settled.version !== position.version || entry.settled.at !== position.at) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return entry;
+  };
+  const independentPredecessor = (baseline: SavedWorkbook, position: ContentPosition | undefined) => {
+    if (position === undefined) return encodeSavedWorkbook(baseline).workbook;
+    const id = baseline.libraryId;
+    const retained = retainedRevisionWorkbook(id, position.version, position.at, baseline.createdAt);
+    if (retained !== undefined || position.kind !== 'save') return retained;
+    const { operation: { change } } = settlementAt(id, position);
+    if (change.kind !== 'save') throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return change.workbook;
+  };
+  const keyedAuthority = ({ operation, typeId }: RevisionStep) => operation.source.kind === 'run-reference'
+    ? { keyFieldId: operation.source.authority.keyFieldId, fields: operation.source.authority.writableFields }
+    : type(typeId);
+  const readKeyedStep = (workbook: EditableWorkbookWire, createdAt: string, step: RevisionStep, change: KeyedWorkbookChange) => {
+    const { settled } = step;
+    const replayed = replayKeyedSettlement(workbook, settled.version - 1, change, settled, keyedAuthority(step));
+    const retained = retainedRevisionWorkbook(settled.libraryId, settled.version, settled.at, createdAt);
+    if (retained !== undefined && canonicalJsonStringify(retained) !== canonicalJsonStringify(replayed)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    return retained ?? replayed;
+  };
+  const replayJournalSync = (baseline: SavedWorkbook, through: ContentPosition) => {
+    const id = baseline.libraryId;
+    const migrationId = JSON.stringify([id, 'current']);
+    const migration = libraryState(id).versions.find(entry => entry.id === 'current');
+    if (database.prepare('SELECT 1 FROM workbook_library_snapshots WHERE id=? AND workbook_id=?').get(migrationId, id) === undefined
+      || (migration !== undefined && through.version > migration.version)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    let workbook = encodeSavedWorkbook(baseline).workbook, ownership: WorkbookOwnership = {}, typeId = 'general';
+    for (const { operation, settled } of settledOperations(id, 0, through.sequence)) {
+      const { change } = operation;
+      if (settled.state !== 'applied' || change.kind === 'version') continue;
+      if (change.kind === 'metadata') {
+        typeId = change.metadata.typeId;
+        continue;
+      }
+      const version = settled.version - 1;
+      if (operation.source.kind === 'run-reference') throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      if (change.kind === 'patch' || change.kind === 'add') {
+        workbook = readKeyedStep(workbook, baseline.createdAt, { operation, settled, typeId }, change);
+        for (const effect of settled.changes) {
+          const address = JSON.stringify([effect.sheetId, effect.rowId, effect.fieldId]);
+          const owner = ownership[address];
+          if (owner?.owner === 'operator' || (owner?.owner === 'relay'
+            ? canonicalJsonStringify(owner.value) !== canonicalJsonStringify(effect.oldValue) : effect.oldValue !== null && effect.oldValue !== '')) {
+            throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+          }
+          ownership[address] = { owner: 'relay', value: effect.newValue };
+        }
+        continue;
+      }
+      const input = { workbook, ownership, version, type: type(typeId), operation, libraryId: id, sequence: settled.sequence };
+      const applied = applyMasterChange(input);
+      if (change.kind === 'sync' && (applied.receipt.state !== 'applied'
+        || canonicalJsonStringify({ ...applied.receipt, version: settled.version }) !== canonicalJsonStringify(settled))) {
+        ({ workbook, ownership } = replayLiteralKeySync(input, settled));
+      } else {
+        if (applied.receipt.state !== 'applied') throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        ({ workbook, ownership } = applied);
+      }
+      const retained = retainedRevisionWorkbook(id, settled.version, settled.at, baseline.createdAt);
+      if (retained !== undefined && canonicalJsonStringify(retained) !== canonicalJsonStringify(workbook)) {
+        throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      }
+    }
+    return workbook;
+  };
+  const revisionValue = (id: string, version: number): SavedWorkbook => {
+    const live = required(id);
+    if (version === live.version) return live;
+    if (version > live.version) throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
+    const baseline = revisionBaseline(id, version, live);
+    if (version === baseline.version) return baseline;
+    let priorVersion = baseline.version, savedAt = baseline.savedAt, typeId = 'general', targetSequence = 0;
+    let previousContent: ContentPosition | undefined;
+    let anchor: { position: ContentPosition; previous: ContentPosition | undefined; typeId: string } | undefined;
+    for (const { operation, settled } of settledOperations(id)) {
+      const { change } = operation;
+      const advances = settled.state === 'applied' && change.kind !== 'version';
+      if (settled.version !== priorVersion + Number(advances) || settled.key !== ('key' in change ? change.key : undefined)
+        || (settled.state === 'applied' && (Date.parse(settled.at) < Date.parse(savedAt)
+          || ('expectedVersion' in change && change.expectedVersion !== undefined && change.expectedVersion !== priorVersion)))) {
+        throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      }
+      if ((!('key' in change) && settled.candidates.length !== 0)
+        || ((change.kind === 'version' || change.kind === 'metadata') && settled.changes.length !== 0)) {
+        throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      }
+      if (!advances) continue;
+      if (change.kind === 'metadata') {
+        typeId = change.metadata.typeId;
+        if (!type(typeId)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      } else if (change.kind !== 'version') {
+        const position = { kind: change.kind, sequence: settled.sequence, version: settled.version, at: settled.at };
+        if (change.kind === 'save' || change.kind === 'sync') anchor = { position, previous: previousContent, typeId };
+        previousContent = position;
+      }
+      priorVersion = settled.version;
+      savedAt = settled.at;
+      targetSequence = settled.sequence;
+      if (priorVersion === version) break;
+    }
+    if (priorVersion !== version) throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
+
+    let workbook: EditableWorkbookWire;
+    typeId = anchor?.typeId ?? 'general';
+    if (anchor === undefined) {
+      workbook = encodeSavedWorkbook(baseline).workbook;
+    } else {
+      const { operation: { change }, settled } = settlementAt(id, anchor.position);
+      const retained = retainedRevisionWorkbook(id, settled.version, settled.at, baseline.createdAt);
+      if (change.kind === 'save') {
+        if (retained !== undefined && canonicalJsonStringify(retained) !== canonicalJsonStringify(change.workbook)) {
+          throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        }
+        workbook = change.workbook;
+      } else if (change.kind === 'sync') {
+        workbook = retained ?? replayJournalSync(baseline, anchor.position);
+      } else throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      if (change.kind === 'save' || retained !== undefined) {
+        verifySnapshotEffects(workbook, settled, type(typeId)?.keyFieldId ?? null, independentPredecessor(baseline, anchor.previous));
+      }
+    }
+    for (const { operation, settled } of settledOperations(id, anchor?.position.sequence ?? 0, targetSequence)) {
+      if (settled.state !== 'applied') continue;
+      const { change } = operation;
+      if (change.kind === 'metadata') typeId = change.metadata.typeId;
+      else if (change.kind === 'patch' || change.kind === 'add') {
+        workbook = readKeyedStep(workbook, baseline.createdAt, { operation, settled, typeId }, change);
+      }
+    }
+    return decodeSavedWorkbook({ ...baseline, version, savedAt, workbook });
+  };
   const revision = (id: string, version: number) => storage(() => deps.read(() => stored(() => revisionValue(id, version))));
   const libraryActionRecord = (id: string, operationId: string): WorkbookLibraryActionRecord | undefined => {
     const raw = database.prepare('SELECT id,workbook_id,operation_id,digest,payload_json FROM workbook_library_actions WHERE workbook_id=? AND operation_id=?').get(id, operationId);
@@ -422,21 +848,28 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         .run(record.workflowId, record.revision, record.acceptedCommandId, record.usedAt, canonicalJsonStringify(record));
       return { result: record, changes: 1 };
     })),
-    catalog: () => storage(() => deps.read(() => database.prepare('SELECT * FROM workbook_library ORDER BY saved_at DESC,id').all().flatMap(raw => {
-      const current = fromRow(raw), state = libraryState(current.libraryId);
-      if (state.removed) return [];
-      const selected = state.versions.find(version => version.id === state.selectedVersionId);
-      if (selected === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      const record = librarySnapshot(current.libraryId, selected.snapshotId), meta = metadata(current.libraryId), workbookType = type(meta.typeId);
-      if (workbookType === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      const last = meta.sharePoint === null ? undefined : lastSync(current.libraryId);
-      const sync = meta.sharePoint === null ? {} : { sync: last === undefined || last.url !== meta.sharePoint.url ? { state: 'idle' }
-        : { state: 'idle', lastFinishedAt: last.finishedAt, lastResult: last.result, ...(last.result === 'failed' ? { lastFailureCode: last.code } : {}) } };
-      return [WorkbookLibraryEntrySchema.parse({ libraryId: current.libraryId, version: current.version, name: current.workbook.name, updatedAt: selected.savedAt,
-        worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
-        rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
-        state, metadata: meta, type: workbookType, ...sync })];
-    }))),
+    catalog: () => storage(() => deps.read(() => {
+      const cached = readCache();
+      if (cached?.catalog !== undefined) return cached.catalog;
+      const catalog = database.prepare('SELECT * FROM workbook_library ORDER BY saved_at DESC,id').all().flatMap(raw => {
+        const current = cachedFromRow(raw), state = libraryState(current.libraryId);
+        if (state.removed) return [];
+        const selected = state.versions.find(version => version.id === state.selectedVersionId);
+        if (selected === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        const record = librarySnapshot(current.libraryId, selected.snapshotId), meta = metadata(current.libraryId), workbookType = type(meta.typeId);
+        if (workbookType === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        const last = meta.sharePoint === null ? undefined : lastSync(current.libraryId);
+        const sync = meta.sharePoint === null ? {} : { sync: last === undefined || last.url !== meta.sharePoint.url ? { state: 'idle' }
+          : { state: 'idle', lastFinishedAt: last.finishedAt, lastResult: last.result, ...(last.result === 'failed' ? { lastFailureCode: last.code } : {}) } };
+        return [WorkbookLibraryEntrySchema.parse({ libraryId: current.libraryId, version: current.version, name: current.workbook.name, updatedAt: selected.savedAt,
+          worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
+          rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
+          state, metadata: meta, type: workbookType, ...sync })];
+      });
+      if (cached === undefined) return catalog;
+      cached.catalog = deepFreeze(catalog);
+      return cached.catalog;
+    })),
     libraryState: id => storage(() => deps.read(() => libraryState(id))),
     recordSync: (id, value) => storage(() => deps.mutate(() => {
       const record = WorkbookLibrarySyncRecordSchema.parse(value);
@@ -576,7 +1009,9 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       const row = database.prepare('SELECT payload_json FROM workbook_creations WHERE id=?').get(id);
       return row === undefined ? undefined : stored(() => decodeSavedWorkbook(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json)));
     })),
-    list: () => storage(() => deps.read(() => database.prepare('SELECT * FROM workbook_library ORDER BY saved_at DESC,id').all().map(fromRow).filter(record => !libraryState(record.libraryId).removed))),
+    list: () => storage(() => deps.read(listCurrent)),
+    listWithType: () => storage(() => deps.read(() =>
+      listCurrent().map(record => ({ record, typeId: metadata(record.libraryId).typeId })))),
     save: (record, expectedVersion) => {
       const result = operation(record.libraryId, { operationId: randomUUID(), source: { kind: 'operator' }, at: record.savedAt,
         change: { kind: 'save', expectedVersion, workbook: encodeSavedWorkbook(record).workbook } });

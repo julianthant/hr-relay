@@ -363,23 +363,22 @@ it("refuses authenticated Windows account deletion without logging out and keeps
     isolation: rebuildRuntimeIsolation, repoRoot: process.cwd(), backendPortOverride: 0, frontendPortOverride: 0,
     env: {}, clock, preflightRunnerFactory: healthyRuntimePreflightRunners });
   const base = `http://127.0.0.1:${application.port}`;
-  const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
-    headers: { "content-type": "application/json", origin: base, ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
+  const post = (path: string, body: unknown, credential?: string) => fetch(`${base}${path}`, { method: "POST",
+    headers: { "content-type": "application/json", origin: base, ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
   try {
     const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     const active = PublicProfileStateSchema.parse(await login.json()); assert.ok(active.state === "active");
-    const header = login.headers.get("set-cookie"); assert.ok(header);
-    const cookie = header.split(";")[0]; assert.ok(cookie);
+    const credential = login.headers.get("x-relay-session"); assert.ok(credential);
     const durableAccountFiles = () => Object.fromEntries(Object.entries(files(f.workspace)).filter(([path]) =>
       path !== ".tracker/data/logs/boot.jsonl" && !path.endsWith("state.db-shm")));
     const before = durableAccountFiles(), profile = f.machine.readProfileRegistry();
-    const deletion = await post("/api/v1/profile/delete-account", { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }, cookie);
+    const deletion = await post("/api/v1/profile/delete-account", { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }, credential);
     assert.equal(deletion.status, 409);
     assert.deepEqual(PublicProfileStateSchema.parse(await deletion.json()), { state: "refused", code: "PROFILE_ACCOUNT_DELETION_REFUSED" });
     assert.deepEqual(f.machine.readProfileRegistry(), profile);
     assert.deepEqual(durableAccountFiles(), before, "refused deletion must not publish logout or erase credentials");
-    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 200);
-    const logout = await post("/api/v1/profile/logout", {}, cookie);
+    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { "x-relay-session": credential } })).status, 200);
+    const logout = await post("/api/v1/profile/logout", {}, credential);
     assert.deepEqual(PublicProfileStateSchema.parse(await logout.json()), { state: "signed-out", signUpRequired: false });
   } finally {
     await application.stop().catch((error: unknown) => { assert.ok(error instanceof StorageMaintenanceCustodyUnavailableError); });
@@ -387,7 +386,7 @@ it("refuses authenticated Windows account deletion without logging out and keeps
   }
 });
 
-for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-cookie ${replacement} deletion before Windows custody admission`, async () => {
+for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-credential ${replacement} deletion before Windows custody admission`, async () => {
   const f = await createBoundProfileFixture();
   const application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine,
     isolation: rebuildRuntimeIsolation, repoRoot: process.cwd(), backendPortOverride: 0, frontendPortOverride: 0,
@@ -427,7 +426,7 @@ for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses s
 
     assert.equal(deletion.status, 409);
     assert.deepEqual(PublicProfileStateSchema.parse(await deletion.json()), { state: "refused", code: "PROFILE_SESSION_STALE" });
-    assert.equal(deletion.headers.get("set-cookie"), null);
+    assert.equal(deletion.headers.get("x-relay-session"), null);
     assert.deepEqual(snapshot(), before);
     assert.deepEqual(PublicProfileStateSchema.parse(await (await tabB.read()).json()), next);
   } finally {

@@ -89,8 +89,8 @@ describe('confirmed Settings feedback through the current editor', () => {
     await act(async () => segments[1].blur());
     assert.equal(commands.length, 1); assert.equal(notices.length, 1);
   });
-  it('does not flush credentials between controls in one field, then saves on leaving it', async () => {
-    const { controller, host, commands, notices, render } = await setup();
+  it('waits until focus leaves the credential field before reporting the login change refusal', async () => {
+    const { controller, host, commands, notices, problems, render } = await setup();
     await render('credentials');
     const input = inputNamed(host, 'ucpathUserId');
     await act(async () => input.focus());
@@ -98,13 +98,16 @@ describe('confirmed Settings feedback through the current editor', () => {
     const remove = host.querySelector<HTMLButtonElement>('button[aria-label="Remove UCPath username"]');
     assert(remove);
     await act(async () => remove.focus());
-    assert.equal(commands.length, 0); assert.deepEqual(notices, []);
+    assert.equal(commands.length, 0); assert.deepEqual(notices, []); assert.deepEqual(problems, []);
     await act(async () => input.focus());
     await act(async () => input.blur());
-    assert.equal(commands.length, 1); assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved UCPath username' }]);
-    assert.doesNotMatch(JSON.stringify(notices), /private-blur-sentinel/);
+    assert.equal(commands.length, 1); assert.deepEqual(notices, []);
+    assert.equal(controller().protectedEditor.save.state, 'refused');
+    assert.equal(controller().protectedEditor.dirtyCount, 1);
+    assert.deepEqual(problems, [{ tone: 'danger', title: "Credentials weren't saved", description: 'Your draft is retained. Review the save details before retrying.' }]);
+    assert.doesNotMatch(JSON.stringify(problems), /private-blur-sentinel/);
     await act(async () => vi.advanceTimersByTimeAsync(2000));
-    assert.equal(commands.length, 1); assert.equal(notices.length, 1);
+    assert.equal(commands.length, 1); assert.equal(problems.length, 1);
   });
   it('notifies a refused save once without exposing the draft or raw server message', async () => {
     const { controller, commands, notices, problems, ports, render } = await setup();
@@ -225,11 +228,13 @@ describe('confirmed Settings feedback through the current editor', () => {
     const { controller, notices, commands, render } = await setup();
     const state = controller().editor;
     if (state.state !== 'loaded' || state.document.protectedSettings.state !== 'available') throw new Error('protected-fixture-unavailable');
-    const label = state.document.protectedSettings.rows.find(row => row.name === 'ucpathPassword')!.label;
-    await act(async () => controller().protectedEditor.update('ucpathPassword', ''));
+    const name = 'sharepointOnboardingRosterUrl';
+    const label = state.document.protectedSettings.rows.find(row => row.name === name)?.label;
+    assert.ok(label);
+    await act(async () => controller().protectedEditor.update(name, ''));
     await act(async () => vi.advanceTimersByTimeAsync(1201));
     assert.deepEqual(notices, []); assert.equal(commands.length, 0);
-    await act(async () => controller().protectedEditor.update('ucpathPassword', 'secret-toast-sentinel'));
+    await act(async () => controller().protectedEditor.update(name, 'https://roster.example.test/secret-toast-sentinel'));
     assert.deepEqual(notices, []);
     await act(async () => vi.advanceTimersByTimeAsync(1201));
     assert.equal(controller().protectedEditor.save.state, 'applied');
@@ -237,15 +242,15 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.doesNotMatch(JSON.stringify(notices), /secret-toast-sentinel/);
     await render('credentials');
     assert.equal(notices.length, 1);
-    await act(async () => controller().protectedEditor.update('ucpathUserId', 'private-username-sentinel'));
+    await act(async () => controller().protectedEditor.update(name, 'https://roster.example.test/private-roster-sentinel'));
     await act(async () => vi.advanceTimersByTimeAsync(1201));
-    assert.deepEqual(notices[1], { key: 'settings-save', title: 'Saved UCPath username' });
-    assert.doesNotMatch(JSON.stringify(notices), /private-username-sentinel/);
+    assert.deepEqual(notices[1], { key: 'settings-save', title: `Saved ${label}` });
+    assert.doesNotMatch(JSON.stringify(notices), /private-roster-sentinel/);
   });
   it('withholds a protected toast on conflict and readback failure', async () => {
     const { controller, authority, ports, notices, problems } = await setup();
-    await act(async () => controller().protectedEditor.update('ucpathPassword', 'secret-toast-sentinel'));
-    assert.equal(authority.protectedApply({ ucpathUserId: { set: 'Other operator' } }).state, 'applied');
+    await act(async () => controller().protectedEditor.update('sharepointOnboardingRosterUrl', 'https://roster.example.test/local'));
+    assert.equal(authority.protectedApply({ sharepointOnboardingRosterUrl: { set: 'https://roster.example.test/other' } }).state, 'applied');
     await act(async () => controller().protectedEditor.submit());
     assert.equal(controller().protectedEditor.save.state, 'conflict');
     assert.deepEqual(notices, []);

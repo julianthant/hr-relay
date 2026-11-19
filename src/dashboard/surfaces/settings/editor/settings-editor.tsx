@@ -39,7 +39,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
               ? timeoutReadableValue(leaf, leaf.defaultValue)
               : formatSetting(leaf.defaultValue);
               return <div key={leaf.path} data-settings-path={leaf.path} className="settings-row">
-                <SettingsValueControl leaf={leaf} operation={operation} error={editor.errors[leaf.path]} disabled={editor.locked} update={raw => editor.update(leaf.path, raw)} />
+                <SettingsValueControl leaf={leaf} operation={operation} error={editor.errors[leaf.path]} disabled={editor.locked} update={(raw, immediate) => editor.update(leaf.path, raw, immediate)} />
               {leaf.validity === "unset" && <span className={cn(dsText.meta, "settings-row-hazard text-[color:var(--ds-status-waiting-fg)]")}>Not set</span>}
               {(custom || operation !== undefined) && <div className="settings-row-actions">
                 {custom && !requiredJobEndDate && operation?.kind !== "clear" && <Button size="sm" variant="ghost" title={`Standard value: ${shownDefault}`} onClick={() => editor.clear(leaf.path)} disabled={editor.locked}>Restore standard</Button>}

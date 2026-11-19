@@ -35,7 +35,7 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
   const title = settingTitle(leaf);
   const description = settingNote(leaf);
   if (leaf.input === "boolean") return <div data-settings-path={leaf.path} className="settings-compact-row">
-    <Switch name={leaf.path} label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value))} />
+    <Switch name={leaf.path} label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value), true)} />
   </div>;
   return <div data-settings-path={leaf.path} className="settings-compact-row" onKeyDown={event => {
     if (leaf.input !== "date" || editor.draft[leaf.path] === undefined || event.defaultPrevented || event.repeat
@@ -56,7 +56,7 @@ function ChoiceRow({ editor, leaf, choices }: { editor: Editor; leaf: EditableSe
   const raw = rawValue(leaf, editor.draft[leaf.path]);
   const title = settingTitle(leaf);
   return <div data-settings-path={leaf.path} className="settings-compact-row">
-    <ResultRow label={title} description={settingNote(leaf)} value={<Select aria-label={title} value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)}>
+    <ResultRow label={title} description={settingNote(leaf)} value={<Select aria-label={title} value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value, true)}>
       {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
     </Select>} />
   </div>;
@@ -86,7 +86,7 @@ function GeneralContent({ editor, year, appearance }: { editor: Editor; year: nu
     <PathRow editor={editor} field="paths.downloadsDir" />
     <ScalarRow editor={editor} leaf={date} />
     {appearance}
-    <BrowserWindowRow binding={{ headless: rawValue(servedLeaf(editor, "browser.headless"), editor.draft["browser.headless"]), width: rawValue(servedLeaf(editor, "display.screenWidth"), editor.draft["display.screenWidth"]), height: rawValue(servedLeaf(editor, "display.screenHeight"), editor.draft["display.screenHeight"]), disabled: editor.locked, error: [editor.errors["browser.headless"], editor.errors["display.screenWidth"], editor.errors["display.screenHeight"]].filter(Boolean).join(" · ") || undefined, update: (path, value) => editor.update(path, value) }} />
+    <BrowserWindowRow binding={{ headless: rawValue(servedLeaf(editor, "browser.headless"), editor.draft["browser.headless"]), width: rawValue(servedLeaf(editor, "display.screenWidth"), editor.draft["display.screenWidth"]), height: rawValue(servedLeaf(editor, "display.screenHeight"), editor.draft["display.screenHeight"]), disabled: editor.locked, error: [editor.errors["browser.headless"], editor.errors["display.screenWidth"], editor.errors["display.screenHeight"]].filter(Boolean).join(" · ") || undefined, update: (path, value) => editor.update(path, value, true) }} />
   </FormGroup></BodySection>;
 }
 
