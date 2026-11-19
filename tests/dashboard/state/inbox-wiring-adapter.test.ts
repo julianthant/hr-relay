@@ -10,7 +10,6 @@ import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboa
 import { notificationWireOf, NotificationWireSchema, type NotificationWire } from "../../../src/models/dashboard/projection.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
-import { itemPreview } from "../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
 import { CommandIdSchema } from "../../../src/rules/identity/ids.js";
 import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../src/models/dashboard/subscription.js";
@@ -116,6 +115,32 @@ it("shows retained failed-run workflow and reason without unavailable text or an
   assert.equal(unavailable.state.items[1].detail, summary);
   assert.equal(unavailable.notice, "");
 });
+it("folds repeats of one event for one run into one item with the summed count and the latest time", () => {
+  const other = "00000000-0000-4000-8000-000000000555";
+  const older = (n: string, at: string, extra: Record<string, unknown> = {}) => row("run-failed", { notificationId: n, title: "Run failed", occurredAt: at, ...extra });
+  const rows = [older("00000000-0000-4000-8000-0000000000a1", "2026-08-03T15:00:00.000Z"), older("00000000-0000-4000-8000-0000000000a2", "2026-08-03T16:30:00.000Z", { readState: "read", state: "read" }),
+    older("00000000-0000-4000-8000-0000000000a3", "2026-08-03T16:00:00.000Z", { link: { kind: "failure", runId: other, failureId } }),
+    row("storage-degraded", { notificationId: "00000000-0000-4000-8000-0000000000b1", occurredAt: "2026-08-03T14:00:00.000Z" }), row("storage-degraded", { notificationId: "00000000-0000-4000-8000-0000000000b2", occurredAt: "2026-08-03T13:00:00.000Z", count: 5 })];
+  const projection = inboxProjection(rows, now);
+  assert(projection.state.state === "ready");
+  const items = projection.state.items;
+  assert.deepEqual(items.map(item => [item.id, item.count, item.age, item.read]), [
+    ["00000000-0000-4000-8000-0000000000a2", 2, "30 min ago", false], ["00000000-0000-4000-8000-0000000000a3", undefined, "1 hr ago", false],
+    ["00000000-0000-4000-8000-0000000000b1", 6, "3 hr ago", false]]);
+});
+it("keeps a folded item unread while any repeat is unread, and marking it read confirms every unread repeat", async () => {
+  const older = "00000000-0000-4000-8000-0000000000c1", newer = "00000000-0000-4000-8000-0000000000c2";
+  const repeats = [row("storage-degraded", { notificationId: older, occurredAt: "2026-08-03T16:00:00.000Z" }),
+    row("storage-degraded", { notificationId: newer, occurredAt: "2026-08-03T16:30:00.000Z", readState: "read", state: "read" })];
+  const folded = inboxProjection(repeats, now);
+  assert(folded.state.state === "ready");
+  assert.deepEqual(folded.state.items.map(item => [item.id, item.read]), [[newer, false]]);
+  assert.equal(folded.needsYou, 1);
+  const h = await harness(); h.setRows(repeats);
+  await act(async () => { h.listeners[0](publication(repeats[1])); await new Promise(resolve => setTimeout(resolve, 0)); });
+  await act(async () => { assert(await h.value.control(newer, "read")); });
+  assert.deepEqual(h.commands.map(command => "notificationId" in command.target ? command.target.notificationId : ""), [newer, older]);
+});
 it("withholds raw subject-mismatch summaries when source evidence is unavailable", () => {
   const projected = projectNotificationTrigger({ kind: "subject-mismatch", runId, workflowId: "person-lookup", failureId, failureFingerprint: "f".repeat(64) });
   const record = NotificationRecordSchema.parse({ ...projected, notificationId: id, actorId: "local-operator", status: "unread", snooze: { state: "not-snoozed" },
@@ -128,7 +153,7 @@ it("withholds raw subject-mismatch summaries when source evidence is unavailable
     assert(projection.state.state === "ready");
     const item = projection.state.items[0];
     assert.equal(item.workflow, "Person Lookup");
-    assert.equal(itemPreview(item), state === "available"
+    assert.equal(item.detail, state === "available"
       ? "The subject identity did not match. Review the failure before continuing."
       : "");
     assert.equal(projection.notice, "");
