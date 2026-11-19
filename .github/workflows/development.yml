@@ -17,28 +17,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
-    uses: ./.github/workflows/checks.yml
-    with:
-      kind: fast
-
-  development:
-    name: development
-    needs: checks
-    if: ${{ always() }}
+  account-unit:
+    if: github.head_ref == 'fix/unit-account-probe-2' && github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [disk, shm]
+        rows: [ucpath, login]
+    env:
+      RELAY_TEST_RAM_MB: "2048"
+      RELAY_TEST_TIME_SCALE: "2.5"
+      RELAY_TEST_NATIVE: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 3
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Require every fast proof
+      - name: Set up test temp and named file
         env:
-          CHECKS_RESULT: ${{ needs.checks.result }}
-          PLAN: ${{ needs.checks.outputs.plan }}
-          RESULTS: ${{ needs.checks.outputs.results }}
+          BACKEND: ${{ matrix.backend }}
+          ROWS: ${{ matrix.rows }}
         run: |
-          test "$CHECKS_RESULT" = success
-          node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"
+          base="$RUNNER_TEMP"
+          if [[ "$BACKEND" == shm ]]; then base=/dev/shm; fi
+          dir="$(mktemp -d "$base/relay-account.XXXXXX")"
+          df -T "$dir"
+          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
+          echo "TEST_FILE=tests/dashboard/surfaces/settings/account/account-settings.$ROWS-rows.test.ts" >> "$GITHUB_ENV"
+      - name: Verify candidate on unmodified dependencies
+        run: bash scripts/test/account-probe.sh fixed
+      - name: Defer the Radix unmount autofocus callback for the paired race control
+        if: matrix.backend == 'shm'
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          for filename in ("index.js", "index.mjs"):
+              path = Path("node_modules/@radix-ui/react-focus-scope/dist") / filename
+              original = path.read_text()
+              target = "focusScopesStack.remove(focusScope);\n          }, 0);"
+              assert original.count(target) == 1
+              path.write_text(original.replace(target, target.replace("}, 0)", "}, 200)")))
+          PYTHON
+      - name: Verify candidate with deferred focus
+        if: matrix.backend == 'shm'
+        run: bash scripts/test/account-probe.sh fixed-delayed
+      - name: Capture the original failure with the same deferred focus
+        if: matrix.backend == 'shm'
+        run: |
+          git restore --source=2ef490dc23995fae274af6185bd4873f925d163a -- "$TEST_FILE"
+          if bash scripts/test/account-probe.sh baseline-delayed; then
+            echo 'Original case did not reproduce the failure'
+            exit 1
+          fi
+          compgen -G "$RUNNER_TEMP/account-profiles/baseline-delayed/threshold-*.heapprofile" >/dev/null
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: account-allocations-${{ matrix.backend }}-${{ matrix.rows }}
+          path: ${{ runner.temp }}/account-profiles/*/*.heapprofile
+          if-no-files-found: warn
+          retention-days: 2
