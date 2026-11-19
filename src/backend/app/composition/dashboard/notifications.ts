@@ -1,3 +1,4 @@
+import { GATE_PARK_WATCH_MS } from "./timeline.js";
 import { createNotificationObserver } from "../../../runs/notifications/observation.js";
 import { readNotificationSources } from "./notification-sources.js";
 import { createNotificationHealthObserver, readNotificationHealth } from "./notification-health.js";
@@ -50,4 +51,29 @@ export function createTrustNotifications(input: { admission?: RuntimeAdmission; 
   });
   const observer = Object.freeze({ ...observation, async stop() { healthStop.abort(); await observation.stop(); } });
   return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
+}
+
+export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createNotificationObserver>) {
+  const revision = database.trackAuthorityTables(["runs", "deleted_runs", "run_failures", "run_receipts", "notifications"]);
+  let observed = revision();
+  const changed = () => {
+    const current = revision();
+    const dirty = current === undefined || current !== observed;
+    observed = current;
+    return dirty;
+  };
+  let safetyAt = Infinity;
+  const safetyPass = () => {
+    safetyAt = Infinity;
+    void observation.observe().then(() => {
+      safetyAt = clock.monotonicMs() + (observation.status().state === "failed" ? GATE_PARK_WATCH_MS : 60_000);
+    });
+  };
+  safetyPass();
+  const timer = setInterval(() => {
+    if (clock.monotonicMs() >= safetyAt) safetyPass();
+    else void observation.observeSources(changed);
+  }, GATE_PARK_WATCH_MS);
+  timer.unref();
+  return timer;
 }
