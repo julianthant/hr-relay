@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AssistantActivityWireSchema, AssistantHistoryOperationSchema } from "../../src/models/dashboard/assistant.js";
-import { FrontendBootstrapWireSchema } from "../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../src/models/dashboard/bootstrap.js";
 import { test } from "./helpers/fixtures.js";
 import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "../support/fixtures/dashboard/fixture-start.js";
@@ -87,9 +87,10 @@ const FRAMES: Frame[] = [
 let server: FixtureServer;
 let history: ReturnType<typeof assistantHistoryServer> | undefined;
 test.beforeAll(async () => {
+  const workflows = WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_START_PICKER_BOOTSTRAP.workflows);
   const bootstrap = FrontendBootstrapWireSchema.parse({
     ...FIXTURE_START_PICKER_BOOTSTRAP,
-    workflows: FIXTURE_START_PICKER_BOOTSTRAP.workflows.map(workflow => workflow.id === personLookupDescriptor.id
+    workflows: workflows.map(workflow => workflow.id === personLookupDescriptor.id
       ? { ...workflow, start: { ...workflow.start, version: personLookupDescriptor.version } }
       : workflow),
   });
