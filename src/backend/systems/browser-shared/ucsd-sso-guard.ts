@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BrowserContext, CDPSession, Page } from "playwright";
+import type { BrowserContext, CDPSession, Page, Response } from "playwright";
 
 export const NEW_KRONOS_SSO_PATH = "/tritON/profile/SAML2/POST/SSO";
 const ssoPaths = Object.freeze(["/tritON/profile/SAML2/Redirect/SSO", "/idp/profile/SAML2/Redirect/SSO", NEW_KRONOS_SSO_PATH] as const);
@@ -45,7 +45,7 @@ export function nativeSsoGuardKeys(context: BrowserContext): NativeSsoGuardKeys 
 const submittingPages = new WeakSet<Page>();
 
 export async function withPinnedSsoPost(page: Page, destination: string, assertCurrent: () => void,
-  submit: (allowPost: () => void) => Promise<void>): Promise<void> {
+  submit: (allowPost: () => void, verifyCommit: (response: Response | null) => void) => Promise<void>): Promise<void> {
   assertCurrent();
   const source = new URL(page.url()), pin = new URL(destination);
   requireSsoPath(source.pathname);
@@ -55,7 +55,7 @@ export async function withPinnedSsoPost(page: Page, destination: string, assertC
   pin.hash = "";
   submittingPages.add(page);
   let session: CDPSession | undefined;
-  let armed = false, complete = false, bypassRequested = false;
+  let armed = false, postCommitted = false, bypassRequested = false;
   let postedId: string | undefined;
   let refused: Promise<unknown> | undefined;
   let failure: { error: unknown } | undefined;
@@ -102,13 +102,25 @@ export async function withPinnedSsoPost(page: Page, destination: string, assertC
       if (failure) throw failure.error;
       if (armed || page.url() !== source.href) throw new Error("UCSD_SSO_SCOPE");
       armed = true;
+    }, response => {
+      let request = response?.request();
+      let redirectsUsedGet = true;
+      while (request) {
+        const prior = request.redirectedFrom();
+        if (!prior) break;
+        if (request.method() !== "GET") redirectsUsedGet = false;
+        request = prior;
+      }
+      if (!postedId || !request || request.method() !== "POST" || request.url() !== pin.href) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
+      // A committed POST no longer needs cancellation, even when its redirect receipt fails verification.
+      postCommitted = true;
+      if (!redirectsUsedGet) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
     });
-    if (!postedId) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
-    complete = failure === undefined;
+    if (!postCommitted) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
   } catch (error) { failure ??= { error }; }
   finally {
     if (session) {
-      let stopPending = armed && !complete;
+      let stopPending = armed && !postCommitted;
       armed = false;
       if (refused) {
         try { await refused; stopPending = false; } catch (error) { cleanup.push(error); }

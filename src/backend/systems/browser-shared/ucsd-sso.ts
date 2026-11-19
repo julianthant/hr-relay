@@ -180,9 +180,6 @@ async function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
       return guard.arm(action.keys.actionKey, { form, button, password, destination, valid() { return proof.valid(); } });
     }
     if (!guard.click(action.keys.actionKey, form)) return false;
-    const requestUrl = new URL(destination);
-    requestUrl.hash = "";
-    return requestUrl.href;
   }
   return true;
 }
@@ -240,7 +237,7 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
     await act({ kind: "username", value: credentials.userId });
     onAction?.("typed", "ucsd.sso.username");
     await act({ kind: "check-worker" });
-    await withPinnedSsoPost(page, destination, assertCurrent, async allowPost => {
+    await withPinnedSsoPost(page, destination, assertCurrent, async (allowPost, verifyCommit) => {
       await act({ kind: "password", value: credentials.password });
       onAction?.("typed", "ucsd.sso.password");
       const stop = new AbortController();
@@ -248,17 +245,10 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
         .then(response => ({ response }), (error: unknown) => ({ error }));
       try {
         allowPost();
-        const postedUrl = await act({ kind: "submit", keys });
+        await act({ kind: "submit", keys });
         const outcome = await navigation;
         if ("error" in outcome) throw outcome.error;
-        let request = outcome.response?.request();
-        while (request) {
-          const prior = request.redirectedFrom();
-          if (!prior) break;
-          if (request.method() !== "GET") throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
-          request = prior;
-        }
-        if (!request || request.method() !== "POST" || request.url() !== postedUrl) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
+        verifyCommit(outcome.response);
       } finally { stop.abort(); }
     });
     assertCurrent();
