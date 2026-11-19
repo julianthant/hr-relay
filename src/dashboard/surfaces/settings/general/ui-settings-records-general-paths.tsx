@@ -29,11 +29,11 @@ function rawValue(leaf: EditableSettingsLeafWire, operation: SettingsDraftOperat
   return raw;
 }
 
-function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: EditableSettingsLeafWire; wide?: boolean }) {
+function ScalarRow({ editor, leaf, wide = false, note }: { editor: Editor; leaf: EditableSettingsLeafWire; wide?: boolean; note?: string | null }) {
   const raw = rawValue(leaf, editor.draft[leaf.path]);
   const error = editor.errors[leaf.path];
   const title = settingTitle(leaf);
-  const description = settingNote(leaf);
+  const description = note === undefined ? settingNote(leaf) : note ?? undefined;
   if (leaf.input === "boolean") return <div data-settings-path={leaf.path} className="settings-compact-row">
     <Switch name={leaf.path} label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value), true)} />
   </div>;
@@ -52,11 +52,11 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
   </div>;
 }
 
-function ChoiceRow({ editor, leaf, choices }: { editor: Editor; leaf: EditableSettingsLeafWire; choices: readonly GeneralChoice[] }) {
+function ChoiceRow({ editor, leaf, choices, note }: { editor: Editor; leaf: EditableSettingsLeafWire; choices: readonly GeneralChoice[]; note?: string | null }) {
   const raw = rawValue(leaf, editor.draft[leaf.path]);
   const title = settingTitle(leaf);
   return <div data-settings-path={leaf.path} className="settings-compact-row">
-    <ResultRow label={title} description={settingNote(leaf)} value={<Select aria-label={title} value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value, true)}>
+    <ResultRow label={title} description={note === undefined ? settingNote(leaf) : note ?? undefined} value={<Select aria-label={title} value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value, true)}>
       {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
     </Select>} />
   </div>;
@@ -82,7 +82,7 @@ function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) 
 
 function GeneralContent({ editor, year, appearance }: { editor: Editor; year: number; appearance?: ReactNode }) {
   const date = servedLeaf(editor, `annualDates.FY${String(year)}.jobEndDate`);
-  return <BodySection title="General"><FormGroup label="General">
+  return <BodySection title="App"><FormGroup label="App">
     <PathRow editor={editor} field="paths.downloadsDir" />
     <ScalarRow editor={editor} leaf={date} />
     {appearance}
@@ -93,7 +93,7 @@ function GeneralContent({ editor, year, appearance }: { editor: Editor; year: nu
 function RunGroups({ editor }: { editor: Editor }) {
   return <>{GENERAL_RUN_GROUPS.map(group => <BodySection key={group.title} title={group.title}><FormGroup label={group.title}>
     {group.rows.map(row => { const leaf = servedLeaf(editor, row.path); return row.choices === undefined
-      ? <ScalarRow key={row.path} editor={editor} leaf={leaf} /> : <ChoiceRow key={row.path} editor={editor} leaf={leaf} choices={row.choices} />; })}
+      ? <ScalarRow key={row.path} editor={editor} leaf={leaf} note={row.note} /> : <ChoiceRow key={row.path} editor={editor} leaf={leaf} choices={row.choices} note={row.note} />; })}
   </FormGroup></BodySection>)}</>;
 }
 
@@ -126,7 +126,7 @@ export function DeleteAccountControl({ presentation }: { presentation: DeleteAcc
   const failed = presentation.state === "refused" || presentation.state === "uncertain";
   const note = failed ? presentation.message : deleting ? "Deleting your account; erasure is not complete." : presentation.state === "unavailable" ? "Account deletion is unavailable. Try again when connected." : undefined;
   return <FormGroup label="Account">
-    <ResultRow label="Delete account" className="!min-h-[52px]" description={note === undefined ? undefined : <span role={failed ? "alert" : deleting ? "status" : undefined}>{note}</span>}
+    <ResultRow label="Delete account" description={note === undefined ? undefined : <span role={failed ? "alert" : deleting ? "status" : undefined}>{note}</span>}
       value={<Button ref={trigger} variant="danger" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete"}</Button>} />
     <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>
       <DialogContent onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} title={presentation.state === "unavailable" ? "Delete account?" : `Delete ${presentation.personName}’s account?`} description="Your runs, history, settings, and credentials will be erased from this Mac. This can’t be undone." size="sm">
