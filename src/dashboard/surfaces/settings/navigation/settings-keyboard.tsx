@@ -36,7 +36,7 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
         const save = (next: readonly string[]) => saveShortcutPreferences({ ...preferences, bindings: { ...preferences.bindings, [action.id]: [...next] } });
         const reset = changed ? <IconButton label={`Reset ${action.title} shortcut`} icon={<Undo2 className={dsIcon.md} />} onClick={() => save(defaults)} /> : null;
         const pencil = (index: number) => <IconButton label={`Edit ${action.title} shortcut ${index + 1}`} icon={<Pencil className={dsIcon.md} />} onClick={() => edit(action.id, index)} />;
-        return <ResultRow key={action.id} label={action.title} description={action.description} value={<div className="flex flex-col items-end gap-1">
+        return <ResultRow key={action.id} label={action.title} description={action.description} controlWidth={chords.length > 1 ? "wide" : "standard"} value={<div className="flex items-center justify-end gap-3">
           {chords.length === 0
             ? <span className="inline-flex items-center justify-end gap-3"><span className="text-ui-muted">Unassigned</span>{pencil(0)}</span>
             : chords.map((chord, index) => <span key={index} className="inline-flex items-center justify-end gap-3">

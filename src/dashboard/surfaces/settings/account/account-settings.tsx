@@ -48,7 +48,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username }} />
       {details("Initials", values.initials, initials => ({ initials }))}
-      <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-7" /></span>} />
+      <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>
     {ucpath}
     <Group label="Workflow configuration">
@@ -144,7 +144,7 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
     return undefined;
   };
   return <>
-    <PencilRow label="Username" description={username === undefined ? "Not set yet. Relay uses your UCPath username, which you set under UCPath sign-in below. Workflows cannot run without a UCPath username and password." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
+    <PencilRow label="Username" description={username === undefined ? "Relay uses your UCPath username." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
       dialog={close => <UsernameDialog close={close} onSave={(current, next) => apply("username", current, next)} />} />
     <PencilRow label="Password" shown="••••••••" pencilLabel="Change Relay password" title="Change password"
       dialog={close => <PasswordDialog close={close} onSave={(current, next) => apply("password", current, next)} />} />
