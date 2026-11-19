@@ -3,18 +3,18 @@ import { forwardRef, useEffect, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
-import { itemDay, itemPreview, itemSource, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { itemContext, itemDay, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 import "./notifications-panel.css";
 
 type Open = (item: NotificationItem) => void;
 type RowActions = Readonly<{ onControl: (id: string, control: NotificationControl) => void; onDismiss: (id: string) => void }>;
 
-/** Hover and focus replace the source tag with icon actions: read/unread, plus Dismiss outside Priority. */
+/** Hover and focus replace the time with icon actions: read/unread, plus Dismiss outside Priority. */
 function RowActionButton({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
   return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} /></Tooltip>;
 }
 
-/** Codex rows: the unread dot left of the title, the source tag right of it, a two-line grey preview below. */
+/** Codex rows: the unread dot left of the title, the time right of it, the workflow and run, then a two-line grey line below. */
 function NotificationRow({ item, active, onOpen, actions }: { item: NotificationItem; active: boolean; onOpen: Open; actions: RowActions }) {
   return <li className="notification-row">
     <button type="button" aria-current={active || undefined} className={cn("notification-item", dsFocus)} onClick={() => onOpen(item)}>
@@ -22,9 +22,11 @@ function NotificationRow({ item, active, onOpen, actions }: { item: Notification
         {!item.read && <span aria-hidden className="notification-unread-dot" />}
         <span className="notification-item-title">{item.title}</span>
         {item.count !== undefined && <span className="notification-item-count"><span className="sr-only">{item.count} times</span><span aria-hidden>×{item.count}</span></span>}
+        <span className="notification-item-age">{item.age}</span>
         {!item.read && <span className="sr-only">Unread</span>}
       </span>
-      <span className="notification-item-line">{itemSource(item) !== "" && <span className="notification-item-source">{itemSource(item)} · </span>}{itemPreview(item)}</span>
+      {itemContext(item) !== "" && <span className="notification-item-context">{itemContext(item)}</span>}
+      {item.detail !== "" && <span className="notification-item-line">{item.detail}</span>}
     </button>
     <span className="notification-item-actions">
       <RowActionButton label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />} onClick={() => actions.onControl(item.id, item.read ? "unread" : "read")} />

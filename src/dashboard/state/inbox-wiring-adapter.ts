@@ -69,6 +69,13 @@ function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap
   return notificationPolicy(row)?.detail;
 }
 
+/** Repeats of one event for one run (or for storage) fold into one item: its latest time, its read state, the sum of its counts. */
+function foldKey(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
+  if (row.kind !== "notification" || row.link === undefined) return undefined;
+  const subject = row.link.kind === "storage" ? "storage" : "runId" in row.link ? row.link.runId : undefined;
+  return subject === undefined ? undefined : `${row.trigger}\u0000${row.title}\u0000${subject}`;
+}
+
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
@@ -93,9 +100,15 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
 export function inboxProjection(rows: readonly NotificationWire[], nowIso: string): { state: NotificationsState; notice: string; needsYou: number } {
   const notices = new Set<string>();
   const items: NotificationItem[] = [];
-  for (const row of rows) {
+  const folded = new Map<string, number>();
+  const newestFirst = [...rows].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
+  for (const row of newestFirst) {
     if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    items.push(notificationItem(row, nowIso));
+    const item = notificationItem(row, nowIso), key = foldKey(row);
+    const at = key === undefined ? undefined : folded.get(key);
+    if (at === undefined) { if (key !== undefined) folded.set(key, items.length); items.push(item); continue; }
+    const kept = items[at];
+    items[at] = { ...kept, count: (kept.count ?? 1) + (item.count ?? 1) };
   }
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
   return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" "), needsYou };
