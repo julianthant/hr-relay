@@ -1074,7 +1074,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "asOfDate", "timecardWindow.start", "timecardWindow.end"),
 
     /* EIDs and searched names identify people; source and candidate count describe the decision. */
-  ...person(SEPARATION_SUBJECT, "emplId", "searchedEmployeeId"),
+  ...person(SEPARATION_SUBJECT, "emplId", "searchedEmployeeId", "searchedName"),
   ...open(SEPARATION_SUBJECT, "emplIdSource", "candidateCount"),
 
     /* Employment records and job fields describe the appointment, not the person. */
