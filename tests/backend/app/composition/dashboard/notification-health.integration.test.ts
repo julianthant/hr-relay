@@ -75,6 +75,17 @@ describe("canonical notification producers", () => {
     { failure: "a published search generation that disagrees with authority", damage: (database: DatabaseSync) => {
       database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET search_state='ready', search_generation=authority_generation+1");
     } },
+    { failure: "a native run priority that disagrees with its stored envelope",
+      beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => { seedRun(f, QUEUED_RUN); },
+      damage: (database: DatabaseSync) => {
+        const update = database.prepare("UPDATE runs SET priority='interactive' WHERE priority='bulk'").run();
+        expect(Number(update.changes)).toBe(1);
+      } },
+    { failure: "a native command digest that disagrees with its stored request", damage: (database: DatabaseSync) => {
+      const update = database.prepare("UPDATE commands SET request_digest=? WHERE id=(SELECT min(id) FROM commands WHERE family<>'bulk-parent')")
+        .run("0".repeat(64));
+      expect(Number(update.changes)).toBe(1);
+    } },
     { failure: "a corrupt retained run result",
       beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => {
         const run = seedRun(f, QUEUED_RUN);

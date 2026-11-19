@@ -1833,8 +1833,43 @@ export function isAuthorityInspectionIntegrityFailure(error: unknown): boolean {
   return error instanceof Error && !(error instanceof AggregateError) && (integrityFailures.has(error) || isSqliteDamage(error));
 }
 
-// The notification and search validators still use plain Errors for these persisted inconsistencies.
+// Imported readers use plain Errors for these stored-data contradictions.
 const importedIntegrityFailures = new Set([
+  "run row is missing whole-record JSON",
+  "run lifecycle JSON must contain exactly the non-envelope record",
+  "run row columns do not match the native schema",
+  "run-current-settlement-ambiguous",
+  "run-settlement-context-mismatch",
+  "command-row-identity-mismatch",
+  "command-row-outcome-mismatch",
+  "command-row-outcome-missing",
+  "command-audit-settlement-mismatch",
+  "run-lifecycle-request-binding-mismatch",
+  "run-lifecycle-request-fence-mismatch",
+  "deleted-run-tally-duplicate",
+  "timeline-record-invalid",
+  "timeline-event-column-mismatch",
+  "assistant-conversation-expiry-invalid",
+  "assistant-attachment-bytes-invalid",
+  "assistant-preference-audit-invalid",
+  "assistant-preference-current-missing-with-history",
+  "assistant-preference-current-divergent",
+  "imported-artifact-row-identity-mismatch",
+  "generated artifact mirrored columns disagree with its strict record JSON",
+  "extracted-artifact-row-identity-mismatch",
+  "settings-current-command-audit-binding-mismatch",
+  "settings-current-missing-with-history",
+  "settings-row-identity-mismatch",
+  "settings-initialization-command-missing",
+  "settings-initialization-audit-missing",
+  "settings-initialization-binding-mismatch",
+  "settings-current-command-audit-missing",
+  "settings-snapshot-missing",
+  "settings-snapshot-binding-mismatch",
+  "settings-snapshot-preferences-mismatch",
+  "unconfirmed-write-publication-forbidden",
+  "confirmed-write-publication-intent-mismatch",
+  "confirmed-write-publication-proof-mismatch",
   "notification-publication-owner-mismatch",
   "notification-publication-identity-mismatch",
   "notification-publication-source-conflict",
@@ -1852,6 +1887,12 @@ const importedIntegrityFailures = new Set([
   "run-search-subject-invalid",
 ]);
 
+function importedReaderFoundInvalidData(message: string): boolean {
+  return importedIntegrityFailures.has(message)
+    || /^run row [a-z_]+ does not match its whole-record JSON$/u.test(message)
+    || /^deleted-run-row-[a-z_]+-mismatch$/u.test(message);
+}
+
 function storedDataFailedValidation(error: unknown): boolean {
   const seen = new Set<Error>();
   let confirmed = false;
@@ -1864,7 +1905,7 @@ function storedDataFailedValidation(error: unknown): boolean {
       if (failure.code === "WORKBOOK_STORAGE_CORRUPT") confirmed = true;
     }
     if (integrityFailures.has(failure) || isNativeRecordIntegrityFailure(failure) || failure instanceof z.ZodError || failure instanceof SyntaxError
-      || importedIntegrityFailures.has(failure.message)) confirmed = true;
+      || importedReaderFoundInvalidData(failure.message)) confirmed = true;
     seen.add(failure);
   }
   return confirmed;
