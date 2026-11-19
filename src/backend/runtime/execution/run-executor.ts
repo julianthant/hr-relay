@@ -415,16 +415,16 @@ export async function executeClaimedRun(
     checkPause(getRun());
   };
 
+  const workerTransition = (current: RunRecord, lifecycle: RunLifecycle): RunMutationOutcome => deps.lifecycle.workerTransition({
+    commandId: lifecycleCommandId("executor-transition", { runId, generation: claim.claimGeneration, version: current.version }),
+    runId, claim, lifecycle,
+    ...(lifecycle.state === "parked-gate" ? { expectedVersion: current.version } : {}),
+  });
+
   const transitionTo = (lifecycle: RunLifecycle): RunRecord => {
     const current = getRun();
-    checkCancellation();
-    const outcome = deps.lifecycle.workerTransition({
-      commandId: lifecycleCommandId("executor-transition", { runId, generation: claim.claimGeneration, version: current.version }),
-      runId,
-      claim,
-      lifecycle,
-    });
-    return requireLifecycleApplied(outcome);
+    checkCancellation(current);
+    return requireLifecycleApplied(workerTransition(current, lifecycle));
   };
 
   const runningLifecycle = (currentNodeId?: NodeId): RunLifecycle => RunLifecycleSchema.parse({
@@ -476,8 +476,7 @@ export async function executeClaimedRun(
     }));
   };
 
-  const checkCancellation = (): void => {
-    const current = getRun();
+  const checkCancellation = (current = getRun()): void => {
     if (pendingInterruptOf(current) !== "stop-requested") return;
     requireLifecycleApplied(deps.lifecycle.terminalize({
       kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
@@ -1806,8 +1805,10 @@ export async function executeClaimedRun(
             replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: entry.record.provenance }],
             scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute" && !retainedTransaction(candidate)).map(candidate => candidate.id),
             now: clock.now(), attempt: envelope.attempt, ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) });
-          if (freshness.length > 0) return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
-            problems: freshness, occurredAt: instant() }));
+          if (freshness.length > 0) {
+            transitionTo(runningLifecycle(node.id));
+            return await failNode(node, node.uses.id, new TaskError(node.uses.id, "RESUME_VALIDATION_FAILED", freshness.join("\n")));
+          }
           if (entry.patches !== undefined) {
             let patched: ReturnType<typeof applyCheckpointPatches>;
             try {
@@ -2055,38 +2056,44 @@ export async function executeClaimedRun(
             continue;
           }
           transitionTo(runningLifecycle(node.id));
-          let sourceBinding: unknown;
-          if (node.resolvedBy !== "operator") {
-            if (deps.gateSources === undefined || canonicalInput === undefined) {
-              return await failNode(node, undefined, new Error(
-                `gate "${node.id}" is resolved by ${node.resolvedBy}, but its registered source runtime is unavailable`,
-              ));
-            }
-            try {
-              const current = getRun();
-              sourceBinding = deps.gateSources.bind(node, {
-                run: current,
-                canonicalInput,
-                dependencyOutputs: scopeFor(node.dependsOn).outputs,
-                parkedVersion: current.version + 1,
-              });
-            } catch (error) {
-              return await failNode(node, undefined, error instanceof Error
-                ? error
-                : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
-            }
-          }
-          // A parked write owns durable checkpoints; recovery resumes without inventing task execution.
           await deps.sessions.closeAll("parked");
-          const resumeAt = nodes[index + 1]?.id ?? node.id;
-          transitionTo(RunLifecycleSchema.parse({
-            state: "parked-gate",
-            gateId: GateIdSchema.parse(String(node.id)),
-            parkedAt: instant(),
-            resumeAt,
-            ...(sourceBinding === undefined ? {} : { sourceBinding }),
-          }));
-          return RunExecutionOutcomeSchema.parse({ state: "parked-gate", runId, gateId: String(node.id) });
+          // A new version can carry Cancel or change the version a source gate must bind.
+          for (;;) {
+            const current = getRun();
+            requireOriginalClaim(current);
+            checkCancellation(current);
+            let sourceBinding: unknown;
+            if (node.resolvedBy !== "operator") {
+              if (deps.gateSources === undefined || canonicalInput === undefined) {
+                return await failNode(node, undefined, new Error(
+                  `gate "${node.id}" is resolved by ${node.resolvedBy}, but its registered source runtime is unavailable`,
+                ));
+              }
+              try {
+                sourceBinding = deps.gateSources.bind(node, {
+                  run: current,
+                  canonicalInput,
+                  dependencyOutputs: scopeFor(node.dependsOn).outputs,
+                  parkedVersion: current.version + 1,
+                });
+              } catch (error) {
+                return await failNode(node, undefined, error instanceof Error
+                  ? error
+                  : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
+              }
+            }
+            const resumeAt = nodes[index + 1]?.id ?? node.id;
+            const outcome = workerTransition(current, RunLifecycleSchema.parse({
+              state: "parked-gate",
+              gateId: GateIdSchema.parse(String(node.id)),
+              parkedAt: instant(),
+              resumeAt,
+              ...(sourceBinding === undefined ? {} : { sourceBinding }),
+            }));
+            if (outcome.state === "refused" && outcome.refusal.reason === "lost" && getRun().version > current.version) continue;
+            requireLifecycleApplied(outcome);
+            return RunExecutionOutcomeSchema.parse({ state: "parked-gate", runId, gateId: String(node.id) });
+          }
         }
         case "transaction": {
           transitionTo(runningLifecycle(node.id));
@@ -2394,20 +2401,11 @@ export async function executeClaimedRun(
       } catch (control) { failure = control; }
     }
     if (failure instanceof RunTerminalAdmissionLostError) {
-      const admissionVersion = failure.admissionVersion;
       try {
-        checkCancellation();
-        const acknowledged = deps.authority.withAuthorityTransaction?.(repositories => {
-          const current = getRun();
-          requireOriginalClaim(current);
-          if (pendingInterruptOf(current) === "stop-requested" || !authenticateDelegationRetryPause(repositories, descriptor, current, admissionVersion)) return false;
-          requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-            commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
-            runId, claim,
-          }));
-          return true;
-        });
-        if (acknowledged) return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" }) };
+        const current = getRun();
+        requireOriginalClaim(current);
+        checkCancellation(current);
+        if (current.version > failure.admissionVersion) checkPause(current);
       } catch (admissionFailure) { failure = admissionFailure; }
     }
     if (failure instanceof RunPauseRequestedError) {
