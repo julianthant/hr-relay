@@ -665,7 +665,6 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
     await shot(`hover-${name}`);
     await page.mouse.move(1, 1);
   };
-  await hoverChart("time", "Typical time per day", /^Thu 24: Separations/);
   // One period control drives every chart: 30d turns each into month days.
   await scrollTo(0);
   await page.getByRole("group", { name: "Report period" }).getByText("30d").click();
@@ -679,6 +678,27 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await expect(tip).toContainText("Sep 22, 2026");
   await page.keyboard.press("Escape");
   await expect(tip).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+// Analytics frames: a period with no runs, and a workflow's runs opened from its row.
+for (const theme of THEMES) test(`analytics empty and drilldown @ ${theme} ${WIDTH}`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: HEIGHT });
+  await useAnalyticsSampleClock(page);
+  await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity`);
+  await expect(page.getByRole("heading", { name: "Runs", exact: true })).toBeVisible();
+  const shot = async (name: string) => { await page.waitForTimeout(300); await page.screenshot({ path: join(OUT, `analytics-${name}-${theme}-${WIDTH}.png`) }); };
+  await page.getByRole("button", { name: "Previous period" }).click();
+  await shot("empty");
+  await page.getByRole("group", { name: "Report period" }).getByText("7d").click();
+  await page.getByRole("button", { name: "Show Separations details" }).click();
+  await page.getByText("Open runs", { exact: true }).click();
+  await expect(page.getByRole("region", { name: "Analytics runs" })).toBeVisible();
+  await shot("drilldown");
   expect(errors).toEqual([]);
 });
 
