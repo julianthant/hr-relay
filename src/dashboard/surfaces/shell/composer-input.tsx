@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { ArrowUp, Hand, Paperclip, Mic, Plus, ShieldAlert, X } from 'lucide-react';
-import { Skeleton, InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
+import { Button, Skeleton, InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem } from '../../ds/ui.js';
 import { ASSISTANT_APPROVALS, ASSISTANT_MODEL, FULL_ACCESS, composerEnterAction, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
@@ -52,7 +52,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
       {composer.files.map(file => <div key={file.id} className="hub-attachment" data-stage={file.stage?.state}><Paperclip aria-hidden /><span>{file.name}</span>
         {file.stage?.state === 'spreadsheet' && <small className="hub-caption">Added to Spreadsheets only. Not sent to the assistant.</small>}
         {file.stage?.state === 'failed' && <><small className="hub-attachment-failure" role="alert">{file.stage.message}</small>
-          {sources.current.has(file.id) && onAttachFile && <button className="hub-btn" type="button" disabled={attaching} onClick={() => { const source = sources.current.get(file.id)!; void attach(() => onAttachFile(source), source, file.id); }}>Retry</button>}</>}
+          {sources.current.has(file.id) && onAttachFile && <Button variant="secondary" type="button" disabled={attaching} onClick={() => { const source = sources.current.get(file.id)!; void attach(() => onAttachFile(source), source, file.id); }}>Retry</Button>}</>}
         <button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
       <label className="hub-sr-only" htmlFor={id}>Message Relay</label>
       <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={1} placeholder="Ask Relay" value={composer.text} disabled={disabled}

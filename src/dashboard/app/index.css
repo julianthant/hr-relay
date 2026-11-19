@@ -36,7 +36,6 @@
   --ring: var(--ui-stroke-control);
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --radius: 0.5rem;
-  --shadow-color: #000000;
   --shadow-2xs: 0 1px 3px 0 rgb(0 0 0 / 0.04);
   --shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.04);
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
@@ -233,22 +232,6 @@
 .settings-performance-hazard { color: var(--ds-status-waiting-fg); }
 .settings-performance-fallback { display: flex; align-items: center; gap: var(--ds-space-tight); }
 .settings-performance-fallback > :first-child { flex: 1; min-width: 0; }
-.settings-preflight-list {
-  overflow: hidden;
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-lg);
-}
-.settings-preflight-item {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--ds-space-tight);
-  padding: var(--ds-space-cozy);
-  border-bottom: 1px solid var(--ds-border);
-}
-.settings-preflight-item:last-child {
-  border-bottom: 0;
-}
 .settings-object-field {
   min-width: 0;
 }
