@@ -55,20 +55,23 @@ async function guardedClick(
     if (result === "expired") cancel.abort();
   }, (error: unknown) => { cancel.abort(); throw error; });
   async function click() {
+    let clickFailure: { error: unknown } | undefined;
     try {
       remainingMutationProbeMs(capability);
       const signal = actionSignal ? AbortSignal.any([actionSignal, cancel.signal]) : cancel.signal;
       signal.throwIfAborted();
       await control.click({ timeout, signal });
-    } finally {
-      try {
-        await guard.evaluate(state => state.stop());
-      } catch (error) {
-        // A confirmed click may have replaced the document that owned the listener.
-        if (dispatch !== "accepted" || !(error instanceof Error)
-          || !/Execution context was destroyed|Cannot find context with specified id/u.test(error.message)) throw error;
-      }
+    } catch (error) {
+      clickFailure = { error };
     }
+    try {
+      await guard.evaluate(state => state.stop());
+    } catch (error) {
+      // A confirmed click may have replaced the document that owned the listener.
+      if (dispatch !== "accepted" || !(error instanceof Error)
+        || !/Execution context was destroyed|Cannot find context with specified id/u.test(error.message)) throw error;
+    }
+    if (clickFailure !== undefined) throw clickFailure.error;
   }
   try {
     const [action, observation] = await Promise.allSettled([click(), verdict]);

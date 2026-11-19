@@ -302,6 +302,31 @@ describe("Kuali finalization safety", () => {
     await assert.rejects(driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER }), /outcome is unknown/u);
   });
 
+  it("reports an unknown lookup when the Action List submits unreadable GraphQL", async () => {
+    await context.route(ACTION_LIST_URL, route => route.fulfill({
+      contentType: "text/html",
+      body: `
+        <input aria-label="Search">
+        <button>GO</button>
+        <a href="${DOCUMENT_URL}">${DOCUMENT_NUMBER}</a>
+        <script>
+          document.querySelector("button").onclick = () => fetch(${JSON.stringify(GRAPHQL_URL)}, {
+            method: "POST", headers: { "content-type": "application/json" }, body: "{",
+          });
+        </script>`,
+    }));
+    await context.route(GRAPHQL_URL, route => route.fulfill({ status: 400 }));
+    const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
+
+    await assert.rejects(driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER }), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /outcome is unknown/u);
+      assert.ok(error.cause instanceof Error);
+      assert.equal(error.cause.message, "Kuali Action List GraphQL request body is unreadable");
+      return true;
+    });
+  }, 25_000);
+
   it("allows a confirmed empty filter result even while an old exact row is still visible", async () => {
     const { driver } = await setupActionList({
       links: `<a href="${DOCUMENT_URL}">${DOCUMENT_NUMBER}</a>`, rowsUnchanged: true, edges: [],

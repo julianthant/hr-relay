@@ -376,7 +376,7 @@ function isRequestedActionListFilter(request: Request, searchText: string): bool
   try {
     body = request.postDataJSON();
   } catch {
-    return false;
+    throw new Error("Kuali Action List GraphQL request body is unreadable");
   }
   const parsed = ActionListRequestSchema.safeParse(body);
   return parsed.success && parsed.data.variables.args.query === searchText;
@@ -686,13 +686,21 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, searchText);
 
     let submitted: Request | undefined;
+    const requestFailed = Promise.withResolvers<never>();
     const observeRequest = (request: Request): void => {
-      if (submitted === undefined && isRequestedActionListFilter(request, searchText)) submitted = request;
+      if (submitted !== undefined) return;
+      try {
+        if (isRequestedActionListFilter(request, searchText)) submitted = request;
+      } catch (error) {
+        requestFailed.reject(error);
+      }
     };
     page.on("request", observeRequest);
     try {
-      const settled = page.waitForResponse(response => response.request() === submitted,
-        { timeout: ACTION_LIST_FILTER_TIMEOUT_MS });
+      const settled = Promise.race([
+        page.waitForResponse(response => response.request() === submitted, { timeout: ACTION_LIST_FILTER_TIMEOUT_MS }),
+        requestFailed.promise,
+      ]);
       void settled.catch(() => { /* Clicking can fail before the response is awaited. */ });
       assertCurrent();
       await go.click({ timeout: FIELD_TIMEOUT_MS });
@@ -1620,18 +1628,23 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         return;
       }
       const request = route.request();
-      let postData: string;
+      let validation: { state: "valid"; postData: string } | { state: "invalid"; error: unknown };
       try {
         assertCurrent();
-        postData = validatedStagedSave(request, expectation);
+        const postData = validatedStagedSave(request, expectation);
         assertCurrent();
+        validation = { state: "valid", postData };
       } catch (error) {
+        validation = { state: "invalid", error };
+      }
+      if (validation.state === "invalid") {
+        const { error } = validation;
         forwardSave = undefined;
         await route.abort().then(() => refused.reject(error), refused.reject);
         return;
       }
       forwarded = request;
-      await route.fallback({ postData }).catch(refused.reject);
+      await route.fallback({ postData: validation.postData }).catch(refused.reject);
     };
     try {
       await clickWithMutationCapability(capability, save, FIELD_TIMEOUT_MS);

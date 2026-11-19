@@ -36,7 +36,7 @@ it("publishes the verifier's later observation of the same cleared pending set",
   const h = await compositionHarness({ rows });
   try {
     const { run, claim } = compositionClaimRunning(h.database, h.clock);
-    const now = h.clock.now;
+    const now = h.clock.now.bind(h.clock);
     const scans: string[] = [];
     h.clock.now = () => {
       if (h.ucpath.events.filter(event => event === "scan").length > scans.length) {
