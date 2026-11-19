@@ -80,7 +80,7 @@ export function bindCanonicalManualOcrReading(input: OcrPageInput, actorId: stri
 export const OcrPageOutcomeSchema = childRunOutcomeSchema(OcrPageReadingSchema);
 export type OcrPageOutcome = z.infer<typeof OcrPageOutcomeSchema>;
 
-export const OcrPageAccountingSchema = z.strictObject({
+export const OcrReadPageAccountingSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   manifest: OcrSourceManifestSchema,
   readingId: ItemIdSchema,
@@ -102,15 +102,23 @@ export const OcrPageAccountingSchema = z.strictObject({
     runIds.add(outcome.runId);
   }
 });
-export const RetainedOcrPageAccountingSchema = OcrPageAccountingSchema.safeExtend({
-  outcomes: z.array(childRunOutcomeSchema(RetainedOcrPageReadingSchema)).min(1),
+export const OcrManualEntryAccountingSchema = z.strictObject({
+  ...OcrReadPageAccountingSchema.shape,
+  formType: z.literal("emergency-contact"),
+  manualEntry: z.literal(true),
+  outcomes: z.tuple([]),
 });
+export const OcrPageAccountingSchema = z.union([OcrReadPageAccountingSchema, OcrManualEntryAccountingSchema]);
+export const RetainedOcrPageAccountingSchema = z.union([OcrReadPageAccountingSchema.safeExtend({
+  outcomes: z.array(childRunOutcomeSchema(RetainedOcrPageReadingSchema)).min(1),
+}), OcrManualEntryAccountingSchema]);
 export type OcrPageAccounting = z.infer<typeof OcrPageAccountingSchema>;
 
 export function ocrExtractionItemId(input: OcrPageInput) {
   return ItemIdSchema.parse(deriveItemId("ocr-page", ocrExtractionId(input)));
 }
 
-export function accountOcrPages(manifest: OcrSourceManifest, readingId: z.input<typeof ItemIdSchema>, outcomes: readonly OcrPageOutcome[], formType: OcrFormType = "emergency-contact"): OcrPageAccounting {
-  return deepFreeze(OcrPageAccountingSchema.parse({ formType, manifest, readingId, outcomes }));
+export function accountOcrPages(manifest: OcrSourceManifest, readingId: z.input<typeof ItemIdSchema>, outcomes: readonly OcrPageOutcome[], formType: OcrFormType = "emergency-contact", extractWithOcr?: boolean): OcrPageAccounting {
+  return deepFreeze(OcrPageAccountingSchema.parse({ formType, manifest, readingId, outcomes,
+    ...(extractWithOcr === false ? { manualEntry: true } : {}) }));
 }
