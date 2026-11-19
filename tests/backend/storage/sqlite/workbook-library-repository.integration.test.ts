@@ -4,10 +4,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
-import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createWorkbookLibraryService, readRetainedWorkbookReference, verifyRetainedNamedWorkbookReference } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, encodeSavedWorkbook, parseRunWorkbookReference, WorkbookOperationReceiptSchema, WorkbookOperationSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { decodeWorkbookReference } from "../../../../src/models/processing/workbooks/read-reference.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { buildRunWorkbookSection, createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
@@ -75,6 +75,85 @@ it("reads a saved revision and a following metadata revision with a retained key
   expect(service.revision(id, metadataOnly.version)).toEqual(metadataOnly);
   database.prepare("UPDATE workbook_operations SET receipt_json=json_set(receipt_json,'$.version',99) WHERE sequence=?").run(last.sequence);
   expect(() => service.revision(id, saved.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
+});
+
+it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as const)("reads revision %s from earlier keyed settlements (%s)", version => {
+  using database = new DatabaseSync(":memory:");
+  const id = "retained-roster", eid = "10800000";
+  const metadata = { typeId: "roster", sharePoint: null };
+  const first = encodeSavedWorkbook({ libraryId: id, version: 1, createdAt: savedAt, savedAt,
+    workbook: { libraryId: id, name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: [{
+      id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
+      columnBindings: ["eid", "fullName"].map((fieldId, sourceColumn) => ({ id: fieldId, sourceColumn, sourceHeader: fieldId, fieldId, basis: "manual" })),
+      rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] },
+        { id: "text-key", cells: [{ value: eid }, { value: null }] }, { id: "numeric-key", cells: [{ value: Number(eid) }, { value: null }] }],
+    }] },
+  });
+  for (const statement of WORKBOOK_LIBRARY_MIGRATION.statements) database.exec(statement);
+  for (const table of ["workbook_library", "workbook_library_history"]) {
+    database.prepare(`INSERT INTO ${table} VALUES(?,?,?,?,?)`).run(id, 1, savedAt, savedAt, JSON.stringify(first));
+  }
+  for (const statement of WORKBOOK_MASTER_MIGRATION.statements) database.exec(statement);
+  database.prepare("INSERT INTO workbook_types VALUES(?,?)").run("roster",
+    JSON.stringify({ id: "roster", name: "Roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null }));
+
+  const resolvedRow = { sheetId: "people", rowId: "text-key" };
+  const source = { kind: "run", runId: "10000000-0000-4000-8000-000000000001" };
+  const names = ["First Fixture", "Second Fixture", "Third Fixture"];
+  const insert = database.prepare("INSERT INTO workbook_operations(sequence,workbook_id,operation_id,digest,request_json,receipt_json) VALUES(?,?,?,?,?,?)");
+  function settle(sequence: number, input: unknown, effects: object) {
+    const request = WorkbookOperationSchema.parse(input);
+    const json = canonicalJsonStringify(request);
+    const receipt = WorkbookOperationReceiptSchema.parse({ operationId: request.operationId, sequence, libraryId: id,
+      source: request.source, state: "applied", version: sequence + 1, at: savedAt, candidates: [], changes: [], ...effects });
+    insert.run(sequence, id, request.operationId, sha256Hex(json), json, JSON.stringify(receipt));
+  }
+  settle(1, { operationId: "assign-type", at: savedAt, source: { kind: "operator" }, change: { kind: "metadata", expectedVersion: 1, metadata } }, {});
+  names.forEach((newValue, index) => {
+    const expectedVersion = index + 2;
+    settle(expectedVersion, { operationId: `fill-${index}`, at: savedAt, source,
+      change: { kind: "patch", expectedVersion, key: eid, values: { fullName: newValue } } },
+    { key: eid, candidates: [resolvedRow], changes: [{ ...resolvedRow, fieldId: "fullName", oldValue: names[index - 1] ?? null, newValue }] });
+  });
+  const retained = (revision: number) => {
+    const workbook = structuredClone(first.workbook);
+    workbook.sheets[0].rows[1].cells[1].value = names[revision - 3];
+    return { ...first, version: revision, workbook };
+  };
+  database.prepare("INSERT INTO workbook_library_history VALUES(?,?,?,?,?,?,?)")
+    .run(id, "Reviewed", "operator", 3, savedAt, savedAt, JSON.stringify(retained(3)));
+  database.prepare("UPDATE workbook_library SET version=?, payload_json=?, metadata_json=?, ownership_json=? WHERE id=?")
+    .run(5, JSON.stringify(retained(5)), JSON.stringify(metadata), JSON.stringify({
+      [JSON.stringify(["people", "text-key", "fullName"])]: { owner: "relay", value: names[2] },
+    }), id);
+  for (const migration of [WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+    for (const statement of migration.statements) database.exec(statement);
+  }
+  const repository = createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work() });
+  const service = createWorkbookLibraryService({ repository, clock: manualClock(new Date(savedAt)), sync: unexpectedWorkbookSync });
+  const live = service.read(id);
+  service.save(id, live.version, { ...live.workbook, name: "Latest.xlsx" });
+  expect(service.revision(id, version)).toEqual(retained(version));
+});
+
+it.each(["oldValue", "newValue"] as const)("rejects a retained patch receipt with a contradictory %s", field => {
+  using database = new DatabaseSync(":memory:");
+  const { id, repository, service } = workbookFixture(database);
+  const workbook = structuredClone(service.read(id).workbook);
+  const key = "blank@example.test";
+  workbook.sheets[0].rows.push({ id: "blank", cells: [{ value: key }, { value: null }] });
+  const before = service.save(id, 2, workbook);
+  const patch = repository.operation(id, { operationId: "fill", at: savedAt, source: { kind: "run", runId: "fixture-run" },
+    change: { kind: "patch", expectedVersion: before.version, key, values: { fullName: "Stored Name" } } });
+  expect(patch).toMatchObject({ state: "applied", changes: [{ oldValue: null, newValue: "Stored Name" }] });
+  const after = service.read(id);
+  service.save(id, after.version, { ...after.workbook, name: "Latest.xlsx" });
+  expect(service.revision(id, patch.version)).toEqual(after);
+
+  database.exec("DROP TRIGGER workbook_operations_immutable");
+  database.prepare("UPDATE workbook_operations SET receipt_json=json_set(receipt_json,?,?) WHERE sequence=?")
+    .run(`$.changes[0].${field}`, "Contradictory Name", patch.sequence);
+  expect(() => service.revision(id, patch.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
 });
 
 it("retains recorded key matches while authenticating the values against the named sheet", () => {

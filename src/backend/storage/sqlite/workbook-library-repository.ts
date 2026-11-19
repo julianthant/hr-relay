@@ -2,17 +2,68 @@ import { randomUUID } from "node:crypto";
 import { WorkflowWorkbookSelectionInputSchema, WorkflowWorkbookSelectionRecordSchema, WorkbookLibraryStateSchema, WorkbookLibraryEntrySchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryActionResultSchema, WorkbookLibrarySyncRecordSchema, type WorkbookLibrarySyncRecord, type WorkbookLibraryState, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches, type WorkbookReplayContext } from "../../workbooks/master-changes.js";
+import { applyMasterChange, WorkbookOwnershipSchema, workbookKey, workbookMatches, type WorkbookReplayContext } from "../../workbooks/master-changes.js";
 import { WorkbookSnapshotRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookNamedReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
-import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type SavedWorkbook } from "../../../models/dashboard/workbooks.js";
+import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type EditableWorkbookWire, type SavedWorkbook, type WorkbookOperation, type WorkbookOperationReceipt, type WorkbookType } from "../../../models/dashboard/workbooks.js";
 import { WorkbookOperationRecordSchema } from "../../../models/dashboard/workbooks.js";
 import { IsoInstantSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 const serializeSavedWorkbook = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
+
+type KeyedWorkbookChange = Extract<WorkbookOperation['change'], { kind: 'patch' | 'add' }>;
+
+function replayKeyedSettlement(workbook: EditableWorkbookWire, version: number, change: KeyedWorkbookChange,
+  receipt: WorkbookOperationReceipt, type: Pick<WorkbookType, 'keyFieldId' | 'fields'> | undefined): EditableWorkbookWire {
+  if (type === undefined || type.keyFieldId === null || Object.keys(change.values).length === 0
+    || Object.keys(change.values).some(field => !type.fields.includes(field))) {
+    throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  }
+  const keyField = type.keyFieldId;
+  const address = change.kind === 'add' ? change : change.selection ?? receipt.candidates[0];
+  const sheetIndex = workbook.sheets.findIndex(sheet => sheet.id === address?.sheetId);
+  const sheet = workbook.sheets[sheetIndex];
+  if (address === undefined || sheet === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  const rowIndex = sheet.rows.findIndex(row => row.id === address.rowId);
+  if (change.kind === 'add' ? rowIndex !== -1 || receipt.candidates.length !== 0
+    : rowIndex < (sheet.headerRow ?? 1) || (change.selection === undefined ? receipt.candidates.length !== 1
+      : change.selection.expectedVersion !== version || !receipt.candidates.some(candidate => candidate.sheetId === address.sheetId && candidate.rowId === address.rowId))) {
+    throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  }
+  const sourceRow = sheet.rows[rowIndex];
+  const values = new Map(Object.entries(change.values));
+  if (change.kind === 'add' && !values.has(keyField)) values.set(keyField, change.key);
+  const hasRecordedKey = (value: unknown) => value === change.key || workbookKey(value) === change.key;
+  if ((change.kind === 'patch' && !sheet.columnBindings?.some((binding, index) => binding.fieldId === keyField
+    && hasRecordedKey(sourceRow.cells[index]?.value))) || (values.has(keyField) && !hasRecordedKey(values.get(keyField)))) {
+    throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  }
+  const cells: (typeof sourceRow)['cells'] = change.kind === 'add'
+    ? Array.from({ length: sheet.width }, () => ({ value: null })) : [...sourceRow.cells];
+  for (const effect of receipt.changes) {
+    const indexes = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === effect.fieldId ? [index] : []) ?? [];
+    const cell = indexes.length === 1 ? cells[indexes[0]] : undefined;
+    if (effect.sheetId !== address.sheetId || effect.rowId !== address.rowId || (effect.key !== undefined && effect.key !== change.key)
+      || cell === undefined || !values.has(effect.fieldId)
+      || canonicalJsonStringify(cell.value) !== canonicalJsonStringify(effect.oldValue)
+      || canonicalJsonStringify(values.get(effect.fieldId)) !== canonicalJsonStringify(effect.newValue)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    const { richText: _richText, hyperlink: _hyperlink, tooltip: _tooltip, ...format } = cell;
+    cells[indexes[0]] = { ...format, value: effect.newValue };
+    values.delete(effect.fieldId);
+  }
+  if (values.size !== 0) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  const rows = [...sheet.rows];
+  if (change.kind === 'add') rows.push({ id: address.rowId, cells });
+  else rows[rowIndex] = { ...sourceRow, cells };
+  const sheets = [...workbook.sheets];
+  sheets[sheetIndex] = { ...sheet, rows };
+  return { ...workbook, sheets };
+}
 
 export const WORKBOOK_LIBRARY_MIGRATION = Object.freeze({
   id: "workbook-library",
@@ -447,35 +498,65 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     if (record.version === version) return { record: decodeSavedWorkbook(record), ownership, typeId, context };
     throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
   };
+  const retainedRevisionWorkbook = (id: string, version: number, savedAt: string, createdAt: string) => {
+    const snapshotId = JSON.stringify([id, `revision:${version}`]);
+    if (database.prepare('SELECT 1 FROM workbook_library_snapshots WHERE id=?').get(snapshotId) !== undefined) {
+      return librarySnapshot(id, snapshotId).workbook;
+    }
+    const migration = libraryState(id).versions.find(entry => entry.id === 'current' && entry.version === version);
+    if (migration !== undefined) {
+      if (migration.snapshotId !== JSON.stringify([id, 'current']) || migration.source !== 'retained' || migration.savedAt !== savedAt) {
+        throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      }
+      return librarySnapshot(id, migration.snapshotId).workbook;
+    }
+    const named = database.prepare('SELECT * FROM workbook_library_history WHERE workbook_id=? AND version=? ORDER BY name LIMIT 1').get(id, version);
+    if (named === undefined) return undefined;
+    const proof = fromRow({ ...named, id });
+    if (proof.createdAt !== createdAt || proof.savedAt !== savedAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return encodeSavedWorkbook(proof).workbook;
+  };
   const revisionValue = (id: string, version: number): SavedWorkbook => {
     const live = required(id);
     if (version === live.version) return live;
     if (version > live.version) throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
     const baseline = revisionBaseline(id, version, live);
     if (version === baseline.version) return baseline;
-    let previousVersion = baseline.version, savedAt = baseline.savedAt;
-    let content: { version: number; change: Extract<WorkbookOperation['change'], { kind: 'save' | 'patch' | 'add' | 'sync' }> } | undefined;
+    let record = encodeSavedWorkbook(baseline), typeId = 'general';
     for (const { operation, settled } of settledOperations(id)) {
       const { change } = operation;
       const advances = settled.state === 'applied' && change.kind !== 'version';
-      if (settled.version !== previousVersion + Number(advances) || settled.key !== ('key' in change ? change.key : undefined)
-        || (settled.state === 'applied' && (Date.parse(settled.at) < Date.parse(savedAt)
-          || ('expectedVersion' in change && change.expectedVersion !== undefined && change.expectedVersion !== previousVersion)))) {
+      if (settled.version !== record.version + Number(advances) || settled.key !== ('key' in change ? change.key : undefined)
+        || (settled.state === 'applied' && (Date.parse(settled.at) < Date.parse(record.savedAt)
+          || ('expectedVersion' in change && change.expectedVersion !== undefined && change.expectedVersion !== record.version)))) {
+        throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      }
+      if ((change.kind === 'version' || change.kind === 'metadata') && (settled.changes.length !== 0 || settled.candidates.length !== 0)) {
         throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       }
       if (!advances) continue;
-      previousVersion = settled.version;
-      savedAt = settled.at;
-      if (change.kind !== 'metadata' && change.kind !== 'version') content = { version: previousVersion, change };
-      if (previousVersion !== version) continue;
-      if (content === undefined) return SavedWorkbookSchema.parse({ ...baseline, version, savedAt });
-      if (content.change.kind === 'save') return decodeSavedWorkbook({ ...baseline, version, savedAt, workbook: content.change.workbook });
-      const snapshotId = JSON.stringify([id, `revision:${content.version}`]);
-      if (database.prepare('SELECT 1 FROM workbook_library_snapshots WHERE id=?').get(snapshotId) !== undefined) {
-        return decodeSavedWorkbook({ ...baseline, version, savedAt, workbook: librarySnapshot(id, snapshotId).workbook });
+      let workbook = record.workbook;
+      if (change.kind === 'metadata') {
+        typeId = change.metadata.typeId;
+        if (!type(typeId)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      } else if (change.kind === 'save') {
+        workbook = change.workbook;
+      } else if (change.kind === 'patch' || change.kind === 'add') {
+        const authority = operation.source.kind === 'run-reference'
+          ? { keyFieldId: operation.source.authority.keyFieldId, fields: operation.source.authority.writableFields }
+          : type(typeId);
+        const replayed = replayKeyedSettlement(workbook, record.version, change, settled, authority);
+        const retained = retainedRevisionWorkbook(id, settled.version, settled.at, baseline.createdAt);
+        if (retained !== undefined && canonicalJsonStringify(retained) !== canonicalJsonStringify(replayed)) {
+          throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        }
+        workbook = retained ?? replayed;
+      } else if (change.kind === 'sync') {
+        workbook = retainedRevisionWorkbook(id, settled.version, settled.at, baseline.createdAt)
+          ?? encodeSavedWorkbook(reconstructVersion(id, settled.version, live).record).workbook;
       }
-      // Operations written before the catalogue may have no immutable revision snapshot.
-      return reconstructVersion(id, version, live).record;
+      record = { ...record, version: settled.version, savedAt: settled.at, workbook };
+      if (record.version === version) return decodeSavedWorkbook(record);
     }
     throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
   };
