@@ -2270,6 +2270,17 @@ function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): reado
   return issues;
 }
 
+function* readRunPages(database: DatabaseSync) {
+  const next = database.prepare("SELECT * FROM runs WHERE id > ? ORDER BY id LIMIT 500");
+  let rows = database.prepare("SELECT * FROM runs ORDER BY id LIMIT 500").all();
+  while (rows.length > 0) {
+    yield* rows;
+    if (rows.length < 500) return;
+    const { id } = z.object({ id: z.string() }).parse(rows.at(-1));
+    rows = next.all(id);
+  }
+}
+
 function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly SpanAuthorityRunRoot[], busyTimeoutMs: number): SpanAuthorityReadSnapshot {
   const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
   const rootIssues = structuralSpanRootIssues(roots);
@@ -2289,40 +2300,52 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
     assertNativeSchema(database);
     const meta = readMetaRow(database);
     if (meta.schema_version !== version) throw new Error("span-authority-schema-metadata-mismatch");
-    const queuedRunIds = new Set(roots.map(root => root.runId));
-    const runs = new Map<string,RunRecord>();
+    const rootsByRun = new Map(roots.map(root => [root.runId, root]));
+    const liveIssues = new Map<string, readonly string[]>();
+    const malformedRunIds = new Set<string>();
+    const missingSpanRunIds: RunRecord["envelope"]["runId"][] = [];
+    let liveRunCount = 0;
     const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
-    for (const raw of database.prepare("SELECT * FROM runs ORDER BY id").all()) {
-      const key = z.object({id:z.string()}).parse(raw).id;
-      try { runs.set(key,runRecordFromRow(raw)); }
-      catch { malformedRecords.push({state:"malformed-authority",source:"current",recordKey:key,summary:"runs authority failed its strict native row validation"}); }
+    for (const raw of readRunPages(database)) {
+      const key = z.object({ id: z.string() }).parse(raw).id;
+      let run: RunRecord;
+      try { run = runRecordFromRow(raw); }
+      catch {
+        malformedRunIds.add(key);
+        malformedRecords.push({ state: "malformed-authority", source: "current", recordKey: key, summary: "runs authority failed its strict native row validation" });
+        continue;
+      }
+      liveRunCount += 1;
+      const root = rootsByRun.get(run.envelope.runId);
+      if (root === undefined) missingSpanRunIds.push(run.envelope.runId);
+      else liveIssues.set(key, liveSpanRootMismatches(root, run));
     }
+    const deletedById = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?");
     const resolutions = roots.map((root,index) => {
       const issues = rootIssues[index];
       if (issues === undefined) throw new Error("span-authority-structural-issues-missing");
       if (issues.length > 0) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"span_stream",summary:issues.join("; ")});
-      const deletedRow = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(root.runId);
+      const deletedRow = deletedById.get(root.runId);
       if (deletedRow !== undefined) {
         try {
           const {receipt} = deletedRunFromRow(deletedRow);
           const mismatches = [mismatchSummary("workflow",root.workflow,receipt.workflow,"deleted_runs"),
             mismatchSummary("itemId",root.itemId,receipt.itemId,"deleted_runs"),mismatchSummary("traceId",root.traceId,receipt.traceId,"deleted_runs"),
             mismatchSummary("finalAttempt",root.finalAttempt,receipt.attempt,"deleted_runs")].filter((issue):issue is string=>issue !== undefined);
-          if (runs.has(root.runId) || mismatches.length > 0) throw new Error("deleted-run-span-identity-mismatch");
+          if (liveIssues.has(root.runId) || mismatches.length > 0) throw new Error("deleted-run-span-identity-mismatch");
           return SpanAuthorityRunResolutionSchema.parse({state:"deleted",runId:receipt.runId,workflow:receipt.workflow,traceId:receipt.traceId,
             origin:receipt.origin,commandId:receipt.commandId,deletedAt:receipt.deletedAt});
         } catch { return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"deleted_runs",summary:"deletion receipt failed native row or span identity validation"}); }
       }
-      if (malformedRecords.some(record=>record.recordKey === root.runId)) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"runs",summary:"runs authority failed its strict native row validation"});
-      const run = runs.get(root.runId);
-      if (run === undefined) return SpanAuthorityRunResolutionSchema.parse({state:"missing",runId:root.runId});
-      const mismatches = liveSpanRootMismatches(root,run);
+      if (malformedRunIds.has(root.runId)) return SpanAuthorityRunResolutionSchema.parse({state:"malformed",runId:root.runId,table:"runs",summary:"runs authority failed its strict native row validation"});
+      const mismatches = liveIssues.get(root.runId);
+      if (mismatches === undefined) return SpanAuthorityRunResolutionSchema.parse({state:"missing",runId:root.runId});
       return SpanAuthorityRunResolutionSchema.parse(mismatches.length === 0 ? {state:"live",runId:root.runId}
         : {state:"malformed",runId:root.runId,table:"runs",summary:mismatches.join("; ")});
     });
     const snapshot = SpanAuthorityReadSnapshotSchema.parse({authorityGeneration:meta.authority_generation,authorityContentFingerprint:authorityContentFingerprint(database),
-      liveRunCount:runs.size,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
-      missingSpanRunIds:malformedRecords.length === 0 ? [...runs.keys()].filter(id=>!queuedRunIds.has(RunIdSchema.parse(id))).map(id=>RunIdSchema.parse(id)) : []});
+      liveRunCount,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
+      missingSpanRunIds:malformedRecords.length === 0 ? missingSpanRunIds : []});
     database.exec("COMMIT");transactionOpen = false;
     return Object.freeze(snapshot);
   } finally {
@@ -3281,12 +3304,11 @@ export class AuthorityDatabase implements Disposable {
       deleted: readonly DeletedRunRecord[];
     }> | undefined;
     const identity = withDirectReaderAdmission(admission, () => inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
-      const metrics = z.object({ largest: z.number().int().nonnegative(), runs: z.number().int().nonnegative() }).parse(database.prepare(`
-        SELECT COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest, count(DISTINCT run_id) AS runs
+      const metrics = z.object({ largest: z.number().int().nonnegative() }).parse(database.prepare(`
+        SELECT COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest
         FROM timeline_events WHERE ${INSPECTED_TIMELINE_KINDS}
       `).get());
       if (metrics.largest > 256 * 1024) throw new TimelineRecordError("timeline-doctor-event-limit-exceeded: 262144 bytes");
-      if (metrics.runs > 10_000) throw new TimelineRecordError("timeline-doctor-run-limit-exceeded: 10000 run IDs");
       // Confirmations survive ordinary retention. Compare their immutable content,
       // independently of mutable run versions and database-local delivery cursors.
       const confirmationsByRun = new Map<string, string[]>();
@@ -3330,7 +3352,7 @@ export class AuthorityDatabase implements Disposable {
         if (owned === undefined) attemptsByRun.set(attempt.runId, [attempt]);
         else owned.push(attempt);
       }
-      const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw) => {
+      const runs = Array.from(readRunPages(database), (raw) => {
         const run = runRecordFromRow(raw);
         const owned = attemptsByRun.get(run.envelope.runId) ?? [];
         return { runId: run.envelope.runId, workflow: run.envelope.workflow, traceId: run.envelope.traceId,

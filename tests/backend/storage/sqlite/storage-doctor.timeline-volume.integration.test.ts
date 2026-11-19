@@ -5,11 +5,15 @@ import { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
+import { doctorAuthorityStorage as inspectStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials, createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const profiles = createProfileFixtureSet();
@@ -28,7 +32,7 @@ function run(index: number): RunRecord {
     ...QUEUED_RUN,
     envelope: {
       ...QUEUED_RUN.envelope,
-      runId: randomUUID(), itemId: randomUUID(), traceId: `pl-120000-${String(index).padStart(4, "0")}`,
+      runId: randomUUID(), itemId: randomUUID(), traceId: `pl-120000-${index.toString(16).padStart(4, "0")}`,
       priority: "interactive", dryRun: true, resolvedInstance: { ucpath: "prod" },
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
     },
@@ -68,9 +72,11 @@ async function store(runs: readonly RunRecord[], write: (emit: (event: Readonly<
   const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "timeline-volume-test" }, clock);
   try {
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-    for (const record of runs) database.authority.runs.enqueue(record);
-    const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
-    write((event) => emitter.emit(event), database);
+    database.withAuthorityTransaction(() => {
+      for (const record of runs) database.authority.runs.enqueue(record);
+      const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+      write((event) => emitter.emit(event), database);
+    });
   } finally {
     database.close();
   }
@@ -82,6 +88,7 @@ async function store(runs: readonly RunRecord[], write: (emit: (event: Readonly<
     } finally { raw.close(); }
   })();
   return {
+    profile,
     authorityPath,
     totals,
     doctor: () => doctorAuthorityStorage({
@@ -107,6 +114,70 @@ describe("storage doctor on a long-lived timeline", () => {
     const report = await f.doctor();
     assert.equal(report.authority.state, "healthy");
     assert.deepEqual(report.spanAuthority, { state: "reconciled", streamRunCount: runs.length, liveRunCount: runs.length, deleted: [] });
+  });
+
+  it("reconciles all 10,001 distinct runs in a healthy store", async () => {
+    const f = await store([], () => {});
+    // Bulk-load native rows in one fixture transaction. The doctor independently checks their mirrors and identities.
+    const raw = new DatabaseSync(f.authorityPath);
+    try {
+      raw.exec("BEGIN");
+      const search = createRunSearchIndex(raw);
+      search.installTracking();
+      const prior = search.publication();
+      const keys = Object.keys(runRecordColumns(run(0)));
+      const insert = raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`);
+      const timeline = createTimelineRepository({ database: raw, read: read => read(), mutate: write => write().result,
+        assertOwner: () => {} });
+      const emitter = createTimelineEmitter({ repository: timeline, clock, pid: 4242 });
+      for (let index = 0; index < 10_001; index++) {
+        const record = run(index);
+        insert.run(...Object.values(runRecordColumns(record)));
+        emitter.emit(rootEvent(record));
+      }
+      const generation = raw.prepare(`UPDATE database_states SET authority_generation=authority_generation+1,
+        updated_at=?, search_state='invalid', search_generation=NULL WHERE id=1 RETURNING authority_generation`).get(NOW)?.authority_generation;
+      assert.ok(typeof generation === "number");
+      search.publishChanges(generation, NOW, prior);
+      raw.exec("COMMIT");
+    } finally { raw.close(); }
+    const { admission, workspace, stateRoot } = f.profile;
+    const report = await inspectStorage(admission, {
+      stateRootTrustAnchor: workspace, stateRoot, authorityPath: f.authorityPath,
+      backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 500,
+    }, clock, boundProfileCredentials(admission), undefined, true);
+    assert.deepEqual(report.spanAuthority, { state: "reconciled", streamRunCount: 10_001, liveRunCount: 10_001, deleted: [] });
+    assert.equal(report.authority.state, "healthy");
+    assert.equal(report.protectedSettings.state, "available");
+    assert.equal(report.authorityUpgrades.state, "available");
+  });
+
+  it("publishes a queued run when ordinary diagnostics already occupy 250 MiB", async () => {
+    const record = run(0);
+    const f = await store([record], (_emit, database) => {
+      createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "test" })
+        .emit({ category: "boot", phase: "settled", area: "storage", correlationId: randomUUID(), message: "m".repeat(60_000) });
+    });
+    const raw = new DatabaseSync(f.authorityPath);
+    try {
+      // Copy a valid event into each slot so the production byte count sees a genuinely full store.
+      raw.exec(`WITH RECURSIVE copies(cursor) AS (VALUES(2) UNION ALL SELECT cursor+1 FROM copies WHERE cursor<4400)
+        INSERT INTO timeline_events(cursor,id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+        SELECT copies.cursor,printf('00000000-0000-4000-8000-%012x', copies.cursor),kind,occurred_at,recorded_at,
+          retention_date,retention_class,json_set(payload_json,'$.cursor',copies.cursor,
+            '$.eventId',printf('00000000-0000-4000-8000-%012x', copies.cursor))
+        FROM copies JOIN timeline_events original ON original.cursor=1`);
+      const bytes = raw.prepare("SELECT sum(length(CAST(payload_json AS BLOB))) AS bytes FROM timeline_events WHERE kind='debug'").get()?.bytes;
+      assert.ok(typeof bytes === "number" && bytes > 250 * 1024 * 1024);
+    } finally { raw.close(); }
+    const database = AuthorityDatabase.open({ path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "timeline-volume-test" }, clock);
+    try {
+      const timeline = database.authority.timelineEvents;
+      createTimelineEmitter({ repository: timeline, clock, pid: 4242 }).emit(rootEvent(record));
+      const rows = timeline.page({ runId: record.envelope.runId });
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0]?.payload.kind, "span");
+    } finally { database.close(); }
   });
 
   it("replays more than a page of pre-root events against a repaired root", async () => {
