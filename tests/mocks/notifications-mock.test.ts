@@ -221,7 +221,7 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   expect(await fill("Spreadsheets")).not.toBe(await fill("Workflows"));
   expect(await palette.getByRole("button", { name: "Runs", exact: true }).evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
   await shot(page, "palette-chip", theme);
-  for (const tab of ["Actions", "Runs", "Spreadsheets"]) {
+  for (const tab of ["Actions", "Runs", "Workflows", "Spreadsheets"]) {
     await palette.getByRole("button", { name: tab, exact: true }).click();
     await page.mouse.move(1, 1);
     await shot(page, `palette-tab-${tab.toLowerCase()}`, theme);
