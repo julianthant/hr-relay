@@ -30,9 +30,19 @@ function rejectionDetails(error: unknown): { message: string; stack?: string } {
   }
 }
 
-export function installProcessCrashHandlers(input: { stateRoot: string; processKind: "dashboard" | "worker"; build?: string }): void {
-  const build = input.build ?? z.object({ version: z.string().min(1) })
+function processBuild(): string {
+  return z.object({ version: z.string().min(1) })
     .parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
+}
+
+export function recordDashboardStopFailure(stateRoot: string, reason: string, error: unknown, now: Date): void {
+  appendLocalDebug({ stateRoot, build: processBuild(), now,
+    event: { category: "boot", phase: "failed", area: "dashboard-shutdown", reason,
+      code: "INTERNAL_FAILURE", ...rejectionDetails(error), pinned: true } });
+}
+
+export function installProcessCrashHandlers(input: { stateRoot: string; processKind: "dashboard" | "worker"; build?: string }): void {
+  const build = input.build ?? processBuild();
   const fail = (reason: "uncaught-exception" | "unhandled-rejection", error: unknown): never => {
     try {
       appendLocalDebug({ stateRoot: input.stateRoot, build, now: systemClock.now(),

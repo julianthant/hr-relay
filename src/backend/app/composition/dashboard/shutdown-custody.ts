@@ -1,3 +1,5 @@
+import { recordDashboardStopFailure } from "../../bootstrap/process-crash.js";
+import { DashboardShutdownCompletedWithErrors } from "../runtime-composition.js";
 import { ProfileOnboardingBrowserFailureCodeSchema } from "../../../../models/profiles/public-profile.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -8,10 +10,9 @@ import type { DashboardHttpListener } from "../../../transports/http/http-server
 import { type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import type { composeProfileRuntime } from "../storage-compose.js";
 import { RuntimeCustodyUncertainError,backupRegisteredPeopleAtCleanShutdown } from "../storage-compose.js";
-import type { DashboardComposeInput } from "./runtime-contracts.js";
+import type { DashboardComposeInput, DashboardStopFailure } from "./runtime-contracts.js";
 import { type DashboardRuntime,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
-import type { composeShell } from "./shell.js";
 
 export function retainPublicFailureCustody(error: Error, retainedCustodyFailures: unknown[]): boolean {
   const causes: unknown[] = [error], seen = new Set<unknown>();
@@ -28,25 +29,26 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
   return custodyUnproved;
 }
 
-export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
+export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: { close: StartupCleanup }; stopWorkerControl: StartupCleanup; readWorkerStopFailures(): readonly unknown[]; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
   const { profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, historyTimer, custody } = input;
+  const stepFailures: DashboardStopFailure[] = [];
   let producerClosure: Promise<void> | undefined, producersClosed = false;
   const closeProducers = (): Promise<void> => {
     producerClosure ??= (async () => {
       const failures: unknown[] = [];
       const transportClosure = (async () => {
-        try { await server.close(); custody.transportClosed = true; } catch (error) { failures.push(error); }
+        try { await server.close(cause => stepFailures.push({ step: "transport-close", cause })); custody.transportClosed = true; } catch (error) { failures.push(error); }
       })();
       clearInterval(timelineTimer);
       clearInterval(diagnosticRetentionTimer);
       clearInterval(gateParkTimer);
       clearInterval(historyTimer);
-      try { loopDelayMonitor.stop(); } catch (error) { failures.push(error); }
+      try { loopDelayMonitor.stop(); } catch (cause) { stepFailures.push({ step: "loop-monitor-stop", cause }); }
       const notificationClosure = (async () => {
         try { await notificationObserver.stop(); } catch (error) { failures.push(error); }
       })();
       await transportClosure;
-      try { hub.close(); } catch (error) { failures.push(error); }
+      try { await hub.close(); } catch (cause) { stepFailures.push({ step: "stream-close", cause }); }
       await notificationClosure;
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       producersClosed = true;
@@ -70,6 +72,8 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
       }
       try { await stopWorkerControl(); }
       catch (error) { failures.push(error); }
+      for (const cause of input.readWorkerStopFailures()) stepFailures.push({ step: "worker-stop", cause });
+      for (const { cause } of stepFailures) if (cause instanceof Error) retainPublicFailureCustody(cause, failures);
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
     })();
     return detaching;
@@ -80,13 +84,15 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
     port: server.port,
     notificationStatus: notificationObserver.status,
     noteWriter,
-    detach,
+    async detach(onStopFailure?: (failure: DashboardStopFailure) => void): Promise<void> {
+      try { await detach(); }
+      finally { if (onStopFailure) stepFailures.forEach(onStopFailure); }
+      if (!onStopFailure && stepFailures.length > 0) throw new RuntimeCustodyUncertainError(stepFailures.map(failure => failure.cause));
+    },
     stop: async (): Promise<void> => {
-      const failures: unknown[] = [];
-      try { await detach(); } catch (error) { failures.push(error); }
-      if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
-      try { await profile.runtime.close("shutdown"); }
-      catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
+      try { await detach(); await profile.runtime.close("shutdown"); }
+      catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      if (stepFailures.length > 0) throw new AggregateError(stepFailures.map(failure => failure.cause), "dashboard producers stopped with errors");
     },
   });
 }
@@ -110,12 +116,11 @@ export function composeApplicationStop(resources: {
     const phase = (name: "closing transport" | "stopping workers" | "closing store" | "backing up" | "done"): void => {
       process.stdout.write(`${JSON.stringify({ ts: clock.now().toISOString(), level: "info", message: "dashboard shutdown", phase: name })}\n`);
     };
-    const failures: unknown[] = [];
+    const failures: unknown[] = [], stepFailures: DashboardStopFailure[] = [];
     phase("closing transport");
     try { profileRuntime?.beginClose("shutdown"); } catch (error) { failures.push(error); }
-    const transportClosure = listener.close();
     stopping = (async () => {
-      try { await transportClosure; } catch (error) { failures.push(error); }
+      try { await listener.close(cause => stepFailures.push({ step: "transport-close", cause })); } catch (error) { failures.push(error); }
       for (const error of retainedCustodyFailures) {
         const pending = [error], seen = new Set<unknown>();
         let runtimeFailure = false;
@@ -133,9 +138,15 @@ export function composeApplicationStop(resources: {
       const selectedRuntime = readSelectedRuntime();
       if (selectedRuntime !== undefined) {
         phase("stopping workers");
-        try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }
+        try { await selectedRuntime.detach(failure => stepFailures.push(failure)); }
+        catch (error) { failures.push(error); }
       }
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
+      for (const { step, cause } of stepFailures) {
+        if (cause instanceof Error) retainPublicFailureCustody(cause, failures);
+        try { recordDashboardStopFailure(machine.stateRoot, step, cause, clock.now()); }
+        catch { process.stderr.write(`${JSON.stringify({ level: "error", message: "shutdown diagnostic unavailable", step })}\n`); }
+      }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       phase("closing store");
       try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
@@ -147,6 +158,7 @@ export function composeApplicationStop(resources: {
         throw new RuntimeCustodyUncertainError([error]);
       }
       phase("done");
+      if (stepFailures.length > 0) throw new DashboardShutdownCompletedWithErrors(stepFailures.map(failure => failure.cause), "dashboard stopped with errors");
     })();
     return stopping;
   };

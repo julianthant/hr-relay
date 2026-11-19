@@ -40,14 +40,14 @@ function pidAlive(pid: number): boolean {
   catch (error) { if (error instanceof Error && "code" in error && error.code === "ESRCH") return false; throw error; }
 }
 
-async function startDashboard(processGroup = false) {
+async function startDashboard(processGroup = false, fault?: "stream-close" | "transport-close" | "worker-stop") {
   const f = await createBoundProfileFixture();
   cleanups.push(() => f.close());
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
   await f.closeController();
   const barrier = mkdtempSync(join(tmpdir(), "relay-signal-barrier-"));
   cleanups.push(() => { rmSync(barrier, { recursive: true, force: true }); });
-  const child: ChildProcess = spawn(process.execPath, ["--conditions=development", "--import", testProcessImport(), CHILD, f.workspace, barrier],
+  const child: ChildProcess = spawn(process.execPath, ["--conditions=development", "--import", testProcessImport(), CHILD, f.workspace, barrier, ...(fault ? [fault] : [])],
     { detached: processGroup, cwd: process.cwd(), env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "pipe", "pipe"] });
   cleanups.push(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
   let output = "";
@@ -140,12 +140,16 @@ it("Ctrl+C stops the worker at its parked run: the next queued run is never clai
     [{ state: "queued", outcome: null, owner: null, generation: 0, pause: "paused" }, { state: "queued", outcome: null, owner: null, generation: 1, pause: "paused" }], diagnostics);
 }, 180_000);
 
-it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle worker children and logs every shutdown phase through exit 0", async () => {
-  const { child, post, origin, credential, markers, diagnostics, exited, output } = await startDashboard(true);
+async function startIdleWorkers(post: Awaited<ReturnType<typeof startDashboard>>["post"], credential: string, count: number) {
   const result = CommandResultSchema.parse(await (await post("commands", { commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
     requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
-    target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 2 } }, credential)).json());
+    target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: count } }, credential)).json());
   assert.equal(result.state, "applied", JSON.stringify(result));
+}
+
+it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle worker children and logs every shutdown phase through exit 0", async () => {
+  const { child, post, origin, credential, markers, diagnostics, exited, output } = await startDashboard(true);
+  await startIdleWorkers(post, credential, 2);
   assert.ok(child.pid);
   const stream = await fetch(`${origin}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { "x-relay-session": credential } });
   assert.equal(stream.status, 200);
@@ -160,4 +164,26 @@ it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle wor
   assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
     ["closing transport", "stopping workers", "closing store", "backing up", "done"], diagnostics());
   assert.doesNotMatch(output(), /unhandled-rejection|UnhandledPromiseRejection/iu);
+}, 180_000);
+
+it.each(["stream-close", "transport-close", "worker-stop"] as const)("Ctrl+C completes the verified backup before exiting 1 after %s fails", async fault => {
+  const { child, exited, output, diagnostics, f, lockPort, post, credential } = await startDashboard(false, fault);
+  if (fault === "worker-stop") await startIdleWorkers(post, credential, 1);
+  assert.equal(child.kill("SIGINT"), true);
+  const exit = await exited;
+  assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
+    ["closing transport", "stopping workers", "closing store", "backing up", "done"], diagnostics());
+  assert.deepEqual(exit, { code: 1, signal: null }, diagnostics());
+  const spool = readFileSync(join(f.workspace, ".tracker", "data", "logs", "boot.jsonl"), "utf8");
+  assert.ok(spool.includes(`"reason":"${fault}"`), diagnostics());
+  assert.match(spool, /TypeError/u);
+  assert.doesNotMatch(spool + output(), /unhandled-rejection|uncaught-exception|private synthetic shutdown detail/iu);
+  const backups = join(f.stateRoot, "backups", "authority");
+  const manifests = readdirSync(backups).filter(name => name.endsWith(".shutdown.sqlite.manifest.json"));
+  assert.equal(manifests.length, 1);
+  const manifest = StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backups, manifests[0]!), "utf8")));
+  assert.equal(manifest.verification.quickCheck, "ok");
+  assert.equal(manifest.sha256, createHash("sha256").update(readFileSync(join(backups, manifest.backupFileName))).digest("hex"));
+  const released = await RuntimeLifetimeLock.acquire(lockPort);
+  await released.close();
 }, 180_000);

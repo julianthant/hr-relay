@@ -134,6 +134,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   const timeouts = { readyMs: WORKER_READY_TIMEOUT_MS, gracefulMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS,
     sigtermMs: WORKER_SIGTERM_TIMEOUT_MS, exitObservationMs: WORKER_EXIT_OBSERVATION_TIMEOUT_MS, ...deps.timeouts };
   const records = new Map<string, MemberRecord>();
+  const stopFailures: unknown[] = [];
   const at = () => IsoInstantSchema.parse(deps.clock.now().toISOString());
   const after = (ms: number, run: () => void): MonotonicDeadlineHandle => deps.scheduler.schedule(deps.clock.monotonicMs() + ms, run);
 
@@ -144,23 +145,37 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   });
   const changed = (record: MemberRecord): void => {
     record.version += 1;
-    try { deps.onChange?.(view(record)); } catch (error) { deps.onFault?.(record.member, error, record.port.pid); }
+    try { deps.onChange?.(view(record)); }
+    catch (error) {
+      try { deps.onFault?.(record.member, error, record.port.pid); }
+      catch (failure) {
+        if (record.stopping === undefined) throw failure;
+        stopFailures.push(new AggregateError([error, failure], "worker stop observation failed", { cause: error }));
+      }
+    }
   };
   const cancelTimers = (record: MemberRecord): void => { for (const timer of record.timers) timer.cancel(); record.timers = []; };
 
   // The OS exit event is the only proof of death; nothing else moves a spawned member to exited.
   const onExit = async (record: MemberRecord, code: number | null, signal: string | null): Promise<void> => {
-    if (record.state === "exited") return;
-    cancelTimers(record);
+    record.state = "exited"; record.held = undefined;
     const fact: WorkerExitFact = record.stopping === undefined
       ? { code, signal, at: at(), outcome: "crashed", ...(record.failureCode === undefined ? {} : { failureCode: record.failureCode }) }
       : { code, signal, at: at(), outcome: "stopped", ...(record.stopReason === undefined ? {} : { reason: record.stopReason }) };
-    record.state = "exited"; record.held = undefined;
-    rejectPending(record, new WorkerPoolError("WORKER_EXITED"));
-    record.ready?.(new WorkerPoolError("WORKER_EXITED"));
-    try { await deps.settleExit(record.member, fact); record.exit = { ...fact, settlement: "settled" }; }
-    catch (error) { record.settlementFailure = error; record.exit = { ...fact, settlement: "failed" }; deps.onFault?.(record.member, error, record.port.pid); }
+    try {
+      cancelTimers(record);
+      rejectPending(record, new WorkerPoolError("WORKER_EXITED"));
+      record.ready?.(new WorkerPoolError("WORKER_EXITED"));
+      await deps.settleExit(record.member, fact);
+      record.exit = { ...fact, settlement: "settled" };
+    } catch (error) {
+      record.settlementFailure = error;
+      record.exit = { ...fact, settlement: "failed" };
+      deps.onFault?.(record.member, error, record.port.pid);
+    }
     changed(record);
+  };
+  const finishExit = (record: MemberRecord): void => {
     record.resolveSettled();
     record.resolveExited();
   };
@@ -179,28 +194,46 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   };
 
   // A child that already exited closes its channel before its exit event arrives; that send failure is the stop's expected end once the exit is seen.
-  const stopSendFailed = (record: MemberRecord, error: Error): void => {
-    let reported = false;
-    const report = (): void => {
-      if (reported) return;
-      reported = true;
-      if (isChannelClosed(error) && record.state === "exited") deps.onStopChannelClosed?.(record.member, error);
-      else deps.onFault?.(record.member, error, record.port.pid);
-    };
-    if (!isChannelClosed(error) || record.state === "exited") { report(); return; }
-    const window = after(timeouts.exitObservationMs, report);
-    void record.exited.then(() => { window.cancel(); report(); });
+  const sendStop = async (record: MemberRecord, reason: WorkerStopReason): Promise<void> => {
+    const sent = Promise.withResolvers<unknown>();
+    try {
+      record.port.send({ kind: "worker-stop", reason, mode: "after-run" }, sent.resolve);
+    } catch (error) { sent.resolve(error); }
+    const exitedFirst = Symbol();
+    let error = await Promise.race([sent.promise, record.exited.then(() => exitedFirst)]);
+    if (error === exitedFirst) {
+      // Bound a missing IPC callback only once the exit observation has finished.
+      const deadline = after(timeouts.exitObservationMs, () => sent.resolve(new WorkerPoolError("WORKER_REQUEST_TIMED_OUT")));
+      try { error = await sent.promise; } finally { deadline.cancel(); }
+    }
+    if (error === null) return;
+    if (isChannelClosed(error)) {
+      if (record.state !== "exited") {
+        const observed = Promise.withResolvers<void>();
+        const window = after(timeouts.exitObservationMs, observed.resolve);
+        try { await Promise.race([record.exited, observed.promise]); } finally { window.cancel(); }
+      }
+      if (record.state === "exited") {
+        try { deps.onStopChannelClosed?.(record.member, error); }
+        catch (failure) { throw new AggregateError([error, failure], "worker stop channel observation failed", { cause: error }); }
+        return;
+      }
+    }
+    if (reason === "shutdown") stopFailures.push(error);
+    deps.onFault?.(record.member, error, record.port.pid);
   };
 
   /** Bounded escalation; resolves when the OS exit is observed or the observation window closes. */
   const escalate = (record: MemberRecord, reason: WorkerStopReason, immediate: boolean): Promise<void> => {
     if (record.stopping !== undefined) return record.stopping;
     record.stopReason = reason;
-    record.state = "stopping"; changed(record);
+    record.state = "stopping";
     record.stopping = record.exited;
+    changed(record);
     const lastResort = (): void => { kill(record, "SIGKILL"); observeExit(record); };
     if (immediate) { lastResort(); return record.stopping; }
-    record.port.send({ kind: "worker-stop", reason, mode: "after-run" }, error => { if (error !== null) stopSendFailed(record, error); });
+    const reported = sendStop(record, reason).catch((error: unknown) => { stopFailures.push(error); });
+    record.stopping = Promise.all([record.exited, reported]).then(() => undefined);
     record.timers.push(after(timeouts.gracefulMs, () => {
       if (deps.platform === "win32") { lastResort(); return; }
       kill(record, "SIGTERM");
@@ -295,6 +328,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   };
 
   return Object.freeze({
+    readStopFailures(): readonly unknown[] { return Object.freeze([...stopFailures]); },
     snapshot(): readonly WorkerMemberView[] { return Object.freeze([...records.values()].map(view)); },
 
     async start(member: WorkerPoolMember): Promise<WorkerMemberView> {
@@ -333,7 +367,15 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
         changed(record); record.resolveSettled(); record.resolveExited();
         throw new WorkerPoolError("WORKER_START_FAILED", { cause: failure });
       }
-      port.onExit((code, signal) => { void onExit(record, code, signal); });
+      port.onExit((code, signal) => {
+        if (record.state === "exited") return;
+        void onExit(record, code, signal).then(() => finishExit(record), (error: unknown) => {
+          // A failed observer must wake the drain. Only settleExit can prove a settled member.
+          if (record.exit === undefined) record.settlementFailure = new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED", { cause: error });
+          stopFailures.push(error);
+          finishExit(record);
+        });
+      });
       port.onDisconnect(() => { if (record.state !== "exited") rejectPending(record, new WorkerPoolError("WORKER_EXITED")); });
       port.onError(error => { if (record.state !== "exited") fault(record, error); });
       port.onWorkerMessage(raw => { receive(record, raw); });
@@ -381,10 +423,11 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     async stopAll(reason: WorkerStopReason): Promise<readonly WorkerMemberView[]> {
       // Sweep until quiet: a Start that was waiting on a first settlement may publish a member mid-shutdown.
       for (;;) {
-        const open = [...records.values()].filter(record => record.state === "exited" ? record.exit === undefined : record.held === undefined);
+        const open = [...records.values()].filter(record => record.state === "exited" ? record.exit === undefined && record.settlementFailure === undefined : record.held === undefined);
         if (open.length === 0) break;
         await Promise.all(open.map(record => record.state === "exited" ? record.settled : escalate(record, reason, false)));
       }
+      await Promise.all([...records.values()].map(record => record.stopping));
       return Object.freeze([...records.values()].map(view));
     },
   });

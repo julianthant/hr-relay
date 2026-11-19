@@ -1,3 +1,6 @@
+import { Server } from "node:http";
+import { mock } from "node:test";
+import { DashboardStreamHub } from "../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { installProcessCrashHandlers } from "../../../src/backend/app/bootstrap/process-crash.js";
 import { composeDashboardApplication } from "../../../src/backend/app/composition/dashboard/compose.js";
 import { realWorkerProcessSpawner, type WorkerProcessSpawner } from "../../../src/backend/app/composition/dashboard/worker-process.js";
@@ -13,8 +16,21 @@ import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import { fixtureWorkerLaunch } from "../helpers/backend/dashboard-child-world.js";
 
 // The dashboard entry as secure bootstrap runs it, on a fixture workspace with OS-assigned ports and fixture pool workers; it owns the real SIGINT/SIGTERM.
-const [workspace, barrier] = process.argv.slice(2);
+const [workspace, barrier, fault] = process.argv.slice(2);
 if (workspace === undefined || barrier === undefined) throw new Error("dashboard-signal-child requires <workspace> <barrier>");
+if (fault === "stream-close") {
+  const close = DashboardStreamHub.prototype.close;
+  mock.method(DashboardStreamHub.prototype, "close", async function (this: DashboardStreamHub) {
+    close.call(this);
+    throw new TypeError("private synthetic shutdown detail");
+  });
+}
+if (fault === "transport-close") {
+  const close = Server.prototype.close;
+  mock.method(Server.prototype, "close", function (this: Server, callback?: (error?: Error) => void) {
+    return close.call(this, error => callback?.(error ?? new TypeError("private synthetic shutdown detail")));
+  });
+}
 const lifetime = await RuntimeLifetimeLock.acquire(0);
 try {
   await initializeRegisteredPersonStores(workspace, lifetime, { primaryDisplay: null });
@@ -27,7 +43,8 @@ try {
     const port = spawn(request);
     return { ...port, send(message, callback) {
       if (message.kind === "worker-stop") process.stdout.write("Sending worker stop\n");
-      port.send(message, callback);
+      port.send(message, error => callback(error ?? (fault === "worker-stop" && message.kind === "worker-stop"
+        ? new TypeError("private synthetic shutdown detail") : null)));
     } };
   };
   await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"],
