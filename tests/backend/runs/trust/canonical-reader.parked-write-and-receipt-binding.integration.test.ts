@@ -280,7 +280,7 @@ afterEach(cleanup);
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
   });
 
-  it("refuses it for an ATTEMPTING intent too — the state with no section at all", async () => {
+  it("requests cancellation during a claimed write and preserves its fence when the click is unconfirmed", async () => {
     const harness = await roundTrip();
     let observed = false;
     harness.world.onCommitClick = () => {
@@ -289,12 +289,11 @@ afterEach(cleanup);
       const run = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
       assert.ok(run);
       const result = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, run.version));
-      assert.ok(result.state === "rejected");
-      assert.equal(result.code, "invalid-state");
-      assert.ok(result.message.includes(attempting.writeIntentId));
-      assert.match(result.message, /attempting/);
+      assert.equal(result.state, "applied");
+      assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.cancelRequested, true);
+      assert.deepEqual(parkedIntent(harness.database), attempting);
       observed = true;
-      throw new Error("browser crashed after cancel refusal");
+      throw new Error("browser crashed after cancel request");
     };
     await harness.park(false);
     assert.equal(observed, true);
