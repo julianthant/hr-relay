@@ -32,9 +32,9 @@ async function choose(trigger: Element, value: string): Promise<void> {
 }
 
 describe("Settings > General groups", () => {
-  it("draws the ChatGPT card first and Permissions second, above App, Runs and Notifications with the six rows in the mock's order, labels and descriptions", async () => {
+  it("draws the Assistant group first, above App, Runs and Notifications with the six rows in the mock's order, labels and descriptions", async () => {
     const h = await setup();
-    assert.deepEqual(headings(h.host), ["ChatGPT", "Permissions", "App", "Runs", "Notifications"]);
+    assert.deepEqual(headings(h.host), ["Assistant", "App", "Runs", "Notifications"]);
     const rows = [...h.host.querySelectorAll('[data-settings-path^="preferences."]')];
     assert.deepEqual(rows.map(row => row.getAttribute("data-settings-path")), ROWS.map(row => row[0]));
     rows.forEach((row, index) => { assert.ok(row.textContent?.includes(ROWS[index][1]), ROWS[index][1]); assert.ok(row.textContent?.includes(ROWS[index][2]), ROWS[index][2]); });
