@@ -6,8 +6,8 @@ import { cn } from "../../lib/utils.js";
 import { dsIcon, dsText } from "../../ds/ui.js";
 
 /** The one dry-run mark: the flask and "Dry run" in meta text. The queue row, the Logs header and the identity bar draw it. */
-export function DryRunMark({ className }: { className?: string }) {
-  return <span title="Dry run — this rehearsal reads the systems and writes nothing."
+export function DryRunMark({ className, title = "Dry run — this rehearsal reads the systems and writes nothing." }: { className?: string; title?: string }) {
+  return <span title={title}
     className={cn(dsText.meta, "inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-rehearsal-fg)]", className)}>
     <FlaskConical aria-hidden className={dsIcon.sm} />Dry run</span>;
 }
