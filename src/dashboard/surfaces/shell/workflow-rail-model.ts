@@ -42,7 +42,8 @@ const isNarrow = () => typeof window.matchMedia === "function" && window.matchMe
 /** The rail starts collapsed below 1200px window width and expanded above it. The toggle overrides that at any width; the choice holds until the width crosses 1200px again. */
 export function useRailCollapsed(): readonly [boolean, (next: boolean) => void] {
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrow, () => false);
-  const [choice, setChoice] = useState<{ readonly narrow: boolean; readonly collapsed: boolean } | undefined>(undefined);
-  const set = useCallback((next: boolean) => setChoice({ narrow, collapsed: next }), [narrow]);
-  return [choice !== undefined && choice.narrow === narrow ? choice.collapsed : narrow, set];
+  const [state, setState] = useState<{ readonly narrow: boolean; readonly choice: boolean | undefined }>({ narrow, choice: undefined });
+  if (state.narrow !== narrow) setState({ narrow, choice: undefined });
+  const set = useCallback((next: boolean) => setState({ narrow, choice: next }), [narrow]);
+  return [state.narrow === narrow && state.choice !== undefined ? state.choice : narrow, set];
 }

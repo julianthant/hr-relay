@@ -42,6 +42,16 @@ it("starts collapsed below 1200px, lets the toggle expand it, and resets when th
   assert.equal(rail.collapsed(), true);
 });
 
+it("forgets an expand choice once the width has crossed 1200px and come back below it", async () => {
+  const resize = installViewport(1024);
+  const rail = await mountHook();
+  await act(async () => rail.set(false));
+  assert.equal(rail.collapsed(), false);
+  await act(async () => resize(1440));
+  await act(async () => resize(1100));
+  assert.equal(rail.collapsed(), true);
+});
+
 it("starts expanded at 1440px", async () => {
   installViewport(1440);
   assert.equal((await mountHook()).collapsed(), false);

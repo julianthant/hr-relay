@@ -15,7 +15,7 @@ const WorkflowNavigationRow = memo(function WorkflowNavigationRow({ node, select
 });
 
 const WorkflowTile = memo(function WorkflowTile({ node, selected, onSelect, metadata, description }: {
-  initials: string; node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; description?: string;
+  node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; description?: string;
 }) {
   const Icon = workflowIcon(node.entry.id);
   return <Tooltip side="right" content={description ? `${node.entry.label} · ${description}` : node.entry.label}>
