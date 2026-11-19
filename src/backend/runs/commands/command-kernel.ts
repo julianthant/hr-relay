@@ -17,12 +17,13 @@ import { PreflightEvidenceExpiredError, PreflightAdmissionRefusal,type Preflight
 import { localDatePart } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import { runtimeBuildIsCurrent } from "../../runtime/build-id.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { executeFailureResolution } from "../lifecycle/failure-resolution.js";
-import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
+import { assertOcrReviewChildrenCurrent,assertOcrSelectionCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
 import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
 import { admitProtectedInput,protectedSubjectDisplay } from "../start/protected-input.js";
@@ -582,6 +583,9 @@ function executeStartRun(
   now: string,
 ): CommandApplication {
   const { descriptor, plan, selectedSources } = readStartPlan(dependencies, repositories, request, now);
+  if (!runtimeBuildIsCurrent()) {
+    reject(request, "RUN_START_RESTART_REQUIRED", ERROR_CATALOG.RUN_START_RESTART_REQUIRED.text);
+  }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
@@ -1767,6 +1771,7 @@ function executeResolveGate(
       approvedBy: request.requestedBy, approvedAt: now });
     if (!parsed.success) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     const snapshot = parsed.data;
+    assertOcrSelectionCurrent(review.revision.seed, snapshot.records);
     if (canonicalJsonStringify(parsedValue.data) !== canonicalJsonStringify({ snapshotId: snapshot.snapshotId,
       sourceRunId: snapshot.sourceRunId, revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) })) reject(request, "schema-mismatch", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     repositories.ocrReviews.approve(snapshot);
@@ -2198,7 +2203,7 @@ async function executeWorkerPoolCommand(
           throw error;
         }
       };
-      const { member, result } = transact(repositories => {
+      const { member, result, releaseClaimHold } = transact(repositories => {
         repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
         requireMemberFence(pool, request);
@@ -2210,9 +2215,18 @@ async function executeWorkerPoolCommand(
           ...workerPauseHeldRuns(repositories, member.workerId, "paused").map(held => journaledResetCancel(repositories, held, true))];
         const reset = applied(request, [workerTarget(member.workerId), ...cancels.flatMap(cancel => cancel.result.state === "applied" ? cancel.result.affectedTargets : [])],
           cancels.flatMap(cancel => cancel.versionChanges), cancels.flatMap(cancel => cancel.affectedDependencyIds));
-        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset) };
+        const slot = repositories.workerSlots.get(member.workerId);
+        if (slot === undefined) throw new Error("worker-slot-not-found");
+        if (!slot.paused) repositories.workerSlots.setPaused({ workerId: member.workerId, paused: true, now });
+        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset), releaseClaimHold: !slot.paused };
       });
-      try { await pool.stop(member.workerId, "reset"); await pool.start(member); }
+      try { await pool.stop(member.workerId, "reset"); }
+      catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; return result; }
+      // Stop proves the old process exited. Keep any pause that preceded the Reset.
+      if (releaseClaimHold) transact(repositories => repositories.workerSlots.setPaused({
+        workerId: member.workerId, paused: false, now: dependencies.clock.now().toISOString(),
+      }));
+      try { await pool.start(member); }
       catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }
       return result;
     }
@@ -2222,7 +2236,8 @@ async function executeWorkerPoolCommand(
       const result = transact(repositories => {
         if (!paused) repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
-        requireMemberFence(pool, request);
+        const state = requireMemberFence(pool, request);
+        if (!paused && state === "stopping") reject(request, "invalid-state", "WORKER_EXIT_UNOBSERVED");
         if (!paused && workerPauseHeldRuns(repositories, member.workerId, "requested").length !== 0) reject(request, "WORKER_PAUSE_SETTLING", ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
         const slot = repositories.workerSlots.setPaused({ workerId: member.workerId, paused, now });
         // Worker Pause holds its claimed run (the step restarts on Resume); Resume releases only the runs that pause held. A pending cancel wins.
@@ -2421,6 +2436,9 @@ function dispatchActive(
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const current = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
       if (current === undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      const descriptors = dependencies.readableDescriptors ?? dependencies.descriptors;
+      const descriptor = resolveDescriptorOrReject({ ...dependencies, descriptors }, request, current.run.envelope.workflow);
+      requireDescriptorMatchesEnvelope(request, descriptor, current.run);
       if (readOcrSnapshotsAuthority(repositories, current).length > 0) throw new OcrReviewRefusedError();
       if (current.revision.revision !== request.target.expectedRevision) conflict(request, current.revision.revision, ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const revision = repositories.ocrReviews.append(reviseOcrReview(current.revision, request, now), current.revision.revision);

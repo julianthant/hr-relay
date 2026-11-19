@@ -65,8 +65,9 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; onbaseFiling?: "file" | "skip"; record?: boolean; release?: boolean; pageCount?: number;
-      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; extractWithOcr?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
-      lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
+      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; extractWithOcr?: boolean;
+      parent?: WorkflowModule; ocr?: Pick<WorkflowModule, "descriptor"> & Partial<Pick<WorkflowModule, "stores">>; ocrPage?: WorkflowModule;
+      lookupNames?: readonly string[]; employeeIds?: readonly (string | null)[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
@@ -92,7 +93,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         ]);
         return rendered.value;
       } });
-      const ocrRoot = options.retainedProducer === true ? retainedOcrModule : options.ocr ?? ocrModule;
+      const ocrRoot = options.ocr ?? (options.retainedProducer === true ? retainedOcrModule : ocrModule);
       const coordinator = options.coordinator === true ? workflowModuleOf("emergency-contact") : undefined;
       const member = options.member ?? (options.coordinator === true ? childWorkflowModuleOf("emergency-contact", "emergency-contact-member") : undefined);
       const root = options.parent ?? coordinator ?? ocrRoot;
@@ -128,9 +129,11 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         },
       });
       const pages = defineWorkflowStore("ocr-page", { ...ocrPageStore.tasks, readManualReading: manualReading });
+      const ocrTasks = options.ocr?.stores?.find(store => store.namespace === ocrWorkflowStore.namespace)
+        ?? (options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore);
       const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => !["extraction", "workflow:ocr", "workflow:ocr-page"].includes(store.namespace)
         && store.namespace !== options.approvedStore?.namespace), ...(options.approvedStore === undefined ? [] : [options.approvedStore]), pages,
-        defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
+        defineServiceStore("extraction", { render }), ocrTasks];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
@@ -156,7 +159,9 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
-      const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
+      const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor
+        : id === options.ocrPage?.descriptor.id ? options.ocrPage.descriptor
+        : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
         : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
       const sequencer = options.dryRun === true || options.member !== undefined ? createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
         sessions: harness.manager, emitter: harness.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: harness.scheduler,
@@ -253,7 +258,8 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           : i9PageSubmission(page, { eid: "10800000", firstName: options.signerLookup.firstNames[index], kind: "i9-section1" });
         const valid = { ...original, source: { kind: "operator" as const, actorId },
           record: original.record === null ? null : { answers: { ...original.record.answers,
-            ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.contactName, confidence: 0.9 } }) } } };
+            ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.contactName, confidence: 0.9 } }),
+            ...(options.employeeIds?.[index] == null ? {} : { "employee.employeeId": { state: "read" as const, raw: options.employeeIds[index], confidence: 0.9 } }) } } };
         const corrected = { ...valid, record: valid.record === null ? null : { answers: { ...valid.record.answers,
           ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.correctedContactName, confidence: 1 } }) } } };
         return { reading: bindManualOcrPageReading(page, actorId, { ...valid,

@@ -126,7 +126,7 @@ export function pairJobSummaryGrid(workLocation: FrozenGrid, jobInformation: Fro
   });
 }
 
-/** The row in effect on `asOf`: the latest effective date on or before it, else the earliest row; without `asOf`, the latest row. Ties go to the higher Seq, then the later grid row. */
+/** Picks the latest row in effect on `asOf`, or the latest row overall when no date is given. Ties go to the higher Seq, then the later grid row. */
 export function pickRowInEffect(rows: readonly JobSummaryGridRow[], asOf: LocalDate | undefined): JobSummaryGridRow {
   const keyed = rows.map((row) => ({ row, key: dateKey(row.effectiveDate) }));
   const later = (a: typeof keyed[number], b: typeof keyed[number]) =>
@@ -137,7 +137,7 @@ export function pickRowInEffect(rows: readonly JobSummaryGridRow[], asOf: LocalD
   const cutoff = localDateKey(asOf);
   const onOrBefore = keyed.filter(({ key }) => key <= cutoff);
   if (onOrBefore.length > 0) return latest(onOrBefore).row;
-  return keyed.reduce((a, b) => (later(b, a) ? b : a)).row;
+  throw new Error(`Workforce Job Summary has no row in effect on ${asOf}`);
 }
 
 function cell(raw: string | undefined, label: string): UcpathJobCell {
@@ -331,18 +331,42 @@ async function readText(assertCurrent: () => void, locator: Locator, label: stri
   return text;
 }
 
-/** Waits until the frozen grid shows the requested tab: every right row starts with that tab's anchor and both tables have the same row count. */
-async function readFrozenGrid(assertCurrent: () => void, page: Page, tab: "work-location" | "job-information"): Promise<FrozenGrid> {
-  const ids = { left: ui.frozenLeftTableId, right: ui.frozenRightTableId, anchor: tab === "work-location" ? POSITION_NUMBER.source : JOB_CODE.source };
+/** Waits for paired rows from the requested tab, including rows with a blank leading cell. */
+async function readFrozenGrid(
+  assertCurrent: () => void,
+  page: Page,
+  tab: "work-location" | "job-information",
+  minBlankCells: number,
+): Promise<FrozenGrid> {
+  const ids = { left: ui.frozenLeftTableId, right: ui.frozenRightTableId };
+  const workLocation = tab === "work-location";
   assertCurrent();
-  await page.waitForFunction(({ left, right, anchor }) => {
+  await page.waitForFunction(({ left, right, anchor, workLocation, minBlankCells, businessUnit, businessUnitColumn }) => {
     const leftTable = document.getElementById(left) as HTMLTableElement | null;
     const rightTable = document.getElementById(right) as HTMLTableElement | null;
     if (leftTable === null || rightTable === null || rightTable.rows.length === 0) return false;
     const pattern = new RegExp(anchor, "u");
+    const unitPattern = new RegExp(businessUnit, "u");
     return leftTable.rows.length === rightTable.rows.length
-      && Array.from(rightTable.rows).every((row) => pattern.test((row.cells[0]?.textContent ?? "").replace(/\s+/gu, " ").trim()));
-  }, ids, { timeout: GRID_RENDER_MS });
+      && Array.from(rightTable.rows).every((row) => {
+        const firstCell = row.cells.item(0);
+        if (firstCell === null) return false;
+        const leading = (firstCell.textContent ?? "").trim();
+        if (leading.length > 0) return pattern.test(leading);
+        if (row.cells.length < minBlankCells) return false;
+        const hasBusinessUnit = unitPattern.test((row.cells.item(businessUnitColumn)?.textContent ?? "").trim());
+        if (workLocation) return hasBusinessUnit;
+        const rowText = row.textContent;
+        return !hasBusinessUnit && rowText !== null && rowText.trim().length > 0;
+      });
+  }, {
+    ...ids,
+    anchor: (workLocation ? POSITION_NUMBER : JOB_CODE).source,
+    workLocation,
+    minBlankCells,
+    businessUnit: BUSINESS_UNIT.source,
+    businessUnitColumn: WORK_LOCATION.businessUnit,
+  }, { timeout: GRID_RENDER_MS });
   assertCurrent();
   // This callback crosses into the browser: a named inner function acquires tsx's __name helper, which exists only in the Node realm.
   const grid = await page.evaluate(({ left, right }) => {
@@ -433,9 +457,11 @@ function createPlaywrightWorkforceJobSummaryPage(assertCurrent: () => void, page
       const displayedEid = await readText(assertCurrent, ui.displayedEmplId(page), "displayed Empl ID");
       const displayedName = await readText(assertCurrent, ui.personName(page), "displayed name");
       await openTab(ui.workLocationTab(page), "ucpath.workforce-job-summary.work-location-tab");
-      const workLocation = await readFrozenGrid(assertCurrent, page, "work-location");
+      const workLocation = await readFrozenGrid(assertCurrent, page, "work-location", WORK_LOCATION.minCells);
       await openTab(ui.jobInformationTab(page), "ucpath.workforce-job-summary.job-information-tab");
-      const jobInformation = await readFrozenGrid(assertCurrent, page, "job-information");
+      // Job Information has more columns than Work Location even when its code and end date are blank.
+      const minJobCells = Math.max(...workLocation.right.map((row) => row.length)) + 1;
+      const jobInformation = await readFrozenGrid(assertCurrent, page, "job-information", minJobCells);
       recordBrowserAction("read", "ucpath.workforce-job-summary.job-grid");
       return WorkforceJobSummaryDetailSchema.parse({ displayedEid, displayedName, workLocation, jobInformation });
     },

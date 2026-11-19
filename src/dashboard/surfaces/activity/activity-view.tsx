@@ -43,7 +43,7 @@ export function ActivityView({ data, range, today, onRange, onExport, onRetry, n
     <div className="min-w-0" aria-busy={data.state === "loading" || pending || undefined}>
       {data.state === "loaded" ? selection && onSelection ? <ActivityDrilldown report={data.report} selection={selection} onSelection={onSelection} browse={browse} pending={pending} blocked={blocked} /> : noRuns(data.report.analytics) ? <EmptyState icon={<BarChart3 aria-hidden className="size-6 text-ui-muted" />} title="No runs in this period" description="Pick another period to see how your workflows are going." /> : <AnalyticsSections data={data.report.analytics} range={range} workflow={workflow} onRange={onRange} onOpenRuns={onSelection && data.report.runs ? id => onSelection({ metric: data.report.analytics.workflows.find(row => row.id === id)?.failed ? "failed" : "completed", workflow: id, page: 0 }) : undefined} />
         : data.state === "loading" ? <ActivitySkeleton />
-        : onRetry ? <FailureNotice sentence="Relay could not load Analytics." stillWorks="The period controls and the other pages still work." action={{ label: "Retry", onClick: onRetry }} />
+        : onRetry ? <FailureNotice sentence="Couldn't load Analytics." action={{ label: "Retry", onClick: onRetry }} />
         : <p role="alert" className="m-0 text-body text-ui-danger">{data.reason}</p>}
     </div>
   </section>;

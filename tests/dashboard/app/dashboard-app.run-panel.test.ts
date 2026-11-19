@@ -39,7 +39,7 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   assert.ok(text.includes('No run open'), text);
   assert.ok(text.includes('Select a run once the queue loads.'), text);
   assert.equal(text.includes('Run unavailable'), false);
-  assert.ok((host.textContent ?? '').includes('Relay could not load the queue.'), 'the queue column says the day failed');
+  assert.ok((host.textContent ?? '').includes("Couldn't load the queue."), 'the queue column says the day failed');
   assert.equal(text.includes('is not in the loaded queue'), false);
 });
 

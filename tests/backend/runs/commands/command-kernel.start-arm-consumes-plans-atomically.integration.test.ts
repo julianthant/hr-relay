@@ -1,9 +1,11 @@
-import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
+import { captureBuildId, computeBuildId, currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
-import { afterAll, afterEach, describe, it } from "vitest";
+import fs, { rmSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { resolve } from "node:path";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { appliedRunIds, singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -21,6 +23,33 @@ afterEach(async () => {
 });
 
 describe("start arm consumes plans atomically", () => {
+  it("requires a restart before consuming a plan or enqueueing from a stale build", async () => {
+    const harness = await createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = startCommand(plan);
+    const runningBuildId = captureBuildId({});
+    const repoRoot = resolve(import.meta.dirname, "../../../..");
+    const workerSource = resolve(repoRoot, "src/cli.ts");
+    const read = fs.readFileSync;
+    const sourceChange = vi.spyOn(fs, "readFileSync").mockImplementation((path, options) => {
+      const bytes = read(path, options);
+      return path === workerSource && Buffer.isBuffer(bytes) ? Buffer.concat([bytes, Buffer.from("\n// Synthetic update\n")]) : bytes;
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.notEqual(computeBuildId(repoRoot), runningBuildId);
+      const result = await harness.kernel.executeStart(command);
+      assert.equal(result.state, "rejected");
+      assert.equal(result.code, "RUN_START_RESTART_REQUIRED");
+      assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+      assert.deepEqual(harness.database.authority.runSessions.listByWorkflow(plan.workflowId), []);
+      assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
+    } finally {
+      sourceChange.mockRestore();
+      syncBuiltinESMExports();
+    }
+  });
+
   it("requires renewed review for a start plan made before settings activation", async () => {
     const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);

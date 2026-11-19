@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { profileActivationResponse } from "../../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,8 +19,8 @@ async function fixture(response: () => Response | Promise<Response> = () => Resp
     const path = new URL(url).pathname;
     requests.push(path);
     if (path === "/api/v1/profile/state") { reads++; return Response.json(await current()); }
-    if (path === "/api/v1/profile/resume") { resumes++; return Response.json(active(2)); }
-    if (path === "/api/v1/profile/sign-in") return Response.json(active(3));
+    if (path === "/api/v1/profile/resume") { resumes++; return profileActivationResponse(active(2)); }
+    if (path === "/api/v1/profile/sign-in") return profileActivationResponse(active(3));
     if (path === "/api/v1/bootstrap") return response();
     throw new Error(`unexpected fixture request ${path}`);
   } });

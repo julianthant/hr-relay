@@ -5,11 +5,14 @@ import { Readable } from "node:stream";
 import { PDFDocument } from "@cantoo/pdf-lib";
 import { afterEach, it } from "vitest";
 import { createOnbaseDriver } from "../../../src/backend/systems/onbase/driver/interpreter.js";
+import { extractOnbasePage } from "../../../src/backend/systems/onbase/tasks/read-source-page.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
-import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema } from "../../../src/models/systems/onbase/import-document.js";
+import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, OnbaseTargetSchema } from "../../../src/models/systems/onbase/import-document.js";
+import { OnbaseCommitImport } from "../../../src/models/systems/onbase/upload-import.js";
+import { onbaseFilingFixture } from "../../support/helpers/backend/onbase-filing-fixture.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
 import { fakeOnbasePage } from "../../support/helpers/browser/fake-onbase-page.js";
@@ -56,3 +59,18 @@ async function runOnbase(mode: "dry-run" | "committed" | "lost-acknowledgement")
 it("onbase/dry-run — runs the registered child through the real executor and stops after preparation", () => runOnbase("dry-run"));
 it("onbase/committed — runs one import through the real executor and sequencer with a durable result", () => runOnbase("committed"));
 it("onbase/unknown — parks a lost Import acknowledgement without another click", () => runOnbase("lost-acknowledgement"));
+
+it("keeps the permanent import key when the selected source page is serialized differently", async () => {
+  const { bytes, document } = await onbaseFilingFixture();
+  const sourcePage = 2;
+  const extracted = await extractOnbasePage(bytes, sourcePage);
+  const loaded = await PDFDocument.load(extracted, { updateMetadata: false });
+  const reserialized = await loaded.save({ useObjectStreams: true });
+  const [original, regenerated] = [extracted, reserialized].map(page => OnbaseTargetSchema.parse({
+    ...ONBASE_EXAMPLE_INPUT, document, sourcePage, pageSha256: createHash("sha256").update(page).digest("hex"),
+  }));
+  assert.ok(original && regenerated);
+  assert.notEqual(original.pageSha256, regenerated.pageSha256);
+  const { key } = OnbaseCommitImport.writeSafety.idempotency;
+  assert.equal(key(original), key(regenerated));
+});

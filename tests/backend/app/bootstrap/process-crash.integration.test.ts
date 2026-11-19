@@ -20,10 +20,17 @@ function crash(root: string, body: string, processKind = "dashboard", args: stri
   `], { encoding: "utf8", timeout: 10_000 });
 }
 
-it("persists one sanitized uncaught dashboard exception for import at the next start and exits non-zero", () => {
+it("persists an uncaught dashboard exception without HR text for import at the next start and exits non-zero", () => {
   const root = mkdtempSync(join(tmpdir(), "relay-process-crash-"));
   try {
-    const child = crash(root, `setImmediate(() => { throw new TypeError("synthetic crash password=${CREDENTIAL}"); });`);
+    const hrText = "Synthetic employee River Example";
+    const hrFrame = "src/synthetic/River-Example.ts:12:4";
+    const child = crash(root, `setImmediate(() => {
+      const error = new TypeError(${JSON.stringify(`${hrText} password=${CREDENTIAL}`)});
+      error.code = "EID_SYNTHETIC_001";
+      error.stack += "\\n    at /synthetic/worktree/${hrFrame}";
+      throw error;
+    });`);
     assert.equal(child.error, undefined);
     assert.equal(child.signal, null);
     assert.equal(child.status, 1);
@@ -38,9 +45,14 @@ it("persists one sanitized uncaught dashboard exception for import at the next s
     assert.equal(payload.event.phase, "failed");
     assert.equal(payload.event.build, "crash-test");
     assert.equal(payload.event.pid, child.pid);
-    assert.match(payload.event.message ?? "", /^TypeError: synthetic crash password=\[removed\]$/u);
-    assert.match(payload.event.stack ?? "", /TypeError: synthetic crash password=\[removed\][\s\S]+at /u);
-    assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes(CREDENTIAL), false);
+    const spool = readFileSync(join(root, "logs", "boot.jsonl"), "utf8");
+    assert.equal(spool.includes(CREDENTIAL), false);
+    assert.equal(spool.includes(hrText), false);
+    assert.equal(spool.includes(hrFrame), false);
+    assert.equal(spool.includes("EID_SYNTHETIC_001"), false);
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.message, undefined);
+    assert.equal(payload.event.stack, undefined);
     const { repository, records } = debugTimelineFixture();
     assert.equal(importLocalDebugLog(root, repository), 1);
     assert.deepEqual(records.map(record => record.payload), [payload]);
@@ -63,6 +75,8 @@ it.each(["strict", "warn"])("records a rejection once under Node's %s rejection 
     const payload = local.records[0]?.payload;
     assert.ok(payload?.kind === "debug");
     assert.equal(payload.event.reason, "unhandled-rejection");
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes("synthetic primitive rejection"), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -78,22 +92,33 @@ it("still exits when appending the crash event fails while the process has activ
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it("still exits when reading the error's stack throws inside the handler", () => {
-  const root = mkdtempSync(join(tmpdir(), "relay-crash-stack-failed-"));
+it.each([
+  ["uncaught-exception", "cause"], ["uncaught-exception", "stack"],
+  ["unhandled-rejection", "cause"], ["unhandled-rejection", "stack"],
+])("records a fatal %s and exits when inspecting its %s throws", (reason, property) => {
+  const root = mkdtempSync(join(tmpdir(), "relay-crash-error-accessor-"));
   try {
     const child = crash(root, `
       setInterval(() => undefined, 1000);
-      const error = new Error("synthetic stack failure");
-      Object.defineProperty(error, "stack", { get() { throw new Error("synthetic stack getter failed"); } });
-      setImmediate(() => { throw error; });
+      const error = new Error("synthetic crash");
+      Object.defineProperty(error, ${JSON.stringify(property)}, { get() { throw new Error("synthetic error getter failed"); } });
+      ${reason === "unhandled-rejection" ? "void Promise.reject(error);" : "setImmediate(() => { throw error; });"}
     `);
     assert.equal(child.error, undefined);
     assert.equal(child.signal, null);
     assert.equal(child.status, 1);
+    const local = readLocalDebugLog(root);
+    assert.ok(local.state === "present");
+    assert.equal(local.records.length, 1);
+    const payload = local.records[0]?.payload;
+    assert.ok(payload?.kind === "debug");
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.reason, reason);
+    assert.equal(payload.event.message, reason === "unhandled-rejection" ? "rejection-details-unavailable" : undefined);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it("persists one unhandled worker rejection with its error name and sanitized stack and exits non-zero", () => {
+it("persists one unhandled worker rejection and exits non-zero", () => {
   const root = mkdtempSync(join(tmpdir(), "relay-process-rejection-"));
   try {
     const child = crash(root, `void Promise.reject(new RangeError("synthetic rejection token=${CREDENTIAL}"));`, "worker");
@@ -109,9 +134,37 @@ it("persists one unhandled worker rejection with its error name and sanitized st
     assert.equal(payload.event.area, "worker-process");
     assert.equal(payload.event.reason, "unhandled-rejection");
     assert.equal(payload.event.pid, child.pid);
-    assert.equal(payload.event.message, "RangeError: synthetic rejection token=[removed]");
-    assert.match(payload.event.stack ?? "", /RangeError: synthetic rejection token=\[removed\][\s\S]+at /u);
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.message, "RangeError");
+    assert.equal(payload.event.stack, undefined);
     assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes(CREDENTIAL), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("records a catalogued rejection and its Relay frames without arbitrary error text or foreign paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-process-origin-"));
+  try {
+    const workerPool = new URL("../../../../src/backend/runtime/workers/worker-pool.ts", import.meta.url);
+    const child = crash(root, `import { requireStoppedPool } from ${JSON.stringify(workerPool.href)};
+      void Promise.resolve().then(() => {
+        try { requireStoppedPool([{ state: "running", member: { workerId: "synthetic" } }]); }
+        catch (error) {
+          error.stack += "\\n    at /synthetic/worktree/src/synthetic/River-Example.ts:12:4";
+          error.message = ${JSON.stringify(CREDENTIAL)};
+          throw error;
+        }
+      });`);
+    assert.equal(child.error, undefined);
+    assert.equal(child.status, 1);
+    const local = readLocalDebugLog(root);
+    assert.ok(local.state === "present");
+    const payload = local.records[0]?.payload;
+    assert.ok(payload?.kind === "debug");
+    assert.equal(payload.event.reason, "unhandled-rejection");
+    assert.equal(payload.event.message, "WORKER_EXIT_UNOBSERVED <- UnknownCause");
+    assert.match(payload.event.stack ?? "", /src\/backend\/runtime\/workers\/worker-pool\.ts:\d+:\d+/u);
+    const spool = readFileSync(join(root, "logs", "boot.jsonl"), "utf8");
+    for (const privateText of [CREDENTIAL, "River-Example", process.cwd()]) assert.ok(!spool.includes(privateText));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -141,6 +194,8 @@ it.each(["dashboard", "worker"])("installs crash capture through the %s process 
     const payload = local.records[0]?.payload;
     assert.ok(payload?.kind === "debug");
     assert.equal(payload.event.area, `${processKind}-process`);
-    assert.equal(payload.event.message, "SyntaxError: synthetic bootstrap crash");
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.reason, "uncaught-exception");
+    assert.equal(payload.event.message, undefined);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

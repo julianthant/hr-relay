@@ -185,16 +185,15 @@ it("mounts served inbox controls and reports only the served search authority to
   assert.equal(writes.length, 1); assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
   assert.equal(queries.length, 0);
   const search = host.querySelector<HTMLButtonElement>('button[aria-label="Search"]'); assert(search);
-  await act(async () => { search.click(); await new Promise(resolve => setTimeout(resolve, 20)); });
-  assert.equal(queries.length, 1); assert(document.body.textContent?.includes("Exact served subject"));
+  await act(async () => search.click());
+  await vi.waitFor(() => { assert.equal(queries.length, 1); assert(document.body.textContent?.includes("Exact served subject")); });
   assert.equal([...document.querySelectorAll(".search-palette-row")].filter(row => row.textContent?.includes("Exact served subject")).length, 1);
   const query = document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]'); assert(query);
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(query, "local-operator");
     query.dispatchEvent(new Event("input", { bubbles: true }));
-    await new Promise(resolve => setTimeout(resolve, 20));
   });
-  assert(queries.includes("local-operator"));
+  await vi.waitFor(() => assert(queries.includes("local-operator")));
   await vi.waitFor(() => assert(document.body.textContent?.includes("Exact served subject")));
 });
 
