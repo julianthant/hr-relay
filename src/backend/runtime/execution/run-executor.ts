@@ -264,6 +264,7 @@ class RunAbandonedError extends Error {
 }
 
 class RunPauseRequestedError extends RunAbandonedError {}
+class RunCancellationRequestedError extends RunAbandonedError {}
 
 /** The worker's abort of the current step for a pause or stop request it read from the run. */
 export class RunControlAbortError extends Error {
@@ -477,12 +478,7 @@ export async function executeClaimedRun(
   };
 
   const checkCancellation = (current = getRun()): void => {
-    if (pendingInterruptOf(current) !== "stop-requested") return;
-    requireLifecycleApplied(deps.lifecycle.terminalize({
-      kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
-      runId, expectedVersion: current.version, claim, endedAt: instant(),
-    }, descriptor));
-    throw new RunAbandonedError("cancelled");
+    if (pendingInterruptOf(current) === "stop-requested") throw new RunCancellationRequestedError("cancelled");
   };
 
 
@@ -669,7 +665,7 @@ export async function executeClaimedRun(
             ...(current.delegationRefresh === undefined ? {} : { refreshCommandId: current.delegationRefresh.commandId, claimGeneration: current.claimGeneration }) }),
           terminal: { result: built.record, authorization },
         }, descriptor, built.authorization);
-        if (accounting === undefined && outcome.state === "refused" && outcome.refusal.reason === "lost")
+        if (outcome.state === "refused" && outcome.refusal.reason === "lost")
           throw new RunTerminalAdmissionLostError(outcome, authorization.expectedVersion);
         requireLifecycleApplied(outcome);
       };
@@ -2420,6 +2416,16 @@ export async function executeClaimedRun(
     // Settle it here, after any enclosing evidence transaction has unwound.
     if (failure instanceof RunLifecycleRefusedError) {
       try { checkCancellation(); } catch (cancellation) { failure = cancellation; }
+    }
+    if (failure instanceof RunCancellationRequestedError) {
+      try {
+        const settle = () => requireLifecycleApplied(deps.lifecycle.terminalize({
+          kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
+          runId, expectedVersion: getRun().version, claim, endedAt: instant(),
+        }, descriptor));
+        if (deps.authority.withAuthorityTransaction === undefined) settle();
+        else deps.authority.withAuthorityTransaction(settle);
+      } catch (cancellation) { failure = cancellation; }
     }
     if (failure instanceof RunAbandonedError || (failure instanceof RunLifecycleRefusedError
       && failure.outcome.state === "refused" && failure.outcome.refusal.reason === "lost")) {
