@@ -33,7 +33,7 @@ it("puts the filter tabs under the input, gives workflows their rail icon and ro
   const actions: string[] = [];
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [{ id: "separations", label: "Separations" }], startKey: "R", onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [{ id: "separations", label: "Separations", icon: "UserMinus" }], startKey: "R", onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
   await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
   const palette = document.querySelector(".search-palette")!;
   const order = [...palette.querySelector("[cmdk-root]")!.children].filter(child => !child.hasAttribute("cmdk-label")).map(child => child.getAttribute("cmdk-input") !== null ? "input" : child.classList.contains("search-palette-chips") ? "tabs" : "list");
@@ -43,7 +43,7 @@ it("puts the filter tabs under the input, gives workflows their rail icon and ro
   assert.equal(palette.querySelector(".search-palette-key"), null);
   assert(palette.querySelector("kbd")?.textContent === "R");
   const workflowIcon = rows.find(row => row.textContent === "Separations")!.querySelector("svg")!;
-  assert(workflowIcon.classList.contains("lucide-log-out"));
+  assert(workflowIcon.classList.contains("lucide-user-minus"));
   for (const label of ["Spreadsheets", "Explorer", "Analytics"]) {
     await act(async () => { [...document.querySelectorAll<HTMLElement>(".search-palette-row")].find(row => row.textContent === label)!.click(); });
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());

@@ -13,7 +13,7 @@ import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-st
 
 const OMIT_FORM = { fields: [{ key: "reason", kind: "text" }, { key: "confirmed", kind: "boolean" }] } as unknown as Extract<RunStartWorkflow["steps"][number]["control"], { state: "omittable" }>["form"];
 const plain: RunStartWorkflow = {
-  workflowId: "plain", version: 1, label: "Plain", categoryId: "operations", role: { kind: "standalone" },
+  workflowId: "plain", version: 1, label: "Plain", categoryId: "operations", role: { kind: "standalone" }, icon: "Search",
   enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [], referenceSources: [],
   inputRun: { state: "present", surface: { placeholder: "Employee ID", parser: {
     split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }],

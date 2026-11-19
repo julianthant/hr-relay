@@ -1,6 +1,7 @@
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
 import { useWorkbookRows, useWorkbookVersionSources, useCheckVersionSheets, checkVersionKey, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
+import type { IconName } from "../../../models/workflow/presentation.js";
 import { RunList, RunListRow, RunListSkeleton } from "../../ds/primitives/run-list.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
@@ -63,6 +64,8 @@ export interface RunStartWorkflow {
   readonly categoryId: string;
   // Use the served role; never infer it from an ID prefix.
   readonly role: WorkflowModuleRole;
+  /** The definition's own icon name; the dashboard names no workflow to choose one. */
+  readonly icon: IconName;
   readonly code?: string;
   /** the descriptor's own sentence about what this workflow does */
   readonly summary?: string;

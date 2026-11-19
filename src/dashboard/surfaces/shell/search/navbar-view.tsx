@@ -7,12 +7,12 @@ import { cn } from "../../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
 import type { NavbarData, NavbarSearchResult } from "./navbar-view-model.js";
 import { SearchPalette } from "./search-palette.js";
-import { type PaletteAction } from "./search-palette-model.js";
+import { type PaletteAction, type PaletteWorkflow } from "./search-palette-model.js";
 
 const iconButton = cn("inline-flex size-7.5 shrink-0 items-center justify-center rounded-md text-ui-secondary hover:bg-ui-hover hover:text-ui-primary disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent", dsFocus);
 
 export function RailSearch({ data, workflows, startKey, onAction, onWorkflow, onResult }: {
-  data: NavbarData; workflows: readonly { id: string; label: string }[]; startKey?: string;
+  data: NavbarData; workflows: readonly PaletteWorkflow[]; startKey?: string;
   onAction: (action: PaletteAction) => void; onWorkflow: (id: string) => void;
   onResult: (result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => void;
 }) {
