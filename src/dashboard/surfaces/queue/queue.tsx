@@ -6,8 +6,10 @@ import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileTe
 import { cn } from "../../lib/utils.js";
 import {
   BareButton,
+  Button,
   Chip,
   Checkbox,
+  EmptyState,
   dsBorder,
   dsClip,
   dsFocus,
@@ -27,7 +29,7 @@ import {
   OutcomeActionButton,
   type DashboardActionHandler,
 } from "../shared/actions/actions.js";
-import { dayLabel, plural, runTiming } from "../shared/status/format.js";
+import { plural, runTiming } from "../shared/status/format.js";
 import { formatDuration, formatTime } from "../../lib/date-format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "../shared/status/test-instance-hazard.js";
 import { runDisplayId } from "../shared/status/run-display-model.js";
@@ -195,8 +197,11 @@ function HeaderChips({
   status,
   nowIso,
   rollup,
+  soloMember = false,
 }: {
   rollup?: OperationSurfaceWire["memberRollup"];
+  /** A run whose one member is a plain leaf shows its status once: no count here, no member table. */
+  soloMember?: boolean;
   outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
   status: ProposedStatus;
@@ -208,12 +213,23 @@ function HeaderChips({
   const gateAge = queueGateAge(surface, nowIso);
   return (
     <>
+      <StatusBadge
+        status={status}
+        pauseControl={surface.pauseControl}
+        interrupt={surface.interrupt}
+        outcome={outcome}
+        cancelledBy={surface.cancelledBy}
+        presentation="queue"
+        {...(isNeedsDuo(surface) ? { label: NEEDS_DUO_LABEL, meaning: NEEDS_DUO_MEANING } : isStarting(surface) ? { label: STARTING_LABEL } : {})}
+        hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
+        {...(gateAge === undefined ? {} : { age: gateAge })}
+      />
       {/* A run against a TEST instance can never be mistaken for a real filing,
           and a rehearsal says so before you read its receipt. */}
       {testSystems.length > 0 && (
         <span
           title={testInstanceHazardTitle(testSystems)}
-          className={rowChip("info", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
+          className={rowChip("info", dsText.caps)}
         >
           test
         </span>
@@ -222,7 +238,7 @@ function HeaderChips({
       {surface.dryRun && (
         <span
           title="Dry run — this rehearsal reads the systems and writes nothing."
-          className={rowChip("rehearsal", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
+          className={rowChip("rehearsal", dsText.caps)}
         >
           dry run
         </span>
@@ -237,28 +253,18 @@ function HeaderChips({
           {surface.warnings.state === "present" ? surface.warnings.count : 1}
         </span>
       )}
-      <StatusBadge
-        status={status}
-        pauseControl={surface.pauseControl}
-        interrupt={surface.interrupt}
-        outcome={outcome}
-        cancelledBy={surface.cancelledBy}
-        presentation="queue"
-        {...(isNeedsDuo(surface) ? { label: NEEDS_DUO_LABEL, meaning: NEEDS_DUO_MEANING } : isStarting(surface) ? { label: STARTING_LABEL } : {})}
-        hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
-        {...(gateAge === undefined ? {} : { age: gateAge })}
-      />
       {surface.surfaceKind === "operation" && (() => {
         const counts = rollup ?? surface.memberRollup;
         // A failed person is settled but not finished well: the counter counts only the others.
         const finished = counts.terminal - counts.failed;
+        if (soloMember) return null;
         const words = `${finished} of ${counts.total} finished; ${counts.failed} failed`;
         return (
           <span
             data-queue-member-count
             title={words}
             aria-label={words}
-            className={cn(dsText.meta, dsText.nums, dsRadius.sm, dsBorder.base,
+            className={cn(dsText.meta, "tabular-nums", dsRadius.sm, dsBorder.base,
               "inline-flex h-[var(--ds-h-xs)] min-w-[var(--ds-w-queue-counter)] items-center justify-center whitespace-nowrap border bg-[var(--ds-surface-2)] px-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}
           >
             {finished}/{counts.total}
@@ -331,7 +337,7 @@ function RowFooterLine({
       <div
         className={cn(
           dsText.meta,
-          dsText.nums,
+          "tabular-nums",
           "flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 flex-nowrap items-center",
           "gap-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]",
         )}
@@ -734,7 +740,12 @@ export function QueueRow({
   /** Operation identity and visible member lists are distinct; unloaded members do not erase group chrome. */
   const memberSurface = batch ?? (surface.surfaceKind === "operation" ? surface : undefined);
   const isOperation = memberSurface !== undefined;
-  const membersVisible = batch !== undefined || surface.surfaceKind === "operation" && queueMemberLines(surface, members).length > 0;
+  const memberLines = batch === undefined && surface.surfaceKind === "operation" ? queueMemberLines(surface, members) : [];
+  const soleLine = memberLines.length === 1 ? memberLines[0] : undefined;
+  const soloMember = soleLine !== undefined && (soleLine.kind === "record"
+    || soleLine.item.representative.surfaceKind !== "operation" && soleLine.item.representative.linkedRuns.length === 0
+      && soleLine.item.representative.status === surface.status);
+  const membersVisible = batch !== undefined || memberLines.length > 0 && !soloMember;
   /** Hide a group’s redundant subline while its member evidence is visible. */
   const subline =
     membersVisible || surface.liveMessage.state !== "present" ? undefined : surface.liveMessage.value;
@@ -803,57 +814,47 @@ export function QueueRow({
             deferOffscreen && "[content-visibility:auto] [contain-intrinsic-size:auto_160px]",
             dsRadius.lg,
             dsMotion.base,
-            dsSurface.card,
             dsFocus,
-            // ONE resting border for every card. Selection is the lighter
-            // perimeter only — no fill change, no status-coloured edge.
-            selected ? dsBorder.loud : dsBorder.base,
+            // The open card takes the selected surface and the loud border.
+            selected ? cn(dsSurface.selected, dsBorder.loud) : cn(dsSurface.card, dsBorder.base),
             // THE ANNOUNCE. Lift only, so a settling card does not also flash a
             // different outline.
             announcing && cn(dsMotion.move, "-translate-y-[var(--ds-travel-sm)]"),
           )}
         >
           <div data-queue-body className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
-            <div className="flex min-w-0 items-center gap-x-[var(--ds-space-base)]">
-              <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
-                <RenameableTitle
-                  data-demo-row-title
-                  name={title}
-                  {...(renameTitle === undefined ? {} : { onRename: (name: string) => renameTitle(surface.runId, name) })}
-                  inputClassName={dsText.title}
-                  className={cn(
-                    dsText.title,
-                    // Truncate rather than wrap — wrapping shoved the status
-                    // pill onto a second line under the name.
-                    "min-w-0 truncate font-normal text-[color:var(--ds-fg-list)]",
-                  )}
-                  // A renamed row’s subject identity outranks a tooltip repeating its truncated custom name.
-                  title={titleTooltip ?? title}
-                />
-                {/* Name workflow ownership only when the surface mixes workflows. */}
-                {surface.workflowId !== state.panelWorkflowId && (
-                  <span className={rowChip("neutral", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}>
-                    {workflowLabel}
-                  </span>
-                )}
-              </div>
-              <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-[var(--ds-space-snug)]">
-                {/* Status ALWAYS sits on the title row's right — never on the
-                    subline. */}
-                {batch !== undefined ? <>
-                  {batchTestSystems.length > 0 && <span title={testInstanceHazardTitle(batchTestSystems)} className={rowChip("info")}>test</span>}
-                  {batch.members.some(member => member.dryRun) && <span className={rowChip("rehearsal")}
-                    title="Includes dry-run people — rehearsals read the systems and write nothing.">dry run</span>}
-                  {batchWarnings.length > 0 && <span className={rowChip("warning")} title={batchWarnings.map(warning => warning.first).join("; ")}>
-                    <AlertTriangle aria-hidden className={dsIcon.sm} />{batchWarnings.reduce((total, warning) => total + warning.count, 0)}
-                  </span>}
-                  <StatusBadge status={status} presentation="queue" />
-                  <span data-queue-member-count className={rowChip("neutral")} title="People finished without failing on this day">
-                    {queueMemberRollup(batch, []).terminal - queueMemberRollup(batch, []).failed}/{batch.members.length}
-                  </span>
-                </> : <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso}
-                  rollup={surface.surfaceKind === "operation" ? queueMemberRollup(surface, members) : undefined} />}
-              </div>
+            <RenameableTitle
+              data-demo-row-title
+              name={title}
+              {...(renameTitle === undefined ? {} : { onRename: (name: string) => renameTitle(surface.runId, name) })}
+              inputClassName={dsText.title}
+              className={cn(
+                dsText.title,
+                "block min-w-0 truncate font-normal text-[color:var(--ds-fg-list)]",
+              )}
+              // A renamed row’s subject identity outranks a tooltip repeating its truncated custom name.
+              title={titleTooltip ?? title}
+            />
+            <div className="flex min-w-0 flex-wrap items-center gap-x-[var(--ds-space-snug)] gap-y-[var(--ds-space-tight)]">
+              {batch !== undefined ? <>
+                <StatusBadge status={status} presentation="queue" />
+                {batch.members.some(member => member.dryRun) && <span className={rowChip("rehearsal")}
+                  title="Includes dry-run people — rehearsals read the systems and write nothing.">dry run</span>}
+                {batchTestSystems.length > 0 && <span title={testInstanceHazardTitle(batchTestSystems)} className={rowChip("info")}>test</span>}
+                {batchWarnings.length > 0 && <span className={rowChip("warning")} title={batchWarnings.map(warning => warning.first).join("; ")}>
+                  <AlertTriangle aria-hidden className={dsIcon.sm} />{batchWarnings.reduce((total, warning) => total + warning.count, 0)}
+                </span>}
+                <span data-queue-member-count className={rowChip("neutral")} title="People finished without failing on this day">
+                  {queueMemberRollup(batch, []).terminal - queueMemberRollup(batch, []).failed}/{batch.members.length}
+                </span>
+              </> : <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso}
+                rollup={surface.surfaceKind === "operation" ? queueMemberRollup(surface, members) : undefined} soloMember={soloMember} />}
+              {/* Name workflow ownership only when the surface mixes workflows. */}
+              {surface.workflowId !== state.panelWorkflowId && (
+                <span className={rowChip("neutral", dsText.caps)}>
+                  {workflowLabel}
+                </span>
+              )}
             </div>
 
             {/* Group previews supply identity only while their member list is hidden; absent previews invent no names. */}
@@ -904,7 +905,7 @@ export function QueueRow({
               <div data-queue-parked-note className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{PARKED_NOTE}</div>
             )}
 
-            {memberSurface !== undefined && (
+            {memberSurface !== undefined && (batch !== undefined || membersVisible || memberLines.length === 0) && (
               <div className="flex flex-col gap-[var(--ds-space-base)]">
                 <GroupMemberList
                   surface={memberSurface}
@@ -940,7 +941,7 @@ export function QueueRow({
             )}
           </div>
 
-          {batch !== undefined ? <div data-queue-row-footer className={cn(dsText.meta, dsText.nums, dsBorder.subtle,
+          {batch !== undefined ? <div data-queue-row-footer className={cn(dsText.meta, "tabular-nums", dsBorder.subtle,
             "flex items-center gap-[var(--ds-space-base)] border-t bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
             <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]">
               <span className="shrink-0 whitespace-nowrap">{formatTime(batch.startedAt)}</span>
@@ -1017,8 +1018,8 @@ export const QueuePanel = memo(function QueuePanel({
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
   panelLabel,
-  day,
   isToday = false,
+  onStartRun,
   filter,
   sort = "attention",
   header,
@@ -1033,8 +1034,10 @@ export const QueuePanel = memo(function QueuePanel({
   workflowLabelOf: (workflowId: string) => string;
   /** the Workflow Panel entry this queue is scoped to — the header's one word */
   panelLabel: string;
-  /** the day partition these rows came from, as `YYYY-MM-DD`; formatted here */
+  /** the day partition these rows came from, as `YYYY-MM-DD` */
   day: string;
+  /** opens the Start run dialog from an empty day */
+  onStartRun?: () => void;
   /** Finished today applies only to the live day partition. */
   isToday?: boolean;
   /** the active filter, absent when the scope is `All` */
@@ -1053,51 +1056,27 @@ export const QueuePanel = memo(function QueuePanel({
   const finished = displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === "finished");
   const digestOf = (status: ProposedStatus): number =>
     finished.filter((surface) => dsStatusOf(surface.status) === status).length;
-  const digest = {
-    done: digestOf("verifiedDone"),
-    warned: digestOf("doneWarnings"),
-    failed: digestOf("failed"),
-    cancelled: digestOf("cancelled"),
-  };
+  const breakdown = [
+    [digestOf("verifiedDone"), "completed"],
+    [digestOf("doneWarnings"), "with warnings"],
+    [digestOf("failed"), "failed"],
+    [digestOf("cancelled"), "cancelled"],
+  ].filter(([count]) => count !== 0).map(([count, word]) => `${String(count)} ${String(word)}`).join(" · ");
 
   const body = (
       <div data-queue-scroll className="min-h-0 flex-1 overflow-y-auto pb-3">
-        {/* Empty is a STATE: what would be here, why it is not, and what to do
-            — in that order, and no defence of the design. */}
         {top.length === 0 && (
-          <div
-            className={cn(
-              "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-cozy)] flex flex-col items-start border border-dashed",
-              "gap-[var(--ds-space-snug)] px-[var(--ds-space-loose)] py-[var(--ds-space-section)]",
-              dsRadius.lg,
-              dsBorder.base,
-            )}
-          >
-            <span
-              className={cn(
-                dsText.ui,
-                "inline-flex items-center gap-[var(--ds-space-snug)] font-semibold text-[color:var(--ds-fg)]",
-              )}
-            >
-              <FileText aria-hidden className={cn(dsIcon.md, "text-[color:var(--ds-fg-muted)]")} />
-              {/* The navigator already identifies the displayed day. */}
-              {filter === undefined
-                ? `No ${panelLabel} runs`
-                : filter.kind === "needsYou"
-                  ? `No ${panelLabel} runs need your attention`
-                  : `No ${panelLabel} runs are ${filter.word}`}
-            </span>
-            <p className={cn(dsText.body, "max-w-[52ch] leading-relaxed text-[color:var(--ds-fg-muted)]")}>
-              {filter === undefined
-                ? "It is registered and can be run — there is simply nothing on this day."
-                : "Nothing matches this filter."}
-            </p>
-            <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-              {filter === undefined
-                ? "Start one with Start a run, or pick another workflow."
-                : "Clear the filter to see all runs."}
-            </p>
-          </div>
+          <EmptyState
+            className="mx-[var(--ds-space-cozy)] mt-[var(--ds-space-cozy)]"
+            icon={<FileText aria-hidden className={dsIcon.lg} />}
+            title={filter === undefined
+              ? "No runs on this day"
+              : filter.kind === "needsYou"
+                ? `No ${panelLabel} runs need your attention`
+                : `No ${panelLabel} runs are ${filter.word}`}
+            {...(filter === undefined ? {} : { description: "Clear the filter to see all runs." })}
+            {...(filter === undefined && onStartRun !== undefined ? { action: <Button size="sm" variant="secondary" onClick={onStartRun}>Start run</Button> } : {})}
+          />
         )}
         {bands.map((band) => {
           if (band.rows.length === 0) return null;
@@ -1106,7 +1085,7 @@ export const QueuePanel = memo(function QueuePanel({
               {band.key !== null && <div data-queue-band={band.key}
                 className={cn(
                   dsText.caps,
-                  "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex items-center gap-[var(--ds-space-base)]",
+                  "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-snug)]",
                   band.key === "attention"
                     ? "text-[color:var(--ds-status-waiting-fg)]"
                     : "text-[color:var(--ds-fg-muted)]",
@@ -1115,54 +1094,17 @@ export const QueuePanel = memo(function QueuePanel({
                 {/* `Finished today` is only true on today's partition. */}
                 {band.key === "finished" && !isToday ? "Finished" : band.label}
                 {/* Band counts describe visible rows; day totals belong to the served status projection. */}
-                <span
-                  title={grouped ? "Displayed rows; each Lookup batch counts once." : undefined}
-                  className={cn(
-                    dsText.nums,
-                    dsText.micro,
-                    "inline-flex h-[var(--ds-h-xs)] items-center rounded-full border px-[var(--ds-space-snug)]",
-                    band.key === "attention" ? "border-[color:var(--ds-status-waiting-border)]" : dsBorder.base,
-                  )}
-                >
+                <span title={grouped ? "Displayed rows; each Lookup batch counts once." : undefined} className="tabular-nums">
                   {band.rows.length}
                 </span>
-                <span aria-hidden className="h-px flex-1 bg-[var(--ds-border-subtle)]" />
+                {/* Show day-finished outcomes only under All; filtered subsets cannot claim day totals. */}
+                {band.key === "finished" && filter === undefined && breakdown !== "" && (
+                  <span className={cn("tabular-nums", "truncate font-normal")}
+                    title={grouped ? "Completed Queue rows; each Lookup batch counts once. Run totals remain in the status filters." : undefined}>
+                    {breakdown}
+                  </span>
+                )}
               </div>}
-              {/* Show day-finished summaries only under All; filtered subsets cannot claim day totals. */}
-              {band.key === "finished" && filter === undefined && (
-                <div
-                  className={cn(
-                    dsText.meta,
-                    "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-base)] flex flex-wrap items-center border border-dashed",
-                    "gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
-                    dsRadius.md,
-                    dsBorder.base,
-                    "text-[color:var(--ds-fg-muted)]",
-                  )}
-                >
-                  <span className="font-semibold text-[color:var(--ds-fg-secondary)]">
-                    {isToday ? "Today:" : `${dayLabel(day)}:`}
-                  </span>
-                  <span title={grouped ? "Completed Queue rows; each Lookup batch counts once. Run totals remain in the status filters." : undefined}>
-                    <span className="font-semibold text-[color:var(--ds-success-fg)]">{digest.done}</span> completed
-                  </span>
-                  {digest.warned > 0 && (
-                    <span className="text-[color:var(--ds-status-waiting-fg)]">
-                      <span className="font-semibold">{digest.warned}</span> with warnings
-                    </span>
-                  )}
-                  {digest.failed > 0 && (
-                    <span className="text-[color:var(--ds-status-failed-fg)]">
-                      <span className="font-semibold">{digest.failed}</span> failed
-                    </span>
-                  )}
-                  {digest.cancelled > 0 && (
-                    <span>
-                      <span className="font-semibold">{digest.cancelled}</span> cancelled
-                    </span>
-                  )}
-                </div>
-              )}
               {band.rows.map((surface) => {
                 if ("kind" in surface) return <MemoQueueRow key={surface.key} batch={surface} surface={surface.representative}
                   state={state} handlers={handlers} actionsOf={actionsOf} workflowLabelOf={workflowLabelOf} />;
@@ -1193,6 +1135,6 @@ export const QueuePanel = memo(function QueuePanel({
       </div>
   );
   return <section aria-label="Queue" onKeyDown={event => { if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); } }} className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}>
-    {renderBody ? renderBody(body) : <>{header ?? <div className={cn("flex shrink-0 items-center border-b px-3", dsSize.hBar, dsBorder.subtle)}><h2 className={cn(dsText.title, "truncate font-semibold")}>{panelLabel}</h2></div>}{body}</>}
+    {renderBody ? renderBody(body) : <>{header ?? <div className={cn("flex shrink-0 items-center border-b px-3", dsSize.hBar, dsBorder.subtle)}><h2 className={cn(dsText.title, "truncate font-medium")}>{panelLabel}</h2></div>}{body}</>}
   </section>;
 });
