@@ -4,7 +4,7 @@
    The single source of every color, size, radius, shadow, focus ring and */
 
 :root {
-  --ds-sidebar-width: 312px; /* Settings sidebar and workflow rail: one width, never shrinks */
+  --ds-sidebar-width: 264px; /* Settings sidebar and workflow rail: one width, never shrinks */
   --ds-layer-bar: 20; /* Sessions bar < floating assistant < drawer 30 < dialog and scrim 40 < menu 45 < toast 50 < tooltip 60 */
   --ds-layer-assistant: 25;
   --ds-layer-menu: 45;
@@ -26,15 +26,15 @@
   --ds-picker-bg: color-mix(in srgb, var(--ds-fg) 3%, transparent); /* pickers and bordered buttons: the Codex +6 */
   --ds-picker-bg-hover: color-mix(in srgb, var(--ds-fg) 6%, transparent);
   --ds-field-focus-edge: color-mix(in srgb, var(--ds-fg) 55%, transparent); /* text fields: no ring, the edge steps up */
-  --ds-surface-page: var(--background); /* app background, behind everything */
-  --ds-surface-1: var(--card); /* panels, cards, bars — the default plane */
-  --ds-surface-2: var(--muted); /* inset wells, table headers, code blocks */
-  --ds-surface-3: var(--accent); /* hover / pressed / selected fill */
-  --ds-surface-overlay: var(--popover); /* dialogs, drawers, menus, tooltips */
+  --ds-surface-page: var(--ui-canvas); /* app background, behind everything */
+  --ds-surface-1: var(--ui-panel); /* panels, cards, bars — the default plane */
+  --ds-surface-2: var(--ui-table); /* inset wells, table headers, code blocks */
+  --ds-surface-3: var(--ui-hover); /* hover / pressed / selected fill */
+  --ds-surface-overlay: var(--ui-field); /* dialogs, drawers, menus, tooltips */
   --ds-surface-scrim: color-mix(in srgb, hsl(0 0% 0%) 66%, transparent);
   /* SELECTION — one shade off the card it sits on, and no more. It mixes toward
    the FOREGROUND rather than the accent, which keeps it hueless on either */
-  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 4%, var(--ds-surface-1));
+  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 60%, transparent);
 
   /* THE RECESSED PLANE — the ONE treatment for "this sits back from the card".
@@ -145,8 +145,8 @@
          a deliberate stop is neither a warning nor a failure) */
   --ds-status-cancelled-fg: var(--ds-fg-muted);
   --ds-status-cancelled-mark: var(--ds-fg-muted);
-  --ds-status-cancelled-bg: color-mix(in srgb, var(--muted-foreground) 14%, transparent);
-  --ds-status-cancelled-border: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  --ds-status-cancelled-bg: color-mix(in srgb, var(--ds-fg-muted) 14%, transparent);
+  --ds-status-cancelled-border: color-mix(in srgb, var(--ds-fg-muted) 40%, transparent);
   --ds-status-cancelled-solid-bg: #737373;
   --ds-status-cancelled-solid-fg: #fafafa;
 
@@ -176,11 +176,10 @@
 
   /* REHEARSAL — a run that read every system and wrote to none.
    The one hue no status owns, because a rehearsal is not a status: a dry run */
-  --rehearsal: #a78bfa;
-  --ds-rehearsal-fg: var(--rehearsal);
-  --ds-rehearsal-mark: var(--rehearsal);
-  --ds-rehearsal-bg: color-mix(in srgb, var(--rehearsal) 13%, transparent);
-  --ds-rehearsal-border: color-mix(in srgb, var(--rehearsal) 55%, transparent);
+  --ds-rehearsal-fg: var(--ds-fg-muted);
+  --ds-rehearsal-mark: var(--ds-fg-muted);
+  --ds-rehearsal-bg: transparent;
+  --ds-rehearsal-border: transparent;
 
   /* DIRECTION — which way a value moved. ONE axis, TWO tones.
    This is a deliberate, narrow exception to the "one accent + four semantic */
@@ -196,7 +195,7 @@
   /* TYPE — a seven-step scale. Half-pixel drift is what makes twenty
    surfaces look like twenty products. These are the only sizes. */
   --ds-font-sans: var(--font-sans);
-  --ds-font-mono: var(--font-mono);
+  --ds-font-mono: var(--font-data);
   --ds-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --ds-text-micro: 10px; /* count badges, kbd, uppercase group labels */
@@ -224,11 +223,11 @@
   --ds-text-body-value: 14px;
   --ds-lh-body-value: 20px;
   --ds-h-body-control: 28px;
-  --ds-h-body-row: 62.5px;
-  --ds-h-body-ranked-row: 48.6px;
-  --ds-size-body-choice: 14.4px;
+  --ds-h-body-row: 60px;
+  --ds-h-body-ranked-row: 48px;
+  --ds-size-body-choice: 16px;
   --ds-space-body-copy-gap: var(--ds-row-gap);
-  --ds-radius-body-control: 8.1px;
+  --ds-radius-body-control: 8px;
   /* ROWS — the one default size for card rows and data-table rows. Two-line row 60px, one-line 52px, table head 32px. */
   --ds-row-pad-x: 16px;
   --ds-row-pad-y: 11px; /* a row with a grey line */
@@ -242,7 +241,7 @@
   --ds-card-bg: var(--ui-panel); /* light: the page fill, the card is drawn by its border */
   --ds-menu-item-h: 28px; /* one-line menu item; a two-line item grows to fit */
   --ds-row-head-h: 32px;
-  --ds-row-heading: 15px;
+  --ds-row-heading: 16px;
   --ds-row-heading-lh: 22px;
   --ds-row-title: 13px;
   --ds-row-title-lh: 18px;
@@ -253,7 +252,7 @@
   --ds-row-control-h: 28px;
   --ds-toolbar-control-h: 32px; /* a search field; the filter dropdowns beside it stay 28px */
   --ds-radius-body-group: var(--ds-row-radius);
-  --ds-radius-body-dialog: 14.4px;
+  --ds-radius-body-dialog: 16px;
   --ds-w-body-switch: 36px;
   --ds-h-body-switch: 20px;
   --ds-size-body-switch-thumb: 14px;
@@ -262,7 +261,7 @@
   --ds-body-switch-thumb-bg: #ffffff;
   --ds-body-switch-checked-bg: var(--ds-switch-on);
 
-  --ds-tracking-caps: 0.14em; /* uppercase micro labels only */
+  --ds-tracking-caps: 0; /* group labels carry no tracking */
   --ds-tracking-tight: -0.006em; /* section/display sizes only */
 
   /* SPACE — an 8px rhythm with 2/4/6 available for dense interiors.
@@ -294,34 +293,32 @@
   --ds-w-body-control-standard: 237px;
   --ds-w-body-control-medium: 288px;
   --ds-w-body-control-wide: 378px;
-  --ds-w-body-unit: 147.6px;
+  --ds-w-body-unit: 148px;
   --ds-w-body-control: 280px;
-  --ds-w-body-catalog-rail: 229.5px;
-  --ds-w-body-catalog-label: 103.5px;
+  --ds-w-body-catalog-rail: 228px;
+  --ds-w-body-catalog-label: 104px;
   --ds-h-body-catalog-search: 36px;
-  --ds-h-body-catalog-min: 499.5px;
+  --ds-h-body-catalog-min: 500px;
   --ds-h-settings-nav-row: 32px;
   --ds-radius-settings-nav: 10px;
   --ds-lh-settings-sidebar-title: 28px;
-  --ds-space-body-catalog-record: 22.5px;
-  --ds-space-body-catalog-option-gap: 5.4px;
+  --ds-space-body-catalog-record: 24px;
+  --ds-space-body-catalog-option-gap: 6px;
   --ds-space-body-catalog-search-gap: 9px;
-  --ds-space-body-catalog-group-top: 16.2px;
-  --ds-space-body-catalog-group-inline: 7.2px;
-  --ds-space-body-catalog-row-gap: 13.5px;
+  --ds-space-body-catalog-group-top: 16px;
+  --ds-space-body-catalog-group-inline: 8px;
+  --ds-space-body-catalog-row-gap: 12px;
   --ds-space-body-catalog-row-block: 9px;
-  --ds-space-body-catalog-title-bottom: 6.3px;
-  --ds-space-body-catalog-section-gap: 25.2px;
-  --ds-text-body-catalog-small: 10.8px;
+  --ds-space-body-catalog-title-bottom: 6px;
+  --ds-space-body-catalog-section-gap: 24px;
+  --ds-text-body-catalog-small: 11px;
   --ds-space-body-group-inline: var(--ds-row-pad-x);
-  --ds-space-body-section-gap: 32.4px;
-  --ds-space-body-section-heading-gap: 9.9px;
+  --ds-space-body-section-gap: 32px;
+  --ds-space-body-section-heading-gap: 8px;
   --ds-space-body-caption-gap: 10px;
-  --ds-space-body-toolbar-inline: 9.9px;
+  --ds-space-body-toolbar-inline: 8px;
   --ds-text-body-caption: 13px;
   --ds-lh-body-caption: 18px;
-  --ds-text-body-section: 16.2px;
-  --ds-lh-body-section: 21px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
    region all hang off this one inset, so the three bands' content starts on */
   --ds-shell-inset: var(--ds-space-cozy);
@@ -559,14 +556,6 @@ body[data-demo-theme="dark"] {
 
   --ds-settings-canvas: #0f0f11;
   --ds-settings-sidebar: #0f0f11;
-  --ds-settings-card: #18181b;
-  --ds-settings-control: #1f1f23;
-  --ds-settings-hover: #222226;
-  --ds-settings-border: #26262a;
-  --ds-settings-control-border: #52525a;
-  --ds-settings-fg: #e3e4e6;
-  --ds-settings-fg-secondary: #b5b6bb;
-  --ds-settings-fg-muted: #9d9ea4;
 
   /* Shared content-body surfaces. The app shell keeps its own palette. */
   --ds-body-surface-page: #0f0f11;
@@ -586,7 +575,7 @@ body[data-demo-theme="dark"] {
   --log-teal: #fafafa; /* a WRITE — the load-bearing direction */
   --log-cyan: #d4d4d8; /* a READ */
   --log-slate: #a1a1aa; /* navigation, search, inert chrome */
-  --log-violet: #f79009; /* unconfirmed / parked — warning, not a category */
+  --log-parked: #f79009; /* unconfirmed / parked — warning, not a category */
   --chart-1: #fafafa;
   --chart-2: #a1a1aa;
   --chart-3: #4ea1f3;
@@ -594,14 +583,14 @@ body[data-demo-theme="dark"] {
   --chart-5: #f79009;
 
   /* --- surface ---------------------------------------------------------- */
-  --ds-surface-page: var(--background);
-  --ds-surface-1: var(--card);
-  --ds-surface-2: var(--muted);
-  --ds-surface-3: var(--accent);
-  --ds-surface-overlay: var(--popover);
+  --ds-surface-page: var(--ui-canvas);
+  --ds-surface-1: var(--ui-panel);
+  --ds-surface-2: var(--ui-table);
+  --ds-surface-3: var(--ui-hover);
+  --ds-surface-overlay: var(--ui-field);
   --ds-surface-scrim: rgba(0, 0, 0, 0.66);
   /* Body-only lift — see :root. Footer stays on --ds-recess-bg. */
-  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 4%, var(--ds-surface-1));
+  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 60%, transparent);
 
   /* --- border ----------------------------------------------------------- */
@@ -680,8 +669,8 @@ body[data-demo-theme="dark"] {
 
   --ds-status-cancelled-fg: var(--ds-fg-muted);
   --ds-status-cancelled-mark: var(--ds-fg-muted);
-  --ds-status-cancelled-bg: color-mix(in srgb, #a3a3a3 14%, transparent);
-  --ds-status-cancelled-border: color-mix(in srgb, #a3a3a3 40%, transparent);
+  --ds-status-cancelled-bg: color-mix(in srgb, var(--ds-fg-muted) 14%, transparent);
+  --ds-status-cancelled-border: color-mix(in srgb, var(--ds-fg-muted) 40%, transparent);
   --ds-status-cancelled-solid-bg: #737373;
   --ds-status-cancelled-solid-fg: #fafafa;
 
@@ -706,11 +695,10 @@ body[data-demo-theme="dark"] {
 
   /* Rehearsal. #a78bfa measures 6.5:1 as text on this theme's card plane
    (#18181b), so the swatch and the text step are one value here — the same */
-  --rehearsal: #a78bfa;
-  --ds-rehearsal-fg: #a78bfa;
-  --ds-rehearsal-mark: #a78bfa;
-  --ds-rehearsal-bg: color-mix(in srgb, #a78bfa 13%, transparent);
-  --ds-rehearsal-border: color-mix(in srgb, #a78bfa 55%, transparent);
+  --ds-rehearsal-fg: var(--ds-fg-muted);
+  --ds-rehearsal-mark: var(--ds-fg-muted);
+  --ds-rehearsal-bg: transparent;
+  --ds-rehearsal-border: transparent;
 
   /* --- direction (read / write) ------------------------------------------
    Measured on the card plane (#18181b): read text 8.1:1, write text 10.0:1, */
@@ -773,14 +761,6 @@ body[data-demo-theme="light"] {
 
   --ds-settings-canvas: #f9f9f9;
   --ds-settings-sidebar: #f9f9f9;
-  --ds-settings-card: #f9f9f9;
-  --ds-settings-control: #ffffff;
-  --ds-settings-hover: #efefef;
-  --ds-settings-border: #e6e6e6;
-  --ds-settings-control-border: #8a8a8a;
-  --ds-settings-fg: #1b1b1b;
-  --ds-settings-fg-secondary: #4d4d4d;
-  --ds-settings-fg-muted: #666666;
 
   --ds-body-surface-page: #f9f9f9;
   --ds-body-surface-group: #f9f9f9;
@@ -797,7 +777,7 @@ body[data-demo-theme="light"] {
   --log-teal: #0b0f19; /* a WRITE */
   --log-cyan: #334155; /* a READ */
   --log-slate: #475569; /* navigation, search, inert chrome */
-  --log-violet: #b54708; /* unconfirmed / parked */
+  --log-parked: #b54708; /* unconfirmed / parked */
   --chart-1: #0b0f19;
   --chart-2: #475569;
   --chart-3: #0369a1;
@@ -805,14 +785,14 @@ body[data-demo-theme="light"] {
   --chart-5: #b54708;
 
   /* --- surface ---------------------------------------------------------- */
-  --ds-surface-page: var(--background);
-  --ds-surface-1: var(--card);
-  --ds-surface-2: var(--muted);
-  --ds-surface-3: var(--accent);
-  --ds-surface-overlay: var(--popover);
+  --ds-surface-page: var(--ui-canvas);
+  --ds-surface-1: var(--ui-panel);
+  --ds-surface-2: var(--ui-table);
+  --ds-surface-3: var(--ui-hover);
+  --ds-surface-overlay: var(--ui-field);
   --ds-surface-scrim: rgba(16, 24, 40, 0.45);
   /* Paper needs a hair more mix than Graphite Warm's 4% for the same read. */
-  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 5%, var(--ds-surface-1));
+  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 70%, transparent);
 
   /* --- border ----------------------------------------------------------- */
@@ -894,8 +874,8 @@ body[data-demo-theme="light"] {
 
   --ds-status-cancelled-fg: var(--ds-fg-muted);
   --ds-status-cancelled-mark: var(--ds-fg-muted);
-  --ds-status-cancelled-bg: color-mix(in srgb, #737373 12%, transparent);
-  --ds-status-cancelled-border: color-mix(in srgb, #737373 28%, transparent);
+  --ds-status-cancelled-bg: color-mix(in srgb, var(--ds-fg-muted) 14%, transparent);
+  --ds-status-cancelled-border: color-mix(in srgb, var(--ds-fg-muted) 40%, transparent);
   --ds-status-cancelled-solid-bg: #a3a3a3;
   --ds-status-cancelled-solid-fg: #171717;
 
@@ -920,11 +900,10 @@ body[data-demo-theme="light"] {
 
   /* Rehearsal. This is the theme the `-fg` / `-mark` split exists for:
    violet-600 (#7c3aed) is 5.5:1 on white as a mark but the chip's ink is read */
-  --rehearsal: #6d28d9;
-  --ds-rehearsal-fg: #6d28d9;
-  --ds-rehearsal-mark: #7c3aed;
-  --ds-rehearsal-bg: color-mix(in srgb, #7c3aed 10%, transparent);
-  --ds-rehearsal-border: color-mix(in srgb, #6d28d9 40%, transparent);
+  --ds-rehearsal-fg: var(--ds-fg-muted);
+  --ds-rehearsal-mark: var(--ds-fg-muted);
+  --ds-rehearsal-bg: transparent;
+  --ds-rehearsal-border: transparent;
 
   /* --- direction (read / write) ------------------------------------------
    This is the theme the `-fg` / `-mark` split exists for. Sky-600 (#0284c7) */
@@ -992,13 +971,14 @@ body[data-demo-theme="light"] {
   letter-spacing: var(--ds-tracking-tight);
   font-weight: 400;
 }
-/* Uppercase micro label — group headers, table column heads, tile captions. */
-.ds-text-caps {
-  font-size: var(--ds-text-micro);
-  line-height: var(--ds-lh-micro);
-  text-transform: uppercase;
-  letter-spacing: var(--ds-tracking-caps);
-  font-weight: 600;
+/* Sentence-case group label — group headers, table column heads, tile captions. */
+.ds-text-group-label {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ds-fg-muted);
 }
 /* Two-way switch: the selected side is white in light and lighter than the track in dark. */
 
@@ -1070,11 +1050,6 @@ body[data-demo-theme="light"] {
   --ds-segment-track: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-panel));
   --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 26%, var(--ui-panel));
 }
-/* Small table headings are 11px. */
-th.ds-text-caps {
-  font-size: var(--ds-text-meta);
-  line-height: var(--ds-lh-meta);
-}
 /* Collapse the line box to the em. Compose AFTER a `ds-text-*` size class on a
    single-line label that shares a flex/grid row with an icon or a taller */
 .ds-leading-flush {
@@ -1136,14 +1111,14 @@ th.ds-text-caps {
   --ds-size-switch-thumb: var(--ds-size-body-switch-thumb);
   --ds-switch-thumb-off-x: var(--ds-body-switch-thumb-off-x);
   --ds-switch-thumb-on-x: var(--ds-body-switch-thumb-on-x);
-  --ds-space-hair: 1.8px;
-  --ds-space-tight: 3.6px;
-  --ds-space-snug: 5.4px;
-  --ds-space-base: 7.2px;
-  --ds-space-cozy: 10.8px;
-  --ds-space-loose: 14.4px;
-  --ds-space-section: 21.6px;
-  --ds-space-page: 25.2px;
+  --ds-space-hair: 2px;
+  --ds-space-tight: 4px;
+  --ds-space-snug: 6px;
+  --ds-space-base: 8px;
+  --ds-space-cozy: 12px;
+  --ds-space-loose: 16px;
+  --ds-space-section: 24px;
+  --ds-space-page: 32px;
   font-family: var(--ds-font-body);
   color: var(--ds-fg);
 }
@@ -1456,8 +1431,6 @@ th.ds-text-caps {
 .ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 16px; height: 16px; margin: 0; }
 .ds-search-field--sidebar [data-slot="search-field-input"] { font-size: 14px; line-height: 20px; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
-
-
 
 .ds-body-scope .ds-date-picker--inline {
   display: flex;
@@ -1917,18 +1890,6 @@ th.ds-text-caps {
   height: var(--ds-h-md);
 }
 
-.ds-date-navigation {
-  background: var(--ds-control-bg);
-  border-color: var(--ds-border-strong);
-  border-radius: var(--ds-radius-md);
-}
-
-.ds-date-picker--embedded {
-  --field: transparent;
-  --field-hover: transparent;
-  --field-border-width: 0px;
-}
-
 .ds-calendar {
   --accent: var(--ui-info);
   --accent-foreground: var(--ds-accent-fg);
@@ -1982,14 +1943,6 @@ th.ds-text-caps {
   max-width: none;
 }
 
-.ds-date-popover {
-  width: var(--ds-w-popover-md);
-  max-width: var(--ds-w-popover-md);
-  background: var(--ds-surface-1);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-xl);
-}
-
 .ds-date-picker--inline {
   flex-direction: row;
   align-items: center;
@@ -2009,30 +1962,8 @@ th.ds-text-caps {
   --ds-activity-chart-bar: #849db7;
 }
 
-.activity-report-period [data-slot="native-select-wrapper"] {
-  width: var(--ds-activity-period-width);
-  flex: none;
-}
-
 .ds-body-scope.activity-report-body {
   max-width: none;
-}
-
-.activity-report-period [data-slot="native-select-wrapper"] select {
-  width: 100%;
-}
-
-.activity-workflow-table th {
-  font-family: var(--ds-font-body);
-  font-size: var(--ds-text-meta);
-  line-height: var(--ds-lh-meta);
-  font-weight: 500;
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-.activity-workflow-table td {
-  font-variant-numeric: tabular-nums;
 }
 
 /* REDUCED MOTION
@@ -2104,7 +2035,7 @@ body[data-demo-theme],
   --ds-body-surface-group: var(--ui-panel);
   --ds-body-surface-control: var(--ui-table);
   --ds-body-surface-hover: var(--ui-hover);
-  --ds-body-surface-selected: var(--ui-hover);
+  --ds-body-surface-selected: color-mix(in srgb, var(--ui-primary) 8%, var(--ui-panel));
   --ds-body-border: var(--ui-stroke);
   --ds-body-border-subtle: var(--ui-stroke);
   --ds-body-control-border: var(--ui-stroke-control);
