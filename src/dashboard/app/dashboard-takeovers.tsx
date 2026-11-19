@@ -55,7 +55,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
               accountPage={accountPage}
-              section={route.settings ?? ""}
+              section={route.settings ?? (takeover === "archive" ? "archive" : "")}
               searchTarget={route.settingsTarget}
               actorId={boot.actor.id}
               profileName={boot.actor.label}

@@ -21,9 +21,12 @@ export function DataPage({ page, children }: { page: keyof typeof PAGE_LABEL; ch
     return () => cancelAnimationFrame(frame);
   }, [page]);
   return (
+    // `settings-takeover` carries the page-heading and row rules every full page shares with Settings.
+    <div className="settings-takeover flex min-h-0 min-w-0 flex-1">
     <div ref={region} tabIndex={-1} aria-label={PAGE_LABEL[page]} role="region" data-data-page={page}
       className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
       <DsBodyScope className="settings-tab-body flex flex-col gap-[var(--ds-space-page)]">{children}</DsBodyScope>
+    </div>
     </div>
   );
 }
