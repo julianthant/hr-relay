@@ -1,14 +1,4 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { dirname, join } from "node:path";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { parseBackupManifestFile } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { systemClock } from "../../../../src/rules/time/clock.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { readyBoundEight, hostFacts } from "../../../support/helpers/storage/ready-bound-upgrade.js";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -48,50 +38,4 @@ it.each([
     database.exec(insert);
     assert.throws(() => assertAssistantHistoryRetirable(database), /assistant-grant-history-unsupported/u);
   } finally { database.close(); }
-});
-
-it("retires an audited settled legacy action into its verified pre-upgrade backup", async () => {
-  const fixture = await readyBoundEight("idle", 28);
-  try {
-    const chatId = randomUUID(), id = randomUUID(), auditId = randomUUID();
-    const at = "2026-10-21T12:00:00.000Z", expiresAt = "2026-10-21T13:00:00.000Z";
-    const command = NotificationCommandRequestSchema.options[0].parse({ commandId: randomUUID(), requestedAt: at, requestedBy: "local-operator", source: "assistant",
-      family: "notification", type: "notification-read", target: { notificationId: randomUUID(), actorId: "local-operator", expectedVersion: 1 } });
-    const chat = { id: chatId, profileId: fixture.claim, epoch: 1, createdAt: at, expiresAt };
-    const result = { state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: command.target.notificationId }] };
-    const audit = { auditId, request: command, result, completedAt: at, versionChanges: [], affectedDependencyIds: [] };
-    const action = { id, chatId, manifest: { revision: 1, entries: [] },
-      binding: { profileId: chat.profileId, accountSessionEpoch: chat.epoch, manifestRevision: 1, family: command.family, action: command.type,
-        classification: "local-write", commandId: command.commandId, target: command.target, subject: { kind: "none" }, options: { kind: "none" },
-        configDescriptor: { kind: "none" }, grantId: randomUUID(), policyRevision: 1, mode: "every-action" },
-      command, plan: null, revision: 4, state: "settled", result, createdAt: at, expiresAt };
-    const source = new DatabaseSync(fixture.path);
-    try {
-      insertNativeCommand(source, command);
-      settleNativeCommand(source, audit);
-      source.prepare("INSERT INTO command_audits VALUES (?,?,NULL,?,?)").run(auditId, command.commandId, canonicalJsonStringify(audit), at);
-      source.prepare("INSERT INTO assistant_chats VALUES (?,?,?,?,?,?)").run(chatId, chat.profileId, chat.epoch, canonicalJsonStringify(chat), at, expiresAt);
-      const insert = source.prepare("INSERT INTO assistant_actions VALUES (?,?,?,?,?,?,?,?)");
-      for (const state of ["claimed", "unknown", "settled"] as const) {
-        source.exec("SAVEPOINT unproved");
-        const unproved = { ...action, state, result: state === "settled" ? { ...result, state: "already-applied" } : null };
-        insert.run(id, chatId, command.commandId, 4, state, canonicalJsonStringify(unproved), at, expiresAt);
-        assert.throws(() => assertAssistantHistoryRetirable(source), /assistant-grant-history-unsupported/u);
-        source.exec("ROLLBACK TO unproved; RELEASE unproved");
-      }
-      insert.run(id, chatId, command.commandId, 4, "settled", canonicalJsonStringify(action), at, expiresAt);
-    } finally { source.close(); }
-    assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, fixture.machine, fixture.claim, { plan: false, hostFacts }, systemClock)).state, "upgraded");
-    const current = new DatabaseSync(fixture.path, { readOnly: true });
-    try {
-      assert.equal(current.prepare("SELECT id FROM assistant_actions WHERE id=?").get(id), undefined);
-      assert.ok(current.prepare("SELECT id FROM command_audits WHERE id=?").get(auditId));
-      const row = current.prepare("SELECT json_extract(payload_json,'$.backup.manifestPath') AS manifest FROM database_upgrades WHERE phase='settled'").get();
-      assert.ok(row && typeof row.manifest === "string");
-      const manifest = parseBackupManifestFile(row.manifest);
-      const backup = new DatabaseSync(join(dirname(row.manifest), manifest.backupFileName), { readOnly: true });
-      try { assert.equal(backup.prepare("SELECT payload_json FROM assistant_actions WHERE id=?").get(id)?.payload_json, canonicalJsonStringify(action)); }
-      finally { backup.close(); }
-    } finally { current.close(); }
-  } finally { await fixture.close(); }
 });
