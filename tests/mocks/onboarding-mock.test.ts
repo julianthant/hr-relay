@@ -15,12 +15,14 @@ const OUT = mockOutDir(process.env.ONBOARDING_MOCK_OUT, "onboarding");
 const THEMES = ["dark", "light"] as const;
 const WIDTHS = [1280, 1024] as const;
 /** The control each scene must show, so a broken scene names what it looked for. */
-const LOOKED_FOR = (id: keyof typeof ONBOARDING_SCENES) => ONBOARDING_SCENES[id].setup === true
-  ? { role: "heading", name: "Set up Duo" } as const
-  : ONBOARDING_SCENES[id].step === "login" ? { role: "button", name: "Log in" } as const
-  : ONBOARDING_SCENES[id].step === "signup" ? { role: "button", name: "Create profile" } as const
-  : ONBOARDING_SCENES[id].step === "ready" ? { role: "button", name: "Go to dashboard" } as const
-  : { role: "list", name: "Duo methods" } as const;
+const LOOKED_FOR = (id: keyof typeof ONBOARDING_SCENES) => {
+  const scene = ONBOARDING_SCENES[id];
+  if ("setup" in scene) return { role: "heading", name: "Set up Duo" } as const;
+  if (scene.step === "login") return { role: "button", name: "Log in" } as const;
+  if (scene.step === "signup") return { role: "button", name: "Create profile" } as const;
+  if (scene.step === "ready") return { role: "button", name: "Go to dashboard" } as const;
+  return { role: "list", name: "Duo methods" } as const;
+};
 
 let server: PreviewServer;
 let baseUrl: string;
@@ -51,11 +53,11 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`onboarding frames 
     await page.goto(`${baseUrl}/?scene=${id}&theme=${theme}`);
     const looked = LOOKED_FOR(id);
     await expect(page.getByRole(looked.role, { name: looked.name }), `${id}: ${looked.role} "${looked.name}"`).toBeVisible({ timeout: 5_000 });
-    if (ONBOARDING_SCENES[id].submit === true) {
+    if ("submit" in ONBOARDING_SCENES[id] && ONBOARDING_SCENES[id].submit === true) {
       await page.getByRole("button", { name: looked.name }).click();
       await expect(page.locator(".ds-field-error").filter({ hasText: /\S/ }).first(), `${id}: field error`).toBeVisible({ timeout: 5_000 });
     }
-    if (ONBOARDING_SCENES[id].confirm === true) {
+    if ("confirm" in ONBOARDING_SCENES[id] && ONBOARDING_SCENES[id].confirm === true) {
       await page.getByRole("button", { name: "Add this device" }).click();
       await expect(page.getByRole("dialog"), `${id}: confirmation dialog`).toBeVisible({ timeout: 5_000 });
       await page.screenshot({ path: join(OUT, `${id}-dialog-${theme}-${width}.png`) });

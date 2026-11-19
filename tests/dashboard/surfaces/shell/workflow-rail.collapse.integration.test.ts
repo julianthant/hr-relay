@@ -21,7 +21,7 @@ function installViewport(width: number): (next: number) => void {
 }
 
 async function mountHook(): Promise<{ collapsed: () => boolean; set: (next: boolean) => void }> {
-  const state = { collapsed: false, set: (_next: boolean) => undefined };
+  const state = { collapsed: false, set: (_next: boolean): void => undefined };
   function Probe() { const [collapsed, set] = useRailCollapsed(); state.collapsed = collapsed; state.set = set; return null; }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(Probe)));

@@ -70,19 +70,20 @@ for(const outcome of ["success","failure"] as const)it(`refresh keeps the report
   const served=await report();
   const command=Promise.withResolvers<unknown>(),readback=Promise.withResolvers<unknown>();
   let reruns=0,reads=0,latest:ReturnType<typeof useSettingsPreflight>|undefined;
+  const phase=()=>latest?.preflight.state;
   const client={preflightScopes:()=>Promise.resolve([]),readPreflight:()=>{reads++;return reruns===0?Promise.resolve({state:"present",report:served}):readback.promise;},rerunPreflight:()=>{reruns++;return command.promise;}} as unknown as DashboardClient;
   const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,showSettings(){},showSessions(){}};
   function Subscriber(){latest=useSettingsPreflight({state:"loaded",document:FIXTURE_EDITABLE_SETTINGS},actions);return createElement("span",null,latest.preflight.state);}
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(Subscriber)})}));});
   const checkedAt=(state:PreflightRerunState|undefined)=>state!==undefined&&"report" in state?state.report.checkedAt:undefined;
-  assert.equal(latest?.preflight.state,"completed");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+  assert.equal(phase(),"completed");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
   await act(async()=>latest?.rerunPreflight());assert.equal(reruns,1);
-  assert.equal(latest?.preflight.state,"refreshing");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+  assert.equal(phase(),"refreshing");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
   await act(async()=>{command.resolve({});});assert.equal(reads,2);
-  assert.equal(latest?.preflight.state,"refreshing");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+  assert.equal(phase(),"refreshing");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
   await act(async()=>{if(outcome==="success")readback.resolve({state:"present",report:served});else readback.reject(new Error("Readback unavailable"));});
-  assert.equal(latest?.preflight.state,outcome==="success"?"completed":"historical");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
+  assert.equal(phase(),outcome==="success"?"completed":"historical");assert.equal(checkedAt(latest?.preflight),served.checkedAt);
 });
 it("two subscribers show the same state and command readback, then expire together",async()=>{
   vi.useFakeTimers();vi.setSystemTime(now);
