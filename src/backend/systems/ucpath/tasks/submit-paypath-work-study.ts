@@ -1,6 +1,6 @@
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
 import { UcpathSubmitPayPathWorkStudy } from "../../../../models/systems/ucpath/submit-paypath-work-study.js";
-import { UcpathPayPathSubmitRefusedError } from "../../../../models/ui/ucpath-paypath.js";
+import { UcpathPayPathRefusedError, UcpathPayPathSubmitRefusedError } from "../../../../models/ui/ucpath-paypath.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { ucpathDriver } from "../driver-declaration.js";
@@ -12,6 +12,9 @@ export const submitPayPathWorkStudyTask = defineTask(ucpathDriver, UcpathSubmitP
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
   async run({ input, ctx }) {
     await ctx.driver.submitPayPathWorkStudy(input, ctx.mutation).catch((error: unknown) => {
+      if (error instanceof UcpathPayPathRefusedError && error.code === "paypath-position-mismatch") {
+        return ctx.fail(error.code, operatorFailureSentence(failureCodeFromTaskCode(error.code)), { cause: error });
+      }
       if (!(error instanceof UcpathPayPathSubmitRefusedError)) throw error;
       ctx.recordData({ direction: "read", field: "alertText", value: error.alertText });
       return ctx.fail("paypath-submit-refused", operatorFailureSentence(failureCodeFromTaskCode("paypath-submit-refused")), { subject: input.emplId, cause: error });

@@ -105,7 +105,10 @@ it("keeps the read snapshot's authentications out of write transactions and repo
   const twice = (repositories: typeof authority) => { authenticateRootRun(repositories, f.run); authenticateRootRun(repositories, f.run); };
   assert.deepEqual(countCommandReads(root, () => f.database.withAuthorityReadSnapshot(() => twice(authority))).reads, [1]);
   assert.deepEqual(countCommandReads(root, () => f.database.withAuthorityTransaction(repositories => twice(repositories))).reads, [2]);
-  assert.deepEqual(countCommandReads(root, () => f.database.withAuthorityReadSnapshot(() => twice({ ...authority }))).reads, [2]);
+  const getCommand = vi.fn((id: string) => authority.lifecycleJournal.getCommand(id));
+  const copy = { ...authority, lifecycleJournal: { ...authority.lifecycleJournal, getCommand } };
+  assert.deepEqual(countCommandReads(root, () => f.database.withAuthorityReadSnapshot(() => twice(copy))).reads, [1]);
+  assert.equal(getCommand.mock.calls.filter(([id]) => id === root[0]).length, 2);
 
   const manifest = authority.dependencies.groups(f.run.envelope.runId).find(({ group }) => group.invocation.nodeId === "read-pages")?.manifest;
   assert.ok(manifest);

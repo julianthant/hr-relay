@@ -1,4 +1,5 @@
 /** Freshly prove that the exact durable UCPath filing still exists before a Kuali finalization may cite it; this read never files or repairs anything. */
+import { z } from "zod";
 import { taskId, ObservationIdSchema } from "../../../rules/identity/ids.js";
 import { TerminationReceiptSchema } from "../../../rules/separations/termination-receipt.js";
 import {
@@ -11,7 +12,7 @@ export const UcpathVerifyTerminationFilingPresent = defineTaskContract({
   id: taskId("ucpath/verify-termination-filing-present"),
   title: "Verify Current UCPath Termination Filing",
   effect: "read",
-  input: TerminationReceiptSchema,
+  input: TerminationReceiptSchema.extend({ expectedEmplRecord: z.string().min(1).optional() }),
   output: UcpathTerminationFilingPresenceProofSchema,
   errorCodes: ["ucpath-unavailable", "unexpected-page-state", "subject-mismatch", "filing-not-current"],
   subject: {

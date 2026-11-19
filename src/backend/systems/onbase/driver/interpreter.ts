@@ -8,6 +8,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { deriveIdempotencyKeyDigest } from "../../../../rules/write-safety/write-safety.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { ONBASE_UI_REGISTRY as ui } from "./ui-registry.js";
@@ -123,7 +124,7 @@ export function createOnbaseDriver(assertCurrent: () => void, page: Page, clock:
       await importSelections();
       await queue(target);
       prepared = undefined;
-      await run(() => ui.importButton(ui.form(page)).click({ timeout: CONTROL_MS }));
+      await run(() => clickWithMutationCapability(capability, ui.importButton(ui.form(page)), CONTROL_MS));
       recordBrowserAction("clicked", "onbase.import.save");
       return { elementId: ONBASE_IMPORT_BUTTON, effect: "external-commit", performed: true };
     },

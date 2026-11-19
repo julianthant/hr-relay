@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 
 export function profileActivationResponse(body: unknown): Response {
   const headers = new Headers();
@@ -24,7 +25,9 @@ export function sharedProfileCookieTabs(base: string) {
       assert.equal(response.headers.has("set-cookie"), false);
       const next = response.headers.get("x-relay-session");
       if (next !== null) {
-        assert.ok(/^active\.[a-f0-9]{64}$/u.test(next));
+        const { state } = PublicProfileStateSchema.parse(await response.clone().json());
+        assert.ok(state === "active" || state === "onboarding");
+        assert.match(next, state === "active" ? /^active\.[a-f0-9]{64}$/u : /^draft\.[a-f0-9]{64}$/u);
         credential = next;
       } else if ((path === "logout" || path === "delete-account") && response.ok) {
         const body: unknown = await response.clone().json();

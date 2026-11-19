@@ -556,7 +556,7 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
 export function createProfileBrowserClosure(createProbe: BrowserProfileProbeFactory): ProfileBrowserClosure {
   return {
     workerDirectory: workerProfileDirectory,
-    async probeClosed(profiles, timing, clock, signal, owner, operation) {
+    async probeClosed(profiles, timing, clock, signal, owner, flatSource) {
       const options = createProbe({ ...timing, clock, signal });
       if ("assertLive" in owner && !owner.isFlatBackup()) {
         const admission = requireRuntimeAdmission(owner);
@@ -574,8 +574,9 @@ export function createProfileBrowserClosure(createProbe: BrowserProfileProbeFact
       const admission = "assertLive" in owner ? requireRuntimeAdmission(owner) : undefined;
       const lease = "assertLive" in owner ? undefined : owner;
       if (lease !== undefined) assertInstallationLease(lease);
-      const heldOperation = admission === undefined ? operation : admission.maintenanceOperation();
-      if (heldOperation === undefined) throw new BrowserRootUnavailableError();
+      if (flatSource === undefined) throw new BrowserRootUnavailableError();
+      const { operation: heldOperation } = flatSource;
+      if (admission !== undefined && heldOperation !== admission.maintenanceOperation()) throw new BrowserRootUnavailableError();
       const held = () => {
         if (admission !== undefined) { admission.assertOfflineMaintenance(heldOperation); if (!admission.isFlatBackup()) throw new BrowserRootUnavailableError(); }
         else { if (lease === undefined) throw new BrowserRootUnavailableError(); assertInstallationLease(lease); lease.assertOfflineMaintenance(heldOperation); }
@@ -585,10 +586,9 @@ export function createProfileBrowserClosure(createProbe: BrowserProfileProbeFact
       if (context === undefined) throw new BrowserRootUnavailableError();
       const root = admission?.stateRoot ?? inspectFlatOfflineRunMaintenance(context.workspace).roots[0]?.path;
       if (root === undefined) throw new BrowserRootUnavailableError();
-      const { flatBackupBrowserCensus } = await import("./maintenance/profile-inventory.js");
       const capture = () => {
         held();
-        const census = flatBackupBrowserCensus(root, heldOperation, clock, admission?.flatBackupTiming());
+        const census = flatSource.capture();
         if (profiles.some(profile => !census.profiles.some(row => same(row, profile))) || census.profiles.length !== profiles.length) throw new BrowserRootUnavailableError();
         return census.identity;
       };

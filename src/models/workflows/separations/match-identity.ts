@@ -36,8 +36,9 @@ export const SeparationsMatchIdentity = defineTaskContract({
     emplIdSource: IdentityEidSourceSchema,
     /** The whole job-summary read, projected downstream and never re-scraped. */
     jobSummary: UcpathJobSummarySchema,
-    /** What a UCPath search on the DOCUMENT'S NAME resolved — run every time. */
+    /** The Person Org selection. Searches without an explicit ID use the document name. */
     nameSelection: UcpathPersonSelectionSchema,
+    searchedEmployeeId: EidSchema.optional(),
       /* What the writes will consume, or a STATED reason this graph composes none; required rather than optional, so a composition cannot forget to fill it. */
     plan: SeparationWritePlanSchema,
   }),

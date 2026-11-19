@@ -28,6 +28,23 @@ function manifest(n = 1) {
     currentRejects: new Map(), rejectionHistory: [], corrections: [], exclusions: [] });
 }
 describe("native imported-artifact contracts", () => {
+  it("authenticates the database binding at the outer read snapshot boundaries", async () => {
+    const f = await foundationFixture();
+    const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+    try {
+      const actual = f.db.withAuthorityReadSnapshot(() => [
+        f.db.withAuthorityReadSnapshot(() => "first"),
+        f.db.withAuthorityReadSnapshot(() => "second"),
+      ]);
+      assert.deepEqual(actual, ["first", "second"]);
+      const checks = prepare.mock.calls.filter(([sql]) => sql.includes("installation_id AS installationId,profile_id AS profileId FROM database_states"));
+      assert.equal(checks.length, 2);
+    } finally {
+      prepare.mockRestore();
+      await f.dispose();
+    }
+  });
+
   for (const mode of ["read", "write"] as const) it(`rechecks profile authority before committing a ${mode} operation`, async () => {
     const f = await foundationFixture();
     const path = join(f.profile.machine.stateRoot, "machine", "profiles.json");

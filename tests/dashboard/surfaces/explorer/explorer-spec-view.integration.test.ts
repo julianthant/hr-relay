@@ -47,7 +47,9 @@ it("changes and renumbers the steps when a run option changes", async () => {
   const before = titles(host);
   await choose(host, '[aria-labelledby="option-crmCheck"]', "false");
   const after = titles(host);
-  assert.equal(after.length, before.length - 1);
+  // 1c31dde673: Read CRM dates is on by default and requires the CRM check, so turning the check off drops both CRM steps.
+  assert.deepEqual(before.filter(title => !after.includes(title)), ["Cross-check identity", "Read CRM dates"]);
+  assert.equal(after.length, before.length - 2);
   assert.deepEqual([...host.querySelectorAll("time")].map(time => time.textContent), after.map((_, index) => String(index + 1)));
 });
 

@@ -48,11 +48,12 @@ export type WorkerChildMessage = z.infer<typeof WorkerChildMessageSchema>;
 export const WorkerDirectiveSchema = z.enum(["run", "pause"]);
 export type WorkerDirective = z.infer<typeof WorkerDirectiveSchema>;
 
+const requestIdentity = { requestId: z.uuid(), sequence: z.number().int().positive() };
 export const WorkerParentMessageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("worker-stop"), reason: z.enum(["operator", "shutdown", "logout", "reset", "remove", "fault"]), mode: z.literal("after-run") }),
-  z.strictObject({ kind: z.literal("worker-pause"), requestId: z.uuid() }),
-  z.strictObject({ kind: z.literal("worker-resume"), requestId: z.uuid() }),
-  z.strictObject({ kind: z.literal("worker-request"), requestId: z.uuid(), sentAt: IsoInstantSchema, deadlineMs: z.number().int().positive(), request: WorkerControlRequestSchema }),
+  z.strictObject({ kind: z.literal("worker-pause"), ...requestIdentity }),
+  z.strictObject({ kind: z.literal("worker-resume"), ...requestIdentity }),
+  z.strictObject({ kind: z.literal("worker-request"), ...requestIdentity, sentAt: IsoInstantSchema, deadlineMs: z.number().int().positive(), request: WorkerControlRequestSchema }),
 ]);
 export type WorkerParentMessage = z.infer<typeof WorkerParentMessageSchema>;
 export type WorkerStopReason = Extract<WorkerParentMessage, { kind: "worker-stop" }>["reason"];

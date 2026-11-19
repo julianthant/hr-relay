@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { it } from "vitest";
 import ts from "typescript";
-import { buildWorkflowExplorer } from "../../../../src/backend/runs/queries/explorer.js";
 import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { ExplorerWorkflowWireSchema, type ExplorerWorkflowWire } from "../../../../src/models/dashboard/explorer.js";
 import { ExplorerReviewSpecSchema, type ExplorerReviewSpec } from "../../../../src/models/dashboard/explorer-review-spec.js";
@@ -16,11 +15,11 @@ import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js
 import { compileWorkflow, composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
 import { onboardingWorkflow } from "../../../../src/workflows/onboarding/workflow.js";
-import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../../support/fixtures/explorer-seams.js";
 
 const clock = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const hash = FingerprintSchema.parse("c".repeat(64));
-function workflows() { return buildWorkflowExplorer(explorerQueryDeps(clock, hash)).workflows; }
+function workflows() { return readFixtureExplorer(explorerQueryDeps(clock, hash)).workflows; }
 function workflow(id: string): ExplorerWorkflowWire { const found = workflows().find(entry => entry.id === id); assert.ok(found, id); return found; }
 const decisions = (spec: ExplorerReviewSpec) => spec.steps.flatMap(step => step.blocks.flatMap(block => block.kind === "decision" ? [block] : []));
 type Decision = ReturnType<typeof decisions>[number];
@@ -66,7 +65,7 @@ it("serves session chips for delegated runs from the delegating step", () => {
   assert.deepEqual(workflow("ocr-page").reviewSpec.sessions, []);
   assert.deepEqual(workflow("onbase").reviewSpec.sessions, [{ system: "onbase" }]);
   const deps = explorerQueryDeps(clock, hash);
-  assert.throws(() => buildWorkflowExplorer({ ...deps, modules: deps.modules.filter(module => module.descriptor.id === "ocr") }), /absent from the catalog/u);
+  assert.throws(() => readFixtureExplorer({ ...deps, modules: deps.modules.filter(module => module.descriptor.id === "ocr") }), /absent from the catalog/u);
 });
 
 it("lists only outcomes that change the flow, ask the operator or stop the run", () => {
@@ -128,7 +127,7 @@ it("refuses a Search by option whose choice no review row reads", () => {
   const deps = explorerQueryDeps(clock, hash);
   const original = deps.modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
   const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
-  assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /option search-by has no review row that reads input field emplId/u);
+  assert.throws(() => readFixtureExplorer({ ...deps, modules: [module] }), /option search-by has no review row that reads input field emplId/u);
 });
 
 it("refuses a Read row with no example value", () => {
@@ -137,7 +136,7 @@ it("refuses a Read row with no example value", () => {
   const deps = explorerQueryDeps(clock, hash);
   const original = deps.modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
   const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
-  assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /review field search-name on read page \S+ has no example value/u);
+  assert.throws(() => readFixtureExplorer({ ...deps, modules: [module] }), /review field search-name on read page \S+ has no example value/u);
 });
 
 it("applies a task's outcome explanation to every decision that owns it", () => {
@@ -149,7 +148,7 @@ it("applies a task's outcome explanation to every decision that owns it", () => 
   const deps = explorerQueryDeps(clock, hash);
   const original = deps.modules.find(module => module.descriptor.id === "onboarding"); assert.ok(original);
   const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
-  const entry = buildWorkflowExplorer({ ...deps, modules: deps.modules.map(candidate => candidate === original ? module : candidate) })
+  const entry = readFixtureExplorer({ ...deps, modules: deps.modules.map(candidate => candidate === original ? module : candidate) })
     .workflows.find(workflow => workflow.id === "onboarding"); assert.ok(entry);
   for (const id of ["write-path", "existing-write-path"]) {
     const outcome: Decision["outcomes"][number] | undefined = decision(entry.reviewSpec, id).outcomes.find(item => item.value === "ONBOARDING_WRITE_REVIEW_REFUSED");

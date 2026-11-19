@@ -35,7 +35,7 @@ import {
 } from "../commands/refusals.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { requireCanonicalRun } from "./run-read.js";
-import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
+import { assertRunTimelineCompatible, hasRunDescriptorDrift } from "./run-timeline-compatibility.js";
 import { readDelegationCancellation } from "../../storage/sqlite/delegation-authority.js";
 
 export { availableSections } from "./run-detail/availability.js";
@@ -263,7 +263,8 @@ export function buildRunDetail(
       return latestByNode.get(nodeId);
     },
   };
-  if (descriptorView?.timeline?.some(category => category.key === undefined)) {
+  let timeline = descriptorView?.timeline;
+  if (timeline?.some(category => category.key === undefined)) {
     throw new LogIdentityRefusedError("timeline category identity is missing");
   }
   const olderDescriptor = descriptorView?.version !== authority.envelope.descriptorVersion
@@ -272,9 +273,19 @@ export function buildRunDetail(
   const nativeRecords = skipTimeline
     ? []
     : readTimelineRecords(deps.timeline, 0, runId).records;
-  if (olderDescriptor) assertRunTimelineCompatible(authority, descriptorView?.timeline, {
-    timeline: deps.timeline, authority: { listCheckpoints: readCheckpoints, listGateResults: id => deps.authority.listGateResults(id) },
-  }, row, skipTimeline ? undefined : nativeRecords);
+  if (olderDescriptor) {
+    const historicalNodes = assertRunTimelineCompatible(authority, timeline, {
+      timeline: deps.timeline, authority: { listCheckpoints: readCheckpoints, listGateResults: id => deps.authority.listGateResults(id) },
+    }, row, skipTimeline ? undefined : nativeRecords, hasRunDescriptorDrift(authority, descriptorView));
+    if (timeline !== undefined && historicalNodes.size > 0) {
+      const keys = new Set(timeline.map(category => category.key));
+      let key = "historical-steps";
+      for (let suffix = 2; keys.has(key); suffix++) key = `historical-steps-${suffix}`;
+      const labels = new Map(row?.taskSpans.map(span => [nodeIdOfTaskSpanPath(span.spanPath), span.name]));
+      timeline = [...timeline, { key, label: "Historical steps",
+        nodes: [...historicalNodes].map(id => ({ id, label: labels.get(id) ?? id })) }];
+    }
+  }
   const nativeOf = (record: (typeof nativeRecords)[number], nodeId?: string): NativeRunEventWire => {
     if (record.payload.kind !== "span" || !("runId" in record.payload.event)) throw new LogIdentityRefusedError("timeline event has no run identity");
     const event = record.payload.event;
@@ -285,8 +296,8 @@ export function buildRunDetail(
       attempt: event.attempt, spanPath: event.spanPath, ...(nodeId === undefined ? {} : { nodeId }) });
   };
   const categoryOf = (nodeId: string | undefined) => {
-    if (descriptorView?.timeline === undefined) return undefined;
-    const matches = descriptorView.timeline.filter(category => category.nodes.some(node => node.id === nodeId));
+    if (timeline === undefined) return undefined;
+    const matches = timeline.filter(category => category.nodes.some(node => node.id === nodeId));
     if (matches.length !== 1) throw new LogIdentityRefusedError("timeline node has no unique declared category");
     const match = matches[0];
     if (match === undefined) throw new LogIdentityRefusedError("timeline category identity is missing");
@@ -438,11 +449,11 @@ export function buildRunDetail(
     timeline: {
       events: timelineWire,
 
-      ...(descriptorView?.timeline === undefined || row === undefined
+      ...(timeline === undefined || row === undefined
         ? {}
         : {
           steps: buildTimelineSteps(
-            descriptorView.timeline,
+            timeline,
             row,
             authority.lifecycle.state === "terminal",
             authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "cancelled",

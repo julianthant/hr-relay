@@ -149,6 +149,7 @@ export interface WorkflowCapabilitiesSpec {
       fields: readonly Readonly<{ nodeId: string; fieldPath: string; label: string }>[];
     }>;
   readonly delegationDisplay?: "inline" | "linked" | "hidden-unless-failed";
+  readonly singleAcquisitionPerSystemPerClaim?: true;
 }
 
 export interface DurableArtifactProjectionSpec<S> {

@@ -14,6 +14,7 @@ import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/r
 import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/separations-run-fixtures.js";
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
+import { fillDiagnosticBudget } from "../../../../support/helpers/backend/full-diagnostic-budget.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
@@ -385,6 +386,26 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
 
+
+  it("opens, serves and closes the dashboard event stream with a full diagnostic budget", async () => {
+    const h = await harness({ profileFixture: profileFixtures.create });
+    const timeline = h.database.authority.timelineEvents;
+    fillDiagnosticBudget(DatabaseSync, join(h.stateRoot, "state.db"), timeline, h.clock);
+    const before = timeline.highWaterMark();
+    const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, { headers: { host: "localhost" } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "text/event-stream");
+    assert.ok(response.body);
+    const reader = response.body.getReader();
+    try {
+      const first = await reader.read();
+      assert.equal(first.done, false);
+      assert.match(new TextDecoder().decode(first.value), /"type":"hello"/u);
+      assert.equal(h.hub.subscriberCount(), 1);
+    } finally { await reader.cancel(); }
+    assert.equal(h.hub.subscriberCount(), 0);
+    assert.equal(timeline.highWaterMark(), before);
+  });
 
   it("serves /events/v1 through the demand-driven bridge: an unread client is bounded to one reset-required and cancel closes the hub connection", async () => {
     const h = await harness({ profileFixture: profileFixtures.create, maxPending: 2 });

@@ -143,6 +143,30 @@ describe("authority change log reader", () => {
       assert.ok(prepared(() => { f.peer.summaryWorkflows(); }).includes(WHOLE_STORE_COVERAGE));
       f.raw("UPDATE run_search SET workflow=workflow WHERE run_id=?", first);
       assert.ok(!prepared(() => { f.peer.summaryWorkflows(); }).includes(WHOLE_STORE_COVERAGE));
+      f.raw("UPDATE run_search SET workflow=workflow WHERE run_id=?", first);
+      f.raw("UPDATE run_search SET workflow=workflow WHERE run_id=?", first);
+      f.raw("DELETE FROM authority_changes WHERE seq=(SELECT max(seq)-1 FROM authority_changes)");
+      assert.ok(prepared(() => { f.peer.summaryWorkflows(); }).includes(WHOLE_STORE_COVERAGE));
+    } finally { await f.close(); }
+  });
+
+  it("checks the last change after several pages of contiguous peer writes", async () => {
+    const f = await store();
+    try {
+      const [first] = f.runIds;
+      assert.ok(first);
+      f.peer.summaryWorkflows();
+      f.raw(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<2500)
+        INSERT INTO authority_changes(table_name,row_key,op,keys_json) SELECT 'notifications','["absent"]','update','[]' FROM n`);
+      f.raw("UPDATE run_search SET workflow='forged' WHERE run_id=?", first);
+      let refused: string | undefined;
+      const statements = prepared(() => { refused = refusal(() => f.peer.summaryWorkflows()); });
+      assert.match(refused ?? "", /run-search-index-rebuild-required/u);
+      const reads = statements.filter(statement => statement.includes("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes"));
+      assert.ok(reads.length > 1 && reads.every(statement => /\bLIMIT\b/u.test(statement)));
+      assert.ok(!statements.includes(WHOLE_STORE_COVERAGE));
+      f.raw("UPDATE run_search SET workflow='person-lookup' WHERE run_id=?", first);
+      f.peer.summaryWorkflows();
     } finally { await f.close(); }
   });
 
@@ -170,7 +194,9 @@ describe("authority change log reader", () => {
       f.writer.authority.runs.enqueue(runRecordOf({ seed: 52, workflow: "person-lookup" }));
       const later = floor();
       assert.equal(later.high - later.low + 1, 100_000);
-      assert.ok(prepared(() => { f.peer.summaryWorkflows(); }).includes(WHOLE_STORE_COVERAGE));
+      const statements = prepared(() => { f.peer.summaryWorkflows(); });
+      assert.ok(statements.includes(WHOLE_STORE_COVERAGE));
+      assert.ok(!statements.some(statement => statement.includes("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes")));
       assert.equal(refusal(() => f.writer.summaryWorkflows()), undefined);
     } finally { await f.close(); }
   });
