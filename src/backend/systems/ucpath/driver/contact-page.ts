@@ -1,3 +1,4 @@
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertContactSubject } from "../../../../rules/ucpath/emergency-contact.js";
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -209,10 +210,10 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
   }
 
   return createContactOperations(open, {
-    async save() {
+    async save(capability) {
       const save = page.locator(recipes.save).filter({ visible: true });
       if (await current(() => save.count()) !== 1) throw new UcpathContactRefusedError("unexpected-contact-page");
-      await current(() => save.click());
+      await current(() => clickWithMutationCapability(capability, save));
       await settle();
     },
     async readPersisted(subject) {
