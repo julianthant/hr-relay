@@ -18,16 +18,25 @@ export class FullPageCaptureFailedError extends Error {
 }
 
 interface CaptureBand { buffer: Buffer; offsetCss: number; offsetXCss: number; clipHeightCss: number }
-interface BandGeometry {
-  x: number; y: number; width: number; height: number;
-  offset: number; offsetX: number; contentWidth: number; contentHeight: number;
-}
+const bandGeometryFields = ["x", "y", "width", "height", "offset", "offsetX", "contentWidth", "contentHeight"] as const;
+type BandGeometry = Record<typeof bandGeometryFields[number], number>;
 interface CaptureState {
   scroll: (left: number, top: number) => boolean;
   measure: () => BandGeometry;
   restore: () => void;
 }
 type CaptureWindow = Window & { __relayCapture?: CaptureState; __relayCaptureSecrets?: { observer: MutationObserver; seen: boolean; restore: () => void } };
+
+function bandGeometryChange(before: BandGeometry, after: BandGeometry): string | undefined {
+  const changes: string[] = [];
+  for (const field of bandGeometryFields) {
+    const from = before[field], to = after[field];
+    if (from === to) continue;
+    if (!Number.isFinite(from) || !Number.isFinite(to)) throw new FullPageCaptureFailedError("unpainted-gap", `invalid-band-geometry-${field}`);
+    changes.push(`${field}=${from}->${to}`);
+  }
+  return changes.length ? `band-geometry-changed ${changes.join(" ")}` : undefined;
+}
 
 function computeSliceOffsets(fullHeight: number, sliceHeight: number): number[] {
   const maxY = Math.max(0, fullHeight - sliceHeight);
@@ -241,6 +250,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
   mask: () => Locator[];
   secretControls: string;
   afterCapture: () => Promise<void>;
+  onBandRetry?: (detail: string) => void;
 }>): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> {
   const { assertCurrent } = options;
   assertCurrent();
@@ -270,6 +280,34 @@ export async function captureFullPage(page: Page, options: Readonly<{
     await setCaptureWidth(page, assertCurrent);
     assertCurrent();
     await prepareScrollCapture(page);
+    const bands = await captureBands(CAPTURE.maxSlices, true);
+    const image = stitchCaptureBands(bands);
+    if ((options.sampleLabels?.length ?? 0) === 0) return image;
+    await page.evaluate(({ labels, width }) => {
+      if (document.getElementById("relay-dry-run-sample-banner")) throw new Error("Sample banner identity is already in use");
+      const banner = document.createElement("div");
+      banner.id = "relay-dry-run-sample-banner";
+      banner.textContent = labels.join("\n");
+      banner.style.cssText = `position:fixed;left:0;top:0;z-index:2147483647;box-sizing:border-box;width:${width / window.devicePixelRatio}px;padding:16px;background:#fff0b3;color:#161616;font:700 18px monospace;white-space:pre-wrap;overflow-wrap:anywhere;`;
+      document.documentElement.append(banner);
+    }, { labels: options.sampleLabels ?? [], width: image.width });
+    sampleBannerOwned = true;
+    await assertSafe();
+    assertCurrent();
+    const banner = PNG.sync.read(await page.locator("#relay-dry-run-sample-banner").screenshot({ type: "png" }));
+    await assertSafe();
+    const source = PNG.sync.read(Buffer.from(image.bytes));
+    const width = Math.max(source.width, banner.width), height = source.height + banner.height;
+    if (width * height > CAPTURE.maxPixels) throw new FullPageCaptureFailedError("pixel-limit");
+    const labelled = new PNG({ width, height });
+    labelled.data.fill(255);
+    PNG.bitblt(banner, labelled, 0, 0, banner.width, banner.height, 0, 0);
+    PNG.bitblt(source, labelled, 0, 0, source.width, source.height, 0, banner.height);
+    return { bytes: new Uint8Array(PNG.sync.write(labelled)), width, height };
+  } catch (error) { failure = { cause: error }; throw error; }
+  finally { await restoreCaptureState(); }
+
+  async function captureBands(sliceBudget: number, mayRestart: boolean): Promise<CaptureBand[]> {
     const scrollTo = async (left: number, top: number): Promise<void> => {
       assertCurrent();
       const moved = await page.evaluate(([left, top]) => (window as CaptureWindow).__relayCapture!.scroll(left, top), [left, top] as const);
@@ -297,7 +335,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
     const bandHeight = Math.min(first.height, CAPTURE.sliceHeight);
     const rows = computeSliceOffsets(first.contentHeight, bandHeight);
     const columns = computeSliceOffsets(first.contentWidth, bandWidth);
-    if (rows.length * columns.length > CAPTURE.maxSlices) throw new FullPageCaptureFailedError("band-limit");
+    if (rows.length * columns.length > sliceBudget) throw new FullPageCaptureFailedError("band-limit");
     const bands: CaptureBand[] = [];
     let coveredTo = 0;
     for (const top of rows) {
@@ -307,7 +345,8 @@ export async function captureFullPage(page: Page, options: Readonly<{
       for (const left of columns) {
         await scrollTo(left, top);
         await assertSafe();
-        const { x, y, width, height, offset, offsetX, contentWidth, contentHeight } = await readGeometry();
+        const before = await readGeometry();
+        const { x, y, width, height, offset, offsetX, contentWidth, contentHeight } = before;
         if (contentWidth !== first.contentWidth || contentHeight !== first.contentHeight) {
           throw new FullPageCaptureFailedError("unpainted-gap", "capture-content-size-changed");
         }
@@ -318,10 +357,15 @@ export async function captureFullPage(page: Page, options: Readonly<{
         assertCurrent();
         const buffer = await page.screenshot({ type: "png", clip, mask: options.mask() });
         await assertSafe();
-        const after = await readGeometry();
-        if (after.x !== x || after.y !== y || after.width !== width || after.height !== height
-          || after.offset !== offset || after.offsetX !== offsetX || after.contentWidth !== contentWidth || after.contentHeight !== contentHeight) {
-          throw new FullPageCaptureFailedError("unpainted-gap", "band-geometry-changed");
+        const detail = bandGeometryChange(before, await readGeometry());
+        if (detail !== undefined) {
+          // A reflow can invalidate even the bands already painted. Replan once from the origin.
+          const remaining = sliceBudget - bands.length - 1;
+          if (mayRestart && remaining > 0) {
+            options.onBandRetry?.(detail);
+            return captureBands(remaining, false);
+          }
+          throw new FullPageCaptureFailedError("unpainted-gap", detail);
         }
         rowOffset = offset;
         coveredX = Math.max(coveredX, offsetX + clip.width);
@@ -335,31 +379,8 @@ export async function captureFullPage(page: Page, options: Readonly<{
       throw new FullPageCaptureFailedError("content-bottom-unreached", `page-capture-covered-${String(Math.floor(coveredTo))}-of-${String(first.contentHeight)}px`);
     }
     assertCurrent();
-    const image = stitchCaptureBands(bands);
-    if ((options.sampleLabels?.length ?? 0) === 0) return image;
-    await page.evaluate(({ labels, width }) => {
-      if (document.getElementById("relay-dry-run-sample-banner")) throw new Error("Sample banner identity is already in use");
-      const banner = document.createElement("div");
-      banner.id = "relay-dry-run-sample-banner";
-      banner.textContent = labels.join("\n");
-      banner.style.cssText = `position:fixed;left:0;top:0;z-index:2147483647;box-sizing:border-box;width:${width / window.devicePixelRatio}px;padding:16px;background:#fff0b3;color:#161616;font:700 18px monospace;white-space:pre-wrap;overflow-wrap:anywhere;`;
-      document.documentElement.append(banner);
-    }, { labels: options.sampleLabels ?? [], width: image.width });
-    sampleBannerOwned = true;
-    await assertSafe();
-    assertCurrent();
-    const banner = PNG.sync.read(await page.locator("#relay-dry-run-sample-banner").screenshot({ type: "png" }));
-    await assertSafe();
-    const source = PNG.sync.read(Buffer.from(image.bytes));
-    const width = Math.max(source.width, banner.width), height = source.height + banner.height;
-    if (width * height > CAPTURE.maxPixels) throw new FullPageCaptureFailedError("pixel-limit");
-    const labelled = new PNG({ width, height });
-    labelled.data.fill(255);
-    PNG.bitblt(banner, labelled, 0, 0, banner.width, banner.height, 0, 0);
-    PNG.bitblt(source, labelled, 0, 0, source.width, source.height, 0, banner.height);
-    return { bytes: new Uint8Array(PNG.sync.write(labelled)), width, height };
-  } catch (error) { failure = { cause: error }; throw error; }
-  finally { await restoreCaptureState(); }
+    return bands;
+  }
 
   async function restoreCaptureState(): Promise<void> {
     const errors: unknown[] = [];
