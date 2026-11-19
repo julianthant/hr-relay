@@ -40,29 +40,28 @@ function pidAlive(pid: number): boolean {
   catch (error) { if (error instanceof Error && "code" in error && error.code === "ESRCH") return false; throw error; }
 }
 
-/** The dashboard process with one fixture worker whose first UCPath search holds on the barrier; Ctrl+C arrives while that run is inside its step.
- * Shutdown holds admission and pauses every live run before it stops the worker; the pause cancels the held step, so the run parks while its search is still pending. */
-async function interruptMidRun(emplIds: readonly string[]) {
+async function startDashboard(processGroup = false) {
   const f = await createBoundProfileFixture();
   cleanups.push(() => f.close());
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
   await f.closeController();
   const barrier = mkdtempSync(join(tmpdir(), "relay-signal-barrier-"));
   cleanups.push(() => { rmSync(barrier, { recursive: true, force: true }); });
-  const child: ChildProcess = spawn(process.execPath, ["--import", testProcessImport(), CHILD, f.workspace, barrier],
-    { cwd: process.cwd(), env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "pipe", "pipe"] });
+  const child: ChildProcess = spawn(process.execPath, ["--conditions=development", "--import", testProcessImport(), CHILD, f.workspace, barrier],
+    { detached: processGroup, cwd: process.cwd(), env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "pipe", "pipe"] });
   cleanups.push(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
   let output = "";
   child.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
   child.stderr?.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
-  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { child.once("exit", (code, signal) => { resolve({ code, signal }); }); });
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { child.once("close", (code, signal) => { resolve({ code, signal }); }); });
   const markers = () => readdirSync(barrier);
   const history = () => {
     if (!existsSync(f.path)) return [];
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try { return raw.prepare("SELECT lifecycle_json AS lifecycle FROM runs").all().map(row => String(row.lifecycle)); } finally { raw.close(); }
   };
-  const diagnostics = () => JSON.stringify({ output, markers: markers(), exitCode: child.exitCode, lifecycles: history() });
+  const spool = join(f.workspace, ".tracker", "data", "logs", "boot.jsonl");
+  const diagnostics = () => JSON.stringify({ output, spool: existsSync(spool) ? readFileSync(spool, "utf8") : undefined, markers: markers(), exitCode: child.exitCode, lifecycles: history() });
   const port = Number(await until(() => /dashboard BFF listening on 127\.0\.0\.1:(\d+)/u.exec(output)?.[1], "the dashboard listener", diagnostics));
   const lockPort = Number(/LIFETIME LOCK (\d+)/u.exec(output)?.[1]);
   for (const owned of [port, lockPort]) assert.ok(Number.isInteger(owned) && owned > 0 && !RESERVED_PORTS.includes(owned), diagnostics());
@@ -73,6 +72,13 @@ async function interruptMidRun(emplIds: readonly string[]) {
   const signIn = await post("profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
   assert.equal(PublicProfileStateSchema.parse(await signIn.json()).state, "active");
   const credential = signIn.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
+  return { f, barrier, child, exited, markers, diagnostics, post, origin, credential, lockPort, output: () => output };
+}
+
+/** The dashboard process with one fixture worker whose first UCPath search holds on the barrier; Ctrl+C arrives while that run is inside its step.
+ * Shutdown holds admission and pauses every live run before it stops the worker; the pause cancels the held step, so the run parks while its search is still pending. */
+async function interruptMidRun(emplIds: readonly string[]) {
+  const { f, barrier, child, exited, markers, diagnostics, post, credential, output, lockPort } = await startDashboard();
   const plan = StartPlanWireSchema.parse(await (await post("start-plans", { workflowId: "person-lookup", submissions: emplIds.map(emplId => ({ emplId })), dryRun: false }, credential)).json());
   assert.deepEqual(plan.refused, []);
   const started = CommandResultSchema.parse(await (await post("commands", { commandId: randomUUID(), family: "start", type: "start-run", requestedAt: systemClock.now().toISOString(),
@@ -100,7 +106,7 @@ async function interruptMidRun(emplIds: readonly string[]) {
   const exit = await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => { reject(new Error(`dashboard did not exit\n${diagnostics()}`)); }, scaledMs(90_000)))]);
 
   assert.deepEqual(exit, { code: 0, signal: null }, diagnostics());
-  assert.doesNotMatch(output, CUSTODY_FAULTS);
+  assert.doesNotMatch(output(), CUSTODY_FAULTS);
   assert.ok(markers().includes(`exit-0-${String(workerPid)}`), `the worker exits on its stop: ${diagnostics()}`);
   assert.equal(pidAlive(workerPid), false);
   const raw = new DatabaseSync(f.path, { readOnly: true });
@@ -129,4 +135,29 @@ it("Ctrl+C stops the worker at its parked run: the next queued run is never clai
   const { runs, diagnostics } = await interruptMidRun([EXECUTOR_EID, String(Number(EXECUTOR_EID) + 1)]);
   assert.deepEqual(runs.map(({ state, outcome, owner, generation, pause }) => ({ state, outcome, owner, generation, pause })).toSorted((left, right) => left.generation - right.generation),
     [{ state: "queued", outcome: null, owner: null, generation: 0, pause: "paused" }, { state: "queued", outcome: null, owner: null, generation: 1, pause: "paused" }], diagnostics);
+}, 180_000);
+
+
+it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle worker children and logs every shutdown phase through exit 0", async () => {
+  const { child, post, origin, credential, markers, diagnostics, exited, output } = await startDashboard(true);
+  const result = CommandResultSchema.parse(await (await post("commands", { commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type: "plan-worker-count",
+    target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 2 } }, credential)).json());
+  assert.equal(result.state, "applied", JSON.stringify(result));
+  assert.ok(child.pid);
+  const stream = await fetch(`${origin}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { "x-relay-session": credential } });
+  assert.equal(stream.status, 200);
+  process.kill(child.pid, "SIGSTOP");
+  try {
+    process.kill(-child.pid, "SIGINT");
+    await until(() => markers().filter(name => name.startsWith("exit-0-")).length === 2 || undefined, "both workers to finish the terminal interrupt", diagnostics);
+  } finally { process.kill(child.pid, "SIGCONT"); }
+  assert.deepEqual(await exited, { code: 0, signal: null }, diagnostics());
+  assert.equal(markers().filter(name => name.startsWith("exit-0-")).length, 2, diagnostics());
+  assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
+    ["closing transport", "stopping workers", "closing store", "backing up", "done"], diagnostics());
+  const firstPhase = output().indexOf('"phase":"closing transport"');
+  const firstStop = output().indexOf("Sending worker stop");
+  assert.ok(firstPhase >= 0 && firstStop > firstPhase, JSON.stringify({ firstPhase, firstStop, trace: output().split("\n").filter(line => /Sending worker stop|stop-channel-closed|dashboard shutdown/u.test(line)) }));
+  assert.doesNotMatch(output(), /unhandled-rejection|UnhandledPromiseRejection/iu);
 }, 180_000);

@@ -111,8 +111,8 @@ export function composeApplicationStop(resources: {
       process.stdout.write(`${JSON.stringify({ ts: clock.now().toISOString(), level: "info", message: "dashboard shutdown", phase: name })}\n`);
     };
     const failures: unknown[] = [];
-    try { profileRuntime?.beginClose("shutdown"); } catch (error) { failures.push(error); }
     phase("closing transport");
+    try { profileRuntime?.beginClose("shutdown"); } catch (error) { failures.push(error); }
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }

@@ -1,4 +1,8 @@
+import { installProcessCrashHandlers } from "../../../src/backend/app/bootstrap/process-crash.js";
 import { composeDashboardApplication } from "../../../src/backend/app/composition/dashboard/compose.js";
+import { realWorkerProcessSpawner, type WorkerProcessSpawner } from "../../../src/backend/app/composition/dashboard/worker-process.js";
+import { createNominatimGeocodeAdapter } from "../../../src/backend/processing/providers/geocode-adapters.js";
+import { systemClock } from "../../../src/rules/time/clock.js";
 import { startRebuildRuntime } from "../../../src/backend/app/composition/runtime-composition.js";
 import { initializeRegisteredPersonStores } from "../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -15,9 +19,20 @@ const lifetime = await RuntimeLifetimeLock.acquire(0);
 try {
   await initializeRegisteredPersonStores(workspace, lifetime, { primaryDisplay: null });
   const admission = await acquireDashboardEntrypointAdmission(profileBrowserClosure, workspace, "shared", lifetime);
+  installProcessCrashHandlers({ stateRoot: admission.stateRoot, processKind: "dashboard" });
   process.stdout.write(`LIFETIME LOCK ${String(lifetime.port)}\n`);
+  const geocode = createNominatimGeocodeAdapter({ clock: systemClock });
+  const spawn = realWorkerProcessSpawner(lifetime, geocode);
+  const observeStop: WorkerProcessSpawner = request => {
+    const port = spawn(request);
+    return { ...port, send(message, callback) {
+      if (message.kind === "worker-stop") process.stdout.write("Sending worker stop\n");
+      port.send(message, callback);
+    } };
+  };
   await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"],
     dashboard: () => composeDashboardApplication({ admission, isolation: rebuildRuntimeIsolation, repoRoot: workspace, lifetimeLock: lifetime,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
-      workerProcess: { launch: fixtureWorkerLaunch(lifetime, barrier) } }) });
+      workerProcess: { launch: fixtureWorkerLaunch(lifetime, barrier), spawn: observeStop } }) });
+  await geocode.stop();
 } finally { await lifetime.close(); }
