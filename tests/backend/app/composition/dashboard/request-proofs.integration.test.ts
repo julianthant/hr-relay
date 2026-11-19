@@ -3,6 +3,8 @@ import { DatabaseSync } from "node:sqlite";
 import { Hono } from "hono";
 import { rmSync } from "node:fs";
 import { it, vi } from "vitest";
+import * as preferences from "../../../../../src/backend/storage/sqlite/assistant-model-preference.js";
+import { AssistantModelPreferenceViewSchema } from "../../../../../src/models/dashboard/assistant.js";
 import * as storage from "../../../../../src/backend/app/composition/storage-compose.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
@@ -50,13 +52,19 @@ it("serves the same Settings facts and editable settings while another connectio
   }
 });
 
-it("admits each mounted Explorer read once and refuses a request without the session", async () => {
+it("proves mounted reads once, requires the session, and reads one authenticated model preference", async () => {
   const fixture = await publicProfileShellFixture();
   const compose = storage.composeProfileRuntime;
   let proofs = 0;
   const profile = vi.spyOn(storage, "composeProfileRuntime").mockImplementation(input => {
     const runtime = compose(input);
     return { ...runtime, assertCurrent(token) { proofs++; runtime.assertCurrent(token); } };
+  });
+  let preferenceReads = 0;
+  const createPreferences = preferences.createAssistantModelPreferenceRepository;
+  const preferenceStore = vi.spyOn(preferences, "createAssistantModelPreferenceRepository").mockImplementation(ports => {
+    const repository = createPreferences(ports);
+    return { ...repository, get() { preferenceReads++; return repository.get(); } };
   });
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
@@ -77,8 +85,14 @@ it("admits each mounted Explorer read once and refuses a request without the ses
       assert.equal(proofs, 1);
       assert.equal((await fetch(url)).status, 401);
     }
+    preferenceReads = 0;
+    const preference = await fetch(base + "/api/v1/assistant/model-preference", { headers: { "x-relay-session": session } });
+    assert.equal(preference.status, 200);
+    assert.equal(AssistantModelPreferenceViewSchema.parse(await preference.json()).revision, 0);
+    assert.equal(preferenceReads, 1);
   } finally {
     await application?.stop();
+    preferenceStore.mockRestore();
     profile.mockRestore();
     fixture.machine.release();
     rmSync(fixture.root, { recursive: true, force: true });
