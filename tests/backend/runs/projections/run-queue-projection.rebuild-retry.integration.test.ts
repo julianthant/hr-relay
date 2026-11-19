@@ -162,13 +162,18 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
   assert.deepEqual(noticeContext(projection), visible);
   assert.equal(queueReads, 1, "a standalone note for an unread timeline reuses the warm day");
 
+  assert.equal(w.database.authority.runs.updatePresentation({ runId: unrelated.runId, expectedVersion: unrelatedRun.version,
+    displayName: "Renamed other run", now: unrelated.ts }).state, "applied");
+  assert.deepEqual(noticeContext(projection), visible);
+  assert.equal(queueReads, 2, "a row patch retains the notice's timeline observation");
+
   append(relevant);
   projection.ingestFromTimeline();
   assert.equal(projection.cursor(), cursor);
   const hidden = { state: "workflow-only", workflow: descriptor.label };
   assert.deepEqual(noticeContext(makeProjection()), hidden, "fresh reads withhold the incompatible subject");
   assert.deepEqual(noticeContext(projection), hidden, "warm reads also withhold the incompatible subject");
-  assert.equal(queueReads, 3);
+  assert.equal(queueReads, 4);
 });
 
 it.each(["empty", "previous claim"] as const)("refreshes a worker's %s lookup before polling an off-month claim", async previous => {

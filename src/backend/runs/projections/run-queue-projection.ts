@@ -134,11 +134,13 @@ export interface ServedSummaryQueries {
 }
 
 type CheckQueueDaySources = AuthorityDatabase["checkQueueDaySources"];
-type QueueDaySources = NonNullable<Parameters<CheckQueueDaySources>[1]>;
+type QueueDaySources = Exclude<Parameters<CheckQueueDaySources>[1], number | undefined>;
 
 interface CachedQueueDay {
   wire: DashboardDayWire;
   sources: QueueDaySources;
+  notificationRecords: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>;
+  workerKey: string;
   reusable: ReadonlySet<string>;
   builtAt: number;
   validUntil: number;
@@ -150,6 +152,8 @@ interface QueueDayPatch {
   previous: CachedQueueDay;
   affected: ReadonlySet<string>;
   dayRunIds: readonly string[];
+  countDays: readonly string[];
+  sameWorkers: boolean;
 }
 
 export interface RunQueueProjectionDeps {
@@ -1440,11 +1444,10 @@ export class RunQueueProjection {
     const cursor = this.cursor();
     const current = saved?.wire.projectionGeneration === this.#generationValue && saved.cursor === cursor ? saved : undefined;
     if (current !== undefined && current.wire.snapshotCursor === cursor && current.refreshedRuns.size === 0) {
-      // The authority checks its journal and observed sources in its own admitted snapshot.
-      const revision = this.#deps.authority.checkDaySources?.(parsedDay, current.sources);
+      // Classify a changed journal only inside the snapshot that will consume it.
+      const revision = this.#deps.authority.checkDaySources?.(parsedDay, current.sources.through);
       const now = this.#deps.clock.nowMs();
       if (revision?.kind === "unchanged" && current.builtAt <= now && now < current.validUntil) {
-        if (revision.through !== current.sources.through) current.sources = { ...current.sources, through: revision.through };
         return current.wire;
       }
     }
@@ -1454,15 +1457,23 @@ export class RunQueueProjection {
       // Sample the rebuild position in the same snapshot as its rows.
       const previous = current !== undefined && current.builtAt <= now && now < current.validUntil ? current : undefined;
       const revision = summaries === undefined ? undefined : this.#deps.authority.checkDaySources?.(parsedDay, previous?.sources);
+      if (previous !== undefined && revision?.kind === "unchanged" && previous.wire.snapshotCursor === cursor && previous.refreshedRuns.size === 0) {
+        return { wire: previous.wire, cache: { ...previous, sources: { ...previous.sources, through: revision.through } } };
+      }
       let patch: QueueDayPatch | undefined;
       if (previous !== undefined && revision?.kind === "runs") {
         const affected = new Set(revision.runIds);
-        if ([...previous.refreshedRuns].every(id => affected.has(id))) patch = { previous, affected, dayRunIds: revision.dayRunIds };
+        if ([...previous.refreshedRuns].every(id => affected.has(id))) {
+          const sameWorkers = previous.workerKey === this.#workerSurfaceKey(previous.wire.workerAuthority.members);
+          patch = { previous, affected, dayRunIds: revision.dayRunIds, countDays: revision.countDays, sameWorkers };
+        }
       }
-      const notifications = this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
+      const notifications = patch?.previous.notificationRecords ?? this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
       const { wire, sources, reusable } = this.#buildDashboardDayWire(parsedDay, notifications, now, patch);
       if (revision === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return { wire };
 
+      const workerKey = this.#workerSurfaceKey(wire.workerAuthority.members);
+      if (workerKey === undefined) return { wire };
       let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
       for (const notice of notifications) {
         if (notice.snooze.state !== "snoozed") continue;
@@ -1470,7 +1481,8 @@ export class RunQueueProjection {
         if (until > now) validUntil = Math.min(validUntil, until);
       }
       deepFreeze(wire);
-      return { wire, cache: { wire, sources: { ...sources, through: revision.through }, reusable, builtAt: now, validUntil,
+      return { wire, cache: { wire, notificationRecords: notifications, workerKey,
+        sources: { ...sources, through: revision.through }, reusable, builtAt: now, validUntil,
         cursor: wire.snapshotCursor, refreshedRuns: new Set() } };
     };
     const { wire, cache } = summaries === undefined ? read() : summaries.withSnapshot(read);
@@ -1480,6 +1492,20 @@ export class RunQueueProjection {
       this.#dayCache.set(parsedDay, cache);
     }
     return wire;
+  }
+
+  #workerSurfaceKey(members: readonly WorkerSlotRecord[]): string | undefined {
+    // SQLite certifies the durable slots, writes and leases. Live views and pending starts are process state.
+    try {
+      const views = this.#deps.authority.workerMembers?.();
+      if (views === undefined) return undefined;
+      const pending = [...new Set(members.map(member => member.workflow))]
+        .filter(workflow => this.#deps.authority.workerStartupPending?.(workflow) === true);
+      return JSON.stringify([views, pending]);
+    } catch {
+      // A missing observation disables row reuse. The worker card reader reports its own availability.
+      return undefined;
+    }
   }
 
   #selectedDaySurfaces(day: string, summaries: ServedSummaryQueries, context: QueueReadContext, patch?: QueueDayPatch): QueueSurfaceWire[] {
@@ -1504,7 +1530,7 @@ export class RunQueueProjection {
       do { afterId = readPage(afterId, 500).next?.runId; } while (afterId !== undefined);
       return surfaces;
     };
-    if (patch === undefined) return fullDay();
+    if (patch === undefined || !patch.sameWorkers) return fullDay();
 
     const selected = new Set(patch.dayRunIds);
     const reusable = new Map<string, QueueSurfaceWire>();
@@ -1551,8 +1577,18 @@ export class RunQueueProjection {
     let context: QueueReadContext;
     if (summaries !== undefined) {
       context = this.#readContext();
-      for (const [countDay, count] of summaries.dayCounts(monthFrom, monthTo)) monthCounts.set(countDay, count);
       for (const surface of this.#selectedDaySurfaces(parsedDay, summaries, context, patch)) surfaces.push(surface);
+      if (patch === undefined) {
+        for (const [day, count] of summaries.dayCounts(monthFrom, monthTo)) monthCounts.set(day, count);
+      } else {
+        for (const { day, count } of patch.previous.wire.monthCounts) monthCounts.set(day, count);
+        for (const day of patch.countDays) {
+          if (day < monthFrom || day > monthTo) continue;
+          const count = day === parsedDay ? surfaces.filter(isQueueTopLevel).length : summaries.dayCounts(day, day).get(day);
+          if (count === undefined || count === 0) monthCounts.delete(day);
+          else monthCounts.set(day, count);
+        }
+      }
     } else {
       // Explicit fixture-only compatibility. Production composition always supplies summaries.
       const runs = listCanonicalRuns(this.#deps.reader, "live");
@@ -1693,6 +1729,39 @@ export class RunQueueProjection {
         reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
     }
 
+    const reusedNotices = new Set<string>();
+    const observedTimelines = new Set(patch?.previous.sources.timelineRunIds);
+    const changedNotices = notifications.filter(record => {
+      const link = record.links[0];
+      if (patch === undefined || record.trigger === "storage" || link === undefined || !("runId" in link)
+        || patch.affected.has(link.runId)) return true;
+      reusedNotices.add(record.notificationId);
+      sharedRuns.add(link.runId);
+      if (observedTimelines.has(link.runId)) timelineRunIds.add(link.runId);
+      return false;
+    });
+    const projected = notificationListProjection(changedNotices, now, {
+      display: {
+        read: readSharedRun,
+        descriptor: id => this.#deps.descriptors.resolve(id),
+        receipt: id => this.#deps.authority.getReceipt(id),
+        presentation,
+        checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
+        command: id => {
+          notificationCommands.add(id);
+          return this.#deps.authority.command?.(id);
+        },
+      },
+      source: id => this.#deps.authority.latestNotificationSource?.(id),
+    });
+    const noticesById = new Map(projected.map(notice => [notice.notificationId, notice]));
+    const noticeRows = patch === undefined || reusedNotices.size === 0 ? projected : patch.previous.wire.notifications.map(notice => {
+      if (reusedNotices.has(notice.notificationId)) return notice;
+      const updated = noticesById.get(notice.notificationId);
+      if (updated === undefined) throw new ProjectionDegradedError("queue-notification-membership-mismatch");
+      return updated;
+    });
+
     const wire = DashboardDayWireSchema.parse({
       day: parsedDay,
       descriptorHash: this.#deps.descriptorSetHash,
@@ -1726,20 +1795,7 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: notificationListProjection(notifications, now, {
-        display: {
-          read: readSharedRun,
-          descriptor: id => this.#deps.descriptors.resolve(id),
-          receipt: id => this.#deps.authority.getReceipt(id),
-          presentation,
-          checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
-          command: id => {
-            notificationCommands.add(id);
-            return this.#deps.authority.command?.(id);
-          },
-        },
-        source: id => this.#deps.authority.latestNotificationSource?.(id),
-      }),
+      notifications: noticeRows,
     });
     const relationships = new Map<string, QueueDaySources["relationships"][number]>();
     if (patch !== undefined) {
@@ -1749,11 +1805,10 @@ export class RunQueueProjection {
     }
     for (const { envelope } of context.runs.values()) {
       relationships.set(envelope.runId, { runId: envelope.runId, parentId: envelope.parent?.runId ?? null,
-        workflowId: envelope.workflow, itemId: envelope.itemId });
+        workflowId: envelope.workflow, itemId: envelope.itemId, day: searchPartitionDay(new Date(envelope.enqueuedAt)) });
     }
     const runIds = new Set([...relationships.keys(), ...sharedRuns]);
     const reusable = new Set<string>();
-    const hasSlots = wire.workerAuthority.members.length > 0;
     for (const surface of surfaces) {
       const run = context.runs.get(surface.runId);
       if (run === undefined) {
@@ -1762,10 +1817,7 @@ export class RunQueueProjection {
         // Review and continuation rows can read retained evidence outside their run tree.
         const review = this.#deps.descriptors.resolve(surface.workflowId)?.capabilities?.review === true
           || run.envelope.continuation !== undefined || surface.surfaceKind === "operation" && surface.recordMembers !== undefined;
-        const liveControls = !TERMINAL_QUEUE_STATUSES.has(surface.status)
-          && (surface.status !== "queued" || hasSlots || runClaim(run) !== undefined);
-        const liveLinks = hasSlots && (surface.parent !== null || surface.linkedRuns.length > 0 || surface.surfaceKind === "operation");
-        if (!review && !liveControls && !liveLinks) reusable.add(surface.runId);
+        if (!review) reusable.add(surface.runId);
       }
       if (surface.surfaceKind !== "operation" || surface.recordMembers === undefined) continue;
       for (const runId of surface.recordMembers.runIds) runIds.add(runId);

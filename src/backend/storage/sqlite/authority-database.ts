@@ -4050,20 +4050,21 @@ export class AuthorityDatabase implements Disposable {
     };
   }
 
-  checkQueueDaySources(day: string, previous?: Readonly<{
+  checkQueueDaySources(day: string, previous?: number | Readonly<{
     through: number;
     runIds: readonly string[];
     timelineRunIds: readonly string[];
     lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
     commandIds: readonly string[];
-    relationships: readonly { runId: string; parentId: string | null; workflowId: string; itemId: string }[];
+    relationships: readonly { runId: string; parentId: string | null; workflowId: string; itemId: string; day: string }[];
     month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
-  }>): { through: number; kind: "full" | "unchanged" } | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[] } | undefined {
+  }>): { through: number; kind: "full" | "unchanged" } | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[]; countDays: readonly string[] } | undefined {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
     return this.#withReadSnapshot(() => {
       this.#validateExternalQuerySources();
       const through = changeLogHighWater(this.#database);
       if (previous === undefined) return { through, kind: "full" };
+      if (typeof previous === "number") return { through, kind: through === previous ? "unchanged" : "full" };
       if (through === previous.through) return { through, kind: "unchanged" };
       const retained = z.object({ count: z.number().int().nonnegative() }).parse(
         this.#database.prepare(`SELECT count(*) AS count FROM ${CHANGE_LOG_TABLE} WHERE seq > ?`).get(previous.through));
@@ -4167,14 +4168,25 @@ export class AuthorityDatabase implements Disposable {
           SELECT id,parent_id,workflow,item_id FROM runs
           UNION SELECT json_extract(value,'$.runId'),json_extract(value,'$.parentId'),
             json_extract(value,'$.workflowId'),json_extract(value,'$.itemId') FROM json_each(?)
-        ), affected(id) AS (
+        ), changed(id) AS (
           SELECT DISTINCT json_extract(row_key,'$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
+        ), family(id) AS (
+          SELECT id FROM changed
+          UNION SELECT f.parent FROM family a JOIN facts f ON f.id=a.id WHERE f.parent IS NOT NULL
+          UNION SELECT f.id FROM family a JOIN facts f ON f.parent=a.id
+        ), affected(id) AS (
+          SELECT id FROM family
           UNION SELECT f.parent FROM affected a JOIN facts f ON f.id=a.id WHERE f.parent IS NOT NULL
           UNION SELECT f.id FROM affected a JOIN facts f ON f.parent=a.id
           UNION SELECT peer.id FROM affected a JOIN facts f ON f.id=a.id JOIN facts peer ON peer.workflow=f.workflow AND peer.item=f.item
-        ) SELECT affected.id, runs.local_day FROM affected LEFT JOIN runs ON runs.id=affected.id`).all(relationships, previous.through);
-      const affected = z.array(z.strictObject({ id: RunIdSchema, local_day: z.iso.date().nullable() })).parse(rows);
-      return { through, kind: "runs", runIds: affected.map(row => row.id), dayRunIds: affected.filter(row => row.local_day === day).map(row => row.id) };
+        ) SELECT affected.id, runs.local_day, affected.id IN (SELECT id FROM family) AS count_family
+          FROM affected LEFT JOIN runs ON runs.id=affected.id`).all(relationships, previous.through);
+      const affected = z.array(z.strictObject({ id: RunIdSchema, local_day: z.iso.date().nullable(), count_family: z.union([z.literal(0), z.literal(1)]) })).parse(rows);
+      // Only changed physical families can change the calendar. Item peers affect row actions.
+      const family = new Set<string>(affected.filter(row => row.count_family === 1).map(row => row.id));
+      const countDays = new Set(previous.relationships.filter(row => family.has(row.runId)).map(row => row.day));
+      for (const row of affected) if (row.local_day !== null && family.has(row.id)) countDays.add(row.local_day);
+      return { through, kind: "runs", countDays: [...countDays], runIds: affected.map(row => row.id), dayRunIds: affected.filter(row => row.local_day === day).map(row => row.id) };
     });
   }
 
