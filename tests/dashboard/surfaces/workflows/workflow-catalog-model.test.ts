@@ -80,7 +80,7 @@ describe("frontend workflow catalog", () => {
     expect(category("person-lookup")).toBe("Lookup");
     expect(category("separations")).toBe("Separations");
     expect(category("onboarding")).toBe("Onboarding");
-    expect(category("work-study")).toBe("Work Study");
+    expect(category("work-study")).toBe("Work-Study");
     expect(category("emergency-contact")).toBe("Documents");
   });
 

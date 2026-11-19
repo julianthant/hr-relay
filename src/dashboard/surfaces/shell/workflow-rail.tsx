@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { statusCount, workflowStatusCounts, type WorkflowCountWire } from "./shell-model.js";
-import { workflowNavigationGroups } from "./workflow-rail-model.js";
+import { flatWorkflowGroup } from "./workflow-rail-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowNavigation } from "./workflow-navigation.js";
 import { Skeleton } from "../../ds/ui.js";
@@ -12,7 +12,7 @@ export function WorkflowRail({ workflows, counts, active, onSelect, collapsed, c
   onSelect: (id: string) => void;
 }) {
   const entries = workflows;
-  const groups = useMemo(() => workflowNavigationGroups(entries), [entries]);
+  const groups = useMemo(() => flatWorkflowGroup(entries), [entries]);
   const running = useCallback((id: string) => {
     return counts ? statusCount(workflowStatusCounts(counts, id), "running") : 0;
   }, [counts]);
