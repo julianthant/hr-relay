@@ -49,6 +49,7 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
     assert.equal(index.publication().state, "published");
     assert.equal(database.prepare("SELECT count(*) AS count FROM run_search").get()?.count, 1);
     database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
+    database.exec("BEGIN");
     restoreSchema18WorkbookReferenceFixture(database);
     removeEmptySchema18WorkbookCatalog(database);
     removeEmptySchema17OcrReview(database);
@@ -56,7 +57,7 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
     database.exec("DROP TRIGGER run_pause_insert; DROP TRIGGER run_pause_update; ALTER TABLE runs DROP COLUMN pause_state");
     if (version < 14) removeEmptyExclusiveSessionLeaseFixture(database);
     if (version < 13) restoreEmptyPreMasterWorkbookFixture(database);
-    database.exec(`PRAGMA application_id=${AUTHORITY_APPLICATION_ID}; PRAGMA user_version=${version}; UPDATE database_states SET schema_version=${version}`);
+    database.exec(`PRAGMA application_id=${AUTHORITY_APPLICATION_ID}; PRAGMA user_version=${version}; UPDATE database_states SET schema_version=${version}; COMMIT`);
     if (state === "building") database.exec("UPDATE database_states SET search_state='invalid'");
     assert.equal(index.publication().state, state);
     assert.throws(() => index.validateCoverage(), /run row columns do not match the native schema/u);
@@ -66,4 +67,35 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
     assert.equal(database.prepare("SELECT total_changes() AS count").get()?.count, before);
     assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
   } finally { database.close(); }
+});
+
+it("repairs a missing search projection for a populated stopped predecessor before its schema upgrade", async () => {
+  const { readyBoundEight } = await import("../../../support/helpers/storage/ready-bound-upgrade.js");
+  const { AuthorityDatabase } = await import("../../../../src/backend/storage/sqlite/authority-database.js");
+  const { systemClock } = await import("../../../../src/rules/time/clock.js");
+  const f = await readyBoundEight("queued", 12);
+  try {
+    const raw = new DatabaseSync(f.path);
+    let generation: number;
+    try {
+      generation = inspectNativeAuthority(raw, 12).authorityGeneration;
+      raw.exec("DROP TABLE run_search");
+    } finally { raw.close(); }
+    const operation = f.acquireRestore();
+    try {
+      const owner = f.machine.admitStoppedProfileRepair(f.claim, operation);
+      try {
+        assert.equal(AuthorityDatabase.classifyStartupFailure(f.machine, f.claim).kind, "missing-run-search-projection");
+        AuthorityDatabase.repairMissingRunSearchProjection(owner, operation, systemClock);
+      } finally { owner.release(); }
+      const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(f.machine, f.claim);
+      assert.equal(inspection.schemaVersion, 12);
+      assert.equal(inspection.authorityGeneration, generation);
+      const repaired = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.equal(repaired.prepare("SELECT count(*) AS count FROM run_search").get()?.count, 1);
+        assert.equal(createRunSearchIndex(repaired).publication().state, "published");
+      } finally { repaired.close(); }
+    } finally { operation.release(); }
+  } finally { await f.close(); }
 });

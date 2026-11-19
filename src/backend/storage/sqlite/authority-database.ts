@@ -1807,10 +1807,10 @@ function isSqliteDamage(error: unknown): boolean {
   return false;
 }
 
-function runSearchDefinitions(): readonly string[] {
+function runSearchDefinitions(version: number): readonly string[] {
   const expected = new DatabaseSync(":memory:");
   try {
-    for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) execMigrationStatement(expected, statement);
+    for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) execMigrationStatement(expected, statement);
     return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type='table' DESC,type,name").all()).map(row => row.sql);
   } finally { expected.close(); }
 }
@@ -3030,7 +3030,7 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  /** Recreates the exact current run_search table and rebuilds it in one stopped transaction; nothing else may change. */
+  /** Recreates the exact source schema’s run_search table and rebuilds it in one stopped transaction; nothing else may change. */
   static repairMissingRunSearchProjection(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock): void {
     admission.assertStoppedProfile(operation);
     const path = join(admission.stateRoot, "state.db");
@@ -3041,13 +3041,16 @@ export class AuthorityDatabase implements Disposable {
     try {
       database.exec("PRAGMA synchronous=FULL; BEGIN IMMEDIATE"); open = true;
       const version = readIntPragma(database, "user_version");
-      if (version !== CURRENT_AUTHORITY_SCHEMA_VERSION || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
+      if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version) || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
       const before = nonProjectionFingerprint(database);
-      for (const statement of runSearchDefinitions()) database.exec(statement);
+      for (const statement of runSearchDefinitions(version)) database.exec(statement);
       database.exec("UPDATE database_states SET search_generation=NULL,search_state='invalid' WHERE id=1");
       const index = createRunSearchIndex(database), generation = readMetaRow(database).authority_generation, now = clock.now().toISOString();
-      let published = index.rebuild({ restart: true, limit: 500 }, generation, now);
-      while (published.state === "building") published = index.rebuild({ limit: 500 }, generation, now);
+      const readRun = inspectionRunReader(version);
+      index.installTracking();
+      let published = index.rebuild({ restart: true, limit: 500 }, generation, now, readRun);
+      while (published.state === "building") published = index.rebuild({ limit: 500 }, generation, now, readRun);
+      index.validateCoverage(readRun);
       if (normalizedNativeSchema(database) !== expectedNativeSchema(version, false) || nonProjectionFingerprint(database) !== before
         || readMetaRow(database).authority_generation !== generation) throw new Error("run-search-projection-repair-mutated-authority");
       database.exec("COMMIT"); open = false;
