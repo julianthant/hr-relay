@@ -2529,9 +2529,8 @@ export class AuthorityDatabase implements Disposable {
   #snapshotExternalDataVersion: number | undefined;
   /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
   #changeReader: ChangeLogReader | undefined;
-  #claimRouteProof: Readonly<{ dataVersion: number; schemaCookie: number; cursor: number }> | undefined;
   #lastChangePruneMs: number | undefined;
-  #pageCacheChanges = 0;
+  #temporaryProjectionChanges = 0;
   #transactionDepth = 0;
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
@@ -3769,11 +3768,11 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Generation, other connections' commits, and this connection's commits except the run-page cache's own. Reads nothing else. */
+  /** Generation, other connections' commits, and this connection's commits excluding temporary projections. */
   changeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
     this.#assertOpen();
     const key = this.#rawChangeKey();
-    return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#pageCacheChanges });
+    return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#temporaryProjectionChanges });
   }
 
   #rawChangeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
@@ -6705,46 +6704,59 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #assertClaimRoutes(): void {
-    const database = this.#database, prior = this.#claimRouteProof;
-    const dataVersion = readIntPragma(database, "data_version");
-    if (prior?.dataVersion === dataVersion) return;
+  #refreshClaimRoutes(): void {
+    const database = this.#database;
+    database.exec(`CREATE TEMP TABLE IF NOT EXISTS claim_routes(run_id TEXT PRIMARY KEY,home TEXT);
+      CREATE INDEX IF NOT EXISTS temp.claim_routes_home_idx ON claim_routes(home);
+      CREATE TEMP TABLE IF NOT EXISTS claim_route_ancestors(ancestor_id TEXT NOT NULL,
+        run_id TEXT NOT NULL REFERENCES claim_routes(run_id) ON DELETE CASCADE,PRIMARY KEY(ancestor_id,run_id));
+      CREATE INDEX IF NOT EXISTS temp.claim_route_ancestors_run_idx ON claim_route_ancestors(run_id);
+      CREATE TEMP TABLE IF NOT EXISTS claim_route_state(id INTEGER PRIMARY KEY CHECK(id=1),schema_cookie INTEGER NOT NULL,cursor INTEGER NOT NULL);`);
+    const prior = z.strictObject({ schema_cookie: z.number(), cursor: z.number() }).optional()
+      .parse(database.prepare("SELECT schema_cookie,cursor FROM temp.claim_route_state WHERE id=1").get());
     const schemaCookie = readIntPragma(database, "schema_version"), high = changeLogHighWater(database);
-    if ((prior?.schemaCookie ?? this.#changeReader?.schemaCookie) !== schemaCookie) assertNativeSchema(database);
-    const cursor = prior?.schemaCookie === schemaCookie ? prior.cursor : undefined;
-    const tail = cursor === undefined ? undefined : z.strictObject({ count: z.number(), newest: z.number().nullable() }).parse(database.prepare(
-      `SELECT count(*) AS count,max(seq) AS newest FROM ${CHANGE_LOG_TABLE} WHERE seq>?`).get(cursor));
-    const contiguous = cursor !== undefined && tail?.count === high - cursor && (tail.newest ?? cursor) === high;
-    const changed = contiguous ? z.array(z.strictObject({ id: RunIdSchema })).parse(database.prepare(
-      `SELECT DISTINCT json_extract(row_key,'$[0]') AS id FROM ${CHANGE_LOG_TABLE} WHERE seq>? AND table_name='runs'`).all(cursor)) : undefined;
-    const rowById = database.prepare("SELECT * FROM runs WHERE id=?");
-    const parentById = database.prepare("SELECT parent_id FROM runs WHERE id=?");
-    const childByParent = database.prepare("SELECT 1 FROM runs WHERE parent_id=? LIMIT 1");
-    const proved = new Set<string>();
-    const check = (row: unknown) => {
-      const run = runRecordFromRow(row);
-      const ancestry = new Set<string>([run.envelope.runId]);
-      let parent: string | null = run.envelope.parent?.runId ?? null;
-      while (parent !== null && !proved.has(parent)) {
-        if (ancestry.has(parent)) throw new Error("delegation-ancestry-cycle-or-depth");
-        ancestry.add(parent);
-        const ancestor = parentById.get(parent);
-        if (ancestor === undefined) throw new Error("delegation-parent-unavailable");
-        parent = z.strictObject({ parent_id: z.string().nullable() }).parse(ancestor).parent_id;
+    if (prior?.schema_cookie === schemaCookie && prior.cursor === high) return;
+    if ((prior?.schema_cookie ?? this.#changeReader?.schemaCookie) !== schemaCookie) assertNativeSchema(database);
+    const cursor = prior?.schema_cookie === schemaCookie ? prior.cursor : undefined;
+    const tail = cursor === undefined ? undefined : z.strictObject({ count: z.number(), newest: z.number().nullable() })
+      .parse(database.prepare(`SELECT count(*) AS count,max(seq) AS newest FROM ${CHANGE_LOG_TABLE} WHERE seq>?`).get(cursor));
+    const reset = cursor === undefined || tail?.count !== high - cursor || (tail.newest ?? cursor) !== high;
+    const before = this.#rawChangeKey().totalChanges;
+    try {
+      if (reset) database.exec("DELETE FROM temp.claim_routes");
+      const affected = reset
+        ? database.prepare(`SELECT id FROM runs INDEXED BY runs_owner_idx
+            WHERE owner_worker_id IS NULL AND state='queued' AND pause_state IS NULL`).all()
+        : database.prepare(`WITH changed(id) AS (
+            SELECT DISTINCT json_extract(row_key,'$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq>? AND table_name='runs'
+          ) SELECT id FROM changed UNION SELECT ancestor.run_id FROM changed
+            JOIN temp.claim_route_ancestors AS ancestor ON ancestor.ancestor_id=changed.id`).all(cursor);
+      const remove = database.prepare("DELETE FROM temp.claim_routes WHERE run_id=?");
+      const queued = database.prepare("SELECT * FROM runs WHERE id=? AND state='queued' AND pause_state IS NULL");
+      const parent = database.prepare("SELECT * FROM runs WHERE id=?");
+      const route = database.prepare("INSERT INTO temp.claim_routes VALUES(?,?)");
+      const link = database.prepare("INSERT INTO temp.claim_route_ancestors VALUES(?,?)");
+      for (const { id } of z.array(z.strictObject({ id: RunIdSchema })).parse(affected)) {
+        if (!reset) remove.run(id);
+        const anchor = queued.get(id);
+        if (anchor === undefined) continue;
+        const ancestors = new Set<string>();
+        let row: unknown = anchor, current: string | undefined = id, home: string | null = null;
+        while (current !== undefined && ancestors.size < 16 && !ancestors.has(current)) {
+          ancestors.add(current);
+          if (row === undefined) break;
+          let run: RunRecord;
+          try { run = runRecordFromRow(row); } catch { break; }
+          current = run.envelope.parent?.runId;
+          if (current === undefined) home = run.envelope.workflow;
+          else if (ancestors.size < 16 && !ancestors.has(current)) row = parent.get(current);
+        }
+        // Unknown routes stay in every home's ordered candidates and go through the original refusal checks.
+        route.run(id, home);
+        for (const ancestor of ancestors) link.run(ancestor, id);
       }
-      for (const member of ancestry) proved.add(member);
-    };
-    if (changed === undefined) {
-      for (const row of database.prepare("SELECT * FROM runs ORDER BY id").iterate()) check(row);
-    } else {
-      for (const { id } of changed) {
-        const row = rowById.get(id);
-        if (row !== undefined) check(row);
-        else if (childByParent.get(id) !== undefined) throw new Error("delegation-parent-unavailable");
-      }
-    }
-    // Peer changes can invalidate the scalar routing columns. Only advance the proof after the owning commit.
-    this.afterAuthorityCommit(() => { this.#claimRouteProof = { dataVersion, schemaCookie, cursor: high }; });
+      database.prepare("INSERT OR REPLACE INTO temp.claim_route_state VALUES(1,?,?)").run(schemaCookie, high);
+    } finally { this.#temporaryProjectionChanges += this.#rawChangeKey().totalChanges - before; }
   }
 
   #claimNextRun(input: unknown, canonical: false): RunClaimOutcome;
@@ -6778,14 +6790,12 @@ export class AuthorityDatabase implements Disposable {
         if (canonical) return { state: "refused", refusal: { reason: "worker-busy", runId: RunIdSchema.parse(held.run_id) } };
         throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
       }
-      if (eligible !== undefined) this.#assertClaimRoutes();
+      if (eligible !== undefined) this.#refreshClaimRoutes();
       const candidates = eligible === undefined
         ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued' AND pause_state IS NULL
           ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all(request.workflow)
-        : this.#database.prepare(`WITH RECURSIVE home(id) AS (
-            SELECT id FROM runs WHERE workflow=? AND parent_id IS NULL
-            UNION SELECT child.id FROM home JOIN runs AS child ON child.parent_id=home.id
-          ) SELECT run.* FROM home JOIN runs AS run ON run.id=home.id WHERE run.state='queued' AND run.pause_state IS NULL
+        : this.#database.prepare(`SELECT run.* FROM temp.claim_routes AS route INDEXED BY claim_routes_home_idx
+          CROSS JOIN runs AS run ON run.id=route.run_id WHERE route.home=? OR route.home IS NULL
           ORDER BY CASE run.priority WHEN 'interactive' THEN 0 ELSE 1 END,run.created_at,run.id`).all(slot.workflow);
       let current: RunRecord | undefined;
       let nextEligibleAt: string | undefined;
@@ -6981,7 +6991,7 @@ export class AuthorityDatabase implements Disposable {
             .run(...(workflow === undefined ? [] : [workflow]));
           // The temp-table writes advance total_changes, so the stored count is one past this statement.
           this.#database.prepare(`INSERT INTO canonical_run_page_state VALUES(1,?,?,total_changes()+1,?)`).run(key.authorityGeneration, key.dataVersion, workflow ?? null);
-          this.#pageCacheChanges += this.#rawChangeKey().totalChanges - key.totalChanges;
+          this.#temporaryProjectionChanges += this.#rawChangeKey().totalChanges - key.totalChanges;
         }
         return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));

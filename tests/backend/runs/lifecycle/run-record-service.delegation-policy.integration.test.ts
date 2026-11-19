@@ -7,8 +7,9 @@ import * as delegationAuthority from "../../../../src/backend/storage/sqlite/del
 import * as commandRows from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { DatabaseSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { DelegationEdgeIdSchema, FingerprintSchema, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
+import { DelegationEdgeIdSchema, FingerprintSchema, ItemIdSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
@@ -839,6 +840,70 @@ it("claims a delegated child through the worker home and refuses changed physica
     assert.ok(prepare.mock.calls.every(([sql]) => !/^\s*SELECT \* FROM runs WHERE state='queued'/u.test(sql)),
       "delegated claims must not load the global queue");
   } finally { prepare.mockRestore(); }
+});
+
+it("refuses a foreign-home queued run whose ancestry exceeds the claim depth", async () => {
+  const f = await fixture("cascade");
+  const foreignWorker = f.modules.find(module => module.descriptor.id !== f.root.envelope.workflow);
+  assert.ok(foreignWorker);
+  const workflow = foreignWorker.descriptor.id;
+  const { workerId } = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow, poolIndex: 1, browserSystems: [] });
+  const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
+  const { runNumber: _runNumber, ...template } = f.root;
+  const raw = new DatabaseSync(f.path);
+  try {
+    const parentLink = (runId: typeof template.envelope.runId) => ({ runId, tracePrefix: template.envelope.traceId, edgeId: DelegationEdgeIdSchema.parse("test-child") });
+    const append = (parent?: typeof template.envelope.runId) => {
+      const id = RunIdSchema.parse(randomUUID());
+      const row = runRecordColumns({ ...template, envelope: { ...template.envelope,
+        runId: id, itemId: ItemIdSchema.parse(randomUUID()), priority: "interactive",
+        ...(parent === undefined ? {} : { parent: parentLink(parent) }),
+      } });
+      const keys = Object.keys(row);
+      raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(row));
+      return id;
+    };
+    let parent = template.envelope.runId;
+    for (let level = 1; level < 16; level += 1) parent = append(parent);
+    const extraRoot = append();
+    const claim = () => f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow, workerId,
+      runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+        settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+    assert.deepEqual(claim(), { state: "refused", refusal: { reason: "none-eligible" } });
+    raw.prepare("UPDATE runs SET parent_id=?,envelope_json=json_set(envelope_json,'$.parent',json(?)) WHERE id=?")
+      .run(extraRoot, JSON.stringify(parentLink(extraRoot)), template.envelope.runId);
+    assert.throws(claim, /delegation-ancestry-cycle-or-depth/u);
+  } finally { raw.close(); }
+});
+
+it("keeps idle claims off same-home terminal history after warming and a journal gap", async () => {
+  const f = await fixture("cascade");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "done");
+  terminal(f.currentRoot(), "done");
+  terminal(f.child(), "done");
+  const workflow = f.root.envelope.workflow, { workerId } = testWorkerLifetime(f.database, workflow, 1);
+  const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
+  const idle = () => assert.deepEqual(f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow, workerId,
+    runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+      settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }), { state: "refused", refusal: { reason: "none-eligible" } });
+  idle();
+  const raw = new DatabaseSync(f.path);
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  try {
+    idle();
+    const warmQueries = prepare.mock.calls.map(([sql]) => sql);
+    raw.prepare("UPDATE runs SET updated_at=updated_at WHERE id=?").run(f.root.envelope.runId);
+    raw.exec("DELETE FROM authority_changes WHERE seq=(SELECT max(seq) FROM authority_changes)");
+    prepare.mockClear();
+    idle();
+    const gapQueries = prepare.mock.calls.map(([sql]) => sql);
+    for (const queries of [warmQueries, gapQueries]) {
+      assert.ok(queries.every(sql => !/WITH RECURSIVE home\(id\)|SELECT \* FROM runs ORDER BY id/u.test(sql)),
+        "idle claims must not walk or decode retained history");
+    }
+  } finally { prepare.mockRestore(); raw.close(); }
 });
 
 it("reuses native group authentication only within a current execution observation and refuses fresh mutation or tampering", async () => {
