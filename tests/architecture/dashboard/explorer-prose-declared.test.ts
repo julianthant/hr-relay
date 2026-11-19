@@ -9,15 +9,14 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { EidSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
-import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
-import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../support/fixtures/explorer-seams.js";
 import { FixtureReadReceipt } from "../../support/fixtures/descriptor-fixtures.js";
 
 const CLOCK = manualClock(new Date("2026-08-19T00:00:00.000Z"));
 const HASH = FingerprintSchema.parse("d".repeat(64));
 
 describe("explorer prose is declared for every registered workflow", () => {
-  const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+  const wire = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
 
   it("serves the descriptor's OWN summary for every registered workflow", () => {
     assert.equal(wire.workflows.length, READABLE_WORKFLOW_MODULES.length);

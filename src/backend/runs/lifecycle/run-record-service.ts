@@ -1064,7 +1064,7 @@ export class RunRecordService {
   retry(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
     const request = CanonicalRetrySourceRequestSchema.parse(input);
     descriptorRuntimeNodes(descriptor);
-    const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
+    return this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
       const journal = this.inspectJournal(repositories, "retry", request, {
         kind: "version",
         expectedVersion: request.expectedVersion,
@@ -1088,44 +1088,16 @@ export class RunRecordService {
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       const continuation = delegation === undefined ? undefined : planDelegatedRetry(repositories, descriptor, run, delegation.source.commandId, undefined, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database)).continuation;
-      if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
-        workflow: run.envelope.workflow, itemId: run.envelope.itemId,
-      }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
-      const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
-      if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
-      const now = this.dependencies.clock.now().toISOString();
-      const envelope = nextAttemptEnvelope(run.envelope, repositories.runs.nextItemAttempt({
-        workflow: run.envelope.workflow, itemId: run.envelope.itemId,
-      }));
-      delete envelope.recovery;
-      delete envelope.sourceBound;
-      delete envelope.continuation;
-      const next = RunRecordSchema.parse({
-        envelope: { ...(delegation === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
-          retryOf: run.envelope.runId, enqueuedAt: now, buildId: approvalBuildId(repositories, envelope.parent),
-          ...(continuation === undefined ? {} : { continuation }),
-        },
-        input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,
-        runNumber: repositories.runs.nextWorkflowRunNumber(run.envelope.workflow),
-        ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
-        ...(request.appVersion === undefined ? {} : { appVersion: request.appVersion }),
-        version: 1, createdAt: now, updatedAt: now,
+      return this.enqueueSuccessorAttempt(repositories, run, descriptor, {
+        kind: "retry", command: journal.command, delegation, continuation, appVersion: request.appVersion, publication,
       });
-      this.dependencies.admitQueuedRun?.(next);
-      repositories.runs.enqueue(next);
-      this.recordJournal(repositories, journal.command, journalRun(next));
-      const relatedRunChanges = delegation === undefined ? [] : this.activateDelegationRetry(repositories, delegation, run, next, now);
-      this.dependencies.publishQueued(next, publication);
-      return { state: "applied", run: next, relatedRunChanges };
     });
-    return outcome;
   }
 
   recover(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
     const request = CanonicalRecoverRunRequestSchema.parse(input);
     descriptorRuntimeNodes(descriptor);
-    const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
+    return this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
       if (request.continuationOwner === undefined) {
         const command = assertRunRecoveryCommandScope(repositories, request.sourceCommandId);
         if (command.target.runId !== request.runId
@@ -1163,38 +1135,66 @@ export class RunRecordService {
       const plan = request.continuationOwner === undefined ? planRunRecovery(repositories, descriptor, run, request.sourceCommandId, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database))
         : planDelegatedRetry(repositories, descriptor, run, request.sourceCommandId, request.continuationOwner, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database));
       assertOcrRecoverySnapshotCurrent(repositories, this, run, workflowId => this.dependencies.resolveDescriptor?.(workflowId));
-      const continuation = plan.continuation;
-      if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
-        workflow: run.envelope.workflow, itemId: run.envelope.itemId,
-      }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
-      const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
-      if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
-      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
-      const now = this.dependencies.clock.now().toISOString();
-      const envelope = nextAttemptEnvelope(run.envelope, repositories.runs.nextItemAttempt({
-        workflow: run.envelope.workflow, itemId: run.envelope.itemId,
-      }));
-      delete envelope.recovery;
-      delete envelope.sourceBound;
-      delete envelope.continuation;
-      const next = RunRecordSchema.parse({
-        envelope: { ...(delegation === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
-          retryOf: run.envelope.runId, enqueuedAt: now, continuation,
-        },
-        input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,
-        runNumber: repositories.runs.nextWorkflowRunNumber(run.envelope.workflow),
-        ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
-        ...(request.appVersion === undefined ? {} : { appVersion: request.appVersion }),
-        version: 1, createdAt: now, updatedAt: now,
+      return this.enqueueSuccessorAttempt(repositories, run, descriptor, {
+        kind: "recover", command: journal.command, delegation, continuation: plan.continuation,
+        continuationOwner: request.continuationOwner, appVersion: request.appVersion, publication,
       });
-      this.dependencies.admitQueuedRun?.(next);
-      repositories.runs.enqueue(next);
-      this.recordJournal(repositories, journal.command, journalRun(next));
-      const relatedRunChanges = delegation === undefined ? [] : this.activateDelegationRetry(repositories, delegation, run, next, now, request.continuationOwner);
-      this.dependencies.publishQueued(next, publication);
-      return { state: "applied", run: next, relatedRunChanges };
     });
-    return outcome;
+  }
+
+  private enqueueSuccessorAttempt(
+    repositories: AuthorityRepositories,
+    run: RunRecord,
+    descriptor: AnyWorkflowDescriptor,
+    attempt: {
+      command: z.infer<typeof RunLifecycleCommandRecordSchema>;
+      delegation: ReturnType<typeof prepareDelegationRetry> | undefined;
+      appVersion: RunRecord["appVersion"];
+      publication: RunQueuedPublication | undefined;
+    } & (
+      | { kind: "retry"; continuation: RunRecord["envelope"]["continuation"] }
+      | {
+        kind: "recover";
+        continuation: NonNullable<RunRecord["envelope"]["continuation"]>;
+        continuationOwner: z.infer<typeof DelegationRetryRequestSchema>["continuationOwner"];
+      }
+    ),
+  ): RunMutationOutcome {
+    const { command, delegation, continuation, appVersion, publication } = attempt;
+    const { workflow, itemId } = run.envelope;
+    const item = { workflow, itemId };
+    if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem(item)
+      .some(entry => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
+    const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
+    if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
+    if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
+    const now = this.dependencies.clock.now().toISOString();
+    const envelope = nextAttemptEnvelope(run.envelope, repositories.runs.nextItemAttempt(item));
+    delete envelope.recovery;
+    delete envelope.sourceBound;
+    delete envelope.continuation;
+    const next = RunRecordSchema.parse({
+      envelope: {
+        ...(delegation === undefined ? selectNewRunIdentity(repositories, envelope) : envelope),
+        runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
+        retryOf: run.envelope.runId, enqueuedAt: now,
+        buildId: attempt.kind === "retry" ? approvalBuildId(repositories, envelope.parent) : envelope.buildId,
+        ...(continuation === undefined ? {} : { continuation }),
+      },
+      input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,
+      runNumber: repositories.runs.nextWorkflowRunNumber(workflow),
+      ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
+      ...(appVersion === undefined ? {} : { appVersion }),
+      version: 1, createdAt: now, updatedAt: now,
+    });
+    this.dependencies.admitQueuedRun?.(next);
+    repositories.runs.enqueue(next);
+    this.recordJournal(repositories, command, journalRun(next));
+    const relatedRunChanges = delegation === undefined ? [] : this.activateDelegationRetry(
+      repositories, delegation, run, next, now, attempt.kind === "recover" ? attempt.continuationOwner : undefined,
+    );
+    this.dependencies.publishQueued(next, publication);
+    return { state: "applied", run: next, relatedRunChanges };
   }
 
   private activateDelegationRetry(repositories: AuthorityRepositories, delegation: ReturnType<typeof prepareDelegationRetry>,
