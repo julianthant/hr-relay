@@ -1,23 +1,25 @@
 /* Notification centre: the sidebar body while the bell is pressed. Rows sit on the workflow rail's 8px insets. */
 .notification-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 4px 8px 16px; }
-.notification-panel-scroll { margin-inline: -8px; padding: 4px 8px 0; display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 20.5px; overflow-y: auto; overscroll-behavior: contain; }
-.notification-group-head { display: flex; height: 20px; align-items: center; justify-content: space-between; padding: 0 1px 0 0; margin-bottom: 5.25px; }
+.notification-panel-scroll { margin-inline: -8px; padding: 4px 8px 0; display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 20px; overflow-y: auto; overscroll-behavior: contain; }
+.notification-group-head { display: flex; height: 20px; align-items: center; justify-content: space-between; padding: 0 1px 0 0; margin-bottom: 4px; }
 .notification-group-head button { width: 28px; height: 28px; margin-block: -4px; border-radius: 8px; color: var(--ds-sidebar-grey); }
 .notification-group-head button:hover, .notification-group-head button[data-popup-open] { background: var(--rail-hover-fill); color: var(--ui-primary); }
 .notification-group-label { margin: 0; padding: 0 8px; font-size: 13px; font-weight: 400; line-height: 20px; color: var(--ds-sidebar-grey); }
 .notification-list { margin: 0; padding: 0; list-style: none; }
 .notification-list li + li { margin-top: 1px; }
 .notification-item {
-  display: flex; width: 100%; flex-direction: column; box-sizing: border-box; padding: 3.75px 8px 7.25px;
+  display: flex; width: 100%; flex-direction: column; box-sizing: border-box; padding: 4px 8px 8px;
   border: 0; border-radius: 10px; background: transparent; text-align: left; font-weight: 400; color: var(--ds-sidebar-fg); cursor: pointer;
 }
 .notification-row { position: relative; }
 .notification-item:hover, .notification-item:focus-visible, .notification-row:hover .notification-item, .notification-row:focus-within .notification-item { background: var(--rail-hover-fill); outline: none; }
 .notification-item[aria-current] { background: var(--ds-surface-selected); }
 .notification-item-head { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.notification-item-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 25px; }
+.notification-item-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 24px; }
 .notification-item-count { flex: none; font-size: 12px; line-height: 16px; color: var(--ds-sidebar-grey); }
-.notification-item-source { color: var(--ds-sidebar-grey); }
+.notification-item-age { flex: none; font-size: 12px; line-height: 16px; color: var(--ds-sidebar-grey); }
+.notification-item-context { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--ds-sidebar-grey); }
+.notification-row:hover .notification-item-age, .notification-row:focus-within .notification-item-age { visibility: hidden; }
 .notification-panel-head { display: flex; height: 28px; align-items: center; justify-content: space-between; padding: 0 1px 0 8px; }
 .notification-panel-title { margin: 0; font-size: 14px; font-weight: 500; line-height: 20px; color: var(--ds-sidebar-fg); }
 .notification-panel-head button { width: 28px; height: 28px; border-radius: 8px; color: var(--ds-sidebar-grey); }

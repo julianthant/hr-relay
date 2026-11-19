@@ -1,13 +1,12 @@
 import { CURRENT_FISCAL_TARGET, runCheckForTarget } from "./preflight/preflight-remedy-model.js";
 import { CHECK_COPY } from "./preflight/preflight-check-copy.js";
-import { ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2,X } from "lucide-react";
+import { ArrowLeft,ArrowUp,Check,CircleAlert,Folder,Gauge,Keyboard,Monitor,SlidersHorizontal,Table2,User } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,NavRow,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
-import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
@@ -20,7 +19,7 @@ import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigati
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { relayUsername } from "./account/relay-username.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
-import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
 
 
@@ -34,9 +33,9 @@ const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
 ]);
 
 
-const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
-  general: Sparkles,
-  credentials: UserRound,
+const NAV_ICON: Record<SettingsNavIcon, typeof Folder> = {
+  general: SlidersHorizontal,
+  credentials: User,
   display: Monitor,
   performance: Gauge,
   paths: Folder,
@@ -44,15 +43,12 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   preflight: Check,
   routes: ArrowUp,
   capabilities: Table2,
-  keyboard: MessagesSquare,
+  keyboard: Keyboard,
   unrendered: CircleAlert,
-  spreadsheets: Folder,
-  explorer: Search,
-  activity: History,
 };
 
 
-/** One nav entry. */
+/** One nav entry: a real link, so middle-click and Cmd/Ctrl-click open it in a new tab. */
 function SectionButton({
   entry,
   active,
@@ -64,29 +60,17 @@ function SectionButton({
 }) {
   const Icon = NAV_ICON[entry.icon];
   return (
-    <a tabIndex={0}
-            // A real href — not a `button` — so middle-click and Cmd/Ctrl-click work as usual.
-      // new tab" all work the way any other in-page navigation does.
+    <NavRow
       href={`?settings=${encodeURIComponent(entry.id)}`}
-      aria-current={active ? "page" : undefined}
+      selected={active}
+      icon={<Icon className={dsIcon.md} />}
+      label={entry.label}
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         onClick();
       }}
-      className={cn(
-        "flex h-[var(--ds-h-settings-nav-row)] min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-settings-nav)]",
-        "px-[var(--ds-space-cozy)] text-[length:var(--ds-text-body-row)] text-left text-[color:var(--ds-fg)]",
-        dsFocus,
-        dsMotion.base,
-        active
-          ? "bg-[var(--ds-surface-selected)] font-normal"
-          : "font-normal hover:bg-[var(--ds-surface-3)]",
-      )}
-    >
-      <Icon aria-hidden className={cn(dsIcon.md, "shrink-0")} />
-      <span className="truncate">{entry.label}</span>
-    </a>
+    />
   );
 }
 
@@ -108,11 +92,9 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
 export function SettingsPage({
   section,
   searchTarget: requestedTarget,
-  dataContent,
   appearance,
   deleteAccount,
   accountPage,
-  onOpenRun,
   actorId,
   profileName,
   descriptorFingerprint,
@@ -126,11 +108,9 @@ export function SettingsPage({
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
   searchTarget?: string;
-  dataContent?: ReactNode;
   appearance?: ReactNode;
   deleteAccount?: ReactNode;
   accountPage?: AccountPage;
-  onOpenRun?: (runId: string, partitionDay: string) => void;
   actorId: string;
   profileName: string;
   descriptorFingerprint: string;
@@ -150,8 +130,6 @@ export function SettingsPage({
   const groups = useMemo(() => buildSettingsNav(settingsDocument), [settingsDocument]);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
-  const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
-  if (isDataSection && dataContent === undefined) throw new Error("SETTINGS_DATA_CONTENT_UNAVAILABLE");
   const [navQuery, setNavQuery] = useViewState("settingsQuery", "", "replace");
   const [searchVisit, setSearchVisit] = useState(0);
   const navSearch = useRef<HTMLInputElement>(null);
@@ -229,7 +207,7 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><h2>Settings</h2><IconButton label={backToRun ? "Back to run" : "Back to dashboard"} size="sm" icon={<X className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <header className="settings-nav-header"><h2>Settings</h2><IconButton label={backToRun ? "Back to run" : "Back to dashboard"} size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
         <SearchInput ref={navSearch} variant="sidebar" aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {
@@ -256,7 +234,7 @@ export function SettingsPage({
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
         {openedForCheckName !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then press Back to run.</Banner>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
-        {editor.editor.state === "failed" && !isDataSection && activeId !== "spreadsheets" && (
+        {editor.editor.state === "failed" && (
           <FailureNotice sentence="Couldn't load settings."
             action={{ label: "Retry", onClick: editor.reload }} />
         )}
@@ -269,8 +247,6 @@ export function SettingsPage({
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
         )}
-        {isDataSection && dataContent}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && editor.editor.state !== "failed" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />

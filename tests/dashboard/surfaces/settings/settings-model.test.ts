@@ -17,7 +17,6 @@ Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
 const APPROVED_NAV: [string, string[]][] = [
   ["Personal", ["general", "account"]],
-  ["Data", ["spreadsheets", "explorer", "activity"]],
   ["Help", ["keyboard"]],
 ];
 const navOf = (groups: ReturnType<typeof buildSettingsNav>) => groups.map(group => [group.heading, group.entries.map(entry => entry.id)]);
@@ -58,7 +57,7 @@ async function mountFailedRead(section: string): Promise<HTMLElement> {
 }
 
 describe("canonical Settings navigation", () => {
-  it("serves Personal, Data and Help while the editable settings projection is unavailable", () => {
+  it("serves Personal and Help while the editable settings projection is unavailable", () => {
     const groups = buildSettingsNav();
     assert.deepEqual(navOf(groups), APPROVED_NAV);
     assert.ok(groups.flatMap(group => group.entries).every(entry => entry.source === "client"));
@@ -68,11 +67,10 @@ describe("canonical Settings navigation", () => {
     assert.deepEqual(navOf(buildSettingsNav(fixtureSettingsDocument())), APPROVED_NAV);
   });
 
-  it("moves Spreadsheets into Data and has no Status group", () => {
+  it("holds preferences only: the data pages and Status have left Settings", () => {
     const groups = buildSettingsNav();
-    assert.ok(!groups.find(group => group.id === "personal")?.entries.some(entry => entry.id === "spreadsheets"));
-    assert.ok(groups.find(group => group.id === "data")?.entries.some(entry => entry.id === "spreadsheets"));
-    assert.ok(!groups.some(group => group.id === "status"));
+    assert.deepEqual(groups.flatMap(group => group.entries.map(entry => entry.id)), ["general", "account", "keyboard"]);
+    assert.deepEqual(groups.map(group => group.id), ["personal", "help"]);
   });
 
   it("folds legacy section URLs to their new page and keeps unknown requests explicit", () => {

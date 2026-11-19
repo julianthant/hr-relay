@@ -335,6 +335,7 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
     label: entry.label,
     categoryId: entry.categoryId,
     role: entry.role,
+    icon: entry.icon,
     ...(entry.code === undefined ? {} : { code: entry.code }),
     ...(start.summary === undefined ? {} : { summary: start.summary }),
     enqueue: start.enqueue,

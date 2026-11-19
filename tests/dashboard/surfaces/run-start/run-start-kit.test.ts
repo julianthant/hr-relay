@@ -9,7 +9,7 @@ PlanPreview,
 StartChoiceControl,
 TypedInput,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
-import { fmtClock } from "../../../../src/dashboard/surfaces/shared/status/format.js";
+import { formatTime } from "../../../../src/dashboard/lib/date-format.js";
 import { InputRunSurfaceSchema } from "../../../../src/models/workflow/ingress.js";
 import { WORK_STUDY_INPUT_PARSER, WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
@@ -162,7 +162,7 @@ describe("the plan draws one card per proposed row", () => {
     const text = textOf(
       renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN })),
     );
-    assert.ok(text.includes(`expires ${fmtClock(EXPIRES_AT)}`), "the expiry is not a clock reading");
+    assert.ok(text.includes(`expires ${formatTime(EXPIRES_AT)}`), "the expiry is not a clock reading");
     assert.ok(!text.includes(EXPIRES_AT), "the raw ISO instant is on an operator's screen");
   });
 });

@@ -64,7 +64,7 @@ export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]
     const projection = compatibility.workflows.find(workflow => workflow.workflowId === entry.id);
     if (entry.start.workbookReference !== undefined && projection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${entry.id}`);
     return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
-    role: entry.role, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
+    role: entry.role, icon: entry.icon, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,
     ...(entry.start.rows === undefined ? {} : { rows: entry.start.rows }),
     spreadsheetIntake: entry.start.spreadsheetIntake,

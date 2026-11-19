@@ -5,7 +5,7 @@ import { LogFooterButton } from "./log-action-button.js";
 import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
-import { Badge, Banner, Button, FailureNotice, IconButton, Notice } from "../../../ds/ui.js";
+import { Badge, Banner, Button, Card, FailureNotice, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
 import { linkedRunEntries } from "../linked-runs-model.js";
@@ -117,8 +117,8 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
 export function FullDryRunPreview({ stages, facts }: { stages: readonly DryRunPreviewStage[]; facts: readonly { label: string; value: string; sample?: boolean }[] }) {
   const applicable = stages.filter(stage => stage.state !== "skipped");
   const exercised = applicable.filter(stage => stage.state === "exercised" || stage.state === "not-clicked").length;
-  return <section aria-label="Full dry-run preview" className="log-decision dry-run-result">
-    <header className="log-decision-header"><h4>Dry run result</h4><span className="text-caption text-ui-muted">{exercised} of {applicable.length} steps exercised</span></header>
-    <dl className="m-0 divide-y divide-ui-stroke">{facts.map(fact => <div key={fact.label} role="group" aria-label={fact.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-body"><dt>{fact.label}</dt><dd className="m-0 flex min-w-0 items-center gap-2 text-ui-muted"><span className="font-data">{fact.value}</span>{fact.sample && <Badge tone="neutral" aria-label="Dry-run sample" className="border-dashed bg-transparent text-ui-info">Sample</Badge>}</dd></div>)}{stages.filter(stage => stage.state !== "exercised").map(stage => <div key={stage.id} role="group" aria-label={stage.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-body"><dt>{stage.label}<span className="block text-caption text-ui-muted">{stage.detail}</span></dt><dd className="m-0"><Badge tone={stage.state === "unavailable" ? "warning" : "neutral"}>{stage.state === "not-clicked" ? "Not clicked" : stage.state === "unavailable" ? "Unavailable" : "Skipped"}</Badge></dd></div>)}</dl>
-  </section>;
+  return <Card role="region" aria-label="Full dry-run preview" className="max-w-[560px] overflow-hidden">
+    <header className="flex items-center justify-between gap-3 border-b border-ui-stroke px-4 py-3"><h4 className="m-0 text-control font-medium">Dry run result</h4><span className="text-caption text-ui-muted">{exercised} of {applicable.length} steps exercised</span></header>
+    <dl className="m-0 divide-y divide-ui-stroke">{facts.map(fact => <div key={fact.label} role="group" aria-label={fact.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-body"><dt>{fact.label}</dt><dd className="m-0 flex min-w-0 items-center gap-2 text-ui-muted"><span className="tabular-nums">{fact.value}</span>{fact.sample && <Badge tone="neutral" aria-label="Dry-run sample" className="border-dashed bg-transparent text-ui-info">Sample</Badge>}</dd></div>)}{stages.filter(stage => stage.state !== "exercised").map(stage => <div key={stage.id} role="group" aria-label={stage.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-body"><dt>{stage.label}<span className="block text-caption text-ui-muted">{stage.detail}</span></dt><dd className="m-0"><Badge tone={stage.state === "unavailable" ? "warning" : "neutral"}>{stage.state === "not-clicked" ? "Not clicked" : stage.state === "unavailable" ? "Unavailable" : "Skipped"}</Badge></dd></div>)}</dl>
+  </Card>;
 }

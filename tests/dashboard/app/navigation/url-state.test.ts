@@ -2,7 +2,7 @@ import { vi } from "vitest";
 // @vitest-environment jsdom
 import assert_m0 from 'node:assert/strict';
 import { afterEach as afterEach_m0,beforeEach as beforeEach_m0,describe as describe_m0,it as it_m0 } from 'vitest';
-import { parseRoute as parseRoute_m0,routeToSearch as routeToSearch_m0 } from '../../../../src/dashboard/app/navigation/url-state.js';
+import { activeTakeover as activeTakeover_m0,dataPageOf as dataPageOf_m0,parseRoute as parseRoute_m0,routeToSearch as routeToSearch_m0,settingsRoute as settingsRoute_m0,withDataPage as withDataPage_m0 } from '../../../../src/dashboard/app/navigation/url-state.js';
 import { parseViewRoute as parseViewRoute_m0 } from '../../../../src/dashboard/app/navigation/view-route-model.js';
 
 import assert_m1 from "node:assert/strict";
@@ -118,6 +118,7 @@ const SEGMENT_OF = {
   settings: "none",
   intake: "none",
   archive: "none",
+  spreadsheets: "none",
   explore: "explorer",
   activity: "activity",
   none: "queue",
@@ -234,9 +235,9 @@ describe_m3("the explorer and catalog route keys", () => {
     );
   });
 
-  it_m3("drops an empty explore value, because a workflow id is never blank", () => {
-    assert_m3.equal(parseRoute_m3("?explore=").explore, undefined);
-    assert_m3.equal(activeTakeover_m3(parseRoute_m3("?explore=")), "none");
+  it_m3("opens Explorer on an empty explore value, as the first workflow", () => {
+    assert_m3.equal(parseRoute_m3("?explore=").explore, "");
+    assert_m3.equal(activeTakeover_m3(parseRoute_m3("?explore=")), "explore");
   });
 
   it_m3("resolves ONE takeover when a link carries several", () => {
@@ -490,7 +491,7 @@ describe_m8("view navigation", () => {
 afterEach_m8(_afterEachFixture0);
 
   it_m8("round-trips only bounded navigation metadata and refuses corrupt/private payloads", () => {
-    const route = { start: true, settings: "spreadsheets", view: ViewRouteSchema_m8.parse({ spreadsheetTab: "types", launchStage: "Options", notifications: true, reviewPages: { "record-1": 1 }, launchRerun: { runId: "00000000-0000-4000-8000-000000000001", expectedVersion: 1 }, queueOpen: ["batch-1"] }) };
+    const route = { start: true, settings: "general", view: ViewRouteSchema_m8.parse({ spreadsheetTab: "types", launchStage: "Options", notifications: true, reviewPages: { "record-1": 1 }, launchRerun: { runId: "00000000-0000-4000-8000-000000000001", expectedVersion: 1 }, queueOpen: ["batch-1"] }) };
     assert_m8.deepEqual(parseRoute_m8(routeToSearch_m8(route)), route);
     for (const raw of ['{"draft":"secret"}', '{"launchStage":"Unknown"}', '{"spreadsheetPage":-1}', "{", "x".repeat(16001)]) assert_m8.equal(parseViewRoute_m8(raw), null);
     assert_m8.equal(parseRoute_m8("?view=%7B").viewInvalid, true);
@@ -526,4 +527,39 @@ it_m0("round trips HUB onboarding and mock setup through the one URL owner", () 
   }
   assert_m0.equal(parseRoute_m0("?onboarding=unknown").viewInvalid, true);
   assert_m0.equal(parseRoute_m0("?onboardingSetup=unknown").viewInvalid, true);
+});
+
+it_m0("routes the three data pages through their own keys and keeps the old Settings links working", () => {
+  for (const [search, page, takeover] of [
+    ["?spreadsheets=1", "spreadsheets", "spreadsheets"],
+    ["?explore=person-lookup", "explorer", "explore"],
+    ["?activity=2026-08-01..2026-08-09", "activity", "activity"],
+  ] as const) {
+    const route = parseRoute_m0(search);
+    assert_m0.equal(dataPageOf_m0(route), page);
+    assert_m0.equal(activeTakeover_m0(route), takeover);
+    assert_m0.equal(routeToSearch_m0(route), search.replaceAll(":", "%3A"));
+  }
+  for (const [old, search, page] of [
+    ["?settings=spreadsheets", "?spreadsheets=1", "spreadsheets"],
+    ["?settings=explorer", "?explore=", "explorer"],
+    ["?settings=activity", "?activity=", "activity"],
+    ["?settings=explorer&explore=person-lookup", "?explore=person-lookup", "explorer"],
+    ["?settings=activity&activity=2026-08-01..2026-08-09", "?activity=2026-08-01..2026-08-09", "activity"],
+  ] as const) {
+    const route = parseRoute_m0(old);
+    assert_m0.equal(route.settings, undefined, old);
+    assert_m0.equal(dataPageOf_m0(route), page, old);
+    assert_m0.equal(routeToSearch_m0(route), search, old);
+  }
+});
+
+it_m0("opens a data page or a Settings section from one helper, clearing the other takeovers", () => {
+  const settings = { start: false, settings: "general" } as const;
+  assert_m0.equal(routeToSearch_m0(settingsRoute_m0(settings, "spreadsheets")), "?spreadsheets=1");
+  assert_m0.equal(routeToSearch_m0(settingsRoute_m0(settings, "activity")), "?activity=");
+  assert_m0.equal(routeToSearch_m0(settingsRoute_m0({ start: false, spreadsheets: true }, "account")), "?settings=account");
+  assert_m0.equal(routeToSearch_m0(withDataPage_m0({ start: false, explore: "person-lookup" }, "spreadsheets")), "?spreadsheets=1");
+  assert_m0.equal(routeToSearch_m0(withDataPage_m0({ start: false, activity: "a..b" }, "activity")), "?activity=a..b");
+  assert_m0.equal(dataPageOf_m0({ start: false, settings: "general", spreadsheets: true }), undefined);
 });

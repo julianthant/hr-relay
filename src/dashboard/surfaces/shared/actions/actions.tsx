@@ -1,6 +1,5 @@
-import { useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
-  AlertTriangle,
   ArrowUpRight,
   ChevronsUp,
   ClipboardList,
@@ -14,7 +13,6 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { runDisplayId } from "../status/run-display-model.js";
 import { cn } from "../../../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
@@ -26,10 +24,7 @@ import {
 } from "./actions-model.js";
 import {
   BareButton,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
+  ConfirmDialog,
   Notice,
   dsFocus,
   dsIcon,
@@ -192,7 +187,6 @@ export function OutcomeActionButton({
           dsRadius.sm,
           dsFocus,
           dsMotion.fast,
-          "active:translate-y-px",
           className,
         )}
       >
@@ -240,57 +234,28 @@ export function ConfirmCommandDialog({
   onCancel: () => void;
   onConfirm: (pending: PendingCommand) => void;
 }) {
-  const safeAction = useRef<HTMLButtonElement>(null);
   const confirm = pending?.action.confirm;
+  if (pending === null || confirm === undefined) return null;
+  const destructive = confirm.tone === "destructive";
+  const isDelete = pending.action.command === "delete";
+  const group = pending.action.label === "Delete group";
   return (
-    <Dialog open={Boolean(pending && confirm)} onOpenChange={(open) => !open && onCancel()}>
-      {pending && confirm && (
-        <DialogContent
-          size="sm"
-          className="command-confirm-dialog ui-theme-scope"
-          onOpenAutoFocus={event => { event.preventDefault(); safeAction.current?.focus(); }}
-          onCloseAutoFocus={(e) => {
-            if (pending.triggerElement?.isConnected) {
-              e.preventDefault();
-              pending.triggerElement.focus();
-            }
-          }}
-          title={
-            // Use the dialog primitive’s title typography; nested title classes would create a different heading scale.
-            <span className="flex items-center gap-[var(--ds-space-base)]">
-              <AlertTriangle
-                aria-hidden
-                className={cn(
-                  dsIcon.lg,
-                  "shrink-0",
-                  confirm.tone === "destructive"
-                    ? "text-[color:var(--ds-danger)]"
-                    : "text-[color:var(--ds-status-waiting-fg)]",
-                )}
-              />
-              {confirm.title}
-            </span>
-          }
-          description={confirm.body}
-        >
-          <div className="command-confirm-target">
-            <span className="text-caption text-ui-muted">Selected run</span>
-            <strong className="text-heading font-medium text-ui-primary">{pending.subject}</strong>
-            <span className="text-body text-ui-secondary">{pending.workflowLabel}</span>
-            <span className="command-confirm-reference font-data text-caption text-ui-muted">{pending.action.command === "delete" ? runDisplayId(pending.target.runId, pending.traceId) : pending.traceId} · revision {pending.action.expectedVersion}</span>
-          </div>
-          <DialogFooter>
-            {/* The safe exit is `secondary` and it comes FIRST; the surface's one
-                committing action is last, so the eye ends on the verb. */}
-            <Button ref={safeAction} variant="secondary" onClick={onCancel}>
-              Keep it as it is
-            </Button>
-            <Button variant={confirm.tone === "destructive" ? "danger" : "primary"} onClick={() => onConfirm(pending)}>
-              {confirm.confirmLabel}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      )}
-    </Dialog>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onCancel()}
+      destructive={destructive}
+      title={`${confirm.title.replace(/\?+$/, "")}?`}
+      description={confirm.body ?? (isDelete
+        ? (group ? `Removes ${pending.subject}, its people and their logs from the queue.` : `Removes ${pending.subject} and its logs from the queue.`)
+        : undefined)}
+      confirmLabel={isDelete ? pending.action.label : confirm.confirmLabel}
+      onConfirm={() => onConfirm(pending)}
+      onCloseAutoFocus={(e) => {
+        if (pending.triggerElement?.isConnected) {
+          e.preventDefault();
+          pending.triggerElement.focus();
+        }
+      }}
+    />
   );
 }

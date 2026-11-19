@@ -28,6 +28,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
       id: WORKFLOW_ID,
       code: personLookupDescriptor.code,
       label: personLookupDescriptor.label,
+      icon: personLookupDescriptor.icon,
       categoryId: personLookupDescriptor.category,
       descriptorFingerprint: CONTRACT_FINGERPRINT,
       availability: { state: "available" },

@@ -80,7 +80,7 @@ describe("frontend workflow catalog", () => {
     expect(category("person-lookup")).toBe("Lookup");
     expect(category("separations")).toBe("Separations");
     expect(category("onboarding")).toBe("Onboarding");
-    expect(category("work-study")).toBe("Work Study");
+    expect(category("work-study")).toBe("Work-Study");
     expect(category("emergency-contact")).toBe("Documents");
   });
 
@@ -98,7 +98,7 @@ describe("frontend workflow catalog", () => {
   });
 
   it("supplies matching registration membership and labels to navigation, Run and Explorer", () => {
-    const rail = renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop }));
+    const rail = renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop, onDataPage: noop }));
     const picker = renderToStaticMarkup(createElement(RunWorkflowPicker, { catalog, value: "", query: "", onQuery: noop, onChange: noop }));
     for (const entry of catalog) {
       expect(rail).toContain(`aria-label="${entry.label}"`);
@@ -139,7 +139,7 @@ describe("frontend workflow catalog", () => {
 
   it("boots the product catalog from public definitions without exposing or disabling the I-9 PDF parent", () => {
     const publicStarts = WORKFLOW_MODULES.map(({ descriptor, role }) => ({
-      workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category, code: descriptor.code, role,
+      workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category, code: descriptor.code, role, icon: descriptor.icon,
       enqueue: descriptor.enqueue, version: descriptor.version, steps: projectWorkflowStartSteps(descriptor),
       requiredWorkbookFields: descriptor.requiredWorkbookFields, referenceSources: [], spreadsheetIntake: false,
       ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),

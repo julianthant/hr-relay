@@ -14,7 +14,7 @@ import {
 import { InputRunSurfaceSchema, UploadRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../../workflow-kit/validation/module-role.js";
 import { PreflightCheckIdSchema } from "../preflight/preflight-contract.js";
-import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
+import { EnqueuePolicySchema, IconNameSchema, WorkflowCodeSchema } from "../workflow/presentation.js";
 import {
   StartRowKindSchema,
   StartRowLockReasonSchema,
@@ -109,6 +109,7 @@ export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   id: WorkflowIdSchema,
   code: WorkflowCodeSchema,
   label: z.string().min(1),
+  icon: IconNameSchema,
   categoryId: z.string().regex(/^[a-z][a-z0-9-]*$/),
   descriptorFingerprint: FingerprintSchema,
   availability: CapabilityAvailabilitySchema,

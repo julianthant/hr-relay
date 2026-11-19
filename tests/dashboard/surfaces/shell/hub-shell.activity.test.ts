@@ -10,6 +10,7 @@ import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import type { AssistantActivityWire } from "../../../../src/models/dashboard/assistant.js";
+import { formatTime } from "../../../../src/dashboard/lib/date-format.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -48,7 +49,7 @@ async function mount(read: () => Promise<AssistantActivityWire>) {
   const rows = () => [...document.querySelectorAll<HTMLElement>(".hub-transcript .flex.flex-col > div")].map(row => row.textContent ?? "");
   return { assistantActivity, openHistory, chooseActivity, openActivity, search, rows, text: () => document.body.textContent ?? "", cleanup: async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); } };
 }
-const time = (hour: number, minute: number) => new Date(2026, 10, 16, hour, minute).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+const time = (hour: number, minute: number) => formatTime(new Date(2026, 10, 16, hour, minute));
 
 it("reads the served activity only when Activity opens and draws its rows in served order with name and time", async () => {
   const view = await mount(async () => ({ day: "2026-11-16", rows: ROWS }));

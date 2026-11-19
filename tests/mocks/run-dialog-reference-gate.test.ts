@@ -55,13 +55,15 @@ for (const width of [1280, 1024]) {
       await expect(dialog).toBeVisible();
       await dialog.locator('input[type="file"]').setInputFiles({ name: "scan.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF scan") });
       await expect(dialog.getByText("scan.pdf").first()).toBeVisible();
-      await dialog.getByRole("button", { name: "Use I-9 tracker.xlsx" }).click();
+      await dialog.getByRole("region", { name: "Also check" }).getByRole("button", { name: "Add spreadsheet" }).click();
+      await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill("I-9 tracker");
+      await page.getByRole("menuitem", { name: /I-9 tracker/u }).click();
       await expect(dialog.getByRole("button", { name: "Remove I-9 tracker.xlsx" })).toBeVisible();
       await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
       await expect(dialog.getByText(MISSING).first()).toBeVisible();
       await page.screenshot({ path: `${out}/check-only-${width}.png` });
-      await dialog.getByRole("button", { name: "Add spreadsheet" }).click();
-      await page.getByRole("textbox", { name: "Find a spreadsheet" }).fill("Contact");
+      await dialog.getByRole("region", { name: "Reference spreadsheets" }).getByRole("button", { name: "Add spreadsheet" }).click();
+      await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill("Contact");
       await page.getByRole("menuitem", { name: /Contact roster/u }).click();
       await expect(page.getByRole("menuitem", { name: /Contact roster/u })).toHaveCount(0);
       await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();

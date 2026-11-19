@@ -63,6 +63,19 @@ it("serves a fictional sample and traceable source for every Separations page ro
   }
 });
 
+it("serves the Employee ID search and traces the searched ID to Kuali", async () => {
+  const { reviewSpec: spec } = await served();
+  const identity = step(spec, "identity-check");
+  assert.ok(identity.description.some(line =>
+    line.text === "Search UCPath for the employee by the Employee ID on the Kuali document."));
+  const search = blocks(spec, identity.id, "card").find(card => card.title === "Person Organizational Summary search");
+  assert.ok(search);
+  assert.ok(!search.rows.some(row => row.label === "Searched name"));
+  const searched = search.rows.find(row => row.label === "Searched Employee ID");
+  assert.ok(searched);
+  assert.ok(spec.sources[searched.source]?.reads.some(read => read.step === "kuali-extraction" && read.field === "Employee ID"));
+});
+
 it("continues an agreed identity and waits before filing when identity approval is required", async () => {
   const { reviewSpec: spec } = await served();
   const identity = blocks(spec, "identity-review", "decision");

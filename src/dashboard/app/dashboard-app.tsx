@@ -8,6 +8,7 @@ import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/s
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
+import type { PaletteAction } from "../surfaces/shell/search/search-palette-model.js";
 import { useStartupGate } from "./startup/startup-gate.js";
 import { useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
@@ -65,7 +66,7 @@ type PendingCommand,
 import { CommandRecovery } from "../surfaces/shared/actions/command-recovery.js";
 import { recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
-import { fmtClock } from "../surfaces/shared/status/format.js";
+import { formatTime } from "../lib/date-format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
 import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection, queueRenameDraft } from "../surfaces/queue/queue-model.js";
@@ -127,8 +128,12 @@ import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
 import { assistantNeeds } from "../surfaces/shell/assistant-launcher-model.js";
 import {
 activeTakeover,
+dataPageOf,
 routeForCrossDateSearchResult,
-type AppRouteState
+settingsRoute,
+withDataPage,
+type AppRouteState,
+type DataPage
 } from "./navigation/url-state.js";
 
 
@@ -581,9 +586,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   });
 
   const selectWorkflow = useCallback((next: string): boolean => {
-    if (next === activeWorkflowId) return true;
+    const leavingDataPage = dataPageOf(routeRef.current) !== undefined;
+    if (next === activeWorkflowId && !leavingDataPage) return true;
     if (!setActiveWorkflowId(next)) return false;
-    setRoute(current => ({ ...current, run: undefined, section: undefined, view: { ...current.view, workflow: next } }));
+    setRoute(current => ({ ...(leavingDataPage ? routeWithoutTakeovers(current) : current), run: undefined, section: undefined, view: { ...current.view, workflow: next } }));
     return true;
   }, [activeWorkflowId, setRoute, setActiveWorkflowId]);
 
@@ -686,7 +692,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               const entry = commandResultFeedEntry({ settlement: { ...folded, problem: outcome.feedback.text },
                 targetRunId: request.target.runId, expectedVersion: request.target.expectedVersion, commandId: request.commandId,
                 subject: surface?.title ?? `run ${request.target.runId}`, workflowLabel: workflowLabelOf(surface?.workflowId ?? activeWorkflowId),
-                actionLabel: label, clock: fmtClock(nowIso), actorId: request.requestedBy });
+                actionLabel: label, clock: formatTime(nowIso), actorId: request.requestedBy });
               if (entry !== undefined) setCommandResults(previous => [entry, ...previous].slice(0, 4));
             }
           }
@@ -909,21 +915,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const openSettings = useCallback((section = "", settingsTarget?: string): void => {
-    setRoute(current => ({
-      ...current,
-      intake: undefined,
-      archive: undefined,
-      archiveView: undefined,
-      archiveDashboard: undefined,
-      archiveWorkflow: undefined,
-      activity: undefined,
-      explore: undefined,
-      catalog: undefined,
-      catalogView: undefined,
-      settings: section,
-      settingsTarget,
-    }));
+    setRoute(current => settingsRoute(current, section, settingsTarget));
   }, [setRoute]);
+  const openDataPage = useCallback((page: DataPage): void => {
+    leaveSettings(() => setRoute(current => withDataPage(current, page)));
+  }, [setRoute, leaveSettings]);
   const shownPreflight = useRef(new Set<string>());
   useEffect(() => {
     let active = true;
@@ -947,10 +943,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       >{body}</FocusQueueHeader>
   ), [filter, scopedStatusCounts, onFilter]);
 
-  const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
+  const settingsOpen = takeover === "settings" || takeover === "archive";
   const settingsResolution = resolveSettingsSection(buildSettingsNav(), route.settings ?? "");
   const pageName = takeover === "settings" ? settingsResolution.state === "open" ? settingsResolution.entry.label : "Settings"
-    : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer"
+    : takeover === "archive" ? "Archive" : takeover === "activity" ? "Analytics" : takeover === "explore" ? "Explorer" : takeover === "spreadsheets" ? "Spreadsheets"
     : takeover === "intake" ? "Edit Data" : route.start ? route.view?.launchSource || route.view?.launchRerun ? "Rerun" : "Run"
     : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
   useEffect(() => { document.title = `${pageName} — Relay`; }, [pageName]);
@@ -1027,7 +1023,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       return;
     }
     if (destination.kind === "settings") {
-      leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section, settingsTarget: destination.target }); opened(); });
+      leaveSettings(() => { setRoute(settingsRoute(routeRef.current, destination.section, destination.target)); opened(); });
       return;
     }
     if (destination.kind === "none") return;
@@ -1071,9 +1067,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     openNotification(destination, opened, refused);
   }, [openNotification]);
 
-  const onSearchAction = useCallback((action: "start" | "spreadsheets" | "settings") => {
-    if (action === "start") openStart(); else openSettings(action === "spreadsheets" ? "spreadsheets" : "");
-  }, [openStart, openSettings]);
+  const onSearchAction = useCallback((action: PaletteAction) => {
+    if (action === "start") openStart();
+    else if (action === "settings") openSettings();
+    else openDataPage(action === "analytics" ? "activity" : action);
+  }, [openStart, openSettings, openDataPage]);
   const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
     if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
     openNotification(result.destination, opened, refused);
@@ -1087,13 +1085,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   return (
     <DashboardCommandBindingProvider binding={commandBinding}>
     <PreflightActionsProvider actions={{ actorId: authority.epoch.bootstrap.actor.id, descriptorFingerprint: authority.epoch.bootstrap.descriptorHash,
-      showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
+      showSettings: section => leaveSettings(() => setRoute(settingsRoute(route, section ?? ""))),
       showSessions: () => setSessionsOpen(true),
     }}>
     <div
       data-mock-ready={ready ? "true" : "loading"}
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
-      data-settings-takeover={["settings", "archive", "activity", "explore"].includes(takeover)}
+      data-settings-takeover={settingsOpen}
     >
       <a href={takeover === "settings" ? "#dashboard-settings-content" : `#${DASHBOARD_MAIN_REGION_ID}`} onClick={event => {
         event.preventDefault();
@@ -1109,7 +1107,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to run logs</a> : null}
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} countsLoading={dayWire === undefined && dayResource.state === "loading"} active={activeWorkflowId} 
-        onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
+        onSelect={onRailSelect} dataPage={dataPageOf(route)} onDataPage={openDataPage} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1189,6 +1187,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 panelLabel={workflowLabelOf(activeWorkflowId)}
                 day={day}
                 isToday={day === today}
+                onStartRun={openStart}
                 sort={sort}
                 renderBody={renderQueueBody}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}

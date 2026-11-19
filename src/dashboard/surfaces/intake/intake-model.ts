@@ -7,7 +7,8 @@ import type { RowRejectSchema } from "../../../models/intake/manifest.js";
 import type { IntakeRowCorrectionSchema } from "../../../models/intake/session.js";
 import type { SuggestionSchema } from "../../../models/intake/suggestions.js";
 import type { IntakeManifestWire, IntakeSessionWire } from "../../../models/intake/wire.js";
-import { fmtClock, shortHash } from "../shared/status/format.js";
+import { shortHash } from "../shared/status/format.js";
+import { formatTime } from "../../lib/date-format.js";
 
 type ServedHeaderCandidate = z.infer<typeof ServedHeaderCandidateSchema>;
 type IntakeRowCorrection = z.infer<typeof IntakeRowCorrectionSchema>;
@@ -361,7 +362,7 @@ export function manifestStage(session: IntakeSessionWire): ManifestStage {
       { key: "intake projection", value: manifest.intakeProjectionFingerprint },
       { key: "workflow contract", value: manifest.workflowContractFingerprint },
       { key: "canonical input schema", value: manifest.canonicalInputSchemaHash },
-      { key: "created", value: fmtClock(manifest.createdAt) },
+      { key: "created", value: formatTime(manifest.createdAt) },
       { key: "totals", value: manifestTotalsText(manifest.totals) },
     ],
     rows: manifest.sourceRowDispositions.map((disposition) => {

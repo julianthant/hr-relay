@@ -3,6 +3,7 @@ import type {
 ServerClockWireSchema
 } from "../../../models/dashboard/bootstrap.js";
 import type { DayCountWireSchema } from "../../../models/dashboard/projection.js";
+import { formatLocalDay, formatMonthYear } from "../../lib/date-format.js";
 
 
 
@@ -18,18 +19,7 @@ export type ServerClockWire = z.infer<typeof ServerClockWireSchema>;
 /** "Today", as the SERVER understands it.
  * The demo read a `DEMO_DAY` constant. Here the live day is a served fact */
 export function serverLocalDay(clock: { readonly now: string; readonly zone: string }): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: clock.zone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(clock.now));
-  const value = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
-  const [year, month, day] = [value("year"), value("month"), value("day")];
-  if (year === "" || month === "" || day === "") {
-    throw new Error(`serverLocalDay: could not resolve a local day from ${clock.now} in ${clock.zone}`);
-  }
-  return `${year}-${month}-${day}`;
+  return formatLocalDay(clock.now, clock.zone);
 }
 
 
@@ -53,11 +43,7 @@ export function monthOfDay(day: string): string {
 
 /** `2026-08` → `August 2026` */
 export function monthLabel(month: string): string {
-  return new Date(`${month}-01T00:00:00.000Z`).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  return formatMonthYear(month);
 }
 
 

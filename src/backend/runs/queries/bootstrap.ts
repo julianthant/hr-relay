@@ -126,6 +126,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       id: descriptor.id,
       code: descriptor.code,
       label: descriptor.label,
+      icon: descriptor.icon,
       categoryId: descriptor.category,
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },

@@ -138,3 +138,14 @@ it('a bad range keeps the period control and never echoes the raw value', async 
   assert.match(document.body.textContent, /That date range is not valid/);
   assert(['7d', '30d', '90d'].every(value => document.querySelector(`fieldset input[type="radio"][value="${value}"]`)));
 });
+
+it('shows a dash for the time of a workflow with no run in the period, and ranks the rest', async () => {
+  if (data.state !== 'loaded') throw new Error('sample not loaded');
+  const [first, second] = data.report.analytics.workflows; assert(first && second);
+  const empty = { ...first, id: 'empty', label: 'Empty workflow', done: 0, failed: 0, attention: 0, typicalSeconds: 407 };
+  await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, workflows: [empty, { ...second, typicalSeconds: 90 }] } } });
+  const row = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr')].find(item => item.textContent?.includes('Empty workflow')); assert(row);
+  assert.equal(row.lastElementChild?.textContent, '—');
+  const ranked = [...document.querySelectorAll('ol[aria-label="Typical time per workflow"] li')];
+  assert.equal(ranked.length, 2); assert.match(ranked[0]?.textContent ?? '', new RegExp(second.label)); assert.match(ranked[1]?.textContent ?? '', /Empty workflow.*—/);
+});

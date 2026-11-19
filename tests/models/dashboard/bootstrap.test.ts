@@ -14,6 +14,13 @@ const { WORKFLOW_PRIMITIVE, BOOTSTRAP } = createDashboardModelFixtures();
 
 describe("dashboard wire primitives", () => {
 
+  it("requires a workflow icon from the declared vocabulary", () => {
+    const { icon, ...withoutIcon } = WORKFLOW_PRIMITIVE;
+    assert.equal(WorkflowBootstrapPrimitiveSchema.parse(WORKFLOW_PRIMITIVE).icon, icon);
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse(withoutIcon).success, false);
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse({ ...withoutIcon, icon: "unknown-icon" }).success, false);
+  });
+
   it("serves explicit source selection readiness without type defaults", () => {
     const needed = { scope: "workbook-sources", state: "selection-needed",
       fixAction: { kind: "choose-workbook-sources", workflowId: WORKFLOW_PRIMITIVE.id } };

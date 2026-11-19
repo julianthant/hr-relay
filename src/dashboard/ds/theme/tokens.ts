@@ -22,8 +22,10 @@ export const dsText = {
   display: "ds-text-display",
   /** 27px — page title within a scoped product body */
   pageTitle: "ds-text-page-title",
-  /** 10px uppercase 600 — group headers, column heads. Never for sentences. */
-  caps: "ds-text-caps",
+  /** 11px 500 muted sentence case — group headers, column heads. */
+  groupLabel: "ds-text-group-label",
+  /** Alias of groupLabel until the last user moves. */
+  caps: "ds-text-group-label",
   /** tabular monospace */
   nums: "ds-nums",
   /** Collapse the line box to the em. Compose AFTER a size class on a

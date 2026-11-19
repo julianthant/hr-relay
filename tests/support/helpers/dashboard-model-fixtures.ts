@@ -158,6 +158,7 @@ export function createDashboardModelFixtures() {
     id: "onboarding",
     code: "on",
     label: "Onboarding",
+    icon: "UserPlus",
     categoryId: "onboarding",
     descriptorFingerprint: HASH_A,
     availability: { state: "available" },

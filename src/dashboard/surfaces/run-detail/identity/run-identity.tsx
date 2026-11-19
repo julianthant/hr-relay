@@ -1,4 +1,4 @@
-import { FlaskConical, Info, TriangleAlert } from "lucide-react";
+import { Info, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
 import { cn } from "../../../lib/utils.js";
@@ -28,6 +28,7 @@ import {
   type QueueSurfaceWireSchema,
 } from "../../../../models/dashboard/projection.js";
 import { renameDraftProblem } from "./rename-draft.js";
+import { DryRunMark } from "../run-state-chips.js";
 import type { ActionTarget } from "../../shared/actions/actions.js";
 import { runTiming } from "../../shared/status/format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "../../shared/status/test-instance-hazard.js";
@@ -83,18 +84,7 @@ export function RunProvenanceBar({
 
       {/* Hazards, never disclosed. */}
       {/* Rehearsal meaning keeps the same distinct hue in the identity bar and queue. */}
-      {surface.dryRun && (
-        <span
-          title="A rehearsal that performs no durable writes."
-          className={cn(
-            dsText.meta,
-            "inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-rehearsal-fg)]",
-          )}
-        >
-          <FlaskConical aria-hidden className={dsIcon.sm} />
-          dry run
-        </span>
-      )}
+      {surface.dryRun && <DryRunMark />}
       {testSystems.length > 0 && (
         <span
           title={testInstanceHazardTitle(testSystems)}
