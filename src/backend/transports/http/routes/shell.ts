@@ -5,6 +5,7 @@ import { CalendarQuerySchema } from "../../../../models/dashboard/calendar.js";
 import { z } from "zod";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../../rules/identity/ids.js";
 import { buildBootstrap } from "../../../runs/queries/bootstrap.js";
+import { emitOptionalDiagnostic } from "../../../logs/debug-events.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
 import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
@@ -71,7 +72,9 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
 
   app.get("/events/v1", async (c) => {
     const connectionId = randomUUID();
-    const lifecycle = (phase: "started" | "settled" | "failed" | "reset", durationMs: number) => deps.debugEvents?.emit({ category: "sse", phase, correlationId: connectionId, durationMs }, { kind: "transport", connectionId });
+    const lifecycle = (phase: "started" | "settled" | "failed" | "reset", durationMs: number) =>
+      emitOptionalDiagnostic(() => deps.debugEvents?.emit({ category: "sse", phase, correlationId: connectionId, durationMs },
+        { kind: "transport", connectionId }));
     const topics = z.string().max(150).refine(value => TOPICS_PATTERN.test(value), "events-topics-invalid").parse(c.req.query("topics"));
     const match = TOPICS_PATTERN.exec(topics);
     if (match === null) throw new Error("events-topics-invalid");

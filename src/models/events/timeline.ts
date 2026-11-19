@@ -241,6 +241,13 @@ export const TimelinePageRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema.optional(),
 });
 
+export class TimelineDiagnosticBudgetError extends Error {
+  constructor() {
+    super("timeline-diagnostic-cap-exceeded");
+    this.name = "TimelineDiagnosticBudgetError";
+  }
+}
+
 export interface TimelineRepository {
   withReadSnapshot<T>(read: () => T): T;
   append(input: unknown): Readonly<{ state: "inserted" | "existing"; record: TimelineEventRecord }>;

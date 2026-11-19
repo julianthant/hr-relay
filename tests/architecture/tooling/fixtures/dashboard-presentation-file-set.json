@@ -4,7 +4,6 @@
   "src/dashboard/ds/primitives/base-toast.tsx",
   "src/dashboard/ds/primitives/base-toggle-group.tsx",
   "src/dashboard/ds/primitives/breadcrumb.tsx",
-  "src/dashboard/ds/primitives/command.tsx",
   "src/dashboard/ds/primitives/dropdown-menu.tsx",
   "src/dashboard/ds/primitives/failure-notice.tsx",
   "src/dashboard/ds/primitives/input-group.tsx",

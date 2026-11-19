@@ -239,6 +239,64 @@ it("plans one Emergency Contact run per uploaded PDF", async () => {
   expect(dialog.text()).toContain("Do not file");
 });
 
+async function contactDialog(plans: unknown[], options: { withoutOcrFields?: boolean } = {}) {
+  const contact = compileWorkflow(emergencyContactWorkflow).descriptor;
+  const uploadRun = contact.surfaces.uploadRun; assert.ok(uploadRun);
+  const served = client({
+    uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+      artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
+    submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000002");
+      return { ...plan, workflowId: contact.id, planned: plan.planned.map(entry => ({ ...entry, workbookReferences: [{ libraryId: reference.libraryId, version: reference.version, versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) }; } }, [...contact.requiredWorkbookFields], contact);
+  const flow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: contact.id, label: contact.label, version: contact.version, steps: projectStartSteps(contact),
+    inputRun: { state: "absent", reason: "PDF input" },
+    uploadRun: options.withoutOcrFields ? { ...uploadRun, fields: uploadRun.fields.filter(field => field.kind !== "boolean") } : uploadRun,
+    requiredWorkbookFields: contact.requiredWorkbookFields, workbookReference: contact.workbookReference, referenceSources: [] };
+  const dialog = await h.openDialog(served, { workflows: [flow], panelWorkflowId: flow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first")]);
+  await h.chooseReference("Action History.xlsx", "Fall review", "Action History");
+  await dialog.press("Continue");
+  const skip = document.querySelector<HTMLInputElement>('input[type="radio"][name^="File to OnBase-"][value="skip"]'); assert.ok(skip);
+  await act(async () => skip.click());
+  return dialog;
+}
+const ocrSwitch = () => [...document.querySelectorAll<HTMLElement>('[role="switch"]')].find(node => node.closest("label")?.textContent?.includes("Extract with OCR"));
+
+it("offers Extract with OCR on by default as a switch row, and the footer says OCR on", async () => {
+  const dialog = await contactDialog([]);
+  const control = ocrSwitch(); assert.ok(control);
+  expect((control as HTMLInputElement).checked).toBe(true);
+  const row = control.closest(".ds-run-row")?.textContent ?? "";
+  expect(row).toContain("Extract with OCR");
+  expect(row).toContain("Turn off to enter records manually in OCR review.");
+  expect(dialog.text()).toContain("· OCR on");
+});
+
+it("turning the switch off changes the footer and the start request carries extractWithOcr false", async () => {
+  const plans: unknown[] = [];
+  const dialog = await contactDialog(plans);
+  const control = ocrSwitch(); assert.ok(control);
+  await act(async () => control.click()); await h.settle();
+  expect((ocrSwitch() as HTMLInputElement).checked).toBe(false);
+  expect(dialog.text()).toContain("· OCR off");
+  expect(dialog.text()).not.toContain("· OCR on");
+  await dialog.press("Continue");
+  await dialog.press("Start run");
+  expect(EmergencyContactInputSchema.parse(StartPlanRequestSchema.parse(plans[0]).submissions[0]).extractWithOcr).toBe(false);
+});
+
+it("sends extractWithOcr true when the switch is left on", async () => {
+  const plans: unknown[] = [];
+  const dialog = await contactDialog(plans);
+  await dialog.press("Continue");
+  await dialog.press("Start run");
+  expect(EmergencyContactInputSchema.parse(StartPlanRequestSchema.parse(plans[0]).submissions[0]).extractWithOcr).toBe(true);
+});
+
+it("shows no OCR switch for a PDF workflow that does not declare the field", async () => {
+  await contactDialog([], { withoutOcrFields: true });
+  expect(ocrSwitch()).toBeUndefined();
+});
+
 it("shows a plain upload failure in the notice slot with one Retry that sends the same file again", async () => {
   let calls = 0;
   const dialog = await h.openDialog(client({ uploadOcrSource: async request => {

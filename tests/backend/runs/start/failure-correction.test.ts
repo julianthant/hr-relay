@@ -78,7 +78,7 @@ it("serves only the declared durable failure and carries its provenance through 
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const served = failureRecovery(deps, run, failure);
@@ -110,7 +110,7 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run, listByItem: () => [] },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
@@ -170,7 +170,7 @@ it.each(["subject-not-resolvable", "subject-ambiguous"] as const)("serves %s as 
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
@@ -191,7 +191,7 @@ it("prefills an entered Employee ID UCPath does not know, and serves it nowhere 
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,

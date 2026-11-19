@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { z } from "zod";
-import { privateFileNumber, readPrivateFile, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { digestPrivateAuthorityFile, privateFileNumber, readPrivateFile, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -57,9 +57,20 @@ export function existingDataFileLabel(inventoryPath: string): "lock" | "authorit
 }
 
 export function profileAuthorityFileWitnesses(root: string) {
+  return authorityFileWitnesses(root, path => {
+    const source = readPrivateFile(path, { label: "authority database", maxBytes });
+    return source === undefined ? undefined : { identity: source.identity, digest: hash(source.bytes) };
+  });
+}
+
+export function stoppedLogoutAuthorityFileWitnesses(root: string) {
+  return authorityFileWitnesses(root, digestPrivateAuthorityFile);
+}
+
+function authorityFileWitnesses(root: string, read: (path: string) => { identity: DirectoryIdentity; digest: string } | undefined) {
   return (["", "-wal", "-shm", "-journal"] as const).map(suffix => {
-    const source = readPrivateFile(join(root, `state.db${suffix}`), { label: "authority database", maxBytes });
-    return { suffix, ...(source === undefined ? {} : { file: { ...fileIdentityObservation(source.identity, { preserveSafeNumbers: true }), digest: hash(source.bytes) } }) };
+    const source = read(join(root, `state.db${suffix}`));
+    return { suffix, ...(source === undefined ? {} : { file: { ...fileIdentityObservation(source.identity, { preserveSafeNumbers: true }), digest: source.digest } }) };
   });
 }
 

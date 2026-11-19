@@ -2,7 +2,7 @@ import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { SpanEventWireSchema } from "../../../models/events/types.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { TimelineAppendSchema, TimelineEventRecordSchema, TimelinePageRequestSchema,
+import { TimelineAppendSchema, TimelineDiagnosticBudgetError, TimelineEventRecordSchema, TimelinePageRequestSchema,
   timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 
 interface TimelineRepositoryPorts {
@@ -22,13 +22,14 @@ const RowSchema = z.strictObject({
 });
 const EventIdSchema = z.uuid();
 const DataVersionSchema = z.object({ data_version: z.number().int() });
-const OrdinaryBytesRowSchema = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional();
-const OrdinaryBytesSchema = z.number().int().nonnegative();
-const OrdinaryBytesSumSchema = z.object({ bytes: OrdinaryBytesSchema });
+const DiagnosticBytesRowSchema = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional();
+const DiagnosticBytesSchema = z.number().int().nonnegative();
+const DiagnosticBytesSumSchema = z.object({ bytes: DiagnosticBytesSchema });
 const HighWaterMarkSchema = z.strictObject({ cursor: z.number().int().nonnegative() });
 
 /** Safe diagnostics contain schema-owned field names, never observed keys or values. */
 export class TimelineRecordError extends Error {}
+
 const SPAN_FIELDS = new Set(SpanEventWireSchema.options.flatMap((schema) => Object.keys(schema.shape)));
 
 function invalidTimelineRecord(value: unknown): TimelineRecordError {
@@ -82,25 +83,26 @@ function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
   return "ordinary";
 }
 
-function ordinaryTimelineBytes(database: DatabaseSync, prepare: (sql: string) => StatementSync): number {
-  database.exec(`CREATE TEMP TABLE IF NOT EXISTS timeline_ordinary_bytes(
+function diagnosticTimelineBytes(database: DatabaseSync, prepare: (sql: string) => StatementSync): number {
+  database.exec(`CREATE TEMP TABLE IF NOT EXISTS timeline_diagnostic_bytes(
     id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL, data_version INTEGER NOT NULL);
-    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_insert AFTER INSERT ON main.timeline_events
-      WHEN NEW.retention_class='ordinary' BEGIN
-        UPDATE timeline_ordinary_bytes SET bytes=bytes+length(CAST(NEW.payload_json AS BLOB)) WHERE id=1; END;
-    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_delete AFTER DELETE ON main.timeline_events
-      WHEN OLD.retention_class='ordinary' BEGIN
-        UPDATE timeline_ordinary_bytes SET bytes=bytes-length(CAST(OLD.payload_json AS BLOB)) WHERE id=1; END;
-    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_update AFTER UPDATE ON main.timeline_events BEGIN
-      UPDATE timeline_ordinary_bytes SET bytes=bytes
-        -CASE WHEN OLD.retention_class='ordinary' THEN length(CAST(OLD.payload_json AS BLOB)) ELSE 0 END
-        +CASE WHEN NEW.retention_class='ordinary' THEN length(CAST(NEW.payload_json AS BLOB)) ELSE 0 END WHERE id=1; END;`);
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_diagnostic_bytes_insert AFTER INSERT ON main.timeline_events
+      WHEN NEW.kind='debug' AND NEW.retention_class='ordinary' BEGIN
+        UPDATE timeline_diagnostic_bytes SET bytes=bytes+length(CAST(NEW.payload_json AS BLOB)) WHERE id=1; END;
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_diagnostic_bytes_delete AFTER DELETE ON main.timeline_events
+      WHEN OLD.kind='debug' AND OLD.retention_class='ordinary' BEGIN
+        UPDATE timeline_diagnostic_bytes SET bytes=bytes-length(CAST(OLD.payload_json AS BLOB)) WHERE id=1; END;
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_diagnostic_bytes_update AFTER UPDATE ON main.timeline_events
+      WHEN (OLD.kind='debug' AND OLD.retention_class='ordinary') OR (NEW.kind='debug' AND NEW.retention_class='ordinary') BEGIN
+      UPDATE timeline_diagnostic_bytes SET bytes=bytes
+        -CASE WHEN OLD.kind='debug' AND OLD.retention_class='ordinary' THEN length(CAST(OLD.payload_json AS BLOB)) ELSE 0 END
+        +CASE WHEN NEW.kind='debug' AND NEW.retention_class='ordinary' THEN length(CAST(NEW.payload_json AS BLOB)) ELSE 0 END WHERE id=1; END;`);
   const version = DataVersionSchema.parse(prepare("PRAGMA data_version").get()).data_version;
-  const row = OrdinaryBytesRowSchema.parse(prepare("SELECT bytes,data_version FROM timeline_ordinary_bytes WHERE id=1").get());
-  if (row !== undefined && row.data_version === version) return OrdinaryBytesSchema.parse(row.bytes);
-  const bytes = OrdinaryBytesSumSchema.parse(prepare(
-    "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class = 'ordinary'").get()).bytes;
-  prepare("INSERT INTO timeline_ordinary_bytes(id,bytes,data_version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes,data_version=excluded.data_version").run(bytes,version);
+  const row = DiagnosticBytesRowSchema.parse(prepare("SELECT bytes,data_version FROM timeline_diagnostic_bytes WHERE id=1").get());
+  if (row !== undefined && row.data_version === version) return DiagnosticBytesSchema.parse(row.bytes);
+  const bytes = DiagnosticBytesSumSchema.parse(prepare(
+    "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE kind='debug' AND retention_class='ordinary'").get()).bytes;
+  prepare("INSERT INTO timeline_diagnostic_bytes(id,bytes,data_version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes,data_version=excluded.data_version").run(bytes,version);
   return bytes;
 }
 
@@ -127,7 +129,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const record = parsed.data;
       const content = canonicalJsonStringify(record);
       if (Buffer.byteLength(content, "utf8") > 256 * 1024) throw new Error("timeline-event-size-exceeded");
-      return ports.mutate<ReturnType<TimelineRepository["append"]>>(() => {
+      const result = ports.mutate<ReturnType<TimelineRepository["append"]> | "budget-full">(() => {
         const existing = get(record.eventId);
         if (existing !== undefined) {
           if (timelineAppendContent(existing) !== content) throw new Error("timeline-event-identity-conflict");
@@ -135,9 +137,13 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           return { result: { state: "existing" as const, record: existing }, changes: 0 };
         }
         ports.assertOwner(record, true);
-        if (timelineRetentionClass(record) === "ordinary") {
-          const bytes = ordinaryTimelineBytes(database, prepare);
-          if (bytes + Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: Number((prepare("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) + 1 AS cursor").get() as { cursor: number }).cursor) }), "utf8") > 250 * 1024 * 1024) throw new Error("timeline-ordinary-cap-exceeded");
+        if (record.payload.kind === "debug" && !record.payload.event.pinned) {
+          const bytes = diagnosticTimelineBytes(database, prepare);
+          const next = HighWaterMarkSchema.parse(prepare(
+            "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0)+1 AS cursor",
+          ).get());
+          const recordBytes = Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: next.cursor }), "utf8");
+          if (bytes + recordBytes > 250 * 1024 * 1024) return { result: "budget-full", changes: 0 };
         }
         // SQLite assigns both the cursor and its authenticated JSON mirror from
         // its AUTOINCREMENT sequence under the same owning write transaction.
@@ -155,6 +161,9 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           record.payload.kind === "operation-confirmed" ? record.payload.facts.system : null,content);
         return { result: { state: "inserted" as const, record: timelineEventFromRow(raw) }, changes: 1 };
       });
+      // Keep the transaction's refreshed byte count when the event itself cannot fit.
+      if (result === "budget-full") throw new TimelineDiagnosticBudgetError();
+      return result;
     },
     page(input: z.input<typeof TimelinePageRequestSchema>) {
       const request = TimelinePageRequestSchema.parse(input);
@@ -198,56 +207,49 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
     pruneBefore(retentionDate: string) {
       const cutoff = z.iso.date().parse(retentionDate);
       return ports.mutate(() => {
+        // Pair adjacent span boundaries at their native identity before deleting either side.
         const result = prepare(
-          `DELETE FROM timeline_events WHERE retention_class = 'ordinary'
+          `WITH span_peers AS MATERIALIZED (
+            SELECT cursor, CASE WHEN kind = 'span.ended'
+              THEN lag(kind = 'span.ended' OR expires, 1, 1) OVER span
+              ELSE lead(kind = 'span.ended' AND expires, 1, 0) OVER span
+              END AS peer_expires
+            FROM (
+              SELECT cursor, kind, run_id, worker_id, workflow, payload_json,
+                retention_class = 'ordinary' AND retention_date < ?1 AS expires
+              FROM timeline_events WHERE kind IN ('span.started', 'span.ended', 'run.claimed')
+            )
+            WINDOW span AS (PARTITION BY run_id, worker_id, workflow,
+              CASE WHEN kind = 'run.claimed' THEN 'run' ELSE json_extract(payload_json,'$.payload.event.kind') END,
+              json_extract(payload_json,'$.payload.event.pid'),
+              json_extract(payload_json,'$.payload.event.attempt'),
+              json_extract(payload_json,'$.payload.event.traceId'),
+              json_extract(payload_json,'$.payload.event.spanPath'),
+              json_extract(payload_json,'$.payload.event.workerId'),
+              json_extract(payload_json,'$.payload.event.claimGeneration')
+              ORDER BY cursor)
+          ), sse_expiry AS MATERIALIZED (
+            SELECT cursor, min(retention_class = 'ordinary') OVER stream
+              AND max(retention_date) OVER stream < CASE WHEN
+                max(json_extract(payload_json,'$.payload.event.phase') = 'settled') OVER stream
+                THEN date(?1,'+23 days') ELSE ?1 END AS expires
+            FROM timeline_events WHERE kind = 'debug'
+              AND json_extract(payload_json,'$.payload.event.category') = 'sse'
+              AND json_extract(payload_json,'$.payload.event.phase') IN ('started', 'settled')
+            WINDOW stream AS (PARTITION BY json_extract(payload_json,'$.scope'),
+              json_extract(payload_json,'$.payload.event.correlationId'))
+          )
+          DELETE FROM timeline_events WHERE retention_class = 'ordinary'
             AND kind <> 'gate.resolved'
-            AND retention_date < CASE WHEN json_extract(payload_json,'$.payload.event.category')='sse'
-              AND json_extract(payload_json,'$.payload.event.phase')='settled' THEN date(?,'+23 days') ELSE ? END
+            AND COALESCE((SELECT expires FROM sse_expiry WHERE cursor = timeline_events.cursor), retention_date < ?1)
             AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=timeline_events.run_id AND r.state<>'terminal')
-            AND NOT (kind='span.started' AND (
-              NOT EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended' AND ended.cursor>timeline_events.cursor
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.kind') IS json_extract(timeline_events.payload_json,'$.payload.event.kind')
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath'))
-              OR EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended' AND ended.retention_class='protected' AND ended.cursor>timeline_events.cursor
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.kind') IS json_extract(timeline_events.payload_json,'$.payload.event.kind')
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath'))))
-            AND NOT (kind='run.claimed' AND (
-              NOT EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended'
-                AND json_extract(ended.payload_json,'$.payload.event.kind')='run' AND ended.cursor>timeline_events.cursor
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath')
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.workerId') IS json_extract(timeline_events.payload_json,'$.payload.event.workerId')
-                AND json_extract(ended.payload_json,'$.payload.event.claimGeneration') IS json_extract(timeline_events.payload_json,'$.payload.event.claimGeneration'))
-              OR EXISTS (SELECT 1 FROM timeline_events ended WHERE ended.kind='span.ended' AND ended.retention_class='protected' AND ended.cursor>timeline_events.cursor
-                AND json_extract(ended.payload_json,'$.payload.event.kind')='run' AND ended.cursor>timeline_events.cursor
-                AND json_extract(ended.payload_json,'$.payload.event.spanPath') IS json_extract(timeline_events.payload_json,'$.payload.event.spanPath')
-                AND ended.run_id IS timeline_events.run_id AND ended.worker_id IS timeline_events.worker_id
-                AND ended.workflow IS timeline_events.workflow
-                AND json_extract(ended.payload_json,'$.payload.event.pid') IS json_extract(timeline_events.payload_json,'$.payload.event.pid')
-                AND json_extract(ended.payload_json,'$.payload.event.attempt') IS json_extract(timeline_events.payload_json,'$.payload.event.attempt')
-                AND json_extract(ended.payload_json,'$.payload.event.traceId') IS json_extract(timeline_events.payload_json,'$.payload.event.traceId')
-                AND json_extract(ended.payload_json,'$.payload.event.workerId') IS json_extract(timeline_events.payload_json,'$.payload.event.workerId')
-                AND json_extract(ended.payload_json,'$.payload.event.claimGeneration') IS json_extract(timeline_events.payload_json,'$.payload.event.claimGeneration'))))
+            AND cursor NOT IN (SELECT cursor FROM span_peers WHERE NOT peer_expires)
             AND NOT EXISTS (SELECT 1 FROM run_search AS search_row JOIN runs AS run_owner ON run_owner.id=search_row.run_id,
               json_each(search_row.actor_source_json) actor_source
               WHERE search_row.run_id=timeline_events.run_id
                 AND json_extract(actor_source.value,'$.kind')='queued'
                 AND json_extract(actor_source.value,'$.event.eventId')=timeline_events.id)`,
-        ).run(cutoff, cutoff);
+        ).run(cutoff);
         const changes = z.number().int().nonnegative().parse(Number(result.changes));
         return { result: changes, changes };
       });

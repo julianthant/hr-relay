@@ -6,11 +6,12 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { test } from "./helpers/fixtures.js";
 import { GENERAL_STATES, GENERAL_VARIANTS } from "./helpers/settings-general-chatgpt-scenes.js";
+import { mockOutDir } from "./helpers/out-dir.js";
 
 // Settings > General top variants (ChatGPT card, then Permissions) in the parity mock harness; frames are evidence, never test references.
 const repoRoot = resolve(import.meta.dirname, "../..");
-const fixtureRoot = join(repoRoot, "tests/mocks/.output/settings-general-chatgpt-fixture");
-const OUT = process.env.SETTINGS_GENERAL_CHATGPT_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/evidence/ui-state-fixes/settings-general-chatgpt/mock";
+const fixtureRoot = join(repoRoot, `tests/mocks/.output/settings-general-chatgpt-fixture-${process.pid}`);
+const OUT = mockOutDir(process.env.SETTINGS_GENERAL_CHATGPT_MOCK_OUT, "settings-general-chatgpt");
 const THEMES = ["light", "dark"] as const;
 const WIDTHS = [1280, 1024] as const;
 
