@@ -36,11 +36,6 @@ function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
   return <TooltipProvider delayDuration={200}><ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul></TooltipProvider>;
 }
 
-/** An idle worker with no run, no reason and nothing to sign in to is a tally row, not a card. */
-export function isQuietIdle(worker: SessionWorker): boolean {
-  return worker.state === "idle" && worker.subject === undefined && worker.problem === undefined && worker.note === undefined;
-}
-
 export function IdleWorkerRow({ worker, countdown, operation, onControl, onCheck }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void; onCheck?: (id: string) => void }) {
   const locked = operation !== undefined && ["pending", "checking", "uncertain"].includes(operation.state);
   return <li aria-label={`${worker.label} · ${worker.workflow}`} className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3">
