@@ -5,6 +5,7 @@ import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
 import { LogDisplayRefusedError, LogIdentityRefusedError } from "../commands/refusals.js";
 import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/timeline-reader.js";
 import { RedactedFieldSchema } from "../../../rules/redaction/redaction.js";
+import { maskObservedOcrSsn } from "../../../models/trust/evidence-classification.js";
 import { z } from "zod";
 import {
   DryRunPreviewWireSchema,
@@ -257,7 +258,7 @@ function logLinesForRun(
         assertScopedSpanWorkflow(event, line);
         assertRunLogIdentity("span", event, line, runId, row, authority);
         const producer = producerOf(descriptor, event, line);
-        const entry = { kind: "observed" as const, line, event, producer };
+        const entry = { kind: "observed" as const, line, event: retainedObservation(event), producer };
         if (projectObservedOperatorFields(entry.event, entry.producer.operatorFields).length > 0) matches.push(entry);
         continue;
       }
@@ -268,6 +269,13 @@ function logLinesForRun(
     return matches.sort((left, right) => left.line.lineNumber - right.line.lineNumber);
   };
   return scan();
+}
+
+/** A retained observation as served; rows written before the OCR SSN rule are masked on read too. */
+function retainedObservation(event: Extract<SpanEventWire, { t: "data.observed" }>): Extract<SpanEventWire, { t: "data.observed" }> {
+  return { ...event, points: event.points.map((point) => ({ ...point,
+    values: point.values.map((value) => maskObservedOcrSsn(RedactedFieldSchema.parse(value))),
+  })) };
 }
 
 /** Run data retains every classified observation; Logs selects declared operator fields. */
@@ -283,10 +291,7 @@ export function runDataObservationsForRun(
     if (event.t !== "data.observed") continue;
     assertScopedSpanWorkflow(event, line);
     assertRunLogIdentity("span", event, line, runId, row, authority);
-    const points = event.points.map((point) => ({ ...point,
-      values: point.values.map((value) => RedactedFieldSchema.parse(value)),
-    }));
-    observed.push({ kind: "observed", line, event: { ...event, points }, producer: producerOf(descriptor, event, line) });
+    observed.push({ kind: "observed", line, event: retainedObservation(event), producer: producerOf(descriptor, event, line) });
   }
   // The projection already holds SQLite ingestion order. Stable sort keeps that
   // order for equal observation clocks, including across different day files.

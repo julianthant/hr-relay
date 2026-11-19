@@ -68,16 +68,16 @@ async function interruptMidRun(emplIds: readonly string[]) {
   for (const owned of [port, lockPort]) assert.ok(Number.isInteger(owned) && owned > 0 && !RESERVED_PORTS.includes(owned), diagnostics());
 
   const origin = `http://127.0.0.1:${String(port)}`;
-  const post = (route: string, body: unknown, cookie?: string) => fetch(`${origin}/api/v1/${route}`, { method: "POST",
-    headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
+  const post = (route: string, body: unknown, credential?: string) => fetch(`${origin}/api/v1/${route}`, { method: "POST",
+    headers: { origin, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
   const signIn = await post("profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
   assert.equal(PublicProfileStateSchema.parse(await signIn.json()).state, "active");
-  const cookie = signIn.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
-  const plan = StartPlanWireSchema.parse(await (await post("start-plans", { workflowId: "person-lookup", submissions: emplIds.map(emplId => ({ emplId })), dryRun: false }, cookie)).json());
+  const credential = signIn.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
+  const plan = StartPlanWireSchema.parse(await (await post("start-plans", { workflowId: "person-lookup", submissions: emplIds.map(emplId => ({ emplId })), dryRun: false }, credential)).json());
   assert.deepEqual(plan.refused, []);
   const started = CommandResultSchema.parse(await (await post("commands", { commandId: randomUUID(), family: "start", type: "start-run", requestedAt: systemClock.now().toISOString(),
     requestedBy: "local-operator", source: "run-start", target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion },
-    payload: plan.fingerprints }, cookie)).json());
+    payload: plan.fingerprints }, credential)).json());
   assert.ok(started.state === "applied" && started.workerStartup === undefined, JSON.stringify(started));
 
   const entered = await until(() => markers().find(name => name.startsWith("entered-")), "the run to enter its held step", diagnostics);

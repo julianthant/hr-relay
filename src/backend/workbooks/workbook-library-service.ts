@@ -25,6 +25,7 @@ export interface WorkbookLibraryRepository {
   read(libraryId: string): SavedWorkbook | undefined;
   revision(libraryId: string, version: number): SavedWorkbook;
   list(): readonly SavedWorkbook[];
+  listWithType(): readonly Readonly<{ record: SavedWorkbook; typeId: WorkbookMetadata["typeId"] }>[];
   save(record: SavedWorkbook, expectedVersion: number): SavedWorkbook;
   history(libraryId: string): readonly SavedWorkbook[];
   creation(libraryId: string): SavedWorkbook | undefined;
@@ -253,6 +254,7 @@ function receiptOutcome(receipt: WorkbookOperationReceipt): SyncOutcome {
 export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
   resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
 }>) {
+  const encoded = new WeakMap<SavedWorkbook, ReturnType<typeof encodeSavedWorkbook>>();
   const read = (libraryId: string): SavedWorkbook => {
     const record = deps.repository.read(input(WorkbookIdSchema, libraryId));
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
@@ -379,6 +381,14 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     read,
     revision: (libraryId: string, version: number) => deps.repository.revision(input(WorkbookIdSchema, libraryId), input(WorkbookRevisionSchema, version)),
     list: () => deps.repository.list(),
+    listWithType: () => deps.repository.listWithType(),
+    listWire: () => deps.repository.list().map(record => {
+      const cached = encoded.get(record);
+      if (cached !== undefined) return cached;
+      const wire = deepFreeze(encodeSavedWorkbook(record));
+      encoded.set(record, wire);
+      return wire;
+    }),
     save(libraryId: string, expectedVersion: number, value: unknown): SavedWorkbook {
       const workbook = input(EditableWorkbookSchema, value);
       input(z.number().int().positive(), expectedVersion);

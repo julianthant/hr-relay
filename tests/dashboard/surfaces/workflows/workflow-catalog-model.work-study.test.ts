@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 import { changeTypedInput, previewRunInput, restoreTypedInput, typedInputDefaults } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { MOCK_WORKFLOW_CATALOG } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { InputRunSurfaceSchema } from "../../../../src/models/workflow/ingress.js";
 import { WORK_STUDY_INPUT_PARSER, WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 
@@ -11,9 +10,8 @@ const typed = WORK_STUDY_TYPED_INPUT;
 const REFUSAL = "Choose a valid effective date.";
 
 describe("Work Study in the dashboard", () => {
-  it("is served, and the mock catalog no longer carries it", () => {
+  it("is served", () => {
     expect(WORKFLOW_SOURCES["work-study"]).toBe("served");
-    expect(MOCK_WORKFLOW_CATALOG.workflows.map(flow => flow.id)).not.toContain("work-study");
   });
 
   it("shows the mock's step labels in Logs", () => {

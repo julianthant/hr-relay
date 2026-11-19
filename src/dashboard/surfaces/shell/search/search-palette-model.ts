@@ -14,14 +14,6 @@ export type PaletteRow =
 export type PaletteSection = Readonly<{ id: Exclude<PaletteFilter, "all">; label: string; rows: readonly PaletteRow[] }>;
 export type RunTone = "danger" | "warning" | "positive" | "info" | "neutral";
 
-/** Synthetic library list until the Spreadsheets library feeds the palette. */
-export const PALETTE_SPREADSHEETS: readonly PaletteSheet[] = [
-  { id: "roster", name: "Contact roster", detail: "v6 · Updated Nov 8" },
-  { id: "i9", name: "I-9 tracker", detail: "v3 · Updated Nov 7" },
-  { id: "hires", name: "Onboarding hires", detail: "v4 · Updated Nov 6" },
-  { id: "parking", name: "Parking permits", detail: "v2 · Updated Oct 22" },
-];
-
 const ACTIONS: readonly Extract<PaletteRow, { kind: "action" }>[] = [
   { kind: "action", id: "start", label: "Start a run" }, { kind: "action", id: "spreadsheets", label: "Spreadsheets" }, { kind: "action", id: "settings", label: "Settings" },
 ];

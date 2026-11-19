@@ -9,8 +9,9 @@ import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../
 import { readRunLogs, projectRunLogs, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
-import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
-import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { LogPreview } from "../../support/fixtures/dashboard/log-preview/log-preview.js";
+import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
+import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import { RunDetailWireSchema, NativeRunEventWireSchema, IdentityGateDetailWireSchema, NotePageSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { createIdentityCeremonyFixtures } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
@@ -755,37 +756,36 @@ describe("served Logs wiring", () => {
           ? Response.json({ state: "error", code: "LOGS_IDENTITY_REFUSED", message: "private native mismatch", retryable: false }, { status: 409 })
           : Response.json(detail()) });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
-    assert.match(document.body.textContent ?? "", /Relay could not load this run's logs\.The queue and the other runs still work\./);
+    assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
     assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
   });
   it("does not turn a failed served read into a mock or a verified empty result", async () => {
     const client = clientFor(() => { throw new Error("offline"); });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
     const text = document.body.textContent ?? "";
-    assert.ok(text.includes("Relay could not load this run's logs."));
-    assert.ok(text.includes("The queue and the other runs still work."));
+    assert.ok(text.includes("Couldn't load logs."));
     assert.doesNotMatch(text, /offline|unclassified failure/);
     assert.doesNotMatch(document.body.textContent ?? "", /No actions yet/);
     assert.doesNotMatch(document.body.textContent ?? "", /Approve match|Reading the employment record/);
   });
-  it("selects preview explicitly for the same failed client and selection without retrying the served read", async () => {
+  it("mounts the harness preview for the same failed client and selection without retrying the served read", async () => {
     let reads = 0;
     const client = clientFor(() => { reads++; throw new Error("offline"); });
     const selected = selection();
-    const panel = (source?: "mock" | "served") => createElement(TooltipProvider, null, createElement(DashboardClientProvider, { client,
-      children: createElement(LogSample, { selection: selected, source }) }));
+    const panel = (preview?: true) => createElement(TooltipProvider, null, createElement(DashboardClientProvider, { client,
+      children: createElement(preview ? LogPreview : LogSample, { selection: selected }) }));
     await mount(panel());
     assert.ok(reads > 0);
-    assert.match(document.body.textContent ?? "", /Relay could not load this run's logs\./);
+    assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
     const failedReads = reads;
-    await act(async () => root?.render(panel("mock")));
+    await act(async () => root?.render(panel(true)));
     assert.equal(reads, failedReads);
     assert.match(document.body.textContent ?? "", /Separation request verified/);
-    assert.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Relay could not load this run's logs|cross-source chronology unavailable/);
+    assert.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Couldn't load logs|cross-source chronology unavailable/);
     await act(async () => root?.render(panel()));
     assert.ok(reads > failedReads);
-    assert.match(document.body.textContent ?? "", /Relay could not load this run's logs\./);
+    assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
   });
   for (const replacement of ["day", "epoch", "day-request", "scope"] as const) it(`revokes stale reads after ${replacement} authority replacement`, async () => {

@@ -79,7 +79,7 @@ it("binds the child retry action to a failed child and its exact served revision
 it("lets a run-level decision send only the served child retry", () => {
   const childRetry = { key: "retry-child", kind: "command", command: "retry", expectedVersion: DETAIL.rowRevision,
     label: "Retry", intent: "neutral", icon: "retry", placement: ["banner"] };
-  const memberFailed = (actionKey: string) => ({ type: "member-failed", title: "This member failed",
+  const memberFailed = (actionKey: string) => ({ type: "member-failed", title: "Member failed",
     options: [{ id: "retry", label: "Retry member", hint: "Run this member again.", send: { via: "action", actionKey } }] });
   const failed = { ...DETAIL, header: { ...DETAIL.header, status: "failed", parentRunId: RUN_2 } };
   assert.equal(RunDetailWireSchema.safeParse({ ...failed, childRetry, decision: memberFailed("retry-child") }).success, true);

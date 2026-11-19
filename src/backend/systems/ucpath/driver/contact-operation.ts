@@ -1,4 +1,5 @@
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
+import type { MutationCapability } from "../../../../models/ui/driver.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { UcpathContactSaveError } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathEmergencyContactDriver } from "../../../../models/ui/ucpath-emergency-contact.js";
@@ -160,7 +161,7 @@ export async function stageContactPlanWithPort(port: UcpathContactPagePort, inpu
 
 /** Separate from preparation: Save and a new persisted read are one commit surface. */
 export interface UcpathContactSavePort {
-  save(): Promise<void>;
+  save(capability: MutationCapability): Promise<void>;
   readPersisted(subject: Pick<UcpathEmergencyContactInput, "emplId" | "expectedName">): Promise<UcpathContactSet>;
 }
 
@@ -192,7 +193,7 @@ export function createContactOperations(
         || canonicalJsonStringify(retained.plan) !== canonicalJsonStringify(input.plan)) refuse("contact-plan-refused");
       const staged = await readContactSetWithPort(retained.port, input);
       if (!preparedContactPlanMatches(retained.plan, staged)) refuse("staged-effect-mismatch");
-      await savePort.save();
+      await savePort.save(capability);
       recordBrowserAction("clicked", "ucpath.emergency-contact.save");
       const persisted = UcpathContactSetSchema.parse(await savePort.readPersisted(retained.input));
       if (!contactPlanPresent(retained.plan, persisted)

@@ -34,7 +34,7 @@ export type OnbaseSavedDocument = z.output<typeof OnbaseSavedDocumentSchema>;
 export const OnbaseImportVerdictSchema = probeVerdictSchema(OnbaseSavedDocumentSchema);
 export type OnbaseImportVerdict = z.output<typeof OnbaseImportVerdictSchema>;
 export const OnbaseImportOutputSchema = z.strictObject({ savedDocument: OnbaseSavedDocumentSchema });
-export const onbaseImportKey = (target: OnbaseTarget): string => `onbase:${target.ucpathId}|emergency-contact|${target.document.sha256}|${target.sourcePage}|${target.pageSha256}`;
+export const onbaseImportKey = (target: OnbaseTarget): string => `onbase:${target.ucpathId}|emergency-contact|${target.document.sha256}|${target.sourcePage}`;
 export const ONBASE_EXAMPLE_INPUT = OnbaseInputSchema.parse({ ucpathId: "10800000", sourcePage: 1,
   document: { id: "11111111-2222-4333-8444-555555555555", sha256: "1".repeat(64), bytes: 1000, mediaType: "application/pdf" } });
 export const ONBASE_EXAMPLE_TARGET = OnbaseTargetSchema.parse({ ...ONBASE_EXAMPLE_INPUT, pageSha256: "2".repeat(64) });

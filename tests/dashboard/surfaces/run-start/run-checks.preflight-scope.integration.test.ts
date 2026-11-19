@@ -37,7 +37,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-function checksHarness(workflowId: string, failConfig = true, beforeRerun?: () => Promise<void>) {
+function checksHarness(workflowId: string, failingCheck: "config.valid" | "secrets.ucpath-sso" | false = "config.valid", beforeRerun?: () => Promise<void>) {
   const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor;
   assert.ok(descriptor, `registered workflow ${workflowId}`);
   const clock = manualClock(new Date("2026-11-17T12:00:00Z"));
@@ -53,8 +53,9 @@ function checksHarness(workflowId: string, failConfig = true, beforeRerun?: () =
       assert.ok(spec, `registered check ${check}`);
       return { check, kind: spec.runner, async run() {
         observations.push(check);
-        return failConfig && check === "config.valid"
-          ? { check, state: "unhealthy" as const, summary: "The runtime configuration is invalid.", impact: "The run cannot start." }
+        return check === failingCheck
+          ? { check, state: "unhealthy" as const, summary: check === "config.valid"
+              ? "The runtime configuration is invalid." : "UCPath sign-in is unavailable.", impact: "The run cannot start." }
           : { check, state: "healthy" as const, summary: "Synthetic healthy observation." };
       } };
     }),
@@ -75,7 +76,7 @@ function checksHarness(workflowId: string, failConfig = true, beforeRerun?: () =
     if (path === "/api/v1/preflight/rerun") await beforeRerun?.();
     return app.request(url, { ...init, headers: { ...init?.headers, host: "127.0.0.1:3938" } });
   } });
-  return { client, observations, requests, scope };
+  return { client, clock, observations, requests, scope };
 }
 
 /** The unavailable-checks notice with its Check again action is on screen. */
@@ -84,7 +85,7 @@ const checksUnavailable = () => [...document.querySelectorAll("button")].some(bu
 function Checks({ client, workflowId }: { client: DashboardClient; workflowId: string }) {
   const checks = useRunChecks(client, workflowId, true);
   return createElement("div", null,
-    checks.state.state === "unavailable" && createElement(FailureNotice, { sentence: checks.state.message, stillWorks: "Your choices are kept.",
+    checks.state.state === "unavailable" && createElement(FailureNotice, { sentence: checks.state.message,
       action: { label: "Check again", onClick: checks.recheck } }),
     createElement(RunChecksStage, { checks: checks.state, onFix: () => undefined }),
     createElement("button", { disabled: runChecksBlocked(checks.state), "data-checks-start": true }, "Start dry run"));
@@ -124,6 +125,33 @@ it("produces Emergency Contact's exact-scope report and shows its real failed ch
   assert.deepEqual(h.observations, requiredPreflightChecks(h.scope.requestedCapabilities));
   assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
   assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
+});
+
+it("blocks Emergency Contact Start when its delegated UCPath sign-in is unavailable", async () => {
+  const h = checksHarness("emergency-contact", "secrets.ucpath-sso");
+  await mount(h.client, "emergency-contact");
+
+  const readiness = await h.client.readPreflight(PreflightSelectionSchema.parse({ workflowId: "emergency-contact" }));
+  assert.ok(readiness.state === "present");
+  assert.ok(readiness.report.requestedCapabilities.includes("system.ucpath.prod"), "Emergency Contact must check delegated UCPath");
+  assert.equal(readiness.report.results.find(result => result.check === "secrets.ucpath-sso")?.status, "fail");
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
+});
+
+it("answers the 257th workflow preflight rerun", async () => {
+  const h = checksHarness("emergency-contact", false);
+  for (let attempt = 1; attempt <= 257; attempt += 1) {
+    const commandId = `00000000-0000-4000-8000-${String(attempt).padStart(12, "0")}`;
+    const result = await h.client.rerunPreflight({
+      commandId, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+      source: "settings-surface", type: "rerun-preflight", target: {
+        expectedConfigFingerprint: h.scope.configFingerprint, expectedDescriptorFingerprint: h.scope.descriptorFingerprint,
+        selection: { workflowId: "emergency-contact" },
+      },
+    });
+    assert.equal(result.commandId, commandId);
+    h.clock.advanceMonotonic(60_000);
+  }
 });
 
 it.each(Object.entries(workflowSources).filter(([, source]) => source === "served").map(([id]) => id))(

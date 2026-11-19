@@ -21,7 +21,12 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
     if (workflowId === undefined || client === undefined) return;
     void resource.read(() => client.workflowExplorer(), "DASHBOARD_READ_FAILED").catch(() => resource.snapshot());
   }, [client, workflowId, resource]);
-  useEffect(retry, [retry, version]);
+  useEffect(() => {
+    if (workflowId === undefined || client === undefined) return;
+    const controller = new AbortController();
+    void resource.read(signal => client.workflowExplorer(signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).catch(() => resource.snapshot());
+    return () => controller.abort();
+  }, [client, workflowId, version, resource]);
   const projected = useMemo((): ExplorerWiringState => {
     const workflow = result.value?.workflows.find(candidate => candidate.id === workflowId);
     if (result.value === undefined) return { state: "loading" };

@@ -19,7 +19,6 @@ import type {
 } from "../browser-shared/login-contract.js";
 import {
   abortIfCancelled,
-  fillSsoCredentials,
   isSsoFormPresent,
   raceCancellation,
   ssoSubmitButton,
@@ -309,8 +308,6 @@ async function completeUcpathCeremony(context: SystemLoginContext, token: DuoCer
   if (gate !== "application") {
     context.assertCurrent();
     await waitForSsoForm(SYSTEM, context, token);
-    context.assertCurrent();
-    await fillSsoCredentials(SYSTEM, context, token);
     context.assertCurrent();
     await submitSsoForm(SYSTEM, context, token);
     context.assertCurrent();
