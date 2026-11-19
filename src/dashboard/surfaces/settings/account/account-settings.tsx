@@ -144,7 +144,7 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
     return undefined;
   };
   return <>
-    <PencilRow label="Username" description={username === undefined ? "Relay uses your UCPath username." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
+    <PencilRow label="Username" description={username === undefined ? "Set under UCPath sign-in; workflows need it." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
       dialog={close => <UsernameDialog close={close} onSave={(current, next) => apply("username", current, next)} />} />
     <PencilRow label="Password" shown="••••••••" pencilLabel="Change Relay password" title="Change password"
       dialog={close => <PasswordDialog close={close} onSave={(current, next) => apply("password", current, next)} />} />
