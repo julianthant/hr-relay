@@ -8,7 +8,7 @@ import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
 const WorkflowNavigationRow = memo(function WorkflowNavigationRow({ node, selected, onSelect, metadata, unavailable, description }: {
   node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; unavailable?: string; description?: string;
 }) {
-  const Icon = workflowIcon(node.entry.id);
+  const Icon = workflowIcon(node.entry.icon);
   return <button type="button" aria-current={selected ? "page" : undefined} aria-label={node.entry.label} className={`${dsFocus} disabled:cursor-not-allowed disabled:text-ui-muted`} disabled={unavailable !== undefined} title={unavailable} aria-description={unavailable ?? description} onClick={() => onSelect(node.entry.id)}>
     <Icon aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{node.entry.label}</span>{node.harness && <WorkflowHarnessTag harness={node.harness} />}{metadata}
   </button>;
@@ -17,7 +17,7 @@ const WorkflowNavigationRow = memo(function WorkflowNavigationRow({ node, select
 const WorkflowTile = memo(function WorkflowTile({ node, selected, onSelect, metadata, description }: {
   node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; description?: string;
 }) {
-  const Icon = workflowIcon(node.entry.id);
+  const Icon = workflowIcon(node.entry.icon);
   return <Tooltip side="right" content={description ? `${node.entry.label} · ${description}` : node.entry.label}>
     <button type="button" aria-current={selected ? "page" : undefined} aria-label={node.entry.label} className={dsFocus} aria-description={description} onClick={() => onSelect(node.entry.id)}>
       <Icon aria-hidden className="size-4 shrink-0" />{metadata}

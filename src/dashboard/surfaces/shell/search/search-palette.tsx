@@ -6,7 +6,7 @@ import { Kbd, Skeleton } from "../../../ds/ui.js";
 import { workflowIcon } from "../../workflows/workflow-icons.js";
 import { dsLayer } from "../../../ds/theme/tokens.js";
 import { cn } from "../../../lib/utils.js";
-import { PALETTE_FILTERS, paletteRowValue, paletteSections, type PaletteAction, type PaletteFilter, type PaletteRow, type PaletteSheet } from "./search-palette-model.js";
+import { PALETTE_FILTERS, paletteRowValue, paletteSections, type PaletteAction, type PaletteFilter, type PaletteRow, type PaletteSheet, type PaletteWorkflow } from "./search-palette-model.js";
 import type { NavbarSearchResult } from "./navbar-view-model.js";
 import "./search-palette.css";
 
@@ -17,14 +17,14 @@ const ACTION_ICON: Record<PaletteAction, LucideIcon> = { start: Play, spreadshee
 function RowIcon({ row }: { row: PaletteRow }) {
   if (row.kind === "run") { const Icon = TONE_ICON[row.tone]; return <Icon aria-hidden className={cn(TONE_CLASS[row.tone], row.tone === "info" && "animate-spin motion-reduce:animate-none")} />; }
   if (row.kind === "action") { const Icon = ACTION_ICON[row.id]; return <Icon aria-hidden />; }
-  if (row.kind === "workflow") { const Icon = workflowIcon(row.id); return <Icon aria-hidden />; }
+  if (row.kind === "workflow") { const Icon = workflowIcon(row.icon); return <Icon aria-hidden />; }
   return <FileSpreadsheet aria-hidden />;
 }
 
 /** Search Relay: quick actions, runs, workflows and spreadsheets in one palette. The input is its first row. */
 export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, loading = false, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; query: string; onQuery: (query: string) => void;
-  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; /** The served search has not answered yet. */ loading?: boolean; workflows: readonly { id: string; label: string }[]; sheets: readonly PaletteSheet[]; startKey?: string;
+  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; /** The served search has not answered yet. */ loading?: boolean; workflows: readonly PaletteWorkflow[]; sheets: readonly PaletteSheet[]; startKey?: string;
   onAction: (action: PaletteAction) => void; onWorkflow: (id: string) => void; onRun: (result: NavbarSearchResult) => void; notice: string;
   onCloseAutoFocus: (event: Event) => void;
 }) {

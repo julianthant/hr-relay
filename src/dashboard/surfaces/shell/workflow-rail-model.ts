@@ -1,10 +1,11 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { WORKFLOW_SOURCES } from "../../app/workflow-sources.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
+import type { IconName } from "../../../models/workflow/presentation.js";
 import { groupWorkflowsByCategory, type WorkflowCategoryGroup } from "../workflows/workflow-category.js";
 
 export interface WorkflowNavigationEntry {
-  readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole;
+  readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole; readonly icon: IconName;
 }
 
 const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work-Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;

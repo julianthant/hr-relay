@@ -19,7 +19,7 @@ export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], source
   const entries: WorkflowCatalogEntry[] = served.filter(flow => workflowSource(flow.workflowId, sources) === "served").map(flow => {
     if (seen.has(flow.workflowId)) throw new Error(`WORKFLOW_CATALOG_DUPLICATE: ${flow.workflowId}`);
     seen.add(flow.workflowId);
-    return { id: flow.workflowId, label: flow.label, categoryId: workflowCategoryLabel(flow.categoryId), role: flow.role,
+    return { id: flow.workflowId, label: flow.label, categoryId: workflowCategoryLabel(flow.categoryId), role: flow.role, icon: flow.icon,
       code: flow.code, source: "served", served: flow,
       launch: flow.inputRun.state === "present" || flow.uploadRun?.pdfInput !== undefined ? { state: "served" }
         : { state: "unavailable", label: "No direct start", reason: `This served workflow has no standalone launch input. ${flow.inputRun.reason}` } };

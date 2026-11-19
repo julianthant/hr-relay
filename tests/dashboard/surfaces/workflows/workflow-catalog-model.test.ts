@@ -139,7 +139,7 @@ describe("frontend workflow catalog", () => {
 
   it("boots the product catalog from public definitions without exposing or disabling the I-9 PDF parent", () => {
     const publicStarts = WORKFLOW_MODULES.map(({ descriptor, role }) => ({
-      workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category, code: descriptor.code, role,
+      workflowId: descriptor.id, label: descriptor.label, categoryId: descriptor.category, code: descriptor.code, role, icon: descriptor.icon,
       enqueue: descriptor.enqueue, version: descriptor.version, steps: projectWorkflowStartSteps(descriptor),
       requiredWorkbookFields: descriptor.requiredWorkbookFields, referenceSources: [], spreadsheetIntake: false,
       ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),

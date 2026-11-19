@@ -22,9 +22,9 @@ async function mount(node: ReturnType<typeof createElement>): Promise<HTMLElemen
 
 const standalone = { kind: "standalone" } as const;
 const entries = [
-  { id: "person-lookup", label: "Person Lookup", categoryId: "search", role: standalone },
-  { id: "onbase", label: "OnBase", categoryId: "operations", role: standalone },
-  { id: "ocr", label: "OCR", categoryId: "operations", role: standalone },
+  { id: "person-lookup", label: "Person Lookup", categoryId: "search", role: standalone, icon: "Search" as const },
+  { id: "onbase", label: "OnBase", categoryId: "operations", role: standalone, icon: "Upload" as const },
+  { id: "ocr", label: "OCR", categoryId: "operations", role: standalone, icon: "FileScan" as const },
 ];
 
 it("names the lookup category Lookup, not Search", () => {
@@ -56,13 +56,13 @@ it("offers the details step from the deep-link page that asks for the details", 
   let step = "";
   const host = await mount(createElement(Onboarding, { step: "ready", port: createServedOnboardingPort(createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("not called"); } }), () => {}), onStep: next => { step = next; }, onDashboard() {} }));
   assert.equal(host.querySelector("h1")?.textContent, "Start with your details");
-  const button = host.querySelector<HTMLButtonElement>("button.btn.primary"); assert.ok(button);
+  const button = host.querySelector<HTMLButtonElement>("main button"); assert.ok(button);
   assert.equal(button.textContent, "Start with your details");
   await act(async () => button.click()); assert.equal(step, "signup");
 });
 
 it("wraps three worker cards instead of clipping them", async () => {
-  const worker = (id: string, workflow: string) => ({ id, label: id, workflow, state: "idle", browsers: [] }) as unknown as SessionWorker;
+  const worker = (id: string, workflow: string) => ({ id, label: id, workflow, state: "running", action: "Working", browsers: [] }) as unknown as SessionWorker;
   const host = await mount(createElement(TooltipProvider, null, createElement(SessionsView, { data: { state: "ready", workers: [worker("w1", "Separations"), worker("w2", "Person Lookup"), worker("w3", "OnBase")] },
     open: true, onOpenChange: () => undefined, workflows: [], onControl: () => undefined, onAdd: () => undefined })));
   const strip = host.querySelector("[data-session-strip]"); assert.ok(strip);
