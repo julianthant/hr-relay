@@ -125,8 +125,21 @@ it("folds repeats of one event for one run into one item with the summed count a
   assert(projection.state.state === "ready");
   const items = projection.state.items;
   assert.deepEqual(items.map(item => [item.id, item.count, item.age, item.read]), [
-    ["00000000-0000-4000-8000-0000000000a2", 2, "30 min ago", true], ["00000000-0000-4000-8000-0000000000a3", undefined, "1 hr ago", false],
+    ["00000000-0000-4000-8000-0000000000a2", 2, "30 min ago", false], ["00000000-0000-4000-8000-0000000000a3", undefined, "1 hr ago", false],
     ["00000000-0000-4000-8000-0000000000b1", 6, "3 hr ago", false]]);
+});
+it("keeps a folded item unread while any repeat is unread, and marking it read confirms every unread repeat", async () => {
+  const older = "00000000-0000-4000-8000-0000000000c1", newer = "00000000-0000-4000-8000-0000000000c2";
+  const repeats = [row("storage-degraded", { notificationId: older, occurredAt: "2026-08-03T16:00:00.000Z" }),
+    row("storage-degraded", { notificationId: newer, occurredAt: "2026-08-03T16:30:00.000Z", readState: "read", state: "read" })];
+  const folded = inboxProjection(repeats, now);
+  assert(folded.state.state === "ready");
+  assert.deepEqual(folded.state.items.map(item => [item.id, item.read]), [[newer, false]]);
+  assert.equal(folded.needsYou, 1);
+  const h = await harness(); h.setRows(repeats);
+  await act(async () => { h.listeners[0](publication(repeats[1])); await new Promise(resolve => setTimeout(resolve, 0)); });
+  await act(async () => { assert(await h.value.control(newer, "read")); });
+  assert.deepEqual(h.commands.map(command => "notificationId" in command.target ? command.target.notificationId : ""), [newer, older]);
 });
 it("withholds raw subject-mismatch summaries when source evidence is unavailable", () => {
   const projected = projectNotificationTrigger({ kind: "subject-mismatch", runId, workflowId: "person-lookup", failureId, failureFingerprint: "f".repeat(64) });
