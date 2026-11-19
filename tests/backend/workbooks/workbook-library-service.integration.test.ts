@@ -133,7 +133,11 @@ it.each(["payload", "columns"])("refuses corrupt stored %s without replacing it"
   failure(() => f.service.read(created.libraryId), "WORKBOOK_STORAGE_CORRUPT");
   failure(() => f.service.list(), "WORKBOOK_STORAGE_CORRUPT");
   failure(() => f.service.history(created.libraryId), "WORKBOOK_STORAGE_CORRUPT");
+  const storedRow = f.database.prepare("SELECT * FROM workbook_library WHERE id=?");
+  const beforeSave = storedRow.get(created.libraryId);
+  expect(beforeSave).toBeDefined();
   failure(() => f.service.save(created.libraryId, 1, created.workbook), "WORKBOOK_STORAGE_CORRUPT");
+  expect(storedRow.get(created.libraryId)).toStrictEqual(beforeSave);
 });
 
 it("retains manual named versions against update, delete and replacement", () => {
