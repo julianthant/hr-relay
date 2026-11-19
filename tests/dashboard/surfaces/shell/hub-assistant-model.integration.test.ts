@@ -24,7 +24,7 @@ it('registers an attached file once through HTTP/SQLite, reopens its exact versi
     { id: 'head', cells: ['Name', 'Separation date', 'Kuali ID'].map(value => ({ value })) }, { id: 'person', cells: ['Alex Rivera', '2026-10-19', '2230001'].map(value => ({ value })) },
   ] }] } };
   await session.register(file); await session.register(file);
-  const library = (await client.workbookList()).map(record => [record.workbook.name, record.version]).sort();
+  const library = (await client.workbookList()).map(record => [record.name, record.version]).sort();
   assert.deepEqual(library, [['People.csv', 1]]);
   assert.equal(createHubAssistantSession('other', adapter).conversationPort.initial().files.length, 0);
   assert.equal(writes.length, 1); assert.ok(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path)));

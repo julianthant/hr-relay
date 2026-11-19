@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { AdmittedExtractionSchema, admitOcrExtraction, type AdmittedExtraction } from "../../ocr/extraction.js";
+import { AdmittedExtractionSchema, admitOcrExtraction, answersFingerprint, type AdmittedRecord, type AdmittedExtraction } from "../../ocr/extraction.js";
 import { OcrFormTypeSchema, type OcrFormType } from "../../ocr/form-registry.js";
 import { childRunOutcomeSchema } from "../../workflow/graph.js";
 import { FingerprintSchema, ItemIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { deriveItemId } from "../../../rules/identity/logical-item.js";
 import { OcrPageInputSchema, OcrSourceManifestSchema, ocrExtractionId, ocrPageInputs,
@@ -17,7 +18,14 @@ function readSubmission(extraction: AdmittedExtraction) {
         : { state: "read", raw: answer.raw, confidence: answer.confidence }])) } };
 }
 
-export const OcrPageReadingSchema = z.strictObject({
+export function hasRetainedAnswerEvidence(record: AdmittedRecord): boolean {
+  const unresolved = new Set(record.answers.filter(answer => answer.state !== "read").map(answer => answer.path));
+  return record.answersFingerprint === answersFingerprint(record.answers)
+    && record.answers.every((answer, index) => index === 0 || record.answers[index - 1].path.localeCompare(answer.path) < 0)
+    && new Set(record.blockingPaths).size === record.blockingPaths.length && record.blockingPaths.every(path => unresolved.has(path));
+}
+
+export const RetainedOcrPageReadingSchema = z.strictObject({
   input: OcrPageInputSchema,
   extractionId: FingerprintSchema,
   extraction: AdmittedExtractionSchema,
@@ -32,6 +40,15 @@ export const OcrPageReadingSchema = z.strictObject({
     && extraction.source.providerId !== "chatgpt-subscription")) {
     context.addIssue({ code: "custom", message: "OCR reading requires subscription provider or operator provenance" });
   }
+  const pageDigest = sha256Hex(`hrauto:ocr-page:v1\0${canonicalJsonStringify({
+    pageKind: extraction.pageKind, answers: extraction.record?.answersFingerprint ?? null,
+  })}`);
+  if (extraction.pageFingerprint !== pageDigest || extraction.record !== null && !hasRetainedAnswerEvidence(extraction.record)) {
+    context.addIssue({ code: "custom", message: "OCR reading is not canonical admitted source evidence" });
+  }
+});
+
+export const OcrPageReadingSchema = RetainedOcrPageReadingSchema.superRefine(({ extraction }, context) => {
   const admitted = admitOcrExtraction(readSubmission(extraction));
   if (!admitted.admitted || canonicalJsonStringify(admitted.extraction) !== canonicalJsonStringify(extraction)) {
     context.addIssue({ code: "custom", message: "OCR reading is not canonical admitted source evidence" });
@@ -92,6 +109,9 @@ export const OcrManualEntryAccountingSchema = z.strictObject({
   outcomes: z.tuple([]),
 });
 export const OcrPageAccountingSchema = z.union([OcrReadPageAccountingSchema, OcrManualEntryAccountingSchema]);
+export const RetainedOcrPageAccountingSchema = z.union([OcrReadPageAccountingSchema.safeExtend({
+  outcomes: z.array(childRunOutcomeSchema(RetainedOcrPageReadingSchema)).min(1),
+}), OcrManualEntryAccountingSchema]);
 export type OcrPageAccounting = z.infer<typeof OcrPageAccountingSchema>;
 
 export function ocrExtractionItemId(input: OcrPageInput) {

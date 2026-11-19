@@ -101,7 +101,7 @@ export interface ClientRouteReference {
 
 const ROUTE_REGISTRATION = /\bapp\.(get|post|put|delete|patch)\(\s*"([^"]+)"/g;
 /** A string OR template literal whose first character starts a served path. */
-const CLIENT_PATH = /["'`](\/(?:api|events)\/[^"'`]*)["'`]/g;
+const CLIENT_PATH = /["'`](\/(?:api|events|artifacts)\/[^"'`]*)["'`]/g;
 
 export function servedRoutes(source: string): readonly ServedRoute[] {
   return [...source.matchAll(ROUTE_REGISTRATION)].map(([, method, path]) => ({

@@ -158,7 +158,7 @@ it("maps protected private commits followed by SQL failure to uncertainty", () =
   const protectedRequest = { family: "settings", type: "apply-protected-settings", commandId: IDS[0],
     requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: 1 },
     payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: IDS[1],
-      entries: { ucpathPassword: { set: "synthetic-value" } } } };
+      entries: { sharepointOnboardingRosterUrl: { set: "https://roster.example.test/audit-fixture" } } } };
   assert.throws(() => protectedFixture.execute(protectedRequest), /credential-audit-uncertain/u);
   assert.equal(protectedFixture.privateCommits(), 1);
   assert.equal(protectedFixture.durable().commands.size, 0);
@@ -185,7 +185,7 @@ it("keeps request validation before private reads and passes a private-store ref
   assert.equal(executor.validateRequest(command)?.state, "rejected");
   assert.equal(privateCommits, 0);
   const protectedCommand = { ...command, type: "apply-protected-settings", payload: {
-    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: WRITE_ID, entries: { ucpathPassword: { set: "synthetic" } },
+    protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: WRITE_ID, entries: { sharepointOnboardingRosterUrl: { set: "https://roster.example.test/refusal-fixture" } },
   } } as unknown as Parameters<typeof executor.commitPrivate>[0];
   assert.deepEqual(executor.commitPrivate(protectedCommand), { state: "rejected", code: "lock-unavailable",
     message: "private credential store busy" });

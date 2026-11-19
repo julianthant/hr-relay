@@ -17,13 +17,15 @@ import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-w
 import { composeProfileAssistantAuthorization,composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
 import { startDashboardHttpServer,type DashboardHttpListener,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 
+export type DashboardStopFailure = Readonly<{ step: "transport-close" | "stream-close" | "loop-monitor-stop" | "worker-stop"; cause: unknown }>;
+
 export interface DashboardRuntime {
   readonly shutdownRequested?: Promise<void>;
   readonly assistantAuthorization?: ReturnType<typeof composeProfileAssistantAuthorization>;
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
-  detach(): Promise<void>;
+  detach(onStopFailure?: (failure: DashboardStopFailure) => void): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -53,13 +55,13 @@ export interface DashboardComposeInput {
   readonly frontendBuildScript?: DashboardBuildCommand;
   readonly startPlanTtlMs?: number;
   // Port 0 requests an ephemeral test port.
-  readonly backendPortOverride?: 0;
+  readonly backendPortOverride?: number;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   /** Test-only replacement for injecting an HTTP bind failure after startup admission. */
   readonly httpServerStarter?: (input: Parameters<typeof startDashboardHttpServer>[0]) => Promise<DashboardHttpServer>;
   readonly applicationTransport?: Readonly<{ listener: DashboardHttpListener; accepts: (request: Request) => boolean }>;
-  /** Test-only preflight probe override; production always checks the isolated frontend port. */
-  readonly frontendPortOverride?: 0;
+  /** Tests may name their own frontend listener. Zero disables the frontend preflight port check. */
+  readonly frontendPortOverride?: number;
   /** Test-only replacement for the dev-frontend ownership probe of profile requests. */
   readonly frontendProbe?: typeof probeOwnedViteServer;
 

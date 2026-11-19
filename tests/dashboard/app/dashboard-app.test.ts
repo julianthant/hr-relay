@@ -1,7 +1,9 @@
 import { FIXTURE_ACTIVE_PROFILE_STATE } from "../../support/helpers/dashboard/profiles/fixture-profile-setup.js";
+import { profileActivationResponse } from "../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 import { chatGptStatusFixture } from "../../support/helpers/chatgpt-status-fixture.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
+import { ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
@@ -11,7 +13,7 @@ import { CommandRecovery } from "../../../src/dashboard/surfaces/shared/actions/
 import { composeBulkRunCommand, planBulkVerb } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
 import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 import type { CommandOutcome, CommandExecutionOptions } from "../../../src/dashboard/app/commands/command-executor.js";
-import { CommandRequestSchema, BulkRunCommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, BulkRunCommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
@@ -319,7 +321,7 @@ describe_m1("served sign-up Finish", () => {
         reads++; if (holdPublic) return publicRead.promise;
         return Response.json(restarted && resumes === 0 ? { state: "signed-out", resumable: true } : active(1 + resumes));
       }
-      if (path.endsWith("/resume")) { resumes++; return Response.json(active(1 + resumes)); }
+      if (path.endsWith("/resume")) { resumes++; return profileActivationResponse(active(1 + resumes)); }
       if (path.endsWith("/bootstrap")) {
         if (defer) { defer = false; dispatched.resolve(); return old.promise; }
         if (restarted && resumes === 0 || invalidateFresh) return stale();
@@ -362,7 +364,7 @@ describe_m1("served sign-up Finish", () => {
     const live = createDashboardClient_m2({ baseUrl: "http://fixture.test", fetchImpl: async url => {
       const path = new URL(url).pathname;
       if (path.endsWith("/state")) return Response.json(restarted && resumes === 0 ? { state: "signed-out", resumable: true } : { ...active, epoch: 1 + resumes });
-      if (path.endsWith("/resume")) { resumes++; return Response.json({ ...active, epoch: 1 + resumes }); }
+      if (path.endsWith("/resume")) { resumes++; return profileActivationResponse({ ...active, epoch: 1 + resumes }); }
       if (path.endsWith("/bootstrap")) {
         if (restarted && resumes === 0) { refusedReads++; return Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 }); }
         return Response.json(APP_BOOTSTRAP);
@@ -1001,8 +1003,19 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ accountless: true, search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
       commands.push(body);
+      const command = ProtectedSettingsCommandRequestSchema.parse(body);
+      if (replacement === "confirmed" && commands.length === 1) {
+        // An older build could commit this write before losing the reply.
+        const applied = authority.credentials.apply(ProtectedSettingsApplyInputSchema.parse({
+          ...command.payload,
+          commandId: command.commandId,
+          commandFingerprint: deriveSettingsCommandFingerprint(command),
+          expectedRevision: command.target.expectedRevision,
+          updatedAt: command.requestedAt,
+        }));
+        assert_m2.equal(applied.state, "applied");
+      }
       if (commands.length <= 2) return Promise.reject(new Error("private-transport-sentinel"));
-      const command = CommandRequestSchema.parse(body);
       return Promise.resolve(replacement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(replacement === "conflict"
         ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
         : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));

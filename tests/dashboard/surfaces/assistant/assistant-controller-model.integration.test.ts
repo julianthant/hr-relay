@@ -316,7 +316,7 @@ it('shows one retryable failure after a lost chat response', async () => {
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'failed');
-  assert.match(document.body.textContent ?? '', /Reply unavailable\. Your request is kept\./u);
+  assert.match(document.body.textContent ?? '', /Reply unavailable\./u);
   assert.equal(document.body.textContent?.includes('lost workflow proposal response'), false);
   await act(async () => { current.onAction({ type: 'confirm' }); });
   assert.equal(calls, 1);
@@ -338,13 +338,13 @@ it('shows a refused reply as one failure notice whose Retry sends the kept promp
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'idle');
-  assert.match(document.body.textContent ?? '', /The assistant could not reply\. Send your message again\./u);
+  assert.match(document.body.textContent ?? '', /The assistant could not reply\./u);
   assert.equal(document.body.textContent?.includes('raw server text'), false);
   assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
   await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
   assert.equal(calls, 2);
   assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
-  assert.equal((document.body.textContent?.match(/The assistant could not reply\. Send your message again\./gu) ?? []).length, 1);
+  assert.equal((document.body.textContent?.match(/The assistant could not reply\./gu) ?? []).length, 1);
   assert.equal(document.body.textContent?.includes('Restored chat'), false);
   assert.equal(current.state.messages.filter(message => message.role === 'operator' && message.text === 'start selected workflow').length, 2);
 });
@@ -413,7 +413,7 @@ it('shows a failed activity read as one notice, not "No activity today", and Ret
   const read = async () => { reads++; if (reads === 1) throw Error('activity raw failure'); return { rows: [] } as never; };
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(AssistantServedActivity, { query: '', read })));
-  assert.match(host.textContent ?? '', /Activity did not load\./u);
+  assert.match(host.textContent ?? '', /Couldn't load activity\./u);
   assert.equal(host.textContent?.includes('No activity today'), false);
   assert.equal(host.textContent?.includes('activity raw failure'), false);
   await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });

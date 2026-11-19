@@ -119,7 +119,7 @@ it('offers one Retry beneath a plain sentence when the report cannot be shown', 
   await act(async () => { if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); } root.render(createElement(ActivityView, { data: { state: 'unavailable', reason: 'x' }, range: ACTIVITY_SAMPLE_RANGE, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onRetry })); });
   const retries = [...document.querySelectorAll('button')].filter(item => item.textContent === 'Retry');
   assert.equal(retries.length, 1);
-  assert.match(document.body.textContent, /Relay could not load Analytics\./);
+  assert.match(document.body.textContent, /Couldn't load Analytics\./);
   assert.doesNotMatch(document.body.textContent, /Copy details/);
   await act(async () => retries[0]?.click()); assert.equal(onRetry.mock.calls.length, 1);
 });
