@@ -322,7 +322,7 @@ export const GateCommandRequestSchema = z.strictObject({
   target: z.strictObject({ runId: RunIdSchema, gateId: GateIdSchema, expectedVersion: PositiveIntSchema }),
   payload: z.strictObject({ result: SchemaBoundCanonicalValueSchema,
     ocrApproval: z.strictObject({ expectedRevision: PositiveIntSchema, reviewDigest: FingerprintSchema,
-      selectedRecordIds: z.array(z.string().min(1)).min(1) }).optional() }),
+      selectedRecordIds: z.array(z.string().min(1)).min(1, "Select at least one record to approve.") }).optional() }),
 });
 
 /** The dashboard's identity-review answer: opaque refs the server served; ingress resolves them to a `resolve-gate` before the kernel. */

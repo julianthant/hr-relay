@@ -7,7 +7,8 @@ import { EidSchema, FingerprintSchema, IsoInstantSchema, RunIdSchema, StableReco
 import { matchRosterSubjects, RosterRowFactsSchema, RosterSubjectMatchSchema } from "../../../rules/matching/roster-match.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { RetainedOcrPageAccountingSchema, OcrPageAccountingSchema, OcrPageOutcomeSchema, type OcrPageReading } from "./page-accounting.js";
+import { OcrPageAccountingSchema, OcrReadPageAccountingSchema, OcrManualEntryAccountingSchema, OcrPageOutcomeSchema,
+  RetainedOcrPageAccountingSchema, type OcrPageReading } from "./page-accounting.js";
 import { OcrWorkbookRosterEvidenceSchema } from "./roster.js";
 
 const OcrArtifactRosterEvidenceSchema = z.strictObject({
@@ -46,7 +47,7 @@ export const OcrReviewRecordSeedSchema = z.strictObject({
 
 const OcrPageDispositionSchema = z.strictObject({
   sourcePage: z.number().int().positive(),
-  disposition: z.enum(["record", "blank", "boilerplate", "unrelated", "wrong-form", "failed", "cancelled", "blocked"]),
+  disposition: z.enum(["record", "blank", "boilerplate", "unrelated", "wrong-form", "failed", "cancelled", "blocked", "manual-entry"]),
 });
 
 function fieldText(record: AdmittedRecord, path: string): string | null {
@@ -62,6 +63,11 @@ function subjectName(record: AdmittedRecord, formType: OcrFormType): string | nu
 }
 
 function pageDispositions(accounting: OcrReviewSeedInput["accounting"]) {
+  if ("manualEntry" in accounting) {
+    return accounting.manifest.pages.map(page => OcrPageDispositionSchema.parse({
+      sourcePage: page.sourcePage, disposition: "manual-entry",
+    }));
+  }
   return accounting.outcomes.map((outcome, index) => OcrPageDispositionSchema.parse({
     sourcePage: index + 1,
     disposition: outcome.state !== "done" ? outcome.state : outcome.output.extraction.record !== null ? "record"
@@ -169,11 +175,17 @@ const { output: _reading, ...doneRef } = donePage.shape;
 const { rows: _workbookRows, ...workbookRosterRef } = OcrWorkbookRosterEvidenceSchema.shape;
 const { rows: _artifactRows, ...artifactRosterRef } = OcrArtifactRosterEvidenceSchema.shape;
 const { fields: _fields, ...recordRef } = OcrReviewRecordSeedSchema.shape;
+const compactReadAccounting = z.strictObject({ ...OcrReadPageAccountingSchema.shape,
+  outcomes: z.array(z.discriminatedUnion("state", [z.strictObject({ ...doneRef, extractionId: FingerprintSchema }), ...unreadPages])).min(1),
+});
 export const OcrReviewCheckpointSchema = z.strictObject({ ...OcrReviewSeedSchema.shape,
-  accounting: z.strictObject({ ...OcrPageAccountingSchema.shape,
-    outcomes: z.array(z.discriminatedUnion("state", [z.strictObject({ ...doneRef, extractionId: FingerprintSchema }), ...unreadPages])).min(1) }),
+  accounting: z.union([compactReadAccounting, OcrManualEntryAccountingSchema]),
   roster: z.union([z.strictObject(workbookRosterRef), z.strictObject(artifactRosterRef)]).nullable(),
   records: z.array(z.strictObject(recordRef)),
+});
+export const PreManualOcrReviewCheckpointSchema = OcrReviewCheckpointSchema.extend({
+  accounting: compactReadAccounting,
+  pages: z.array(OcrPageDispositionSchema.extend({ disposition: OcrPageDispositionSchema.shape.disposition.exclude(["manual-entry"]) })).min(1),
 });
 export type OcrReviewCheckpoint = z.infer<typeof OcrReviewCheckpointSchema>;
 
@@ -194,7 +206,8 @@ export function hydrateOcrReviewSeed(checkpoint: OcrReviewCheckpoint, reading: (
     if (output === undefined) throw new Error("OCR review checkpoint names a page reading that is not retained.");
     return { state: outcome.state, runId: outcome.runId, itemId: outcome.itemId, output };
   });
-  const input = { ...(sourceRunId === undefined ? {} : { sourceRunId }), roster, accounting: { ...accounting, outcomes } };
+  const input = { ...(sourceRunId === undefined ? {} : { sourceRunId }), roster,
+    accounting: "manualEntry" in accounting ? accounting : { ...accounting, outcomes } };
   const seed = mode === "current" ? buildOcrReviewSeed(input) : RetainedOcrReviewSeedSchema.parse({ ...checkpoint, ...input,
     records: checkpoint.records.map(record => {
       const outcome = outcomes[record.sourcePage - 1];

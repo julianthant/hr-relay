@@ -102,11 +102,7 @@ it("defers idle updates while a paused run is retained", async () => {
   assert.equal(f.database.authority.runs.admission().state, "open");
 });
 
-/** A Pause all and quit accepted over one claimed run that has not reached its step boundary and one queued run. */
-async function pendingQuitWorld() {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  cleanups.push(() => { vi.useRealTimers(); });
-  const f = await settingsFixture(); cleanups.push(f.close);
+function applicationKernel(f: Awaited<ReturnType<typeof settingsFixture>>) {
   const unexpected = (): never => { throw new Error("unexpected kernel effect"); };
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
   const kernel = createCommandKernel({ lifecycle: f.service, authority: f.database, clock: f.clock, ids: sequentialIdFactory("d"),
@@ -114,6 +110,32 @@ async function pendingQuitWorld() {
     configIdentity: { configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint },
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { recheck: unexpected, resolveAbsent: unexpected }, workerRuntime: { pool: unusedWorkerPool(unexpected) } });
+  return { runtime, kernel };
+}
+
+it("refuses Pause all when a scalar terminal state conceals a queued run", async () => {
+  const f = await settingsFixture(); cleanups.push(f.close);
+  const { runtime, kernel } = applicationKernel(f);
+  const run = f.create();
+  const peer = new DatabaseSync(f.path);
+  try {
+    peer.prepare("UPDATE runs SET state='terminal', outcome='cancelled' WHERE id=?").run(run.envelope.runId);
+    assert.throws(() => kernel.execute({ commandId: "a1000000-0000-4000-8000-000000000003", family: "application", type: "pause-all",
+      requestedBy: "local-operator", source: "dashboard", requestedAt: f.clock.now().toISOString(), target: { runtimeGeneration: runtime.generation },
+      payload: { targets: [] } }), /state.*whole-record JSON/u);
+    assert.equal(f.database.authority.runs.admission().state, "open");
+  } finally {
+    peer.prepare("UPDATE runs SET state='queued', outcome=NULL WHERE id=?").run(run.envelope.runId);
+    peer.close();
+  }
+});
+
+/** A Pause all and quit accepted over one claimed run that has not reached its step boundary and one queued run. */
+async function pendingQuitWorld() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  cleanups.push(() => { vi.useRealTimers(); });
+  const f = await settingsFixture(); cleanups.push(f.close);
+  const { runtime, kernel } = applicationKernel(f);
   const { member } = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: workflowProjections(personLookupDescriptor).systems });
   const stuck = f.create({ matchKey: "settings-proof-stuck" });
   const claim = f.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: member.workerId, now: f.clock.now().toISOString() });
@@ -122,16 +144,21 @@ async function pendingQuitWorld() {
   let quits = 0;
   const lifecycle = createApplicationLifecycle({ database: f.database, requestQuit() { quits += 1; }, onFailure: error => { throw error; } });
   cleanups.push(lifecycle.dispose);
+  const targets = lifecycle.snapshot().targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  cleanups.push(() => { prepare.mockRestore(); });
   const quit = kernel.execute({ commandId: "a1000000-0000-4000-8000-000000000010", family: "application", type: "pause-all-and-quit",
     requestedBy: "local-operator", source: "dashboard", requestedAt: f.clock.now().toISOString(), target: { runtimeGeneration: runtime.generation },
-    payload: { confirmed: true, targets: lifecycle.snapshot().targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion })) } });
+    payload: { confirmed: true, targets } });
+  const usedHistory = prepare.mock.calls.some(([sql]) => sql.includes("canonical_run_page"));
+  prepare.mockRestore();
   assert.equal(quit.state, "applied");
   lifecycle.quitAccepted();
   await vi.advanceTimersByTimeAsync(200);
   assert.equal(quits, 0);
   const acknowledgeStuck = (commandId: string) => f.service.acknowledgePause({ commandId, runId: stuck.envelope.runId,
     claim: { workerId: member.workerId, claimGeneration: claim.run.claimGeneration } }).state;
-  return { f, lifecycle, runtime, stuck, waiting, acknowledgeStuck, quits: () => quits };
+  return { f, lifecycle, runtime, stuck, waiting, acknowledgeStuck, usedHistory, quits: () => quits };
 }
 
 it("ends a Pause all and quit that cannot complete when the operator resumes a paused run", async () => {
@@ -149,7 +176,8 @@ it("ends a Pause all and quit that cannot complete when the operator resumes a p
 });
 
 it("quits once the last claimed run of a Pause all and quit reaches its boundary", async () => {
-  const { lifecycle, acknowledgeStuck, quits } = await pendingQuitWorld();
+  const { lifecycle, acknowledgeStuck, usedHistory, quits } = await pendingQuitWorld();
+  assert.equal(usedHistory, false, "Pause All must not read canonical history pages");
   assert.equal(acknowledgeStuck("a1000000-0000-4000-8000-000000000014"), "applied");
   assert.equal(lifecycle.snapshot().state, "pausing");
   await vi.advanceTimersByTimeAsync(200);
