@@ -4,7 +4,7 @@ export type PaletteFilter = "all" | "actions" | "runs" | "workflows" | "spreadsh
 export const PALETTE_FILTERS: readonly { id: PaletteFilter; label: string }[] = [
   { id: "all", label: "All" }, { id: "actions", label: "Actions" }, { id: "runs", label: "Runs" }, { id: "workflows", label: "Workflows" }, { id: "spreadsheets", label: "Spreadsheets" },
 ];
-export type PaletteAction = "start" | "spreadsheets" | "settings";
+export type PaletteAction = "start" | "spreadsheets" | "explorer" | "analytics" | "settings";
 export type PaletteSheet = Readonly<{ id: string; name: string; detail: string }>;
 export type PaletteRow =
   | Readonly<{ kind: "action"; id: PaletteAction; label: string }>
@@ -15,10 +15,10 @@ export type PaletteSection = Readonly<{ id: Exclude<PaletteFilter, "all">; label
 export type RunTone = "danger" | "warning" | "positive" | "info" | "neutral";
 
 const ACTIONS: readonly Extract<PaletteRow, { kind: "action" }>[] = [
-  { kind: "action", id: "start", label: "Start a run" }, { kind: "action", id: "spreadsheets", label: "Spreadsheets" }, { kind: "action", id: "settings", label: "Settings" },
+  { kind: "action", id: "start", label: "Start a run" }, { kind: "action", id: "spreadsheets", label: "Spreadsheets" }, { kind: "action", id: "explorer", label: "Explorer" }, { kind: "action", id: "analytics", label: "Analytics" }, { kind: "action", id: "settings", label: "Settings" },
 ];
 /** Rows shown per section under the All chip; each other chip shows its full list. */
-const ALL_LIMIT = { actions: 3, runs: 5, workflows: 3, spreadsheets: 3 } as const;
+const ALL_LIMIT = { actions: 5, runs: 5, workflows: 3, spreadsheets: 3 } as const;
 
 export function runTone(state: string): RunTone {
   const text = state.toLocaleLowerCase("en-US");
