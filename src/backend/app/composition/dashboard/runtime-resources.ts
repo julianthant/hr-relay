@@ -91,7 +91,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     context.assertCurrent();
     return true;
   };
-  const captureSelectedModel = () => {
+  const captureSelectedModel = () => database.withAuthorityReadSnapshot(() => {
     assertSelectedModelContext();
     const record = database.authority.assistantModelPreference.get();
     const identity = record === undefined ? undefined : canonicalJsonStringify(record);
@@ -105,9 +105,9 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
       if ((current === undefined ? undefined : canonicalJsonStringify(current)) !== identity) throw new Error('assistant-model-preference-changed');
       return true;
     };
-    assertPreferenceCurrent();
+    assertSelectedModelContext();
     return { view, assertPreferenceCurrent };
-  };
+  });
 
   // A failed startup is no logout: keep live runs for the next start, as a shutdown does.
   custody.revoke = () => profile.runtime.beginClose("shutdown");

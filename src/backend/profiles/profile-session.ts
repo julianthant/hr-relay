@@ -158,6 +158,10 @@ export function createProfileSession(input: {
 
   function readOperations(): ProfileOperation[] {
     registry.read();
+    return readAdmittedOperationFiles();
+  }
+
+  function readAdmittedOperationFiles(): ProfileOperation[] {
     const directory = join(machineRoot, "machine", "operations");
     if (!existsSync(directory)) return [];
     const operations: ProfileOperation[] = [];
@@ -234,7 +238,7 @@ export function createProfileSession(input: {
     if (current.activeProfileId !== session.profileId || current.sessionGeneration !== session.epoch
       || row?.lifecycle !== "ready" || row.credentialState !== "saved" || row.registration.onboardingCompletion === undefined
       || commitHolds.has(session.profileId)
-      || readOperations().some(operation => operation.kind === "logout" ? operation.phase !== "complete"
+      || readAdmittedOperationFiles().some(operation => operation.kind === "logout" ? operation.phase !== "complete"
         : operation.profileId === session.profileId && (operation.kind === "sign-up" || operation.commit !== undefined))) {
       sessions.delete(token);
       return refusal("PROFILE_SESSION_STALE");
@@ -1293,11 +1297,11 @@ export function createProfileSession(input: {
         phase: operation.phase,
       }));
     },
-    prepareCurrentStorage(token: string): { readonly state: "available" } | ProfileRefusal {
+    prepareCurrentStorage(token: string): { readonly state: "available"; readonly profileId: string; readonly epoch: number } | ProfileRefusal {
       const current = requireSession(token);
       if ("state" in current) return current;
       storeFor(current.profileId, current.admission);
-      return { state: "available" };
+      return { state: "available", profileId: current.profileId, epoch: current.epoch };
     },
     readCurrentAuthority,
     async revalidateAuthority(token: string, captured: ProfileAuthoritySnapshot): Promise<{ readonly state: "available"; readonly snapshot: ProfileAuthoritySnapshot } | ProfileRefusal> {

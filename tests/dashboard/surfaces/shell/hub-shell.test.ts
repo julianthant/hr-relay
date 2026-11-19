@@ -6,6 +6,7 @@ import { it, vi } from "vitest";
 import { AssistantLauncher } from "../../../../src/dashboard/surfaces/shell/assistant-launcher.js";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { HubShell } from "../../../../src/dashboard/surfaces/shell/hub-shell.js";
+import { assistantOpen } from "../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
 import type { HubChat, HubChatsPort } from "../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings-storage-doctor-fixtures.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
@@ -25,16 +26,39 @@ it("keeps the served assistant closed until requested and preserves its close an
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
       settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
-    const launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
-    const panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
+    let launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
+    let panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, true); assert.equal(panel.hasAttribute("inert"), true);
     assert.equal(launcher.getAttribute("aria-expanded"), "false");
     await act(async () => launcher.click());
+    // The first open reads the history, which replaces the shell body.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
+    panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, false); assert.equal(launcher.getAttribute("aria-expanded"), "true");
     await act(async () => panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     assert.equal(panel.hidden, true); assert.equal(document.activeElement, launcher);
     await act(async () => launcher.click());
     assert.equal(panel.hidden, false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("reads no assistant data while closed and reads its history and model preference once when it first opens", async () => {
+  const { app } = createFixtureBff();
+  const paths: string[] = [];
+  assistantOpen.set(false);
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => { paths.push(new URL(String(url instanceof Request ? url.url : url)).pathname); return app.request(url, init); } });
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  try {
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
+      settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
+    })) })));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    assert.deepEqual(paths.filter(path => path.startsWith("/api/v1/assistant/")), []);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]')?.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    assert.equal(paths.filter(path => path === "/api/v1/assistant/model-preference").length, 1);
+    assert.ok(paths.includes("/api/v1/assistant/history"));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 

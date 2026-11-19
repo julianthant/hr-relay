@@ -1,13 +1,37 @@
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
-import { afterAll, it } from "vitest";
+import { afterAll, it, vi } from "vitest";
 import { ChatGptAccountError } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
+import * as credentials from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createBoundProfileFixture, createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
 import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
+
+it("reads one account record for the post-probe projection and rechecks authority on the next status read", async () => {
+  const createRepository = credentials.createChatGptCredentialRepository;
+  const reads = vi.fn();
+  const repository = vi.spyOn(credentials, "createChatGptCredentialRepository").mockImplementation(input => {
+    const store = createRepository(input);
+    return { ...store, read() { reads(); return store.read(); } };
+  });
+  try {
+    const f = await chatGptFixture(undefined, profiles.create);
+    try {
+      reads.mockClear();
+      const cold = await f.service.readStatus();
+      assert.deepEqual(cold.account, { state: "signed-out" });
+      assert.deepEqual(cold.usage, { state: "unavailable", reason: "signed-out" });
+      // Admission, inference entry and authority, post-probe status, and the post-await check.
+      assert.equal(reads.mock.calls.length, 5);
+      reads.mockClear();
+      assert.deepEqual(await f.service.readStatus(), cold);
+      assert.equal(reads.mock.calls.length, 1);
+    } finally { await f.cleanup(); }
+  } finally { repository.mockRestore(); }
+});
 
 it("checks the remote authenticated catalog only on explicit invocation without inference or early renewal", async () => {
   const f = await chatGptFixture(undefined, profiles.create);

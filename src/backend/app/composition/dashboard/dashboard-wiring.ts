@@ -378,7 +378,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     notifications,
     ...(staticBundle === undefined ? {} : { staticBundle }),
-    requestIdentity: { identify: request => { assertCurrent(); return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request); } },
+    requestIdentity: { identify: request => {
+      if (input.applicationTransport === undefined) assertCurrent();
+      else input.applicationTransport.consumeAdmission(request);
+      return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request);
+    } },
     preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),
     ...shell,
     projection,

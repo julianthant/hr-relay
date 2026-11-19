@@ -18,11 +18,16 @@ const HISTORY_TABS = [{ value: "chats", label: "Chats" }, { value: "activity", l
 type HubShellProps = { authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string, target?: string) => void; settingsOpen: boolean; onLogout: () => void; logoutOpen: boolean; onLogoutOpenChange: (open: boolean) => void; chatsPort?: HubChatsPort; commands?: DashboardCommandBinding };
 export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
-  const history = useAssistantHistory(client, true, props.authority);
-  return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
-    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyNotice={history.notice} />;
+  // The assistant's history is read when the panel first opens, not at dashboard load.
+  useState(() => { assistantOpen.init(false); });
+  const opened = useAssistantOpen();
+  const [everOpened, setEverOpened] = useState(opened);
+  if (opened && !everOpened) setEverOpened(true);
+  const history = useAssistantHistory(client, everOpened, props.authority);
+  return <HubShellBody key={history.store?.profileId ?? 'loading'} {...props} history={history.store}
+    preferenceChanged={history.preferenceChanged} assistantOpened={everOpened} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyNotice={history.notice} />;
 }
-function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged, assistantOpened }: HubShellProps & { assistantOpened: boolean; history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const client = useDashboardClient();
   const panelPosition = useHubPanelPosition(4);
   useState(() => { assistantOpen.init(false); });
@@ -47,7 +52,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const localChats = useMemo(() => history?.chats ?? createLocalHubChatsPort(), [history]);
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant((id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
-  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels: assistantOpened });
   const served = historyPending ? { ...servedController, canCompose: false } : servedController;
   // With no stored chat the panel still opens, on an empty chat ready to compose.
   const current = model.chats.find(chat => chat.id === model.currentId) ?? (model.chats.length === 0 ? EMPTY_CHAT : undefined);
