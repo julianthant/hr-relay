@@ -100,6 +100,7 @@ type WorkerSessionEventCore =
 export interface WorkerSessionManagerOptions {
   readonly workerId: WorkerId;
   readonly workflowId: WorkflowId;
+  readonly singleAcquisitionPerSystemPerClaim?: true;
   readonly stores: TaskStoreRegistry;
   readonly factory: WorkerBrowserSessionFactory;
   // Envelopes without browserMode use the configured compatibility mode.
@@ -378,7 +379,7 @@ export class WorkerSessionManager {
   // Worker-wide operations, not one system's session: they refuse work on every system, including one with no session yet.
   #controlInFlight = false;
   #closingReason: "parked" | "worker-stop" | undefined;
-  readonly #homeWorkflowId: WorkflowId;
+  readonly #singleAcquisitionPerSystemPerClaim: boolean;
   #claimAcquisitions: Map<BrowserSystemId, { resource: WorkerBrowserResource } | { error: unknown }> | undefined;
   #runConfigFingerprint: Fingerprint | undefined;
   #runBrowserMode: BrowserPresentationMode | undefined;
@@ -389,8 +390,8 @@ export class WorkerSessionManager {
 
   constructor(options: WorkerSessionManagerOptions) {
     this.#workerId = WorkerIdSchema.parse(options.workerId);
-    this.#homeWorkflowId = WorkflowIdSchema.parse(options.workflowId);
-    this.#executionWorkflowId = this.#homeWorkflowId;
+    this.#executionWorkflowId = WorkflowIdSchema.parse(options.workflowId);
+    this.#singleAcquisitionPerSystemPerClaim = options.singleAcquisitionPerSystemPerClaim === true;
     this.#stores = options.stores;
     this.#onObservation = options.onObservation;
     this.#onFailure = options.onFailure;
@@ -583,7 +584,7 @@ export class WorkerSessionManager {
         `worker ${this.#workerId} already has a bound run config fingerprint; one worker owns one active run`,
       );
     }
-    if (this.#homeWorkflowId === "emergency-contact") this.#claimAcquisitions = new Map();
+    if (this.#singleAcquisitionPerSystemPerClaim) this.#claimAcquisitions = new Map();
     this.#runConfigFingerprint = parsed;
     this.#runBrowserMode = BrowserPresentationModeSchema.parse(browserMode ?? this.#defaultBrowserMode);
     this.#runScreenshotContext = screenshotContext === undefined
@@ -736,17 +737,17 @@ export class WorkerSessionManager {
             failedSteps.push("selected browser screenshot");
           }
         }
-        let retained = false;
+        let retainedResource: WorkerBrowserResource | undefined;
         if (mayReset && !signal.aborted && (need.access === "read" || operationCompleted || requiredCaptureFailed(leaseError))) {
           try {
             await this.#resetLease(resource, signal);
-            retained = true;
+            retainedResource = resource;
           } catch (resetError) {
             failures.push(resetError);
             failedSteps.push("session reset");
           }
         }
-        if (!retained && heldResource(session) === resource) {
+        if (retainedResource === undefined && heldResource(session) === resource) {
           try {
             await this.#closeSystem(need.system, "poisoned");
           } catch (closeError) {
@@ -761,7 +762,7 @@ export class WorkerSessionManager {
             : failedSteps.slice(0, -1).join(", ") + ", and " + failedSteps.at(-1) + " all failed";
           failure = new AggregateError(failures, `${need.system} ${summary}`, { cause: leaseError });
         }
-        if (!retained) acquisitions?.set(need.system, { error: failure });
+        if (retainedResource === undefined) acquisitions?.set(need.system, { error: failure });
         throw failure;
       }
     });

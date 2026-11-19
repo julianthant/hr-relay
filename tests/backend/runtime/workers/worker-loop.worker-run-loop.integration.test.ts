@@ -299,6 +299,23 @@ describe("worker run loop", () => {
     assert.deepEqual(discards, recover ? ["ucpath"] : []);
   });
 
+  it("uses the home descriptor's acquisition cap when a hosted lookup loses its required capture", async () => {
+    const harness = await loopHarness();
+    harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    const report = await runWorkerLoop({
+      ...harness.deps,
+      descriptor: emergencyContactModule.descriptor,
+      resolveExecution: () => ({ descriptor: personLookupDescriptor, stores: taskStoreRegistry }),
+      browserScreenshotCapture: { capture: async ({ trigger }) => {
+        if (trigger.kind === "task-point" && trigger.nodeId === "searching") throw new Error("synthetic required capture failure");
+      } },
+    });
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["failed"]);
+    assert.equal(report.closure, "proved");
+    assert.equal(harness.sessions.opens("ucpath"), 1);
+    assert.deepEqual(harness.sessions.closeReasons(), ["worker-stop"]);
+  });
+
   it("keeps sessions across consecutive child runs of one workflow under a parent-workflow home", async () => {
     const harness = await loopHarness();
     const home = emergencyContactModule.descriptor;

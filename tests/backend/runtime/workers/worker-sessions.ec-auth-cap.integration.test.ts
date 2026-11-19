@@ -3,8 +3,9 @@ import { afterEach, describe, it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { WorkerSessionManager, type WorkerBrowserSessionFactory, type WorkerSessionEvent } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import { WorkflowIdSchema, taskId } from "../../../../src/rules/identity/ids.js";
+import { taskId } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { createWorkerSessionManagerTestWorld } from "../../../support/helpers/backend/worker-session-manager-world.js";
 import { createWriteSequencer, WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
@@ -12,6 +13,7 @@ import { absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_NODE_ID, 
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
+import { emergencyContactModule, personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const writes = createWriteSequencerTestWorld();
 afterEach(writes.cleanup);
@@ -21,17 +23,19 @@ const signal = new AbortController().signal;
 const need = { system: "ucpath", access: "read", session: "reuse-worker" } as const;
 const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
 const context = { runId: "00000000-0000-4000-8000-000000000099", descriptorFingerprint: world.RUN_FINGERPRINT };
+const emergencyContactDescriptor = emergencyContactModule.descriptor;
 
-function manager(factory: WorkerBrowserSessionFactory, events: WorkerSessionEvent[] = [], workflow = "emergency-contact", onParking?: () => void) {
+function manager(factory: WorkerBrowserSessionFactory, events: WorkerSessionEvent[] = [], home: AnyWorkflowDescriptor = emergencyContactDescriptor, onParking?: () => void) {
   const sessions = new WorkerSessionManager({
-    workflowId: WorkflowIdSchema.parse(workflow), workerId: world.WORKER_ID,
+    workflowId: home.id, workerId: world.WORKER_ID,
+    singleAcquisitionPerSystemPerClaim: home.capabilities?.singleAcquisitionPerSystemPerClaim,
     onParking, stores: taskStoreRegistry, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: 30_000,
     factory, duoCeremony: { openGate: () => ({
       retainedForRecovery: () => true, dispose: () => undefined,
       withCeremony: async () => { throw new Error("unexpected ceremony in synthetic authentication"); },
     }) }, browserScreenshotCapture: { capture: async () => undefined }, onEvent: event => events.push(event),
   });
-  sessions.configureExecution(WorkflowIdSchema.parse("person-lookup"), taskStoreRegistry);
+  sessions.configureExecution(personLookupDescriptor.id, taskStoreRegistry);
   sessions.bindRunConfigFingerprint(world.RUN_FINGERPRINT, "headless", context);
   return sessions;
 }
@@ -116,7 +120,8 @@ describe("Emergency Contact worker claim authentication", () => {
     const eventsAfterCapture: WorkerSessionEvent[] = [];
     const stores = buildWriteFixtureRegistry(h.world);
     const sessions = new WorkerSessionManager({
-      workerId: world.WORKER_ID, workflowId: WorkflowIdSchema.parse("emergency-contact"),
+      workerId: world.WORKER_ID, workflowId: emergencyContactDescriptor.id,
+      singleAcquisitionPerSystemPerClaim: emergencyContactDescriptor.capabilities?.singleAcquisitionPerSystemPerClaim,
       onEvent: event => { if (captureFailed) eventsAfterCapture.push(event); },
       clock: h.clock, scheduler: h.scheduler, acquireDeadlineMs: 30_000, stores, factory: h.sessions.factory,
       duoCeremony: duoCeremonyGatesOver(h.database, h.clock),
@@ -174,7 +179,7 @@ describe("Emergency Contact worker claim authentication", () => {
   it("reports a parking observer failure separately from proved closure", async () => {
     const harness = world.sessionFactory();
     const observerError = new Error("parking observer failed");
-    const sessions = manager(harness.factory, [], "emergency-contact", () => { throw observerError; });
+    const sessions = manager(harness.factory, [], emergencyContactDescriptor, () => { throw observerError; });
     try {
       await sessions.withDriver(need, "prod", signal, async () => undefined);
       await assert.rejects(sessions.closeAll("parked"), error => error === observerError);
@@ -197,7 +202,7 @@ describe("Emergency Contact worker claim authentication", () => {
 
   it("preserves poison-close and reacquisition for an independent Person Lookup worker", async () => {
     const harness = world.sessionFactory();
-    const sessions = manager(harness.factory, [], "person-lookup");
+    const sessions = manager(harness.factory, [], personLookupDescriptor);
     try {
       await assert.rejects(sessions.withDriver(need, "prod", signal, async () => { throw new Error("read failed"); }), /read failed/);
       assert.equal(harness.closes(), 1);

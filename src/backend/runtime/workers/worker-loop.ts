@@ -242,6 +242,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     onParking: () => recordTransition("sessions-parking"),
     workerId,
     workflowId,
+    singleAcquisitionPerSystemPerClaim: deps.descriptor.capabilities?.singleAcquisitionPerSystemPerClaim,
     stores: deps.stores,
     factory: deps.sessionFactory,
     clock,
