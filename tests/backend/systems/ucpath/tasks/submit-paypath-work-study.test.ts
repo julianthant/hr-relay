@@ -12,7 +12,8 @@ import { RecordedDataPointSchema, type DataPoint } from "../../../../../src/rule
 import { mintMutationCapability } from "../../../../../src/workflow-kit/mutation-capability.js";
 
 const TARGET = UcpathPayPathWorkStudyTargetSchema.parse({
-  emplId: "10000001", expectedName: "Lee, Jordan", effectiveDate: "08/03/2026", positionChangeReason: "JRL", positionPool: "F",
+  emplId: "10000001", expectedName: "Lee, Jordan", positionNumber: "40012345", effectiveDate: "08/03/2026",
+  positionChangeReason: "JRL", positionPool: "F",
   comments: "Updated pool id to F per work study award 08/03/2026",
 });
 
@@ -26,7 +27,7 @@ async function submit(submitAs: FakePayPathSubmit, recordData: (point: DataPoint
   const result = submitPayPathWorkStudyTask.impl.run({ input: TARGET, ctx: {
     signal: new AbortController().signal, log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
     fail: (code: string, message: string): never => { throw new Failed(code, message); }, recordData,
-    mutation: mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64))),
+    mutation: mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000),
     driver: { ...createDeterministicUcpathPersonOrgDriver(), ...operations, readTransactionFindings: operations.readTransactionFindings },
   } });
   return { result, operations };

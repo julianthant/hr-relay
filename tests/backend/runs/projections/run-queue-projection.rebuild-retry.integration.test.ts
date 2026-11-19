@@ -278,9 +278,13 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     startPlans: { plan: unexpected, previewWarnings: unexpected } });
   const hub = new DashboardStreamHub({ projection, backfillGaps: { detected: unexpected } });
   try {
-    const readDay = () => app.request(`/api/v1/dashboard?day=${DAY}`);
+    const readDay = (ifNoneMatch?: string) => app.request(`/api/v1/dashboard?day=${DAY}`,
+      ifNoneMatch === undefined ? {} : { headers: { "If-None-Match": ifNoneMatch } });
     const first = await readDay();
     assert.equal(first.status, 200);
+    const tag = first.headers.get("ETag");
+    assert.ok(tag, "the first Queue response supplies a validator");
+    assert.equal(first.headers.get("Cache-Control"), "private, no-cache");
     const wire: unknown = await first.json();
     assert.equal(queueReads, 1);
     for (let tab = 0; tab < 2; tab += 1) {
@@ -302,6 +306,12 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     const repeated = await readDay();
     assert.equal(repeated.status, 200);
     assert.deepEqual(await repeated.json(), wire);
+    assert.equal(repeated.headers.get("ETag"), tag);
+    const validated = await readDay(`"older", W/${tag}`);
+    assert.equal(validated.status, 304);
+    assert.equal(validated.headers.get("ETag"), tag);
+    assert.equal(validated.headers.get("Cache-Control"), "private, no-cache");
+    assert.equal(await validated.text(), "");
     assert.equal(queueReads, 1, "every unchanged request reuses the day build");
 
     const preferenceId = uuidOf(97);
@@ -330,8 +340,9 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.equal(queueReads, 1, "renaming an unlinked run outside the month reuses the day build");
 
     assert.equal(rename(uuidOf(99), uuidOf(1), "Renamed August run").state, "applied");
-    const afterSelectedRename = await readDay();
+    const afterSelectedRename = await readDay(tag);
     assert.equal(afterSelectedRename.status, 200);
+    assert.notEqual(afterSelectedRename.headers.get("ETag"), tag);
     assert.deepEqual(DashboardDayWireSchema.parse(await afterSelectedRename.json()).queueSurfaces[0]?.displayName,
       { state: "present", value: "Renamed August run" });
     assert.equal(queueReads, 2, "renaming a selected run invalidates its cached day before the next poll");

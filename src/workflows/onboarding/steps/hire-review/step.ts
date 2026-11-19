@@ -687,8 +687,10 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
     prepareBind: ({ outputs }) => ({ ...I9ProfileTargetSchema.parse(outputs["write-plan"].i9), profileId: outputs["i9-profile-save"].output.receipt.profileId, startDate: outputs["write-plan"].hire.employee.effectiveDate }),
     commitBind: ({ outputs }) => ({ ...I9ProfileTargetSchema.parse(outputs["write-plan"].i9), profileId: outputs["i9-profile-save"].output.receipt.profileId, startDate: outputs["write-plan"].hire.employee.effectiveDate }),
     previewBind: ({ outputs, dryRun }) => {
-      const source = previewProfile(dryRun), target = { ...I9ProfileTargetSchema.parse(outputs["write-plan"].i9), profileId: source.profileId, startDate: outputs["write-plan"].hire.employee.effectiveDate };
-      return { prepare: target, commit: target, samples: source.samples };
+      const source = previewProfile(dryRun);
+      if (source.samples.length > 0) return undefined;
+      const target = { ...I9ProfileTargetSchema.parse(outputs["write-plan"].i9), profileId: source.profileId, startDate: outputs["write-plan"].hire.employee.effectiveDate };
+      return { prepare: target, commit: target, samples: [] };
     },
   });
   const hire = author.transaction(hireEntries.transaction("hire-create", { label: "Submit the reviewed hire", prepare: UcpathStageHire, commit: UcpathCreateHire,

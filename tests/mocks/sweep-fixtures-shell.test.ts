@@ -42,12 +42,12 @@ for (const width of [1280, 1024]) {
         await expect(page.getByRole("dialog")).toBeVisible();
         const dialog = page.getByRole("dialog");
         await expect(dialog.getByText(/Not available yet/u)).toHaveCount(0);
-        if (workflow === "onboarding") await expect.soft(dialog.getByText("Choose saved roster rows and a hire mode. Each selected row starts one run.", { exact: true })).toBeVisible();
+        if (workflow === "onboarding") await expect.soft(dialog.getByText("Reference spreadsheets", { exact: true })).toBeVisible();
         else await expect(dialog.getByRole("textbox").first()).toBeVisible();
         if (workflow === "work-study") {
           await dialog.getByRole("textbox", { name: "Effective date", exact: true }).fill("08/03/2026");
           await expect(dialog.getByRole("textbox", { name: "Effective date", exact: true })).toHaveValue("08/03/2026");
-          await expect.soft(dialog.getByText("Each Employee ID starts one run; every run uses the one effective date.", { exact: true })).toBeVisible();
+          await expect.soft(dialog.getByText("Employee IDs. Separate values with a semicolon or Shift+Enter.", { exact: true })).toBeVisible();
           await dialog.getByRole("textbox", { name: "Employee IDs", exact: true }).fill("12");
           await dialog.getByRole("textbox", { name: "Employee IDs", exact: true }).press("Tab");
           await expect(dialog.getByText("Employee IDs must contain at least five digits.", { exact: true })).toBeVisible();

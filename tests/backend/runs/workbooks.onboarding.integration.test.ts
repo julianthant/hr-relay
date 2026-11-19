@@ -311,7 +311,10 @@ describe("Onboarding captured roster admission and row choice", () => {
       { ...f.request, workbookReferences: [] },
       { ...f.request, workbookReferences: [{ ...f.selection, versionId: "missing" }] },
     ]) assert.equal(f.plan(request).planned.length, 0);
-    for (const reference of [{ ...f.selection, typeId: "general" }, { ...f.selection, keys: ["other@example.test"] }, { ...f.selection, fields: ["email", "livedName"] }]) {
+    const wrongType = f.plan({ ...f.request, workbookReferences: [{ ...f.selection, typeId: "general" }] });
+    assert.deepEqual(wrongType.planned, []);
+    assert.deepEqual(wrongType.refused.map(({ entry, code }) => [entry, code]), [[1, "capability-unavailable"]]);
+    for (const reference of [{ ...f.selection, keys: ["other@example.test"] }, { ...f.selection, fields: ["email", "livedName"] }]) {
       assert.throws(() => f.plan({ ...f.request, workbookReferences: [reference] }));
     }
     for (const values of [["", null], [4, null], [null, "Lived Name"], ["   ", "Lived Name"]]) {

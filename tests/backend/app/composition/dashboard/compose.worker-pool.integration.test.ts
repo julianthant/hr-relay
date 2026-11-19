@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { createDashboardPoolTestWorld } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { argValue } from "../../../../support/helpers/backend/fake-worker-port.js";
+import { requireStoppedPool, WORKER_EXIT_OBSERVATION_TIMEOUT_MS, WORKER_GRACEFUL_STOP_TIMEOUT_MS, WORKER_SIGTERM_TIMEOUT_MS } from "../../../../../src/backend/runtime/workers/worker-pool.js";
 import { createBrowserRoots, workerProfileDirectory } from "../../../../../src/backend/storage/browser-roots.js";
 
 const { WORKFLOW, WORKER_1, openControlHarness, envelope, settleMicrotasks, view, memberTarget, planWorkers, dashboardLaunch, launchCommands, cleanup } = createDashboardPoolTestWorld();
@@ -188,6 +189,52 @@ describe("the composed worker pool through the kernel", () => {
     const audit = h.database.authority.commandAudits.findByCommand(command.commandId);
     assert.ok(audit?.result.state === "rejected");
     assert.equal(audit.result.message, "WORKER_EXITED");
+  });
+
+  it("refuses at the original observation deadline when both the stop callback and OS exit are missing", async () => {
+    const h = await openControlHarness({ exitOnStop: false });
+    await planWorkers(h, 1);
+    await settleMicrotasks();
+    const [child] = h.children;
+    vi.spyOn(child, "send").mockImplementation(() => {});
+    vi.spyOn(child, "kill").mockReturnValue(true);
+    let finished = false;
+    const stopping = h.workers.pool.stopAll("shutdown").then(views => { finished = true; return views; });
+    try {
+      for (const delay of [WORKER_GRACEFUL_STOP_TIMEOUT_MS, ...(process.platform === "win32" ? [] : [WORKER_SIGTERM_TIMEOUT_MS]), WORKER_EXIT_OBSERVATION_TIMEOUT_MS]) {
+        h.clock.advanceMonotonic(delay);
+        for (const entry of h.scheduler.pending()) if (entry.deadlineMonotonicMs <= h.clock.monotonicMs()) entry.fire();
+        await settleMicrotasks();
+      }
+      assert.equal(view(h).held, "exit-unobserved");
+      assert.equal(finished, true, "the missing callback cannot start a second observation window");
+      assert.throws(() => requireStoppedPool(h.workers.pool.snapshot()), { code: "WORKER_EXIT_UNOBSERVED" });
+    } finally {
+      for (const entry of h.scheduler.pending()) entry.fire();
+      await stopping;
+      child.exit(0, null);
+      await settleMicrotasks();
+    }
+  });
+
+  it("reports a failed operator stop observer to that operation and leaves the next shutdown clean", async () => {
+    const failure = new Error("synthetic stop-channel observer failure");
+    const h = await openControlHarness({}, undefined, { onStopChannelClosed() { throw failure; } });
+    await planWorkers(h, 1);
+    await settleMicrotasks();
+    const [child] = h.children;
+    vi.spyOn(child, "send").mockImplementationOnce((_message, callback) => {
+      callback(Object.assign(new Error("closed pipe"), { code: "EPIPE" }));
+      setImmediate(() => child.exit(0, null));
+    });
+    const operatorResult = await h.workers.pool.stop(memberTarget(h), "operator").catch((error: unknown) => error);
+    requireStoppedPool(await h.workers.pool.stopAll("shutdown"));
+    assert.deepEqual(h.workers.pool.takeShutdownStopFailures(), []);
+    assert.ok(operatorResult instanceof AggregateError);
+    const reports: readonly unknown[] = operatorResult.errors;
+    const [report] = reports;
+    assert.ok(report instanceof AggregateError && report.cause === failure);
+    assert.deepEqual(h.settled, [WORKER_1]);
   });
 
   it("shutdown stops every member, including one that ignores stop, and a crashed member never blocks it", async () => {

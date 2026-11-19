@@ -78,6 +78,7 @@ export const UcpathDeletePendingTerminations = defineTaskContract({
         effect: "read",
       },
       proofSchema: UcpathPendingSweepSettlementProofSchema,
+      effectIdentity: ({ observedAt: _observedAt, ...effect }: UcpathPendingSweepSettlementProof) => effect,
       proofFromOutput: (
         output: z.output<typeof UcpathDeletePendingTerminationsOutputSchema>,
       ) => output.cleared,

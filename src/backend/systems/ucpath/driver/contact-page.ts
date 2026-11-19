@@ -1,3 +1,4 @@
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertContactSubject } from "../../../../rules/ucpath/emergency-contact.js";
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -209,11 +210,33 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
   }
 
   return createContactOperations(open, {
-    async save() {
+    async save(capability) {
       const save = page.locator(recipes.save).filter({ visible: true });
       if (await current(() => save.count()) !== 1) throw new UcpathContactRefusedError("unexpected-contact-page");
-      await current(() => save.click());
-      await settle();
+      const editor = new URL(page.url());
+      // Keep early observer failures available until the click settles.
+      const answered = page.waitForEvent("requestfinished", {
+        timeout: 10_000,
+        predicate: (request) => {
+          if (request.method() !== "POST") return false;
+          const url = new URL(request.url());
+          if (url.origin !== editor.origin || url.pathname !== editor.pathname) return false;
+          const postData = request.postData();
+          if (postData === null) return false;
+          const actions = new URLSearchParams(postData).getAll("ICAction");
+          return actions.length === 1 && actions[0] === "#ICSave"
+            && request.serviceWorker() === null && request.frame() === page.mainFrame();
+        },
+      }).then(request => ({ request }), (error: unknown) => ({ error }));
+      await current(() => clickWithMutationCapability(capability, save));
+      await current(async () => {
+        const answer = await answered;
+        if ("error" in answer) throw answer.error;
+        const response = await answer.request.response();
+        if (response === null) throw new Error("UCPath contact Save response is missing");
+        if (!response.ok()) throw new Error(`UCPath contact Save returned HTTP ${String(response.status())}`);
+      });
+      await current(() => page.locator(recipes.busy).waitFor({ state: "hidden", timeout: 10_000 }));
     },
     async readPersisted(subject) {
       return readContactSetWithPort(await open(subject), subject);

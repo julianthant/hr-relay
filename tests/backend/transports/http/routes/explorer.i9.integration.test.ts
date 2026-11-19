@@ -90,8 +90,10 @@ it("explains PDF record approval before any person check and previews publicatio
 
 it("follows the person's identifier result through the conditional hire-date search and every retention outcome", async () => {
   const spec = await review("i9-check");
-  assert.deepEqual(spec.options, []);
-  assert.deepEqual(spec.sessions, [{ system: "ucpath" }]);
+  assert.deepEqual(spec.options, [["skip-person-match", "Match person"], ["skip-person-lookup", "Check hire date"]].map(([id, label]) => ({
+    id, label, initial: "run", choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }],
+  })));
+  assert.deepEqual(spec.sessions, [{ system: "ucpath", when: [{ "skip-person-lookup": ["run"] }, { "skip-person-match": ["run"] }] }]);
   assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["person-match", "roster-match", "reference-check"]);
   for (const identity of ["ambiguous", "not-found"]) {
     const lookup = walk(spec, {}, { "identifier-result": identity, "hire-date-needed": "true" });

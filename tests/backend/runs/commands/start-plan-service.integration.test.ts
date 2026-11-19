@@ -30,7 +30,8 @@ afterAll(() => profileFixtures.close());
 
 const CLOCK = manualClock(new Date(NOW));
 // Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
-const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
+const READING_LABELS = { eid: "Employee id", effectiveDate: "Effective date" };
+const READING_FACTS = { eid: "10800000", effectiveDate: "01/02/2026" };
 const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];
 const databases: AuthorityDatabase[] = [];
 
@@ -133,7 +134,7 @@ describe("start plan step omissions", () => {
     // The wire is a projection; the RECORD is what a `start-run` command
     // consumes, so the omissions have to be durable there too.
     const stored = harness.database.authority.startPlans.get(wire.startPlanId);
-    assert.deepEqual(stored?.stepOmissions, [{ step: "reading", facts: READING_FACTS }]);
+    assert.deepEqual(stored?.stepOmissions, [{ step: "reading", facts: READING_FACTS, labels: READING_LABELS }]);
     assert.equal(stored?.planned.length, 1);
   });
 
@@ -150,7 +151,7 @@ describe("start plan step omissions", () => {
     const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
-      stepOmissions: [{ step: "reading", facts: { eid: "20111222", effectiveDate: "2026-01-02" } }],
+      stepOmissions: [{ step: "reading", facts: { eid: "10800000", effectiveDate: "2026-01-02" } }],
     })));
 
     assert.equal(error.code, "facts-invalid");
@@ -216,7 +217,7 @@ describe("start plan step omissions", () => {
     assert.deepEqual(wire.omittedSteps, ["reading", "folding"]);
     assert.deepEqual(
       harness.database.authority.startPlans.get(wire.startPlanId)?.stepOmissions,
-      [{ step: "reading", facts: READING_FACTS }, { step: "folding", facts: { folded: "typed" } }],
+      [{ step: "reading", facts: READING_FACTS, labels: READING_LABELS }, { step: "folding", facts: { folded: "typed" }, labels: { folded: "Folded" } }],
     );
   });
 });

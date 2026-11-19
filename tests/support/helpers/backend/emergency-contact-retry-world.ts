@@ -43,12 +43,17 @@ const SqliteTableSchema = z.object({ name: z.string(), sql: z.string().nullable(
 const SqliteColumnSchema = z.object({ name: z.string(), type: z.string() });
 
 type RetryOptions = Readonly<{ failures?: number; /** OnBase session opens that fail while the template is built: the first saved person then waits on a failed filing. */ filingFailures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }>;
-type ContactSeed = Readonly<{ emplId: string; persisted: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>; submissions: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>[] }>;
-type MemberStageSeed = Readonly<{
-  ticks: number; approvedReadFailed: boolean; failuresRemaining: number; failAfterSave: boolean;
-  snapshotReads: number; recordReads: number; wall: string; monotonic: number; mintedIds: number; contacts: readonly ContactSeed[];
-}>;
-type MemberStageTemplate = Readonly<{ workspace: string; profileId: string; dbRelative: string; seed: MemberStageSeed }>;
+const MemberStageSeedSchema = z.strictObject({
+  ticks: z.number(), approvedReadFailed: z.boolean(), failuresRemaining: z.number(), failAfterSave: z.boolean(),
+  snapshotReads: z.number(), recordReads: z.number(), wall: z.string(), monotonic: z.number(), mintedIds: z.int().nonnegative(),
+  contacts: z.array(z.strictObject({ emplId: z.string(), persisted: UcpathContactPageSnapshotSchema,
+    submissions: z.array(UcpathContactPageSnapshotSchema) })),
+});
+export const MemberStageTemplateSchema = z.strictObject({
+  workspace: z.string(), profileId: z.string(), dbRelative: z.string(), seed: MemberStageSeedSchema,
+});
+type MemberStageSeed = z.infer<typeof MemberStageSeedSchema>;
+type MemberStageTemplate = z.infer<typeof MemberStageTemplateSchema>;
 
 function quoteIdent(name: string) {
   return `"${name.replaceAll("\"", "\"\"")}"`;
@@ -361,8 +366,18 @@ export function createEmergencyContactRetryWorld() {
     for (const template of templates.values()) rmSync(template.workspace, { recursive: true, force: true });
     templates.clear();
   };
+  async function prepareTemplate(options: RetryOptions): Promise<MemberStageTemplate> {
+    const key = templateKey(options);
+    let template = templates.get(key);
+    if (template === undefined) {
+      const built = await build(options);
+      template = await capture(built);
+      templates.set(key, template);
+    }
+    return template;
+  }
   process.on("exit", releaseTemplates);
-  return { releaseTemplates, async releaseSources() {
+  return { prepareTemplate, reopenTemplate: reopen, releaseTemplates, async releaseSources() {
     releaseTemplates();
     await world.cleanup();
   }, cleanup: async () => {
@@ -373,13 +388,6 @@ export function createEmergencyContactRetryWorld() {
     }
     if (failures.length !== 0) throw new AggregateError(failures, "executor-fixture-closure-unproved");
   }, async fixture(options: RetryOptions = {}) {
-    const key = templateKey(options);
-    let template = templates.get(key);
-    if (template === undefined) {
-      const built = await build(options);
-      template = await capture(built);
-      templates.set(key, template);
-    }
-    return reopen(template, options);
+    return reopen(await prepareTemplate(options), options);
   } };
 }

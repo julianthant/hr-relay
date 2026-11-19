@@ -203,7 +203,7 @@ it("carries inspection through production startup recovery and checks the recove
   cleanups.push(() => lifetime.close());
   const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
   const fullScan = "SELECT * FROM runs ORDER BY id";
-  const openRecovery = AuthorityDatabase.openStoppedStartupRecovery;
+  const openRecovery = AuthorityDatabase.openStoppedStartupRecovery.bind(AuthorityDatabase);
   const recoveryScans: boolean[] = [];
   vi.spyOn(AuthorityDatabase, "openStoppedStartupRecovery").mockImplementation((...args) => {
     const start = prepare.mock.calls.length;
@@ -222,7 +222,7 @@ it("carries inspection through production startup recovery and checks the recove
     if (active.state !== "active") throw new Error("fixture Resume refused");
     const db = runtime.selectedContext(active.token).database;
     const statements = prepare.mock.calls.map(([sql]) => sql);
-    expect(statements).toContain("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes WHERE seq>? ORDER BY seq");
+    expect(statements).toContain("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes WHERE seq>? ORDER BY seq LIMIT ?");
     expect(statements).not.toContain(fullScan);
     expect(db.authority.runs.get(run.envelope.runId)?.lifecycle).toMatchObject({ state: "terminal", outcome: "cancelled" });
   } finally { await runtime.close("shutdown"); machine.release(); }
@@ -321,7 +321,7 @@ it("runs the full check when the attested writer's suffix has a missing entry", 
   try {
     f.reopen();
     const sql = prepare.mock.calls.map(([statement]) => statement);
-    expect(sql).toContain("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes WHERE seq>? ORDER BY seq");
+    expect(sql).toContain("SELECT seq,table_name,row_key,op,keys_json FROM authority_changes WHERE seq>? ORDER BY seq LIMIT ?");
     expect(sql).toContain("SELECT * FROM runs ORDER BY id");
   } finally { prepare.mockRestore(); }
 });

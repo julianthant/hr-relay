@@ -12,6 +12,7 @@ import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../../rules/identity/ids.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
+import { parseDiagnosticPageCount } from "../../storage/sqlite/authority-database.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { createTrustRunReader } from "../../runs/trust/canonical-reader.js";
@@ -49,13 +50,16 @@ export function parseDiagnosticArgs(args: readonly string[]) {
       else { if (boot) throw new Error("diagnostic-arguments-invalid"); boot = true; }
       continue;
     }
-    const key = flag === "--run" ? "runId" : flag === "--after" ? "after" : flag === "--through" ? "through" : flag === "--limit" ? "limit" : undefined;
+    const key = flag === "--run" ? "runId" : flag === "--after" ? "after" : flag === "--through" ? "through"
+      : flag === "--limit" ? "limit" : flag === "--pages" ? "pages" : undefined;
     const value = args[++index];
     if (key === undefined || value === undefined || key in values || key !== "runId" && !/^\d+$/u.test(value)) throw new Error("diagnostic-arguments-invalid");
     values[key] = key === "runId" ? value : Number(value);
   }
   if (boot && Object.keys(values).length > 0) throw new Error("diagnostic-boot-does-not-have-timeline-cursors");
-  return { json, boot, request: TimelinePageRequestSchema.parse(values) };
+  const { pages = 1, ...page } = values;
+  const request = TimelinePageRequestSchema.parse(page);
+  return { json, boot, request, pages: parseDiagnosticPageCount(pages, request.limit) };
 }
 
 function debugRecordView<T extends Pick<TimelineAppend, "payload">>(record: T) {
@@ -86,7 +90,7 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
     try {
       selected.assertCurrent();
       person.assertProfileRuntime();
-      stored = AuthorityDatabase.inspectTimelinePageReadOnly(person, selected.authorityPath, options.request);
+      stored = AuthorityDatabase.inspectTimelinePageReadOnly(person, selected.authorityPath, options.request, options.pages);
       selected.assertCurrent();
     } catch (error) {
       if (hasUnprovedSourceClosure(error)) {

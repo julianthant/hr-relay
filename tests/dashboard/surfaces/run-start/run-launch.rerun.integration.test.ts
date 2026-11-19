@@ -146,7 +146,7 @@ describe("registered Person Lookup and Separations served launch", () => {
   afterEach(readiness.cleanup);
   const cases = [
     { workflowId: "person-lookup", text: "10000001", submission: { mode: "search", emplId: "10000001",
-      crmCheck: true, keepNonHdh: false, includeCrmDates: false }, dryRun: false },
+      crmCheck: true, keepNonHdh: false, includeCrmDates: true }, dryRun: false },
     { workflowId: "separations", text: "4510", submission: { documentNumber: "4510" }, dryRun: true },
   ] as const;
 
