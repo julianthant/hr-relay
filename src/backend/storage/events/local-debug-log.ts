@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, openSync, closeSync, readSync, constants } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, openSync, closeSync, readSync, fsyncSync, constants } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -52,13 +52,17 @@ export function appendLocalDebug(input: { stateRoot: string; build: string; now:
   const line = `${canonicalJsonStringify(record)}\n`;
   const current = fileStatus(path, true), lineBytes = Buffer.byteLength(line);
   if (lineBytes > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const logs = fileStatus(directory);
+  if (!logs.isDirectory() || privatePathRejects(directory, logs, "private")) throw new Error("boot-log-path-unsafe");
+  const assertAppendTarget = (file: ReturnType<typeof descriptorStatus>): void => {
+    if (!file.isFile() || privateFileNumber(file.nlink) !== 1 || privatePathRejects(path, file, "private")) throw new Error("boot-log-path-unsafe");
+  };
+  if (current !== undefined) assertAppendTarget(current);
   const rotate = current !== undefined && privateFileNumber(current.size) + lineBytes > MAX_BYTES;
   if (rotate) {
     // Profile-local maintenance owns one spool path. Selection writes only to the machine spool.
     if (event.category !== "session" || current.size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
-    const logs = fileStatus(directory);
-    if (!logs.isDirectory() || privatePathRejects(directory, logs, "private")) throw new Error("boot-log-path-unsafe");
-    if (!current.isFile() || privateFileNumber(current.nlink) !== 1 || privatePathRejects(path, current, "private")) throw new Error("boot-log-path-unsafe");
     const last = bootLogSegments(directory).at(-1);
     const generation = BigInt(last?.slice(BOOT_LOG.length + 1) ?? "0") + 1n;
     const archive = `${path}.${generation}`;
@@ -66,8 +70,17 @@ export function appendLocalDebug(input: { stateRoot: string; build: string; now:
     replacePrivateFile(path, archive);
     fsyncPath(directory);
   }
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  appendFileSync(path, line, { mode: 0o600, flush: true });
+  const create = current === undefined || rotate ? constants.O_CREAT : 0;
+  const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_NONBLOCK | constants.O_NOFOLLOW | create, 0o600);
+  try {
+    const opened = descriptorStatus(fd), named = fileStatus(path), parent = fileStatus(directory);
+    assertAppendTarget(opened);
+    if (opened.dev !== named.dev || opened.ino !== named.ino || parent.dev !== logs.dev || parent.ino !== logs.ino
+      || (!rotate && current !== undefined && (opened.dev !== current.dev || opened.ino !== current.ino))) throw new Error("boot-log-path-unsafe");
+    if (privateFileNumber(opened.size) + lineBytes > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
+    appendFileSync(fd, line);
+    fsyncSync(fd);
+  } finally { closeSync(fd); }
   if (rotate) fsyncPath(directory);
   mirrorDebugEvent({ ...record, event });
 }
