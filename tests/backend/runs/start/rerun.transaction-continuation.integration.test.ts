@@ -251,7 +251,7 @@ it("records a recovered continuation's later failure as after the source run's c
     writeState: failure.writeState,
     resolution: { capture: { failureId: failure.failureId, runId: next.envelope.runId, resolution: { status: "unresolved", version: 1 } } } }));
   assert.equal(decision.type, "failed-after-write");
-  assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed", "add-note"]);
+  assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed"]);
   assert.deepEqual(effects(h), before);
 });
 

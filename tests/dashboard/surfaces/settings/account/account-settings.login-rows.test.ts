@@ -69,7 +69,8 @@ describe("Settings > Account Relay login rows", () => {
   it("opens Change password with Current, New and Confirm fields, Save off while empty, and the mismatch line", async () => {
     const sent: unknown[] = [];
     await mount(login({ changePassword: async request => { sent.push(request); return changed; } }));
-    await click("Change Relay password");
+    const trigger = button("Change Relay password");
+    await act(async () => trigger.click());
     const dialogText = (): string => document.body.querySelector('[role="dialog"]')?.textContent ?? "";
     assert.ok(dialogText().startsWith("Change password"));
     for (const [name, control] of [["Current password", "currentPassword"], ["New password", "newPassword"], ["Confirm new password", "confirmPassword"]] as const) {
@@ -90,7 +91,7 @@ describe("Settings > Account Relay login rows", () => {
     assert.equal(button("Save").disabled, false);
     await click("Cancel");
     assert.deepEqual(sent, []);
-    assert.equal(document.activeElement, button("Change Relay password"));
+    await vi.waitFor(() => assert.ok(document.activeElement === trigger, "Cancel restores focus to the Relay password pencil"));
   });
 
   it("opens the username dialog titled Edit username with Cancel and Save", async () => {

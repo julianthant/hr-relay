@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import { dataOriginViewsOf } from "../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { stepProofModuleOf } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { buildRunGate } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { projectObservedOperatorFields } from "../../../src/backend/runs/queries/run-logs.js";
+import { readRunCheckpoint } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { referenceCheckStop } from "../../../src/models/processing/workbooks/reference-check-stop.js";
+import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
 import { SeparationsReadReferenceStop } from "../../../src/models/workflows/separations/read-reference-stop.js";
 import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
+import { projectFailureForOperator } from "../../../src/models/trust/failure.js";
+import { separationsWorkflow } from "../../../src/workflows/separations/workflow.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { createReferenceCheckWriteWorld } from "../../support/helpers/backend/reference-check-write-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
-import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
+import { registeredModule, separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../src/backend/systems/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
+import { parsePersonOrgGridRows, searchPersonOrgWithPagePort, type PersonOrgSearchPageOutcome } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { createDeterministicUcpathSmartHrWorldDriver, createUcpathSmartHrFakeWorld } from "../../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
 import { UCPATH_PERSON_ORG_DETAIL_READY, UCPATH_PERSON_ORG_DETAIL_SCREEN, UCPATH_PERSON_ORG_DISPLAYED_EID, UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN } from "../../../src/models/ui/ucpath-person-org.js";
@@ -124,15 +131,16 @@ describe("Separations composition with a reference spreadsheet", () => {
   const REFERENCE_GATE = "reference-check-review";
   const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
 
-  async function composition(options: Readonly<{ documentEid?: string }> = {}) {
+  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome }> = {}) {
     const clock = manualClock(new Date(COMPOSITION_NOW));
     const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber: COMPOSITION_DOCUMENT, displayedEid: COMPOSITION_EID });
-    kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: options.documentEid ?? "", employeeType: "Student",
+    kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: options.documentEid ?? COMPOSITION_EID, employeeType: "Student",
       studentTitleCode: "4921 - STDT 2", division: "Campus Dining and Retail", location: "Synthetic Hall", terminationType: "Move out of Area",
       lastDayWorked: COMPOSITION_LAST_DAY_WORKED, separationDate: COMPOSITION_SEPARATION_DATE, additionalComments: "", requestAcknowledged: false,
       timekeeperName: "", timekeeperComments: "", terminationEffectiveDate: "", department: "- - -", payrollTitleCode: "", payrollTitle: "",
       submittedTerminationTemplate: false, transactionNumber: "", finalPay: null };
     const ucpath = createUcpathSmartHrFakeWorld({ emplId: COMPOSITION_EID, displayedName: COMPOSITION_UCPATH_NAME, nextTransactionId: COMPOSITION_RECEIPT });
+    const searches: Parameters<ReturnType<typeof createDeterministicUcpathPersonOrgDriver>["searchPersonOrg"]>[0][] = [];
     const sessions = sessionFactoryHarness({
       kuali: () => createDeterministicKualiDriver(kuali, clock),
       ucpath: () => {
@@ -143,6 +151,16 @@ describe("Separations composition with a reference spreadsheet", () => {
         // The person-org fake owns the search screens; the Smart HR world owns the transaction pages.
         return { ...person, scanTerminationTransactions: filing.scanTerminationTransactions, stageTermination: filing.stageTermination,
           stagePendingTerminationSweep: filing.stagePendingTerminationSweep, commit: filing.commit,
+          searchPersonOrg: (input: typeof searches[number]) => {
+            searches.push(input);
+            const outcome = options.searchOutcome;
+            if (outcome === undefined) return person.searchPersonOrg(input);
+            return searchPersonOrgWithPagePort(() => undefined, {
+              search: async () => outcome,
+              drill: async () => assert.fail("a nonmatching row must never be opened"),
+              returnToResults: async () => assert.fail("a nonmatching row must never be opened"),
+            }, input);
+          },
           goto: (next: never) => personScreens.includes(next) ? person.goto(next) : filing.goto(next),
           waitFor: (stateId: never) => personStates.includes(stateId) ? person.waitFor(stateId) : filing.waitFor(stateId),
           read: (id: never) => id === UCPATH_PERSON_ORG_DISPLAYED_EID ? person.read(id) : filing.read(id) };
@@ -157,24 +175,63 @@ describe("Separations composition with a reference spreadsheet", () => {
     const missing = () => f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"]]);
     const renamed = () => f.spreadsheet("Separations roster", "People", ["fullName", "eid"], [[ROW_ONLY_NAME, COMPOSITION_EID]]);
     const parkedAt = (run: RunRecord) => run.lifecycle.state === "parked-gate" ? String(run.lifecycle.gateId) : run.lifecycle.state;
-    /** Executes, answering the name-only identity approval the way the operator's one-click approval does, and returns where the run stopped. */
-    const advance = async (run: RunRecord) => {
-      const first = await f.execute(run);
-      if (first.lifecycle.state !== "parked-gate" || String(first.lifecycle.gateId) !== "identity-approval") return first;
-      assert.equal(f.approveIdentity(run, COMPOSITION_EID, "checked").state, "applied");
-      return f.execute(run);
-    };
-    return { ...f, advance, commits, begin, writeIntents, holding, missing, renamed, parkedAt };
+    return { ...f, commits, begin, writeIntents, holding, missing, renamed, parkedAt, searches };
   }
+
+  it("stops before searching UCPath when the Kuali document has no Employee ID", async () => {
+    const c = await composition({ documentEid: "" });
+    const run = await c.execute(c.begin([], true));
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+    const [failure] = c.database.authority.failures.listByRun(run.envelope.runId);
+    assert.equal(failure?.nodeId, "subject");
+    assert.equal(failure.code, "EMPLOYEE_ID_ABSENT");
+    assert.match(failure.summary, /Kuali document 4444.*Employee ID/u);
+    assert.match(projectFailureForOperator(failure, true).summary, /document does not show an Employee ID/iu);
+    assert.deepEqual(c.searches, []);
+    assert.deepEqual(c.nodeSpans(run, "job-summary"), []);
+    assert.deepEqual(c.writeIntents(run), []);
+  });
+
+  const unmatchedOutcomes: readonly PersonOrgSearchPageOutcome[] = [
+    { kind: "not-found", marker: "No matching values were found" },
+    { kind: "grid", rows: parsePersonOrgGridRows([
+      ["10000009", "0", "Active", "SDCMP", "004921", "Fictional analyst", "Example", "Blair Example"],
+    ]) },
+  ];
+
+  it.each(unmatchedOutcomes)("stops before Job Summary when $kind has no exact Employee ID match", async searchOutcome => {
+    const c = await composition({ searchOutcome });
+    const run = await c.execute(c.begin([], true));
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+    const [failure] = c.database.authority.failures.listByRun(run.envelope.runId);
+    assert.equal(failure?.nodeId, "subject");
+    assert.equal(failure.code, "EMPLOYEE_ID_NO_MATCH");
+    assert.match(failure.summary, /No UCPath person matched Employee ID ••••0000/u);
+    const card = projectFailureForOperator(failure, true);
+    assert.match(card.summary, /No UCPath person matched the Employee ID on the separation document/iu);
+    assert.ok(!JSON.stringify(card).includes(COMPOSITION_EID));
+    assert.deepEqual(c.searches, [{ kind: "by-eid", emplId: COMPOSITION_EID }]);
+    assert.deepEqual(c.nodeSpans(run, "job-summary"), []);
+    assert.deepEqual(c.writeIntents(run), []);
+    const origins = dataOriginViewsOf(registeredModule(separationsWorkflow));
+    const searchedValues = c.events(run).flatMap(({ payload }) => {
+      if (payload.kind !== "span" || payload.event.t !== "data.observed") return [];
+      const event = payload.event;
+      const origin = origins.find(candidate => candidate.nodeId === event.nodeId && candidate.taskId === event.taskId);
+      return projectObservedOperatorFields(event, origin?.operatorFields)
+        .filter(field => field.label === "Searched Employee ID").map(field => field.value);
+    });
+    assert.deepEqual(searchedValues, [COMPOSITION_EID]);
+  });
 
   it("parks before any write when the person is missing, and Continue anyway files each write once", async () => {
     const c = await composition(), started = c.begin([c.missing()]);
-    let run = await c.advance(started);
+    let run = await c.execute(started);
     assert.equal(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.commits(), []);
     assert.deepEqual(c.writeIntents(started), []);
     assert.equal(c.continueAnyway(started).state, "applied");
-    run = await c.advance(started);
+    run = await c.execute(started);
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", c.parkedAt(run));
     assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"]);
     assert.ok(c.writeIntents(started).length > 0);
@@ -182,7 +239,7 @@ describe("Separations composition with a reference spreadsheet", () => {
 
   it("parks on a name difference, and Cancel run ends it with no write", async () => {
     const c = await composition(), started = c.begin([c.renamed()]);
-    assert.equal(c.parkedAt(await c.advance(started)), REFERENCE_GATE);
+    assert.equal(c.parkedAt(await c.execute(started)), REFERENCE_GATE);
     assert.equal(c.cancel(started).state, "applied");
     const cancelled = c.current(started);
     assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled");
@@ -191,7 +248,7 @@ describe("Separations composition with a reference spreadsheet", () => {
   });
 
   it("never parks a dry run with the person missing, and records the check line", async () => {
-    const c = await composition(), run = await c.advance(c.begin([c.missing()], true));
+    const c = await composition(), run = await c.execute(c.begin([c.missing()], true));
     assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.deepEqual(c.checkLines(run), ["Badge list · Issued: not found"]);
@@ -200,7 +257,7 @@ describe("Separations composition with a reference spreadsheet", () => {
 
   it("resumes from stored state after Continue anyway without asking again", async () => {
     const c = await composition(), started = c.begin([c.missing()]);
-    assert.equal(c.parkedAt(await c.advance(started)), REFERENCE_GATE);
+    assert.equal(c.parkedAt(await c.execute(started)), REFERENCE_GATE);
     assert.equal(c.continueAnyway(started).state, "applied");
     const resumed = await c.execute(c.current(started));
     assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", c.parkedAt(resumed));
@@ -209,7 +266,7 @@ describe("Separations composition with a reference spreadsheet", () => {
   });
 
   it("does not park at the reference review when the picked spreadsheet holds the person", async () => {
-    const c = await composition(), run = await c.advance(c.begin([c.holding()]));
+    const c = await composition(), run = await c.execute(c.begin([c.holding()]));
     assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.deepEqual(c.checkLines(run), ["Separations roster · People: found in row 3"]);
@@ -219,7 +276,13 @@ describe("Separations composition with a reference spreadsheet", () => {
     const c = await composition({ documentEid: COMPOSITION_EID }), started = c.begin([c.missing()]);
     const parked = await c.execute(started);
     assert.equal(c.parkedAt(parked), REFERENCE_GATE);
+    assert.deepEqual(c.searches, [{ kind: "by-eid", emplId: COMPOSITION_EID }]);
     assert.deepEqual(c.nodeSpans(parked, "identity-approval"), [["skipped", "condition-false"]]);
+    const checkpoint = readRunCheckpoint(c.database.authority, parked.envelope, "comparison");
+    const comparison = MatchIdentityOutputSchema.parse(checkpoint?.output.value);
+    assert.equal(comparison.approvalRequired, false);
+    assert.ok(comparison.packet.comparisons.some(row => row.documentValue === COMPOSITION_EID
+      && row.note === "the Employee ID lookup and Job Summary confirm the same person"));
     assert.equal(c.continueAnyway(started).state, "applied");
     const resumed = await c.execute(c.current(started));
     assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", JSON.stringify(resumed.lifecycle));
