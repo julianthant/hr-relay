@@ -39,7 +39,7 @@ const BULK_VERB_ICON: Record<BulkVerb, typeof RotateCcw> = { cancel: Ban, retry:
 
 function OutcomeChip({ outcome }: { outcome: keyof typeof OUTCOME_CHIP }) {
   const chip = OUTCOME_CHIP[outcome];
-  return <span className="flex w-[104px] shrink-0"><StatusPill status={chip.status} label={chip.label} size="sm" hideIcon presentation="queue" className={chip.className} /></span>;
+  return <span className="flex shrink-0"><StatusPill status={chip.status} label={chip.label} size="sm" hideIcon presentation="queue" className={chip.className} /></span>;
 }
 
 /** The pending batch a confirm dialog is asking about, held by the shell. */
@@ -191,7 +191,7 @@ export function QueueToolbar({
           className={cn(
             toolbarControl(),
             selectMode
-              ? cn(dsBorder.loud, "bg-[var(--ds-surface-selected)] font-semibold text-[color:var(--ds-fg)]")
+              ? cn(dsBorder.loud, "bg-[var(--ds-surface-selected)] text-[color:var(--ds-fg)]")
               : cn(
                 dsBorder.base,
                 dsSurface.card,
@@ -397,8 +397,9 @@ export function PauseAllQuitControls({ state, activeCount, onPauseAll, onResumeA
   const pauseAll = useRef<HTMLButtonElement>(null);
   const enabled = state === "ready" || state === "paused";
   const resume = state === "paused";
+  const idle = !resume && activeCount === 0;
   return <>
-    <Button ref={pauseAll} size="sm" variant="secondary" className="size-7 p-0" aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : PAUSE_ALL_EFFECT} icon={resume ? <Play aria-hidden className="size-4" /> : <Pause aria-hidden className="size-4" />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
+    <Button ref={pauseAll} size="sm" variant="secondary" className={cn("size-7 p-0", (!enabled || activeCount === 0) && "opacity-50")} aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : idle ? "No runs to pause" : PAUSE_ALL_EFFECT} icon={resume ? <Play aria-hidden className="size-4" /> : <Pause aria-hidden className="size-4" />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
     {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? PAUSE_ALL_PENDING_STATUS : state === "paused" ? "All runs paused. Resume them next time." : "Pause all is unavailable. Check the connection."}</p>}
     <Dialog open={quitRequested} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description={PAUSE_ALL_EFFECT} onCloseAutoFocus={event => { event.preventDefault(); if (pauseAll.current?.disabled === false) pauseAll.current.focus(); else document.getElementById("dashboard-main-region")?.focus(); }}>
       <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!enabled || !onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>

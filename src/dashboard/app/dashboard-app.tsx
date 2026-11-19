@@ -1189,6 +1189,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 panelLabel={workflowLabelOf(activeWorkflowId)}
                 day={day}
                 isToday={day === today}
+                onStartRun={openStart}
                 sort={sort}
                 renderBody={renderQueueBody}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
