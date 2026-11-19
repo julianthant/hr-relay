@@ -1,4 +1,4 @@
-import { nativeSsoGuardKeys, withPinnedSsoPost, type NativeSsoGuardKeys } from "./ucsd-sso-guard.js";
+import { NEW_KRONOS_SSO_PATH, nativeSsoGuardKeys, requireSsoPath, withPinnedSsoPost, type NativeSsoGuardKeys, type UcsdSsoPath } from "./ucsd-sso-guard.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 // Select SSO submit by name: the enrollment navigation also looks like a Login button.
 import type { Frame, JSHandle, Locator, Page } from "playwright";
@@ -122,12 +122,6 @@ export async function waitForUcsdDuoSignIn(page: Page, assertCurrent: () => void
 }
 
 type SsoFormAction = { kind: "prove" | "check-worker" } | { kind: "arm" | "submit"; keys: NativeSsoGuardKeys | undefined } | { kind: "username" | "password"; value: string };
-type UcsdSsoPath = "/tritON/profile/SAML2/Redirect/SSO" | "/idp/profile/SAML2/Redirect/SSO";
-
-function requireSsoPath(path: string): UcsdSsoPath {
-  if (path !== "/tritON/profile/SAML2/Redirect/SSO" && path !== "/idp/profile/SAML2/Redirect/SSO") throw new Error("UCSD_SSO_SCOPE");
-  return path;
-}
 
 async function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
   password: SVGElement | HTMLElement;
@@ -345,8 +339,10 @@ export async function submitSsoForm(
   assertCurrent();
   const { page } = context;
   try {
+    const path = requireSsoPath(new URL(page.url()).pathname);
+    if (path === NEW_KRONOS_SSO_PATH && system !== "new-kronos") throw new Error("UCSD_SSO_SCOPE");
     await submitPinnedUcsdSsoCredentials(page, async () => context.credentials, assertCurrent,
-      context.config.timeouts.navigationMs, requireSsoPath(new URL(page.url()).pathname), (kind, targetId) => {
+      context.config.timeouts.navigationMs, path, (kind, targetId) => {
         if (targetId === "ucsd.sso.password") step = "sso-submit";
         recordBrowserAction(kind, targetId);
       });
