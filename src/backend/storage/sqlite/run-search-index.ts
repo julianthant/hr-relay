@@ -377,9 +377,13 @@ export function createRunSearchIndex(database: DatabaseSync) {
       nextRunSearchState(runSearchStateOf(publicationState(), sourceGeneration), "search");
       const clauses: string[] = [], parameters: (string | number)[] = [];
       const add = (sql: string, ...values: (string | number)[]) => { clauses.push(sql); parameters.push(...values); };
-      const { facets, q } = request;
+      const { facets, q, scope } = request;
+      const fields = { run: "s.id", trace: "s.trace", workflow: "s.workflow", subject: "s.subject", actor: "lower(s.actor)" };
       add("NOT (s.workflow='ocr' AND EXISTS(SELECT 1 FROM runs r WHERE r.id=s.id AND r.parent_id IS NOT NULL))");
-      if (q.length > 0) add("(instr(lower(s.id),?)>0 OR instr(s.trace,?)>0 OR instr(lower(s.workflow),?)>0 OR instr(s.subject,?)>0 OR instr(lower(s.actor),?)>0)", q,q,q,q,q);
+      if (q.length > 0) {
+        const scopedFields = scope === "all" ? Object.values(fields) : [fields[scope]];
+        add(`(${scopedFields.map(field => `instr(${field},?)>0`).join(" OR ")})`, ...scopedFields.map(() => q));
+      }
       for (const [field, value] of Object.entries({ workflow: facets.workflow, state: facets.state, shape: facets.shape, actor: facets.actor, version: facets.version, failure: facets.failure })) if (value !== undefined) add(`s.${field}=?`, value);
       if (facets.from !== undefined) add("s.local_day>=?", facets.from);
       if (facets.to !== undefined) add("s.local_day<=?", facets.to);
@@ -395,10 +399,9 @@ export function createRunSearchIndex(database: DatabaseSync) {
       const candidateCount = CountSchema.parse(database.prepare(`SELECT count(*) AS count FROM (SELECT 1 FROM (SELECT run_id AS id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json FROM run_search) s WHERE ${where} LIMIT ?)`)
         .get(...parameters, LIMIT + 1)).count;
       if (candidateCount > LIMIT) throw new Error("run-search-query-too-broad: narrow dates or metadata filters (maximum 10000 candidates)");
-      const fields = { run: "s.id", trace: "s.trace", workflow: "s.workflow", subject: "s.subject", actor: "lower(s.actor)" };
       const rankParameters: string[] = [];
       const rankClauses = CROSS_DATE_SEARCH_MATCH_ORDER.flatMap((match, rank) => {
-        if (request.scope !== "all" && request.scope !== match.field) return [];
+        if (scope !== "all" && scope !== match.field) return [];
         rankParameters.push(q);
         const field = fields[match.field];
         const condition = match.strength === "exact" ? `${field}=?` : match.strength === "prefix" ? `substr(${field},1,${String(q.length)})=?` : `instr(${field},?)>0`;

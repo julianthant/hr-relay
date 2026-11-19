@@ -92,7 +92,8 @@ describe("UCPath PayPath read on a fake page", () => {
 
 const COMMENTS = "Updated pool id to F per work study award 08/03/2026";
 const target = UcpathPayPathWorkStudyTargetSchema.parse({
-  emplId: EMPL_ID, expectedName: "Lee, Jordan", effectiveDate: "08/03/2026", positionChangeReason: "JRL", positionPool: "F", comments: COMMENTS,
+  emplId: EMPL_ID, expectedName: "Lee, Jordan", positionNumber: "40012345", effectiveDate: "08/03/2026",
+  positionChangeReason: "JRL", positionPool: "F", comments: COMMENTS,
 });
 const OPEN = ["click:category", "click:actions", "fill:empl-id-input=10000001", "click:search"];
 const filled = (key: string, value: string) => [`fill:${key}=${value}`, `press:${key}=Tab`, "settle"];
@@ -102,7 +103,7 @@ const STAGE = [
   "click:job-data-tab", "settle", ...filled("job-data-comments", COMMENTS),
   "click:additional-pay-tab", "settle", ...filled("initiator-comments", COMMENTS), ...READ_BACK,
 ];
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 
 function world(options: Parameters<typeof fakeUcpathPayPathPage>[0] = {}) {
   const page = fakeUcpathPayPathPage(options);

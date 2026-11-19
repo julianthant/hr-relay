@@ -2,6 +2,7 @@ import { separationsIdentityCheckModule } from "../registered-workflows.js";
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { WorkerPoolError } from "../../../../src/backend/runtime/workers/worker-pool.js";
 
 import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
 import { writeFixtureDescriptor } from "../../fixtures/write-sequencer-fixtures.js";
@@ -31,7 +32,7 @@ import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import { CommandRequestSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 
-export interface FakeWorkerMember { readonly lifetimeId: string; readonly version: number; readonly state: "running" | "exited" }
+export interface FakeWorkerMember { readonly lifetimeId: string; readonly version: number; readonly state: "running" | "stopping" | "exited" }
 
 type RepositoryWrap = (repositories: AuthorityRepositories) => AuthorityRepositories;
 
@@ -41,6 +42,7 @@ type AuthorityTransactionWrap = <Result>(
 ) => Result;
 
 interface HarnessOptions {
+  readonly workerStopExit?: "observed" | "unobserved";
   readonly publishQueued?: ConstructorParameters<typeof RunRecordService>[0]["publishQueued"];
   readonly profile?: BoundProfileStorageFixture;
   readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
@@ -133,8 +135,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
     writeFixtureDescriptor,
   ];
 
-  /** A pool that accepts every effect and keeps each member's lifetime and version in memory, as the real pool does. */
-  function acceptingWorkerRuntime(calls: string[], members: Map<string, FakeWorkerMember>): WorkerPoolRuntimeAdoption {
+  function acceptingWorkerRuntime(calls: string[], members: Map<string, FakeWorkerMember>, stopExit: HarnessOptions["workerStopExit"]): WorkerPoolRuntimeAdoption {
     let lifetimes = 0;
     const state = (workerId: string) => members.get(workerId)?.state ?? "absent";
     return { pool: {
@@ -152,8 +153,13 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
       ensure: async member => { calls.push(`ensure:${member.workerId}`);
         if (state(member.workerId) === "absent" || state(member.workerId) === "exited") members.set(member.workerId,
           { lifetimeId: `00000000-0000-4000-8000-${String(++lifetimes).padStart(12, "0")}`, version: 0, state: "running" }); },
-      stop: async (workerId, reason) => { calls.push(`stop:${workerId}:${reason}`);
-        const member = members.get(workerId); if (member !== undefined) members.set(workerId, { ...member, version: member.version + 1, state: "exited" }); },
+      stop: async (workerId, reason) => {
+        calls.push(`stop:${workerId}:${reason}`);
+        const member = members.get(workerId);
+        if (member === undefined) return;
+        members.set(workerId, { ...member, version: member.version + 1, state: stopExit === "unobserved" ? "stopping" : "exited" });
+        if (stopExit === "unobserved") throw new WorkerPoolError("WORKER_EXIT_UNOBSERVED");
+      },
       remove: async member => { calls.push(`remove:${member.workerId}`); members.delete(member.workerId); },
       direct: async (workerId, directive) => { calls.push(`direct:${workerId}:${directive}`); },
       browser: async (target, type) => { calls.push(`${type}:${target.browserSessionId}`); },
@@ -233,7 +239,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
       },
       writeResolution: requeueingWriteResolution(writeCalls, database, clock),
       workbookRows: createRunWorkbookService({ database, clock }),
-      workerRuntime: acceptingWorkerRuntime(workerCalls, workerMembers),
+      workerRuntime: acceptingWorkerRuntime(workerCalls, workerMembers, options.workerStopExit),
       settings: settingsOverride ?? createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials),
     });
     return {

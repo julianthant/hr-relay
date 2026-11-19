@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { DashboardApp } from "./routes/api.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import type { Clock } from "../../../rules/time/clock.js";
+import { emitOptionalDiagnostic } from "../../logs/debug-events.js";
 
 export const SLOW_REQUEST_THRESHOLD_MS = 500;
 
@@ -178,9 +179,11 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
           const matches = app.router.match(method, app.getPath(request))[0];
           const matched = matches.find(([[, route]]) => route.method !== "ALL") ?? matches.at(-1);
           const route = matched?.[0][1].path ?? "(unmatched)";
-          observation.debugEvents.emit({ category: "http", phase: status >= 500 ? "failed" : "settled", area: "request",
+          const emitTiming = () => observation.debugEvents.emit({ category: "http", phase: status >= 500 ? "failed" : "settled", area: "request",
             reason: status >= 500 ? "request-failed" : "slow-request", correlationId: randomUUID(),
             method: request.method, route, status, durationMs });
+          if (status >= 200 && status < 300) emitOptionalDiagnostic(emitTiming);
+          else emitTiming();
         } catch (error: unknown) { settleFailure(transfer, asError(error), false); }
         finally { outgoing.off("close", onClose); timing.resolve(); }
       };

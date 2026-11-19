@@ -4,10 +4,55 @@ import { Hono } from "hono";
 import { it } from "vitest";
 import { startDashboardHttpServer } from "../../../../src/backend/transports/http/http-server.js";
 import type { ActorId } from "../../../../src/rules/identity/ids.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { foundationFixture } from "../../../support/helpers/database-foundation/fixtures.js";
+import { fillDiagnosticBudget } from "../../../support/helpers/backend/full-diagnostic-budget.js";
+import { TimelineDiagnosticBudgetError } from "../../../../src/models/events/timeline.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 
 function contains(error: unknown, expected: unknown): boolean {
   return error === expected || error instanceof AggregateError && error.errors.some((value: unknown) => contains(value, expected));
 }
+
+it("closes a selected mount after a slow successful response at diagnostic capacity", async () => {
+  const f = await foundationFixture();
+  try {
+    const timeline = f.db.authority.timelineEvents;
+    fillDiagnosticBudget(f.path, timeline, f.clock);
+    const before = timeline.highWaterMark();
+    const writer = createDebugEventWriter({ repository: timeline, clock: f.clock, build: "test" });
+    const app = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    app.get("/slow", c => { f.clock.advanceMonotonic(501); return c.text("ok"); });
+    const server = await startDashboardHttpServer({ app, port: 0 });
+    let attempts = 0;
+    try {
+      const mount = server.mount(app, () => true, { clock: f.clock, debugEvents: { emit(input) { attempts++; writer.emit(input); } } });
+      const response = await fetch(`http://127.0.0.1:${server.port}/slow`);
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), "ok");
+      await mount.close();
+      assert.equal(attempts, 1);
+      assert.equal(timeline.highWaterMark(), before);
+    } finally { await server.close(); }
+  } finally { await f.dispose(); }
+});
+
+it.each([
+  { status: 200 as const, failure: new Error("timing writer unavailable") },
+  { status: 503 as const, failure: new TimelineDiagnosticBudgetError() },
+])("retains the timing write failure for a mounted HTTP $status", async ({ status, failure }) => {
+  const clock = manualClock(new Date("2026-01-01T00:00:00Z"));
+  const app = new Hono<{ Variables: { requestActorId: ActorId } }>();
+  app.get("/slow", c => { clock.advanceMonotonic(501); return c.text("complete", status); });
+  const server = await startDashboardHttpServer({ app, port: 0 });
+  try {
+    const mount = server.mount(app, () => true, { clock, debugEvents: { emit() { throw failure; } } });
+    const response = await fetch(`http://127.0.0.1:${server.port}/slow`);
+    assert.equal(response.status, status);
+    assert.equal(await response.text(), "complete");
+    await assert.rejects(mount.close(), error => contains(error, failure));
+  } finally { await assert.rejects(server.close(), error => contains(error, failure)); }
+});
 
 for (const observer of ["absent", "records", "throws"] as const) for (const fails of [false, true]) it(`settles a disconnect-first mounted tab (observer ${observer}, cancellation fails ${fails}) before deciding custody`, async () => {
   const cancelled = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), first = Promise.withResolvers<void>();

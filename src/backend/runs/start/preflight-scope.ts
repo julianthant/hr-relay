@@ -1,4 +1,4 @@
-import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDelegatedDescriptor, workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { PreflightAdmissionScopeSchema, PreflightAdmissionRefusal, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
 import { RuntimeCapabilitySchema, type RuntimeCapability } from "../../../models/preflight/preflight-contract.js";
 import type { InstanceSelection } from "../../../models/run/envelope.js";
@@ -13,9 +13,17 @@ export function workflowPreflightScope(descriptor: AnyWorkflowDescriptor, input:
     throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight descriptor changed; review the workflow again.");
   }
   const projection = workflowProjections(descriptor);
-  const instances = resolveInstances(descriptor, input.resolvedInstance);
   const capabilities = new Set<RuntimeCapability>(["executor.run"]);
-  for (const system of projection.systems) capabilities.add(RuntimeCapabilitySchema.parse(`system.${system}.${instances[system as keyof InstanceSelection]}`));
+  const workflows = new Set([descriptor]);
+  for (const workflow of workflows) {
+    const instances = resolveInstances(workflow, workflow === descriptor ? input.resolvedInstance : undefined);
+    for (const [system, instance] of Object.entries(instances)) {
+      capabilities.add(RuntimeCapabilitySchema.parse(`system.${system}.${instance}`));
+    }
+    for (const node of descriptorRuntimeNodes(workflow)) {
+      if (node.kind === "child-run") workflows.add(workflowDelegatedDescriptor(workflow, node.target.id));
+    }
+  }
   if ((descriptor.protectedInputs ?? []).some(declaration => declaration.name === "timekeeperName")) capabilities.add("workflow.kuali-fill");
   for (const contract of projection.contracts) {
     if (contract.id.startsWith("sharepoint/")) capabilities.add("workflow.sharepoint-download");

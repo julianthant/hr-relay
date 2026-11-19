@@ -12,7 +12,7 @@ export const verifyTerminationFilingPresentTask = defineTask(
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
       const scan = await ctx.driver.scanTerminationTransactions({ emplId: input.emplId });
-      const verdict = ucpathTerminationFilingPresence(input, scan);
+      const verdict = ucpathTerminationFilingPresence(input, scan, input.expectedEmplRecord);
       if (verdict.state !== "present") {
         return ctx.fail(
           verdict.state === "unknown" ? "unexpected-page-state" : "filing-not-current",
