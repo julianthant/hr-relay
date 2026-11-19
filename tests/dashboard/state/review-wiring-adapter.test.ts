@@ -13,7 +13,7 @@ import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../
 import { readRunReview } from "../../../src/dashboard/state/review-wiring-adapter.js";
 import { RunReview } from "../../../src/dashboard/surfaces/run-detail/review/review.js";
 import { correctedOcrRecord } from "../../../src/dashboard/surfaces/run-detail/review/review-model.js";
-import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/models/dashboard/projection.js";
 import { ReviewPageSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { ocrReviewPageFixture } from "../../support/fixtures/dashboard/ocr-review.js";
@@ -109,6 +109,59 @@ it("focuses a newly selected run even when the same document record ID appears i
   selected = { ...selected, row: QueueSurfaceWireSchema.parse({ ...selected.row, runId: "00000000-0000-4000-8000-000000000997" }) };
   await act(async () => root?.render(render()));
   await vi.waitFor(() => assert.ok(document.activeElement?.hasAttribute("data-ocr-review-heading")));
+});
+
+function parentRow() {
+  const base = selection();
+  return { ...base, row: QueueSurfaceWireSchema.parse({ ...base.row, runId: "00000000-0000-4000-8000-000000000996", workflowId: "oath-upload" }) };
+}
+const parentClient = (parent: ReturnType<typeof parentRow>) => createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => Response.json(
+  String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(SOURCE_RUN_ID) } : detail(parent)) });
+
+it("opens the hosted OCR review a parent run serves under the OCR run's own identity", async () => {
+  const parent = parentRow();
+  const page = await readRunReview(parentClient(parent), parent, new AbortController().signal, [SOURCE_RUN_ID]);
+  assert.equal(page.runId, SOURCE_RUN_ID);
+});
+
+it("refuses a review payload for a run the row neither is nor hosts", async () => {
+  const parent = parentRow();
+  await assert.rejects(readRunReview(parentClient(parent), parent, new AbortController().signal, ["00000000-0000-4000-8000-000000000995"]), /IDENTITY_MISMATCH/u);
+  await assert.rejects(readRunReview(parentClient(parent), parent, new AbortController().signal), /IDENTITY_MISMATCH/u);
+});
+
+function hostedReviewRow(parent: ReturnType<typeof parentRow>): QueueSurfaceWire {
+  const base = selection();
+  return QueueSurfaceWireSchema.parse({ ...base.row, runId: SOURCE_RUN_ID, workflowId: "ocr",
+    parent: { runId: parent.row.runId, visibility: "hidden-unless-failed", partitionDay: "2026-11-18", workflowId: "oath-upload", label: "Oath upload", panelKind: "run", status: "running", title: "Oath upload" } });
+}
+
+async function mountParentRecords(parent: ReturnType<typeof parentRow>, hosted: QueueSurfaceWire) {
+  const world = editorWorld();
+  const day = { ...FIXTURE_DAY_WIRE, queueSurfaces: [...FIXTURE_DAY_WIRE.queueSurfaces, hosted] };
+  const binding: DashboardCommandBinding = { ...world.binding, authority: { ...world.binding.authority, dayState: { ...world.binding.authority.dayState, day: { state: "loaded", value: day } } } };
+  const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client: parentClient(parent), children: createElement(DashboardCommandBindingProvider, { binding,
+    children: createElement(RunReview, { selection: parent }) }) })));
+  return host;
+}
+
+it("mounts the parent's Records view on the hosted OCR review named by the loaded day", async () => {
+  const parent = parentRow();
+  const host = await mountParentRecords(parent, hostedReviewRow(parent));
+  await vi.waitFor(() => assert.equal(host.querySelectorAll("[data-review-record-id]").length, 2));
+});
+
+it.each(["inline", "without a served review section"] as const)("refuses the hosted review when the OCR child is %s", async reason => {
+  const parent = parentRow();
+  const hosted = hostedReviewRow(parent);
+  assert.ok(hosted.parent);
+  const candidate = QueueSurfaceWireSchema.parse({ ...hosted, ...(reason === "inline"
+    ? { parent: { ...hosted.parent, visibility: "inline" } }
+    : { availableSections: ["logs"] }) });
+  const host = await mountParentRecords(parent, candidate);
+  await vi.waitFor(() => assert.match(host.textContent ?? "", /Review unavailable/u));
+  assert.equal(host.querySelectorAll("[data-review-record-id]").length, 0);
 });
 
 function editorWorld(unknownOnce = false, delegated = true) {
