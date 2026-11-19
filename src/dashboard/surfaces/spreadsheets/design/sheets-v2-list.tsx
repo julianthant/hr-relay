@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { BodySection, Skeleton, dsIcon } from '../../../ds/ui.js';
+import { BodySection, dsIcon } from '../../../ds/ui.js';
 import { LoadingRegion, SkeletonText } from '../../shared/loading/loading.js';
 import { type Sheet, stamp, tagsOf } from './sheets-v2-model.js';
 import { DownloadIcon, SheetMenu, SyncStatus, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';

@@ -11,7 +11,7 @@ export function SheetDetail({ sheet, document, fields, onBack, onMap, onVersion,
   const worksheet = document.sheets.find(item => item.id === tab) ?? document.sheets[0];
   const { toast } = useToasts();
   const why = syncFailureWhy(sheet), failedAt = sheet.sync?.lastFinishedAt;
-  useEffect(() => { if (why) toast({ tone: 'danger', key: `sheets-sync-${sheet.id}`, title: 'Sync failed', description: why }); }, [why, failedAt, sheet.id]);
+  useEffect(() => { if (why) toast({ tone: 'danger', key: `sheets-sync-${sheet.id}`, title: 'Sync failed', description: why }); }, [why, failedAt, sheet.id, toast]);
   return <div className="min-w-0">
     <PageBreadcrumbs items={[{ label: 'Spreadsheets', onClick: onBack }, { label: sheet.name }]} />
     <PageHeading className="mb-[var(--ds-space-page-heading-content)]" title={sheet.name} description={<span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
