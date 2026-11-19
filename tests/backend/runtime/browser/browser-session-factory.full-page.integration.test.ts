@@ -148,12 +148,34 @@ describe("whole-page factory screenshots", () => {
       assert.deepEqual([png.width, png.height], [1500, 900]);
     });
   });
-  it("refuses an image when the grid moves during a screenshot band", async () => {
+  it("recaptures the complete form after a late section reflows during a screenshot band", async () => {
+    await withPage(`<main>${content}</main>`, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands === 2) await page.locator("main").evaluate(form => {
+          const section = document.createElement("div");
+          section.style.cssText = "height:200px;background:rgb(230,200,20)";
+          form.prepend(section);
+        });
+        return screenshot(options);
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "available", evidence?.state === "unavailable" ? evidence.detail : undefined);
+      const png = PNG.sync.read(Buffer.from(evidence.bytes));
+      assert.equal(png.height, 3200);
+      assert.deepEqual(pixel(png, 20, 0), [230, 200, 20]);
+      assert.deepEqual(pixel(png, 20, 200), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 20, 1200), [20, 210, 30]);
+      assert.deepEqual(pixel(png, 20, 3199), [20, 30, 210]);
+    });
+  });
+  it("refuses an image when the grid keeps moving during screenshot bands", async () => {
     await withPage(`<div id="grid" style="width:800px;height:500px;overflow:auto">${content}</div>`, async (page, resource) => {
       const screenshot = page.screenshot.bind(page);
       let bands = 0;
       page.screenshot = async options => {
-        if (++bands === 2) await page.locator("#grid").evaluate(grid => { grid.style.marginLeft = "40px"; });
+        await page.locator("#grid").evaluate((grid, band) => { grid.style.marginLeft = `${band * 10}px`; }, ++bands);
         return screenshot(options);
       };
       const evidence = await resource.screenshot?.();
@@ -707,6 +729,22 @@ describe("whole-page factory screenshots", () => {
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
       assert.equal(evidence.reason, "band-limit");
+    });
+  });
+  it("counts discarded screenshots toward the band limit when replanning", async () => {
+    await withPage('<main style="height:800px"></main>', async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      let shots = 0;
+      page.screenshot = async options => {
+        // A 600px viewport with 120px overlap needs all 30 bands at this height.
+        if (++shots === 1) await page.locator("main").evaluate(form => { form.style.height = "14520px"; });
+        return screenshot(options);
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "band-limit");
+      assert.equal("bytes" in evidence, false);
+      assert.equal(shots, 1);
     });
   });
   it("preserves an undefined capture failure and skips final authentication", async () => {
