@@ -105,28 +105,37 @@ it("keeps rows and files for not-due, pinned, active, shared and pending diagnos
   }
 });
 
-it("sweeps daily on an unref'd timer and clears it on cleanup", async () => {
+it("sweeps diagnostics and timeline rows daily on an unref'd timer and clears it on cleanup", async () => {
   const fixture = await trustWorld();
   let timeline: ReturnType<typeof startTimeline> | undefined;
   try {
     const run = fixture.create(820);
     fixture.cancel(run, 821);
     const capture = await captures(fixture);
+    const repository = fixture.database.authority.timelineEvents;
+    const clock = fixture.world.clock;
+    const { record } = createDebugEventWriter({ repository, clock, build: "test" })
+      .emit({ category: "http", phase: "settled", correlationId: "daily-timeline" });
+    clock.advanceWall(DAY_MS);
     const bundle = await operatorRequestedCapture(capture.request(run.envelope.runId, '{"daily":true}'));
-    fixture.world.clock.advanceWall(29 * DAY_MS);
+    clock.advanceWall(29 * DAY_MS);
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     timeline = startTimeline(fixture);
     clearInterval(timeline.timelineTimer);
     assert.equal(timeline.diagnosticRetentionTimer.hasRef(), false);
-    fixture.world.clock.advanceWall(DAY_MS - 1);
+    const projectionGeneration = fixture.world.projection.generation();
+    clock.advanceWall(DAY_MS - 1);
     vi.advanceTimersByTime(DAY_MS - 1);
     assert.ok(fixture.database.authority.diagnosticBundles.get(bundle.bundleId));
     assert.equal(existsSync(capture.path(bundle)), true);
+    assert.ok(repository.get(record.eventId));
 
-    fixture.world.clock.advanceWall(1);
+    clock.advanceWall(1);
     vi.advanceTimersByTime(1);
     assert.equal(fixture.database.authority.diagnosticBundles.get(bundle.bundleId), undefined);
     assert.equal(existsSync(capture.path(bundle)), false);
+    assert.equal(repository.get(record.eventId), undefined);
+    assert.ok(fixture.world.projection.generation() > projectionGeneration);
     await timeline.stop();
     assert.equal(vi.getTimerCount(), 0);
   } finally {

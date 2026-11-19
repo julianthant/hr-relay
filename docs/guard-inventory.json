@@ -666,7 +666,7 @@
       "file": "tests/architecture/storage/native-doctor-limits.test.ts",
       "status": "active",
       "owner": "docs/reference/stores.md",
-      "invariant": "Doctor refuses an oversized native event or excess run identities among the timeline rows it inspects, before parsing and without changing authority bytes. It skips debug and note rows and reads the rest one page at a time, re-reading a run's pre-root events from the same snapshot instead of buffering them, so timeline length set by ordinary retention never refuses inspection.",
+      "invariant": "Doctor refuses oversized native events before parsing and rejects malformed records without changing authority bytes. It skips debug and note rows, reads the remaining timeline in cursor order, and re-reads pre-root events from the same snapshot. Reconciliation reads current runs in run-ID pages regardless of the total number of runs.",
       "replacementRequired": true
     },
     {
