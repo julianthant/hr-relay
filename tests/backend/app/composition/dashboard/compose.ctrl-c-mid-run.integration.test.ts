@@ -106,6 +106,9 @@ async function interruptMidRun(emplIds: readonly string[]) {
   const exit = await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => { reject(new Error(`dashboard did not exit\n${diagnostics()}`)); }, scaledMs(90_000)))]);
 
   assert.deepEqual(exit, { code: 0, signal: null }, diagnostics());
+  const firstPhase = output().indexOf('"phase":"closing transport"');
+  const firstStop = output().indexOf("Sending worker stop");
+  assert.ok(firstPhase >= 0 && firstStop > firstPhase, "shutdown must be visible before the worker stop is sent");
   assert.doesNotMatch(output(), CUSTODY_FAULTS);
   assert.ok(markers().includes(`exit-0-${String(workerPid)}`), `the worker exits on its stop: ${diagnostics()}`);
   assert.equal(pidAlive(workerPid), false);
@@ -137,7 +140,6 @@ it("Ctrl+C stops the worker at its parked run: the next queued run is never clai
     [{ state: "queued", outcome: null, owner: null, generation: 0, pause: "paused" }, { state: "queued", outcome: null, owner: null, generation: 1, pause: "paused" }], diagnostics);
 }, 180_000);
 
-
 it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle worker children and logs every shutdown phase through exit 0", async () => {
   const { child, post, origin, credential, markers, diagnostics, exited, output } = await startDashboard(true);
   const result = CommandResultSchema.parse(await (await post("commands", { commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
@@ -147,6 +149,7 @@ it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle wor
   assert.ok(child.pid);
   const stream = await fetch(`${origin}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { "x-relay-session": credential } });
   assert.equal(stream.status, 200);
+  // Model a busy dashboard whose workers finish handling the terminal interrupt first.
   process.kill(child.pid, "SIGSTOP");
   try {
     process.kill(-child.pid, "SIGINT");
@@ -156,8 +159,5 @@ it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle wor
   assert.equal(markers().filter(name => name.startsWith("exit-0-")).length, 2, diagnostics());
   assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
     ["closing transport", "stopping workers", "closing store", "backing up", "done"], diagnostics());
-  const firstPhase = output().indexOf('"phase":"closing transport"');
-  const firstStop = output().indexOf("Sending worker stop");
-  assert.ok(firstPhase >= 0 && firstStop > firstPhase, JSON.stringify({ firstPhase, firstStop, trace: output().split("\n").filter(line => /Sending worker stop|stop-channel-closed|dashboard shutdown/u.test(line)) }));
   assert.doesNotMatch(output(), /unhandled-rejection|UnhandledPromiseRejection/iu);
 }, 180_000);
