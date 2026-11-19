@@ -9,6 +9,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { BrowserSessionClosureUnprovedError, BrowserProfileStillClosingError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+import { installNativeSsoGuard } from "../../systems/browser-shared/ucsd-sso-guard.js";
 
 export class BrowserLaunchUncertainError extends BrowserSessionClosureUnprovedError {
   constructor(errors: readonly unknown[], message: string, options?: ErrorOptions) {
@@ -139,6 +140,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
     const pipe = await browser.newBrowserCDPSession();
     await pipe.send("Browser.setDownloadBehavior", { behavior: "deny" });
     await pipe.detach();
+    await installNativeSsoGuard(context);
     return context;
   })();
   const timedOut = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("DUO_SETUP_OPEN_FAILED")), timeoutMs); });
@@ -156,7 +158,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
 export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
   async launch(input) {
     if (input.ownedProcess !== undefined) return launchOwnedChromium(input);
-    return chromium.launchPersistentContext(input.profileDirectory, {
+    const context = await chromium.launchPersistentContext(input.profileDirectory, {
       channel: "chromium",
       headless: input.headless,
       ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
@@ -167,6 +169,8 @@ export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
         ...(input.disablePasswordManager === true ? ["--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"] : []),
       ],
     });
+    await installNativeSsoGuard(context);
+    return context;
   },
 };
 

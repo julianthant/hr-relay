@@ -119,6 +119,51 @@ describe("whole-page factory screenshots", () => {
       assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
     });
   });
+  for (const inset of ["left", "top"] as const) {
+    it(`refuses a grid whose first pixels are clipped at the ${inset} edge`, async () => {
+      const shift = inset === "left" ? "translateX(-40px)" : "translateY(-40px)";
+      const grid = `<div style="width:800px;height:500px;overflow:auto;transform:${shift}">${content}</div>`;
+      await withPage(grid, async (_page, resource) => {
+        const evidence = await resource.screenshot?.();
+        assert.equal(evidence?.state, "unavailable");
+        assert.ok(evidence?.state === "unavailable");
+        assert.equal(evidence.reason, "unpainted-gap");
+        assert.equal("bytes" in evidence, false);
+      });
+    });
+  }
+  it("stitches only grid pixels after a scroll handler changes the band geometry", async () => {
+    const grid = '<div id="grid" style="width:700px;height:500px;overflow:auto">'
+      + '<div style="width:1500px;height:900px;background:linear-gradient(to right,rgb(210,20,30) 670px,rgb(20,30,210) 670px)"></div></div>';
+    await withPage(grid, async (page, resource) => {
+      await page.locator("#grid").evaluate(grid => {
+        grid.addEventListener("scroll", () => {
+          requestAnimationFrame(() => { grid.style.marginLeft = grid.scrollLeft > 0 ? "-40px" : "0"; });
+        });
+      });
+      const png = await image(resource);
+      assert.deepEqual(pixel(png, 650, 100), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 670, 100), [20, 30, 210]);
+      assert.deepEqual(pixel(png, 1499, 899), [20, 30, 210]);
+      assert.deepEqual([png.width, png.height], [1500, 900]);
+    });
+  });
+  it("refuses an image when the grid moves during a screenshot band", async () => {
+    await withPage(`<div id="grid" style="width:800px;height:500px;overflow:auto">${content}</div>`, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands === 2) await page.locator("#grid").evaluate(grid => { grid.style.marginLeft = "40px"; });
+        return screenshot(options);
+      };
+      const evidence = await resource.screenshot?.();
+      assert.equal(evidence?.state, "unavailable");
+      assert.ok(evidence?.state === "unavailable");
+      assert.deepEqual([evidence.reason, evidence.detail], ["unpainted-gap", "band-geometry-changed"]);
+      assert.equal("bytes" in evidence, false);
+      assert.equal(bands, 2);
+    });
+  });
   for (const target of ["element", "iframe"] as const) {
     it(`captures the final20px of near-viewport ${target} overflow`, async () => {
       const nearViewport = '<div style="height:600px;background:rgb(210,20,30)"></div><div style="height:20px;background:rgb(20,30,210)"></div>';

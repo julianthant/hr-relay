@@ -43,3 +43,13 @@ it("authoritative acceptance fences an older pending observation", async () => {
   const old = resource.read(() => pending.promise, "SETTINGS_INITIAL_READ_UNAVAILABLE").catch((error: unknown) => error);
   resource.accept(9); pending.resolve(8); assert.ok(await old instanceof Error); assert.equal(resource.snapshot().value, 9);
 });
+it("aborts an unfinished read when its owner leaves, keeps the retained value and lets a re-entry read afresh", async () => {
+  const resource = createSettingsRead<number>(); resource.accept(5);
+  const controller = new AbortController(); let seen: AbortSignal | undefined;
+  const first = resource.read(signal => { seen = signal; return new Promise<number>(() => undefined); }, "SETTINGS_INITIAL_READ_UNAVAILABLE", undefined, controller.signal).catch((error: unknown) => error);
+  controller.abort();
+  assert.equal(seen?.aborted, true);
+  assert.equal(resource.snapshot().state, "loaded"); assert.equal(resource.snapshot().value, 5);
+  assert.equal(await resource.read(() => Promise.resolve(6), "SETTINGS_INITIAL_READ_UNAVAILABLE"), 6);
+  assert.ok(await first instanceof Error);
+});

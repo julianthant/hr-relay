@@ -215,7 +215,7 @@ export function RunStartDialog({
   const { text, sourceInputUnchanged, stepDrafts, manualRows, priority: priorityChoice, dryRunRequested, browserMode,
     referenceSelections, referenceDrafts, checkPicks, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
   const typedDraft = launchDraft.typedDraftOf(draft, workflowId);
-  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && (workflow.workbookReference !== undefined || workflow.workbookCheck !== undefined)), null, true);
+  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && (workflow.workbookReference !== undefined || workflow.workbookCheck !== undefined)), null, true, false);
   const selectedWorkflow = workflows.find(workflow => workflow.workflowId === workflowId);
   const workbookReference = selectedWorkflow?.workbookReference;
   const requiredTypes = useMemo(() => workbookReference === undefined ? [] : [workbookReference.id], [workbookReference]);
@@ -638,12 +638,12 @@ export function RunStartDialog({
   })}</>;
   /** The one thing that stops the operator, in the slot pinned under the stage tabs: a refused plan, unavailable checks or a failed PDF. */
   const planRefusal = onLastStage && plan !== null ? planRefusalNotice(plan.refused, preview.entries) : null;
-  const notice: { sentence: string; stillWorks: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
-    ? { sentence: planRefusal.sentence, stillWorks: "Nothing was started.", ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
+  const notice: { sentence: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
+    ? { sentence: planRefusal.sentence, ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
     : currentStage === "Checks" && checks.state.state === "unavailable"
-    ? { sentence: checks.state.message, stillWorks: "Your choices are kept.", action: { label: "Check again", onClick: checks.recheck } }
+    ? { sentence: checks.state.message, action: { label: "Check again", onClick: checks.recheck } }
     : currentStage === "Input" && pdfSurface !== undefined && pdfInput.error !== null
-    ? { sentence: pdfInput.error, stillWorks: "Your other PDFs are kept.", ...(pdfInput.retryable ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
+    ? { sentence: pdfInput.error, ...(pdfInput.retryable ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
     : null;
   const gates: LaunchGates = {
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,

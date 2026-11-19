@@ -24,11 +24,13 @@ it("gives the appearance rows no descriptions and preserves availability and sav
     const theme = host.querySelector<HTMLInputElement>('input[type="radio"][value="dark"]');
     assert.ok(theme);
     assert.equal(host.querySelector<HTMLInputElement>('input[type="radio"][value="light"]')?.checked, true);
-    assert.equal(theme.closest("fieldset")?.disabled, state !== "ready");
+    const editable = state === "ready" || state === "saving" || state === "loading";
+    assert.equal(theme.closest("fieldset")?.disabled, !editable);
+    assert.doesNotMatch(host.textContent ?? "", /Saving|Loading/u);
     const controls = [...host.querySelectorAll<HTMLButtonElement>('[role="switch"]')];
     assert.equal(controls.length, 1);
     assert.equal(controls[0]?.closest(".ds-switch-row")?.textContent, "Animations");
-    assert.ok(controls.every(control => control.disabled === (state !== "ready")));
+    assert.ok(controls.every(control => control.disabled === !editable));
     if (state === "uncertain") assert.match(host.textContent ?? "", /Save outcome unknown\. Do not retry\./u);
   }
   await act(async () => root?.render(createElement(AppearanceSettings, { theme: "light", onToggleTheme() {} })));

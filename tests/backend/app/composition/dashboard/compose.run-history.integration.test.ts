@@ -92,7 +92,7 @@ it("serves history counts, refuses active deletion, then clears a finished run a
 });
 
 
-it("binds Clear and result to the confirmed person and epoch despite a shared cookie changing tabs", async () => {
+it("binds Clear and result to the confirmed person and epoch despite a shared credential changing tabs", async () => {
   const fixture = await createBoundProfileFixture();
   const clock = manualClock(new Date(NOW));
   world.copyRuntimePackageFixture(fixture.workspace);
@@ -127,11 +127,11 @@ it("binds Clear and result to the confirmed person and epoch despite a shared co
       onboardingDuo: syntheticOnboardingDuo(), preflightRunnerFactory: healthyRuntimePreflightRunners,
       workerProcess: { spawn() { throw new Error("history regression must not spawn a worker"); } } });
     const origin = `http://127.0.0.1:${app.port}`;
-    let sharedCookie: string | undefined;
+    let sharedCredential: string | undefined;
     const request = async (path: string, init?: RequestInit) => {
       const response = await fetch(`${origin}${path}`, { ...init, headers: { ...init?.headers, origin,
-        ...(sharedCookie === undefined ? {} : { cookie: sharedCookie }) } });
-      const next = response.headers.get("set-cookie"); if (next !== null) sharedCookie = next.split(";", 1)[0];
+        ...(sharedCredential === undefined ? {} : { "x-relay-session": sharedCredential }) } });
+      const next = response.headers.get("x-relay-session"); if (next !== null) sharedCredential = next;
       return response;
     };
     const tab = () => createDashboardClient({ baseUrl: origin, fetchImpl: (url, init) => request(new URL(url).pathname, init) });
@@ -139,11 +139,11 @@ it("binds Clear and result to the confirmed person and epoch despite a shared co
     const a = await aTab.signInProfile({ email: "fixture@ucsd.edu", password });
     assert.equal(a.state, "active"); if (a.state !== "active") throw new Error("A sign-in refused");
     const confirmedA = ClearRunHistoryRequestSchema.parse({ commandId: randomUUID(), target: { profileId: a.profileId, epoch: a.epoch } });
-    const aCookie = sharedCookie;
+    const aCredential = sharedCredential;
     assert.equal((await bTab.logOutProfile()).state, "signed-out");
     const b = await bTab.signInProfile({ email: "second@ucsd.edu", password });
     assert.equal(b.state, "active"); if (b.state !== "active") throw new Error("B sign-in refused");
-    assert.notEqual(a.profileId, b.profileId); assert.notEqual(sharedCookie, aCookie);
+    assert.notEqual(a.profileId, b.profileId); assert.notEqual(sharedCredential, aCredential);
     const snapshot = () => [aHistory, bHistory].map(history => {
       using raw = new DatabaseSync(history.databasePath, { readOnly: true });
       return { rows: ["runs", "diagnostic_snapshots", "diagnostic_files", "deleted_runs", "commands", "command_audits"].map(table => raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()),

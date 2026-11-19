@@ -202,9 +202,10 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
     if (record === undefined || record.sourceRunId !== runId || record.revision !== revision) throw new OcrReviewRefusedError();
     if (record.origin.kind === "checkpoint") {
       const rebuilt = rebuildOcrReviewRecords(record.seed, previous);
+      const { key, checkpoint: reference } = record.origin;
       const checkpoint = repositories.runCheckpoints.listByAttempt(existence.run.envelope.workflow,
-        existence.run.envelope.itemId, "read-result", existence.run.envelope.attempt)
-        .find(row => checkpointRecordKey(row) === (record.origin.kind === "checkpoint" ? record.origin.key : ""));
+        existence.run.envelope.itemId, reference.nodeId, existence.run.envelope.attempt)
+        .find(row => checkpointRecordKey(row) === key);
       const publication = checkpoint === undefined ? undefined : repositories.timelineEvents.get(deriveStableUuid("timeline-checkpoint-recorded",
         checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)));
       if (checkpoint === undefined || checkpoint.runId !== runId

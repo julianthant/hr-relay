@@ -98,7 +98,7 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
     </header><div className="hub-panel-content">
       <div className="hub-thread-wrap"><><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
         {loading ? <TranscriptSkeleton /> : <>
-        {historyFailed && <FailureNotice sentence="Chat history did not load." stillWorks="You can still use Relay without it." action={{ label: 'Reload', onClick: () => window.location.reload() }} />}
+        {historyFailed && <FailureNotice sentence="Couldn't load chat history." action={{ label: 'Reload', onClick: () => window.location.reload() }} />}
         {!loading && !historyFailed && served.state.messages.length === 0 ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
         {served.state.messages.map((message, index) => message.role === 'assistant' && 'code' in message && message.code !== undefined ? null
           : message.role === 'assistant' && turn.state === 'proposal' && turn.disposition === 'unknown' && message.text === ASSISTANT_UNKNOWN_NOTICE ? null : message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}{message.attachments?.map(file => <span className="hub-sent-file" key={file.id}><Paperclip aria-hidden />{file.name}</span>)}</div> : <AssistantReply key={index}><AssistantText text={message.text} /></AssistantReply>)}
@@ -107,12 +107,12 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
           onCancel={() => { served.onAction({ type: 'cancel' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }}
           onConfirm={() => { served.onAction({ type: 'confirm' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }} />}
         {turn.state === 'waiting' && <AssistantReply><div className="hub-typing" role="status"><span className="hub-typing-dots" aria-hidden><i /><i /><i /></span><span>Preparing a reply…</span><button className="hub-btn" type="button" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button></div></AssistantReply>}
-        {lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text} stillWorks="Your message is kept."
+        {lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text}
           action={turn.state !== 'idle' ? undefined : accountRefusal(lastRefusal.code) ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
             : keptPrompt(served.state.messages, served.state.messages.length - 1) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(served.state.messages, served.state.messages.length - 1)! }); served.onAction({ type: 'send' }); } }} />}
-        {turn.state === 'failed' && <FailureNotice sentence="Reply unavailable. Your request is kept." stillWorks="Nothing was started."
+        {turn.state === 'failed' && <FailureNotice sentence="Reply unavailable."
           action={accountReady && served.state.draft === turn.prompt ? { label: 'Retry', onClick: () => served.onAction({ type: 'retry' }) } : undefined} />}
-        {turn.state === 'proposal' && turn.disposition === 'unknown' && <FailureNotice sentence={ASSISTANT_UNKNOWN_NOTICE} stillWorks={`${turn.proposal.workflow.label} may already have started. Relay will not try it again.`}
+        {turn.state === 'proposal' && turn.disposition === 'unknown' && <FailureNotice sentence={ASSISTANT_UNKNOWN_NOTICE}
           action={onClose ? { label: 'Check Queue', onClick: onClose } : undefined} />}
         {turn.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
         {turn.state === 'cancelled' && <p className="hub-caption" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
@@ -120,8 +120,9 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
         {model.error ? <p role="alert" className="hub-footer-status">{model.error}</p> : null}
         </>}
       </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</></div>
-      {!accountReady && !accountLoading && !loading && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && served.accountAction !== 'retry' && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings('general', 'chatgpt.account')}>{served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}
-        {served.accountAction === 'retry' && <Button size="sm" variant="secondary" onClick={served.accountRetry}>Retry</Button>}</div>}
+      {!accountReady && !accountLoading && !loading && <FailureNotice className="mx-3 mb-2" sentence={served.accountNotice}
+        action={served.accountAction === 'retry' ? { label: 'Retry', onClick: served.accountRetry }
+          : onOpenSettings && served.accountAction ? { label: served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') } : undefined} />}
       <ComposerInput key={conversation.id} modelLoading={loading} modelPreference={modelPreference} models={served.models} onModelChoice={served.chooseModel} draft={draft} settlementKey={served.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus initialText={initialText} onEdit={value => served.onAction({ type: 'edit', value })} preview={false} onSend={async value => { if (model.refuseAttachments(value)) return false; onSendMessage?.(); await model.send(value); return false; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={(model.busy || turn.state === 'waiting' || turn.state === 'unknown' || turn.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
     </div>
   </section>;

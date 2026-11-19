@@ -148,7 +148,7 @@ describe("crm login recipe", () => {
   });
 
   it("treats the Communities login page as unauthenticated, not as a landing", async () => {
-    const { context } = await crmContextFor({
+    const { context, harness } = await crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: "https://act-crm.my.site.com/hr/login" },
       elements: {
@@ -162,9 +162,10 @@ describe("crm login recipe", () => {
     });
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
-      assert.equal(error.step, "duo-clearance");
+      assert.equal(error.step, "credential-fill");
       return true;
     });
+    assert.deepEqual(harness.filled(), []);
   });
 
   it("refuses a Communities landing with no Salesforce session", async () => {

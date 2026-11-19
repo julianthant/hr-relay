@@ -45,18 +45,18 @@ it("drains an owned claimed worker under its admitted epoch before public logout
         child = new ScriptedWorkerChild(7001, request, { ready: true, exitOnStop: child !== undefined, reply: () => ({ state: "done", result: null }) });
         spawned.resolve(); return child; } } });
     const origin = `http://127.0.0.1:${app.port}`;
-    const post = (path: string, body: unknown, cookie?: string) => fetch(`${origin}/api/v1/${path}`, { method: "POST",
-      headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
+    const post = (path: string, body: unknown, credential?: string) => fetch(`${origin}/api/v1/${path}`, { method: "POST",
+      headers: { origin, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
     const login = await post("profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     assert.equal(login.status, 200); assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
-    const cookie = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie); assert.ok(context);
+    const credential = login.headers.get("x-relay-session") ?? undefined; assert.ok(credential); assert.ok(context);
     const profileId = f.machine.readProfileRegistry().activeProfileId; assert.ok(profileId);
     workerOwner = f.machine.admitProfile(profileId);
     worker = AuthorityDatabase.open(workerOwner, { path: f.path, busyTimeoutMs: 250, migrationOwner: "logout-worker-fixture" }, clock,
       undefined, undefined, undefined, createCredentialStore({ admission: workerOwner, stateRoot: f.stateRoot }));
-    const plan = StartPlanWireSchema.parse(await (await post("start-plans", { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false }, cookie)).json());
+    const plan = StartPlanWireSchema.parse(await (await post("start-plans", { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false }, credential)).json());
     const starting = post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
-      target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints }, cookie);
+      target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints }, credential);
     const early = await Promise.race([spawned.promise.then(() => undefined), starting.then(response => response.clone())]);
     if (early !== undefined) throw new Error(`start settled before its worker spawned: ${await early.text()}`);
     const member = worker.authority.workerSlots.list("person-lookup")[0]; assert.ok(member);
@@ -66,12 +66,12 @@ it("drains an owned claimed worker under its admitted epoch before public logout
       runtimeConfig: selectRunRuntime(worker.authority) }));
     assert.equal(claimed.lifecycle.state, "claimed");
     const epoch = f.machine.readProfileRegistry().sessionGeneration;
-    logout = post("profile/logout", {}, cookie);
+    logout = post("profile/logout", {}, credential);
     await Promise.race([entered.promise, logout.then(response => { throw new Error(`logout returned before the drain barrier: ${response.status}`); })]);
     assert.equal(f.machine.readProfileRegistry().sessionGeneration, epoch, "the running worker must retain its admitted epoch throughout drainage");
     assert.equal(f.machine.readProfileRegistry().activeProfileId, profileId);
     assert.equal(worker.authority.runs.admission().state, "draining");
-    const refused = await post("commands", {}, cookie);
+    const refused = await post("commands", {}, credential);
     assert.equal(refused.status, 401); assert.deepEqual(PublicProfileStateSchema.parse(await refused.json()), { state: "refused", code: "PROFILE_SESSION_STALE" });
     release.resolve();
     const owned = child; assert.ok(owned);

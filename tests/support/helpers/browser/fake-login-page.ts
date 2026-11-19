@@ -99,20 +99,41 @@ function classify(kind: string, argument: string): FakeElementName | undefined {
   return undefined;
 }
 
+export function createFakeSsoNetwork() {
+  type Paused = { frameId: string; requestId: string; request: { method: string; url: string } };
+  let paused: ((event: Paused) => void) | undefined;
+  return {
+    newCDPSession: async () => ({
+      on(_event: "Fetch.requestPaused", listener: (event: Paused) => void) { paused = listener; },
+      send: async (method: string) => method === "Page.getFrameTree" ? { frameTree: { frame: { id: "main" } } } : {},
+      async detach() { paused = undefined; },
+    }),
+    post(url: string) { paused?.({ frameId: "main", requestId: "fixture", request: { method: "POST", url } }); },
+  };
+}
+
 export function fakeLoginPage(script: FakePageScript): FakePageHarness {
+  const network = createFakeSsoNetwork();
   let current = script.url;
   const actions: string[] = [];
   const filled: string[] = [];
   const settlements = [...(script.settlesTo ?? [])];
   const selected = new Set<FakeElementName>();
   const rendered = new Set<FakeElementName>();
-  const mainFrame = {};
+  const mainFrame = {
+    url: () => current,
+    getByText: (text: string | RegExp) => makeLocator(classify("text", String(text))),
+  };
   let navigationGeneration = 0;
-  const navigationListeners = new Set<() => void>();
-  const navigate = (url: string): void => {
+  const navigationListeners = new Set<(source: string, method: string) => void>();
+  const frameObservers = new Set<(frame: typeof mainFrame) => void>();
+  const navigate = (url: string, method = "GET"): void => {
+    const source = current;
+    if (method === "POST") network.post(source);
     current = url;
     navigationGeneration += 1;
-    for (const listener of navigationListeners) listener();
+    for (const listener of navigationListeners) listener(source, method);
+    for (const observe of frameObservers) observe(mainFrame);
   };
 
   const scriptFor = (name: FakeElementName): FakeElementScript =>
@@ -123,9 +144,36 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   function makeLocator(name: FakeElementName | undefined): Record<string, unknown> {
     const locator: Record<string, unknown> = {
       first: () => locator,
+      filter: () => locator,
+      evaluateAll: async (_fn: unknown, expectedUrl: string) =>
+        expectedUrl === current && name === "duo-refusal" && (scriptFor(name).count ?? 1) > 0,
       elementHandle: async () => {
         const generation = navigationGeneration;
         return {
+          isVisible: async () => (locator.isVisible as () => Promise<boolean>)(),
+          isEditable: async () => name === "sso-username" || name === "sso-password",
+          isEnabled: async () => name === "sso-submit",
+          evaluateHandle: async () => ({ dispose: async () => undefined }),
+          evaluate: async (_fn: unknown, input: {
+            action: { kind: "arm" | "check-worker" | "prove" | "submit" } | { kind: "username" | "password"; value: string };
+            password: { fill: (value: string) => Promise<void> }; button: { click: () => Promise<void> };
+          }) => {
+            if (name !== "sso-username" || generation !== navigationGeneration) return false;
+            const action = input.action;
+            if (action.kind === "prove") return current;
+            if (action.kind === "username") await (locator.fill as (value: string) => Promise<void>)(action.value);
+            if (action.kind === "password") await input.password.fill(action.value);
+            if (action.kind === "submit") {
+              const destination = current;
+              await input.button.click();
+              return destination;
+            }
+            return true;
+          },
+          fill: async (value: string) => {
+            if (generation !== navigationGeneration) throw new Error("fake page: original element detached");
+            await (locator.fill as (value: string) => Promise<void>)(value);
+          },
           click: async (options: unknown) => {
             if (generation !== navigationGeneration) throw new Error("fake page: original element detached");
             await (locator.click as (options: unknown) => Promise<void>)(options);
@@ -168,7 +216,8 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
           throw new Error(element.failWith ?? `fake page: ${name} is absent`);
         }
         actions.push(`click:${name}`);
-        if (element.navigatesTo !== undefined) navigate(element.navigatesTo);
+        if (name === "sso-submit") navigate(element.navigatesTo ?? current, "POST");
+        else if (element.navigatesTo !== undefined) navigate(element.navigatesTo);
       },
       inputValue: async () => {
         if (name === undefined) throw new Error("fake page: inputValue on an unclassified locator");
@@ -190,6 +239,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   }
 
   const browserContext = {
+    newCDPSession: network.newCDPSession,
     cookies: async (): Promise<readonly FakeCookie[]> => {
       if (script.cookieStoreFailsWith !== undefined) throw new Error(script.cookieStoreFailsWith);
       return [...(script.cookies ?? []), ...(script.cookiesByUrl?.[current] ?? [])];
@@ -199,6 +249,24 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   const page = {
     url: () => current,
     mainFrame: () => mainFrame,
+    frames: () => [mainFrame],
+    on: (_event: "framenavigated", listener: (frame: typeof mainFrame) => void) => frameObservers.add(listener),
+    off: (_event: "framenavigated", listener: (frame: typeof mainFrame) => void) => frameObservers.delete(listener),
+    waitForNavigation: (options: { timeout: number; signal: AbortSignal }) => new Promise((resolve, reject) => {
+      const listener = (source: string, method: string) => {
+        cleanup();
+        resolve({ request: () => ({ url: () => source, method: () => method, redirectedFrom: () => null }) });
+      };
+      const cancel = () => { cleanup(); reject(new Error("fake page: navigation did not commit")); };
+      const timer = setTimeout(cancel, options.timeout);
+      const cleanup = () => {
+        clearTimeout(timer);
+        navigationListeners.delete(listener);
+        options.signal.removeEventListener("abort", cancel);
+      };
+      navigationListeners.add(listener);
+      options.signal.addEventListener("abort", cancel, { once: true });
+    }),
     waitForEvent: async (_event: string, options: Readonly<{ predicate: (frame: unknown) => boolean; timeout: number }>) =>
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -230,7 +298,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
       if (settled === NEVER_SETTLES) return await new Promise<void>(() => undefined);
       if (settled === undefined) throw new Error("fake page: waitForURL timed out");
       if (!predicate(new URL(settled))) throw new Error("fake page: waitForURL timed out");
-      current = settled;
+      navigate(settled);
     },
     locator: (selector: string) => makeLocator(classify("locator", selector)),
     getByLabel: (text: string) => makeLocator(classify("label", text)),

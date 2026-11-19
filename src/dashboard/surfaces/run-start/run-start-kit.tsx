@@ -171,7 +171,7 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
 
 /** The failed spreadsheet list, drawn under its own heading with no empty card. */
 function ReferenceFailure({ onRefresh }: { onRefresh: () => void }) {
-  return <FailureNotice sentence="Relay could not load your spreadsheets." stillWorks="Your typed entries are kept." action={{ label: "Retry", onClick: onRefresh }} />;
+  return <FailureNotice sentence="Couldn't load spreadsheets." action={{ label: "Retry", onClick: onRefresh }} />;
 }
 
 export interface StageSpec {
