@@ -64,25 +64,33 @@ const blocks = <Kind extends ExplorerReviewSpec["steps"][number]["blocks"][numbe
 
 it("serves Person Lookup's Start run options with their labelled choices and defaults", async () => {
   const spec = await personLookup();
+  const stepChoices = [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }];
   assert.deepEqual(spec.options, [
     { id: "mode", label: "Lookup mode", choices: [{ value: "search", label: "Search" }, { value: "match", label: "Match" }], initial: "search" },
     { id: "search-by", label: "Search by", choices: [{ value: "emplId", label: "Employee ID" }, { value: "name", label: "Name" }], initial: "name", when: [{ mode: ["search"] }] },
     { id: "crmCheck", label: "CRM check", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }],
       initial: { by: "mode", values: { search: "true", match: "false" }, otherwise: "true" } },
-    { id: "includeCrmDates", label: "Read CRM dates", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false",
+    { id: "includeCrmDates", label: "Read CRM dates", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "true",
       when: [{ mode: ["search"], crmCheck: ["true"] }] },
+    { id: "skip-searching", label: "Search for person", choices: stepChoices, initial: "run" },
+    { id: "skip-cross-verify", label: "Cross-check identity", choices: stepChoices, initial: "run" },
+    { id: "skip-active-status", label: "Read employment status", choices: stepChoices, initial: "run" },
+    { id: "skip-crm-dates", label: "Read CRM dates", choices: stepChoices, initial: "run" },
   ]);
-  assert.deepEqual(walk(spec).values, { mode: "search", "search-by": "name", crmCheck: "true", includeCrmDates: "false",
-    "search-result": "resolved", "crm-result": "Found", "employment-status": "active" });
+  assert.deepEqual(walk(spec).values, { mode: "search", "search-by": "name", crmCheck: "true", includeCrmDates: "true",
+    "skip-searching": "run", "skip-cross-verify": "run", "skip-active-status": "run", "skip-crm-dates": "run",
+    "search-result": "resolved", "crm-result": "Found", "employment-status": "active", "crm-dates-result": "succeeded" });
 });
 
 it("derives the steps and session chips of every option value", async () => {
   const spec = await personLookup();
   const ids = (chosen: Values) => walk(spec, chosen).steps.map(entry => entry.id);
   const systems = (chosen: Values) => walk(spec, chosen).sessions.map(session => session.system);
-  assert.deepEqual(ids({}), ["searching", "cross-verify", "active-status", "reference-check"]);
+  assert.deepEqual(ids({}), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
   assert.deepEqual(systems({}), ["ucpath", "crm"]);
   assert.deepEqual(ids({ includeCrmDates: "true" }), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
+  assert.deepEqual(ids({ includeCrmDates: "false" }), ["searching", "cross-verify", "active-status", "reference-check"]);
+  assert.deepEqual(ids({ "skip-crm-dates": "skip" }), ["searching", "cross-verify", "active-status", "reference-check"]);
   assert.deepEqual(ids({ crmCheck: "false" }), ["searching", "active-status", "reference-check"]);
   assert.deepEqual(systems({ crmCheck: "false" }), ["ucpath"]);
   assert.deepEqual(ids({ crmCheck: "false", includeCrmDates: "true" }), ["searching", "active-status", "reference-check"]);
@@ -166,7 +174,8 @@ it("derives the steps, cards and rows that follow each decision outcome", async 
   for (const outcome of ["not-found", "multiple-matches"]) {
     assert.deepEqual(ids({ includeCrmDates: "true" }, { "employment-status": outcome }), ["searching", "cross-verify", "active-status", "reference-check"], outcome);
     assert.deepEqual(ids({ mode: "match", crmCheck: "true" }, { "search-result": outcome }), ["searching", "reference-check"], outcome);
-    assert.deepEqual(ids({}, { "search-result": outcome }), ["searching", "cross-verify", "active-status", "reference-check"], outcome);
+    assert.deepEqual(ids({}, { "search-result": outcome }), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"], outcome);
+    assert.deepEqual(ids({ includeCrmDates: "false" }, { "search-result": outcome }), ["searching", "cross-verify", "active-status", "reference-check"], outcome);
   }
   const cards = (stepId: string, decisions: Values) => {
     const { values } = walk(spec, {}, decisions);
@@ -204,7 +213,14 @@ it("serves a valid review spec for every readable workflow", async () => {
   }
 });
 
-it("serves the picker tree: startable workflows as roots, each delegated child under its parent, every title once", async () => {
+it("serves operator-only recovery when a Kuali finalization cannot be confirmed", async () => {
+  const separations = (await served()).find(workflow => workflow.id === "separations");
+  assert.ok(separations);
+  const save = separations.nodes.flatMap(node => node.tasks).find(task => task.taskId === "kuali/save-separation-finalization");
+  assert.equal(save?.writeSafety?.recoveryAbsence.kind, "operator-only");
+});
+
+it("lists main workflows in the picker and serves delegated workflows on the steps that start them", async () => {
   const workflows = await served();
   const pairs = workflows.flatMap(workflow => workflow.reviewSpec.steps.flatMap(entry => entry.blocks.flatMap(block =>
     block.kind === "starts" ? [`${workflow.id} > ${block.workflowId}`] : [])));
@@ -223,12 +239,13 @@ it("serves the picker tree: startable workflows as roots, each delegated child u
       authorityMeta: () => world.database.getMeta(), preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       workbookCompatibility: modules => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, modules) });
     const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility));
-    const picker = explorerPickerEntries(catalog, workflows);
-    assert.deepEqual(picker.filter(entry => entry.depth === 0).map(entry => entry.id).sort(),
-      ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);
-    assert.deepEqual(picker.map(entry => `${"  ".repeat(entry.depth)}${entry.title}`), [
-      "Person Lookup", "Separations", "I-9 Check", "  OCR", "    OCR Page", "    I-9 Lookup", "  I-9 Check person", "Onboarding",
-      "Emergency Contact", "  Emergency Contact member", "    OnBase Emergency Contact", "Work-Study",
+    assert.deepEqual(explorerPickerEntries(catalog), [
+      { id: "person-lookup", title: "Person Lookup", depth: 0 },
+      { id: "separations", title: "Separations", depth: 0 },
+      { id: "i9-check-start", title: "I-9 Check", depth: 0 },
+      { id: "onboarding", title: "Onboarding", depth: 0 },
+      { id: "work-study", title: "Work-Study", depth: 0 },
+      { id: "emergency-contact", title: "Emergency Contact", depth: 0 },
     ]);
   } finally {
     await world.dispose();

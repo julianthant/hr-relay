@@ -64,7 +64,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; onbaseFiling?: "file" | "skip"; record?: boolean; release?: boolean; pageCount?: number;
-      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: Pick<WorkflowModule, "descriptor">;
+      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: Pick<WorkflowModule, "descriptor">; ocrPage?: WorkflowModule;
       lookupNames?: readonly string[]; employeeIds?: readonly (string | null)[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
@@ -150,7 +150,9 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
-      const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
+      const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor
+        : id === options.ocrPage?.descriptor.id ? options.ocrPage.descriptor
+        : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
         : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
       const sequencer = options.dryRun === true || options.member !== undefined ? createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
         sessions: harness.manager, emitter: harness.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: harness.scheduler,

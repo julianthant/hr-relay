@@ -230,9 +230,10 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
       // These unversioned checkpoint revisions were published with either exact-name or EID-backed subset matching.
       const subset = rebuildOcrReviewRecords(record.seed, previous, "subset", baseline);
       const rebuilt = same(record.records, subset.records) ? subset : rebuildOcrReviewRecords(record.seed, previous, "exact", baseline);
+      const { key, checkpoint: reference } = record.origin;
       const checkpoint = repositories.runCheckpoints.listByAttempt(existence.run.envelope.workflow,
-        existence.run.envelope.itemId, "read-result", existence.run.envelope.attempt)
-        .find(row => checkpointRecordKey(row) === (record.origin.kind === "checkpoint" ? record.origin.key : ""));
+        existence.run.envelope.itemId, reference.nodeId, existence.run.envelope.attempt)
+        .find(row => checkpointRecordKey(row) === key);
       const publication = checkpoint === undefined ? undefined : repositories.timelineEvents.get(deriveStableUuid("timeline-checkpoint-recorded",
         checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)));
       if (checkpoint === undefined || checkpoint.runId !== runId
