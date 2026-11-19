@@ -22,6 +22,10 @@ import { FingerprintSchema,WorkerIdSchema,WorkflowIdSchema } from "../../../../s
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { workerSessionDiagnostics } from "../../../../src/backend/app/composition/worker-compose.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { fillDiagnosticBudget } from "../../../support/helpers/backend/full-diagnostic-budget.js";
+import { foundationFixture } from "../../../support/helpers/database-foundation/fixtures.js";
 
 const CLOCK = manualClock(new Date("2026-08-03T09:00:00.000Z"));
 const WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");
@@ -72,6 +76,32 @@ const closureCause = (pattern: RegExp) => (error: unknown): boolean => error ins
   && error.errors.some(cause => cause instanceof Error && pattern.test(cause.message));
 
 describe("worker browser session factory", () => {
+  it("authenticates and closes the session at diagnostic capacity", async () => {
+    const f = await foundationFixture();
+    try {
+      const timeline = f.db.authority.timelineEvents;
+      fillDiagnosticBudget(f.path, timeline, f.clock);
+      const before = timeline.highWaterMark();
+      const report = workerSessionDiagnostics(createDebugEventWriter({ repository: timeline, clock: f.clock, build: "test" }));
+      const phases: string[] = [];
+      class ObservedFactory extends PlaywrightWorkerSessionFactory {
+        constructor(options: ConstructorParameters<typeof PlaywrightWorkerSessionFactory>[0]) {
+          super({ ...options, onDebug(workerId, event) { phases.push(event.phase); report("session", workerId, event); } });
+        }
+      }
+      await withTempRuntime(async ({ config }) => {
+        const launcher = fakeLauncher();
+        const factory = factoryFor(config, launcher, recordingBindings(), NEVER_SCHEDULER, undefined, ObservedFactory);
+        const session = await factory.open(OPEN_INPUT);
+        try { assert.equal(await session.authentication.authenticate("ucpath", {}), "logged-in"); }
+        finally { await session.close({ reason: "worker-stop" }); }
+        assert.equal(launcher.contextClosed(), true);
+      });
+      assert.deepEqual(phases, ["started", "settled", "released"]);
+      assert.equal(timeline.highWaterMark(), before);
+    } finally { await f.dispose(); }
+  });
+
   it("probes native availability without profile reset, credential reads, provisioning or login", async () => {
     await withTempRuntime(async ({ config }) => {
       const native = fakeLauncher(); let profileAdmissions = 0, secretReads = 0, logins = 0;
