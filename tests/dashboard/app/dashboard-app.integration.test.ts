@@ -357,7 +357,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
     assert_m1.equal(location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
-    assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+    assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
     if (surface === "notification") {
       const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
       await click(notifications);
@@ -396,11 +396,14 @@ afterEach_m1(_afterEachFixture0);
   });
 });
 
+/** dd20a218a6: a choice saves at once, so a retained draft needs a typed field; the job end date waits on the autosave timer. */
+const jobEndDate = () => document.querySelector<HTMLInputElement>('[data-settings-path^="annualDates."][data-settings-path$=".jobEndDate"] input[type="date"]');
+let editedJobEndDate = "";
 async function editHeadlessPreference() {
-  const control = document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]'); assert_m1.ok(control);
-  await act_m1(async () => control.click());
-  const option = document.querySelector<HTMLElement>('[role="option"][data-value="Small"]'); assert_m1.ok(option);
-  await act_m1(async () => option.click());
+  const input = jobEndDate(); assert_m1.ok(input);
+  editedJobEndDate = input.value === "2027-06-29" ? "2027-06-28" : "2027-06-29";
+  await act_m1(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, editedJobEndDate); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
 }
 it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
 try {
@@ -411,14 +414,14 @@ try {
   const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(general);
   await click(general);
   await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
   const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert_m1.ok(analytics);
   await click(analytics);
   assert_m1.equal(document.querySelector("h1")?.textContent, "Analytics");
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
   await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   await click(button("Back to dashboard"));
   await click(button("Discard changes"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
@@ -621,7 +624,7 @@ try {
   await historyMove("back"); // Settings root retains its editor.
   await historyMove("back");
   await click(button("Keep editing"));
-  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
   await historyMove("back"); await click(button("Discard changes")); await settle();
   assert_m1.equal(new URLSearchParams(location.search).get("day"), "2026-08-02");
