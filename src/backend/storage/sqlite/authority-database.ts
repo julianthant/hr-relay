@@ -11,6 +11,7 @@ import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow, isSetting
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
@@ -88,7 +89,7 @@ import { createImportedArtifactRepositories,importedArtifactFromRow } from "./im
 import { isNativeOrdinaryTable,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
 import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
-import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { createReadonlyAuthoritySnapshot,readonlyAuthorityImage,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
 import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "./worker-custody-migration.js";
@@ -1843,7 +1844,30 @@ function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_
   if (normalizedNativeSchema(database) !== expectedNativeSchema(version, withoutRunSearch)) throw new Error("authority-native-schema-shape-mismatch");
 }
 
+type NativeInspection = ReturnType<typeof verifyNativeAuthority>;
+const upgradeInspections = new AsyncLocalStorage<{
+  active: boolean;
+  images: Map<string, { marker: string; inspection: NativeInspection }>;
+}>();
+
 export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
+  missingRunSearch = false, workbookPayloads = true) {
+  const scope = upgradeInspections.getStore();
+  const image = scope?.active && !requireOperationalPragmas && !missingRunSearch && workbookPayloads
+    ? readonlyAuthorityImage(database) : undefined;
+  if (scope === undefined || image === undefined) {
+    return verifyNativeAuthority(database, expectedSchemaVersion, requireOperationalPragmas, missingRunSearch, workbookPayloads);
+  }
+  const previous = scope.images.get(image.path);
+  if (previous?.marker === image.marker && previous.inspection.schemaVersion === expectedSchemaVersion) {
+    return structuredClone(previous.inspection);
+  }
+  const inspection = verifyNativeAuthority(database, expectedSchemaVersion, false, false, true);
+  scope.images.set(image.path, { marker: image.marker, inspection: structuredClone(inspection) });
+  return inspection;
+}
+
+function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
   missingRunSearch = false, workbookPayloads = true) {
   const applicationId = readIntPragma(database, "application_id");
   if (applicationId !== AUTHORITY_APPLICATION_ID) {
@@ -2430,6 +2454,13 @@ export function configureWritableConnection(database: DatabaseSync, busyTimeoutM
 }
 
 export class AuthorityDatabase implements Disposable {
+  static async withUpgradeInspections<T>(work: () => Promise<T>): Promise<T> {
+    if (upgradeInspections.getStore()?.active) return work();
+    const scope = { active: true, images: new Map<string, { marker: string; inspection: NativeInspection }>() };
+    try { return await upgradeInspections.run(scope, work); }
+    finally { scope.active = false; scope.images.clear(); }
+  }
+
   readonly #admission: RuntimeAdmission;
   readonly #admitMutation: () => void;
   #database: DatabaseSync;
@@ -3205,27 +3236,7 @@ export class AuthorityDatabase implements Disposable {
   static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
     return withOperationProof(() => {
       requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
-      const snapshot = createReadonlyAuthoritySnapshot(path);
-      let database: DatabaseSync | undefined;
-      let result: ReturnType<typeof inspectNativeAuthority> | undefined;
-      let primary: { error: unknown } | undefined;
-      try {
-        database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true });
-        result = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
-      } catch (error) { primary = { error }; }
-      const failures: unknown[] = [];
-      try { database?.close(); }
-      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { snapshot, ...(database === undefined ? {} : { database }) }); }
-      try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
-      try { snapshot.dispose(); }
-      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [...failures, error] : [primary.error, ...failures, error], { snapshot }); }
-      if (failures.length !== 0) {
-        if (primary !== undefined) throw new AggregateError([primary.error, ...failures], "authority-source-validation-failed", { cause: primary.error });
-        throw failures[0];
-      }
-      if (primary !== undefined) throw primary.error;
-      if (result === undefined) throw new Error("profile-stopped-upgrade-inspection-unavailable");
-      return result;
+      return withReadonlyAuthoritySnapshot(path, database => inspectNativeAuthority(database, readIntPragma(database, "user_version")));
     });
   }
 
