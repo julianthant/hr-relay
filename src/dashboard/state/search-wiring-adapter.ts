@@ -8,7 +8,8 @@ import type { WorkflowBootstrapPrimitive } from "../surfaces/shell/shell-model.j
 import type { DashboardClient } from "../client/index.js";
 import type { NavbarData, NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
-import type { WorkbookSummary } from "../../models/dashboard/workbooks.js";
+import type { WorkbookLibraryEntry } from "../../models/dashboard/workbook-library.js";
+import { sheetOf } from "../surfaces/spreadsheets/design/sheets-v2-model.js";
 import { formatMonthDay } from "../lib/date-format.js";
 
 export const searchMessage = (code: "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
@@ -58,8 +59,10 @@ export function withQueueSubjects(results: readonly NavbarSearchResult[], titles
   return results.map(result => result.subject === missing && titles.has(result.id) ? { ...result, subject: titles.get(result.id)! } : result);
 }
 
-export const paletteSheets = (records: readonly Pick<WorkbookSummary, "libraryId" | "name" | "version" | "savedAt">[]): readonly PaletteSheet[] =>
-  [...records].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map(record => ({ id: record.libraryId, name: record.name, detail: `v${record.version} · Updated ${formatMonthDay(record.savedAt, undefined, "short")}` }));
+/** The library the Spreadsheets page lists, each at the version that page shows. */
+export const paletteSheets = (entries: readonly WorkbookLibraryEntry[]): readonly PaletteSheet[] =>
+  entries.filter(entry => entry.state.origin.kind !== "unavailable" && !entry.state.removed).map(sheetOf)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(sheet => ({ id: sheet.id, name: sheet.name, detail: `v${sheet.version} · Updated ${formatMonthDay(sheet.updatedAt, undefined, "short")}` }));
 
 export function workspaceSearchQuery(query: string, workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]): CrossDateSearchQueryInput {
   const normalized = query.trim().toLowerCase();
@@ -72,13 +75,13 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
 }
 
 /** The saved library as palette rows, read while the palette is open. */
-export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, enabled: boolean): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
+export function useLibrarySheets(client: Pick<DashboardClient, "workbookCatalog">, enabled: boolean): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
   const [state, setState] = useState<{ sheets: readonly PaletteSheet[]; read: "pending" | "ready" | "failed" }>({ sheets: [], read: "pending" });
   useEffect(() => {
     if (!enabled) return;
     let live = true;
     setState(previous => ({ ...previous, read: "pending" }));
-    client.workbookList().then(records => { if (live) setState({ sheets: paletteSheets(records), read: "ready" }); }, () => { if (live) setState(previous => ({ ...previous, read: "failed" })); });
+    client.workbookCatalog().then(records => { if (live) setState({ sheets: paletteSheets(records), read: "ready" }); }, () => { if (live) setState(previous => ({ ...previous, read: "failed" })); });
     return () => { live = false; };
   }, [client, enabled]);
   // Loaded rows stay while a re-read is pending or failed; only a settled read is a verified list.

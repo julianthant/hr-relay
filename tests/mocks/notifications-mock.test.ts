@@ -7,6 +7,7 @@ import { mockOutDir } from "./helpers/out-dir.js";
 
 // Notification centre mock frames and scene checks; output goes to the gitignored .work folder.
 const OUT = mockOutDir(process.env.NOTIFICATIONS_MOCK_OUT, "notifications-mock");
+const WIDTH = Number(process.env.NOTIFICATIONS_MOCK_WIDTH ?? 1280);
 const THEMES = (process.env.NOTIFICATIONS_MOCK_THEMES ?? "light,dark").split(",") as ("light" | "dark")[];
 test.use({ deviceScaleFactor: Number(process.env.NOTIFICATIONS_MOCK_SCALE ?? 1) });
 
@@ -21,7 +22,7 @@ const hoverRow2 = (page: Page, name: RegExp) => panel(page).locator("li").filter
 const dot = (page: Page) => bell(page).getByTestId("notification-unread-dot");
 
 async function open(page: Page, scenario: string, extra = "") {
-  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.setViewportSize({ width: WIDTH, height: 720 });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&notificationsPreview=${scenario}${extra}`);
   await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
   await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
@@ -29,7 +30,7 @@ async function open(page: Page, scenario: string, extra = "") {
 
 async function shot(page: Page, name: string, theme: string) {
   await page.waitForTimeout(400);
-  await page.screenshot({ path: `${OUT}/${name}-${theme}-1280.png` });
+  await page.screenshot({ path: `${OUT}/${name}-${theme}-${page.viewportSize()?.width ?? 1280}.png` });
 }
 
 for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page }) => {
@@ -185,7 +186,7 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   const m = await metrics();
   console.log(`PALETTE ${theme} ${JSON.stringify(m)}`);
   expect(m.width).toBeGreaterThan(740); expect(m.width).toBeLessThanOrEqual(760);
-  expect(m.input).toBe(51); expect(m.row).toBe(35); expect(m.inputSize).toBe(16);
+  expect(m.input).toBe(52); expect(m.row).toBe(36); expect(m.inputSize).toBe(16);
   expect(m.height).toBeLessThanOrEqual(500);
   await page.mouse.move(1, 1);
   await shot(page, "palette-open", theme);
@@ -220,6 +221,11 @@ for (const theme of THEMES) test(`search palette @ ${theme}`, async ({ page }) =
   expect(await fill("Spreadsheets")).not.toBe(await fill("Workflows"));
   expect(await palette.getByRole("button", { name: "Runs", exact: true }).evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
   await shot(page, "palette-chip", theme);
+  for (const tab of ["Actions", "Runs", "Workflows", "Spreadsheets"]) {
+    await palette.getByRole("button", { name: tab, exact: true }).click();
+    await page.mouse.move(1, 1);
+    await shot(page, `palette-tab-${tab.toLowerCase()}`, theme);
+  }
 
   // No matches is one grey line.
   await palette.getByRole("button", { name: "All", exact: true }).click();

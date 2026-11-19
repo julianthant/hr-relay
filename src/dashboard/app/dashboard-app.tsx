@@ -8,6 +8,7 @@ import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/s
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
+import type { PaletteAction } from "../surfaces/shell/search/search-palette-model.js";
 import { useStartupGate } from "./startup/startup-gate.js";
 import { useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
@@ -1066,9 +1067,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     openNotification(destination, opened, refused);
   }, [openNotification]);
 
-  const onSearchAction = useCallback((action: "start" | "spreadsheets" | "settings") => {
-    if (action === "start") openStart(); else openSettings(action === "spreadsheets" ? "spreadsheets" : "");
-  }, [openStart, openSettings]);
+  const onSearchAction = useCallback((action: PaletteAction) => {
+    if (action === "start") openStart();
+    else if (action === "settings") openSettings();
+    else openDataPage(action === "analytics" ? "activity" : action);
+  }, [openStart, openSettings, openDataPage]);
   const onSearch = useCallback((result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => {
     if (!result.destination) { refused("This run is unavailable. Refresh search and try again."); return; }
     openNotification(result.destination, opened, refused);
