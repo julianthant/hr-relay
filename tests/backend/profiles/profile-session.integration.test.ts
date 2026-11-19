@@ -611,6 +611,10 @@ describe("durable profile authority regressions", () => {
     const b = restarted.signIn({ ...fields, at });
     assert.equal(b.state, "active"); if (b.state !== "active") return;
     assert.ok(b.epoch > a.epoch);
+    assert.deepEqual(restarted.prepareCurrentStorage(b.token), { state: "available", profileId: b.profileId, epoch: b.epoch });
+    const oldStorage = first.prepareCurrentStorage(a.token);
+    assert.equal(oldStorage.state, "refused");
+    assert.equal(oldStorage.code, "PROFILE_SESSION_STALE");
     const stale = first.readFile(a.token, "state.db");
     assert.equal("state" in stale && stale.state, "refused");
     assert.ok(restarted.readFile(b.token, "state.db") instanceof Uint8Array);
