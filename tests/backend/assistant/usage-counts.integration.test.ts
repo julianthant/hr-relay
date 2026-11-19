@@ -84,8 +84,8 @@ it("wires the retained report to the same populated native usage source as the s
     reader: sqliteRunReader(w.database, clock), appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
     descriptors: { resolve: () => undefined }, ledger: createTransactionHistory(w.database.authority) });
   const expected = projection.buildActivityReportWire("2026-11-01", "2026-11-03");
-  const { volume, ...actual } = w.read("2026-11-01", "2026-11-03");
-  assert.ok(volume);
+  const actual = w.read("2026-11-01", "2026-11-03");
+  assert.ok(actual.volume);
   assert.equal(expected.assistantMessages.days[0]?.count, 1);
   assert.deepEqual(actual, expected);
 });

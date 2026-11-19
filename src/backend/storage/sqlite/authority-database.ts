@@ -28,6 +28,8 @@ import { type SettingsCurrentRecord } from "../../../models/config/settings-curr
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
+import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
+import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
 import { TimelineEventRecordSchema,TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineEventRecord,type TimelineRepository } from "../../../models/events/timeline.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -3812,6 +3814,116 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#pageCacheChanges });
   }
 
+  /** An independent revision for a reader's authority sources, backed by the retained change log. */
+  trackAuthorityTables(tables: readonly AuthorityTableName[]): () => number | undefined {
+    const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
+    let cursor: number | undefined;
+    let revision = 0;
+    return () => {
+      if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
+      return this.#withReadSnapshot(() => {
+        this.#validateExternalQuerySources();
+        const through = changeLogHighWater(this.#database);
+        if (cursor === through) return revision;
+        if (cursor !== undefined) {
+          const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
+            this.#database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
+          if (through < cursor || (first ?? through + 1) > cursor + 1
+            || this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
+              WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) !== undefined) {
+            revision += 1;
+          }
+        }
+        cursor = through;
+        return revision;
+      });
+    };
+  }
+
+  checkQueueDaySources(day: string, previous?: Readonly<{
+    through: number;
+    runIds: readonly string[];
+    timelineRunIds: readonly string[];
+    lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
+    commandIds: readonly string[];
+    items: readonly { workflowId: string; itemId: string }[];
+    month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
+  }>): { through: number; changed: boolean } | undefined {
+    if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
+    return this.#withReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const through = changeLogHighWater(this.#database);
+      if (previous === undefined) return { through, changed: true };
+      if (through === previous.through) return { through, changed: false };
+      const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
+        this.#database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
+      if (through < previous.through || (first ?? through + 1) > previous.through + 1) return { through, changed: true };
+
+      const sharedChange = this.#database.prepare(`WITH observed_commands(key) AS (SELECT 'command:' || value FROM json_each(?)),
+        observed_runs(id) AS (SELECT value FROM json_each(?)),
+        observed_timelines(key) AS (SELECT 'run:' || value FROM json_each(?)),
+        observed_claims(worker_id, cursor) AS (
+          SELECT json_extract(value, '$.workerId'), json_extract(value, '$.cursor') FROM json_each(?)
+        )
+        SELECT 1 FROM ${CHANGE_LOG_TABLE} change WHERE seq > ? AND (
+        table_name IN ('run_batches','deleted_runs','run_delegations','delegation_dependencies','run_checkpoints',
+          'gate_results','run_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
+          'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
+          'notifications','settings','settings_snapshots')
+        OR (table_name IN ('commands','command_audits') AND (
+          op = 'delete'
+          OR EXISTS (SELECT 1 FROM json_each(change.keys_json) key
+            LEFT JOIN commands command ON command.id = substr(key.value, length('command:') + 1)
+            WHERE key.value LIKE 'command:%' AND (
+              key.value IN (SELECT key FROM observed_commands)
+              OR command.target_id IN (SELECT id FROM observed_runs)
+              OR (command.family = 'application' AND json_extract(command.request_json, '$.type') = 'pause-all-and-quit')
+              OR (command.family = 'run-lifecycle' AND json_extract(command.request_json, '$.operation') = 'application-admission')
+            ))
+          OR EXISTS (SELECT 1 FROM ${RUN_REFERENCES_TABLE} reference
+            WHERE reference.table_name = change.table_name AND reference.row_key = change.row_key
+              AND reference.run_id IN (SELECT id FROM observed_runs))
+        ))
+        OR (table_name = 'timeline_events' AND (
+          EXISTS (SELECT 1 FROM json_each(change.keys_json) key WHERE key.value IN (SELECT key FROM observed_timelines))
+          OR CAST(json_extract(change.row_key, '$[0]') AS INTEGER) IN (SELECT cursor FROM observed_claims)
+          OR EXISTS (
+            SELECT 1 FROM timeline_events event JOIN observed_claims claim
+              ON claim.worker_id = json_extract(event.payload_json, '$.payload.event.workerId')
+            WHERE event.cursor = CAST(json_extract(change.row_key, '$[0]') AS INTEGER)
+              AND event.kind = 'run.claimed' AND event.cursor > COALESCE(claim.cursor, 0)
+          )
+        ))
+      ) LIMIT 1`).get(JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
+        JSON.stringify(previous.lastWorkerClaims), previous.through);
+      if (sharedChange !== undefined) return { through, changed: true };
+
+      const changedRuns = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
+        WHERE seq > ? AND table_name = 'runs' LIMIT 1`).get(previous.through);
+      if (changedRuns === undefined) return { through, changed: false };
+      // Old observations catch deletions. Current rows also catch arrivals on the day, new descendants,
+      // and other attempts whose eligibility is visible on a cached row.
+      const relatedChange = this.#database.prepare(`WITH RECURSIVE changed(id) AS (
+          SELECT DISTINCT json_extract(row_key, '$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
+        ), ancestry(id) AS (
+          SELECT id FROM changed
+          UNION
+          SELECT runs.parent_id FROM ancestry JOIN runs ON runs.id = ancestry.id WHERE runs.parent_id IS NOT NULL
+        )
+        SELECT 1 FROM ancestry JOIN json_each(?) observed ON observed.value = ancestry.id
+        UNION ALL
+        SELECT 1 FROM changed JOIN runs ON runs.id = changed.id WHERE runs.local_day = ? OR EXISTS (
+          SELECT 1 FROM json_each(?) item WHERE runs.workflow = json_extract(item.value, '$.workflowId')
+            AND runs.item_id = json_extract(item.value, '$.itemId')
+        ) LIMIT 1`).get(previous.through, JSON.stringify(previous.runIds), day, JSON.stringify(previous.items));
+      if (relatedChange !== undefined) return { through, changed: true };
+
+      const { from, to, counts } = previous.month;
+      const current = this.readQueueDayCounts(from, to);
+      return { through, changed: current.size !== counts.length || counts.some(entry => current.get(entry.day) !== entry.count) };
+    });
+  }
+
   #rawChangeKey(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> {
     const totalChanges = z.strictObject({ count: z.number().int().nonnegative() }).parse(this.#database.prepare("SELECT total_changes() AS count").get()).count;
     return { authorityGeneration: this.#readMetaRow().authority_generation, dataVersion: readIntPragma(this.#database, "data_version"), totalChanges };
@@ -4018,6 +4130,34 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  readQueueDayCounts(fromDay: string, toDay: string) {
+    const date = z.iso.date();
+    const from = date.parse(fromDay), to = date.parse(toDay);
+    if (from > to) throw new Error("queue-day-count-range-invalid");
+    const countRow = z.strictObject({ day: date, count: z.number().int().positive() });
+    const memberRow = z.strictObject({ id: RunIdSchema, parent_id: RunIdSchema, day: date, envelope_json: z.string() });
+    return this.#withReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const counts = new Map(this.#database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+        WHERE local_day BETWEEN ? AND ? AND parent_id IS NULL GROUP BY local_day`).all(from, to)
+        .map(raw => { const { day, count } = countRow.parse(raw); return [day, count] as const; }));
+      const members = this.#database.prepare(`SELECT id,parent_id,local_day AS day,envelope_json FROM runs INDEXED BY runs_day_idx
+        WHERE local_day BETWEEN ? AND ? AND parent_id IS NOT NULL`).all(from, to).map(raw => {
+        const row = memberRow.parse(raw);
+        const envelope = RunEnvelopeSchema.parse(JSON.parse(row.envelope_json));
+        if (envelope.runId !== row.id || envelope.parent?.runId !== row.parent_id) throw new Error("queue-parent-source-unavailable");
+        return { day: row.day, envelope };
+      });
+      const parents = this.authority.dependencies.parents(members.map(({ envelope }) => envelope));
+      for (const { day, envelope } of members) {
+        const parent = parents.get(envelope.runId);
+        if (parent === undefined) throw new Error("queue-parent-source-unavailable");
+        if (isQueueTopLevel({ parent })) counts.set(day, (counts.get(day) ?? 0) + 1);
+      }
+      return counts;
+    });
+  }
+
   listItemAttemptHistorySources(input: unknown) {
     const request=z.strictObject({workflow:WorkflowIdSchema,itemId:ItemIdSchema,sourceLimit:z.number().int().min(1).max(501)}).parse(input);
     return this.withAuthorityReadSnapshot(()=>{
@@ -4125,6 +4265,18 @@ export class AuthorityDatabase implements Disposable {
     return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)
       .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema))
       .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => ({ system: lease.holder.system, since: lease.acquiredAt })));
+  }
+
+  nextDuoLeaseExpiry(nowMs: number): number {
+    return this.#withReadSnapshot(() => {
+      let next = Infinity;
+      for (const row of this.#database.prepare("SELECT * FROM auth_leases WHERE state='held'").all()) {
+        const lease = this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema);
+        const expiry = Date.parse(lease.expiresAt);
+        if (expiry > nowMs) next = Math.min(next, expiry);
+      }
+      return next;
+    });
   }
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {

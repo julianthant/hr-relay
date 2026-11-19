@@ -8,6 +8,7 @@ import { createOperatorProjection, createOperatorRunDetail } from '../../../../s
 import { RunRecordService } from '../../../../src/backend/runs/lifecycle/run-record-service.js';
 import { buildRunDetail } from '../../../../src/backend/runs/queries/run-detail.js';
 import { queryActivitySummaries, queryQueueSummaries, queryRunSummarySource } from '../../../../src/backend/runs/queries/run-summaries.js';
+import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createTimelineEmitter } from '../../../../src/backend/storage/events/timeline-emitter.js';
 import { createTransactionHistory } from '../../../../src/backend/storage/sqlite/transaction-history.js';
 import { RunRecordSchema } from '../../../../src/models/run/record.js';
@@ -100,8 +101,7 @@ try {
   const ledger = createTransactionHistory(f.db.authority);
   const descriptors = { resolve: (workflow: string) => workflow === 'person-lookup' ? subjectDescriptor : undefined };
   const servedReader: Parameters<typeof createOperatorProjection>[0]["reader"] = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader),
-    summaries: { itemAttempts: (day, items) => f.db.listQueueItemAttempts(day, items), withSnapshot: work => f.db.withAuthorityReadSnapshot(work),
-      queue: query => queryQueueSummaries(f.db, query),
+    summaries: { ...composeQueueSummaries(f.db),
       activity: (from, to) => queryActivitySummaries(f.db, { from, to, generatedAt: NOW }, { ledger, descriptors }) },
   };
   const projection = createOperatorProjection({ database: f.db, stateRoot: f.root, clock: f.clock,
@@ -183,7 +183,7 @@ it("keeps JSON, CSV and XLSX write evidence through restart and terminal run del
       return createOperatorProjection({ database: db, stateRoot: f.root, clock: f.clock, appVersion: "0.1.0",
         descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger, descriptors,
         reader: { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader),
-          summaries: { itemAttempts: (day, items) => db.listQueueItemAttempts(day, items), withSnapshot: work => db.withAuthorityReadSnapshot(work), queue: query => queryQueueSummaries(db, query),
+          summaries: { ...composeQueueSummaries(db),
             activity: (from, to) => queryActivitySummaries(db, { from, to, generatedAt: NOW }, { ledger, descriptors }) } },
       }).buildActivityReportWire("2026-01-01", "2026-09-30");
     };
@@ -403,8 +403,8 @@ it("agrees with independent expected totals and the retained Activity projector 
     const expected=world.projection.buildActivityReportWire("2026-09-09","2026-09-09");
     const actual=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:expected.generatedAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>expected.ledger}});
     assert.equal(actual.totalRuns,3);assert.equal(actual.terminalRuns,1);assert.equal(actual.durations.totalMs,5000);
-    const {volume,...reportWithoutVolume}=actual;
-    assert.deepEqual(reportWithoutVolume,expected);
+    const {volume}=actual;
+    assert.deepEqual(actual,expected);
     assert.ok(volume);
     assert.equal(volume.state,"complete");assert.equal(volume.coveredRuns,3);
     assert.equal(volume.buckets.reduce((sum,bucket)=>sum+bucket.runs,0),actual.totalRuns);
