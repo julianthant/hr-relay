@@ -7,6 +7,7 @@ import { createDebugEventWriter } from "../../../../src/backend/logs/debug-event
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
@@ -16,6 +17,7 @@ import { ASSISTANT_DEFAULT_EFFORT, ASSISTANT_DEFAULT_MODEL } from "../../../../s
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { APP_VERSION, DAY, DESCRIPTOR_SET_HASH, notificationRecordOf, queuedEventOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { runningWorkerView } from "../../../support/helpers/backend/fake-worker-port.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
@@ -149,6 +151,17 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
   assert.deepEqual(noticeContext(projection), visible);
   assert.equal(queueReads, 1, "log evidence for another same-day run reuses the warm day");
 
+  const unrelatedRun = w.database.authority.runs.get(unrelated.runId);
+  assert.ok(unrelatedRun);
+  const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock });
+  notes.emitRunLog({ workflow: unrelated.workflow, level: "step", message: "Synthetic task note",
+    address: { runId: unrelated.runId, traceId: unrelated.traceId, attempt: unrelated.attempt,
+      spanPath: `${unrelated.traceId}/searching#1.1` } }, unrelatedRun);
+  projection.ingestFromTimeline();
+  assert.equal(projection.cursor(), cursor);
+  assert.deepEqual(noticeContext(projection), visible);
+  assert.equal(queueReads, 1, "a standalone note for an unread timeline reuses the warm day");
+
   append(relevant);
   projection.ingestFromTimeline();
   assert.equal(projection.cursor(), cursor);
@@ -156,6 +169,62 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
   assert.deepEqual(noticeContext(makeProjection()), hidden, "fresh reads withhold the incompatible subject");
   assert.deepEqual(noticeContext(projection), hidden, "warm reads also withhold the incompatible subject");
   assert.equal(queueReads, 3);
+});
+
+it.each(["empty", "previous claim"] as const)("refreshes a worker's %s lookup before polling an off-month claim", async previous => {
+  const w = await world();
+  const older = queuedEventOf(w, { seed: 1, priority: "bulk" });
+  const newer = queuedEventOf(w, { seed: 2, enqueuedAt: "2026-07-31T17:00:00.000Z" });
+  const slot = w.database.withAuthorityTransaction(({ workerPools, workerSlots }) => {
+    const plan = workerPools.plan({ workflow: older.workflow, expectedVersion: 0, desiredWorkers: 1,
+      requestedBy: "local-operator", now: older.ts });
+    assert.equal(plan.state, "applied");
+    return workerSlots.allocate({ workflow: older.workflow, poolIndex: 1, now: older.ts });
+  });
+  if (previous === "previous claim") {
+    const writer = createTimelineEmitter({ repository: w.database.authority.timelineEvents, clock: w.clock });
+    writer.emit({ t: "run.claimed", workflow: older.workflow, ts: older.ts, runId: older.runId, traceId: older.traceId,
+      attempt: older.attempt, spanPath: older.traceId, workerId: slot.workerId });
+  }
+  const unexpected = (): never => { throw new Error("unexpected queue publication"); };
+  const runReader = new RunRecordService({ database: w.database, clock: w.clock, ids: { uuid: unexpected }, publishQueued: unexpected });
+  const worker = runningWorkerView(slot);
+  const createProjection = () => {
+    const projection = createOperatorProjection({
+      database: w.database, reader: {
+        read: runId => runReader.read(runId), list: input => runReader.list(input),
+        withRunTreeSnapshot: (ids, read) => runReader.withRunTreeSnapshot(ids, read),
+        summaries: composeQueueSummaries(w.database),
+      },
+      stateRoot: w.stateRoot, clock: w.clock, appVersion: APP_VERSION, descriptorSetHash: DESCRIPTOR_SET_HASH,
+      ledger: createTransactionHistory(w.database.authority), descriptors: { resolve: () => undefined }, workerMembers: () => [worker],
+    });
+    projection.rebuildFromTimeline();
+    assert.equal(projection.health().state, "live");
+    return projection;
+  };
+  const projection = createProjection();
+  const cursor = projection.cursor();
+  const before = projection.buildDashboardDayWire(DAY);
+  assert.deepEqual(before.workerCards[0]?.lastRun, previous === "empty" ? { state: "unavailable", reason: "no-run-recorded" }
+    : { state: "present", runId: older.runId, traceId: older.traceId });
+  assert.equal(projection.buildDashboardDayWire(DAY), before);
+
+  const runtime = w.database.authority.runtimeConfig.get();
+  assert.ok(runtime);
+  const claimed = runReader.claimNext({ commandId: uuidOf(30), workflow: newer.workflow, workerId: slot.workerId,
+    runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+      settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+  assert.ok(claimed.state === "applied");
+  assert.equal(claimed.run.envelope.runId, newer.runId);
+  assert.equal(projection.cursor(), cursor);
+  const expected = { state: "present", runId: newer.runId, traceId: newer.traceId };
+  const fresh = createProjection().buildDashboardDayWire(DAY);
+  assert.deepEqual(fresh.workerCards[0]?.lastRun, expected);
+  const warm = projection.buildDashboardDayWire(DAY);
+  assert.deepEqual(warm.workerCards[0]?.lastRun, expected);
+  assert.deepEqual(warm.monthCounts, before.monthCounts);
+  assert.equal(warm.snapshotCursor, cursor);
 });
 
 it("shares an unchanged day across a GET and stream connects and refreshes it when the runs change", async () => {

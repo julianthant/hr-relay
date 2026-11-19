@@ -3844,6 +3844,7 @@ export class AuthorityDatabase implements Disposable {
     through: number;
     runIds: readonly string[];
     timelineRunIds: readonly string[];
+    lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
     commandIds: readonly string[];
     items: readonly { workflowId: string; itemId: string }[];
     month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
@@ -3859,7 +3860,11 @@ export class AuthorityDatabase implements Disposable {
       if (through < previous.through || (first ?? through + 1) > previous.through + 1) return { through, changed: true };
 
       const sharedChange = this.#database.prepare(`WITH observed_commands(key) AS (SELECT 'command:' || value FROM json_each(?)),
-        observed_runs(id) AS (SELECT value FROM json_each(?))
+        observed_runs(id) AS (SELECT value FROM json_each(?)),
+        observed_timelines(key) AS (SELECT 'run:' || value FROM json_each(?)),
+        observed_claims(worker_id, cursor) AS (
+          SELECT json_extract(value, '$.workerId'), json_extract(value, '$.cursor') FROM json_each(?)
+        )
         SELECT 1 FROM ${CHANGE_LOG_TABLE} change WHERE seq > ? AND (
         table_name IN ('run_batches','deleted_runs','run_delegations','delegation_dependencies','run_checkpoints',
           'gate_results','run_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
@@ -3879,18 +3884,18 @@ export class AuthorityDatabase implements Disposable {
             WHERE reference.table_name = change.table_name AND reference.row_key = change.row_key
               AND reference.run_id IN (SELECT id FROM observed_runs))
         ))
-        OR (table_name = 'timeline_events'
-          AND EXISTS (SELECT 1 FROM json_each(keys_json) WHERE value LIKE 'run:%')
-          AND (op = 'delete' OR EXISTS (
-            SELECT 1 FROM timeline_events event
+        OR (table_name = 'timeline_events' AND (
+          EXISTS (SELECT 1 FROM json_each(change.keys_json) key WHERE key.value IN (SELECT key FROM observed_timelines))
+          OR CAST(json_extract(change.row_key, '$[0]') AS INTEGER) IN (SELECT cursor FROM observed_claims)
+          OR EXISTS (
+            SELECT 1 FROM timeline_events event JOIN observed_claims claim
+              ON claim.worker_id = json_extract(event.payload_json, '$.payload.event.workerId')
             WHERE event.cursor = CAST(json_extract(change.row_key, '$[0]') AS INTEGER)
-              AND (
-                event.kind IN ('note','transaction.previewed','checkpoint-recorded','checkpoint-replayed','operation-confirmed','write-parked')
-                OR (event.kind IN ('data.observed','transaction.fenced') AND event.run_id IN (SELECT value FROM json_each(?)))
-              )
-          ))
-        )
-      ) LIMIT 1`).get(JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), previous.through, JSON.stringify(previous.timelineRunIds));
+              AND event.kind = 'run.claimed' AND event.cursor > COALESCE(claim.cursor, 0)
+          )
+        ))
+      ) LIMIT 1`).get(JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
+        JSON.stringify(previous.lastWorkerClaims), previous.through);
       if (sharedChange !== undefined) return { through, changed: true };
 
       const changedRuns = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}

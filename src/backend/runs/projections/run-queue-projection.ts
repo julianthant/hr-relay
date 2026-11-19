@@ -136,6 +136,7 @@ interface QueueDaySources {
   readonly through: number;
   readonly runIds: readonly string[];
   readonly timelineRunIds: readonly string[];
+  readonly lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
   readonly commandIds: readonly string[];
   readonly items: readonly { workflowId: string; itemId: string }[];
   readonly month: { from: string; to: string; counts: DashboardDayWire["monthCounts"] };
@@ -500,8 +501,9 @@ export class RunQueueProjection {
     });
   }
 
-  #workerLastRun(workerId: string, readRun: RunQueueProjectionDeps["reader"]["read"]): NonNullable<WorkerCardWire["lastRun"]> {
-    const record = this.#deps.timeline.lastWorkerClaim(workerId);
+  #workerLastRun(workerId: string, readRun: RunQueueProjectionDeps["reader"]["read"],
+    timeline: TimelineRepository): NonNullable<WorkerCardWire["lastRun"]> {
+    const record = timeline.lastWorkerClaim(workerId);
     const claim = record?.payload.kind === "span" && record.payload.event.t === "run.claimed" ? record.payload.event : undefined;
     const read = claim === undefined ? undefined : readRun(claim.runId);
     const run = read?.state === "present" && read.disposition === "live" ? read.run : undefined;
@@ -1561,6 +1563,7 @@ export class RunQueueProjection {
     const sharedRuns = new Set<string>();
     const notificationCommands = new Set<string>();
     const timelineRunIds = new Set<string>();
+    const lastWorkerClaims: { workerId: string; cursor: number | null }[] = [];
     const presentation: RunTimelineEvidenceSource = {
       authority: this.#deps.authority,
       timeline: {
@@ -1568,6 +1571,11 @@ export class RunQueueProjection {
         page: input => {
           if (input.runId !== undefined) timelineRunIds.add(input.runId);
           return this.#deps.timeline.page(input);
+        },
+        lastWorkerClaim: workerId => {
+          const claim = this.#deps.timeline.lastWorkerClaim(workerId);
+          lastWorkerClaims.push({ workerId, cursor: claim?.cursor ?? null });
+          return claim;
         },
       },
     };
@@ -1590,7 +1598,8 @@ export class RunQueueProjection {
           const view = views.find(candidate => candidate.member.workerId === member.workerId);
           const runId = view?.activity?.runId;
           const lastRun = runId === undefined && (view === undefined || view.state === "exited"
-            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle")) ? this.#workerLastRun(member.workerId, readSharedRun) : undefined;
+            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle"))
+            ? this.#workerLastRun(member.workerId, readSharedRun, presentation.timeline) : undefined;
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
           workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
             startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
@@ -1672,7 +1681,8 @@ export class RunQueueProjection {
     }
     const items = new Map([...context.runs.values()].map(({ envelope: { workflow, itemId } }) =>
       [itemKey(workflow, itemId), { workflowId: workflow, itemId }] as const));
-    return { wire, sources: { runIds: [...runIds], timelineRunIds: [...timelineRunIds], commandIds: [...notificationCommands], items: [...items.values()],
+    return { wire, sources: { runIds: [...runIds], timelineRunIds: [...timelineRunIds], lastWorkerClaims,
+      commandIds: [...notificationCommands], items: [...items.values()],
       month: { from: monthFrom, to: monthTo, counts: wire.monthCounts } } };
   }
 
