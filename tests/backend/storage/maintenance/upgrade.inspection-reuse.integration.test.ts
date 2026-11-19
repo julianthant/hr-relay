@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { initializeRegisteredPersonStores, upgradeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import { initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { backupStoppedAuthority, upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
@@ -74,16 +74,19 @@ it("invalidates registered-person verification on replacement of the main file o
   }
 });
 
+function startupStages(workspace: string) {
+  const log = readLocalDebugLog(join(workspace, rebuildRuntimeIsolation.stateRoot));
+  if (log.state === "absent") return [];
+  return log.records.flatMap(record => record.payload.kind === "debug" && record.payload.event.category === "boot"
+    && record.payload.event.area === "profile-startup-upgrade" && record.payload.event.phase === "started" ? [record.payload.event.reason] : []);
+}
+
 it("records the startup stages and reads back the migrated authority", async () => {
   const fixture = await readyBoundEight();
   try {
     fixture.machine.release();
-    await upgradeRegisteredPersonStores(fixture.workspace, fixture.lifetime, hostFacts);
-    const log = readLocalDebugLog(join(fixture.workspace, rebuildRuntimeIsolation.stateRoot));
-    assert.equal(log.state, "present");
-    const stages = log.records.flatMap(record => record.payload.kind === "debug" && record.payload.event.area === "profile-startup-upgrade"
-      && record.payload.event.phase === "started" ? [record.payload.event.reason] : []);
-    assert.deepEqual(stages, ["admission", "backup-closure", "backup", "migration", "readback"]);
+    await initializeRegisteredPersonStores(fixture.workspace, fixture.lifetime, hostFacts);
+    assert.deepEqual(startupStages(fixture.workspace), ["inspection", "admission", "backup-closure", "backup", "migration", "readback"]);
     const migrated = new DatabaseSync(fixture.path, { readOnly: true });
     try { assert.equal(migrated.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION); }
     finally { migrated.close(); }
@@ -92,13 +95,15 @@ it("records the startup stages and reads back the migrated authority", async () 
   }
 });
 
-it("checks current-schema registration twice at startup with one full inspection", async () => {
+it("announces inspection before checking current-schema registration twice with one full inspection", async () => {
   const fixture = await createBoundProfileFixture();
   const inspect = AuthorityDatabase.inspectRegisteredPersonAtStartup.bind(AuthorityDatabase);
   const sql = vi.spyOn(DatabaseSync.prototype, "prepare");
   const count = () => sql.mock.calls.filter(([query]) => query === "PRAGMA quick_check(1)").length;
   const checks: number[] = [];
+  const stagesAtInspection: ReturnType<typeof startupStages>[] = [];
   const registration = vi.spyOn(AuthorityDatabase, "inspectRegisteredPersonAtStartup").mockImplementation((machine, profileId) => {
+    stagesAtInspection.push(startupStages(fixture.workspace));
     const before = count();
     const result = inspect(machine, profileId);
     checks.push(count() - before);
@@ -109,6 +114,7 @@ it("checks current-schema registration twice at startup with one full inspection
     fixture.machine.release();
     await initializeRegisteredPersonStores(fixture.workspace, fixture.lifetime, hostFacts);
     assert.deepEqual(checks, [1, 0]);
+    assert.deepEqual(stagesAtInspection, [["inspection"], ["inspection"]]);
   } finally {
     registration.mockRestore();
     sql.mockRestore();

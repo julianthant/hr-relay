@@ -430,6 +430,14 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
   return AuthorityDatabase.withUpgradeInspections(() => inspectAndUpgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock));
 }
 
+function logStartupUpgradeStage(workspace: string, clock: Clock, stage: string): void {
+  // A full or unavailable diagnostic log must not interrupt stopped maintenance.
+  try {
+    appendLocalDebug({ stateRoot: join(workspace, rebuildRuntimeIsolation.stateRoot), build: buildVersion(), now: clock.now(),
+      event: { category: "boot", phase: "started", area: "profile-startup-upgrade", reason: stage, pinned: false } });
+  } catch { /* best effort */ }
+}
+
 async function inspectAndUpgradeRegisteredPersonStores(workspace: string, lifetime: RuntimeLifetimeLock, hostFacts: HostConfigFacts, clock: Clock): Promise<void> {
   lifetime.assertHeld();
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) return;
@@ -457,13 +465,8 @@ async function inspectAndUpgradeRegisteredPersonStores(workspace: string, lifeti
       try {
         await withStoppedMachineStorage(workspace, lifetime, async machine => {
           const { upgradeProfileAtStartup } = await import("../../storage/maintenance/upgrade.js");
-          const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock, stage => {
-            // A full or unavailable diagnostic log must not interrupt stopped maintenance.
-            try {
-              appendLocalDebug({ stateRoot: join(workspace, rebuildRuntimeIsolation.stateRoot), build: buildVersion(), now: clock.now(),
-                event: { category: "boot", phase: "started", area: "profile-startup-upgrade", reason: stage, pinned: false } });
-            } catch { /* best effort */ }
-          });
+          const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock,
+            stage => logStartupUpgradeStage(workspace, clock, stage));
           if ((report.state !== "upgraded" && report.state !== "already-upgraded") || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
         });
       } catch (error) { hold(profileId, error, "upgrade"); continue; }
@@ -484,7 +487,10 @@ async function prepareStartupUpgrades(workspace: string, lifetime: RuntimeLifeti
     : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId));
   for (const profileId of registered) {
     try {
-      await withStoppedMachineStorage(workspace, lifetime, async machine => AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId));
+      await withStoppedMachineStorage(workspace, lifetime, async machine => {
+        logStartupUpgradeStage(workspace, clock, "inspection");
+        AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+      });
     } catch (error) {
       if (hasUnprovedSourceClosure(error)) throw error;
       try { await repairRegisteredPerson(workspace, lifetime, profileId, clock, error); }
