@@ -18,16 +18,25 @@ export class FullPageCaptureFailedError extends Error {
 }
 
 interface CaptureBand { buffer: Buffer; offsetCss: number; offsetXCss: number; clipHeightCss: number }
-interface BandGeometry {
-  x: number; y: number; width: number; height: number;
-  offset: number; offsetX: number; contentWidth: number; contentHeight: number;
-}
+const bandGeometryFields = ["x", "y", "width", "height", "offset", "offsetX", "contentWidth", "contentHeight"] as const;
+type BandGeometry = Record<typeof bandGeometryFields[number], number>;
 interface CaptureState {
   scroll: (left: number, top: number) => boolean;
   measure: () => BandGeometry;
   restore: () => void;
 }
 type CaptureWindow = Window & { __relayCapture?: CaptureState; __relayCaptureSecrets?: { observer: MutationObserver; seen: boolean; restore: () => void } };
+
+function bandGeometryChange(before: BandGeometry, after: BandGeometry): string | undefined {
+  const changes: string[] = [];
+  for (const field of bandGeometryFields) {
+    const from = before[field], to = after[field];
+    if (from === to) continue;
+    if (!Number.isFinite(from) || !Number.isFinite(to)) throw new FullPageCaptureFailedError("unpainted-gap", `invalid-band-geometry-${field}`);
+    changes.push(`${field}=${from}->${to}`);
+  }
+  return changes.length ? `band-geometry-changed ${changes.join(" ")}` : undefined;
+}
 
 function computeSliceOffsets(fullHeight: number, sliceHeight: number): number[] {
   const maxY = Math.max(0, fullHeight - sliceHeight);
@@ -241,6 +250,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
   mask: () => Locator[];
   secretControls: string;
   afterCapture: () => Promise<void>;
+  onBandRetry?: (detail: string) => void;
 }>): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> {
   const { assertCurrent } = options;
   assertCurrent();
@@ -335,7 +345,8 @@ export async function captureFullPage(page: Page, options: Readonly<{
       for (const left of columns) {
         await scrollTo(left, top);
         await assertSafe();
-        const { x, y, width, height, offset, offsetX, contentWidth, contentHeight } = await readGeometry();
+        const before = await readGeometry();
+        const { x, y, width, height, offset, offsetX, contentWidth, contentHeight } = before;
         if (contentWidth !== first.contentWidth || contentHeight !== first.contentHeight) {
           throw new FullPageCaptureFailedError("unpainted-gap", "capture-content-size-changed");
         }
@@ -346,13 +357,15 @@ export async function captureFullPage(page: Page, options: Readonly<{
         assertCurrent();
         const buffer = await page.screenshot({ type: "png", clip, mask: options.mask() });
         await assertSafe();
-        const after = await readGeometry();
-        if (after.x !== x || after.y !== y || after.width !== width || after.height !== height
-          || after.offset !== offset || after.offsetX !== offsetX || after.contentWidth !== contentWidth || after.contentHeight !== contentHeight) {
+        const detail = bandGeometryChange(before, await readGeometry());
+        if (detail !== undefined) {
           // A reflow can invalidate even the bands already painted. Replan once from the origin.
           const remaining = sliceBudget - bands.length - 1;
-          if (mayRestart && remaining > 0) return captureBands(remaining, false);
-          throw new FullPageCaptureFailedError("unpainted-gap", "band-geometry-changed");
+          if (mayRestart && remaining > 0) {
+            options.onBandRetry?.(detail);
+            return captureBands(remaining, false);
+          }
+          throw new FullPageCaptureFailedError("unpainted-gap", detail);
         }
         rowOffset = offset;
         coveredX = Math.max(coveredX, offsetX + clip.width);

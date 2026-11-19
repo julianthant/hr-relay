@@ -11,6 +11,7 @@ import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fi
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { captureFullPage, FullPageCaptureRestoreError } from "../../../../src/backend/runtime/browser/full-page-capture.js";
+import { PlaywrightWorkerSessionFactory, type BrowserSessionFactoryOptions } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import type { WorkerBrowserResource } from "../../../../src/workflow-kit/session.js";
 
 const clock = manualClock(new Date("2026-10-17T09:00:00Z"));
@@ -23,7 +24,7 @@ let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ headless: true }); });
 afterAll(async () => { await browser?.close(); });
 
-async function withPage(body: string, check: (page: Page, resource: WorkerBrowserResource) => Promise<void>, authenticated = true) {
+async function withPage(body: string, check: (page: Page, resource: WorkerBrowserResource, retries: readonly string[]) => Promise<void>, authenticated = true) {
   await fixtures.withTempRuntime(async ({ config }) => {
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
     const page = await context.newPage();
@@ -31,9 +32,17 @@ async function withPage(body: string, check: (page: Page, resource: WorkerBrowse
     const harness = { ...fixtures.fakeLauncher(), launcher: {
       launch: async (input: { profileDirectory: string }) => { mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); return context; },
     } };
-    const factory = fixtures.factoryFor(config, harness, fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated }).verify }));
+    const retries: string[] = [];
+    class ObservedFactory extends PlaywrightWorkerSessionFactory {
+      constructor(options: BrowserSessionFactoryOptions) {
+        super({ ...options, onDebug: (_worker, event) => {
+          if (event.reason === "capture-band-retry" && event.message !== undefined) retries.push(event.message);
+        } });
+      }
+    }
+    const factory = fixtures.factoryFor(config, harness, fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated }).verify }), undefined, undefined, ObservedFactory);
     const resource = await factory.open({ workerId, workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod", configFingerprint: FingerprintSchema.parse("ab".repeat(32)), acceptDownloads: false, exclusive: false, signal: new AbortController().signal, duoCeremony: await fixtureDuoCeremonyGate("ucpath", workerId, clock) });
-    try { await check(page, resource); }
+    try { await check(page, resource, retries); }
     finally { await resource.close({ reason: "worker-stop" }); }
   });
 }
@@ -149,7 +158,7 @@ describe("whole-page factory screenshots", () => {
     });
   });
   it("recaptures the complete form after a late section reflows during a screenshot band", async () => {
-    await withPage(`<main>${content}</main>`, async (page, resource) => {
+    await withPage(`<main style="overflow-anchor:none">${content}</main>`, async (page, resource, retries) => {
       const screenshot = page.screenshot.bind(page);
       let bands = 0;
       page.screenshot = async options => {
@@ -168,20 +177,22 @@ describe("whole-page factory screenshots", () => {
       assert.deepEqual(pixel(png, 20, 200), [210, 20, 30]);
       assert.deepEqual(pixel(png, 20, 1200), [20, 210, 30]);
       assert.deepEqual(pixel(png, 20, 3199), [20, 30, 210]);
+      assert.deepEqual(retries, ["band-geometry-changed contentHeight=3000->3200"]);
     });
   });
   it("refuses an image when the grid keeps moving during screenshot bands", async () => {
-    await withPage(`<div id="grid" style="width:800px;height:500px;overflow:auto">${content}</div>`, async (page, resource) => {
+    await withPage(`<div id="grid" style="width:800px;height:500px;overflow:auto">${content}</div>`, async (page, resource, retries) => {
       const screenshot = page.screenshot.bind(page);
       let bands = 0;
       page.screenshot = async options => {
-        await page.locator("#grid").evaluate((grid, band) => { grid.style.marginLeft = `${band * 10}px`; }, ++bands);
+        await page.locator("#grid").evaluate((grid, band) => { grid.style.transform = `translate(${band * 10}px, ${band * 3}px)`; }, ++bands);
         return screenshot(options);
       };
       const evidence = await resource.screenshot?.();
       assert.equal(evidence?.state, "unavailable");
       assert.ok(evidence?.state === "unavailable");
-      assert.deepEqual([evidence.reason, evidence.detail], ["unpainted-gap", "band-geometry-changed"]);
+      assert.deepEqual([evidence.reason, evidence.detail], ["unpainted-gap", "band-geometry-changed x=10->20 y=3->6"]);
+      assert.deepEqual(retries, ["band-geometry-changed x=0->10 y=0->3"]);
       assert.equal("bytes" in evidence, false);
       assert.equal(bands, 2);
     });
