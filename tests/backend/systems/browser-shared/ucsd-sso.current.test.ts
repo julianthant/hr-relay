@@ -2,20 +2,32 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import { it } from "vitest";
 import { submitPinnedUcsdSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { createFakeSsoNetwork } from "../../../support/helpers/browser/fake-login-page.js";
 
 it.each([false, true])("guards credential effects and retains element disposal after username fill revocation (%s)", async revoke => {
+  const url = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
   let current = true;
   const refusal = new Error("fixture session revoked");
   const effects: string[] = [], disposed: string[] = [];
+  const network = createFakeSsoNetwork();
   const handles = new Map(["ssousername", "ssopassword", "sso-submit"].map(name => [name, {
-    isVisible: async () => true, isEditable: async () => true, isEnabled: async () => true,
-    evaluate: async () => true,
-    fill: async () => { effects.push(`fill:${name}`); if (revoke && name === "ssousername") current = false; },
-    click: async () => { effects.push(`click:${name}`); },
+    evaluateHandle: async () => ({ dispose: async () => { disposed.push("form"); } }),
+    evaluate: async (_fn: unknown, input: { action: { kind: string } }) => {
+      if (input.action.kind === "prove") return url;
+      if (input.action.kind === "username") {
+        effects.push("fill:ssousername");
+        if (revoke) current = false;
+      }
+      if (input.action.kind === "password") effects.push("fill:ssopassword");
+      if (input.action.kind === "submit") { network.post(url); effects.push("click:sso-submit"); return url; }
+      return true;
+    },
     dispose: async () => { disposed.push(name); },
   }]));
   const page = {
-    url: () => "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO",
+    context: () => network,
+    waitForNavigation: async () => ({ request: () => ({ method: () => "POST", url: () => url, redirectedFrom: () => null }) }),
+    url: () => url,
     locator: (selector: string) => {
       const key = [...handles.keys()].find(name => selector.includes(name === "sso-submit" ? "_eventId_proceed" : name));
       assert.ok(key);
@@ -27,5 +39,5 @@ it.each([false, true])("guards credential effects and retains element disposal a
   if (revoke) await assert.rejects(operation, error => error === refusal);
   else await operation;
   assert.deepEqual(effects, revoke ? ["fill:ssousername"] : ["fill:ssousername", "fill:ssopassword", "click:sso-submit"]);
-  assert.deepEqual(disposed, ["ssousername", "ssopassword", "sso-submit"]);
+  assert.deepEqual(disposed, ["ssousername", "ssopassword", "sso-submit", "form"]);
 });
