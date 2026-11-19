@@ -356,7 +356,8 @@ async function readFrozenGrid(
         if (row.cells.length < minBlankCells) return false;
         const hasBusinessUnit = unitPattern.test((row.cells.item(businessUnitColumn)?.textContent ?? "").trim());
         if (workLocation) return hasBusinessUnit;
-        return !hasBusinessUnit && (row.textContent ?? "").trim().length > 0;
+        const rowText = row.textContent;
+        return !hasBusinessUnit && rowText !== null && rowText.trim().length > 0;
       });
   }, {
     ...ids,
