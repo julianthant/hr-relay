@@ -1,9 +1,8 @@
 import { projectWorkbookCompatibilityFromRepository } from "../../src/backend/workbooks/workbook-library-service.js";
 import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
-import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
+import { descriptorSetHash, READABLE_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
-import { WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../src/backend/runs/queries/bootstrap.js";
 import { buildRunDetail } from "../../src/backend/runs/queries/run-detail.js";
 import { projectStartSteps } from "../../src/backend/runs/start/step-selection.js";
@@ -66,7 +65,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
 
       const explorer = readFixtureExplorer({
         ...explorerQueryDeps(manualClock(AT), EXPLORER_HASH),
-        modules,
+        modules: [...READABLE_WORKFLOW_MODULES, fixtureModule],
       });
       const explorerWorkflow = explorer.workflows.find((workflow) => String(workflow.id) === id);
       assert.ok(explorerWorkflow !== undefined, `${id} is absent from Explorer`);

@@ -95,8 +95,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         const document = createCanonicalCredentials(admission).readRecord("protected"); assert.ok(document);
         assert.equal(authenticateDocument(document.value).retiredLegacy.valueIds.includes(f.valueId), true);
         const service = createReceiptService({ database, runReader: testRunService(database, CLOCK), descriptors: [descriptor] });
-        // The pre-initials run input is retired history: its receipt is never re-derived under the current canonical input.
-        assert.throws(() => service.ensureReceipt(f.run.envelope.runId), /canonical-input/u);
+        assert.deepEqual(service.ensureReceipt(f.run.envelope.runId), f.receipt);
         const { createOperatorProjection } = await import("../../../../src/backend/app/composition/dashboard/queue.js");
         const { createOperatorRunDetail } = await import("../../../../src/backend/app/composition/dashboard/run-detail.js");
         const { buildRunLogsSection } = await import("../../../../src/backend/runs/queries/run-logs.js");

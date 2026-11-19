@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
-import { OcrReviewSeedSchema, buildOcrReviewSeed, hydrateOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
+import { PreManualOcrReviewCheckpointSchema, OcrReviewSeedSchema, buildOcrReviewSeed, hydrateOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { RosterRowFactsSchema } from "../../../../src/rules/matching/roster-match.js";
 import { IsoInstantSchema, WorkflowIdSchema, type TaskId } from "../../../../src/rules/identity/ids.js";
 import { OcrPersonLookupRequestSchema, ocrPersonLookupRequests, bindOcrLookupOutcomes } from "../../../../src/models/workflows/ocr/lookup.js";
@@ -13,7 +13,7 @@ import { ReadOcrReviewSeed } from "../../../../src/models/workflows/ocr/read-rev
 import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../../src/models/workflows/ocr/read-source-pages.js";
 import { buildOcrSourceManifest } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { OcrPageWorkflowInputSchema } from "../../../../src/models/workflows/ocr-page/input.js";
-import { OcrPageReadingSchema, accountOcrPages } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { OcrReadPageAccountingSchema, OcrPageReadingSchema, accountOcrPages } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { ExtractPdfPages } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { OcrReviewRevisionSchema, initialOcrReviewRecords } from "../../../../src/models/ocr/review.js";
@@ -44,7 +44,8 @@ import { ObservedDataPointSchema } from "../../../../src/backend/logs/span-emitt
 
 const retainedRoster = z.strictObject({ artifact: ArtifactRefSchema, readAt: IsoInstantSchema, rows: z.array(RosterRowFactsSchema) });
 const retainedInput = OcrInputSchema.extend({ roster: retainedRoster.nullable() });
-const retainedSeed = OcrReviewSeedSchema.safeExtend({ roster: retainedRoster.nullable() });
+const retainedSeed = OcrReviewSeedSchema.safeExtend({ roster: retainedRoster.nullable(),
+  accounting: OcrReadPageAccountingSchema, pages: PreManualOcrReviewCheckpointSchema.shape.pages });
 export const RetainedOcrResultSchema = z.strictObject({ review: retainedSeed,
   identities: z.array(OcrPersonLookupRequestSchema.extend({ outcome: childRunOutcomeSchema(PersonLookupResultSchema) })) });
 const { __sealed: _resultSeal, ...resultSpec } = ReadOcrResult;

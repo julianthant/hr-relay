@@ -64,6 +64,7 @@ export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
         </FormGroup></BodySection>)}
         {additional.length > 0 && <BodySection title="Additional limits"><FormGroup label="Additional limits">
           {additional.map(group => <SettingsSearchDisclosure paths={group.leaves.map(leaf => leaf.path)} key={group.title} variant="body" summary={group.title} description={ADDITIONAL_DESCRIPTIONS[group.title]}
+            defaultOpen={group.leaves.some(leaf => editor.errors[leaf.path] !== undefined)}
             className="settings-performance-disclosure" contentClassName="settings-performance-disclosure-content">
             {group.leaves.map(leaf => <PerformanceRow key={leaf.path} editor={editor} leaf={leaf} />)}
           </SettingsSearchDisclosure>)}

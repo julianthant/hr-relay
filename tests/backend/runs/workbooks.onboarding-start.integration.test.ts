@@ -164,7 +164,9 @@ describe("selected saved Onboarding row start authority", () => {
     for (const request of cases) {
       const { record } = f.plan(request); assert.equal(record.planned.length, 0); assert.deepEqual(record.refused.map(row => row.entry), [1]);
     }
-    assert.throws(() => f.plan({ ...f.request(), workbookReferences: [{ ...f.selection(1), typeId: "general" }] }));
+    const { record } = f.plan({ ...f.request(), workbookReferences: [{ ...f.selection(1), typeId: "general" }] });
+    assert.deepEqual(record.planned, []);
+    assert.deepEqual(record.refused.map(({ entry, code }) => [entry, code]), [[1, "capability-unavailable"]]);
     assert.deepEqual(f.database.authority.runs.listByWorkflow(descriptor.id), []);
     assert.deepEqual(f.writeCalls, []); assert.deepEqual(f.workerCalls, []);
   });

@@ -56,7 +56,8 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
-import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
+import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
+import { fixtureChildDescriptor, fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
 import { registeredExplorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER,UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/separations-run-fixtures.js";
@@ -259,6 +260,7 @@ export async function harness(options: {
     await profile.close();
   });
 
+  bindWorkflowDelegationTargets([fixtureDescriptor, fixtureChildDescriptor]);
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === "fixture-graph" ? fixtureDescriptor : undefined),
   };
