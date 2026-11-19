@@ -134,7 +134,7 @@ it('titles the version dialog "Roll back" and confirms with "Roll back to v<n>?"
   const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
   assert.equal(dialog.querySelector('h2, [data-slot="dialog-title"]')?.textContent?.trim(), 'Roll back');
   assert.equal((byText('button', 'Roll back') as HTMLButtonElement).disabled, true);
-  await click([...dialog.querySelectorAll('[role="radio"]')].find(node => node.textContent?.includes('v1')));
+  await click([...dialog.querySelectorAll('input[type="radio"]')].find(node => node.closest('label')?.textContent?.includes('v1')));
   await click(byText('button', 'Roll back'));
   assert.match(document.body.textContent ?? '', /Roll back to v1\?/u);
   await click(byText('button', 'Roll back'));

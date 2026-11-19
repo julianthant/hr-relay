@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Chip, ConfirmDialog, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, dsText } from '../../../ds/ui.js';
+import { Chip, ConfirmDialog, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, RadioGroup } from '../../../ds/ui.js';
 import { type Sheet, addTag, stamp, MAX_TAG_LENGTH } from './sheets-v2-model.js';
 import './sheets-v2.css';
 import { Grey, V2Button } from './sheets-v2-ui.js';
@@ -47,11 +47,9 @@ export function SheetDialog({ kind, sheet, actions, onClose }: { kind: DialogKin
     description={<><span className="block">Runs read v{picked.n} from now on. Other versions are kept.</span>{sheet.sharePoint && <span className="block">The next sync replaces it.</span>}</>} />;
   if (kind === 'rollback') return <Shell title={sheet.versions.length > 1 ? 'Roll back' : 'Version history'} description={`${sheet.name} · now v${sheet.version}`} size="md" onClose={onClose}
     footer={<>{sheet.sharePoint && <Grey className="mr-auto">The next sync replaces it.</Grey>}<Cancel onClose={onClose} /><V2Button look="primary" disabled={version === undefined} onClick={() => setConfirming(true)}>Roll back</V2Button></>}>
-    <ul role="radiogroup" aria-label="Versions" className="divide-y divide-ui-stroke rounded-md border border-ui-stroke">{sheet.versions.map(entry => { const current = entry.id === sheet.currentVersionId; return <li key={entry.id}>
-      <button type="button" role="radio" aria-checked={version === entry.id} disabled={current} onClick={() => setVersion(entry.id)} className={`flex w-full items-center gap-3 px-3 py-2 text-left ${dsText.ui} hover:bg-ui-hover disabled:opacity-60 ${version === entry.id ? 'bg-ui-hover' : ''}`}>
-        <span aria-hidden className={`size-3.5 shrink-0 rounded-full border ${version === entry.id ? 'border-ui-info bg-ui-info' : 'border-ui-stroke-control'}`} />
-        <span className="w-8 tabular-nums">v{entry.n}</span><span className="w-28 shrink-0 tabular-nums text-ui-muted">{stamp(entry.at)}</span><span className="min-w-0 flex-1 truncate">{entry.note}</span>{current && <Grey>Current</Grey>}
-      </button></li>; })}</ul></Shell>;
+    <RadioGroup label="Versions" name="sheet-version" value={version ?? ''} onValueChange={setVersion}
+      options={sheet.versions.map(entry => ({ value: entry.id, disabled: entry.id === sheet.currentVersionId,
+        label: <span className="flex min-w-0 items-baseline gap-3"><span className="w-8 tabular-nums">v{entry.n}</span><span className="w-28 shrink-0 tabular-nums text-ui-muted">{stamp(entry.at)}</span><span className="min-w-0 flex-1 truncate">{entry.note}</span>{entry.id === sheet.currentVersionId && <Grey>Current</Grey>}</span> }))} /></Shell>;
   return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Delete ${sheet.name}?`} confirmLabel="Delete spreadsheet" destructive onConfirm={done(actions.remove)}
     description="Runs that read it keep their results. SharePoint files are unchanged." />;
 }

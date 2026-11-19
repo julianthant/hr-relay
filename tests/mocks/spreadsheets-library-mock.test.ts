@@ -38,3 +38,17 @@ for (const width of WIDTHS) test(`spreadsheet library list, import, versions and
     await page.screenshot({ path: join(OUT, `library-import-${width}.png`) });
   } finally { await page.goto("about:blank"); await server.close(); }
 });
+
+for (const width of WIDTHS) test(`spreadsheet library empty @ dark ${width}`, async ({ page }) => {
+  mkdirSync(OUT, { recursive: true });
+  const server = await startWorkbookSweepServer({ bootstrap: FIXTURE_START_PICKER_BOOTSTRAP,
+    descriptorHash: FIXTURE_START_PICKER_DAY_WIRE.descriptorHash, day: FIXTURE_START_PICKER_DAY_WIRE }, { empty: true });
+  try {
+    await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, "dark");
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`${server.baseUrl}/?fixture=product-workflows&settings=spreadsheets`);
+    await expect(page.getByText(/No spreadsheets yet/)).toBeVisible();
+    await page.mouse.move(1, 1);
+    await page.screenshot({ path: join(OUT, `library-empty-${width}.png`) });
+  } finally { await page.goto("about:blank"); await server.close(); }
+});
