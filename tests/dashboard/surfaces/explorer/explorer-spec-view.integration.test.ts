@@ -42,12 +42,23 @@ it("shows the served spec: heading, run options, the unlisted-failure line once,
   assert.doesNotMatch(host.textContent ?? "", /Anything else/u);
 });
 
+it("tells a step toggle from a run option of the same label and words its values for staff", async () => {
+  const host = await mount();
+  const toggle = resolveExplorer(spec, {}, {}).options.find(option => option.id.startsWith("skip-"))!;
+  const labels = [...host.querySelectorAll('[id^="option-"]')].map(node => node.textContent);
+  assert.ok(labels.includes(`Step: ${toggle.label}`));
+  assert.equal(new Set(labels).size, labels.length, "no two options share a label");
+  assert.match(host.querySelector(`[aria-labelledby="option-${toggle.id}"]`)?.textContent ?? "", /^Included/u);
+  assert.equal(host.querySelector("svg.lucide-lock-keyhole"), null);
+});
+
 it("changes and renumbers the steps when a run option changes", async () => {
   const host = await mount();
   const before = titles(host);
   await choose(host, '[aria-labelledby="option-crmCheck"]', "false");
   const after = titles(host);
-  assert.equal(after.length, before.length - 1);
+  assert.deepEqual(after.slice(1), resolveExplorer(spec, { crmCheck: "false" }, {}).steps.map(step => step.title));
+  assert.ok(after.length < before.length);
   assert.deepEqual([...host.querySelectorAll("time")].map(time => time.textContent), after.map((_, index) => String(index + 1)));
 });
 
