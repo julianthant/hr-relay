@@ -277,8 +277,9 @@ it("rechecks a parked PayPath Save after the run reused an earlier workbook refe
   assert.deepEqual(paypath.events.slice(before), ["read:transactions:10000001"],
     JSON.stringify(f.database.authority.failures.listByRun(parked.envelope.runId)));
   assert.equal(checked.lifecycle.state, "parked-write");
+  const checkedClaimGeneration: number = checked.claimGeneration;
   const recheckReplay = f.events(checked).find(event => event.payload.kind === "checkpoint-replayed"
-    && event.payload.checkpoint.nodeId === "reference-check" && event.payload.claimGeneration === checked.claimGeneration);
+    && event.payload.checkpoint.nodeId === "reference-check" && event.payload.claimGeneration === checkedClaimGeneration);
   assert.ok(recheckReplay?.payload.kind === "checkpoint-replayed");
   assert.deepEqual(recheckReplay.payload.checkpoint, initialReplay.payload.checkpoint);
   const intent = f.database.authority.writeIntents.get(parked.lifecycle.writeIntentId);

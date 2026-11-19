@@ -331,7 +331,7 @@ function driveTimecardRead(script: Script) {
 describe("timecard grid structural completeness", () => {
   const headers = ["Schedule", "In", "Out", "Transfer", "Pay code", "Amount", "Shift", "Daily", "Period", "Absence"];
   const dateRows = [{ key: "day-1", label: "Mon 6/1" }, { key: "day-2", label: "Tue 6/2" }];
-  const punches = ["", "08:00", "17:00", "", "", "", "", "", "", ""];
+  const punches = ["", "8:00 AM", "5:00 PM", "", "", "", "", "", "", ""];
   const empty = ["", "", "", "", "", "", "", "", "", ""];
   const readGrid = (...gridHarvests: NonNullable<Script["gridHarvests"]>) => driveTimecardRead({
     startField: new FakeField("08/27/2026"), endField: new FakeField("08/27/2026"), gridHarvests,

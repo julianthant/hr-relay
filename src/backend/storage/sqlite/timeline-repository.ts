@@ -2,7 +2,7 @@ import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { SpanEventWireSchema } from "../../../models/events/types.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { TimelineAppendSchema, TimelineEventRecordSchema, TimelinePageRequestSchema,
+import { TimelineAppendSchema, TimelineDiagnosticBudgetError, TimelineEventRecordSchema, TimelinePageRequestSchema,
   timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 
 interface TimelineRepositoryPorts {
@@ -22,13 +22,14 @@ const RowSchema = z.strictObject({
 });
 const EventIdSchema = z.uuid();
 const DataVersionSchema = z.object({ data_version: z.number().int() });
-const OrdinaryBytesRowSchema = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional();
-const OrdinaryBytesSchema = z.number().int().nonnegative();
-const OrdinaryBytesSumSchema = z.object({ bytes: OrdinaryBytesSchema });
+const DiagnosticBytesRowSchema = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional();
+const DiagnosticBytesSchema = z.number().int().nonnegative();
+const DiagnosticBytesSumSchema = z.object({ bytes: DiagnosticBytesSchema });
 const HighWaterMarkSchema = z.strictObject({ cursor: z.number().int().nonnegative() });
 
 /** Safe diagnostics contain schema-owned field names, never observed keys or values. */
 export class TimelineRecordError extends Error {}
+
 const SPAN_FIELDS = new Set(SpanEventWireSchema.options.flatMap((schema) => Object.keys(schema.shape)));
 
 function invalidTimelineRecord(value: unknown): TimelineRecordError {
@@ -82,25 +83,26 @@ function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
   return "ordinary";
 }
 
-function ordinaryTimelineBytes(database: DatabaseSync, prepare: (sql: string) => StatementSync): number {
-  database.exec(`CREATE TEMP TABLE IF NOT EXISTS timeline_ordinary_bytes(
+function diagnosticTimelineBytes(database: DatabaseSync, prepare: (sql: string) => StatementSync): number {
+  database.exec(`CREATE TEMP TABLE IF NOT EXISTS timeline_diagnostic_bytes(
     id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL, data_version INTEGER NOT NULL);
-    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_insert AFTER INSERT ON main.timeline_events
-      WHEN NEW.retention_class='ordinary' BEGIN
-        UPDATE timeline_ordinary_bytes SET bytes=bytes+length(CAST(NEW.payload_json AS BLOB)) WHERE id=1; END;
-    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_delete AFTER DELETE ON main.timeline_events
-      WHEN OLD.retention_class='ordinary' BEGIN
-        UPDATE timeline_ordinary_bytes SET bytes=bytes-length(CAST(OLD.payload_json AS BLOB)) WHERE id=1; END;
-    CREATE TEMP TRIGGER IF NOT EXISTS timeline_ordinary_bytes_update AFTER UPDATE ON main.timeline_events BEGIN
-      UPDATE timeline_ordinary_bytes SET bytes=bytes
-        -CASE WHEN OLD.retention_class='ordinary' THEN length(CAST(OLD.payload_json AS BLOB)) ELSE 0 END
-        +CASE WHEN NEW.retention_class='ordinary' THEN length(CAST(NEW.payload_json AS BLOB)) ELSE 0 END WHERE id=1; END;`);
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_diagnostic_bytes_insert AFTER INSERT ON main.timeline_events
+      WHEN NEW.kind='debug' AND NEW.retention_class='ordinary' BEGIN
+        UPDATE timeline_diagnostic_bytes SET bytes=bytes+length(CAST(NEW.payload_json AS BLOB)) WHERE id=1; END;
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_diagnostic_bytes_delete AFTER DELETE ON main.timeline_events
+      WHEN OLD.kind='debug' AND OLD.retention_class='ordinary' BEGIN
+        UPDATE timeline_diagnostic_bytes SET bytes=bytes-length(CAST(OLD.payload_json AS BLOB)) WHERE id=1; END;
+    CREATE TEMP TRIGGER IF NOT EXISTS timeline_diagnostic_bytes_update AFTER UPDATE ON main.timeline_events
+      WHEN (OLD.kind='debug' AND OLD.retention_class='ordinary') OR (NEW.kind='debug' AND NEW.retention_class='ordinary') BEGIN
+      UPDATE timeline_diagnostic_bytes SET bytes=bytes
+        -CASE WHEN OLD.kind='debug' AND OLD.retention_class='ordinary' THEN length(CAST(OLD.payload_json AS BLOB)) ELSE 0 END
+        +CASE WHEN NEW.kind='debug' AND NEW.retention_class='ordinary' THEN length(CAST(NEW.payload_json AS BLOB)) ELSE 0 END WHERE id=1; END;`);
   const version = DataVersionSchema.parse(prepare("PRAGMA data_version").get()).data_version;
-  const row = OrdinaryBytesRowSchema.parse(prepare("SELECT bytes,data_version FROM timeline_ordinary_bytes WHERE id=1").get());
-  if (row !== undefined && row.data_version === version) return OrdinaryBytesSchema.parse(row.bytes);
-  const bytes = OrdinaryBytesSumSchema.parse(prepare(
-    "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class = 'ordinary'").get()).bytes;
-  prepare("INSERT INTO timeline_ordinary_bytes(id,bytes,data_version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes,data_version=excluded.data_version").run(bytes,version);
+  const row = DiagnosticBytesRowSchema.parse(prepare("SELECT bytes,data_version FROM timeline_diagnostic_bytes WHERE id=1").get());
+  if (row !== undefined && row.data_version === version) return DiagnosticBytesSchema.parse(row.bytes);
+  const bytes = DiagnosticBytesSumSchema.parse(prepare(
+    "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE kind='debug' AND retention_class='ordinary'").get()).bytes;
+  prepare("INSERT INTO timeline_diagnostic_bytes(id,bytes,data_version) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET bytes=excluded.bytes,data_version=excluded.data_version").run(bytes,version);
   return bytes;
 }
 
@@ -127,7 +129,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const record = parsed.data;
       const content = canonicalJsonStringify(record);
       if (Buffer.byteLength(content, "utf8") > 256 * 1024) throw new Error("timeline-event-size-exceeded");
-      return ports.mutate<ReturnType<TimelineRepository["append"]>>(() => {
+      const result = ports.mutate<ReturnType<TimelineRepository["append"]> | "budget-full">(() => {
         const existing = get(record.eventId);
         if (existing !== undefined) {
           if (timelineAppendContent(existing) !== content) throw new Error("timeline-event-identity-conflict");
@@ -135,9 +137,13 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           return { result: { state: "existing" as const, record: existing }, changes: 0 };
         }
         ports.assertOwner(record, true);
-        if (timelineRetentionClass(record) === "ordinary") {
-          const bytes = ordinaryTimelineBytes(database, prepare);
-          if (bytes + Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: Number((prepare("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) + 1 AS cursor").get() as { cursor: number }).cursor) }), "utf8") > 250 * 1024 * 1024) throw new Error("timeline-ordinary-cap-exceeded");
+        if (record.payload.kind === "debug" && !record.payload.event.pinned) {
+          const bytes = diagnosticTimelineBytes(database, prepare);
+          const next = HighWaterMarkSchema.parse(prepare(
+            "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0)+1 AS cursor",
+          ).get());
+          const recordBytes = Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: next.cursor }), "utf8");
+          if (bytes + recordBytes > 250 * 1024 * 1024) return { result: "budget-full", changes: 0 };
         }
         // SQLite assigns both the cursor and its authenticated JSON mirror from
         // its AUTOINCREMENT sequence under the same owning write transaction.
@@ -155,6 +161,9 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           record.payload.kind === "operation-confirmed" ? record.payload.facts.system : null,content);
         return { result: { state: "inserted" as const, record: timelineEventFromRow(raw) }, changes: 1 };
       });
+      // Keep the transaction's refreshed byte count when the event itself cannot fit.
+      if (result === "budget-full") throw new TimelineDiagnosticBudgetError();
+      return result;
     },
     page(input: z.input<typeof TimelinePageRequestSchema>) {
       const request = TimelinePageRequestSchema.parse(input);

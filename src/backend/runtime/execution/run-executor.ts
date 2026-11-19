@@ -10,7 +10,6 @@ import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-import { authenticateParkedWriteRecheck } from "../../../rules/write-safety/parked-resolution.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import { shouldRetryTaskFailure } from "../policies/task-retry.js";
 
@@ -52,7 +51,7 @@ import { evaluateNodeCondition } from "../../../models/workflow/node-condition.j
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import { planStepOmissions } from "../../../models/workflow/step-omission.js";
 import { jsonLeafPaths } from "../../runs/provenance/task-provenance.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { authenticateStoredParkedWriteRecheck, type AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { createProviderClient, type ProviderAdapterRegistry, type ProviderClientDependencies, type ProviderRequestIdFactory } from "../../processing/providers/provider-client.js";
@@ -86,7 +85,7 @@ type ChildRunRuntimeNode = Extract<RuntimeFlowNode, { kind: "child-run" }>;
 type TaskRuntimeNode = Extract<RuntimeFlowNode, { kind: "task" }>;
 
 export function requestedPayPathRecheck(
-  repositories: Pick<AuthorityRepositories, "writeIntents" | "writeAttempts" | "commands" | "commandAudits">,
+  repositories: Pick<AuthorityRepositories, "writeIntents"> & Parameters<typeof authenticateStoredParkedWriteRecheck>[0],
   run: RunRecord,
   node: TransactionRuntimeNode,
 ) {
@@ -96,8 +95,7 @@ export function requestedPayPathRecheck(
   if (matches.length > 1) throw new RunContinuationRefusedError("paypath-recheck-intent-ambiguous");
   const [intent] = matches;
   if (intent?.status !== "parked" || intent.recheck === undefined) return undefined;
-  return authenticateParkedWriteRecheck(intent, repositories.writeAttempts.get(intent.currentAttemptId),
-    repositories.commands.get(intent.recheck.commandId), repositories.commandAudits.get(intent.recheck.auditId)).intent;
+  return authenticateStoredParkedWriteRecheck(repositories, intent, intent.recheck);
 }
 
 export interface WriteSequencerContext {
