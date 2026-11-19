@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { composeProfileActivity } from "../../../../src/backend/app/composition/storage-compose.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -11,7 +12,7 @@ import { boundProfileAdmission } from "../../../support/helpers/synthetic-databa
 it("follows saved settings and the first and last active run, then drains through backend shutdown", async () => {
   const f = await settingsFixture();
   let starts = 0, kills = 0;
-  const observer = startSettingsKeepAwake({ database: f.database, reader: f.service, platform: "darwin",
+  const observer = startSettingsKeepAwake({ database: f.database, platform: "darwin",
     startProcess: () => {
       starts++;
       const child = new ChildProcess();
@@ -71,8 +72,9 @@ it("polls the current saved preference and stops polling before authority closes
   let starts = 0, kills = 0;
   assert.equal(f.save({ "preferences.preventSleepWhileRunning": { set: false } }).state, "applied");
   f.create();
+  const snapshots = vi.spyOn(f.database, "withAuthorityReadSnapshot");
   vi.useFakeTimers();
-  const observer = startSettingsKeepAwake({ database: f.database, reader: f.service, platform: "darwin",
+  const observer = startSettingsKeepAwake({ database: f.database, platform: "darwin",
     startProcess: () => {
       starts++;
       const child = new ChildProcess();
@@ -86,8 +88,10 @@ it("polls the current saved preference and stops polling before authority closes
     assert.equal(f.save({ "preferences.preventSleepWhileRunning": { set: true } }).state, "applied");
     await vi.advanceTimersByTimeAsync(1000);
     assert.equal(starts, 1);
+    const reads = snapshots.mock.calls.length;
     await vi.advanceTimersByTimeAsync(2000);
     assert.equal(starts, 1);
+    assert.equal(snapshots.mock.calls.length, reads);
     assert.equal(f.save({ "preferences.preventSleepWhileRunning": { set: false } }).state, "applied");
     await vi.advanceTimersByTimeAsync(1000);
     assert.equal(kills, 1);
@@ -97,7 +101,50 @@ it("polls the current saved preference and stops polling before authority closes
     assert.equal(starts, 1);
   } finally {
     await observer.awaitCancellation();
+    snapshots.mockRestore();
     vi.useRealTimers();
+    await f.close();
+  }
+});
+
+it("keeps awake for live work without decoding terminal runs and rereads after peer commits", async () => {
+  const f = await settingsFixture();
+  const queued = f.create({ matchKey: "terminal" });
+  const terminal = requireLifecycleApplied(f.service.transition({ commandId: randomUUID(), runId: queued.envelope.runId,
+    expectedVersion: queued.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
+  const active = f.create({ matchKey: "active" });
+  const events: unknown[] = [];
+  let starts = 0;
+  const observer = startSettingsKeepAwake({ database: f.database, platform: "darwin", startProcess: () => {
+    starts++;
+    const child = new ChildProcess();
+    child.kill = () => { child.emit("close", 0, "SIGTERM"); return true; };
+    Object.defineProperty(child, "pid", { value: 456 });
+    return child;
+  }, debugEvents: { emit: event => events.push(event) } });
+  const peer = new DatabaseSync(f.path);
+  const update = peer.prepare("UPDATE runs SET version=? WHERE id=?");
+  try {
+    await observer.observe();
+    assert.equal(starts, 1);
+    update.run(terminal.version + 1, terminal.envelope.runId);
+    assert.throws(() => f.service.read(terminal.envelope.runId), /version.*whole-record JSON/u);
+    await observer.observe();
+    assert.equal(starts, 1);
+    assert.deepEqual(events, []);
+
+    update.run(active.version + 1, active.envelope.runId);
+    try {
+      await assert.rejects(observer.observe(), /version.*whole-record JSON/u);
+      await assert.rejects(observer.observe(), /version.*whole-record JSON/u);
+    } finally {
+      update.run(active.version, active.envelope.runId);
+    }
+    await observer.observe();
+  } finally {
+    update.run(terminal.version, terminal.envelope.runId);
+    peer.close();
+    await observer.awaitCancellation();
     await f.close();
   }
 });
@@ -105,7 +152,7 @@ it("polls the current saved preference and stops polling before authority closes
 it("records a holder start failure without failing an active dry run or a settings save", async () => {
   const f = await settingsFixture(), events: unknown[] = [];
   const run = f.create();
-  const observer = startSettingsKeepAwake({ database: f.database, reader: f.service, platform: "darwin",
+  const observer = startSettingsKeepAwake({ database: f.database, platform: "darwin",
     startProcess: () => { throw new Error("unavailable"); }, debugEvents: { emit: event => events.push(event) } });
   try {
     await observer.observe();

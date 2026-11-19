@@ -3703,11 +3703,17 @@ export class AuthorityDatabase implements Disposable {
     return { authorityGeneration: this.#readMetaRow().authority_generation, dataVersion: readIntPragma(this.#database, "data_version"), totalChanges };
   }
 
-  readApplicationActivity() {
+  readNonTerminalRuns(): RunRecord[] {
+    return this.#withReadSnapshot(() => this.#database.prepare("SELECT * FROM runs WHERE state <> 'terminal' ORDER BY id")
+      .all().map(runRecordFromRow));
+  }
+
+  readApplicationActivity(runScope: "all" | "non-terminal" = "all") {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
       return Object.freeze({
-        runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw): PredecessorRunRecord => runRecordFromRow(raw)),
+        runs: runScope === "non-terminal" ? this.readNonTerminalRuns()
+          : this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw): PredecessorRunRecord => runRecordFromRow(raw)),
         writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
           .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
         duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()

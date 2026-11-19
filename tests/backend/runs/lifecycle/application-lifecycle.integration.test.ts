@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createApplicationLifecycle } from "../../../../src/backend/runs/lifecycle/application-lifecycle.js";
+import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { ApplicationAdmissionRefusedError } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -53,6 +55,29 @@ it("refuses changed physical run evidence on the next lifecycle poll", async () 
     assert.throws(() => lifecycle.snapshot(), /version.*whole-record JSON/u);
   } finally {
     peer.prepare("UPDATE runs SET version=? WHERE id=?").run(run.version, run.envelope.runId);
+    peer.close();
+  }
+});
+
+it("keeps the same active targets and update state without decoding terminal runs", async () => {
+  const f = await settingsFixture(); cleanups.push(f.close);
+  const queued = f.create({ matchKey: "terminal" });
+  const terminal = requireLifecycleApplied(f.service.transition({ commandId: randomUUID(), runId: queued.envelope.runId,
+    expectedVersion: queued.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
+  const active = f.create({ matchKey: "active" });
+  const lifecycle = createApplicationLifecycle({ database: f.database, requestQuit() {}, onFailure: error => { throw error; },
+    updateHost: { pending: () => true, async install() {} } });
+  cleanups.push(lifecycle.dispose);
+  const peer = new DatabaseSync(f.path);
+  const update = peer.prepare("UPDATE runs SET version=? WHERE id=?");
+  try {
+    update.run(terminal.version + 1, terminal.envelope.runId);
+    assert.throws(() => f.service.read(terminal.envelope.runId), /version.*whole-record JSON/u);
+    const snapshot = lifecycle.snapshot();
+    assert.equal(snapshot.update, "deferred");
+    assert.deepEqual(snapshot.targets, [{ runId: active.envelope.runId, expectedVersion: active.version, pauseUnavailable: false }]);
+  } finally {
+    update.run(terminal.version, terminal.envelope.runId);
     peer.close();
   }
 });
