@@ -293,12 +293,12 @@ export function createRunSearchIndex(database: DatabaseSync) {
       sources.length === 0 ? null : canonicalJsonStringify(sources),canonicalJsonStringify(record),frozen?.created_at ?? now,now);
     database.prepare("DELETE FROM search_actor_dirty WHERE run_id=?").run(id);
   };
-  const writeId = (id: string, now: string, rebuilding = false) => {
+  const writeId = (id: string, now: string, rebuilding = false, readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow) => {
     const raw = database.prepare("SELECT * FROM runs WHERE id=?").get(id);
     if (raw === undefined) {
       database.prepare("DELETE FROM run_search WHERE run_id=?").run(id);
       database.prepare("DELETE FROM search_actor_dirty WHERE run_id=?").run(id);
-    } else write(runRecordFromRow(raw),now,rebuilding);
+    } else write(readRun(raw),now,rebuilding);
   };
   return {
     publication,
@@ -357,7 +357,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       publish({ state: "published", sourceGeneration, afterRun: null, rowCount: count() }, now);
       database.exec("DELETE FROM search_dirty");
     },
-    rebuild(input: unknown, sourceGeneration: number, now: string) {
+    rebuild(input: unknown, sourceGeneration: number, now: string, readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow) {
       const { restart, limit } = RunSearchRebuildRequestSchema.parse(input);
       const prior = publication();
       const state = runSearchStateOf(prior, sourceGeneration);
@@ -367,7 +367,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       const after = restart ? "" : prior.afterRun ?? "";
       const rows = database.prepare(`SELECT id FROM runs WHERE id>? ORDER BY id LIMIT ?`).all(after, limit + 1).map(row => KeySchema.parse(row).id);
       const selected = rows.slice(0, limit);
-      for (const id of selected) writeId(id, now, true);
+      for (const id of selected) writeId(id, now, true, readRun);
       const last = rows.length <= limit, next = nextRunSearchState(state, restart ? (last ? "restart-last-chunk" : "restart-chunk") : (last ? "continue-last-chunk" : "continue-chunk"));
       if (next !== "published" && next !== "building") throw new Error(`run-search-rebuild-result-invalid: ${next}`);
       return publish({ state: next, sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: (restart ? 0 : prior.rowCount) + selected.length }, now);
