@@ -50,10 +50,9 @@
 .hub-modal .hub-btn.primary { border-color:var(--hub-primary-border); }
 .hub-modal h2 { letter-spacing:normal; }
 
-
 .hub-assistant-slot[hidden] { display:none; }
 .hub-assistant-slot > #hub-panel-assistant { border:0;box-shadow:none;width:100%;height:100%;max-height:none; }
-.hub-files-slot { display:flex;flex:1;min-height:0;overflow:auto; }
+
 .hub-history { display:flex;flex-direction:column;flex:1;min-height:0; }
 .hub-history-bar { display:flex;flex:none;align-items:center;gap:8px;padding:4px 16px 8px; }
 .hub-history-bar > :first-child { flex:1;min-width:0; }

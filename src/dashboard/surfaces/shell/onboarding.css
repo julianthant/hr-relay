@@ -8,7 +8,6 @@
 .hub-onboarding h1,.hub-onboarding h2 { text-wrap:balance; }
 .hub-onboarding h1 { font-size:28px; line-height:1.25; font-weight:400; letter-spacing:normal; }
 .hub-onboarding h2 { font-size:20px; line-height:1.3; font-weight:500; letter-spacing:normal; }
-.hub-onboarding button,.hub-onboarding input,.hub-onboarding select,.hub-onboarding a { -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
 .hub-onboarding button,.hub-onboarding a { outline:none; }
 .hub-onboarding :is(button,a,select,[tabindex]):focus-visible { background:var(--hub-focus-fill)!important; color:var(--hub-focus-ink)!important; box-shadow:none!important; outline:none!important; transition:none; }
 .hub-onboarding input,.hub-onboarding textarea,.hub-onboarding input:focus,.hub-onboarding input:focus-visible,.hub-onboarding textarea:focus,.hub-onboarding textarea:focus-visible { outline:none!important; box-shadow:none!important; caret-color:var(--ui-primary); }
@@ -91,31 +90,17 @@
   .hub-onboarding .progress { gap:36px; font-size:14px; }
   .hub-onboarding .progress-marker { width:32px; height:32px; }
 }
-@media(max-width:767px) {
-  .hub-onboarding main { padding:96px 24px 180px; align-items:flex-start; }
-  .hub-onboarding .auth-layout { display:flex; flex-direction:column; width:100%; gap:24px; }
-  .hub-onboarding .auth-layout .stack { width:100%; }
-  .hub-onboarding .brand { left:24px; top:24px; }
-  .hub-onboarding h1 { font-size:25px; }
-  .hub-onboarding .progress { flex-direction:row; width:100%; justify-content:space-between; padding:0 0 20px; border-inline-end:0; border-bottom:1px solid var(--ui-stroke); gap:10px; }
-  .hub-onboarding .progress li { gap:5px; font-size:12px; }
-  .hub-onboarding .progress-marker { width:20px; height:20px; }
-  .hub-onboarding .name-row { grid-template-columns:1fr; }
-  .hub-onboarding .actions { flex-wrap:wrap; }
-  .hub-onboarding .actions .buttons { margin-left:auto; }
-}
+
 @media(prefers-reduced-motion:reduce) { .hub-onboarding .btn:active:not(:disabled) { transform:none; } }
 .hub-onboarding [tabindex="-1"]:focus-visible { background:transparent!important; color:inherit!important; }
 .hub-onboarding[data-view="browser"] main { padding:96px 40px 40px; }
 @media(min-width:1920px) { .hub-onboarding[data-view="browser"] main { padding:120px 64px 80px; } }
 @media(min-width:2560px) { .hub-onboarding[data-view="browser"] main { padding:160px 96px 120px; } }
-@media(max-width:767px) { .hub-onboarding[data-view="browser"] main { padding:96px 24px 140px; } }
 
-.hub-onboarding .step-link{display:flex;align-items:center;gap:8px;flex:1;padding:4px 8px;margin:-4px -8px;border:0;border-radius:5px;background:transparent;color:inherit;font:inherit;text-align:start;text-decoration:none;white-space:nowrap;touch-action:manipulation}.hub-onboarding .step-link:disabled,.hub-onboarding .step-link[aria-disabled="true"]{opacity:.55;cursor:default}.hub-onboarding .readiness{color:var(--ui-secondary);font-size:12px;line-height:1.5}.hub-onboarding .actions:has(.buttons:only-child),.hub-onboarding .footer,.hub-onboarding .status-footer{justify-content:flex-end}.hub-onboarding .status-footer{margin-top:18px}@media(hover:hover) and (pointer:fine){.hub-onboarding .step-link:hover:not(:disabled):not([aria-disabled="true"]){background:var(--ui-hover)}}
+.hub-onboarding .step-link{display:flex;align-items:center;gap:8px;flex:1;padding:4px 8px;margin:-4px -8px;border:0;border-radius:5px;background:transparent;color:inherit;font:inherit;text-align:start;text-decoration:none;white-space:nowrap}.hub-onboarding .step-link:disabled,.hub-onboarding .step-link[aria-disabled="true"]{opacity:.55;cursor:default}.hub-onboarding .readiness{color:var(--ui-secondary);font-size:12px;line-height:1.5}.hub-onboarding .actions:has(.buttons:only-child),
+.hub-onboarding .footer {justify-content:flex-end}@media(hover:hover) and (pointer:fine){.hub-onboarding .step-link:hover:not(:disabled):not([aria-disabled="true"]){background:var(--ui-hover)}}
 
 .hub-onboarding { position:absolute;inset:0;overflow:auto;background:var(--ui-canvas);color:var(--ui-primary); }
-.hub-onboarding-note { position:absolute;bottom:24px;left:40px;right:40px;color:var(--ui-muted);font-size:11px; }
-
 
 .hub-onboarding .btn:disabled { opacity:.45;cursor:default; }
 

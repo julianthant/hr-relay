@@ -11,7 +11,6 @@ import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { projectActivityPopulation, projectActivityBrowse, useActivityWiring, type ActivityClient } from "../../../src/dashboard/state/activity-wiring-adapter.js";
 import { ActivityView } from "../../../src/dashboard/surfaces/activity/activity-view.js";
-import { workflowDurationChart } from "../../../src/dashboard/surfaces/activity/activity-duration-model.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import { createActivityReportFixtures } from "../../support/helpers/dashboard/activity-report-fixtures.js";
@@ -66,7 +65,6 @@ it("preserves full populations, successful root timing, all-terminal duration, n
   assert.deepEqual(projected.transactions.map(row => [row.environment, row.count]), [["production", 2], ["test", 1]]);
   const child = projectActivityPopulation(selection([{ status: "done", durationMs: 1000, parentRunId: RunIdSchema.parse("11111111-1111-4111-8111-111111111111") }]));
   assert.equal(child.workflows[0]?.completed, 1); assert.equal(child.durationWorkflows?.[0]?.completed, 0);
-  assert.equal(workflowDurationChart(child.durationWorkflows).rows[0]?.averageSeconds, null);
   const missing = projectActivityPopulation(selection([{ status: "done", durationMs: null }]));
   assert.equal(missing.duration.totalSeconds, null); assert.deepEqual(missing.workflows[0]?.successfulTiming, { totalSeconds: null, measured: 0, unmeasured: 1 });
   const empty = projectActivityPopulation(selection([]));

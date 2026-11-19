@@ -2,7 +2,7 @@
 #hub-panel-assistant .hub-composer{position:relative;display:flex;flex-direction:column;min-width:0;border:0;border-radius:20px;background:color-mix(in srgb,var(--ui-primary) 8.5%,transparent);box-shadow:none}
 #hub-panel-assistant .hub-composer textarea{display:block;resize:none;width:100%;max-height:120px;min-height:54px;border:0!important;border-radius:0;padding:14px 14px 0;outline:none;background:transparent;font-size:13px;line-height:20px;color:var(--ui-primary)}
 #hub-panel-assistant .hub-toolbar{display:flex;align-items:center;gap:4px;min-width:0;padding:8px}
-#hub-panel-assistant .hub-toolbar .hub-input-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;height:28px;min-width:28px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:var(--ui-primary);font-size:13px;font-weight:400;white-space:nowrap;touch-action:manipulation}
+#hub-panel-assistant .hub-toolbar .hub-input-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;height:28px;min-width:28px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:var(--ui-primary);font-size:13px;font-weight:400;white-space:nowrap}
 #hub-panel-assistant .hub-toolbar [data-size=icon-sm]{width:28px;padding:0;color:var(--ui-secondary)}
 #hub-panel-assistant .hub-toolbar .hub-input-button:is(:hover,:active,[aria-expanded=true]){background:var(--ds-surface-3);color:var(--ui-primary)}
 #hub-panel-assistant .hub-toolbar .hub-input-button:focus-visible{outline:2px solid var(--ui-primary)!important;outline-offset:2px;background:var(--ui-hover)!important;color:var(--ui-primary)!important;box-shadow:none!important}
@@ -37,7 +37,7 @@ html[data-demo-theme=dark] .hub-assistant-menu{box-shadow:0 10px 32px rgb(0 0 0 
 .hub-assistant-menu .hub-option-copy{display:grid;gap:1px;flex:1;min-width:0;overflow-wrap:anywhere}
 .hub-assistant-menu .hub-option-copy small{font-size:11px;line-height:16px;color:var(--ui-secondary);font-weight:400;white-space:normal}
 .hub-assistant-menu [role=menuitemradio]{padding-right:30px!important}
-.hub-assistant-menu .hub-check{position:absolute;right:8px;display:grid;place-items:center;width:16px;height:16px}
+
 .hub-assistant-menu .hub-menu-separator{height:1px;margin:4px -4px;background:var(--ui-stroke)}
 .hub-assistant-menu .hub-voice-note{margin:0;padding:4px 8px 8px;font-size:11px;line-height:18px;color:var(--ui-muted)}
 .hub-assistant-menu.hub-menu{position:relative!important;z-index:auto;min-width:0;max-height:var(--available-height);max-width:calc(100vw - 16px);margin:0;box-shadow:var(--hub-shadow,0 8px 32px #0002);font-family:var(--font-sans);transform-origin:var(--transform-origin);outline:none!important;animation:none!important;transition:opacity 100ms cubic-bezier(.23,1,.32,1),transform 100ms cubic-bezier(.23,1,.32,1)}
