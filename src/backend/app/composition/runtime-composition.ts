@@ -257,7 +257,17 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
         "the explain command needs its composition seam; start it through src/cli.ts, which registers composeExplainRuntime",
       );
     }
-    write(compose(input.isolation, args.slice(1)));
+    let output: string;
+    try {
+      output = compose(input.isolation, args.slice(1));
+    } catch (error) {
+      if (args[1] !== "run" || !(error instanceof z.ZodError)) throw error;
+      const issues = error.issues.map(issue => `${JSON.stringify(issue.path.map(String))} (${issue.code})`);
+      process.stderr.write(`explain run: invalid data at ${issues.join(", ")}\n`);
+      process.exitCode = 1;
+      return;
+    }
+    write(output);
     return;
   }
   if (command === "ocr") {
