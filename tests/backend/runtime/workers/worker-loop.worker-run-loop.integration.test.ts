@@ -77,13 +77,18 @@ describe("worker run loop", () => {
     const summary = "Readiness checks blocked this worker.";
     const delays: number[] = [];
     let claims = 0;
+    const timeline = h.authority.database.authority.timelineEvents;
+    const refusalRows = () => timeline.page({}).flatMap(row =>
+      row.payload.kind === "debug" && row.payload.event.area === "worker-admission" ? [row.payload.event] : []);
     const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, idleRepollMs: base,
+      debugEvents: createDebugEventWriter({ repository: timeline, clock: h.authority.clock, build: "test" }),
       onStanding: refusal => {
         if (refusal !== undefined) delays.push(Date.parse(refusal.retryAt) - h.authority.clock.nowMs());
       },
       claimNext: (request, sessions) => {
         claims += 1;
-        if (claims <= 3 || claims === 5) return { state: "preflight-refused", code: "PREFLIGHT_BLOCKED", summary };
+        if (claims <= 3 || claims === 5) return { state: "preflight-refused", code: "PREFLIGHT_BLOCKED",
+          summary: claims === 3 ? "Readiness changed." : summary };
         if (claims >= 6) { h.stop.abort(); return { state: "refused", refusal: { reason: "none-eligible" } }; }
         return h.deps.claimNext(request, sessions);
       },
@@ -93,6 +98,7 @@ describe("worker run loop", () => {
       const now = h.authority.clock.monotonicMs();
       const timer = h.scheduler.pending().find(entry => entry.deadlineMonotonicMs - now === expected);
       assert.ok(timer, `delay ${expected}; pending ${h.scheduler.pending().map(entry => entry.deadlineMonotonicMs - now).join(",")}`);
+      if (claims === 2) assert.equal(refusalRows().length, 1);
       timer.fire();
     };
     await fire(base);
@@ -104,6 +110,9 @@ describe("worker run loop", () => {
     await fire(base);
     const report = await looping;
     assert.equal(claims, 6);
+    assert.deepEqual(refusalRows().map(row => [row.message, row.omitted]), [
+      [summary, undefined], [summary, 1], ["Readiness changed.", undefined], [summary, undefined],
+    ]);
     assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
     assert.equal(report.stopped, "stop-signal");
   });

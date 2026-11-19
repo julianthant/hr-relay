@@ -2,7 +2,7 @@ import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { SpanEventWireSchema } from "../../../models/events/types.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { TimelineAppendSchema, TimelineEventRecordSchema, TimelinePageRequestSchema,
+import { TimelineAppendSchema, TimelineDiagnosticBudgetError, TimelineEventRecordSchema, TimelinePageRequestSchema,
   timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 
 interface TimelineRepositoryPorts {
@@ -29,12 +29,6 @@ const HighWaterMarkSchema = z.strictObject({ cursor: z.number().int().nonnegativ
 
 /** Safe diagnostics contain schema-owned field names, never observed keys or values. */
 export class TimelineRecordError extends Error {}
-export class TimelineDiagnosticBudgetError extends Error {
-  constructor() {
-    super("timeline-diagnostic-cap-exceeded");
-    this.name = "TimelineDiagnosticBudgetError";
-  }
-}
 
 const SPAN_FIELDS = new Set(SpanEventWireSchema.options.flatMap((schema) => Object.keys(schema.shape)));
 

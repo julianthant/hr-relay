@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterAll, afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { startLoopDelayMonitor } from "../../../../src/backend/logs/loop-delay.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { doctorAuthorityStorage as inspectStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
@@ -15,6 +16,11 @@ import { CONFIG_SNAPSHOT, NOW } from "../../../support/fixtures/phase1c-contract
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials, createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
+
+vi.mock("node:perf_hooks", async importOriginal => ({
+  ...await importOriginal<typeof import("node:perf_hooks")>(),
+  monitorEventLoopDelay: () => ({ max: 250_000_000, enable() {}, disable() {}, reset() {} }),
+}));
 
 const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
@@ -173,10 +179,31 @@ describe("storage doctor on a long-lived timeline", () => {
     const database = AuthorityDatabase.open({ path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "timeline-volume-test" }, clock);
     try {
       const timeline = database.authority.timelineEvents;
-      createTimelineEmitter({ repository: timeline, clock, pid: 4242 }).emit(rootEvent(record));
-      const rows = timeline.page({ runId: record.envelope.runId });
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0]?.payload.kind, "span");
+      const debugEvents = createDebugEventWriter({ repository: timeline, clock, build: "test" });
+      const beforeStall = timeline.highWaterMark();
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      const monitorClock = manualClock(new Date(NOW));
+      const monitor = startLoopDelayMonitor({ clock: monitorClock, debugEvents });
+      try {
+        vi.advanceTimersByTime(1000);
+        assert.equal(timeline.highWaterMark(), beforeStall);
+        createTimelineEmitter({ repository: timeline, clock, pid: 4242 }).emit(rootEvent(record));
+        const rows = timeline.page({ runId: record.envelope.runId });
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0]?.payload.kind, "span");
+        const afterRoot = timeline.highWaterMark();
+        const peer = new DatabaseSync(f.authorityPath);
+        try { peer.exec("DELETE FROM timeline_events WHERE kind='debug' AND cursor<=500"); }
+        finally { peer.close(); }
+        monitorClock.advanceMonotonic(10_000);
+        vi.advanceTimersByTime(1000);
+        const resumed = timeline.page({ after: afterRoot });
+        assert.equal(resumed.length, 1);
+        const payload = resumed[0].payload;
+        assert.equal(payload.kind, "debug");
+        assert.equal(payload.event.reason, "event-loop-stall");
+        assert.equal(payload.event.omitted, 1);
+      } finally { monitor.stop(); vi.useRealTimers(); }
     } finally { database.close(); }
   });
 

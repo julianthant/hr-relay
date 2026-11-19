@@ -335,7 +335,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const admission = issued;
   const assertCurrent = (): void => withOperationProof(() => admission.assertProfileRuntime());
   const assertBrowserRoot = (root: string): void => { assertCurrent(); assertProfileBrowserRoot(admission, root); };
-  const slowOperations = createSlowOperationEvents("worker");
+  const slowOperations = createSlowOperationEvents("worker", clock);
   let opened: AuthorityDatabase | undefined;
   const bound = (() => {
     try {
