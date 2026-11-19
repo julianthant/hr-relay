@@ -1,4 +1,4 @@
-import { hasIntactStartupWal } from "./startup-wal-check.js";
+import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
 import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
@@ -13,7 +13,7 @@ import { readContinuationGate, validateRunContinuation } from "./run-continuatio
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
-import { existsSync,lstatSync,statSync } from "node:fs";
+import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
 import { DatabaseSync,backup as sqliteBackup,type SQLInputValue,type SQLTagStore } from "node:sqlite";
 import { pathToFileURL } from "node:url";
@@ -2045,7 +2045,6 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
 }
 
 type StartupPosition = Pick<ChangeLogReader, "cursor" | "singleton" | "schemaCookie">;
-type StartupFile = { identity: string; changed: bigint; wal?: string };
 type StartupCheckpoint = {
   file: StartupFile;
   digest: string;
@@ -2066,19 +2065,10 @@ function checkpointsFor(admission: RuntimeAdmission) {
   return checkpoints;
 }
 
-function startupFile(path: string): StartupFile | undefined {
-  try {
-    const file = lstatSync(path, { bigint: true });
-    const wal = lstatSync(path + "-wal", { bigint: true, throwIfNoEntry: false });
-    return { identity: [file.dev, file.ino, file.birthtimeNs].join(":"), changed: file.ctimeNs,
-      wal: wal && wal.size > 0n ? [wal.dev, wal.ino, wal.ctimeNs, wal.size].join(":") : undefined };
-  } catch { return undefined; } // Full inspection does not need a checkpoint stamp.
-}
-
 function matchesStartupCheckpoint(prior: StartupCheckpoint | undefined, file: StartupFile | undefined,
   digest: string | undefined): prior is StartupCheckpoint {
   return prior !== undefined && file !== undefined && prior.digest === digest && prior.file.identity === file.identity
-    && prior.file.changed === file.changed && prior.file.wal === file.wal;
+    && prior.file.main === file.main && prior.file.wal === file.wal;
 }
 
 function startupImageDigest(database: DatabaseSync): string | undefined {
@@ -3213,12 +3203,12 @@ export class AuthorityDatabase implements Disposable {
     const id = z.uuid().parse(profileId);
     const path = AuthorityDatabase.#registeredPersonPath(machine, id);
     if (!existsSync(path)) throw new Error("profile-startup-database-missing");
-    const source = startupFile(path);
     const checkpoints = checkpointsFor(machine);
     const prior = checkpoints.get(path);
     let checkpoint: StartupCheckpoint | undefined;
     const result = AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version) => {
-      const digest = source !== undefined && version === CURRENT_AUTHORITY_SCHEMA_VERSION ? startupImageDigest(database) : undefined;
+      const source = version === CURRENT_AUTHORITY_SCHEMA_VERSION ? readStartupFile(path) : undefined;
+      const digest = source === undefined ? undefined : startupImageDigest(database);
       const cached = matchesStartupCheckpoint(prior, source, digest) ? prior.inspection : undefined;
       const inspection = cached === undefined ? inspectNativeAuthority(database, version) : AuthorityCopyInspectionSchema.parse(cached);
       if (source !== undefined && digest !== undefined) checkpoint = { file: source, digest, inspection: AuthorityCopyInspectionSchema.parse(inspection) };
@@ -3877,14 +3867,14 @@ export class AuthorityDatabase implements Disposable {
         if (!db.isTransaction) {
           db.exec("PRAGMA busy_timeout=0; BEGIN");
           const cookie = readIntPragma(db, "schema_version"); // Pin the snapshot before observing peer commits.
-          const file = startupFile(this.#path);
-          if (file !== undefined && file.identity === owner.file.identity && file.changed === owner.file.changed && cookie === owner.position.schemaCookie
+          const file = readStartupFile(this.#path, owner.file.wal === null ? AUTHORITY_WAL_SIZE_LIMIT_BYTES : undefined);
+          if (file !== undefined && file.identity === owner.file.identity && file.main === owner.file.main && cookie === owner.position.schemaCookie
             && readIntPragma(db, "data_version") === owner.dataVersion) {
             const digest = startupImageDigest(db);
             if (digest === owner.digest && file.wal === owner.file.wal) checkpoint = { file, digest, inspection: owner.inspection };
-            else if (digest !== undefined && owner.file.wal === undefined && file.wal !== undefined
+            else if (digest !== undefined && owner.file.wal === null && file.wal !== null
               && this.#changeReader !== undefined && this.#changeReader.failed === undefined && this.#changeReader.cursor === changeLogHighWater(db)
-              && this.#changeReader.cursor > owner.position.cursor && hasIntactStartupWal(this.#path, AUTHORITY_WAL_SIZE_LIMIT_BYTES)) {
+              && this.#changeReader.cursor > owner.position.cursor) {
               checkpoint = { file, digest, pending: owner.position };
             }
           }
@@ -3897,8 +3887,9 @@ export class AuthorityDatabase implements Disposable {
     this.#closed = true;
     if (owner !== undefined && checkpoint !== undefined) {
       // The last SQLite close can checkpoint the WAL into the main file.
-      const file = startupFile(this.#path);
-      if (file !== undefined && file.identity === checkpoint.file.identity && (file.wal === undefined || file.wal === checkpoint.file.wal)) {
+      const file = readStartupFile(this.#path);
+      if (file !== undefined && file.identity === checkpoint.file.identity &&
+        ((file.main === checkpoint.file.main && file.wal === checkpoint.file.wal) || (file.wal === null && file.main === checkpoint.digest))) {
         owner.checkpoints.set(this.#path, { ...checkpoint, file });
       }
     }
@@ -5222,7 +5213,7 @@ export class AuthorityDatabase implements Disposable {
     const checkpoints = checkpointsFor(this.#admission);
     const prior = checkpoints.get(this.#path);
     checkpoints.delete(this.#path);
-    const file = startupFile(this.#path);
+    const file = readStartupFile(this.#path);
     const digest = file === undefined ? undefined : startupImageDigest(db);
     let inspection: AuthorityCopyInspection | undefined;
     if (matchesStartupCheckpoint(prior, file, digest)

@@ -1,12 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, copyFileSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { hasIntactStartupWal } from "../../../../src/backend/storage/sqlite/startup-wal-check.js";
+import { readStartupFile } from "../../../../src/backend/storage/sqlite/startup-file-proof.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -180,25 +181,46 @@ it("carries the registered startup inspection through the second startup pass an
   } finally { machine.release(); }
 });
 
-it("fully inspects an outside rewrite of the same bytes in the same file", async () => {
+it("reuses the inspection after an identical rewrite and fully inspects a byte appended beyond the database pages", async () => {
   const f = await store();
   f.reopen();
   expect(scansRuns(f.reopen)).toBe(false);
   writeFileSync(f.profile.path, readFileSync(f.profile.path));
+  expect(scansRuns(f.reopen)).toBe(false);
+  appendFileSync(f.profile.path, Buffer.from([1]));
   expect(scansRuns(f.reopen)).toBe(true);
 });
 
-it("requires a full check when the WAL changes outside the last owned commit", async () => {
+it("reuses identical WAL bytes with a new timestamp and fully inspects a changed WAL", async () => {
   const f = await store();
-  const writer = f.open();
+  const reader = new DatabaseSync(f.profile.path);
   try {
-    writer.authority.runs.enqueue(runRecordOf({ seed: 2 }));
+    reader.exec("BEGIN; SELECT count(*) FROM runs");
+    const writer = f.open();
+    try { writer.authority.runs.enqueue(runRecordOf({ seed: 2 })); }
+    finally { writer.close(); }
     const wal = f.profile.path + "-wal";
     const before = statSync(wal);
     utimesSync(wal, before.atime, new Date(before.mtimeMs + 10_000));
     expect(statSync(wal).mtimeMs).toBeGreaterThan(before.mtimeMs);
-  } finally { writer.close(); }
-  expect(scansRuns(f.reopen)).toBe(true);
+    expect(scansRuns(f.reopen)).toBe(false);
+    f.edit("UPDATE runs SET id=id");
+    expect(scansRuns(f.reopen)).toBe(true);
+  } finally { reader.close(); }
+});
+
+it.each(["", "-wal"])("digests every byte of the physical file with suffix '%s'", async suffix => {
+  const f = await store();
+  const path = f.profile.path + ".digest-fixture";
+  const main = Buffer.alloc(140_000, 1), wal = Buffer.alloc(80_000, 2);
+  writeFileSync(path, main, { mode: 0o600 });
+  writeFileSync(path + "-wal", wal, { mode: 0o600 });
+  const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+  expect(readStartupFile(path)).toMatchObject({ main: hash(main), wal: hash(wal) });
+  const bytes = suffix === "" ? main : wal;
+  bytes[bytes.length - 1] ^= 1;
+  writeFileSync(path + suffix, bytes);
+  expect(readStartupFile(path)).toMatchObject({ main: hash(main), wal: hash(wal) });
 });
 
 it("accepts the committed SQLite WAL and rejects a damaged frame or index on a private copy", async () => {
@@ -209,22 +231,22 @@ it("accepts the committed SQLite WAL and rejects a damaged frame or index on a p
     writer.authority.runs.enqueue(runRecordOf({ seed: 2 }));
     const copied = spawnSync(process.execPath, ["-e", `
       const { copyFileSync } = require("node:fs");
-      for (const suffix of ["-wal", "-shm"]) copyFileSync(process.argv[1] + suffix, process.argv[2] + suffix);
+      for (const suffix of ["", "-wal", "-shm"]) copyFileSync(process.argv[1] + suffix, process.argv[2] + suffix);
     `, f.profile.path, copy], { encoding: "utf8" });
     expect(copied.status, copied.stderr).toBe(0);
   } finally { writer.close(); }
   const wal = readFileSync(copy + "-wal");
-  expect(hasIntactStartupWal(copy, wal.length)).toBe(true);
-  expect(hasIntactStartupWal(copy, wal.length - 1)).toBe(false);
+  expect(readStartupFile(copy, wal.length)).toBeDefined();
+  expect(readStartupFile(copy, wal.length - 1)).toBeUndefined();
   const damaged = Buffer.from(wal);
   damaged[damaged.length - 1] ^= 1;
   writeFileSync(copy + "-wal", damaged);
-  expect(hasIntactStartupWal(copy, wal.length)).toBe(false);
+  expect(readStartupFile(copy, wal.length)).toBeUndefined();
   writeFileSync(copy + "-wal", wal);
   const index = readFileSync(copy + "-shm");
   index[48] ^= 1;
   writeFileSync(copy + "-shm", index);
-  expect(hasIntactStartupWal(copy, wal.length)).toBe(false);
+  expect(readStartupFile(copy, wal.length)).toBeUndefined();
 });
 
 it("refuses unsupported user_version even with an otherwise valid checkpoint", async () => {
