@@ -98,7 +98,7 @@ describe("frontend workflow catalog", () => {
   });
 
   it("supplies matching registration membership and labels to navigation, Run and Explorer", () => {
-    const rail = renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop }));
+    const rail = renderToStaticMarkup(createElement(WorkflowRail, { workflows: catalog, active: "", onSelect: noop, onDataPage: noop }));
     const picker = renderToStaticMarkup(createElement(RunWorkflowPicker, { catalog, value: "", query: "", onQuery: noop, onChange: noop }));
     for (const entry of catalog) {
       expect(rail).toContain(`aria-label="${entry.label}"`);

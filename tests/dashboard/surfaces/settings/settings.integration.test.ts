@@ -203,7 +203,7 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 
 describe("closing Settings", () => {
-  it("closes on the X button and on Escape unless a dialog or list has the key", async () => {
+  it("closes on the back arrow and on Escape unless a dialog or list has the key", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -215,7 +215,7 @@ describe("closing Settings", () => {
       })));
       const exit = host.querySelector<HTMLButtonElement>('button[aria-label="Back to dashboard"]');
       assert.ok(exit);
-      assert.ok(exit.querySelector("svg.lucide-x"));
+      assert.ok(exit.querySelector("svg.lucide-arrow-left"));
       const dialog = document.body.appendChild(document.createElement("div"));
       dialog.setAttribute("role", "dialog");
       const inner = dialog.appendChild(document.createElement("button"));
