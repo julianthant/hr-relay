@@ -4,15 +4,14 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it } from "vitest";
 import { formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
-import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
 import type { WorkflowExplorerWire } from "../../../src/models/dashboard/explorer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../support/fixtures/explorer-seams.js";
 import { useExplorerWiring } from "../../../src/dashboard/state/explorer-wiring-adapter.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
+const wire = readFixtureExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
 const served = wire.workflows.find(workflow => workflow.id === "person-lookup")!;
 
 it("serves the review spec of the workflow at its registered version", async () => {
