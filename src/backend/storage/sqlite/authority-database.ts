@@ -448,6 +448,7 @@ type RunRepository = Readonly<{
   listByWorkflow(workflow: string): readonly RunRecord[];
   listActiveOwners(workflow: string): readonly Readonly<{ workerId: string; runId: string }>[];
   listPage(input: Readonly<{ workflow?: string; offset: number; limit: number }>): readonly RunRecord[];
+  listNonTerminal(): readonly RunRecord[];
 
   listCurrentByWorkflow(workflow: string): readonly RunRecord[];
   listByPauseState(state: "requested" | "paused"): readonly RunRecord[];
@@ -2496,6 +2497,10 @@ export function configureWritableConnection(database: DatabaseSync, busyTimeoutM
   database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
 }
 
+export function parseDiagnosticPageCount(value: unknown, limit: number): number {
+  return z.number().int().min(1).max(Math.min(32, Math.floor(1000 / limit))).parse(value);
+}
+
 export class AuthorityDatabase implements Disposable {
   static async withUpgradeInspections<T>(work: () => Promise<T>): Promise<T> {
     if (upgradeInspections.getStore()?.active) return work();
@@ -2524,6 +2529,7 @@ export class AuthorityDatabase implements Disposable {
   #snapshotExternalDataVersion: number | undefined;
   /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
   #changeReader: ChangeLogReader | undefined;
+  #claimRouteProof: Readonly<{ dataVersion: number; schemaCookie: number; cursor: number }> | undefined;
   #lastChangePruneMs: number | undefined;
   #pageCacheChanges = 0;
   #transactionDepth = 0;
@@ -3332,8 +3338,9 @@ export class AuthorityDatabase implements Disposable {
     return withDirectReaderAdmission(admission, () => inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs));
   }
 
-  static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown) {
+  static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown, pageCount = 1) {
     const request = TimelinePageRequestSchema.parse(input);
+    const pages = parseDiagnosticPageCount(pageCount, request.limit);
     return withAuthorityDatabaseReadOnly(admission, path, database => {
       if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID
         || !isCurrentAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("timeline-diagnostic-authority-unsupported");
@@ -3348,13 +3355,20 @@ export class AuthorityDatabase implements Disposable {
       const highWaterMark = repository.highWaterMark();
       const through = Math.min(request.through ?? highWaterMark, highWaterMark);
       if (request.after > through) throw new Error("timeline-diagnostic-cursor-out-of-range");
-      const scanned = repository.page({ ...request, through });
-      for (const record of scanned) assertTimelineOwner(database, record);
+      const records: TimelineEventRecord[] = [];
+      let nextCursor = request.after;
+      for (let page = 0; page < pages; page += 1) {
+        const scanned = repository.page({ ...request, after: nextCursor, through });
+        for (const record of scanned) {
+          assertTimelineOwner(database, record);
+          if (record.payload.kind === "debug") records.push(record);
+        }
+        nextCursor = scanned.at(-1)?.cursor ?? through;
+        if (nextCursor === through) break;
+      }
       const failureCauses = request.runId === undefined ? [] : database.prepare("SELECT * FROM run_failures WHERE run_id = ? ORDER BY created_at, id").all(request.runId)
         .map(raw => { const failure = FailureRecordSchema.parse(nativeOrdinaryRecordFromRow("run_failures", raw)); return { failureId: failure.failureId, ...failureCauseNames(failure) }; });
-      return { records: scanned.filter(record => record.payload.kind === "debug"), failureCauses,
-        after: request.after, nextCursor: scanned.at(-1)?.cursor ?? through, through, highWaterMark,
-        hasMore: (scanned.at(-1)?.cursor ?? through) < through };
+      return { records, failureCauses, after: request.after, nextCursor, through, highWaterMark, hasMore: nextCursor < through };
     });
   }
 
@@ -6691,6 +6705,48 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  #assertClaimRoutes(): void {
+    const database = this.#database, prior = this.#claimRouteProof;
+    const dataVersion = readIntPragma(database, "data_version");
+    if (prior?.dataVersion === dataVersion) return;
+    const schemaCookie = readIntPragma(database, "schema_version"), high = changeLogHighWater(database);
+    if ((prior?.schemaCookie ?? this.#changeReader?.schemaCookie) !== schemaCookie) assertNativeSchema(database);
+    const cursor = prior?.schemaCookie === schemaCookie ? prior.cursor : undefined;
+    const tail = cursor === undefined ? undefined : z.strictObject({ count: z.number(), newest: z.number().nullable() }).parse(database.prepare(
+      `SELECT count(*) AS count,max(seq) AS newest FROM ${CHANGE_LOG_TABLE} WHERE seq>?`).get(cursor));
+    const contiguous = cursor !== undefined && tail?.count === high - cursor && (tail.newest ?? cursor) === high;
+    const changed = contiguous ? z.array(z.strictObject({ id: RunIdSchema })).parse(database.prepare(
+      `SELECT DISTINCT json_extract(row_key,'$[0]') AS id FROM ${CHANGE_LOG_TABLE} WHERE seq>? AND table_name='runs'`).all(cursor)) : undefined;
+    const rowById = database.prepare("SELECT * FROM runs WHERE id=?");
+    const parentById = database.prepare("SELECT parent_id FROM runs WHERE id=?");
+    const childByParent = database.prepare("SELECT 1 FROM runs WHERE parent_id=? LIMIT 1");
+    const proved = new Set<string>();
+    const check = (row: unknown) => {
+      const run = runRecordFromRow(row);
+      const ancestry = new Set<string>([run.envelope.runId]);
+      let parent: string | null = run.envelope.parent?.runId ?? null;
+      while (parent !== null && !proved.has(parent)) {
+        if (ancestry.has(parent)) throw new Error("delegation-ancestry-cycle-or-depth");
+        ancestry.add(parent);
+        const ancestor = parentById.get(parent);
+        if (ancestor === undefined) throw new Error("delegation-parent-unavailable");
+        parent = z.strictObject({ parent_id: z.string().nullable() }).parse(ancestor).parent_id;
+      }
+      for (const member of ancestry) proved.add(member);
+    };
+    if (changed === undefined) {
+      for (const row of database.prepare("SELECT * FROM runs ORDER BY id").iterate()) check(row);
+    } else {
+      for (const { id } of changed) {
+        const row = rowById.get(id);
+        if (row !== undefined) check(row);
+        else if (childByParent.get(id) !== undefined) throw new Error("delegation-parent-unavailable");
+      }
+    }
+    // Peer changes can invalidate the scalar routing columns. Only advance the proof after the owning commit.
+    this.afterAuthorityCommit(() => { this.#claimRouteProof = { dataVersion, schemaCookie, cursor: high }; });
+  }
+
   #claimNextRun(input: unknown, canonical: false): RunClaimOutcome;
   #claimNextRun(input: unknown, canonical: true, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean): CanonicalRunClaimOutcome;
   #claimNextRun(input: unknown, canonical: boolean, admit?: (run: RunRecord) => void, eligible?: (run: RunRecord) => boolean): CanonicalRunClaimOutcome {
@@ -6722,11 +6778,15 @@ export class AuthorityDatabase implements Disposable {
         if (canonical) return { state: "refused", refusal: { reason: "worker-busy", runId: RunIdSchema.parse(held.run_id) } };
         throw new Error(`worker ${request.workerId} already holds active run ${held.run_id}`);
       }
+      if (eligible !== undefined) this.#assertClaimRoutes();
       const candidates = eligible === undefined
         ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued' AND pause_state IS NULL
           ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all(request.workflow)
-        : this.#database.prepare(`SELECT * FROM runs WHERE state='queued' AND pause_state IS NULL
-          ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all();
+        : this.#database.prepare(`WITH RECURSIVE home(id) AS (
+            SELECT id FROM runs WHERE workflow=? AND parent_id IS NULL
+            UNION SELECT child.id FROM home JOIN runs AS child ON child.parent_id=home.id
+          ) SELECT run.* FROM home JOIN runs AS run ON run.id=home.id WHERE run.state='queued' AND run.pause_state IS NULL
+          ORDER BY CASE run.priority WHEN 'interactive' THEN 0 ELSE 1 END,run.created_at,run.id`).all(slot.workflow);
       let current: RunRecord | undefined;
       let nextEligibleAt: string | undefined;
       for (const row of candidates) {
@@ -6926,6 +6986,10 @@ export class AuthorityDatabase implements Disposable {
         return Object.freeze(this.#database.prepare(`SELECT r.* FROM canonical_run_page p JOIN runs r ON r.id=p.run_id
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
       },
+      // Either representation can reveal active membership when a row's state has drifted.
+      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs
+        WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
+        ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE workflow = ? ORDER BY created_at, id
       `).all(workflow).map((row) => runRecordFromRow(row))),

@@ -815,6 +815,32 @@ it("returns a typed refusal and rolls back parent recovery when a failed child i
 });
 
 
+it("claims a delegated child through the worker home and refuses changed physical parent evidence", async () => {
+  const f = await fixture("cascade");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const child = f.child(), owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
+  const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
+  const claim = () => f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
+    workerId: owner.workerId, runtimeConfig: { generation: runtime.generation,
+      settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+  const peer = new DatabaseSync(f.path);
+  try {
+    peer.prepare("UPDATE runs SET parent_id=NULL WHERE id=?").run(child.envelope.runId);
+    assert.throws(claim, /parent_id.*whole-record JSON/u);
+  } finally {
+    peer.prepare("UPDATE runs SET parent_id=? WHERE id=?").run(f.root.envelope.runId, child.envelope.runId);
+    peer.close();
+  }
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  try {
+    const claimed = claim();
+    assert.ok(claimed.state === "applied" && "run" in claimed);
+    assert.equal(claimed.run.envelope.runId, child.envelope.runId);
+    assert.ok(prepare.mock.calls.every(([sql]) => !/^\s*SELECT \* FROM runs WHERE state='queued'/u.test(sql)),
+      "delegated claims must not load the global queue");
+  } finally { prepare.mockRestore(); }
+});
+
 it("reuses native group authentication only within a current execution observation and refuses fresh mutation or tampering", async () => {
   const f = await fixture("cascade");
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
