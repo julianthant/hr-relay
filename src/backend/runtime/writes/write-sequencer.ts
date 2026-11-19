@@ -1234,7 +1234,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       : durable.status === "observed-present" ? durable.observedProof : undefined;
     if (stored === undefined) throw new Error("I-9 reuse requires a settled write proof");
     const verdict = await readPrewriteProbe(context, commitContract, commitInput, durable.idempotencyKeyDigest,
-      durable.occurrence?.businessKeyDigest ?? durable.idempotencyKeyDigest, "reuse-probe");
+      (durable.status === "committed" ? durable.occurrence?.businessKeyDigest : undefined) ?? durable.idempotencyKeyDigest, "reuse-probe");
     if (verdict.state !== "present") {
       throw new TaskError(commitContract.id, "I9_WRITE_REFUSED", ERROR_CATALOG.I9_WRITE_REFUSED.text,
         { cause: new Error("i9-retained-effect-not-present") });

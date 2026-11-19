@@ -565,7 +565,7 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
           .filter((text) => text.length > 0 && text !== ".");
         return {
           dateRows: [...dateViewport.querySelectorAll("[role=row]")].map(row => ({
-            key: rowIdentity.key(row), label: (row.textContent ?? "").replace(/\s+/g, " ").trim(),
+            key: rowIdentity.key(row), label: row.textContent,
           })),
           dataRows: [...dataViewport.querySelectorAll("[role=row]")].map(row => ({
             key: rowIdentity.key(row),
@@ -597,12 +597,14 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
       const rows: RawTimecardGridRow[] = [];
       let month = 0;
       let day = 0;
-      for (const { key, label } of dateRows) {
+      for (const { key, label: rawLabel } of dateRows) {
         const cells = key === null ? undefined : dataByKey.get(key);
         if (key === null || cells === undefined) {
           throw new NewKronosRowPairingError("unpaired timecard row keys: missing, duplicate or unmatched GridRow uid in the date pane");
         }
+        if (rawLabel === null) throw new NewKronosRowPairingError("timecard date row has no text content");
         dataByKey.delete(key);
+        const label = rawLabel.replace(/\s+/g, " ").trim();
         const match = /([A-Za-z]{3})\s+(\d{1,2})\/(\d{1,2})/.exec(label);
         if (match !== null) {
           month = Number(match[2]);
