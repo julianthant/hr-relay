@@ -19,6 +19,7 @@ import { insertNativeCommand, settleNativeCommand } from "../../../../src/backen
 import { NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { assertAssistantHistoryRetirable } from "../../../../src/backend/storage/sqlite/assistant-grant-retirement.js";
+import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityEvidenceSchemaUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
 import { RunWorkbookReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
@@ -165,7 +166,7 @@ it("retires an audited settled legacy action into its verified pre-upgrade backu
         source.exec("SAVEPOINT unproved");
         const unproved = { ...action, state, result: state === "settled" ? { ...result, state: "already-applied" } : null };
         insert.run(id, chatId, command.commandId, 4, state, canonicalJsonStringify(unproved), at, expiresAt);
-        assert.throws(() => assertAssistantHistoryRetirable(source), /assistant-grant-history-unsupported/u);
+        assert.throws(() => assertAssistantHistoryRetirable(source, nativeOrdinaryRecordFromRow), /assistant-grant-history-unsupported/u);
         source.exec("ROLLBACK TO unproved; RELEASE unproved");
       }
       insert.run(id, chatId, command.commandId, 4, "settled", canonicalJsonStringify(action), at, expiresAt);

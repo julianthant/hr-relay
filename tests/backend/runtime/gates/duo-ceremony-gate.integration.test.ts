@@ -1,5 +1,6 @@
 import { createLoginContractTestWorld } from "../../../support/helpers/backend/login-contract-world.js";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { createDuoCeremonyGateFactory, DUO_CEREMONY_LEASE_POLL_MS, DuoCeremonyLeaseExpiredError, DuoCeremonyLeaseHeldError, DuoCeremonyReleaseFailedError } from "../../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
@@ -64,7 +65,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
     const clock = manualClock(T0), scheduler = new ManualScheduler(clock);
     const database = await sharedAuthority(clock);
     const timeline = database.authority.timelineEvents;
-    fillDiagnosticBudget(syntheticDatabasePath(database), timeline, clock);
+    fillDiagnosticBudget(DatabaseSync, syntheticDatabasePath(database), timeline, clock);
     const before = timeline.highWaterMark();
     const report = workerSessionDiagnostics(createDebugEventWriter({ repository: timeline, clock, build: "test" }));
     const phases: string[] = [];

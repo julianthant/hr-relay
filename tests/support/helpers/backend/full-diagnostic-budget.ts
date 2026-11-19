@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import type { TimelineRepository } from "../../../../src/models/events/timeline.js";
 import type { Clock } from "../../../../src/rules/time/clock.js";
 
-export function fillDiagnosticBudget(path: string, repository: TimelineRepository, clock: Clock): void {
+export function fillDiagnosticBudget(Database: typeof DatabaseSync, path: string, repository: TimelineRepository, clock: Clock): void {
   const { record } = createDebugEventWriter({ repository, clock, build: "test" })
     .emit({ category: "boot", phase: "settled", area: "storage", correlationId: randomUUID(), message: "m".repeat(60_000) });
-  const raw = new DatabaseSync(path);
+  const raw = new Database(path);
   try {
     // Each copy has its own valid ID and cursor in both the columns and the payload.
     raw.prepare(`WITH RECURSIVE copies(cursor) AS (VALUES(?+1) UNION ALL SELECT cursor+1 FROM copies WHERE cursor<?+4399)
