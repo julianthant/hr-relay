@@ -7,10 +7,12 @@ import { createDebugEventWriter } from "../../../../src/backend/logs/debug-event
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import { registerQueueRoutes } from "../../../../src/backend/transports/http/routes/queue.js";
 import { DashboardStreamHub } from "../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { ASSISTANT_DEFAULT_EFFORT, ASSISTANT_DEFAULT_MODEL } from "../../../../src/models/dashboard/assistant.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { APP_VERSION, DAY, DESCRIPTOR_SET_HASH, queuedEventOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -58,6 +60,38 @@ it("retries a failed rebuild on the next poll and resumes tail ingestion", async
   assert.deepEqual(projection.buildDashboardDayWire(DAY).queueSurfaces.map(row => row.runId), [uuidOf(1), uuidOf(2)]);
 });
 
+it("keeps a connected day cursor contiguous across a log-only poll", async () => {
+  const w = await world();
+  const { workflow, runId, traceId, attempt, ts } = queuedEventOf(w, { seed: 1 });
+  const writer = createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid: 4243 });
+  const task = { workflow, runId, traceId, attempt, ts, parentSpanPath: traceId, spanPath: `${traceId}/searching#1.1` };
+  const hub = new DashboardStreamHub({ projection: w.projection, backfillGaps: { detected: () => assert.fail("unexpected stream backfill") } });
+  try {
+    const connection = await hub.connect({ day: DAY });
+    const baseline = connection.initial.find(event => event.type === "snapshot");
+    assert.ok(baseline);
+
+    writer.emit({ ...task, t: "data.observed", observedAt: ts, nodeId: "searching", taskId: "ucpath/search-person-org",
+      points: [{ direction: "read", field: "selection", values: [
+        { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "resolved" },
+      ] }] });
+    writer.emit({ ...task, t: "transaction.fenced", spanPath: `${traceId}/searching/commit`, node: "searching", taskId: "ucpath/create-termination" });
+    w.projection.ingestFromTimeline();
+    const afterLogs = w.projection.cursor();
+    assert.deepEqual(w.projection.runLogSnapshot(runId).entries.map(({ event }) => event.t), ["data.observed", "transaction.fenced"]);
+
+    writer.emit({ ...task, t: "span.started", kind: "task", name: "searching" });
+    w.projection.ingestFromTimeline();
+    const patch = await connection.next();
+    assert.equal(patch?.type, "patch");
+    assert.equal(patch.cursor, `pc:${Number(baseline.cursor.slice(3)) + 1}`);
+    assert.equal(afterLogs, baseline.cursor);
+    connection.close();
+  } finally {
+    hub.close();
+  }
+});
+
 it("shares an unchanged day across a GET and stream connects and refreshes it when the runs change", async () => {
   const w = await world();
   queuedEventOf(w, { seed: 1 });
@@ -72,6 +106,7 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
   let nextAudit = 100;
   const kernel = createCommandKernel({ authority: w.database, lifecycle: runReader, clock: w.clock,
     ids: { uuid: () => uuidOf(nextAudit++) }, appVersion: APP_VERSION, configIdentity,
+    authorityProfileId: w.database.getMeta().profileId, prepareAssistantModelPreference: async () => () => true,
     descriptors: { resolve: () => undefined }, writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
     workerRuntime: { pool: { admit: unexpected, assertMember: unexpected, start: unexpected, ensure: unexpected,
       stop: unexpected, remove: unexpected, direct: unexpected, browser: unexpected, checkParkedWrite: unexpected } },
@@ -134,6 +169,20 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.deepEqual(await repeated.json(), wire);
     assert.equal(queueReads, 1, "every unchanged request reuses the day build");
 
+    const preferenceId = uuidOf(97);
+    const preference = await kernel.executeAssistantModelPreference({
+      commandId: preferenceId, requestedAt: w.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+      family: "assistant-model-preference", type: "set-assistant-model-preference",
+      target: { profileId: w.database.getMeta().profileId, epoch: 0, expectedRevision: 0 },
+      payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT },
+    });
+    assert.equal(preference.state, "applied");
+    assert.ok(w.database.authority.commandAudits.findByCommand(preferenceId));
+    const afterPreference = await readDay();
+    assert.equal(afterPreference.status, 200);
+    assert.deepEqual(await afterPreference.json(), wire);
+    assert.equal(queueReads, 1, "a journaled assistant preference reuses the unchanged Queue day");
+
     const rename = (commandId: string, runId: string, displayName: string) => kernel.execute({
       commandId, requestedAt: w.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
       family: "run", type: "rename", target: { runId, expectedVersion: 1 }, payload: { displayName },
@@ -164,6 +213,12 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.deepEqual(DashboardDayWireSchema.parse(await afterMonthInsertion.json()).monthCounts,
       [{ day: DAY, count: 2 }, { day: "2026-08-04", count: 1 }]);
     assert.equal(queueReads, 4, "a different day's insertion invalidates the shared month counts");
+
+    w.database.authority.runs.holdAdmission({ commandId: uuidOf(96), runtimeGeneration: configIdentity.generation, reason: "shutdown" });
+    assert.equal(w.database.authority.runs.admission().state, "draining");
+    assert.equal(projection.cursor(), cursorBeforeDiagnostics);
+    assert.equal((await readDay()).status, 200);
+    assert.equal(queueReads, 5, "a journaled application admission hold invalidates the day before polling");
   } finally {
     hub.close();
   }

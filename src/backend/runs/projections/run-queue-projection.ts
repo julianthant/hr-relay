@@ -364,9 +364,8 @@ export class RunQueueProjection {
 
   apply(event: SpanEventWire): void {
     try {
-      const affected = this.#fold(event);
-      this.#cursorValue += 1;
-      this.#notify(affected);
+      const affected = this.#foldEvent(event);
+      if (affected !== undefined) this.#notify(affected);
     } catch (error) {
       this.#degrade(`projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -381,18 +380,19 @@ export class RunQueueProjection {
     try {
       const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor, undefined, PROJECTION_SPAN_TYPES);
       this.#timelineCursor = tail.cursor;
+      if (tail.records.length === 0) return;
       const events = projectionEvents(tail.records);
-      if (events.length === 0) return;
+      const previousCursor = this.#cursorValue;
       const runIds = new Set<string>();
       let workerChanged = false;
       for (const { event, line } of events) {
-        const affected = this.#fold(event, line);
-        this.#cursorValue += 1;
-        this.#recordRunLog(event, line);
+        const affected = this.#foldEvent(event, line);
+        if (affected === undefined) continue;
         for (const runId of affected.runIds) runIds.add(runId);
         workerChanged ||= affected.workerChanged;
       }
-      if (runIds.size > 0 || workerChanged) this.#notify({ runIds: [...runIds], workerChanged }, events.length > 1);
+      const queueRevisions = this.#cursorValue - previousCursor;
+      if (queueRevisions > 0) this.#notify({ runIds: [...runIds], workerChanged }, queueRevisions > 1);
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -432,11 +432,16 @@ export class RunQueueProjection {
   }
 
 
-  #recordRunLog(event: SpanEventWire, line: TimelineLine): void {
-    if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
-    const entries = this.#runLogs.get(event.runId) ?? [];
-    if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);
-    entries.push(Object.freeze({ event, line, revision: this.#cursorValue }));
+  #foldEvent(event: SpanEventWire, line?: TimelineLine) {
+    const affected = this.#fold(event, line);
+    if (line !== undefined && (event.t === "data.observed" || event.t === "transaction.fenced")) {
+      const entries = this.#runLogs.get(event.runId) ?? [];
+      if (entries.length === 0) this.#runLogs.set(event.runId, entries);
+      entries.push(Object.freeze({ event, line, revision: entries.length + 1 }));
+    }
+    if (affected.runIds.length === 0 && !affected.workerChanged) return undefined;
+    this.#cursorValue += 1;
+    return affected;
   }
 
   /** Rebuild derived views from a consistent SQLite timeline snapshot. */
@@ -450,11 +455,7 @@ export class RunQueueProjection {
       this.#runLogs.clear();
       this.#notifiedRows.clear();
       this.#cursorValue = 0;
-      for (const { event, line } of events) {
-        this.#fold(event, line);
-        this.#cursorValue += 1;
-        this.#recordRunLog(event, line);
-      }
+      for (const { event, line } of events) this.#foldEvent(event, line);
       // The tail resumes from exactly what this rebuild consumed — set
       // together with `live` so the two ingest paths can never overlap.
       this.#timelineCursor = whole.cursor;
