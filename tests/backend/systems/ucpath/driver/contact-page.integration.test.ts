@@ -192,7 +192,7 @@ describe("production UCPath contact driver on a synthetic browser page", () => {
   });
 });
 
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 
 it("clicks the visible Save once and verifies persisted contacts while unrelated traffic is still pending", async () => {
   const h = await browserFixture({ saveResponse: "persist", backgroundOnSave: true });

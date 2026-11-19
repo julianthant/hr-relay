@@ -133,15 +133,16 @@ export function createOnboardingWriteWorld() {
     const scheduler = new ManualScheduler(clock), ids = sequentialIdFactory("c"), log = recordingLogger().log;
     const emitter = recordingTimelineEmitter(database, clock);
     const captures: string[] = [];
-    async function run(dryRun = false, input = example) {
+    async function run(dryRun = false, input = example, itemId: string = randomUUID()) {
       const descriptor = input.existingProfileId !== undefined ? remoteOnlyDescriptor : hireOptions === undefined ? i9WriteDescriptor : combinedDescriptor;
-      const runId = randomUUID(), itemId = randomUUID(), now = clock.now().toISOString();
+      const runId = randomUUID(), now = clock.now().toISOString();
+      const attempt = database.authority.runs.nextItemAttempt({ workflow: descriptor.id, itemId });
       const ports = testWorkerPorts(database, clock, { path: profile.path, descriptor, poolIndex: 1 });
       const worker = database.authority.workerSlots.list(descriptor.id).find(row => row.poolIndex === 1); assert.ok(worker);
       const record = RunRecordSchema.parse({ envelope: { runId, itemId, workflow: descriptor.id, traceId: `iwp-120000-${runId.slice(0, 4)}`,
         descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, buildId: currentBuildId(),
         resolvedInstance: { i9: "prod", ...(hireOptions === undefined ? {} : { ucpath: "prod" }) }, configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
-        shape: "single", priority: "bulk", dryRun, attempt: 1, enqueuedAt: now },
+        shape: "single", priority: "bulk", dryRun, attempt, enqueuedAt: now },
         input: { raw: input, parsed: { schemaHash: deriveSchemaHash(canonicalInput, "output"), value: input, protectedBindings: [] },
           ingressSchemaHash: deriveSchemaHash(Input, "input") }, lifecycle: { state: "queued" }, claimGeneration: 0,
         version: 1, createdAt: now, updatedAt: now });

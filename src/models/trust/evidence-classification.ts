@@ -815,7 +815,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(workflowResult("i9-check-person-lookup"), "shouldLookup"),
   ...[workflowInput("i9-check"), workflowInput("i9-check-roster-match"), workflowInput("i9-check-person-match"), workflowInput("i9-check-person-lookup"), workflowInput("i9-check-reference-check")].flatMap(scope => [
     ...person(scope, "person.name", "person.firstName", "person.lastName", "person.dob", "roster.seed.ppsEid", "reviewerName"),
-    ...["person.ssn", "recordId", "ocrRunId"].map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" })),
+    { scope, path: "person.ssn", classification: "direct-identifier", transform: "drop" },
+    ...["recordId", "ocrRunId"].map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" })),
     ...population(scope, "roster.rows"),
     ...open(scope, "person.hireDate", "person.sourcePages", "roster.seed.separationDate", "asOf", "person.useMatch"),
   ]),
@@ -823,7 +824,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["operationId", "libraryId"].map(path => ({ scope: taskOutput("workbooks/read-result"), path, classification: "direct-identifier", transform: "digest" })),
   ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
     ...person(workflowInput(id), "lastName", "firstName"),
-    { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "digest" },
+    { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "drop" },
   ]),
   ...[taskOutput("i9/read-section2-signer"), taskOutput("workflow:i9-lookup/read-result"), workflowResult("i9-lookup"), workflowResult("i9-lookup-lookup")].flatMap(scope => [
     ...person(scope, "signerName", "profileId", "i9Id"),
@@ -835,7 +836,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates", "person-lookup-reference-check"].map(workflowInput),
   ].flatMap(scope => [
     ...person(scope, "name", "emplId", "lastName", "firstName", "dob"),
-    { scope, path: "ssn", classification: "direct-identifier", transform: "digest" },
+    { scope, path: "ssn", classification: "direct-identifier", transform: "drop" },
     ...open(scope, "mode", "crmCheck", "keepNonHdh", "includeCrmDates"),
   ]),
 
