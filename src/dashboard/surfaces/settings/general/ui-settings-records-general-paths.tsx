@@ -11,8 +11,7 @@ import { SettingsSectionSkeleton } from "../settings-loading.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { BrowserWindowRow } from "./browser-window-row.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
-import { ChatGptAccountSettings } from "./chatgpt-account.js";
-import { AssistantPermissionsSettings } from "./hub-preferences.js";
+import { AssistantSettings } from "./hub-preferences.js";
 import { GENERAL_RUN_GROUPS,type GeneralChoice } from "./general-groups-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
@@ -100,8 +99,7 @@ function RunGroups({ editor }: { editor: Editor }) {
 export function CompactSettingsSection({ editor, appearance }: { editor: Editor; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
     <PageHeading title="General" />
-    <ChatGptAccountSettings />
-    <AssistantPermissionsSettings />
+    <AssistantSettings />
     {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section="general" contentOnly />}

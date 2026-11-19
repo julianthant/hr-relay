@@ -8,11 +8,9 @@
 #hub-panel-assistant .hub-toolbar .hub-input-button:focus-visible{outline:2px solid var(--ui-primary)!important;outline-offset:2px;background:var(--ui-hover)!important;color:var(--ui-primary)!important;box-shadow:none!important}
 #hub-panel-assistant .hub-toolbar svg{width:14px;height:14px;flex:none;pointer-events:none}
 #hub-panel-assistant .hub-toolbar [data-size=icon-sm] svg,#hub-panel-assistant #hub-send svg{width:16px;height:16px}
-#hub-panel-assistant .hub-toolbar .hub-input-button:has(>span+svg){flex:0 1 auto;min-width:0;overflow:hidden}
-#hub-panel-assistant .hub-toolbar .hub-input-button>span:has(+svg){min-width:0;overflow:hidden;text-overflow:ellipsis}
+#hub-panel-assistant .hub-toolbar .hub-model-text{flex:0 1 auto;min-width:0;margin-left:auto;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:28px;color:var(--ui-muted)}
+#hub-panel-assistant .hub-toolbar #hub-approval-trigger{flex:none}
 #hub-panel-assistant #hub-send{flex:none;width:28px;min-width:28px;height:28px;padding:0;border-radius:50%;background:var(--ui-primary);color:var(--ui-panel);border:0}
-#hub-panel-assistant .hub-toolbar .hub-input-button:has(.hub-effort){margin-left:auto}
-#hub-panel-assistant .hub-toolbar .hub-effort{color:var(--ui-secondary)}
 #hub-panel-assistant .hub-toolbar .hub-full-access{color:var(--hub-full-access)!important}
 #hub-panel-assistant{--hub-full-access:#b4561a}
 html[data-demo-theme=dark] #hub-panel-assistant{--hub-full-access:#e58a4f}
@@ -59,7 +57,6 @@ html[data-demo-theme=dark] .hub-assistant-menu.hub-menu{box-shadow:var(--hub-sha
 html[data-motion=off] .hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}
 @media(prefers-reduced-motion:reduce){.hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}}
 #hub-panel-assistant .hub-composer .hub-attachment{margin:6px 8px 0;padding:1px 4px 1px 8px}
-#hub-panel-assistant .hub-toolbar .hub-input-button:disabled>span+svg{display:none}
 #hub-panel-assistant .hub-attachment small{flex-basis:100%;font-size:11px}
 #hub-panel-assistant .hub-attachment .hub-attachment-failure{color:var(--ui-danger)}
 #hub-panel-assistant .hub-attachment[data-stage=failed],#hub-panel-assistant .hub-attachment[data-stage=spreadsheet]{flex-wrap:wrap;border-radius:12px}

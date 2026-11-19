@@ -9,7 +9,8 @@ import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatG
 
 const FIT = "[&_.ds-result-row-value]:max-w-full [&_.ds-result-row-value]:min-w-0 [&_.ds-result-row-side]:max-w-full";
 
-export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccountPort }) {
+/** `grouped` renders the status row and its dialog bare, for a caller that owns the surrounding group. */
+export function ChatGptAccountSettings({ port: override, grouped = false }: { port?: ChatGptAccountPort; grouped?: boolean }) {
   const contextPort = useContext(ChatGptAccountContext);
   const port = override ?? contextPort;
   const account = useChatGptAccount(port);
@@ -99,9 +100,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
     : signingIn ? "Finish signing in to ChatGPT in your browser."
       : signInExpired ? "Your sign-in attempt expired. Sign in to try again."
         : "Not connected";
-  return <BodySection title="ChatGPT">
-    <div ref={region} data-settings-path="chatgpt.account" onFocusCapture={event => { if (event.target instanceof HTMLElement) actionFocus.current = event.target; }}>
-      <FormGroup label="ChatGPT">{checkFailed && failure !== undefined ? <ResultRow className={FIT} controlWidth="wide" label={label}
+  const row = checkFailed && failure !== undefined ? <ResultRow className={FIT} controlWidth="wide" label={label}
           description={status}
           value={<Button variant="secondary" disabled={pending !== undefined} onClick={failure.onClick}>{failure.label}</Button>} />
         : account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow className={FIT} controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
@@ -115,15 +114,20 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
             {connected && plan !== "disabled" && <ButtonLink variant="secondary" href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>}
             {connected && account.state === "connected" && <Button variant="secondary" data-destructive disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect"}</Button>}
-          </div>} />}</FormGroup>
-    </div>
-    {confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
+          </div>} />;
+  const dialog = confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
       <DialogContent size="sm" title="Disconnect ChatGPT?" description="Relay forgets this account; the assistant and OCR stop until you connect again.">
         <DialogFooter>
           <Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
           <Button variant="danger" onClick={() => { void disconnect(); }}>Disconnect</Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>}
-  </BodySection>;
+    </Dialog>;
+  const content = <>
+    <div ref={region} data-settings-path="chatgpt.account" onFocusCapture={event => { if (event.target instanceof HTMLElement) actionFocus.current = event.target; }}>
+      {grouped ? row : <FormGroup label="ChatGPT">{row}</FormGroup>}
+    </div>
+    {dialog}
+  </>;
+  return grouped ? content : <BodySection title="ChatGPT">{content}</BodySection>;
 }
