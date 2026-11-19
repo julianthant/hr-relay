@@ -17,9 +17,11 @@ const catalog = SERVED_CATALOG;
 describe("frontend timeline and sessions", () => {
   it("renders the canonical Sessions host inside the shell toast provider without a dashboard client provider", () => {
     const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, { catalog, harness: sessionsSampleHarness, open: true, onOpenChange: () => {} }))));
-    assert.equal((markup.match(/<article /gu) ?? []).length, 4);
+    assert.equal((markup.match(/<article /gu) ?? []).length, 3);
+    assert.equal((markup.match(/aria-label="Idle workers"/gu) ?? []).length, 1);
+    assert.equal((markup.match(/<li aria-label="[^"]* · [^"]*" class="list-none/gu) ?? []).length, 1);
     assert.doesNotMatch(markup, /Sample data|Add to preview/);
-    assert.match(markup, /No run assigned/);
+    assert.doesNotMatch(markup, /No run assigned|Available|lucide-monitor/);
     assert.match(markup, /Alex Morgan/);
     assert.doesNotMatch(markup, /role="progressbar"|Ready for the next run|No run in progress/);
     assert.match(markup, /aria-label="Remove worker"/);

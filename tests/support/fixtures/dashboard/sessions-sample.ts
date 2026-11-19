@@ -28,6 +28,9 @@ export function sessionsSample(scenario: string): SessionsViewState {
       { ...workers[2], state: "paused", action: "Kronos timecard", timeline: sampleTimeline("separations", 1, "paused") },
     ] };
     case "idle": return { state: "ready", workers: workers.slice(0, 2).map(worker => ({ id: worker.id, label: worker.label, workflowId: worker.workflowId, workflow: worker.workflow, action: "Ready for the next run", state: "idle", browsers: worker.browsers.map(browser => ({ ...browser, state: "ready" })) })) };
+    case "idle5": return { state: "ready", workers: Array.from({ length: 5 }, (_, index) => ({ ...workers[3], id: `sample-idle-${index}`, label: `Worker ${index + 1}`, workflowId: index % 2 ? "separations" : "person-lookup", workflow: index % 2 ? "Separations" : "Person Lookup" })) };
+    case "duo": return { state: "ready", workers: [
+      { ...workers[2], state: "waiting", browsers: [{ id: "kuali", label: "Kuali", state: "needs-duo" }, { id: "ucpath", label: "UCPath", state: "signed-out" }] }, workers[3], { ...workers[3], id: "sample-idle-2", label: "Worker 5" }] };
     case "empty": return { state: "ready", workers: [] };
     case "loading": return { state: "loading" };
     case "unavailable": return { state: "unavailable", reason: "Session information is unavailable." };

@@ -69,6 +69,13 @@ function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap
   return notificationPolicy(row)?.detail;
 }
 
+/** Repeats of one event for one run (or for storage) fold into one item: its latest time, unread while any repeat is unread, the sum of its counts. */
+function foldKey(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
+  if (row.kind !== "notification" || row.link === undefined) return undefined;
+  const subject = row.link.kind === "storage" ? "storage" : "runId" in row.link ? row.link.runId : undefined;
+  return subject === undefined ? undefined : `${row.trigger}\u0000${row.title}\u0000${subject}`;
+}
+
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
@@ -93,9 +100,15 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
 export function inboxProjection(rows: readonly NotificationWire[], nowIso: string): { state: NotificationsState; notice: string; needsYou: number } {
   const notices = new Set<string>();
   const items: NotificationItem[] = [];
-  for (const row of rows) {
+  const folded = new Map<string, number>();
+  const newestFirst = [...rows].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
+  for (const row of newestFirst) {
     if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    items.push(notificationItem(row, nowIso));
+    const item = notificationItem(row, nowIso), key = foldKey(row);
+    const at = key === undefined ? undefined : folded.get(key);
+    if (at === undefined) { if (key !== undefined) folded.set(key, items.length); items.push(item); continue; }
+    const kept = items[at];
+    items[at] = { ...kept, read: kept.read && item.read, count: (kept.count ?? 1) + (item.count ?? 1) };
   }
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
   return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" "), needsYou };
@@ -168,7 +181,10 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     const row = rowsRef.current?.find(row => row.notificationId === id);
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
     const owner = current.current.binding;
-    const members = row.group?.members ?? [{ notificationId: id, revision: row.revision }];
+    const key = foldKey(row);
+    const repeats = action === "read" && key !== undefined ? (rowsRef.current ?? []).filter(other => other.kind === "notification" && other.notificationId !== id && other.readState !== "read" && foldKey(other) === key)
+      .map(other => ({ notificationId: other.notificationId, revision: other.revision })) : [];
+    const members = [...(row.group?.members ?? [{ notificationId: id, revision: row.revision }]), ...repeats];
     for (const member of members) {
       const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
         && ("members" in attempt.request.target ? attempt.request.target.members.some(entry => entry.notificationId === member.notificationId) : attempt.request.target.notificationId === member.notificationId) && attempt.request.target.actorId === request.scope.actorId
