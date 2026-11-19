@@ -27,7 +27,9 @@ for (const failed of [false, true]) it(`upgrades populated schema 20 with a ${fa
   try { await backup(source, path); } finally { source.close(); }
   const copy = new DatabaseSync(path);
   try {
+    copy.exec("BEGIN EXCLUSIVE");
     restoreSchema20CompletionFixture(copy);
+    copy.exec("COMMIT");
     assert.equal(inspectNativeAuthority(copy, 20).schemaVersion, 20);
     const schema = () => copy.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
     const rows = () => migrationTableNames(20).map(table => ({ table, rows: copy.prepare(`SELECT * FROM ${table}`).all().map(row => ({ ...row })) }));
