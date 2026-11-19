@@ -1,6 +1,6 @@
 import type { LogDecision } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import type { LogEntry, LogField, LogScreenshot, LogStep } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
-import { fmtActionClock, fmtElapsed } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
+import { formatDuration, formatTimeWithSeconds } from "../../../../../src/dashboard/lib/date-format.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../../../../../src/dashboard/surfaces/shared/status/status-model.js";
 import { queueRowTitle, type QueueSurfaceWire } from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { decisionScenarios, previewScenarios } from "./log-fixture.js";
@@ -187,7 +187,7 @@ const PIPELINE_STATE: Record<QueueSurfaceWire["pipeline"][number]["state"], LogT
 /** Queue facts provide selection context, never invented browser action history. */
 export function selectedLogPresentation({ row }: LogSelection) {
   const status = PROPOSED_STATUS[dsStatusOf(row.status)].label;
-  const time = fmtActionClock(row.updatedAt);
+  const time = formatTimeWithSeconds(row.updatedAt);
   const current = row.pipeline.find(node => ["active", "blocked", "failed"].includes(node.state));
   const steps: readonly LogStep[] = [{ id: "queue-state", time, title: "Run status", entries: [{ kind: "fields", id: "queue-fields", fields: [
     { id: "subject", time, kind: "read", label: "Subject", value: queueRowTitle(row) },
@@ -197,7 +197,7 @@ export function selectedLogPresentation({ row }: LogSelection) {
   const timeline: readonly LogTimelineStage[] = row.pipeline.map(node => ({
     id: node.id, label: node.label, state: PIPELINE_STATE[node.state],
     ...(row.liveMessage.state === "present" && node.id === current?.id ? { stepId: node.id } : {}),
-    ...(node.durationSec === undefined ? {} : { durationLabel: fmtElapsed(node.durationSec) }),
+    ...(node.durationSec === undefined ? {} : { durationLabel: formatDuration(node.durationSec) }),
     substeps: [],
   }));
   return { title: queueRowTitle(row), status, steps, timeline };

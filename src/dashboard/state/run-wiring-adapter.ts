@@ -21,7 +21,7 @@ import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/lo
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
-import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
+import { formatDuration, formatTimeWithSeconds } from "../lib/date-format.js";
 import { plainStepLabel } from "./log-display.js";
 import { REPLACED_READING, typedValuesEntry, usesTypedEntry } from "../surfaces/run-detail/logs/typed-values-model.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
@@ -319,7 +319,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const { artifact, capturedAt, origin } = matches[0];
       const boundary = origin.browserCapture?.boundary;
       const label = boundary === "before-submit" ? "Before submit" : boundary === "after-submit" ? "After submit" : undefined;
-      return [{ logId: row.logId, src: client.artifactUrl(artifact.artifactId), alt: label ?? "Browser capture", time: fmtActionClock(capturedAt),
+      return [{ logId: row.logId, src: client.artifactUrl(artifact.artifactId), alt: label ?? "Browser capture", time: formatTimeWithSeconds(capturedAt),
         ...(label === undefined ? {} : { label }), ...(boundary === undefined ? {} : { boundary }), width: artifact.width, height: artifact.height, kind: boundary === "before-submit" ? "form" : "browser" }];
     }
     return [];
@@ -331,7 +331,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     order.set(row.logId, requireNative(row.native).order);
     node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
-    const time = fmtActionClock(at);
+    const time = formatTimeWithSeconds(at);
     const screenshots = screenshotsOf(row);
     let entry: LogEntry | undefined;
     if (row.kind === "observed") {
@@ -385,7 +385,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       for (const operation of section.payload.operations) { order.set(operation.native.eventId, operation.native.order); steps.push(workbookWriteLogStep(operation)); }
       for (const choice of section.payload.referenceChoices ?? []) {
         const id = workbookReferenceChoiceId(choice), event = workbookReferenceTimelineEvent(choice, detail);
-        const time = choice.resolution.state === "resolved" ? fmtActionClock(choice.resolution.resolvedAt) : event === undefined ? "—" : fmtActionClock(event.at);
+        const time = choice.resolution.state === "resolved" ? formatTimeWithSeconds(choice.resolution.resolvedAt) : event === undefined ? "—" : formatTimeWithSeconds(event.at);
         order.set(id, choice.native.order); node.set(id, event?.native?.nodeId ?? choice.native.nodeId);
         steps.push({ id, time, title: "Look up in roster", entries: [{ kind: "decision", id, time, decision: workbookReferenceLogDecision(choice) }] });
       }
@@ -395,8 +395,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const message = checked === undefined ? write.parkedMessage
         : formatErrorCatalogFailure(createErrorCatalogFailure(checked.code, {})).text;
       order.set(write.writeIntentId, requireNative(write.native).order); node.set(write.writeIntentId, requireNative(write.native).nodeId);
-      steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: "Write parked", system: write.system,
-        entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: write.decision?.title ?? "Write parked", state: "parked",
+      steps.push({ id: write.writeIntentId, time: formatTimeWithSeconds(write.parkedAt), title: "Write parked", system: write.system,
+        entries: [{ kind: "decision", id: write.writeIntentId, time: formatTimeWithSeconds(write.parkedAt), decision: { title: write.decision?.title ?? "Write parked", state: "parked",
           message, ...(write.decision === undefined ? {} : { served: write.decision }) } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
@@ -404,8 +404,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const failureTitle = failure.display?.title ?? projectFailureDisplay(failure).title;
       const noScreenshot = failureScreenshotReason(failure);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
-      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failureTitle,
-        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failureTitle,
+      steps.push({ id: failure.failureId, time: formatTimeWithSeconds(failure.occurredAt), title: failureTitle,
+        entries: [{ kind: "decision", id: failure.failureId, time: formatTimeWithSeconds(failure.occurredAt), decision: { title: failureTitle,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
@@ -414,8 +414,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const gate = section.payload.value;
       const ceremony = identityCeremonyFor(gate);
       order.set(gate.gateRef, requireOrder(gate.order)); node.set(gate.gateRef, gateTimelineOwner(detail, gate)?.native?.nodeId ?? (detail.gate.state === "open" ? detail.gate.nodeId : undefined));
-      steps.push({ id: gate.gateRef, time: fmtActionClock(gate.parkedAt), title: plainStepLabel(gate.label),
-        entries: [{ kind: "decision", id: gate.gateRef, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail) && gate.decision !== undefined ? gate.decision.title : plainStepLabel(gate.label), state: "review",
+      steps.push({ id: gate.gateRef, time: formatTimeWithSeconds(gate.parkedAt), title: plainStepLabel(gate.label),
+        entries: [{ kind: "decision", id: gate.gateRef, time: formatTimeWithSeconds(gate.parkedAt), decision: { title: gateOpen(detail) && gate.decision !== undefined ? gate.decision.title : plainStepLabel(gate.label), state: "review",
           message: gate.reason,
           comparison: gate.comparisons.map(comparison => ({ label: comparison.label, expected: comparison.request, observed: comparison.ucpath })),
           ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.maskedEid)}`,
@@ -438,14 +438,14 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         : gate.state === "resolved" && gate.answer !== undefined ? { title: plainStepLabel(gate.label), answered: gate.answer } : undefined;
     if (gateCard !== undefined && gate.state !== "absent") {
       gateDecisionShown = true;
-      const time = fmtActionClock(event.at);
+      const time = formatTimeWithSeconds(event.at);
       order.set(gate.gateId, requireNative(event.native).order); node.set(gate.gateId, requireNative(event.native).nodeId);
       steps.push({ id: gate.gateId, time, title: plainStepLabel(gate.label), entries: [{ kind: "decision", id: gate.gateId, time, decision: { state: "review", ...gateCard } }] });
       continue;
     }
     // The timeline strip already shows done, pending, running and failed stages; only a skip, wait or cancel adds a log line.
     if (event.state === "done" || event.state === "pending" || event.state === "active" || (event.state === "failed" && failedNodes.has(requireNative(event.native).nodeId))) continue;
-    const time = fmtActionClock(event.at);
+    const time = formatTimeWithSeconds(event.at);
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
     const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
@@ -495,12 +495,12 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     if (category.key === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
     return { id: category.key, label: plainStepLabel(category.label), state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
       ...(first === undefined ? {} : { stepId: first.id, time: first.time }),
-      ...(category.durationSec === undefined ? {} : { durationLabel: fmtElapsed(category.durationSec) }),
+      ...(category.durationSec === undefined ? {} : { durationLabel: formatDuration(category.durationSec) }),
       substeps: category.members.map(member => {
         if (member.nodeId === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_MEMBER_IDENTITY_MISMATCH");
         return { id: member.nodeId, label: plainStepLabel(member.label),
         state: member.state === "replayed" ? "completed" : TIMELINE_STATE[member.state],
-        ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
+        ...(member.durationSec === undefined ? {} : { durationLabel: formatDuration(member.durationSec) }) }; }) };
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
   return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
@@ -514,7 +514,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
 export const RUN_CANCELLED_STEP_ID = "run-cancelled";
 function cancelledEnding(cancellation: RunDetailWire["cancellation"]): readonly LogStep[] {
   if (cancellation === undefined) return [];
-  const time = fmtActionClock(cancellation.at);
+  const time = formatTimeWithSeconds(cancellation.at);
   return [{ id: RUN_CANCELLED_STEP_ID, time, title: cancellation.title, entries: [{ kind: "note", id: RUN_CANCELLED_STEP_ID, time, message: cancellation.outcome }] }];
 }
 

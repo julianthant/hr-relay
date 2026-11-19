@@ -3,13 +3,12 @@ import type { AssistantFile } from './assistant-panel-model.js';
 import type { PersonPreferences } from '../../../models/config/person-preferences.js';
 
 export const ASSISTANT_MODEL = 'GPT-6.1 Sol';
-export const ASSISTANT_EFFORTS = ['Light', 'Medium', 'High', 'xHigh', 'Max'] as const;
 export const ASSISTANT_APPROVALS = [
   { label: 'Ask before every action', description: 'Confirm each proposed change.' },
   { label: 'Full access', description: 'Relay acts without asking each time.' },
 ] as const;
 export const FULL_ACCESS = ASSISTANT_APPROVALS[1].label;
-export type ComposerMenu = 'attach' | 'approval' | 'model' | 'voice';
+export type ComposerMenu = 'attach' | 'approval' | 'voice';
 export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
 export interface ComposerDraft { readonly text: string; readonly files: readonly AssistantFile[] }
 export interface ComposerDraftPort { read(): ComposerDraft; retain(draft: ComposerDraft): void }
@@ -28,7 +27,7 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
   const [text, setText] = useState(() => draft?.read().text ?? initialText);
   const [files, setFiles] = useState<readonly AssistantFile[]>(() => draft?.read().files ?? []);
   useLayoutEffect(() => { draft?.retain({ text, files }); }, [draft, text, files]);
-  const [effort, setEffort] = useState<string>('Medium');
+  const effort = 'Medium';
   const [approval, setApproval] = useState<string>(ASSISTANT_APPROVALS[0].label);
   const [menu, setMenu] = useState<ComposerMenu | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -74,5 +73,5 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
       if (await onSend({ text, files, model: ASSISTANT_MODEL, effort, approval })) { setText(''); setFiles([]); setMenu(null); }
     } finally { sending.current = false; }
   }
-  return { text, setText, files, setFiles, effort, setEffort, approval, setApproval, menu, setMenu, textarea, fileInput, popup, send };
+  return { text, setText, files, setFiles, effort, approval, setApproval, menu, setMenu, textarea, fileInput, popup, send };
 }

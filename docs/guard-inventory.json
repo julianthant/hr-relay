@@ -33,6 +33,14 @@
       "replacementRequired": true
     },
     {
+      "name": "dashboard-design-rules",
+      "file": "tests/architecture/dashboard/dashboard-design-rules.test.ts",
+      "status": "active",
+      "owner": "src/dashboard/DESIGN.md",
+      "invariant": "Reason: before the dashboard-polish feature the dashboard held 179 arbitrary [Npx] values, 49 Tailwind ! overrides, 59 !important, weights 550 and 650, about 150 unreferenced CSS classes and five time formats, and nothing stopped them. Under src/dashboard/surfaces and src/dashboard/app: font weights stay 400/500/600; px font sizes stay on the type scale 10/11/12/13/14/16/20/27; no fractional px value; no raw hex colour outside ds/theme; Intl.DateTimeFormat and toLocale*String live only in lib/date-format.ts; no .btn, .hub-btn, .hub-modal or .hub-field rule; every CSS class selector is named by a .ts, .tsx or .html; Logs and the queue use no font-mono or font-data; the Duo setup window has no click handler on a non-button. Each rule carries a clean and a violating fixture and a kept-exception list whose entries name the file, the matched text and a reason; a stale or unreasoned entry fails.",
+      "replacementRequired": true
+    },
+    {
       "name": "dashboard-wire-boundary",
       "file": "tests/architecture/dashboard/dashboard-wire-boundary.test.ts",
       "status": "active",

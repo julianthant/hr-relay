@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Tag as TagIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
-import { SearchInput } from '../../../ds/ui.js';
+import { SearchInput, dsIcon, dsText } from '../../../ds/ui.js';
 import { Picker, WorkflowIcon } from './sheets-v2-ui.js';
 import { MENU } from './sheets-v2-menu.js';
 
@@ -12,7 +12,7 @@ export function TagFilter({ groups, value, onChange }: { groups: { workflows: re
   const workflows = groups.workflows.filter(match), tags = groups.tags.filter(match);
   const toggle = (tag: string) => (checked: boolean) => onChange(checked ? [...value, tag] : value.filter(item => item !== tag));
   return <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
-    <DropdownMenuTrigger render={<Picker aria-label="Filter by tag" icon={<TagIcon size={14} aria-hidden className="text-ui-muted" />}>{value.length ? value.join(', ') : 'All tags'}</Picker>} />
+    <DropdownMenuTrigger render={<Picker aria-label="Filter by tag" icon={<TagIcon aria-hidden className={`${dsIcon.md} text-ui-muted`} />}>{value.length ? value.join(', ') : 'All tags'}</Picker>} />
     <DropdownMenuContent align="start" className="flex w-[240px] flex-col overflow-hidden">
       <div className="mb-1 shrink-0" onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a tag" placeholder="Find a tag" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
       <div className={`min-h-0 ${MENU}`}>
@@ -20,7 +20,7 @@ export function TagFilter({ groups, value, onChange }: { groups: { workflows: re
         {workflows.map(tag => <DropdownMenuCheckboxItem key={tag} checked={value.includes(tag)} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}><WorkflowIcon name={tag} />{tag}</DropdownMenuCheckboxItem>)}
         {workflows.length > 0 && tags.length > 0 && <DropdownMenuSeparator />}
         {tags.map(tag => <DropdownMenuCheckboxItem key={tag} checked={value.includes(tag)} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}>{tag}</DropdownMenuCheckboxItem>)}
-        {!workflows.length && !tags.length && <div className="px-2 py-1.5 text-[12px] text-ui-muted">No tags match.</div>}
+        {!workflows.length && !tags.length && <div className={`px-2 py-1.5 ${dsText.body} text-ui-muted`}>No tags match.</div>}
       </div>
     </DropdownMenuContent>
   </DropdownMenu>;

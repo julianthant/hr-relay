@@ -18,9 +18,9 @@ const headings = (host: ParentNode) => [...host.querySelectorAll(".ds-body-secti
 const ROWS = [
   ["preferences.preventSleepWhileRunning", "Prevent sleep while running", "Keep this Mac awake while a run is going."],
   ["preferences.confirmCloseDuringRun", "Confirm before closing during a run", "Warn before Relay closes while a run is going."],
-  ["preferences.notifications.runFinished", "Run finished", "Set when Relay alerts you that a run has finished."],
-  ["preferences.notifications.needsYou", "Needs you", "Alert when a run is waiting for you."],
-  ["preferences.notifications.failures", "Failures", "Alert when a run fails."],
+  ["preferences.notifications.runFinished", "Run finished", "Alert when a run finishes."],
+  ["preferences.notifications.needsYou", "Needs you", ""],
+  ["preferences.notifications.failures", "Failures", ""],
   ["preferences.notifications.sound", "Notification sound", "Sound for finished runs, failures and runs that need you."],
 ] as const;
 const leafValue = (authority: Awaited<ReturnType<typeof syntheticSettingsAuthority>>, path: string) => authority.read().sections.flatMap(section => section.leaves).find(leaf => leaf.path === path)?.effectiveValue;
@@ -32,12 +32,13 @@ async function choose(trigger: Element, value: string): Promise<void> {
 }
 
 describe("Settings > General groups", () => {
-  it("draws the ChatGPT card first and Permissions second, above General, Runs and Notifications with the six rows in the mock's order, labels and descriptions", async () => {
+  it("draws the ChatGPT card first and Permissions second, above App, Runs and Notifications with the six rows in the mock's order, labels and descriptions", async () => {
     const h = await setup();
-    assert.deepEqual(headings(h.host), ["ChatGPT", "Permissions", "General", "Runs", "Notifications"]);
+    assert.deepEqual(headings(h.host), ["ChatGPT", "Permissions", "App", "Runs", "Notifications"]);
     const rows = [...h.host.querySelectorAll('[data-settings-path^="preferences."]')];
     assert.deepEqual(rows.map(row => row.getAttribute("data-settings-path")), ROWS.map(row => row[0]));
     rows.forEach((row, index) => { assert.ok(row.textContent?.includes(ROWS[index][1]), ROWS[index][1]); assert.ok(row.textContent?.includes(ROWS[index][2]), ROWS[index][2]); });
+    for (const label of ["Needs you", "Failures"]) assert.equal(rows.find(row => row.textContent?.startsWith(label))?.querySelector(".ds-switch-content .ds-text-meta, .ds-field-description"), null, label);
     const sectionOf = (row: Element) => { let node: Element | null = row; while (node !== null && node.querySelector(".ds-body-section-heading") === null) node = node.parentElement; return node?.querySelector(".ds-body-section-heading")?.firstChild?.textContent; };
     assert.deepEqual(rows.map(sectionOf), ["Runs", "Runs", "Notifications", "Notifications", "Notifications", "Notifications"]);
   });

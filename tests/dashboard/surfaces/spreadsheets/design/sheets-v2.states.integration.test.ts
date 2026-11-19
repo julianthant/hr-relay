@@ -66,7 +66,8 @@ it('puts the unconfirmed notice under the heading, not above it', async () => {
 
 it('offers Import inside an empty library', async () => {
   wiring.catalog = []; await render();
-  assert.ok(host.querySelector('[class*="border-ui-stroke"] button')?.textContent?.includes('Import'));
+  assert.match(host.textContent ?? '', /No spreadsheets yet/);
+  assert.ok([...host.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Import' && button.closest('header') === null));
 });
 
 it('hides the search box in an empty library', async () => {

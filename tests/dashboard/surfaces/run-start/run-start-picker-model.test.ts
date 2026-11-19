@@ -44,7 +44,7 @@ describe("shared run catalog", () => {
     expect(runPickerGroups(buildWorkflowCatalog([{ ...served[0], code: "zz" }], servedFixtureSources([served[0]])), "zz")[0].entries[0].entry.id).toBe(served[0].workflowId);
   });
   it("shares sidebar category order and retains subordinate proving harnesses", () => {
-    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Lookup", "Separations", "Onboarding", "Work Study", "Documents"]);
+    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Lookup", "Separations", "Onboarding", "Work-Study", "Documents"]);
     const composition: RunStartWorkflow = { ...served[0], workflowId: "test-composition", role: defineWorkflowRole({ kind: "composition" }) };
     const harness: RunStartWorkflow = { ...served[0], workflowId: "test-harness", role: defineWorkflowRole({ kind: "chunk-harness", of: "test-composition", step: composition.steps[0].key }) };
     const groups = runPickerGroups(buildWorkflowCatalog([composition, harness], servedFixtureSources([composition, harness])), "");

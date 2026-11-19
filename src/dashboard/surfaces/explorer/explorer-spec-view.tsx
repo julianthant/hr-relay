@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { CheckCheck, LockKeyhole, Monitor, Workflow } from "lucide-react";
+import { CheckCheck, Monitor, Workflow } from "lucide-react";
 import type { ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
-import { dsFocus, PageHeading, Select } from "../../ds/ui.js";
+import { Chip, dsFocus, PageHeading, Select } from "../../ds/ui.js";
 import { FieldRow, FieldRows } from "../shared/steps/field-row.js";
 import { ClickLine } from "../shared/steps/click-line.js";
 import { NoteLine } from "../shared/steps/note-line.js";
@@ -14,8 +14,11 @@ import { fieldSource, resolveExplorer, rowValue, systemName, visible, type SpecB
 
 type ExplorerWorkflowOption = Pick<ExplorerPickerEntry, "id" | "title"> & Partial<Pick<ExplorerPickerEntry, "depth">>;
 
-// The step number sits in a circle beside the title; a rail joins the circles.
 const STEP = "border-b last:border-b-0 [--spacing-log-time:2.75rem]";
+
+// A step toggle is an option the served definition names `skip-<step>`; the page words it as the step's inclusion.
+const isStepToggle = (id: string) => id.startsWith("skip-");
+const TOGGLE_WORDS: Readonly<Record<string, string>> = { run: "Included", skip: "Typed by hand" };
 
 type Source = Readonly<{ row: SpecRow; stepId: string; card: string }>;
 
@@ -77,7 +80,6 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
   const offset = sessions.length > 0 ? 1 : 0;
   const numberOf = (id: string) => { const index = steps.findIndex(step => step.id === id); return index < 0 ? undefined : index + 1 + offset; };
   const stepId = (number: number) => `explorer-step-${number}`;
-  const marker = (number: number) => <span className="relative inline-flex size-7 items-center justify-center rounded-full border border-ui-stroke bg-ui-panel text-caption tabular-nums text-ui-secondary">{number}</span>;
   const closeSource = () => { setSource(undefined); trigger.current?.focus({ preventScroll: true }); };
   const openSource = (stepOf: string, card: string) => (row: SpecRow, opener: HTMLButtonElement) => { trigger.current = opener; setSource({ row, stepId: stepOf, card }); };
   const choose = (id: string, value: string) => { setChosen(current => ({ ...current, [id]: value })); setSource(undefined); };
@@ -88,20 +90,20 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
     {options.length > 0 && <section aria-labelledby="run-options" className="mb-4 mt-6">
       <h2 id="run-options" className="m-0 mb-4 text-section">Run options</h2>
       <div className="grid grid-cols-4 gap-4">{options.map(option => <div key={option.id} className="flex min-w-0 flex-col gap-1.5">
-        <span id={`option-${option.id}`} className="text-body font-medium text-ui-secondary">{option.label}</span>
+        <span id={`option-${option.id}`} className="text-body font-medium text-ui-secondary">{isStepToggle(option.id) ? `Step: ${option.label}` : option.label}</span>
         <Select aria-labelledby={`option-${option.id}`} value={values[option.id]} onChange={event => choose(option.id, event.target.value)}>
-          {option.choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+          {option.choices.map(choice => <option key={choice.value} value={choice.value}>{isStepToggle(option.id) ? TOGGLE_WORDS[choice.value] ?? choice.label : choice.label}</option>)}
         </Select>
       </div>)}</div>
     </section>}
     <div className="mb-6 border-b border-ui-stroke pb-4"><NoteLine message={spec.unlistedFailure} /></div>
-    <div className="relative before:absolute before:bottom-5 before:left-3.5 before:top-3 before:w-px before:bg-ui-stroke">
-      {offset === 1 && <StepFrame leading={marker(1)} title="Open browser sessions" titleId={stepId(1)} className={STEP}>
-        <div className="flex flex-wrap gap-2">{sessions.map(system => <span key={system} className="inline-flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body"><Monitor aria-hidden className="size-4 text-ui-muted" />{systemName(system)}<LockKeyhole aria-hidden className="ml-2 size-3 text-ui-muted" /></span>)}</div>
+    <div>
+      {offset === 1 && <StepFrame leading={1} title="Open browser sessions" titleId={stepId(1)} className={STEP}>
+        <div className="flex flex-wrap gap-2">{sessions.map(system => <Chip key={system} icon={<Monitor aria-hidden className="size-3.5" />}>{systemName(system)}</Chip>)}</div>
       </StepFrame>}
       {steps.map((step, index) => {
         const number = index + 1 + offset;
-        return <StepFrame key={step.id} leading={marker(number)} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)} className={STEP}>
+        return <StepFrame key={step.id} leading={number} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)} className={STEP}>
           {visible(step.description, values).slice(0, 1).map(line => <p key={line.text} className="m-0 text-body text-ui-secondary">{line.text}</p>)}
           {visible(step.checks, values).map(line => <NoteLine key={line.text} message={line.text} icon={<CheckCheck aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-positive" />} />)}
           {visible(step.blocks, values).map((block, position) => {

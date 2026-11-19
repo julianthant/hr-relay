@@ -55,7 +55,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const status = () => host.querySelector('span.sr-only[role="status"]')?.textContent ?? "";
   const button = (label: string) => { const found = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`); assert.ok(found, label); return found; };
-  const submit = () => { const found = document.querySelector<HTMLButtonElement>('.hub-modal button[type="submit"]'); assert.ok(found); return found; };
+  const submit = () => { const found = document.querySelector<HTMLButtonElement>('[role="dialog"] button[type="submit"]'); assert.ok(found); return found; };
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
       chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
@@ -99,7 +99,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const status = () => host.querySelector('span.sr-only[role="status"]')?.textContent ?? "";
   const button = (label: string) => { const found = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`); assert.ok(found, label); return found; };
-  const submit = () => { const found = document.querySelector<HTMLButtonElement>('.hub-modal button[type="submit"]'); assert.ok(found); return found; };
+  const submit = () => { const found = document.querySelector<HTMLButtonElement>('[role="dialog"] button[type="submit"]'); assert.ok(found); return found; };
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
       chatsPort: port, settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},

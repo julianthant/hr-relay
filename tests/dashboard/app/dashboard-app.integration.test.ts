@@ -139,9 +139,7 @@ try {
   assert_m0.equal(launch.querySelectorAll('input[type="file"]').length, 0);
   assert_m0.equal(document.querySelectorAll('#hub-panel-assistant input[type="file"]').length, 1);
   await key("Escape"); assert_m0.ok(document.activeElement === button("Start run"));
-  await click(button("Settings"));
-  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
-  await click(link);
+  await click(button("Spreadsheets"));
   await click(button("Import"));
   await chooseSpreadsheet();
   await click(button("Next"));
@@ -158,8 +156,7 @@ await _afterEachFixture0();
 it_m0.each(["Cancel", "Escape"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
 try {
   let starts = 0;
-  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
-  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
+  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Spreadsheets"));
   const before = (await savedWorkbooks()).map(record => record.name);
   await click(button("Import"));
   await chooseSpreadsheet();
@@ -377,6 +374,33 @@ afterEach_m1(_afterEachFixture0);
     const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`);
     assert_m1.ok(selected, "selected run must belong to the visible queue");
   });
+  it_m1.each([["?settings=spreadsheets", "Spreadsheets"], ["?settings=explorer", "Explorer"], ["?settings=activity", "Analytics"], ["?spreadsheets=1", "Spreadsheets"]])("opens %s as the %s data page with the rail and Sessions bar still there", async (search, label) => {
+    await mount(search);
+    assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true, "Settings is not open");
+    assert_m1.ok(document.querySelector('[aria-label="Session actions"]'), "the Sessions bar stays");
+    assert_m1.equal(document.querySelector('aside[aria-label="Workspace"] [aria-current="page"]')?.textContent?.trim(), label);
+    assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
+  });
+  it_m1("moves focus to the data page heading on arrival and back to its rail row on leaving", async () => {
+    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day);
+    await click(button("Explorer"));
+    await act_m1(async () => { await new Promise(resolve => requestAnimationFrame(() => resolve(undefined))); });
+    assert_m1.equal(parseRoute_m1(location.search).explore, "");
+    assert_m1.equal(document.activeElement, document.querySelector("h1"), "focus lands on the page heading");
+    await historyMove("back");
+    assert_m1.equal(parseRoute_m1(location.search).explore, undefined);
+    assert_m1.equal(document.activeElement?.id, "rail-data-explorer", "focus returns to the launching row");
+  });
+  it_m1("Back to run closes Settings opened from the Run dialog and keeps the dialog's route", async () => {
+    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day + "&start=1&settings=account&settingsFrom=run");
+    assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"]'));
+    await click(button("Back to run"));
+    const route = parseRoute_m1(location.search);
+    assert_m1.equal(route.settings, undefined);
+    assert_m1.equal(route.settingsFrom, undefined);
+    assert_m1.equal(route.start, true);
+    assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true);
+  });
   it_m1("Settings gear opens the surface, Back to dashboard closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert_m1.ok(document.querySelector('[aria-label="Settings"]'));
@@ -416,11 +440,10 @@ try {
   await historyMove("back");
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
-  const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert_m1.ok(analytics);
-  await click(analytics);
-  assert_m1.equal(document.querySelector("h1")?.textContent, "Analytics");
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
-  await historyMove("back");
+  await click(button("Analytics"));
+  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), true);
+  await click(button("Keep editing"));
+  assert_m1.equal(new URLSearchParams(location.search).has("activity"), false);
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   await click(button("Back to dashboard"));
   await click(button("Discard changes"));
@@ -440,7 +463,7 @@ try {
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
   // Subscription folded into General (1f9149b4fe); Archive is retired.
   assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
-    ["general", "account", "spreadsheets", "explorer", "activity", "keyboard"].map(id => `?settings=${id}`));
+    ["general", "account", "keyboard"].map(id => `?settings=${id}`));
   assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
   await click(button("Return to dashboard"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);

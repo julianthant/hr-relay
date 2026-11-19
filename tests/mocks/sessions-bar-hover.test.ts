@@ -106,3 +106,18 @@ for (const theme of themes) {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 }
+
+const scenes = ['idle5', 'active', 'attention', 'duo'] as const;
+for (const scene of scenes) for (const width of [1280, 1024]) {
+  test(`sessions bar frame ${scene} @ ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${baseUrl}/?surface=sessions-bar&theme=dark&open=1&scenario=${scene}`);
+    const panel = page.getByRole('region', { name: 'Session Panel', exact: true });
+    await expect(panel.getByRole('region', { name: 'Sessions', exact: true })).toBeVisible();
+    await save(panel, `dark-${scene}-${width}`);
+    const body = panel.getByRole('region', { name: 'Sessions', exact: true });
+    const box = (await body.boundingBox())!;
+    expect(box.height).toBeLessThanOrEqual(450);
+  });
+}

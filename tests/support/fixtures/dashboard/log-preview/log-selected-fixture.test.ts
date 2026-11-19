@@ -19,7 +19,7 @@ describe("frontend presentation producers", () => {
     assert.equal(changed.status, "Failed");
     assert.match(JSON.stringify(changed.steps), /Could not click Search/u);
     assert.doesNotMatch(JSON.stringify(changed.steps), /Searching UCPath for/u);
-    assert.equal(changed.timeline[0].durationLabel, "0s");
+    assert.equal(changed.timeline[0].durationLabel, "<1s");
     assert.deepEqual(changed.timeline.map(stage => stage.state), ["completed", "failed", "pending", "skipped"]);
     assert.equal(changed.timeline[1].stepId, row.pipeline[1].id);
     assert.ok(changed.timeline.slice(2).every(stage => stage.stepId === undefined));

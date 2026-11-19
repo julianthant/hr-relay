@@ -13,12 +13,15 @@ import type { NotificationDestination } from "../notifications/notifications-vie
 import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
+import type { DataPage } from "../../app/navigation/url-state.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, countsLoading, active, onSelect, settingsOpen, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, countsLoading, active, onSelect, settingsOpen, dataPage, onDataPage, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; countsLoading?: boolean; active: string;
   onSelect: (id: string) => void;
   settingsOpen: boolean;
+  dataPage?: DataPage;
+  onDataPage: (page: DataPage) => void;
   inbox: InboxWiring;
   searchData: NavbarData;
   onSearchAction: (action: PaletteAction) => void;
@@ -52,7 +55,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, co
     </header>
     <div className="workspace-rail-body">
       {open && !collapsed ? <NotificationsPanel activeId={activeId} showPriority={showPriority} onShowPriority={setShowPriority} dismissed={dismissed} onDismiss={id => setDismissed(current => [...current, id])} onControl={notificationRail.onControl} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
-        : <WorkflowRail workflows={workflows} counts={counts} countsLoading={countsLoading} active={active} onSelect={onSelect} collapsed={collapsed} />}
+        : <WorkflowRail workflows={workflows} counts={counts} countsLoading={countsLoading} active={active} onSelect={onSelect} collapsed={collapsed} dataPage={dataPage} onDataPage={onDataPage} />}
     </div>
   </aside>;
 });

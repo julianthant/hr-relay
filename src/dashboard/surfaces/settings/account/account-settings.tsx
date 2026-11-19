@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
+import { formatDayTime } from "../../../lib/date-format.js";
 
 export interface AccountValues {
   readonly name: string;
@@ -47,7 +48,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username }} />
       {details("Initials", values.initials, initials => ({ initials }))}
-      <ResultRow label="Last signed in" value={new Date(values.lastSignedInAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} />
+      <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>
     {ucpath}
     <Group label="Workflow configuration">
@@ -55,8 +56,8 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>
     <Group label="Security">
-      <ResultRow label="Duo" className="!min-h-[52px]" value={<span className="inline-flex items-center justify-end gap-3"><span>Ready</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />
-      <ResultRow label="Sign out" className="!min-h-[52px]" value={<Button variant="secondary" onClick={onSignOut}>Sign out</Button>} />
+      <ResultRow label="Duo" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">Ready</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />
+      <ResultRow label="Session" value={<Button variant="secondary" onClick={onSignOut}>Log out</Button>} />
     </Group>
     {deleteAccount}
   </section>;
@@ -74,12 +75,12 @@ export function PencilRow({ label, description, shown, pencilLabel, title, disab
   const pencil = useRef<HTMLButtonElement>(null);
   const close = (): void => setOpen(false);
   return <>
-    <ResultRow label={label} description={description} value={<span className="inline-flex items-center justify-end gap-3 -mr-0.5">
-      <span className="text-ui-muted">{shown}</span>
+    <ResultRow label={label} description={description} value={<span className="inline-flex items-center justify-end gap-3">
+      <span className="text-ui-primary">{shown}</span>
       <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" disabled={disabled === true} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
     </span>} />
     {open && <Dialog open onOpenChange={next => { if (!next) close(); }}>
-      <DialogContent size="sm" hideClose title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
+      <DialogContent size="sm" title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
         {dialog(close)}
       </DialogContent>
     </Dialog>}
@@ -143,7 +144,7 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
     return undefined;
   };
   return <>
-    <PencilRow label="Username" description={username === undefined ? "Not set yet. Relay uses your UCPath username, which you set under UCPath sign-in below. Workflows cannot run without a UCPath username and password." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
+    <PencilRow label="Username" description={username === undefined ? "Set under UCPath sign-in; workflows need it." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
       dialog={close => <UsernameDialog close={close} onSave={(current, next) => apply("username", current, next)} />} />
     <PencilRow label="Password" shown="••••••••" pencilLabel="Change Relay password" title="Change password"
       dialog={close => <PasswordDialog close={close} onSave={(current, next) => apply("password", current, next)} />} />

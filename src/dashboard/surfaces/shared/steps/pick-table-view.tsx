@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Circle, CircleCheck } from "lucide-react";
-import { Input } from "../../../ds/ui.js";
+import { Input, Table, TBody, TD, TH, THead, TR } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { PageCard } from "./page-card.js";
 
@@ -24,28 +24,28 @@ export function PickTableView({ title, columns, rows, typed, chosen, onChoose, o
   const row = (id: string, label: string, cells: ReactNode) => {
     const selected = chosen === id;
     const pick = () => { if (!disabled) onChoose(id); };
-    return <tr key={id} onClick={pick} className={cn("border-t border-ui-stroke", !disabled && "cursor-pointer", selected ? "bg-[var(--ds-surface-selected)]" : !disabled && "hover:bg-ui-hover")}>
-      <td className="w-9 py-2.5 pl-3 align-middle"><button type="button" role="radio" aria-checked={selected} aria-label={label} disabled={disabled} onClick={event => { event.stopPropagation(); pick(); }}
+    return <TR key={id} selected={selected} interactive={!disabled && !selected} onClick={pick}>
+      <TD className="w-9 pl-3"><button type="button" role="radio" aria-checked={selected} aria-label={label} disabled={disabled} onClick={event => { event.stopPropagation(); pick(); }}
         className={cn("block rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ui-info", selected ? "text-ui-info" : "text-ui-muted")}>
-        {selected ? <CircleCheck aria-hidden className="size-3.5" /> : <Circle aria-hidden className="size-3.5" />}</button></td>
+        {selected ? <CircleCheck aria-hidden className="size-3.5" /> : <Circle aria-hidden className="size-3.5" />}</button></TD>
       {cells}
-    </tr>;
+    </TR>;
   };
   return <PageCard title={title} mode="Pick">
-    <table aria-label={title} className="w-full border-collapse text-left text-body">
-      <thead><tr className="text-caption text-ui-muted"><th className="w-9 pl-3"><span className="sr-only">Choose</span></th>{columns.map((column, index) => <th key={column.id} className={cn("px-3 py-2 font-normal whitespace-nowrap", index === last && "text-right")}>{column.label}</th>)}</tr></thead>
-      <tbody>
+    <Table label={title}>
+      <THead><TR><TH className="w-9 pl-3"><span className="sr-only">Choose</span></TH>{columns.map((column, index) => <TH key={column.id} align={index === last ? "right" : "left"} className="text-caption font-normal normal-case whitespace-nowrap">{column.label}</TH>)}</TR></THead>
+      <TBody>
         {rows.map(item => row(item.id, item.label, columns.map((column, index) => {
           const cell = item.cells[index];
-          return <td key={column.id} title={cell?.value}
-            className={cn("px-3 py-2.5 tabular-nums whitespace-nowrap", index === flex && "w-full max-w-0 truncate", index === last && "text-right", index === 0 ? "font-medium" : cell?.attention ? "text-ui-warning" : "text-ui-secondary")}>{cell?.value}</td>;
+          return <TD key={column.id} align={index === last ? "right" : "left"} title={cell?.value}
+            className={cn("tabular-nums whitespace-nowrap", index === flex && "w-full max-w-0 truncate", index === 0 ? "font-medium text-ui-primary" : cell?.attention ? "text-ui-warning" : "text-ui-secondary")}>{cell?.value}</TD>;
         })))}
         {typed && row(typed.id, typed.label, <>
-          <td className="px-3 py-2 font-medium whitespace-nowrap">{typed.label}</td>
-          <td colSpan={Math.max(1, columns.length - 1)} className="px-3 py-1.5 text-right"><Input aria-label={typed.label} value={typed.value} placeholder={typed.placeholder} disabled={disabled}
-            onChange={event => onText(event.target.value)} className="ml-auto h-7 w-36 text-right font-medium text-ui-info tabular-nums" /></td>
+          <TD className="font-medium whitespace-nowrap text-ui-primary">{typed.label}</TD>
+          <TD align="right" colSpan={Math.max(1, columns.length - 1)}><Input aria-label={typed.label} value={typed.value} placeholder={typed.placeholder} disabled={disabled}
+            onChange={event => onText(event.target.value)} className="ml-auto h-7 w-36 text-right font-medium text-ui-info tabular-nums" /></TD>
         </>)}
-      </tbody>
-    </table>
+      </TBody>
+    </Table>
   </PageCard>;
 }

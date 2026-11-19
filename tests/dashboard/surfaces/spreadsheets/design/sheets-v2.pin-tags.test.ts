@@ -53,9 +53,9 @@ it('lists the workflow tag before the operator tags', () => {
 it('shows pinned spreadsheets in a Pinned group first, with their tags', async () => {
   await render();
   const lists = [...host.querySelectorAll('ul[aria-label]')].map(list => list.getAttribute('aria-label'));
-  assert.deepEqual(lists, ['Pinned', 'Created']);
+  assert.deepEqual(lists, ['Pinned', 'Spreadsheets']);
   assert.ok(host.querySelector('ul[aria-label="Pinned"] li[aria-label="Roster.xlsx"]'));
-  assert.ok(host.querySelector('ul[aria-label="Created"] li[aria-label="Keys.xlsx"]'));
+  assert.ok(host.querySelector('ul[aria-label="Spreadsheets"] li[aria-label="Keys.xlsx"]'));
   assert.match(host.querySelector('li[aria-label="Roster.xlsx"]')?.textContent ?? '', /Fall/u);
 });
 

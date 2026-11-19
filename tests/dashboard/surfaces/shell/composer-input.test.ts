@@ -55,7 +55,7 @@ afterEach(async () => { await act(async () => mounted?.unmount()); document.body
 const servedPreference = { slug: 'gpt-6.1-sol', effort: 'medium' } as const;
 async function mount(props: { preview: boolean; connected?: boolean }) {
   const host = document.createElement('div'); document.body.append(host); mounted = createRoot(host);
-  const served = props.preview ? {} : props.connected === false ? {} : { modelPreference: servedPreference, models: [{ slug: 'gpt-6.1-sol' }], onModelChoice() {} };
+  const served = props.preview ? {} : props.connected === false ? {} : { modelPreference: servedPreference };
   await act(async () => mounted?.render(createElement(ComposerInput, { preview: props.preview, onSend: async () => true, ...served } as Parameters<typeof ComposerInput>[0])));
   return host;
 }
@@ -75,6 +75,18 @@ describe('served composer menus', () => {
     expect([...menu!.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent)).toEqual(['Ask before every actionConfirm each proposed change.']);
     expect(menu!.textContent).not.toContain('Full access');
   });
+  it('shows the served model and effort as plain text, not a control', async () => {
+    const host = await mount({ preview: false });
+    const text = host.querySelector<HTMLElement>('#hub-model-text')!;
+    expect(text.textContent).toBe('GPT-6.1 Sol · Medium');
+    expect(text.closest('button')).toBeNull();
+    expect(host.querySelector('#hub-model-trigger')).toBeNull();
+  });
+  it('names the approval mode beside its glyph and the composer placeholder without an ellipsis', async () => {
+    const host = await mount({ preview: false });
+    expect(button(host, 'Ask before every action')!.textContent).toBe('Ask before every action');
+    expect(host.querySelector('textarea')!.getAttribute('placeholder')).toBe('Ask Relay');
+  });
   it('has no Voice button by role or name', async () => {
     const host = await mount({ preview: false });
     expect(host.querySelector('#hub-voice-trigger')).toBeNull();
@@ -90,7 +102,7 @@ describe('served composer menus', () => {
   it('keeps every menu button off but Add files when ChatGPT is not connected', async () => {
     const host = await mount({ preview: false, connected: false });
     expect(button(host, 'Ask before every action')!.disabled).toBe(true);
-    expect(host.querySelector<HTMLButtonElement>('#hub-model-trigger')!.disabled).toBe(true);
+    expect(host.querySelector('#hub-model-text')!.textContent).toBe('Model unavailable');
     expect(button(host, 'Add files')!.disabled).toBe(false);
   });
 });
