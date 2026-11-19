@@ -67,9 +67,7 @@ export function captureRunContinuation(repositories: ContinuationRepositories, r
   sources.set(run.envelope.runId, { runId: run.envelope.runId, version: run.version, attempt: run.envelope.attempt,
     identityDigest: sourceIdentityDigest(run) });
   const checkpoints = new Map(run.envelope.continuation?.checkpoints.map(row => [row.nodeId, row]));
-  for (const row of repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId)
-    .filter(row => row.runId === run.envelope.runId && row.attempt === run.envelope.attempt)
-    .sort((a, b) => a.claimGeneration - b.claimGeneration)) {
+  for (const row of repositories.runCheckpoints.listByRunAttempt(run.envelope.workflow, run.envelope.itemId, run.envelope.runId, run.envelope.attempt)) {
     checkpoints.set(row.nodeId, { nodeId: row.nodeId, runId: row.runId, attempt: row.attempt,
       claimGeneration: row.claimGeneration, digest: continuationEvidenceDigest(row) });
   }

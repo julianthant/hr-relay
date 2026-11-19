@@ -11,13 +11,13 @@ import { TimelineRecordError } from "../../../src/backend/storage/sqlite/timelin
 const NOW = "2026-10-10T12:00:00.000Z";
 
 it.each([
-  { label: "one payload's UTF-8 bytes", count: 1, payloadBytes: 262_145, distinctRuns: false, code: "event" },
-  { label: "distinct run-scope IDs", count: 10_001, payloadBytes: 2, distinctRuns: true, code: "run" },
-])("refuses excess $label before parsing records and leaves authority unchanged", async (limit) => {
+  { label: "one payload's UTF-8 bytes", count: 1, payloadBytes: 262_145, distinctRuns: false, summary: "timeline-doctor-event-limit-exceeded: 262144 bytes" },
+  { label: "invalid records across 10,001 distinct run IDs", count: 10_001, payloadBytes: 2, distinctRuns: true, summary: "timeline-record-invalid" },
+])("refuses $label and leaves authority unchanged", async (limit) => {
   const fixture = await createBoundProfileFixture(), { workspace, path, admission } = fixture;
   try {
     AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-doctor-limit" }).close();
-    // Offline-corrupt rows exercise the metric refusal before strict record parsing.
+    // The byte limit and strict row validation both apply on the read-only inspection path.
     const raw = new DatabaseSync(path, { enableForeignKeyConstraints: false });
     try {
       raw.exec("BEGIN IMMEDIATE");
@@ -40,14 +40,14 @@ it.each([
     } finally { raw.close(); }
     const before = readFileSync(path);
     assert.throws(() => AuthorityDatabase.inspectTimelineReadOnly(admission, path, () => {}), (error: unknown) =>
-      error instanceof TimelineRecordError && error.message.startsWith(`timeline-doctor-${limit.code}-limit-exceeded`));
+      error instanceof TimelineRecordError && error.message === limit.summary);
     const report = await doctorAuthorityStorage(admission, { stateRootTrustAnchor: workspace,
       stateRoot: admission.stateRoot, authorityPath: path,
       backupDirectory: join(admission.stateRoot, "backups", "authority"), busyTimeoutMs: 250 });
     assert.equal(report.spanAuthority.state, "unavailable");
     if (report.spanAuthority.state !== "unavailable") assert.fail("excess native evidence must be unavailable");
     assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
-    assert.match(report.spanAuthority.cause.summary, new RegExp(`^timeline-doctor-${limit.code}-limit-exceeded`));
+    assert.equal(report.spanAuthority.cause.summary, limit.summary);
     assert.deepEqual(readFileSync(path), before);
   } finally {
     await fixture.close();

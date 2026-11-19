@@ -6,6 +6,7 @@ import { isDirectExecution } from "./scope-files.js";
 // Storage closure, backup and restore proofs require native platform runners.
 export const NATIVE_FILES: readonly string[] = [
   "tests/workflows/emergency-contact/workflow.member-retry.crash.integration.test.ts",
+  "tests/backend/app/composition/dashboard/profile-session-routes.duo-reenrol.macos-native.integration.test.ts",
   "tests/backend/app/composition/dashboard/profile-session-routes.restart.integration.test.ts",
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
   "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
@@ -46,6 +47,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/upgrade.ready-bound.schema-matrix.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-18.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-24.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.certificate-upgrade.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",

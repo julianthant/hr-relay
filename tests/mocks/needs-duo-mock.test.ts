@@ -10,11 +10,12 @@ import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
+import { mockOutDir } from "./helpers/out-dir.js";
 
 // "Needs Duo" variants in the parity mock harness; frames are evidence, never test references.
 const repoRoot = resolve(import.meta.dirname, "../..");
-const fixtureRoot = join(repoRoot, "tests/mocks/.output/needs-duo-fixture");
-const OUT = process.env.NEEDS_DUO_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/evidence/ui-state-fixes/runs-needs-duo";
+const fixtureRoot = join(repoRoot, `tests/mocks/.output/needs-duo-fixture-${process.pid}`);
+const OUT = mockOutDir(process.env.NEEDS_DUO_MOCK_OUT, "runs-needs-duo");
 const THEMES = ["light", "dark"] as const;
 const WIDTHS = [1280, 1024] as const;
 
