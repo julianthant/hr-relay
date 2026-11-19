@@ -158,15 +158,13 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     meaning: "Accepted, nothing has run. Can be bumped or cancelled.",
   },
   cancelled: {
-        // Same solid pill shape as Done, gray, no strikethrough: neither amber nor red —
-    // a deliberate stop is not a warning and not a failure.
+    // Tinted neutral: neither amber nor red, and quieter than Done; a deliberate stop is not an alert.
     label: DISPLAY_STATUS_LABELS.cancelled,
-    tier: "solid",
+    tier: "tinted",
     icon: Ban,
-    chip: "bg-[var(--ds-status-cancelled-solid-bg)] border-transparent",
-    text: "text-[color:var(--ds-status-cancelled-solid-fg)] font-semibold",
-    pillHideIcon: true,
-    iconTone: "text-[color:var(--ds-status-cancelled-solid-fg)]",
+    chip: "bg-[var(--ds-status-cancelled-bg)] border-[color:var(--ds-status-cancelled-border)]",
+    text: "text-[color:var(--ds-status-cancelled-fg)]",
+    iconTone: "text-[color:var(--ds-status-cancelled-fg)]",
     soloTone: "text-[color:var(--ds-status-cancelled-fg)]",
     dot: "bg-[var(--ds-status-cancelled-mark)]",
     dotBorder: "border-[color:var(--ds-status-cancelled-mark)]",
