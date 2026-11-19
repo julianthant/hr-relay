@@ -52,6 +52,7 @@
 }
 
 .settings-takeover .ds-path-control { gap:12px;justify-content:flex-end; }
+.settings-takeover .ds-path-value { justify-content:flex-end;color:var(--ui-primary);font-family:inherit;font-size:inherit; }
 .settings-keyboard-page > .ds-form-group { margin-top:16px; }
 .settings-takeover .ds-path-control > button { min-width:70px;height:28px; }
 .settings-takeover [data-settings-path^="annualDates."] .settings-compact-control { width:153px;margin-left:auto; }
