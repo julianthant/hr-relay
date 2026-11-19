@@ -370,12 +370,12 @@ it("opening the setup browser spins the button and leaves the instruction in pla
   const port: ServedOnboardingPort = { reopenBrowser: () => new Promise(resolve => { settle = resolve; }), resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: validateOnboarding, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, openPortal: unused,
     showBrowser: () => new Promise(resolve => { settle = resolve; }) };
   const instruction = () => host.querySelector("header p")?.textContent;
-  const show = () => host.querySelector<HTMLButtonElement>(".actions .btn.primary");
+  const show = () => host.querySelector<HTMLButtonElement>(".actions button:last-child");
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
     const before = instruction();
     assert.equal(before?.includes("Chromium window named"), false);
-    assert.equal(host.querySelector(".duo-window-status strong")?.textContent, "Setup window is open");
+    assert.equal(host.querySelector(".window-state strong")?.textContent, "Setup window is open");
     assert.equal(show()?.getAttribute("aria-busy"), null);
     await act(async () => show()!.click());
     assert.equal(instruction(), before);
