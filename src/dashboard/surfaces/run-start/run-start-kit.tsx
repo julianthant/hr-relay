@@ -29,7 +29,7 @@ import {
   dsIcon,
   dsText,
 } from "../../ds/ui.js";
-import { fmtClock } from "../shared/status/format.js";
+import { formatTime } from "../../lib/date-format.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
 import { FailureNotice } from "../../ds/primitives/failure-notice.js";
@@ -142,7 +142,7 @@ export function PlanPreview({
           `planned by ${plan.plannedBy}`,
           // C61 — an operator-facing instant is a clock reading, never a raw
           // ISO string. Same defect the context rail's R6 f.10 fixed.
-          `expires ${fmtClock(plan.expiresAt)}`,
+          `expires ${formatTime(plan.expiresAt)}`,
         ]}
       />
     </section>

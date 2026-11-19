@@ -87,7 +87,7 @@ describe_m1("queueGateAge", () => {
     const row = surface({
       gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" },
     });
-    assert_m1.equal(queueGateAge_m1(row, NOW), "18m 0s");
+    assert_m1.equal(queueGateAge_m1(row, NOW), "18m 00s");
   });
 
   it_m1("answers nothing for a row the server dated no gate on", () => {
@@ -103,7 +103,7 @@ describe_m1("the row's accessible name carries the age", () => {
     const row = surface({
       gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" },
     });
-    assert_m1.equal(queueRowAccessibleName_m1(row, NOW), "Jordan Reyes — review · 18m 0s");
+    assert_m1.equal(queueRowAccessibleName_m1(row, NOW), "Jordan Reyes — review · 18m 00s");
   });
 
   it_m1("leaves an ungated row's name exactly as it was", () => {

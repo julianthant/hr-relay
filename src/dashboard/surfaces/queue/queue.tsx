@@ -27,7 +27,8 @@ import {
   OutcomeActionButton,
   type DashboardActionHandler,
 } from "../shared/actions/actions.js";
-import { dayLabel, fmtClock, fmtElapsed, plural, runTiming } from "../shared/status/format.js";
+import { dayLabel, plural, runTiming } from "../shared/status/format.js";
+import { formatDuration, formatTime } from "../../lib/date-format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "../shared/status/test-instance-hazard.js";
 import { runDisplayId } from "../shared/status/run-display-model.js";
 import { StatusBadge } from "../shared/status/status.js";
@@ -144,7 +145,7 @@ const STEP_TONE: Record<PipelineStep["state"], string> = {
 /** One step, including only served measurements.
  * Ported from the demo's own `MicroSteps` title */
 function stepTitle(step: PipelineStep): string {
-  const duration = step.durationSec === undefined ? "" : ` ${fmtElapsed(step.durationSec)}`;
+  const duration = step.durationSec === undefined ? "" : ` ${formatDuration(step.durationSec)}`;
   const executions = step.executions === undefined ? "" : ` ×${String(step.executions)}`;
   return `${step.label}${duration}${executions} (${step.state})`;
 }
@@ -335,7 +336,7 @@ function RowFooterLine({
           "gap-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]",
         )}
       >
-        <span className="shrink-0 whitespace-nowrap">{fmtClock(surface.startedAt)}</span>
+        <span className="shrink-0 whitespace-nowrap">{formatTime(surface.startedAt)}</span>
         <QueueAttemptSelector
           title={queueRowTitle(surface)}
           surface={surface}
@@ -942,7 +943,7 @@ export function QueueRow({
           {batch !== undefined ? <div data-queue-row-footer className={cn(dsText.meta, dsText.nums, dsBorder.subtle,
             "flex items-center gap-[var(--ds-space-base)] border-t bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
             <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]">
-              <span className="shrink-0 whitespace-nowrap">{fmtClock(batch.startedAt)}</span>
+              <span className="shrink-0 whitespace-nowrap">{formatTime(batch.startedAt)}</span>
               <span className="min-w-0 truncate" title={`Batch ${batch.id} · revision ${batch.version}${batch.origin === undefined ? " · origin unavailable" : ` · ${batch.origin.kind} ${batch.origin.kind === "start-plan" ? batch.origin.startPlanId : batch.origin.intakeManifestId}`}`}>Batch {batch.id.slice(0, 8)}</span>
               <span className="shrink-0 whitespace-nowrap" title={batchTiming?.title}>{batchTiming?.text}</span>
             </div>

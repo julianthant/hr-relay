@@ -65,7 +65,7 @@ type PendingCommand,
 import { CommandRecovery } from "../surfaces/shared/actions/command-recovery.js";
 import { recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
-import { fmtClock } from "../surfaces/shared/status/format.js";
+import { formatTime } from "../lib/date-format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
 import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection, queueRenameDraft } from "../surfaces/queue/queue-model.js";
@@ -686,7 +686,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               const entry = commandResultFeedEntry({ settlement: { ...folded, problem: outcome.feedback.text },
                 targetRunId: request.target.runId, expectedVersion: request.target.expectedVersion, commandId: request.commandId,
                 subject: surface?.title ?? `run ${request.target.runId}`, workflowLabel: workflowLabelOf(surface?.workflowId ?? activeWorkflowId),
-                actionLabel: label, clock: fmtClock(nowIso), actorId: request.requestedBy });
+                actionLabel: label, clock: formatTime(nowIso), actorId: request.requestedBy });
               if (entry !== undefined) setCommandResults(previous => [entry, ...previous].slice(0, 4));
             }
           }

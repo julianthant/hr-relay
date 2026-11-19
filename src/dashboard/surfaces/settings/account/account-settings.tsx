@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
+import { formatDayTime } from "../../../lib/date-format.js";
 
 export interface AccountValues {
   readonly name: string;
@@ -47,7 +48,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username }} />
       {details("Initials", values.initials, initials => ({ initials }))}
-      <ResultRow label="Last signed in" value={new Date(values.lastSignedInAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} />
+      <ResultRow label="Last signed in" value={formatDayTime(values.lastSignedInAt)} />
     </Group>
     {ucpath}
     <Group label="Workflow configuration">

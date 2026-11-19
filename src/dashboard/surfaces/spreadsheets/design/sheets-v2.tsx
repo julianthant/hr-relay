@@ -22,7 +22,7 @@ const CREATED_ROWS = 8;
 
 /** The Spreadsheets page on the served library. */
 function unusableRowsNote(count: number) {
-  return count > 0 ? `${count.toLocaleString()} ${count === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined;
+  return count > 0 ? `${count} ${count === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined;
 }
 
 export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionDay: string) => void }) {

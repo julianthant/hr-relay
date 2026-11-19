@@ -65,7 +65,8 @@ Well, Notice,
 import { cn } from "../../lib/utils.js";
 import { useIntakeClient as useDashboardClient } from "./intake-client.js";
 import { type CommandProblem } from "./intake-command-model.js";
-import { fmtClock,plural,pluralize,shortHash } from "../shared/status/format.js";
+import { plural, pluralize, shortHash } from "../shared/status/format.js";
+import { formatTime } from "../../lib/date-format.js";
 import {
 correctionEditorLabel,
 correctionText,
@@ -169,7 +170,7 @@ function SourceBand({
               `sha ${shortHash(session.artifact.sha256)}`,
               `${plural(session.rowCount, "row")} read`,
               `${String(session.columns.length)} columns`,
-              `uploaded ${fmtClock(session.createdAt)}`,
+              `uploaded ${formatTime(session.createdAt)}`,
             ]}
           />
         </span>
@@ -522,8 +523,8 @@ function ValidationReview({
     <div className="flex flex-col gap-[var(--ds-space-loose)]">
       <MetaLine
         items={[
-          `validated ${fmtClock(validation.validatedAt)}`,
-          `values read as of ${fmtClock(validation.readAt)}`,
+          `validated ${formatTime(validation.validatedAt)}`,
+          `values read as of ${formatTime(validation.readAt)}`,
         ]}
       />
 
@@ -997,7 +998,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
       <section className="flex flex-col gap-[var(--ds-space-cozy)]">
         <Notice sticky tone="warning" title="Already enqueued with this plan" description="Running it again files the same rows twice." />
         <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-          <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${fmtClock(stage.createdAt)}`]} />
+          <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${formatTime(stage.createdAt)}`]} />
           <IdentifierPopover
             label="Show full prior manifest identifier"
             title="Prior manifest identifier"
@@ -1009,7 +1010,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
   }
   return (
     <section className="flex flex-col gap-[var(--ds-space-cozy)]">
-      <Banner tone="info" title={`Compared with ${shortHash(stage.manifestId)}…, made ${fmtClock(stage.createdAt)}`}>
+      <Banner tone="info" title={`Compared with ${shortHash(stage.manifestId)}…, made ${formatTime(stage.createdAt)}`}>
         This plan differs from the selected earlier import. The changed file, mapping, schema and membership facts are below.
       </Banner>
       <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">

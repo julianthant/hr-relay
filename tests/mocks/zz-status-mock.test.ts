@@ -909,7 +909,7 @@ for (const theme of THEMES) test(`logs cards @ ${theme} ${WIDTH}`, async ({ page
   if (wanted("identity-approved")) {
     await fresh("Waiting on identity review");
     await logs.getByRole("button", { name: "Confirm", exact: true }).click();
-    await expect(outcome).toContainText(/^Match approved · \d\d:\d\d · Alex Rivera$/u);
+    await expect(outcome).toContainText(/^Match approved · \d{1,2}:\d\d [AP]M · Alex Rivera$/u);
     await expect(logs.locator(".log-failed-field")).toContainText("Approved");
     await shot("logs-identity-approved");
   }
