@@ -1,4 +1,3 @@
-import type { CommandAuthority } from "../../../runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../runs/commands/settings-service.js";
 import { selectActiveRunSettings } from "../../../runs/settings/run-settings.js";
 import { activeSettingsConfig,createProtectedSettingsRuntimeReader,createSettingsRuntimeReader } from "../../../runtime/settings/settings-runtime.js";
@@ -17,7 +16,7 @@ export function composeProfileSettings(input: Parameters<typeof createSettingsRu
 }
 
 export function composeSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
-  database: CommandAuthority;
+  database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority">;
   environment: Readonly<Record<string, string | undefined>>; credentials: ReturnType<typeof createCredentialStore>;
   assertCurrent?: () => void;
   resolveSettings?: Parameters<typeof createSettingsApplicationExecutor>[0];
@@ -25,11 +24,21 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   const { database, clock, hostFacts } = input;
   const reader = createSettingsRuntimeReader(input);
   const resolveSettings = input.resolveSettings ?? (settings => resolveConfigWithProvenance(settings, hostFacts, clock, input.runtimeStoragePair));
+  const read = <T>(project: (repositories: AuthorityDatabase["authority"]) => T) => database.withAuthorityReadSnapshot(() => {
+    input.assertCurrent?.();
+    const result = project(database.authority);
+    input.assertCurrent?.();
+    return result;
+  });
   const routes: SettingsRouteDeps = {
     nativePathPicker: createNativePathPicker(),
-    settings: { readConfig: () => database.withAuthorityTransaction(repositories => { input.assertCurrent?.(); const result = activeSettingsConfig(repositories); input.assertCurrent?.(); return result; }), descriptors: DESCRIPTORS },
+    settings: { readConfig: () => read(activeSettingsConfig), descriptors: DESCRIPTORS },
     settingsEditor: {
-      settings: { read: () => database.withAuthorityTransaction(repositories => { input.assertCurrent?.(); const result = { ...reader.read(repositories), activeConfig: selectActiveRunSettings(repositories).config, activePreferences: selectActiveRunSettings(repositories).preferences }; input.assertCurrent?.(); return result; }) },
+      settings: { read: () => read(repositories => {
+        const snapshot = reader.read(repositories);
+        const active = selectActiveRunSettings(repositories);
+        return { ...snapshot, activeConfig: active.config, activePreferences: active.preferences };
+      }) },
       protectedSettings: createProtectedSettingsRuntimeReader({ read: () => { input.assertCurrent?.(); const result = input.credentials.read(); input.assertCurrent?.(); return result; } }), environment: input.environment, clock,
       resolve: resolveSettings,
     },

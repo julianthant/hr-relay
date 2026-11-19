@@ -39,7 +39,9 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
     const publish = (): void => { if (active) setResult({ request, value }); };
     publish();
     if (day === undefined) return () => { active = false; };
-    const subscription = client.subscribeDay({
+    let subscription: { close: () => void } | undefined;
+    // Subscribe once the mount has settled: a mount cancelled in the same tick opens no stream.
+    queueMicrotask(() => { if (!active) return; subscription = client.subscribeDay({
       day,
       ...(actorId === undefined ? {} : { publications: { actorId, onPublication: (publication: NotificationPublicationWire) => {
         if (!active || activeRequest.current !== request) return;
@@ -59,8 +61,8 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
           ? failed(connection.error) : connection.state === "connecting" ? LOADING : value.day, connection, refresh, subscribePublications };
         publish();
       },
-    });
-    return () => { active = false; subscription.close(); };
+    }); });
+    return () => { active = false; subscription?.close(); };
   }, [client, day, actorId, request, refresh, subscribePublications]);
   const current = result?.request === request ? result.value : { request, day: LOADING, connection: { state: "connecting" as const }, refresh, subscribePublications };
   useEffect(() => {
