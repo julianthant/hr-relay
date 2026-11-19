@@ -105,19 +105,25 @@ describe("Emergency Contact worker claim authentication", () => {
     } finally { sessions.releaseRunConfigFingerprint(); await sessions.closeAll("worker-stop"); }
   });
 
-  it.each(["after-submit", "verify"] as const)("keeps the authenticated browser until the explicit UNKNOWN park after %s capture fails", async boundary => {
+  it.each([
+    { boundary: "after-submit", receipt: "T123456", close: "parked" },
+    { boundary: "verify", receipt: "T123456", close: "parked" },
+    { boundary: "after-submit", receipt: "T222222", close: "poisoned" },
+  ] as const)("parks UNKNOWN with one click after $boundary capture fails and receipt $receipt is observed (close: $close)", async ({ boundary, receipt, close }) => {
     const h = await writes.harness();
     const { run, claim } = writes.claimRunning(h.database, h.clock);
-    const events: WorkerSessionEvent[] = [];
+    let captureFailed = false;
+    const eventsAfterCapture: WorkerSessionEvent[] = [];
     const stores = buildWriteFixtureRegistry(h.world);
     const sessions = new WorkerSessionManager({
       workerId: world.WORKER_ID, workflowId: WorkflowIdSchema.parse("emergency-contact"),
-      onEvent: event => events.push(event),
+      onEvent: event => { if (captureFailed) eventsAfterCapture.push(event); },
       clock: h.clock, scheduler: h.scheduler, acquireDeadlineMs: 30_000, stores, factory: h.sessions.factory,
       duoCeremony: duoCeremonyGatesOver(h.database, h.clock),
       browserScreenshotCapture: { capture: async ({ trigger }) => {
         if (trigger.kind === "task-point" && (trigger.boundary === boundary ||
           (boundary === "verify" && trigger.boundary === "step" && h.world.events.includes("verify")))) {
+          captureFailed = true;
           throw new Error("synthetic capture failure");
         }
       } },
@@ -131,7 +137,7 @@ describe("Emergency Contact worker claim authentication", () => {
       operator: "local-operator", log: recordingLogger().log });
     try {
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-      h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+      h.world.verifyResults.push({ state: "present", proof: { transactionId: receipt } });
       await assert.rejects(sequencer.executeTransaction(writes.contextFor(run, claim, writeFixtureSaveDescriptor)),
         error => error instanceof WriteParkedError && error.parkCode === "unknown");
       assert.equal(writes.intentByKey(h.database)?.status, "parked");
@@ -139,8 +145,9 @@ describe("Emergency Contact worker claim authentication", () => {
       assert.equal(h.database.authority.runCheckpoints.latest(run.envelope.workflow, run.envelope.itemId, WRITE_FIXTURE_NODE_ID), undefined);
       assert.ok(h.world.events.includes("verify"));
       assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
-      assert.deepEqual(events.slice(-2).map(event => event.type), ["browser-session:reset", "browser-session:close"]);
-      assert.deepEqual(h.sessions.closeReasons(), ["parked"]);
+      assert.deepEqual(eventsAfterCapture.map(event => event.type), close === "parked"
+        ? ["browser-session:reset", "browser-session:close"] : ["browser-session:close"]);
+      assert.deepEqual(h.sessions.closeReasons(), [close]);
       assert.equal(h.sessions.opens("ucpath"), 1);
     } finally { sessions.releaseRunConfigFingerprint(); await sessions.closeAll("worker-stop"); }
   });
