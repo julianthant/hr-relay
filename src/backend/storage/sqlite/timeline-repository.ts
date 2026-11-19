@@ -129,7 +129,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const record = parsed.data;
       const content = canonicalJsonStringify(record);
       if (Buffer.byteLength(content, "utf8") > 256 * 1024) throw new Error("timeline-event-size-exceeded");
-      return ports.mutate<ReturnType<TimelineRepository["append"]>>(() => {
+      const result = ports.mutate<ReturnType<TimelineRepository["append"]> | "budget-full">(() => {
         const existing = get(record.eventId);
         if (existing !== undefined) {
           if (timelineAppendContent(existing) !== content) throw new Error("timeline-event-identity-conflict");
@@ -143,7 +143,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
             "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0)+1 AS cursor",
           ).get());
           const recordBytes = Buffer.byteLength(canonicalJsonStringify({ ...record, cursor: next.cursor }), "utf8");
-          if (bytes + recordBytes > 250 * 1024 * 1024) throw new TimelineDiagnosticBudgetError();
+          if (bytes + recordBytes > 250 * 1024 * 1024) return { result: "budget-full", changes: 0 };
         }
         // SQLite assigns both the cursor and its authenticated JSON mirror from
         // its AUTOINCREMENT sequence under the same owning write transaction.
@@ -161,6 +161,9 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           record.payload.kind === "operation-confirmed" ? record.payload.facts.system : null,content);
         return { result: { state: "inserted" as const, record: timelineEventFromRow(raw) }, changes: 1 };
       });
+      // Keep the transaction's refreshed byte count when the event itself cannot fit.
+      if (result === "budget-full") throw new TimelineDiagnosticBudgetError();
+      return result;
     },
     page(input: z.input<typeof TimelinePageRequestSchema>) {
       const request = TimelinePageRequestSchema.parse(input);

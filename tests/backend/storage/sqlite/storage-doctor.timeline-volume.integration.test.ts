@@ -12,6 +12,7 @@ import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-rec
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { fillDiagnosticBudget } from "../../../support/helpers/backend/full-diagnostic-budget.js";
 import { CONFIG_SNAPSHOT, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials, createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
@@ -160,26 +161,12 @@ describe("storage doctor on a long-lived timeline", () => {
 
   it("publishes a queued run when ordinary diagnostics already occupy 250 MiB", async () => {
     const record = run(0);
-    const f = await store([record], (_emit, database) => {
-      createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "test" })
-        .emit({ category: "boot", phase: "settled", area: "storage", correlationId: randomUUID(), message: "m".repeat(60_000) });
-    });
-    const raw = new DatabaseSync(f.authorityPath);
-    try {
-      // Copy a valid event into each slot so the production byte count sees a genuinely full store.
-      raw.exec(`WITH RECURSIVE copies(cursor) AS (VALUES(2) UNION ALL SELECT cursor+1 FROM copies WHERE cursor<4400)
-        INSERT INTO timeline_events(cursor,id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
-        SELECT copies.cursor,printf('00000000-0000-4000-8000-%012x', copies.cursor),kind,occurred_at,recorded_at,
-          retention_date,retention_class,json_set(payload_json,'$.cursor',copies.cursor,
-            '$.eventId',printf('00000000-0000-4000-8000-%012x', copies.cursor))
-        FROM copies JOIN timeline_events original ON original.cursor=1`);
-      const bytes = raw.prepare("SELECT sum(length(CAST(payload_json AS BLOB))) AS bytes FROM timeline_events WHERE kind='debug'").get()?.bytes;
-      assert.ok(typeof bytes === "number" && bytes > 250 * 1024 * 1024);
-    } finally { raw.close(); }
+    const f = await store([record], () => {});
     const database = AuthorityDatabase.open({ path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "timeline-volume-test" }, clock);
     try {
       const timeline = database.authority.timelineEvents;
       const debugEvents = createDebugEventWriter({ repository: timeline, clock, build: "test" });
+      fillDiagnosticBudget(f.authorityPath, timeline, clock);
       const beforeStall = timeline.highWaterMark();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
       const monitorClock = manualClock(new Date(NOW));

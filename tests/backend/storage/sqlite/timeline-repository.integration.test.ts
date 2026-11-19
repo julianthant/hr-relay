@@ -5,8 +5,8 @@ import { randomUUID as randomUUID_m0 } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { describe, it } from "vitest";
+import { DatabaseSync, StatementSync } from "node:sqlite";
+import { describe, it, vi } from "vitest";
 import { createDebugEventWriter, emitOptionalDiagnostic } from "../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -136,11 +136,21 @@ describe("native logging authority", () => {
         peer.exec("DROP TRIGGER timeline_events_immutable");
         peer.prepare("UPDATE timeline_events SET payload_json=payload_json || printf('%*s',?,'') WHERE retention_class='ordinary'").run(250 * 1024 * 1024);
         peer.exec(String(trigger?.sql));
-        assert.equal(emitOptionalDiagnostic(() => writer.emit({ category: "boot", phase: "settled", correlationId: "optional" })), "budget-full");
-        assert.throws(() => emitOptionalDiagnostic(() => writer.emit({ category: "invalid" })));
-        assert.throws(() => writer.emit({ category: "http", phase: "failed", correlationId: "over-cap" }), /timeline-diagnostic-cap-exceeded/u);
-        assert.equal(Number(database.prepare("SELECT count(*) AS n FROM timeline_events").get()?.n), 2);
-        assert.deepEqual(repository.get(pinned.eventId), pinned);
+        const reads = vi.spyOn(StatementSync.prototype, "get");
+        const byteScans = () => reads.mock.contexts.filter(stmt =>
+          stmt instanceof StatementSync && /SUM\(.*payload_json.*FROM timeline_events/iu.test(stmt.sourceSQL)).length;
+        try {
+          assert.equal(emitOptionalDiagnostic(() => writer.emit({ category: "boot", phase: "settled", correlationId: "optional" })), "budget-full");
+          assert.equal(byteScans(), 1);
+          assert.throws(() => emitOptionalDiagnostic(() => writer.emit({ category: "invalid" })));
+          assert.throws(() => writer.emit({ category: "http", phase: "failed", correlationId: "over-cap" }), /timeline-diagnostic-cap-exceeded/u);
+          assert.equal(byteScans(), 1, "repeated refusal must reuse the refreshed byte count");
+          assert.equal(Number(database.prepare("SELECT count(*) AS n FROM timeline_events").get()?.n), 2);
+          assert.deepEqual(repository.get(pinned.eventId), pinned);
+          peer.exec("DELETE FROM timeline_events WHERE retention_class='ordinary'");
+          assert.equal(writer.emit({ category: "http", phase: "settled", correlationId: "space-reopened" }).state, "inserted");
+          assert.equal(byteScans(), 2, "a peer commit must refresh the byte count");
+        } finally { reads.mockRestore(); }
       } finally { peer.close(); }
     } finally { database.close(); rmSync(root, { recursive: true, force: true }); }
   });
