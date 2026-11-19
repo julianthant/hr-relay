@@ -1085,21 +1085,21 @@ export const QueuePanel = memo(function QueuePanel({
               {band.key !== null && <div data-queue-band={band.key}
                 className={cn(
                   dsText.caps,
-                  "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-snug)]",
+                  "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex flex-wrap items-baseline gap-x-[var(--ds-space-snug)]",
                   band.key === "attention"
                     ? "text-[color:var(--ds-status-waiting-fg)]"
                     : "text-[color:var(--ds-fg-muted)]",
                 )}
               >
                 {/* `Finished today` is only true on today's partition. */}
-                {band.key === "finished" && !isToday ? "Finished" : band.label}
+                <span className="whitespace-nowrap">{band.key === "finished" && !isToday ? "Finished" : band.label}</span>
                 {/* Band counts describe visible rows; day totals belong to the served status projection. */}
                 <span title={grouped ? "Displayed rows; each Lookup batch counts once." : undefined} className="tabular-nums">
                   {band.rows.length}
                 </span>
                 {/* Show day-finished outcomes only under All; filtered subsets cannot claim day totals. */}
                 {band.key === "finished" && filter === undefined && breakdown !== "" && (
-                  <span className={cn("tabular-nums", "truncate font-normal")}
+                  <span className="min-w-0 font-normal tabular-nums"
                     title={grouped ? "Completed Queue rows; each Lookup batch counts once. Run totals remain in the status filters." : undefined}>
                     {breakdown}
                   </span>
