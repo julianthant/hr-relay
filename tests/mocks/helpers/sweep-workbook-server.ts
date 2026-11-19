@@ -22,6 +22,15 @@ export async function startWorkbookSweepServer(profile?: FixtureDashboardProfile
         { id: "header", cells: [{ value: "Project" }, { value: "Status" }, { value: "Notes" }] },
         { id: "sample", cells: [{ value: "Fixture project" }, { value: "Ready" }, { value: "Synthetic row" }] },
       ] }] });
+    const solid = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
+    const filled = library.create({ name: "Status board.xlsx", themes: [], hasFormulas: false,
+      sheets: [{ id: "board", name: "Board", width: 3, hidden: [], headerRow: 1,
+        columnBindings: ["Project", "Status", "Owner"].map((sourceHeader, sourceColumn) => ({ id: `column-${sourceColumn}`, sourceColumn, sourceHeader, fieldId: null, basis: "manual" })), rows: [
+        { id: "header", cells: ["Project", "Status", "Owner"].map(value => ({ value, fill: solid("FFD9E1F2") })) },
+        { id: "done", cells: [{ value: "Fixture intake" }, { value: "Done", fill: solid("FFC6EFCE") }, { value: "Example, Avery" }] },
+        { id: "waiting", cells: [{ value: "Fixture review" }, { value: "Waiting", fill: solid("FFFFEB9C") }, { value: "Example, Blake" }] },
+        { id: "failed", cells: [{ value: "Fixture sync" }, { value: "Failed", fill: solid("FFFFC7CE") }, { value: "Example, Casey" }] },
+      ] }] });
     const roster = library.create({ name: "Fixture roster.xlsx", themes: [], hasFormulas: false,
       sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
         columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
@@ -33,7 +42,7 @@ export async function startWorkbookSweepServer(profile?: FixtureDashboardProfile
     const app: DashboardApp = new Hono();
     registerWorkbookRoutes(app, { workbooks: { library, workflows: WORKFLOW_MODULES.map(module => module.descriptor), intake: async () => { throw new Error("sweep fixture does not admit workbook intake"); } } });
     const server = await startSweepOverlay(app, profile);
-    return { ...server, generalId: general.libraryId, rosterId: roster.libraryId, downloads: () => downloads, release,
+    return { ...server, generalId: general.libraryId, filledId: filled.libraryId, rosterId: roster.libraryId, downloads: () => downloads, release,
       async close() { release(); try { await server.close(); } finally { await h.dispose(); } } };
   } catch (error) { release(); await h.dispose(); throw error; }
 }

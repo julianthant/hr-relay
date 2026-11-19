@@ -4,6 +4,33 @@
 mock dashboard build. It is not a test gate and CI never runs it. Dashboard behaviour is proven by
 Vitest unit/integration tests and `/verify` browser checks.
 
+## Scenes
+
+One row per scene file in `tests/mocks/`. Run one file alone: `npm run mocks -- --workers=1 <file>`. A frame folder is the
+file's output variable, or `.work/mocks-output/<folder>` in the repo when the variable is unset.
+
+| Surface | File | Scenes | Output variable |
+| --- | --- | --- | --- |
+| Log in, sign-up, Duo step, ready, Duo setup window | `onboarding-mock.test.ts` | `onboarding frames @ <theme> <width>`: 13 states (`ONBOARDING_SCENES` in `helpers/onboarding-scenes.tsx`) | `ONBOARDING_MOCK_OUT` |
+| Spreadsheets detail with cell fills | `spreadsheets-fills-mock.test.ts` | `spreadsheet detail with cell fills @ <theme> <width>` | `SPREADSHEET_MOCK_OUT` |
+| Spreadsheets library, sync states | `sweep-fixtures-workbooks.test.ts` | `served workbook library, General workbook and sync states` | `SWEEP_FIXTURES_OUT` |
+| Analytics (done, failed, waiting runs) | `zz-status-mock.test.ts` | `analytics states @ <theme>` | `STATUS_MOCK_OUT` |
+| Analytics read failure, account lost | `sweep-fixtures-account-analytics.test.ts` | `served Analytics read failure`, `account lost while a served Assistant proposal waits` | `SWEEP_FIXTURES_OUT` |
+| Queue, run input, run dialog, Settings pages, Logs, toasts, kit | `zz-status-mock.test.ts` | `status mock`, `run input every workflow`, `settings pages`, `logs footer states`, `logs cards`, `sidebar collapse widens logs`, `command result toasts`, `command unknown toast`, `kit …`, `run dialog …`, `customize steps every workflow` | `STATUS_MOCK_OUT` |
+| Needs Duo | `needs-duo-mock.test.ts` | `needs duo frames`, `served needs duo before/after` | `NEEDS_DUO_MOCK_OUT` |
+| Failure notice | `failure-notice-mock.test.ts` | `failure notice frames` | `FAILURE_NOTICE_MOCK_OUT` |
+| Notification centre, search palette | `notifications-mock.test.ts` | `notification centre`, `search palette`, `served notifications priority` | `NOTIFICATIONS_MOCK_OUT` |
+| Run detail Logs, timeline strip, failure card | `notifications-sweep.test.ts` | `sweep` | `NOTIFICATIONS_MOCK_OUT` |
+| Decision card | `notifications-sweep-decisions.test.ts` | `decision card ucpath-found` | `NOTIFICATIONS_MOCK_OUT` |
+| Settings General, ChatGPT | `settings-general-chatgpt-mock.test.ts` | `general top frames` | `SETTINGS_GENERAL_CHATGPT_MOCK_OUT` |
+| Check Fix destinations | `check-fix-destinations.test.ts` | `every Fix lands on its focused row…` | `CHECK_FIX_OUT` |
+| Run dialog reference gate | `run-dialog-reference-gate.test.ts` | `Emergency Contact holds Continue until the roster is added` | `REFERENCE_GATE_OUT` |
+| OCR review, member retry | `sweep-fixtures-ocr.test.ts` | `served OCR review`, `served OCR member-retry`, `served OCR parent Records opens the review` | `SWEEP_FIXTURES_OUT` |
+| Run detail, dry-run preview, Logs over SSE | `sweep-fixtures-run-detail.test.ts` | four scenes plus `finished dry run shows its full preview region` (expected to fail until dry-run-preview-01 lands) | `SWEEP_FIXTURES_OUT` |
+| Work Study queue, run input sentences, Sessions Needs Duo | `sweep-fixtures-shell.test.ts` | `served empty Work Study queue and page`, `served <workflow> input sentences`, `served Sessions Needs Duo` | `SWEEP_FIXTURES_OUT` |
+| Assistant, Explorer | `zz-assistant-explorer-mock.test.ts` | `assistant explorer mock`, `assistant panel header, History and composer`, `assistant full access and Ask mark`, `Ask mark states video` | `AX_MOCK_OUT` |
+| Entry harness, sessions bar, switches | `app-entry.test.ts`, `sessions-bar-hover.test.ts`, `switch-pointer-click.test.ts` | assertions only, no frames | none |
+
 ## Run
 
 ```sh
