@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it, vi } from "vitest";
 import { createAuthorityAccountingTestWorld } from "../../../support/helpers/backend/authority-accounting-world.js";
-import { LATER, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { runClaim } from "../../../../src/models/run/record.js";
+import { COMMAND_FIXTURES, LATER, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { NativeCommandRequestSchema } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 
 const world = createAuthorityAccountingTestWorld();
@@ -134,28 +135,102 @@ it("refuses a different physical checkpoint digest within a read snapshot", asyn
   }
 });
 
-it("decodes each physical run once across readers and starts fresh in the next snapshot", async () => {
-  const path = await world.databasePath(), db = await world.openDatabase(path), run = world.prepareRunning(db);
-  const raw = new DatabaseSync(path);
-  let row;
-  try { row = raw.prepare("SELECT * FROM runs WHERE id=?").get(run.envelope.runId); }
-  finally { raw.close(); }
-  assert.ok(row && typeof row.envelope_json === "string" && typeof row.lifecycle_json === "string");
-  const payloads = new Set([row.envelope_json, row.lifecycle_json]);
-  const parse = JSON.parse;
-  let parses = 0;
-  const spy = vi.spyOn(JSON, "parse").mockImplementation((text, reviver) => {
-    if (payloads.has(text)) parses++;
-    const value: unknown = parse(text, reviver); return value;
+it("decodes an unchanged run once across snapshots and decodes a changed row again", async () => {
+  const db = await world.openDatabase(), seeded = world.prepareRunning(db), claim = runClaim(seeded);
+  assert.ok(claim);
+  const claimToken = { workerId: claim.workerId, claimGeneration: claim.claimGeneration };
+  const renewed = db.authority.runs.renewClaim({
+    runId: seeded.envelope.runId, claim: claimToken, now: "2026-07-31T17:00:30.000Z",
   });
+  assert.equal(renewed.state, "renewed");
+  const run = renewed.run;
+  const { workflow, itemId, runId } = run.envelope;
+  const list = () => db.authority.runs.listByItem({ workflow, itemId });
+  const parse = vi.spyOn(RunRecordSchema, "parse");
   try {
-    for (let snapshot = 0; snapshot < 2; snapshot++) db.withAuthorityReadSnapshot(() => {
-      const before = parses;
-      for (let reader = 0; reader < 2; reader++) {
-        assert.deepEqual(db.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }), [run]);
-        assert.deepEqual(db.authority.runs.get(run.envelope.runId), run);
-      }
-      assert.equal(parses - before, 2, "one envelope and one lifecycle decode per read snapshot");
+    const first = db.withAuthorityReadSnapshot(() => {
+      const [listed] = list();
+      assert.deepEqual(listed, run);
+      assert.deepEqual(db.authority.runs.get(runId), run);
+      assert.ok(listed && Object.isFrozen(listed));
+      return listed;
     });
-  } finally { spy.mockRestore(); }
+    assert.equal(parse.mock.calls.length, 1, "first snapshot checks the whole record");
+    assert.equal(Reflect.set(first.input.parsed, "value", { changed: true }), true);
+
+    parse.mockClear();
+    const [second] = db.withAuthorityReadSnapshot(list);
+    assert.deepEqual(second, run);
+    assert.notEqual(second, first);
+    assert.ok(second && Object.isFrozen(second));
+    assert.equal(parse.mock.calls.length, 0, "unchanged row needs no whole-record parse");
+
+    assert.equal(db.authority.runs.renewClaim({
+      runId, claim: claimToken, now: LATER,
+    }).state, "renewed");
+    parse.mockClear();
+    const [changed] = db.withAuthorityReadSnapshot(list);
+    assert.ok(changed);
+    assert.equal(changed.version, run.version + 1);
+    assert.equal(runClaim(changed)?.heartbeatAt, LATER);
+    assert.equal(parse.mock.calls.length, 1, "changed row needs another whole-record parse");
+  } finally { parse.mockRestore(); }
+});
+
+it("reuses the validated command row across snapshots and isolates the returned records", async () => {
+  const db = await world.openDatabase();
+  const { record } = db.authority.commands.insert(COMMAND_FIXTURES[0]);
+  const read = () => db.withAuthorityReadSnapshot(() => db.authority.commands.get(record.commandId));
+  const parse = vi.spyOn(NativeCommandRequestSchema, "parse");
+  try {
+    const first = read();
+    assert.deepEqual(first, record);
+    assert.ok(first);
+    assert.equal(parse.mock.calls.length, 1);
+    assert.equal(Reflect.set(first, "requestedAt", LATER), true);
+
+    parse.mockClear();
+    assert.deepEqual(read(), record);
+    assert.equal(parse.mock.calls.length, 0, "unchanged command needs no row decode");
+  } finally { parse.mockRestore(); }
+});
+
+it("reuses a native row keyed by workflow across snapshots and decodes a new version", async () => {
+  const path = await world.databasePath(), db = await world.openDatabase(path);
+  const { workflow } = world.prepareRunning(db).envelope;
+  const read = () => db.withAuthorityReadSnapshot(() => db.authority.workerPools.get(workflow));
+  const original = db.authority.workerPools.get(workflow);
+  assert.ok(original);
+  const raw = new DatabaseSync(path, { readOnly: true });
+  try {
+    const row = raw.prepare("SELECT payload_json FROM worker_pools WHERE workflow=?").get(workflow);
+    assert.ok(row && typeof row.payload_json === "string");
+    const parse = JSON.parse;
+    const spy = vi.spyOn(JSON, "parse").mockImplementation((text, reviver) => {
+      const value: unknown = parse(text, reviver);
+      return value;
+    });
+    try {
+      const first = read();
+      assert.deepEqual(first, original);
+      assert.ok(first);
+      assert.equal(spy.mock.calls.filter(([text]) => text === row.payload_json).length, 1);
+      assert.equal(Reflect.set(first, "desiredWorkers", 0), true);
+
+      spy.mockClear();
+      assert.deepEqual(read(), original);
+      assert.equal(spy.mock.calls.filter(([text]) => text === row.payload_json).length, 0,
+        "unchanged worker pool needs no payload decode");
+
+      const planned = db.authority.workerPools.plan({
+        workflow, desiredWorkers: 2, expectedVersion: original.version, requestedBy: original.plannedBy, now: LATER,
+      });
+      assert.equal(planned.state, "applied");
+      const changed = raw.prepare("SELECT payload_json FROM worker_pools WHERE workflow=?").get(workflow);
+      assert.ok(changed && typeof changed.payload_json === "string");
+      spy.mockClear();
+      assert.deepEqual(read(), planned.pool);
+      assert.equal(spy.mock.calls.filter(([text]) => text === changed.payload_json).length, 1);
+    } finally { spy.mockRestore(); }
+  } finally { raw.close(); }
 });

@@ -48,6 +48,11 @@ const fields = {
   dryrun_results: {id:"resultId",scenario_id:"scenarioId",workflow:"workflow",subject_label:"subjectLabel",manifest_digest:"manifestDigest",verdict:"verdict",execution_state:"execution.state",run_id:"execution.runId",trace_id:"execution.traceId",wall_time_ms:"wallTimeMs",created_at:"recordedAt"},
 } as const;
 export type NativeOrdinaryTable = keyof typeof fields;
+const nonIdKeys: Partial<Record<NativeOrdinaryTable, string>> = {
+  workflow_workbook_selections: "workflow_id",
+  worker_pools: "workflow",
+  auth_leases: "credential_key",
+};
 function valueAt(record: unknown, path: string): string | number | null {
   let value: unknown = record;
   for (const part of path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value,part) : undefined;
@@ -58,7 +63,7 @@ function valueAt(record: unknown, path: string): string | number | null {
 export function isNativeOrdinaryTable(table: AuthorityTableName): table is NativeOrdinaryTable { return Object.hasOwn(fields,table); }
 export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): unknown {
   const row = RowSchema.parse(input);
-  return readNativeRecord(row, () => decodeNativeOrdinaryRecord(table, row, schemaVersion), `${table}:${schemaVersion}:`);
+  return readNativeRecord(row, () => decodeNativeOrdinaryRecord(table, row, schemaVersion), `${table}:${schemaVersion}:`, nonIdKeys[table]);
 }
 function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typeof RowSchema>, schemaVersion: number): unknown {
   let record: unknown;
