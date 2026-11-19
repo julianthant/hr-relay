@@ -8,13 +8,13 @@ import { createServer } from "node:http";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it, vi } from "vitest";
 import { installNativeSsoGuard, withPinnedSsoPost } from "../../../../src/backend/systems/browser-shared/ucsd-sso-guard.js";
-import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
+import { assertAuthenticatedApplication, probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
 import { submitPinnedUcsdSsoCredentials, submitSsoForm, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
-import { BrowserLandingStallError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { crmLoginRecipe } from "../../../../src/backend/systems/crm/session.js";
 import { i9LoginRecipe } from "../../../../src/backend/systems/i9/login.js";
 import { kualiLoginRecipe } from "../../../../src/backend/systems/kuali/session.js";
-import { newKronosLoginRecipe } from "../../../../src/backend/systems/new-kronos/session.js";
+import { newKronosLoginRecipe, verifyNewKronosAuthenticatedApplication } from "../../../../src/backend/systems/new-kronos/session.js";
 import { onbaseLoginRecipe } from "../../../../src/backend/systems/onbase/login.js";
 import { ucpathLoginRecipe } from "../../../../src/backend/systems/ucpath/session.js";
 import { resolveSystemLoginUrl } from "../../../../src/models/config/instance.js";
@@ -35,6 +35,185 @@ async function guardedContext() {
 }
 
 const kronosSso = "https://a5.ucsd.edu/tritON/profile/SAML2/POST/SSO";
+const kronosHome = "https://ucsd-sso.prd.mykronos.com/wfd/home";
+const kronosHops = [
+  "https://cust01-prd07-ath01.prd.mykronos.com/fixture/UI",
+  "https://cust01-prd07-ath01.prd.mykronos.com/fixture/XUI/",
+  "https://cust01-pid01.gss.mykronos.com/fixture/SSOPOST/fixture/idp",
+  kronosSso,
+  kronosHome,
+];
+
+it.each(["application", "sign-in form", "missing cookie"] as const)("proves the final WFD document after the reset redirect chain (%s)", async landing => {
+  const browserContext = await guardedContext();
+  try {
+    const page = await browserContext.newPage();
+    const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
+    let returned = false;
+    await browserContext.route("**/*", route => route.fulfill({
+      contentType: "text/html",
+      body: returned && landing === "sign-in form" ? form(kronosSso) : "<main>Loading</main>",
+    }));
+    await page.goto(kronosHome, { waitUntil: "domcontentloaded" });
+    await browserContext.addCookies([{ url: kronosHome, name: "kronosAuthToken", value: "fixture" }]);
+    const cookies = browserContext.cookies.bind(browserContext);
+    const reads = vi.spyOn(browserContext, "cookies").mockImplementationOnce(async urls => {
+      const beforeRedirect = await cookies(urls);
+      for (const hop of kronosHops) {
+        returned = hop === kronosHome;
+        await page.goto(hop);
+      }
+      if (landing === "missing cookie") await browserContext.clearCookies();
+      return beforeRedirect;
+    });
+    const verifying = assertAuthenticatedApplication("new-kronos", { ...context, page }, verifyNewKronosAuthenticatedApplication);
+    if (landing === "application") {
+      assert.equal((await verifying).url, kronosHome);
+      assert.equal(evidence().length, 1);
+    } else {
+      const check = landing === "sign-in form" ? "sign-in-form-absent" : "positive-evidence";
+      await assert.rejects(verifying, { step: "verify-landing", check, observedUrl: kronosHome });
+      assert.deepEqual(evidence(), []);
+    }
+    assert.ok(reads.mock.calls.length >= 2, "the replacement document requires its own cookie proof");
+  } finally { await browserContext.close(); }
+});
+
+it("waits for WFD when final verification starts on the SAML return hop", async () => {
+  const browserContext = await guardedContext();
+  try {
+    const page = await browserContext.newPage();
+    await browserContext.route("**/*", route => route.fulfill({ contentType: "text/html", body: "<main>Application</main>" }));
+    await page.goto(kronosSso);
+    await browserContext.addCookies([{ url: kronosHome, name: "kronosAuthToken", value: "fixture" }]);
+    const reads = vi.spyOn(browserContext, "cookies");
+    const { context } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
+    const [proof] = await Promise.all([
+      assertAuthenticatedApplication("new-kronos", { ...context, page }, verifyNewKronosAuthenticatedApplication),
+      page.goto(kronosHome),
+    ]);
+    assert.equal(proof.url, kronosHome);
+    assert.deepEqual(reads.mock.calls, [[kronosHome]]);
+  } finally { await browserContext.close(); }
+});
+
+it("reports the exact WFD route observation even if the page moves before the refusal is raised", async () => {
+  const browserContext = await guardedContext();
+  try {
+    const page = await browserContext.newPage();
+    await browserContext.route("**/*", route => route.fulfill({ contentType: "text/html", body: "<main>Loading</main>" }));
+    await page.goto(kronosSso);
+    const { context } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
+    await assert.rejects(assertAuthenticatedApplication("new-kronos", { ...context, page }, async input => {
+      const refused = await verifyNewKronosAuthenticatedApplication(input);
+      await page.goto(kronosHome);
+      return refused;
+    }), { step: "verify-landing", check: "application-route", observedUrl: kronosSso });
+  } finally { await browserContext.close(); }
+});
+
+it("refuses a replacement form when WFD still shows the previous document during a pending navigation", async () => {
+  const browserContext = await guardedContext();
+  const release = Promise.withResolvers<void>();
+  try {
+    const page = await browserContext.newPage();
+    const requested = Promise.withResolvers<void>();
+    const observed = Promise.withResolvers<void>();
+    const replacement = kronosHome + "?fixture=return";
+    await browserContext.route("**/*", async route => {
+      const returning = route.request().url() === replacement;
+      if (returning) {
+        requested.resolve();
+        await release.promise;
+      }
+      await route.fulfill({ contentType: "text/html", body: returning ? form(kronosSso) : "<main>WFD</main>" });
+    });
+    await page.goto(kronosHome);
+    await browserContext.addCookies([{ url: kronosHome, name: "kronosAuthToken", value: "fixture" }]);
+    const locator = page.locator.bind(page);
+    let redirected = false;
+    vi.spyOn(page, "locator").mockImplementation((selector, options) => {
+      const control = locator(selector, options);
+      if (!redirected && selector.includes('form[name="loginForm"]')) {
+        const count = control.count.bind(control);
+        vi.spyOn(control, "count").mockImplementationOnce(async () => {
+          const present = await count();
+          redirected = true;
+          await page.evaluate(url => { location.assign(url); }, replacement);
+          await requested.promise;
+          observed.resolve();
+          return present;
+        });
+      }
+      return control;
+    });
+    const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
+    const verifying = assertAuthenticatedApplication("new-kronos", { ...context, page }, verifyNewKronosAuthenticatedApplication);
+    const checked = assert.rejects(verifying, { check: "sign-in-form-absent", observedUrl: replacement });
+    void checked.catch(() => undefined);
+    await observed.promise;
+    assert.equal(page.url(), kronosHome);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    release.resolve();
+    await page.waitForURL(replacement);
+    await checked;
+    assert.deepEqual(evidence(), []);
+  } finally { release.resolve(); await browserContext.close(); }
+});
+
+it("expires a blocked WFD proof before a late cookie read can record evidence", async () => {
+  const browserContext = await guardedContext();
+  const release = Promise.withResolvers<void>();
+  try {
+    const page = await browserContext.newPage();
+    await browserContext.route("**/*", route => route.fulfill({ contentType: "text/html", body: "<main>WFD</main>" }));
+    await page.goto(kronosHome);
+    await browserContext.addCookies([{ url: kronosHome, name: "kronosAuthToken", value: "fixture" }]);
+    const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
+    const entered = Promise.withResolvers<void>();
+    const cookies = await browserContext.cookies(kronosHome);
+    vi.spyOn(browserContext, "cookies").mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return cookies;
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const verifying = assertAuthenticatedApplication("new-kronos", { ...context, page }, verifyNewKronosAuthenticatedApplication);
+    let refusal: unknown;
+    const settled = verifying.catch((error: unknown) => { refusal = error; });
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(20_001);
+    const expired = refusal;
+    release.resolve();
+    vi.useRealTimers();
+    await settled;
+    assert.ok(expired instanceof BrowserLoginError, "the assertion must settle while the cookie read is still blocked");
+    assert.equal(expired.step, "verify-landing");
+    assert.match(expired.detail, /deadline/u);
+    assert.deepEqual(evidence(), []);
+  } finally { release.resolve(); vi.useRealTimers(); await browserContext.close(); }
+});
+
+it("keeps the tested WFD URL on a proof invalidated by navigation", async () => {
+  const browserContext = await guardedContext();
+  try {
+    const page = await browserContext.newPage();
+    await browserContext.route("**/*", route => route.fulfill({ contentType: "text/html", body: "<main>WFD</main>" }));
+    await page.goto(kronosHome);
+    const { context } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
+    await assert.rejects(assertAuthenticatedApplication("new-kronos", { ...context, page }, () =>
+      verifyUcsdAuthenticatedApplication("new-kronos", page, {
+        assertCurrent: context.assertCurrent,
+        urlIsApplication: url => url === kronosHome,
+        urlRefusal: "expected WFD",
+        positive: async () => {
+          await page.goto(kronosSso);
+          return { holds: true, detail: "fixture cookie" };
+        },
+      })), { check: "application-route", observedUrl: kronosHome });
+  } finally { await browserContext.close(); }
+});
+
 it.each([
   ["new-kronos", kronosSso, kronosSso, true],
   ["new-kronos", kronosSso, SSO, false],

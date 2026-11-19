@@ -112,7 +112,7 @@ export interface AuthenticatedApplicationEvidence {
 // An unprovable probe is unauthenticated with its own reason, never an inferred session.
 export type AuthenticationProbe =
   | Readonly<{ authenticated: true; evidence: AuthenticatedApplicationEvidence }>
-  | Readonly<{ authenticated: false; reason: string; check: SignInCheck }>;
+  | Readonly<{ authenticated: false; observedUrl: string; reason: string; check: SignInCheck }>;
 
 
 export interface AuthenticationVerificationContext {
@@ -125,6 +125,7 @@ export interface AuthenticationVerificationContext {
 
 export type AuthenticatedApplicationVerifier = (
   context: AuthenticationVerificationContext,
+  phase?: "landing",
 ) => Promise<AuthenticationProbe>;
 
 export interface SystemLoginContext extends AuthenticationVerificationContext {
