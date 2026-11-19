@@ -391,13 +391,13 @@ describe("Transactions in Progress selection at the delete boundary", () => {
         const foreign = document.querySelector<HTMLInputElement>('[id="SELECT$1"]');
         const checked = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked");
         if (!button || !foreign || !checked?.get || !checked.set) throw new Error("missing fixture controls");
-        const readChecked = checked.get;
+        const readChecked = checked.get.bind(foreign);
         button.disabled = true;
         Object.defineProperty(foreign, "checked", {
-          set: checked.set,
+          set: checked.set.bind(foreign),
           get() {
             document.documentElement.dataset.sweepCensused = "true";
-            return readChecked.call(this) === true;
+            return readChecked() === true;
           },
         });
       });
