@@ -6,26 +6,20 @@ export type ExplorerPickerEntry = Readonly<{ id: string; title: string; depth: n
 const startedBy = (workflow: ExplorerWorkflowWire): readonly string[] =>
   workflow.reviewSpec.steps.flatMap(step => step.blocks.flatMap(block => block.kind === "starts" ? [block.workflowId] : []));
 
-/**
- * The served workflows in catalog order under their served names, each followed by the workflows it starts, depth first.
- * A workflow appears once; before the wire arrives only the served workflows are listed.
- */
-export function explorerPickerEntries(catalog: readonly WorkflowCatalogEntry[], wire: readonly ExplorerWorkflowWire[] | undefined): readonly ExplorerPickerEntry[] {
-  const roots = catalog.filter(entry => entry.source === "served");
+/** The served main workflows in catalog order under their served names; sub-workflows are never listed. */
+export function explorerPickerEntries(catalog: readonly WorkflowCatalogEntry[]): readonly ExplorerPickerEntry[] {
+  return catalog.filter(entry => entry.source === "served").map(entry => ({ id: entry.id, title: entry.label, depth: 0 }));
+}
+
+/** The main workflow a choice shows: itself when listed, else the listed workflow that starts it (at any depth), else the first listed one. */
+export function explorerMainWorkflowId(chosen: string, entries: readonly ExplorerPickerEntry[], wire: readonly ExplorerWorkflowWire[] | undefined): string | undefined {
+  if (entries.some(entry => entry.id === chosen)) return chosen;
   const byId = new Map((wire ?? []).map(workflow => [String(workflow.id), workflow]));
-  const listed = new Set(roots.map(entry => entry.id));
-  const entries: ExplorerPickerEntry[] = [];
-  const descend = (id: string, depth: number) => {
-    const workflow = byId.get(id);
-    if (workflow === undefined) return;
-    for (const childId of startedBy(workflow)) {
-      const child = byId.get(childId);
-      if (child === undefined || listed.has(childId)) continue;
-      listed.add(childId);
-      entries.push({ id: childId, title: child.label, depth });
-      descend(childId, depth + 1);
-    }
+  const reaches = (fromId: string, targetId: string, seen: Set<string>): boolean => {
+    const workflow = byId.get(fromId);
+    if (workflow === undefined || seen.has(fromId)) return false;
+    seen.add(fromId);
+    return startedBy(workflow).some(childId => childId === targetId || reaches(childId, targetId, seen));
   };
-  for (const root of roots) { entries.push({ id: root.id, title: root.label, depth: 0 }); descend(root.id, 1); }
-  return entries;
+  return (chosen !== "" ? entries.find(entry => reaches(entry.id, chosen, new Set())) : undefined)?.id ?? entries[0]?.id;
 }

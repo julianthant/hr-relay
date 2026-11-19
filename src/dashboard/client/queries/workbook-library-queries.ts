@@ -10,11 +10,10 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { httpError, schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
-import { WorkbookCloneRequestSchema, WorkbookSharePointImportRequestSchema, WorkbookResultsSchema, WorkbookCompatibilitySchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
+import { WorkbookCloneRequestSchema, WorkbookSharePointImportRequestSchema, WorkbookCompatibilitySchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
   type WorkbookLibraryEntry, type WorkbookLibraryAction, type WorkbookLibraryActionResult } from "../../../models/dashboard/workbook-library.js";
 
 export interface WorkbookLibraryQueries {
-  workbookResults(): Promise<z.infer<typeof WorkbookResultsSchema>>;
   workbookImport(workbook: unknown): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookClone(libraryId: string, request: z.infer<typeof WorkbookCloneRequestSchema>): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookImportSharePoint(request: z.infer<typeof WorkbookSharePointImportRequestSchema>): Promise<z.infer<typeof WorkbookImportResultSchema>>;
@@ -46,10 +45,6 @@ function canonicalContent(value: unknown): string {
 
 export function createWorkbookLibraryQueries(transport: DashboardTransport): WorkbookLibraryQueries {
   return Object.freeze({
-    async workbookResults() {
-      const path = '/api/v1/workbooks/results';
-      return parseOrThrow(WorkbookResultsSchema, path, await transport.requestJson(path));
-    },
     async workbookImport(workbook: unknown) {
       const path = '/api/v1/workbooks/import';
       const request = parseOrThrow(WorkbookImportRequestSchema, path, { workbook: encodeWorkbook(workbook) });

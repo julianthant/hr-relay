@@ -2199,7 +2199,7 @@ async function executeWorkerPoolCommand(
           throw error;
         }
       };
-      const { member, result } = transact(repositories => {
+      const { member, result, releaseClaimHold } = transact(repositories => {
         repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
         requireMemberFence(pool, request);
@@ -2211,9 +2211,18 @@ async function executeWorkerPoolCommand(
           ...workerPauseHeldRuns(repositories, member.workerId, "paused").map(held => journaledResetCancel(repositories, held, true))];
         const reset = applied(request, [workerTarget(member.workerId), ...cancels.flatMap(cancel => cancel.result.state === "applied" ? cancel.result.affectedTargets : [])],
           cancels.flatMap(cancel => cancel.versionChanges), cancels.flatMap(cancel => cancel.affectedDependencyIds));
-        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset) };
+        const slot = repositories.workerSlots.get(member.workerId);
+        if (slot === undefined) throw new Error("worker-slot-not-found");
+        if (!slot.paused) repositories.workerSlots.setPaused({ workerId: member.workerId, paused: true, now });
+        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset), releaseClaimHold: !slot.paused };
       });
-      try { await pool.stop(member.workerId, "reset"); await pool.start(member); }
+      try { await pool.stop(member.workerId, "reset"); }
+      catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; return result; }
+      // Stop proves the old process exited. Keep any pause that preceded the Reset.
+      if (releaseClaimHold) transact(repositories => repositories.workerSlots.setPaused({
+        workerId: member.workerId, paused: false, now: dependencies.clock.now().toISOString(),
+      }));
+      try { await pool.start(member); }
       catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }
       return result;
     }
@@ -2223,7 +2232,8 @@ async function executeWorkerPoolCommand(
       const result = transact(repositories => {
         if (!paused) repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
-        requireMemberFence(pool, request);
+        const state = requireMemberFence(pool, request);
+        if (!paused && state === "stopping") reject(request, "invalid-state", "WORKER_EXIT_UNOBSERVED");
         if (!paused && workerPauseHeldRuns(repositories, member.workerId, "requested").length !== 0) reject(request, "WORKER_PAUSE_SETTLING", ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
         const slot = repositories.workerSlots.setPaused({ workerId: member.workerId, paused, now });
         // Worker Pause holds its claimed run (the step restarts on Resume); Resume releases only the runs that pause held. A pending cancel wins.

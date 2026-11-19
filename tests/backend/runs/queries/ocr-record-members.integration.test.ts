@@ -233,6 +233,8 @@ it("presents the hosted OCR run through its host: one visible row, the host serv
   assert.equal(childRow.surfaceKind, "operation");
   if (parentRow.surfaceKind !== "operation" || childRow.surfaceKind !== "operation") assert.fail("Missing record presentations");
   assert.equal(childRow.parent?.visibility, "hidden-unless-failed");
+  assert.equal(childRow.parent?.runId, parentRow.runId);
+  assert.ok(childRow.availableSections.includes("review"));
   assert.equal(isQueueTopLevel(childRow), false);
   assert.deepEqual(parentRow.linkedRuns, []);
   assert.equal(parentRow.panelKind, "review");

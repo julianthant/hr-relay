@@ -30,6 +30,7 @@ import {
 import type {
   UcpathPendingSweepStaging,
   UcpathSsSmartHrSettlementDiagnostic,
+  UcpathTerminationEmploymentRecordObservation,
   UcpathTerminationStaging,
   UcpathTerminationTarget,
   UcpathTransactionRow,
@@ -210,6 +211,8 @@ export interface UcpathSmartHrFakeWorld {
   displayedNameAfterStage?: string;
   /** The rows the SS Smart HR surface currently carries for this person. */
   rows: UcpathTransactionRow[];
+  employmentRecords: UcpathTerminationEmploymentRecordObservation[];
+  employmentRecordsReadable: boolean;
   /** When set, every scan returns this complete unreadable observation (S45/S46). */
   unreadable?: Readonly<{
     reason: string;
@@ -236,6 +239,7 @@ export function createUcpathSmartHrFakeWorld(input: Readonly<{
   emplId: Eid;
   displayedName: string;
   rows?: readonly UcpathTransactionRow[];
+  employmentRecords?: readonly UcpathTerminationEmploymentRecordObservation[];
   findings?: UcpathTransactionFindings;
   nextTransactionId?: string;
 }>): UcpathSmartHrFakeWorld {
@@ -245,6 +249,8 @@ export function createUcpathSmartHrFakeWorld(input: Readonly<{
     ...(input.findings === undefined ? {} : { findings: input.findings }),
 
     rows: input.rows === undefined ? [] : [...input.rows],
+    employmentRecords: input.employmentRecords === undefined ? [] : [...input.employmentRecords],
+    employmentRecordsReadable: true,
     events: [],
     commitPerformed: true,
     nextTransactionId: input.nextTransactionId === undefined
@@ -274,6 +280,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
       state: "read",
       emplId: world.emplId,
       rows: world.rows,
+      ...(world.employmentRecordsReadable ? { employmentRecords: world.employmentRecords } : {}),
       scannedRowCount: world.rows.length,
       observedAt: observedAt(),
     });
@@ -375,6 +382,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
         if (selected === undefined) throw new Error(`${half} was asked to delete a set nothing staged`);
         const selectedIds = new Set(selected);
         world.rows = world.rows.filter((row) => !selectedIds.has(row.transactionId));
+        world.employmentRecords = world.employmentRecords.filter(({ transactionId }) => !selectedIds.has(transactionId));
       } else {
         const staged = world.staged;
         if (staged === undefined) {
@@ -388,6 +396,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
           startDate: staged.effectiveDate,
           displayedName: world.displayedName,
         }];
+        world.employmentRecords.push({ transactionId: world.nextTransactionId, emplRecord: staged.emplRecord });
       }
       return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
     },
