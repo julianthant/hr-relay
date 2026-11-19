@@ -17,6 +17,7 @@ import { PreflightEvidenceExpiredError, PreflightAdmissionRefusal,type Preflight
 import { localDatePart } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import { runtimeBuildIsCurrent } from "../../runtime/build-id.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
@@ -582,6 +583,9 @@ function executeStartRun(
   now: string,
 ): CommandApplication {
   const { descriptor, plan, selectedSources } = readStartPlan(dependencies, repositories, request, now);
+  if (!runtimeBuildIsCurrent()) {
+    reject(request, "RUN_START_RESTART_REQUIRED", ERROR_CATALOG.RUN_START_RESTART_REQUIRED.text);
+  }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,

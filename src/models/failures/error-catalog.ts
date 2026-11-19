@@ -283,6 +283,7 @@ export const ERROR_CATALOG = Object.freeze({
     "This plan expired. Review a fresh plan before starting again.",
     EmptyParametersSchema,
   ),
+  RUN_START_RESTART_REQUIRED: catalogEntry("Restart Relay before starting this run.", EmptyParametersSchema),
   RUN_START_READINESS_BLOCKED: catalogEntry(
     "Readiness checks failed. Review Settings before starting again.",
     EmptyParametersSchema,

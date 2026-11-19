@@ -21,12 +21,13 @@ function channel(overrides: Partial<WorkerChildControlHandlers> = {}) {
     ...overrides,
   };
   const child = createWorkerChildChannel({ send: message => { sent.push(message); }, clock, handlers, onStop: reason => { stops.push(reason); } });
-  const request = (body: unknown, requestId: string = randomUUID(), deadlineMs = 1_000) => {
-    child.receive({ kind: "worker-request", requestId, sentAt: clock.now().toISOString(), deadlineMs, request: body });
+  let sequence = 0;
+  const request = (body: unknown, requestId: string = randomUUID(), deadlineMs = 1_000, requestSequence = ++sequence) => {
+    child.receive({ kind: "worker-request", requestId, sequence: requestSequence, sentAt: clock.now().toISOString(), deadlineMs, request: body });
     return requestId;
   };
   const directive = (kind: "worker-pause" | "worker-resume", requestId: string = randomUUID()) => {
-    child.receive({ kind, requestId });
+    child.receive({ kind, requestId, sequence: ++sequence });
     return requestId;
   };
   const reply = (requestId: string) => {
@@ -62,17 +63,17 @@ it("replies with the refusal when a pause or resume handler throws", () => {
   assert.equal(c.refusal(c.directive("worker-resume")), "INTERNAL_FAILURE");
 });
 
-it("refuses a duplicate request id and an expired request without running it", async () => {
+it("refuses a replayed request and an expired request without running them", async () => {
   let checks = 0;
   const c = channel({ checkParkedWrite: async () => { checks += 1; return null; } });
   const id = c.request({ type: "check-parked-write", command: {} }); await flush();
-  c.request({ type: "check-parked-write", command: {} }, id); await flush();
+  c.request({ type: "check-parked-write", command: {} }, id, 1_000, 1); await flush();
   const replies = c.sent.filter(message => message.kind === "worker-reply" && message.requestId === id);
   assert.equal(replies.length, 2);
   assert.deepEqual(replies[1]?.kind === "worker-reply" && replies[1].outcome, { state: "refused", code: "WORKER_IPC_PROTOCOL_INVALID", message: "WORKER_IPC_PROTOCOL_INVALID" });
   const sentAt = c.clock.now().toISOString(); c.clock.advanceWall(2_000);
   const expired = randomUUID();
-  c.child.receive({ kind: "worker-request", requestId: expired, sentAt, deadlineMs: 1_000, request: { type: "check-parked-write", command: {} } });
+  c.child.receive({ kind: "worker-request", requestId: expired, sequence: 2, sentAt, deadlineMs: 1_000, request: { type: "check-parked-write", command: {} } });
   assert.equal(c.refusal(expired), "WORKER_REQUEST_EXPIRED");
   assert.equal(checks, 1);
 });
