@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, EmptyState, SearchInput, SegmentedChoice } from "../../ds/ui.js";
 import { AssistantServedActivity } from "./assistant-thread.js";
+import { publishAssistantModelChoice } from "./assistant-approval-model.js";
 import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";
 import { chatAge, createLocalHubChatsPort, useHubChats, useHubPanelPosition, useLogsTop, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
@@ -48,6 +49,13 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant((id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
   const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
+  const { models: catalog, chooseModel } = servedController;
+  const choose = useRef(chooseModel);
+  choose.current = chooseModel;
+  useEffect(() => {
+    publishAssistantModelChoice(modelPreference === undefined || catalog === undefined ? undefined : { preference: modelPreference, models: catalog, choose: preference => choose.current(preference) });
+    return () => publishAssistantModelChoice(undefined);
+  }, [modelPreference, catalog]);
   const served = historyPending ? { ...servedController, canCompose: false } : servedController;
   // With no stored chat the panel still opens, on an empty chat ready to compose.
   const current = model.chats.find(chat => chat.id === model.currentId) ?? (model.chats.length === 0 ? EMPTY_CHAT : undefined);

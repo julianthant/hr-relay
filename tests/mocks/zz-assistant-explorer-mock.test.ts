@@ -52,7 +52,6 @@ const FRAMES: Frame[] = [
   { id: "r2-open", query: "assistantOpen=1", view: RUN },
   { id: "r2-open-sessions", query: "assistantOpen=1", view: { ...RUN, sessions: true } },
   { id: "r2-history-chats", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); } },
-  { id: "r2-model-menu", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model: / }).click(); } },
   { id: "r2-history-hover", query: "assistantOpen=1", view: RUN, keepHover: true, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.locator(".hub-chat-row").nth(1).hover(); } },
   { id: "r2-history-activity", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "History", exact: true }).click(); await page.getByRole("radio", { name: "Activity" }).check({ force: true }); } },
   { id: "r2-new-chat", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: "New chat", exact: true }).click(); } },
@@ -61,8 +60,6 @@ const FRAMES: Frame[] = [
   { id: "dock-closed", query: "assistantOpen=0", view: RUN },
   { id: "dock-open", query: "assistantOpen=0", view: { ...RUN, sessions: true } },
   { id: "dock-open-assistant", query: "assistantOpen=1", view: { ...RUN, sessions: true } },
-  { id: "assistant-effort-menu", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model:/u }).click(); } },
-  { id: "assistant-model-menu", query: "assistantOpen=1", view: RUN, act: async page => { await page.getByRole("button", { name: /^Model:/u }).click(); } },
   { id: "dock-rail-collapsed", query: "assistantOpen=0", view: RUN, act: async page => { await page.locator(".workspace-rail-actions button").first().click(); } },
   { id: "dock-open-end", query: "assistantOpen=0", view: { ...RUN, sessions: true }, act: async page => { await page.locator("[data-session-strip]").evaluate(strip => { strip.scrollLeft = strip.scrollWidth; }); } },
   { id: "dock-open-rail-collapsed", query: "assistantOpen=0", view: { ...RUN, sessions: true }, act: async page => { await page.locator(".workspace-rail-actions button").first().click(); } },
@@ -212,10 +209,9 @@ for (const theme of THEMES) test(`assistant panel header, History and composer @
   expect(shape.composerBorder).toBe("0px");
   expect(shape.send).toEqual([28, 28]);
   expect(Math.abs(shape.composerHeight - 98)).toBeLessThanOrEqual(2);
-  // The model is fixed: the menu holds only the thinking efforts.
-  await page.getByRole("button", { name: /^Model: GPT-6.1 Sol/u }).click();
-  await expect(page.getByRole("menuitemradio")).toHaveText(["Light", "Medium", "High", "xHigh", "Max"]);
-  await page.keyboard.press("Escape");
+  // The model and effort are plain muted text beside Send, not a control.
+  await expect(page.locator("#hub-model-text")).toHaveText("GPT-6.1 Sol · Medium");
+  await expect(page.getByRole("button", { name: /^Model:/u })).toHaveCount(0);
   // Send is the filled circle even when empty: aria-disabled, never dimmed.
   const send = page.locator("#hub-send");
   await expect(send).toHaveAttribute("aria-disabled", "true");
@@ -336,4 +332,42 @@ test("Ask mark states video", async ({ browser }) => {
     await page.waitForTimeout(hold);
   }
   await context.close();
+});
+
+const MODEL_VIEW = { profileId: "00000000-0000-4000-8000-0000000000a1", epoch: 1 };
+for (const theme of THEMES) test(`assistant model and effort in Settings @ ${theme} ${WIDTH}`, async ({ page, context }) => {
+  test.setTimeout(300_000); page.setDefaultTimeout(20_000);
+  let preference = { slug: "gpt-6.1-sol", effort: "medium" }, revision = 0;
+  await context.route("**/api/v1/assistant/models", route => route.fulfill({ json: { models: [{ slug: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" }, { slug: "gpt-6.1-terra", displayName: "GPT-6.1 Terra" }] } }));
+  await context.route("**/api/v1/assistant/model-preference", route => route.fulfill({ json: { ...MODEL_VIEW, revision, preference } }));
+  const turns: string[] = [];
+  await context.route("**/api/v1/assistant/respond", route => { turns.push(route.request().url()); return route.abort(); });
+  await context.route("**/api/v1/commands", async route => {
+    const command = route.request().postDataJSON() as { commandId: string; family: string; payload: typeof preference; target: { profileId: string; expectedRevision: number } };
+    if (command.family !== "assistant-model-preference") return route.fallback();
+    preference = command.payload; revision = command.target.expectedRevision + 1;
+    await route.fulfill({ json: { state: "applied", commandId: command.commandId, affectedTargets: [{ family: "assistant-model-preference", profileId: command.target.profileId, revision }] } });
+  });
+  await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
+  await page.setViewportSize({ width: WIDTH, height: 720 });
+  await page.goto(url("assistantOpen=0&assistantFullAccess=1&settings=general"));
+  const effort = page.getByRole("combobox", { name: "Effort", exact: true });
+  await expect(page.getByRole("combobox", { name: "Model", exact: true })).toHaveAttribute("data-value", "gpt-6.1-sol");
+  await expect(effort).toHaveAttribute("data-value", "medium");
+  const rows = await page.locator('[data-settings-path^="assistant."], [data-settings-path="chatgpt.account"]').evaluateAll(items => items.map(item => ({ path: item.getAttribute("data-settings-path"), height: Math.round(item.getBoundingClientRect().height) })));
+  writeFileSync(join(OUT, `settings-assistant-rows-${theme}-${WIDTH}.json`), JSON.stringify(rows, null, 1));
+  await page.screenshot({ path: join(OUT, `settings-assistant-group-${theme}-${WIDTH}.png`) });
+  await effort.click();
+  await page.screenshot({ path: join(OUT, `settings-assistant-effort-open-${theme}-${WIDTH}.png`) });
+  await page.getByRole("option", { name: "High", exact: true }).click();
+  await expect(effort).toHaveAttribute("data-value", "high");
+  await expect.poll(() => preference.effort).toBe("high");
+  expect(turns).toEqual([]);
+  // The pick survives a reload and shows in the composer.
+  await page.goto(url("assistantOpen=0&assistantFullAccess=1&settings=general"));
+  await expect(page.getByRole("combobox", { name: "Effort", exact: true })).toHaveAttribute("data-value", "high");
+  await page.goto(url("assistantOpen=1"));
+  await expect(page.locator("#hub-model-text")).toHaveText("GPT-6.1 Sol · High");
+  await page.mouse.move(1, 1);
+  await page.screenshot({ path: join(OUT, `composer-changed-model-${theme}-${WIDTH}.png`) });
 });
