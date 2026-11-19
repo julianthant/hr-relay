@@ -37,7 +37,7 @@ function fixture(outcome: "done" | "failed" | "interrupted" | "cancelled", issue
       case "runtimeConfig": return { get: () => ({ configFingerprint: issue === "config" ? "b".repeat(64) : run.envelope.configFingerprint }) };
       case "writeIntents": return { listAttemptingByItem: () => issue === "attempting" ? [{}] : [],
         listByRun: () => issue === "parked" ? [{ status: "parked" }] : [] };
-      case "runCheckpoints": return { listByItem: () => [] };
+      case "runCheckpoints": return { listByRunAttempt: () => [] };
       case "gateResults": return { listByRun: () => [] };
       default: writes += 1; throw new Error(`unrequested authority effect: ${String(key)}`);
     }

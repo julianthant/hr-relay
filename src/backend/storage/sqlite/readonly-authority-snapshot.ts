@@ -416,7 +416,7 @@ export function createRestoreFenceIndex() {
     });
   } catch (error) {
     try { dispose(); }
-    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-index-setup-failed"); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-index-setup-failed", { cause: cleanup }); }
     throw error;
   }
 }

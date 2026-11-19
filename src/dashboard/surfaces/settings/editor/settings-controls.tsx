@@ -8,7 +8,7 @@ import { providerFieldPresentation } from "./ui-settings-records-labels.js";
 
 export function SettingsValueControl({ leaf, operation, error, disabled, update }: {
   leaf: EditableSettingsLeafWire; operation: SettingsDraftOperation | undefined; error: string | undefined;
-  disabled: boolean; update: (raw: SettingsDraftInput) => void;
+  disabled: boolean; update: (raw: SettingsDraftInput, immediate?: boolean) => void;
 }) {
   const raw = operation?.kind === "set" ? operation.raw : settingInput(leaf, operation?.kind === "clear" ? leaf.defaultValue ?? "" : leaf.effectiveValue);
   if (leaf.control.input === "object") {
@@ -36,7 +36,7 @@ export function SettingsValueControl({ leaf, operation, error, disabled, update 
   if (leaf.input === "boolean") {
     return <div className="settings-row-field settings-switch-control">
       <Switch name={leaf.path} checked={raw === "true"} label={settingTitle(leaf)} description={settingNote(leaf)} disabled={disabled}
-        onCheckedChange={checked => update(String(checked))} />
+        onCheckedChange={checked => update(String(checked), true)} />
       {error !== undefined && <p role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>{error}</p>}
     </div>;
   }

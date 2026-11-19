@@ -147,7 +147,7 @@ it("publishes profile selection across two full boot-log rotations and imports a
     const original = fs.readFileSync(path, "utf8");
     const padding = "m".repeat(60_000);
     appendLocalDebug({ stateRoot: root, build: "test", now: new Date(NOW),
-      event: { category: "boot", phase: "failed", area: "boot-size-fixture", reason: "database-unavailable", message: padding } });
+      event: { category: "boot", phase: "failed", area: "boot-size-fixture", reason: "database-unavailable", message: padding, pinned: false } });
     const template = fs.readFileSync(path, "utf8").slice(original.length);
     const initial = readLocalDebugLog(root);
     assert.strictEqual(initial.state, "present");
@@ -199,20 +199,17 @@ it("publishes profile selection across two full boot-log rotations and imports a
 
 {
 
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 
-const _afterEachFixture0 = () => {
-  for (const cleanup of cleanups.reverse()) cleanup();
+const _afterEachFixture0 = async () => {
+  for (const cleanup of cleanups.reverse()) await cleanup();
   cleanups.length = 0;
 };
 
 const { fixture, snapshot } = createCredentialDoctorFixtures(cleanups);
 
 describe("storage doctor recovery copy limits", () => {
-  afterEach(async () => {
-    for (const cleanup of cleanups.reverse()) await cleanup();
-    cleanups.length = 0;
-  });
+  afterEach(_afterEachFixture0);
 
   it("keeps readiness healthy with three preserved copies of a 90 MiB database", async () => {
     const f = await fixture();

@@ -15,7 +15,6 @@ import type {
 import type { Page } from "playwright";
 import {
   abortIfCancelled,
-  fillSsoCredentials,
   raceCancellation,
   submitSsoForm,
   verifyUcsdAuthenticatedApplication,
@@ -129,8 +128,6 @@ export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
     const { config } = context;
     context.assertCurrent();
     await waitForSsoForm(SYSTEM, context, token);
-    context.assertCurrent();
-    await fillSsoCredentials(SYSTEM, context, token);
     context.assertCurrent();
     await submitSsoForm(SYSTEM, context, token);
     context.assertCurrent();

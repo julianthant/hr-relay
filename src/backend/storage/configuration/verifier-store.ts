@@ -1,11 +1,11 @@
 import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
-import { sameDirectory, fileIdentityObservation, readPrivateFile, CREDENTIAL_DIRECTORY_MODE, ensureChildDirectory } from "./credential-safe-file.js";
+import { type DirectoryIdentity, noSymlinkAncestry, statDirectory, sameDirectory, fileIdentityObservation, readPrivateFile, CREDENTIAL_DIRECTORY_MODE, ensureChildDirectory } from "./credential-safe-file.js";
 import {
   createSyntheticVerifier,
   emailKey,
@@ -38,6 +38,8 @@ export function assertPreparedProfileVerifierInput(witness: PreparedProfileVerif
 }
 
 
+type ResumeBinding = Readonly<{ installationId: string; profileId: string; epoch: number; origin: string }>;
+
 export function createProfileVerifiers(machineRoot: string) {
   const directory = join(machineRoot, "machine");
   const pepperPath = join(directory, "profile-pepper");
@@ -66,6 +68,19 @@ export function createProfileVerifiers(machineRoot: string) {
     return loaded;
   }
 
+  function resumeMac(binding: ResumeBinding, nonce: string): Buffer {
+    const ancestry = new Map<string, DirectoryIdentity>();
+    if (!noSymlinkAncestry(directory, ancestry)) throw new Error("profile resume verifier directory unavailable");
+    statDirectory(directory, "profile verifiers", CREDENTIAL_DIRECTORY_MODE);
+    const secret = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
+    if (secret?.bytes.length !== 32 || !noSymlinkAncestry(directory, ancestry)) {
+      throw new Error("profile resume verifier unavailable");
+    }
+    return createHmac("sha256", secret.bytes).update(JSON.stringify([
+      "relay-profile-resume-v1", binding.installationId, binding.profileId, binding.epoch, binding.origin, nonce,
+    ])).digest();
+  }
+
   function read(): VerifierDocument {
     ensureMachine();
     if (!existsSync(documentPath)) return { schemaVersion: 1, profiles: [] };
@@ -83,6 +98,14 @@ export function createProfileVerifiers(machineRoot: string) {
   }
 
   return Object.freeze({
+    issueResumeProof(binding: ResumeBinding, verifiedPredecessor?: string): string {
+      const nonce = verifiedPredecessor === undefined ? randomBytes(32).toString("hex") : verifiedPredecessor.slice(0, 64);
+      return nonce + "." + resumeMac(binding, nonce).toString("hex");
+    },
+    verifyResumeProof(binding: ResumeBinding, proof: string | null): boolean {
+      if (proof === null || proof.length !== 129 || !/^[a-f0-9]{64}\.[a-f0-9]{64}$/u.test(proof)) return false;
+      return timingSafeEqual(resumeMac(binding, proof.slice(0, 64)), Buffer.from(proof.slice(65), "hex"));
+    },
     identify(email: string): "unknown" | { readonly profileId: string } {
       return emailMatch(read().profiles, pepper(), email);
     },

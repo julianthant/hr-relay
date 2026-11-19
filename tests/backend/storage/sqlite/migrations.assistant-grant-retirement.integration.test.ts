@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, assertAssistantHistoryRetirable } from "../../../../src/backend/storage/sqlite/assistant-grant-retirement.js";
+import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 
 function predecessor(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
@@ -17,7 +18,7 @@ it("drops the grant table from a store that holds no grant history", () => {
   const database = predecessor();
   try {
     assert.equal(tables(database).length, 1);
-    assertAssistantHistoryRetirable(database);
+    assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
     const migration = SQLITE_MIGRATIONS.find(value => value.version === ASSISTANT_GRANT_RETIREMENT_VERSION); assert.ok(migration);
     for (const statement of migration.statements) database.exec(statement);
     assert.deepEqual(tables(database), []);
@@ -34,8 +35,8 @@ it.each([
   try {
     database.exec("INSERT INTO assistant_chats VALUES ('chat','profile',1,'{}','created','expires')");
     database.exec(`INSERT INTO commands VALUES ('plain','settings','operator',NULL,NULL,'digest','{"payload":{}}','succeeded','{}','created','created')`);
-    assertAssistantHistoryRetirable(database);
+    assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
     database.exec(insert);
-    assert.throws(() => assertAssistantHistoryRetirable(database), /assistant-grant-history-unsupported/u);
+    assert.throws(() => assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow), /assistant-grant-history-unsupported/u);
   } finally { database.close(); }
 });

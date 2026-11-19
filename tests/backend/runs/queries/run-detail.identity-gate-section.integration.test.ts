@@ -403,6 +403,22 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.deepEqual(resolvedValue(command), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
   });
 
+  it("reports a retained gate as historical and refuses a fresh answer after descriptor drift", async () => {
+    const w = await world();
+    seed(w);
+    putCheckpoint(w, checkpointOf(packetOf()));
+    const { value } = available(gateSection(w));
+    const request = answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) });
+    const descriptor = { ...IDENTITY_DESCRIPTOR, version: IDENTITY_DESCRIPTOR.version + 1 };
+    const deps = depsOf(w, GATE_NODES, true, descriptor);
+    const before = w.authority.getRun(RUN_ID);
+
+    assert.deepEqual(gateSection(w, deps), { state: "missing",
+      reason: "This gate was opened under an earlier workflow definition. Its identity review is unavailable." });
+    assert.equal(resolveIdentityGateAnswer(deps, request, undefined).state, "refused");
+    assert.deepEqual(w.authority.getRun(RUN_ID), before);
+  });
+
   it("labels every option with the choice the post-gate node will verify", async () => {
     const w = await world();
     seed(w);

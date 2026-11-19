@@ -121,7 +121,7 @@ describe("redaction surface scan — the declaration audit", () => {
   for (const id of ["wire/run-detail-section", "wire/ocr-command-result"]) {
     it(`reviews every OCR leaf and refuses missing origins or foreign egress (${id})`, () => {
       const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id && (entry.path.includes(".ocr.") || id === "wire/ocr-command-result"));
-      assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 49);
+      assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 50);
       const surface = REDACTION_SURFACES.find(surface => surface.id === id); assert.ok(surface);
       assert.equal(surface.egress, "operator-loopback");
       const sameSurfaceOrigins = SURFACE_LEAF_ORIGINS.filter(candidate => candidate.surface === id);
@@ -473,12 +473,18 @@ describe("redaction surface scan — the declaration audit", () => {
       ["durable/editable-workbook", ""], ["wire/editable-workbook", ""],
       ["durable/saved-workbook", "workbook."], ["wire/saved-workbook", "workbook."],
       ["request/workbook-create", "workbook."], ["request/workbook-save", "workbook."],
-      ["wire/workbook-list", "[].workbook."], ["wire/workbook-history", "[].workbook."],
+      ["wire/workbook-history", "[].workbook."],
     ] as const) {
       for (const path of sensitivePaths) {
         assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === `${prefix}${path}`)?.origin, "captured-hr-value", `${surface}|${prefix}${path}`);
       }
     }
+    const listOrigins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === "wire/workbook-list");
+    for (const path of ["name", "typeId", "sheets[].name", "sheets[].columns[]", "sheets[].columnBindings[].id",
+      "sheets[].columnBindings[].sourceHeader", "sheets[].columnBindings[].fieldId"]) {
+      assert.equal(listOrigins.find(entry => entry.path === `[].${path}`)?.origin, "captured-hr-value", `wire/workbook-list|[].${path}`);
+    }
+    assert.equal(listOrigins.find(entry => entry.path === "[].libraryId")?.origin, "repository-authored", "wire/workbook-list|[].libraryId");
     for (const surface of ["durable/editable-workbook", "wire/editable-workbook", "request/workbook-create", "request/workbook-save"]) {
       const path = `${surface.startsWith("request/") ? "workbook." : ""}libraryId`;
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "captured-hr-value");
@@ -486,8 +492,8 @@ describe("redaction surface scan — the declaration audit", () => {
     for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "operator-authored", `${surface}|${path}`);
     }
-    for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-list", "wire/workbook-history"]) {
-      const prefix = surface.endsWith("list") || surface.endsWith("history") ? "[]." : "";
+    for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-history"]) {
+      const prefix = surface === "wire/workbook-history" ? "[]." : "";
       for (const path of [`${prefix}libraryId`, `${prefix}workbook.libraryId`]) {
         assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "repository-authored", `${surface}|${path}`);
       }

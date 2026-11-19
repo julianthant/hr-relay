@@ -214,7 +214,7 @@ async function withFenceProofCustody<Result>(work: (proofs: DisposableStack) => 
   try { return await work(proofs); }
   catch (error) {
     try { proofs.dispose(); }
-    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-proof-release-failed"); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-proof-release-failed", { cause: cleanup }); }
     throw error;
   } finally { proofs.dispose(); }
 }

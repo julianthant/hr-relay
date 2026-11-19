@@ -4,7 +4,7 @@ import { AssistantActionRecordSchema, AssistantChatRecordSchema } from "../../..
 import { CommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 import { commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
+import type { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 
 /** Schema 29: the per-card Confirm is the assistant's only authorization; the operator grant table is gone. */
 export const ASSISTANT_GRANT_RETIREMENT_VERSION = 29;
@@ -15,7 +15,7 @@ const LegacyActionPayload = z.looseObject({ binding: z.looseObject({
 }) });
 
 /** Prove terminal rows before leaving their original bytes in the verified pre-upgrade backup. */
-export function assertAssistantHistoryRetirable(database: DatabaseSync): void {
+export function assertAssistantHistoryRetirable(database: DatabaseSync, readNativeRecord: typeof nativeOrdinaryRecordFromRow): void {
   const held = [
     "SELECT 1 FROM assistant_grants LIMIT 1",
     "SELECT 1 FROM assistant_actions WHERE state NOT IN ('settled','cancelled') LIMIT 1",
@@ -27,9 +27,9 @@ export function assertAssistantHistoryRetirable(database: DatabaseSync): void {
     const payload = LegacyActionPayload.safeParse(JSON.parse(z.string().parse(row.payload_json)));
     if (!payload.success) throw new Error("assistant-grant-history-unsupported");
     const { grantId: _grant, policyRevision: _revision, mode: _mode, ...binding } = payload.data.binding;
-    const record = nativeOrdinaryRecordFromRow("assistant_actions", { ...row, payload_json: canonicalJsonStringify({ ...payload.data, binding }) });
+    const record = readNativeRecord("assistant_actions", { ...row, payload_json: canonicalJsonStringify({ ...payload.data, binding }) });
     const action = AssistantActionRecordSchema.parse(record);
-    const chat = AssistantChatRecordSchema.parse(nativeOrdinaryRecordFromRow("assistant_chats", database.prepare("SELECT * FROM assistant_chats WHERE id=?").get(action.chatId)));
+    const chat = AssistantChatRecordSchema.parse(readNativeRecord("assistant_chats", database.prepare("SELECT * FROM assistant_chats WHERE id=?").get(action.chatId)));
     if (chat.profileId !== action.binding.profileId || chat.epoch !== action.binding.accountSessionEpoch
       || chat.profileId !== database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()?.profile_id) throw new Error("assistant-action-chat-mismatch");
     const command = database.prepare("SELECT request_json, outcome_json FROM commands WHERE id=?").get(action.command.commandId);
@@ -37,7 +37,7 @@ export function assertAssistantHistoryRetirable(database: DatabaseSync): void {
     if (action.state === "cancelled" && command === undefined && audits.length === 0) continue;
     if (action.state !== "settled" || action.result === null || commandResultEffect(action.result) === "unknown"
       || command === undefined || audits.length !== 1 || command.outcome_json !== audits[0]?.payload_json) throw new Error("assistant-grant-history-unsupported");
-    const audit = CommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits", audits[0]));
+    const audit = CommandAuditRecordSchema.parse(readNativeRecord("command_audits", audits[0]));
     if (command.request_json !== canonicalJsonStringify(action.command) || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(action.command)
       || canonicalJsonStringify(audit.result) !== canonicalJsonStringify(action.result)) throw new Error("assistant-grant-history-unsupported");
   }

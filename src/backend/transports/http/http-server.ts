@@ -35,7 +35,7 @@ export function dispatchMountedRequest(app: DashboardApp, request: Request): Ret
 
 export interface DashboardHttpServer {
   readonly port: number;
-  close(): Promise<void>;
+  close(onStoppedListenerError?: (error: unknown) => void): Promise<void>;
 }
 
 export interface DashboardHttpListener extends DashboardHttpServer {
@@ -290,7 +290,7 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
         return mount.closing;
       } });
     },
-    close: async (): Promise<void> => {
+    close: async (onStoppedListenerError?: (error: unknown) => void): Promise<void> => {
       closing = true;
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -301,9 +301,13 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       const transfers = [...active];
       shutDown(transfers);
       server.closeAllConnections();
-      const [closed] = await Promise.allSettled([closeServer, ...transfers.map((transfer) => transfer.done)]);
+      const [closed, ...drained] = await Promise.allSettled([closeServer, ...transfers.map((transfer) => transfer.done)]);
       const failures: unknown[] = [...(selected?.failures ?? []), ...unownedFailures];
-      if (closed.status === "rejected") failures.push(closed.reason);
+      for (const transfer of drained) if (transfer.status === "rejected") failures.push(transfer.reason);
+      if (closed.status === "rejected") {
+        if (!server.listening && onStoppedListenerError !== undefined) onStoppedListenerError(closed.reason);
+        else failures.push(closed.reason);
+      }
       unownedFailures.length = 0;
       if (failures.length === 1) throw failures[0];
       if (failures.length > 1) throw new AggregateError(failures, "dashboard shutdown observed transfer cleanup failures");

@@ -7,6 +7,7 @@ import { FailureRetryWireSchema, projectFailureDisplay } from "../../../../model
 import type { FailureDisplaySchema } from "../../../../models/dashboard/failure-display.js";
 import type { TimelineEventRecord } from "../../../../models/events/timeline.js";
 import { projectObservedOperatorFields } from "../run-logs.js";
+import { hasRunDescriptorDrift } from "../run-timeline-compatibility.js";
 import { nodeIdOfTaskSpanPath } from "../../lifecycle/support.js";
 import { aggregateMemberRetryAvailable } from "../run-retry.js";
 import { ocrChildRetryAvailable } from "../../lifecycle/ocr-review-authority.js";
@@ -167,6 +168,7 @@ function failureRetry(deps: RunDetailQueryDeps, run: RunRecord, failure: Failure
 function failureDisplayFacts(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord,
   records: readonly TimelineEventRecord[]): z.infer<typeof FailureDisplaySchema> {
   const descriptor = deps.descriptors.resolve(run.envelope.workflow);
+  const historical = hasRunDescriptorDrift(run, descriptor);
   const labels = new Map(descriptor?.timeline?.flatMap(step => step.nodes.map(node => [node.id, node.label] as const)));
   const title = failure.nodeId === undefined ? undefined : labels.get(failure.nodeId);
   const protectedInput = retainedRunProtectedBindings(run).length > 0;
@@ -191,7 +193,8 @@ function failureDisplayFacts(deps: RunDetailQueryDeps, run: RunRecord, failure: 
       if (Date.parse(event.observedAt) > Date.parse(failure.occurredAt)) continue;
       if (event.nodeId !== nodeIdOfTaskSpanPath(event.spanPath)) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
       const origin = descriptor?.dataOrigins?.find(entry => entry.nodeId === event.nodeId && entry.taskId === event.taskId);
-      for (const observed of projectObservedOperatorFields(event, origin?.operatorFields)) {
+      const fields = historical ? origin?.operatorFields?.filter(field => field.display === undefined) : origin?.operatorFields;
+      for (const observed of projectObservedOperatorFields(event, fields)) {
         const outcome = observed.direction === "read" ? "Read"
           : observed.direction === "write" && observed.point.field === "emplId"
             && event.taskId === "ucpath/read-paypath-position" && event.taskId === failure.taskId
