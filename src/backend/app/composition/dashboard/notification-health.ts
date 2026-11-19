@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { inspectAuthorityOffThread } from "../../../storage/sqlite/authority-inspection-off-thread.js";
+import { hasInspectionIntegrityFailureCode } from "../../../storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
@@ -14,12 +15,14 @@ import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { isAuthoritySourceChanged } from "../../../storage/sqlite/readonly-authority-snapshot.js";
 
 type InspectionVerdict = "sound" | "failed" | "overtaken";
-/** The whole-store inspection runs on a worker thread because it takes seconds on a real store. An aborted pass throws; a refused inspection is a failed verdict the caller turns into a failed-health notification. */
+
 async function inspectStore(admission: RuntimeAdmission, path: string, signal: AbortSignal | undefined): Promise<InspectionVerdict> {
   try { await inspectAuthorityOffThread(admission, path, { signal }); return "sound"; }
   catch (error) {
     if (signal?.aborted === true) throw error;
-    return isAuthoritySourceChanged(error) ? "overtaken" : "failed";
+    if (isAuthoritySourceChanged(error)) return "overtaken";
+    if (hasInspectionIntegrityFailureCode(error)) return "failed";
+    throw error;
   }
 }
 
