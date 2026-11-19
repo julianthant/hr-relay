@@ -29,7 +29,7 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
   return custodyUnproved;
 }
 
-export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: { close: StartupCleanup }; stopWorkerControl: StartupCleanup; readWorkerStopFailures(): readonly unknown[]; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
+export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: { close: StartupCleanup }; stopWorkerControl: StartupCleanup; takeWorkerStopFailures(): readonly unknown[]; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
   const { profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, historyTimer, custody } = input;
   const stepFailures: DashboardStopFailure[] = [];
   let producerClosure: Promise<void> | undefined, producersClosed = false;
@@ -72,7 +72,7 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
       }
       try { await stopWorkerControl(); }
       catch (error) { failures.push(error); }
-      for (const cause of input.readWorkerStopFailures()) stepFailures.push({ step: "worker-stop", cause });
+      for (const cause of input.takeWorkerStopFailures()) stepFailures.push({ step: "worker-stop", cause });
       for (const { cause } of stepFailures) if (cause instanceof Error) retainPublicFailureCustody(cause, failures);
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
     })();
