@@ -3,27 +3,33 @@ import { describe, it } from "vitest";
 import { parsePersonOrgGridRows, searchPersonOrgWithPagePort } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { SearchPersonOrg, SearchPersonOrgInputSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
-import { resolveSeparationSubject } from "../../../src/rules/separations/separation-subject.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { separationsDescriptor, separationsIdentityCheckDescriptor, separationsUcpathTerminationDescriptor, separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const employeeName = "Quillan, Petra";
 const eid = EidSchema.parse("10873698");
 
-describe("Separations shared name-search safety", () => {
+describe("Separations shared Person Org search safety", () => {
   for (const descriptor of [separationsDescriptor, separationsIdentityCheckDescriptor, separationsUcpathTerminationDescriptor, separationsKualiFinalizationDescriptor]) {
-    it(`${descriptor.id} cannot resolve a prefix employee and preserves an exact employee`, async () => {
+    it(`${descriptor.id} uses its declared criterion and rejects a non-exact person`, async () => {
       const nodes = descriptorRuntimeNodes(descriptor);
       const search = nodes.find(node => node.id === "name-search");
       assert.ok(search?.kind === "task");
       assert.equal(search.uses, SearchPersonOrg);
-      const input = SearchPersonOrgInputSchema.parse(search.bind({ input: { employeeName }, outputs: { plan: { employeeName } } }));
-      assert.deepEqual(input, { kind: "by-name", name: employeeName, keepNonHdh: true });
+      const searchesByEid = descriptor === separationsDescriptor || descriptor === separationsIdentityCheckDescriptor;
+      const input = SearchPersonOrgInputSchema.parse(search.bind({
+        input: { employeeName, emplId: eid },
+        outputs: { document: { employee: { eid: { state: "present", value: eid } } } },
+      }));
+      assert.deepEqual(input, searchesByEid
+        ? { kind: "by-eid", emplId: eid }
+        : { kind: "by-name", name: employeeName, keepNonHdh: true });
       for (const exact of [false, true]) {
         const name = exact ? "Petra Quillan" : "Petral Quillanmore";
-        const rows = parsePersonOrgGridRows([[eid, "0", "Active", "SDCMP", "004921", "Fictional analyst", exact ? "Quillan" : "Quillanmore", name]]);
+        const returnedEid = searchesByEid && !exact ? "10401814" : eid;
+        const rows = parsePersonOrgGridRows([[returnedEid, "0", "Active", "SDCMP", "004921", "Fictional analyst", exact ? "Quillan" : "Quillanmore", name]]);
         let drills = 0;
-        const output = await searchPersonOrgWithPagePort(() => undefined, {
+        const read = searchPersonOrgWithPagePort(() => undefined, {
           search: async () => ({ kind: "grid", rows }),
           drill: async () => {
             drills += 1;
@@ -33,17 +39,17 @@ describe("Separations shared name-search safety", () => {
           },
           returnToResults: async () => rows,
         }, input);
-        const subject = resolveSeparationSubject({ documentNumber: "8109", employeeName,
-          documentEid: { state: "absent", reason: "no employee ID supplied" }, nameSelection: output.selection });
+        if (searchesByEid && !exact) {
+          await assert.rejects(read, /unexpected results grid/u);
+          assert.equal(drills, 0);
+          continue;
+        }
+        const output = await read;
         assert.equal(output.selection.status, exact ? "resolved" : "not-found");
         assert.equal(drills, exact ? 2 : 0);
         if (exact) {
-          assert.ok(subject.state === "resolved");
-          assert.equal(subject.subject.emplId, eid);
-          assert.equal(subject.subject.emplIdSource, "name-resolved");
+          assert.equal(output.selection.selected?.emplId, eid);
         } else {
-          assert.ok(subject.state === "refused");
-          assert.equal(subject.code, "subject-not-resolvable");
           assert.deepEqual(output.results, []);
         }
       }

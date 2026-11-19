@@ -65,14 +65,13 @@ it("classifies the entered EID as an identifier and its origin and gate requirem
 describe("identity lookup corrections", () => {
   const nodes = descriptorRuntimeNodes(separationsDescriptor);
   const gate = separationsDescriptor.gateCorrections?.[0];
-  it("declares the identity gate fill row and both subject failures as one Employee ID lookup", () => {
+  it("keeps the identity gate fill row and Job Summary correction, with no subject-failure correction", () => {
     assert.deepEqual(separationsDescriptor.gateCorrections, [{ gateId: "identity-approval", inputField: "operatorEmployeeId",
       label: "Employee ID", placeholder: "8 digits", pattern: EID_PATTERN.source }]);
-    for (const code of ["subject-not-resolvable", "subject-ambiguous"]) {
-      const correction = separationsDescriptor.failureCorrections?.find(entry => entry.nodeId === "subject" && entry.code === code);
-      assert.deepEqual(correction, { nodeId: "subject", code, inputField: "operatorEmployeeId", label: "Employee ID", actionLabel: "Enter EID",
-        placeholder: "8 digits", pattern: EID_PATTERN.source });
-    }
+    assert.deepEqual(separationsDescriptor.failureCorrections?.filter(entry => entry.inputField === "operatorEmployeeId"), [
+      { nodeId: "job-summary", code: "employee-not-found", inputField: "operatorEmployeeId", label: "Employee ID",
+        actionLabel: "Enter EID", placeholder: "8 digits", pattern: EID_PATTERN.source, displaySafe: true },
+    ]);
   });
   it("refuses a gate correction naming an unknown gate, a task node, an unknown input, a bad pattern or the same gate twice", () => {
     assert.ok(gate);
