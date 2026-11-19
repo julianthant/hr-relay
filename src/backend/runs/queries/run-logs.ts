@@ -21,6 +21,7 @@ import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
   projectNoteForOperator,
+  type ObservedDataPointWire,
   type SpanEventWire,
 } from "../../../models/events/types.js";
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
@@ -320,11 +321,14 @@ function logIdOf(entry: RunLogScanEntry): string {
   return deterministicUuid(`log:${entry.line.file.path}:${String(entry.line.lineNumber)}`);
 }
 
-function historicalDisplayField(direction: "read" | "write", label: string, field: string) {
+type ObservedOperatorField = Extract<NonNullable<z.infer<typeof ObservedLogRowWireSchema>["displayFields"]>[number],
+  { value: string }> & { point: ObservedDataPointWire };
+
+function historicalDisplayField(direction: "read" | "write", label: string, field: string): ObservedOperatorField {
   // Both the displayed field and its projected point omit the original value.
   const value = "Unavailable for this historical run";
   return { direction, label, value, point: { direction, field, values: [{ key: field, value,
-    state: "allowed" as const, classification: "safe-diagnostic" as const, transform: "allow" as const }] } };
+    state: "allowed", classification: "safe-diagnostic", transform: "allow" }] } };
 }
 
 function observedFieldsForLogs(entry: Extract<RunLogScanEntry, { kind: "observed" }>) {
@@ -335,7 +339,7 @@ function observedFieldsForLogs(entry: Extract<RunLogScanEntry, { kind: "observed
 }
 
 export function projectObservedOperatorFields(event: Extract<SpanEventWire, { t: "data.observed" }>,
-  operatorFields: RunDetailDataOriginView["operatorFields"], historical = false) {
+  operatorFields: RunDetailDataOriginView["operatorFields"], historical = false): ObservedOperatorField[] {
   const atPath = (value: unknown, path: readonly string[], order: readonly number[] = [], address: readonly (string | number)[] = []): readonly Readonly<{ observed: unknown; order: readonly number[]; address: readonly (string | number)[] }>[] => {
     if (Array.isArray(value)) return value.flatMap((member, index) => atPath(member, path, [...order, index], [...address, index]));
     if (path.length === 0) return [{ observed: value, order, address }];
@@ -349,7 +353,7 @@ export function projectObservedOperatorFields(event: Extract<SpanEventWire, { t:
       const retained = value.state === "allowed" ? value.value : undefined;
       const values = value.state === "allowed" ? atPath(retained, field.fieldPath === value.key ? [] : field.fieldPath.slice(value.key.length + 1).split("."))
         : value.state === "redacted" && field.fieldPath === value.key ? [{ observed: "Redacted", order: [], address: [] }] : [];
-      return values.flatMap(({ observed, order, address }) => {
+      return values.flatMap<{ order: readonly number[]; field: ObservedOperatorField }>(({ observed, order, address }) => {
         if (typeof observed !== "string" && typeof observed !== "number" && typeof observed !== "boolean") return [];
         if (value.state === "allowed" && field.display !== undefined && historical) {
           return [{ order, field: historicalDisplayField(point.direction, field.label, field.fieldPath) }];

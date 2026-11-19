@@ -5,7 +5,7 @@ import { scaledMs } from "../../../support/time-scale.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import * as observedData from "../../../../src/backend/logs/observed-data.js";
 import { retainedOcrWithAssociations, retainedOcrStore, redactRetainedOcrObservedDataPoints } from "../../../support/fixtures/ocr/retained-review-producer.js";
-import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
+import { TimelineCheckpointReferenceSchema, timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
@@ -565,7 +565,8 @@ it("opens artifact-era members and refuses a missing or contradictory completed 
       identities: [{ ...identity, outcome: { ...identity.outcome, runId } }] }) } };
     const eventId = deriveStableUuid("timeline-checkpoint-recorded", checkpointRecordKey(result));
     const publication = repositories.timelineEvents.get(eventId); assert.ok(publication?.payload.kind === "checkpoint-recorded");
-    const wrongPublication = { ...publication, payload: { ...publication.payload, checkpoint: timelineCheckpointReference(wrong) } };
+    const checkpoint = TimelineCheckpointReferenceSchema.parse(timelineCheckpointReference(wrong));
+    const wrongPublication = { ...publication, payload: { ...publication.payload, checkpoint } };
     assert.throws(() => readOcrRecordBindings({ ...repositories, runCheckpoints: { ...checkpoints,
       listByAttempt: (...args) => args[2] === "read-result" ? [wrong] : checkpoints.listByAttempt(...args) },
       timelineEvents: { ...repositories.timelineEvents, get: id => id === eventId ? wrongPublication : repositories.timelineEvents.get(id) },

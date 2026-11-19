@@ -130,7 +130,7 @@ function preCatalogueWorkbook(database: DatabaseSync) {
   return { first, id, migrate, patch, settle };
 }
 
-it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as const)("reads revision %s from earlier keyed settlements (%s)", version => {
+it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as const)("reads revision %s from earlier keyed settlements (%s)", (version, _source) => {
   using database = new DatabaseSync(":memory:");
   const { first, id, migrate, patch } = preCatalogueWorkbook(database);
   const names = ["First Fixture", "Second Fixture", "Third Fixture"];
@@ -259,7 +259,7 @@ it("scans a retained worksheet linearly across a batch of late keys", () => {
   const bound = bindRunWorkbookReference(request, repository.snapshot(request));
   const selected = repository.libraryVersion(id, request.versionId), sheet = selected.workbook.sheets[0];
   let rowReads = 0;
-  const rows = new Proxy(sheet.rows, { get(array, key) {
+  const rows = new Proxy(sheet.rows, { get(array, key): unknown {
     if (typeof key === "string" && /^\d+$/u.test(key)) rowReads++;
     return Reflect.get(array, key);
   } });
@@ -312,7 +312,7 @@ it("checks duplicate person matches in physical row order with one worksheet sca
     if (running === undefined) throw new Error("fixture running record missing");
     const selected = repository.libraryVersion(libraryId, request.versionId), sheet = selected.workbook.sheets[0];
     let rowReads = 0;
-    const rows = new Proxy(sheet.rows, { get(array, key) {
+    const rows = new Proxy(sheet.rows, { get(array, key): unknown {
       if (typeof key === "string" && /^\d+$/u.test(key)) rowReads++;
       return Reflect.get(array, key);
     } });

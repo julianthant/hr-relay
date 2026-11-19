@@ -1260,7 +1260,8 @@ function checkHistoricalReceipt(input: {
     if (marker === undefined && read === undefined && commit === undefined && record.runId !== envelope.runId) continue;
     if (marker?.obligation !== `node.${nodeId}`) throw new Error("receipt-checkpoint-verification-missing");
     const reuse = remainingReuse.get(id("reuse", nodeId));
-    const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt || record.claimGeneration !== run.claimGeneration;
+    const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt
+      || Number(record.claimGeneration) !== Number(run.claimGeneration);
     if (reuse !== undefined) {
       const checked = checkpointReuse(id, nodeId, record, lifecycle.endedAt, replayed, reuse.freshnessLimitMs);
       if (!same(checked.reuse, reuse) || record.assertion !== undefined) throw new Error("receipt-checkpoint-reuse-conflict");
