@@ -142,8 +142,13 @@ it("keeps Continue held when only a reference check is picked and no roster is c
     artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }) }),
   { workflows: [checkWorkflow], panelWorkflowId: checkWorkflow.workflowId });
   await attach([pdf("first.pdf", "%PDF first")]);
-  const use = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.getAttribute("aria-label") === `Use ${reference.name}`); assert.ok(use, "the check row offers Use");
-  await act(async () => use.click()); await h.settle();
+  const check = document.querySelector('[role="region"][aria-label="Also check"]'); assert.ok(check, "the Also check section");
+  const open = [...check.querySelectorAll("button")].find(button => button.textContent?.trim() === "Add spreadsheet"); assert.ok(open, "the check section offers Add spreadsheet");
+  await act(async () => open.click());
+  const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a spreadsheet"]'); assert.ok(search, "the picker has a search");
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(search, reference.name); search.dispatchEvent(new Event("input", { bubbles: true })); });
+  const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(node => node.textContent?.includes(reference.name)); assert.ok(item, "the picker lists the check spreadsheet");
+  await act(async () => item.click()); await h.settle();
   expect(dialog.disabled("Continue")).toBe(true);
   expect(dialog.text()).toContain("Add a reference spreadsheet first.");
   expect(dialog.text()).toContain("Also check");
