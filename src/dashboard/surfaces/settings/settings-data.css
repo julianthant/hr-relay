@@ -1,5 +1,5 @@
 .settings-data-section { min-width: 0; }
-.settings-data-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); }
+
 .settings-heading-actions { align-items: center; }
 .settings-heading-actions > .ds-page-heading-actions { margin-left: auto; }
 .settings-takeover .ds-page-heading { display: flex; align-items: center; }
@@ -15,14 +15,7 @@
 .settings-tab-body .ds-switch-copy .ds-text-ui,
 .settings-tab-body .ds-radio-label { font-weight: 400; }
 .settings-tab-body .ds-page-heading-description { font-size: var(--ds-text-body-description); font-weight: 400; }
-.activity-header-filters { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--ui-stroke); padding-bottom: 16px; }
-.activity-header-filters > div { max-width: 220px; }
 
-.activity-header-filters { flex-wrap: wrap; align-items: center; }
-.activity-header-filters > .activity-period-controls { display: flex; flex: 1; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; max-width: none; }
-.activity-period-controls > .ds-select-control { width: 130px; height: var(--ds-row-control-h); min-height: var(--ds-row-control-h); }
-.activity-period-controls .ds-select-control, .activity-period-controls .date-input-group, .activity-period-controls .date-input-group__segment, .activity-period-controls .date-picker__trigger-indicator { font-size: var(--ds-text-ui); line-height: var(--ds-lh-ui); }
-.activity-header-filters > .activity-sample-control { max-width: 190px; }
 .settings-takeover .ds-result-row { align-items: center; }
 .settings-takeover .ds-result-row-side { align-self: center; }
 .shortcut-reference-copy p { margin: 0; font-size: var(--ds-row-title); line-height: var(--ds-row-title-lh); font-weight: 400; }
