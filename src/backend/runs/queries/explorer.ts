@@ -200,14 +200,12 @@ function writeSafetyWire(contract: AnyTaskContract): ExplorerWriteSafetyWire | u
     completionKind: completion.kind,
     ...(completion.kind === "receipt" ? {} : { verifyTaskId: completion.verify.taskId }),
     probeTaskId: safety.idempotency.probe.taskId,
-    recoveryAbsence: absence.kind === "operator-only"
-      ? { kind: "operator-only", reason: absence.reason }
-      : {
-        kind: "stabilized",
-        minSinceFenceMs: absence.minSinceFenceMs,
-        consistentReads: absence.consistentReads,
-        minBetweenReadsMs: absence.minBetweenReadsMs,
-      },
+    recoveryAbsence: {
+      kind: "operator-only",
+      reason: absence.kind === "operator-only"
+        ? absence.reason
+        : "The operator must resolve an unconfirmed write before another attempt.",
+    },
     ...(completion.kind === "upload-verify" && completion.unverifiableByPage !== undefined
       ? {
         unverifiableByPage: {

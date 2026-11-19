@@ -52,11 +52,16 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   return false;
 }
 
-const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "long" }), MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" });
-const dayStart = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-/** Day group once out of Priority: Today, Yesterday, the weekday within a week, else the date. */
+const WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", weekday: "long" }), MONTH_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "long", day: "numeric" });
+const PACIFIC = "America/Los_Angeles";
+const PACIFIC_DATE = new Intl.DateTimeFormat("en-US", { timeZone: PACIFIC, year: "numeric", month: "numeric", day: "numeric" });
+const pacificDay = (value: Date) => {
+  const parts = Object.fromEntries(PACIFIC_DATE.formatToParts(value).map(part => [part.type, part.value]));
+  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+};
+/** Day group once out of Priority, by the Pacific day whatever the host zone: Today, Yesterday, the weekday within a week, else the date. */
 export function notificationDay(occurredAt: string, nowIso: string): string {
-  const when = new Date(occurredAt), ago = Math.round((dayStart(new Date(nowIso)) - dayStart(when)) / 86_400_000);
+  const when = new Date(occurredAt), ago = Math.round((pacificDay(new Date(nowIso)) - pacificDay(when)) / 86_400_000);
   return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? WEEKDAY.format(when) : MONTH_DAY.format(when);
 }
 
@@ -100,11 +105,15 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
   return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" "), needsYou };
 }
 
+export type InboxArrival = Readonly<{ sourceId: string; item: NotificationItem }>;
+
 export interface InboxWiring {
   readonly state: NotificationsState;
   readonly notice: string;
   control(id: string, action: NotificationControl | "snooze" | "unsnooze"): Promise<boolean>;
   readAll(): Promise<void>;
+  /** Delivers each distinct publication once, as the item it adds; snapshots never deliver. */
+  onPublication(listener: (arrival: InboxArrival) => void): () => void;
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
@@ -137,6 +146,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   }, [client, enabled, request, read]);
   const rows = settled?.request === request ? settled.rows : undefined;
   const rowsRef = useRef(rows); rowsRef.current = rows;
+  const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
   useEffect(() => {
     if (!enabled) return;
     const delivered = new Set<string>();
@@ -149,6 +159,8 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       const row = publication.notification;
       if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
       if (row.state === "snoozed") return;
+      const arrival = { sourceId: publication.sourceId, item: notificationItem(row, current.current.binding.authority.nowIso) };
+      for (const listener of arrivalListeners.current) listener(arrival);
       void client.notificationTarget(row.notificationId).then(target => {
         if (current.current.request !== request) return;
         if (!notificationTargetMatches(row, target)) { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return; }
@@ -202,6 +214,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     : inboxProjection(rows, binding.authority.nowIso);
   return { state: projection.state, notice: [rows !== undefined && !current.current.fresh && !settled?.failed ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "", projection.notice, settled?.request === request ? settled.notice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
+    onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },
     readAll: async () => {
       if (!enabled || current.current.request !== request || !current.current.fresh || client.notificationCollection === undefined) return;
       const owner = current.current.binding;
