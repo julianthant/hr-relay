@@ -14,6 +14,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import {
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,
   UcpathPendingTransactionSetSchema,
+  UcpathTerminationEmploymentRecordObservationSchema,
   isUcpathTerminationAction,
   isUcpathTerminationInProgress,
   ucpathPendingTransactionIdList,
@@ -89,6 +90,19 @@ function sameRows(
     && left.every((row, index) => JSON.stringify(rowFacts(row)) === JSON.stringify(rowFacts(right[index])));
 }
 
+function hasExactEmploymentRecord(
+  scan: Extract<UcpathTransactionScan, { readonly state: "read" }>,
+  transactionId: string,
+  expectedEmplRecord: string,
+): boolean {
+  const observations = scan.employmentRecords?.filter((record) => record.transactionId === transactionId);
+  if (observations?.length !== 1) return false;
+  const observation = UcpathTerminationEmploymentRecordObservationSchema.safeParse(observations[0]);
+  return observation.success && observation.data.emplRecord === expectedEmplRecord;
+}
+
+const EMPLOYMENT_RECORD_UNPROVEN =
+  "the SS Smart HR detail did not prove the expected employment record for the exact termination T-number";
 
 export function ucpathTerminationVerdict(
   target: UcpathTerminationTarget,
@@ -104,6 +118,13 @@ export function ucpathTerminationVerdict(
   const matches = scan.rows.filter(
     (row) => isUcpathTerminationAction(row.action) && row.startDate === target.effectiveDate,
   );
+  if (matches.some((row) => !hasExactEmploymentRecord(scan, row.transactionId, target.emplRecord))) {
+    return UcpathTerminationVerdictSchema.parse({
+      state: "unknown",
+      reason: EMPLOYMENT_RECORD_UNPROVEN,
+      observedAt: scan.observedAt,
+    });
+  }
   if (matches.length > 1) {
     return UcpathTerminationVerdictSchema.parse({
       state: "ambiguous",
@@ -232,6 +253,7 @@ export type UcpathTerminationFilingPresenceVerdict =
 export function ucpathTerminationFilingPresence(
   receipt: TerminationReceipt,
   scan: UcpathTransactionScan,
+  expectedEmplRecord?: string,
 ): UcpathTerminationFilingPresenceVerdict {
   if (scan.state === "unreadable") {
     return { state: "unknown", reason: scan.reason, observedAt: scan.observedAt };
@@ -263,6 +285,15 @@ export function ucpathTerminationFilingPresence(
     return {
       state: "refused",
       reason: "the exact durable UCPath filing changed EID, effective date, subject, action, or acceptable status",
+      observedAt: scan.observedAt,
+    };
+  }
+  if (expectedEmplRecord === undefined || !hasExactEmploymentRecord(scan, row.transactionId, expectedEmplRecord)) {
+    return {
+      state: "unknown",
+      reason: expectedEmplRecord === undefined
+        ? "the run has no independently established expected employment record for the UCPath filing"
+        : EMPLOYMENT_RECORD_UNPROVEN,
       observedAt: scan.observedAt,
     };
   }

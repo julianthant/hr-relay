@@ -9,7 +9,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { DRY_RUN_I9_PROFILE_ID } from "../../../../../src/models/workflow/dry-run.js";
 import { fakeUcpathHirePage } from "../../../../support/helpers/browser/fake-ucpath-hire-page.js";
 const target = UcpathHireTargetSchema.parse({ mode: "new-hire", employee: OnboardingReadHirePlan.example.employee, expectedName: "Fixture Hire", emplId: null, profileId: "900001", comments: "Synthetic hire" });
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 function fixture(options: Parameters<typeof fakeUcpathHirePage>[0] = {}) {
   const world = fakeUcpathHirePage(options); let captures = 0;
   return { ...world, driver: createUcpathHireOperations(() => undefined, world.page, manualClock(new Date("2026-09-01T18:00:00.000Z"))),
