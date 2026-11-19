@@ -1,6 +1,5 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { activityTypicalTime, successfulActivityTiming } from "../queries/activity-timing.js";
-import { createActivityAnalytics, failureStepOfTaskSpans } from "../queries/activity-analytics.js";
+import { buildActivityReport, failureStepOfTaskSpans, type ActivityReportRow } from "../queries/activity-analytics.js";
 import { isQueueMember, isQueueTopLevel, type QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
@@ -13,6 +12,7 @@ import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -29,14 +29,9 @@ import {
   type QueueRecordMembers,
 } from "../../../models/dashboard/projection.js";
 import {
-  ACTIVITY_MEDIAN_ABSENT_REASON,
-  ACTIVITY_SAMPLE_LIMIT,
-  ActivityReportWireSchema,
-  activityMedian,
   type ActivityLedgerBlock,
   type ActivityReportWire,
   type ActivityAssistantUsage,
-  type ActivityWorkflowTotal,
 } from "../../../models/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
@@ -128,6 +123,7 @@ interface WorkerFold {
 // Production summaries share the authority snapshot; fixture readers may omit this port.
 export interface ServedSummaryQueries {
   withSnapshot<T>(read: () => T): T;
+  dayCounts(fromDay: string, toDay: string): ReadonlyMap<string, number>;
   queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; after?: { localDay: string; runId: string } }): {
     items: readonly { runId: string; localDay: string; shape: string; parent: QueueParent | null; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
     next: { localDay: string; runId: string } | null;
@@ -174,8 +170,10 @@ export interface RunQueueProjectionDeps {
     heldDuoLeases?(workerId: string): readonly { system: BrowserSystemId; since: IsoInstant }[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
-    /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
-    changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }>;
+    /** An unchanged key skips the live-run read. */
+    changeKey?(): number | undefined;
+    dayChangeKey?(): number | undefined;
+    nextDuoLeaseExpiry?(nowMs: number): number;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -267,43 +265,23 @@ interface SurfaceFold {
 }
 
 
-const ACTIVITY_STATUS_BUCKET = {
-  done: "completion",
-  failed: "failed",
-  cancelled: "cancelled",
-  partial: "partial",
-  queued: "open",
-  running: "open",
-  cancelling: "open",
-  blocked: "open",
-  "awaiting-approval": "open",
-} as const satisfies Record<QueueSurfaceWire["status"], string>;
-
-type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration" | "needsAttention" | "typicalTime" | "outcomes" | "days" | "failedAt" | "typicalMedian">;
-
-function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
-  return {
-    runs: 0,
-    completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
-    failed: 0,
-    cancelled: 0,
-    partial: 0,
-    open: 0,
-  };
-}
-
-// Individual pseudonyms and generations stay in authority; publish aggregate evidence only.
-function activityPeopleOf(personRows: readonly RunRecord[], read: ((runId:string)=>RunSummary["person"]) | undefined) {
-  const identities=personRows.map(run=>read?.(run.envelope.runId) ?? {state:"unavailable" as const,reason:"canonical-result-reader-unavailable"});
-  const available=identities.filter(row=>row.state==="available"),unavailableRows=identities.length-available.length;
-  if(unavailableRows!==0)return {state:"absent" as const,evidenceRows:available.length,unavailableRows,
-    reason:`${String(unavailableRows)} of ${String(personRows.length)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
-  return {state:"present" as const,distinct:new Set(available.map(row=>row.identity)).size,evidenceRows:available.length};
-}
-
-
 const MEMBER_PREVIEW_LIMIT = 3;
+const DAY_CACHE_LIMIT = 16;
 
+const PROJECTION_SPAN_TYPES = [
+  "run.queued", "run.claimed", "run.requeued", "span.started", "span.ended",
+  "gate.opened", "gate.resolved", "transaction.fenced", "data.observed",
+] satisfies SpanEventWire["t"][];
+
+function projectionEvents(records: ReturnType<typeof readTimelineRecords>["records"]) {
+  return records.map(record => {
+    if (record.payload.kind !== "span" || record.payload.event.t === "transaction.previewed") {
+      throw new ProjectionDegradedError("unexpected projection timeline kind");
+    }
+    const event = record.payload.event;
+    return { event, line: timelineSpanLocation(record) };
+  });
+}
 
 type LinkedRunView = QueueSurfaceWire["linkedRuns"][number];
 
@@ -317,15 +295,18 @@ export class RunQueueProjection {
   readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedRows = new Map<string, { status: string; surface: string }>();
+  readonly #dayCache = new Map<string, { wire: DashboardDayWire; builtAt: number; validUntil: number }>();
 
   #timelineCursor = 0;
+  #dayCacheKey: string | undefined;
 
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
-  #storedCanonical: { key: string; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
+  #storedCanonical: { key: number; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
+  #rebuildScheduled = false;
 
   constructor(deps: RunQueueProjectionDeps) {
     this.#deps = deps;
@@ -386,15 +367,14 @@ export class RunQueueProjection {
 
 
   ingestFromTimeline(): void {
-    // While degraded, recovery belongs to the scheduled rebuild alone — it
-    // re-reads the whole stream and resets these cursors.
-    if (this.#health.state === "degraded") return;
+    if (this.#health.state === "degraded") {
+      this.#scheduleRebuild();
+      return;
+    }
     try {
-      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor);
+      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor, undefined, PROJECTION_SPAN_TYPES);
       this.#timelineCursor = tail.cursor;
-      if (tail.records.length === 0) return;
-      const events = tail.records.filter((record) => record.payload.kind === "span")
-        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }));
+      const events = projectionEvents(tail.records);
       if (events.length === 0) return;
       const runIds = new Set<string>();
       let workerChanged = false;
@@ -405,7 +385,7 @@ export class RunQueueProjection {
         for (const runId of affected.runIds) runIds.add(runId);
         workerChanged ||= affected.workerChanged;
       }
-      this.#notify({ runIds: [...runIds], workerChanged }, events.length > 1);
+      if (runIds.size > 0 || workerChanged) this.#notify({ runIds: [...runIds], workerChanged }, events.length > 1);
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -428,8 +408,20 @@ export class RunQueueProjection {
 
   #degrade(lastError: string): void {
     this.#health = { state: "degraded", lastError };
+    this.#scheduleRebuild();
+  }
+
+  #scheduleRebuild(): void {
+    if (this.#rebuildScheduled) return;
+    this.#rebuildScheduled = true;
     const schedule = this.#deps.scheduleRebuild ?? ((rebuild: () => void): void => rebuild());
-    schedule(() => this.rebuildFromTimeline());
+    schedule(() => {
+      try {
+        if (this.#health.state === "degraded") this.rebuildFromTimeline();
+      } finally {
+        this.#rebuildScheduled = false;
+      }
+    });
   }
 
 
@@ -443,9 +435,8 @@ export class RunQueueProjection {
   /** Rebuild derived views from a consistent SQLite timeline snapshot. */
   rebuildFromTimeline(): void {
     try {
-      const whole = readTimelineRecords(this.#deps.timeline);
-      const events = whole.records.filter((record) => record.payload.kind === "span")
-        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }))
+      const whole = readTimelineRecords(this.#deps.timeline, 0, undefined, PROJECTION_SPAN_TYPES);
+      const events = projectionEvents(whole.records)
         .sort((left, right) => left.event.ts.localeCompare(right.event.ts) || left.line.lineNumber - right.line.lineNumber);
       this.#rows.clear();
       this.#workers.clear();
@@ -826,8 +817,7 @@ export class RunQueueProjection {
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
   #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
     const key = this.#deps.authority.changeKey?.();
-    const keyText = key === undefined ? undefined : `${key.authorityGeneration}:${key.dataVersion}:${key.totalChanges}`;
-    const stored = canonicalRuns === undefined && keyText !== undefined && this.#storedCanonical?.key === keyText ? this.#storedCanonical : undefined;
+    const stored = canonicalRuns === undefined && key !== undefined && this.#storedCanonical?.key === key ? this.#storedCanonical : undefined;
     let built: { storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined = stored;
     if (built === undefined) {
       const source = canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
@@ -849,7 +839,7 @@ export class RunQueueProjection {
         pause: run.pause,
       }));
       built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
-      if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
+      if (canonicalRuns === undefined && key !== undefined) this.#storedCanonical = { key, ...built };
     }
     const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
       duoLeases: this.#deps.authority.heldDuoLeases?.(view.member.workerId) }));
@@ -1412,16 +1402,43 @@ export class RunQueueProjection {
 
 
   buildDashboardDayWire(day: string): DashboardDayWire {
-    const summaries = this.#deps.reader.summaries;
-    return summaries === undefined ? this.#buildDashboardDayWire(day)
-      : summaries.withSnapshot(() => this.#buildDashboardDayWire(day));
-  }
-
-  #buildDashboardDayWire(day: string): DashboardDayWire {
     if (this.#health.state === "degraded") {
       throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }
     const parsedDay = z.iso.date().parse(day);
+    const summaries = this.#deps.reader.summaries;
+    const read = () => {
+      const now = this.#deps.clock.nowMs();
+      const revision = summaries === undefined ? undefined : this.#deps.authority.dayChangeKey?.();
+      const key = revision === undefined ? undefined : `${this.#generationValue}:${this.#cursorValue}:${revision}`;
+      if (key !== this.#dayCacheKey) {
+        this.#dayCache.clear();
+        this.#dayCacheKey = key;
+      }
+      const saved = this.#dayCache.get(parsedDay);
+      if (saved !== undefined && saved.builtAt <= now && now < saved.validUntil) return saved.wire;
+
+      const notifications = this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
+      const wire = this.#buildDashboardDayWire(parsedDay, notifications, now);
+      if (key === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return wire;
+
+      let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
+      for (const notice of notifications) {
+        if (notice.snooze.state !== "snoozed") continue;
+        const until = Date.parse(notice.snooze.until);
+        if (until > now) validUntil = Math.min(validUntil, until);
+      }
+      this.#dayCache.delete(parsedDay);
+      const oldest = this.#dayCache.keys().next().value;
+      if (this.#dayCache.size >= DAY_CACHE_LIMIT && oldest !== undefined) this.#dayCache.delete(oldest);
+      deepFreeze(wire);
+      this.#dayCache.set(parsedDay, { wire, builtAt: now, validUntil });
+      return wire;
+    };
+    return summaries === undefined ? read() : summaries.withSnapshot(read);
+  }
+
+  #buildDashboardDayWire(parsedDay: string, notifications: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>, now: number): DashboardDayWire {
     const surfaces: QueueSurfaceWire[] = [];
     let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);
@@ -1430,19 +1447,21 @@ export class RunQueueProjection {
     let context: QueueReadContext;
     if (summaries !== undefined) {
       context = this.#readContext();
+      const monthEnd = new Date(`${monthPrefix}-01T00:00:00.000Z`);
+      monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+      for (const [countDay, count] of summaries.dayCounts(`${monthPrefix}-01`, monthEnd.toISOString().slice(0, 10))) {
+        monthCounts.set(countDay, count);
+      }
       let after: { localDay: string; runId: string } | undefined;
-      const readLive = (runId: string): RunRecord => {
-        return this.#readRun(context, runId);
-      };
       do {
-        const page = summaries.queue({ fromDay: `${monthPrefix}-01`, toDay: new Date(Date.UTC(Number(parsedDay.slice(0, 4)), Number(parsedDay.slice(5, 7)), 0)).toISOString().slice(0, 10), limit: 500,
+        const page = summaries.queue({ fromDay: parsedDay, toDay: parsedDay, limit: 500,
           topLevel: false, ...(after === undefined ? {} : { after }) });
         for (const summary of page.items) context.parents.set(summary.runId, summary.parent);
         for (const summary of page.items) {
-          if (isQueueTopLevel(summary)) monthCounts.set(summary.localDay, (monthCounts.get(summary.localDay) ?? 0) + 1);
-          if (summary.localDay !== parsedDay) continue;
-          const authority = readLive(summary.runId);
-          const surface = this.#surface(this.#rows.get(summary.runId), authority, summary.children.map(child => readLive(child.runId)), context);
+          if (summary.localDay !== parsedDay) throw new ProjectionDegradedError("queue-summary-day-mismatch");
+          const authority = this.#readRun(context, summary.runId);
+          const children = summary.children.map(child => this.#readRun(context, child.runId));
+          const surface = this.#surface(this.#rows.get(summary.runId), authority, children, context);
           if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
           surfaces.push(surface);
         }
@@ -1597,7 +1616,7 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: notificationListProjection(this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID), this.#deps.clock.nowMs(), {
+      notifications: notificationListProjection(notifications, now, {
         display: {
           read: id => this.#deps.reader.read(id),
           descriptor: id => this.#deps.descriptors.resolve(id),
@@ -1623,182 +1642,57 @@ export class RunQueueProjection {
     const end = z.iso.date().parse(to);
     if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
 
-    const inRange: { day: string; fold: SurfaceFold; authority: RunRecord; taskSpans: RunFoldRecord["taskSpans"] }[] = [];
-    const personRows: RunRecord[] = [];
+    const activityRows: ActivityReportRow[] = [];
+    const people: RunSummary["person"][] = [];
     const runs = listCanonicalRuns(this.#deps.reader, "live");
     const context = this.#readContext(runs);
     const children = canonicalRunChildren(runs);
     for (const authority of runs) {
-      const row = this.#rows.get(authority.envelope.runId);
-      const day = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
+      const { envelope, lifecycle } = authority;
+      const { runId, workflow, enqueuedAt } = envelope;
+      const day = searchPartitionDay(new Date(enqueuedAt));
       if (day < start || day > end) continue;
 
-      if (authority.envelope.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
-      // Member containment, applied once: a member counted inside its
-      // operation's rollup is not counted again at top level.
+      if (envelope.shape !== "operation" && workflow === "separations") {
+        people.push(this.#deps.authority.canonicalPerson?.(runId)
+          ?? { state: "unavailable", reason: "canonical-result-reader-unavailable" });
+      }
       if (!isQueueTopLevel({ parent: this.#parentFact(context, authority) })) continue;
-      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? [], context), authority, taskSpans: row?.taskSpans ?? [] });
-    }
-
-    const people = activityPeopleOf(
-      personRows,
-      this.#deps.authority.canonicalPerson === undefined ? undefined : (runId) => this.#deps.authority.canonicalPerson!(runId),
-    );
-
-    const workflows = new Map<string, ActivityWorkflowCounts>();
-    const analytics = createActivityAnalytics();
-    const statuses = new Map<string, { runs: number; sample: string[] }>();
-    const outcomes = new Map<string, number>();
-    const failures = new Map<string, { workflowId: string; code: string; runs: number; transient: number; sample: string[] }>();
-    const measured: { runId: string; ms: number }[] = [];
-
-    const completion = { readBack: 0, warnings: 0, warningsUnknown: 0 };
-    let unmeasured = 0;
-    let terminalRuns = 0;
-
-    for (const { day, fold: { surface, warningVerdict }, authority, taskSpans } of inRange) {
-      const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
-      counts.runs += 1;
-      workflows.set(surface.workflowId, counts);
-
-      const statusBucket = statuses.get(surface.status) ?? { runs: 0, sample: [] };
-      statusBucket.runs += 1;
-      // The Who sample is for work the operator can still act on; a terminal
-      // bucket carries none, which the wire's own refinement then enforces.
-      if (
-        !TERMINAL_QUEUE_STATUSES.has(surface.status)
-        && statusBucket.sample.length < ACTIVITY_SAMPLE_LIMIT
-      ) {
-        statusBucket.sample.push(surface.runId);
-      }
-      statuses.set(surface.status, statusBucket);
-
-      const axis = ACTIVITY_STATUS_BUCKET[surface.status];
-      if (axis !== "completion") {
-        counts[axis] += 1;
-      } else {
-        // An unread receipt remains unread; it cannot count as a receipt with no warnings.
-        const arm = warningVerdict.kind === "present"
-          ? "warnings"
-          : warningVerdict.kind === "none"
-            ? "readBack"
-            : "warningsUnknown";
-        counts.completion[arm] += 1;
-        completion[arm] += 1;
-      }
-
-      const durationMs = authority.lifecycle.state === "terminal" && surface.endedAt.state === "present"
+      const row = this.#rows.get(runId);
+      const { surface, warningVerdict } = this.#surfaceFold(row, authority, children.get(runId) ?? [], context);
+      const durationMs = lifecycle.state === "terminal" && surface.endedAt.state === "present"
         ? Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt))
         : null;
       const failureStep = surface.status === "failed"
-        ? failureStepOfTaskSpans(taskSpans, this.#deps.descriptors.resolve(surface.workflowId)?.timeline)
+        ? failureStepOfTaskSpans(row?.taskSpans ?? [], this.#deps.descriptors.resolve(workflow)?.timeline)
         : undefined;
-      analytics.observe({ workflowId: surface.workflowId, day, status: surface.status, lifecycleState: authority.lifecycle.state, durationMs, ...(failureStep === undefined ? {} : { failureStep }) });
-      if (authority.lifecycle.state !== "terminal") continue;
-      terminalRuns += 1;
-      outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
-      // A terminal row without an end instant has unknown duration, never a growing elapsed value.
-      if (durationMs !== null) measured.push({ runId: surface.runId, ms: durationMs });
-      else unmeasured += 1;
-      const { failureId } = authority.lifecycle;
-      if (failureId === undefined) continue;
-      const failure = this.#deps.authority.getFailure(failureId);
-      if (failure === undefined) {
-        throw new Error(
-          `run ${surface.runId} settled failed against failure ${failureId}, which authority does not hold; `
-          + "refusing to report a failure breakdown with a hole in it",
-        );
+      let terminal: ActivityReportRow["terminal"];
+      if (lifecycle.state === "terminal") {
+        terminal = { outcome: lifecycle.outcome };
+        if (lifecycle.failureId !== undefined) {
+          const failure = this.#deps.authority.getFailure(lifecycle.failureId);
+          if (failure === undefined) {
+            throw new Error(`run ${runId} settled failed against failure ${lifecycle.failureId}, which authority does not hold; `
+              + "refusing to report a failure breakdown with a hole in it");
+          }
+          terminal.failure = failure;
+        }
       }
-      const key = JSON.stringify([surface.workflowId, failure.code]);
-      const bucket = failures.get(key) ?? { workflowId: surface.workflowId, code: failure.code, runs: 0, transient: 0, sample: [] };
-      bucket.runs += 1;
-      if (failure.transient) bucket.transient += 1;
-      if (bucket.sample.length < ACTIVITY_SAMPLE_LIMIT) bucket.sample.push(surface.runId);
-      failures.set(key, bucket);
+      const completion = warningVerdict.kind === "present" ? "warnings"
+        : warningVerdict.kind === "none" ? "readBack" : "warningsUnknown";
+      activityRows.push({ day, enqueuedAt, workflowId: workflow, runId, parentRunId: envelope.parent?.runId ?? null,
+        status: surface.status, lifecycleState: lifecycle.state, durationMs, completion,
+        ...(terminal === undefined ? {} : { terminal }), ...(failureStep === undefined ? {} : { failureStep }) });
     }
 
-    const timingRows = inRange.map(({ fold: { surface }, authority }) => ({ workflowId: surface.workflowId,
-      status: surface.status, parentRunId: authority.envelope.parent?.runId ?? null,
-      durationMs: authority.lifecycle.state === "terminal" && surface.endedAt.state === "present"
-        ? Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt)) : null }));
-    const categories = new Map<string, number>();
-    let unregisteredCategoryRuns = 0;
-    const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, counts]) => {
-      const typicalTime = activityTypicalTime(successfulActivityTiming(workflowId, timingRows));
-      const descriptor = this.#deps.descriptors.resolve(workflowId);
-      if (descriptor === undefined) {
-        unregisteredCategoryRuns += counts.runs;
-        return {
-          ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-          workflowId,
-          registration: {
-            state: "unregistered",
-            reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable`,
-          },
-        };
-      }
-      categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
-      return {
-        ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-        workflowId,
-        registration: {
-          state: "registered",
-          label: descriptor.label,
-          code: descriptor.code,
-          categoryId: descriptor.category,
-        },
-      };
-    });
-
-    const sorted = [...measured].sort((a, b) => a.ms - b.ms);
-    const longest = sorted.at(-1);
-    const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
-    const typicalMedian = activityMedian(measured.map(entry => entry.ms));
-
-    if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
     const generatedAt = this.#deps.clock.now().toISOString();
-    return ActivityReportWireSchema.parse({
-      wireVersion: 1,
-      from: start,
-      to: end,
-      generatedAt,
-      ...this.#deps.assistantUsage(start, end, generatedAt),
-      totalRuns: inRange.length,
-      terminalRuns,
-      inFlightRuns: inRange.length - terminalRuns,
-      people,
-      completion,
-      outcomeSplit: analytics.outcomeSplit(),
-      typicalMedian,
-      days: analytics.days(),
-      workflows: workflowTotals,
-      categories: [
-        ...[...categories.entries()].sort(([a], [b]) => a.localeCompare(b))
-          .map(([categoryId, runs]) => ({ category: { state: "registered", categoryId }, runs })),
-        ...(unregisteredCategoryRuns === 0 ? [] : [{
-          category: { state: "unregistered", reason: "the workflows behind these runs are no longer registered" },
-          runs: unregisteredCategoryRuns,
-        }]),
-      ],
-      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))
-        .map(([status, bucket]) => ({ status, runs: bucket.runs, sample: bucket.sample })),
-      outcomes: [...outcomes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([outcome, runs]) => ({ outcome, runs })),
-      failures: [...failures.values()].sort((a, b) => a.workflowId.localeCompare(b.workflowId) || a.code.localeCompare(b.code))
-        .map(bucket => ({ ...bucket, sentence: operatorFailureSentence(bucket.code),
-          registration: workflowTotals.find(workflow => workflow.workflowId === bucket.workflowId)!.registration })),
-      durations: {
-        measuredRuns: measured.length,
-        unmeasuredRuns: unmeasured,
-        medianMs: median === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: median.ms },
-        longestMs: longest === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: longest.ms, runId: longest.runId },
-        totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
+    return buildActivityReport({
+      from: start, to: end, generatedAt, rows: activityRows, people, descriptors: this.#deps.descriptors,
+      assistantUsage: () => {
+        if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
+        return this.#deps.assistantUsage(start, end, generatedAt);
       },
-
-      ledger: this.#deps.ledger.foldActivityRange(start, end),
+      ledger: () => this.#deps.ledger.foldActivityRange(start, end),
     });
   }
 }

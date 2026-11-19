@@ -1,6 +1,4 @@
-import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { queryAssistantUsage } from "../../assistant/usage-counts.js";
-import { activityTypicalTime, successfulActivityTiming } from "./activity-timing.js";
 import { z } from "zod";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -21,17 +19,12 @@ function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:
   }
 }
 
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { ActivityReportWireSchema, activityMedian, ACTIVITY_MEDIAN_ABSENT_REASON, ACTIVITY_SAMPLE_LIMIT, type ActivityReportWire, type ActivityWorkflowTotal } from "../../../models/dashboard/activity.js";
-import { createActivityAnalytics, failureStepOfTaskSpans, taskSpansForRun } from "./activity-analytics.js";
-import { buildActivityVolumeBoundarySkeleton, createActivityDatePartReader } from "../../../models/dashboard/activity-volume.js";
-import { TERMINAL_QUEUE_STATUSES } from "../../../models/dashboard/projection.js";
 
-type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration" | "needsAttention" | "typicalTime" | "outcomes" | "days" | "failedAt" | "typicalMedian">;
-function emptyActivityWorkflowCounts():ActivityWorkflowCounts {
-  return {runs:0,completion:{readBack:0,warnings:0,warningsUnknown:0},failed:0,cancelled:0,partial:0,open:0};
-}
-const ACTIVITY_STATUS_BUCKET = {partial:"partial",done:"completion",failed:"failed",cancelled:"cancelled",blocked:"open",queued:"open",running:"open",cancelling:"open","awaiting-approval":"open"} as const;
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { ActivityReportWire } from "../../../models/dashboard/activity.js";
+import type { RunSummary } from "../../../models/run/summary.js";
+import { buildActivityReport, failureStepOfTaskSpans, taskSpansForRun, type ActivityReportRow } from "./activity-analytics.js";
+import { createActivityDatePartReader } from "../../../models/dashboard/activity-volume.js";
 
 /** A zone change can shift a local date by at most two days; inspect that bounded edge so it cannot hide a run as zero. */
 function shiftActivityDay(value:string,days:number):string {
@@ -55,203 +48,48 @@ export function visitActivitySummaryRange(database: AuthorityDatabase, from: str
   });
 }
 
-function bucketForInstant(buckets:readonly {start:string;endExclusive:string}[],instant:number):number {
-  let low=0,high=buckets.length;
-  while(low<high) {
-    const middle=Math.floor((low+high)/2);
-    if(Date.parse(buckets[middle].start)<=instant)low=middle+1;
-    else high=middle;
-  }
-  const index=low-1,bucket=buckets[index];
-  if(bucket===undefined||instant>=Date.parse(bucket.endExclusive))throw new Error("activity-volume-enqueue-outside-interval");
-  return index;
-}
+export function queryActivitySummaries(database: AuthorityDatabase, input: { from: string; to: string; generatedAt: string }, deps: {
+  descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
+  ledger: { foldActivityRange(from: string, to: string): ActivityReportWire["ledger"] };
+}): ActivityReportWire {
+  const bounds = z.strictObject({ from: z.iso.date(), to: z.iso.date(), generatedAt: z.iso.datetime({ offset: true }) }).parse(input);
+  if (bounds.from > bounds.to) throw new Error("run-summary-range-invalid");
 
-/** Same run metrics as the retained projector; ledger and registry remain explicitly supplied authorities. */
-export function queryActivitySummaries(database:AuthorityDatabase,input:{from:string;to:string;generatedAt:string},deps:{
-  descriptors:{resolve(workflow:string):AnyWorkflowDescriptor|undefined};
-  ledger:{foldActivityRange(from:string,to:string):ActivityReportWire["ledger"]};
-}):ActivityReportWire {
-  const bounds=z.strictObject({from:z.iso.date(),to:z.iso.date(),generatedAt:z.iso.datetime({offset:true})}).parse(input);
-  if(bounds.from>bounds.to)throw new Error("run-summary-range-invalid");
-  return database.withAuthorityReadSnapshot(()=>{
-    const start=bounds.from,end=bounds.to;
-    const volumeSkeleton=buildActivityVolumeBoundarySkeleton({from:start,to:end},PACIFIC_TIME_ZONE);
-    const volumeCounts=volumeSkeleton.buckets.map(()=>0);
-    const volumeStart=Date.parse(volumeSkeleton.interval.start),volumeEnd=Date.parse(volumeSkeleton.interval.endExclusive);
-    const inRange:SummaryRow[]=[];
-    const identities=new Set<string>();let evidenceRows=0,unavailableRows=0;
-    visitActivitySummaryRange(database,start,end,PACIFIC_TIME_ZONE,row=>{
-      if(row.workflow==="separations" && row.shape!=="operation") {
-        if(row.person.state==="available"){identities.add(row.person.identity);evidenceRows++;}
-        else unavailableRows++;
-      }
-      if(!isQueueTopLevel(row))return;
-      const enqueuedAt=Date.parse(row.enqueuedAt);
-      if(!Number.isFinite(enqueuedAt))throw new Error("activity-summary-enqueued-at-invalid");
-      if(enqueuedAt<volumeStart||enqueuedAt>=volumeEnd)throw new Error("activity-volume-enqueue-outside-interval");
-      volumeCounts[bucketForInstant(volumeSkeleton.buckets,enqueuedAt)]+=1;
-      inRange.push(row);
+  return database.withAuthorityReadSnapshot(() => {
+    const inRange: SummaryRow[] = [];
+    const people: RunSummary["person"][] = [];
+    visitActivitySummaryRange(database, bounds.from, bounds.to, PACIFIC_TIME_ZONE, row => {
+      if (row.workflow === "separations" && row.shape !== "operation") people.push(row.person);
+      if (isQueueTopLevel(row)) inRange.push(row);
     });
-    const people=unavailableRows===0?{state:"present",distinct:identities.size,evidenceRows}:{state:"absent",evidenceRows,unavailableRows,
-      reason:`${String(unavailableRows)} of ${String(evidenceRows+unavailableRows)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
-    const workflows = new Map<string, ActivityWorkflowCounts>();
-    const analytics = createActivityAnalytics();
-    const statuses = new Map<string, { runs: number; sample: string[] }>();
-    const outcomes = new Map<string, number>();
-    const failures = new Map<string, { workflowId: string; code: string; runs: number; transient: number; sample: string[] }>();
-    const measured: { runId: string; ms: number }[] = [];
 
-    const completion = { readBack: 0, warnings: 0, warningsUnknown: 0 };
-    let unmeasured = 0;
-    let terminalRuns = 0;
-
-    for (const row of inRange) {
-      const day=row.localDay,authority=row;
-      const surface={workflowId:row.workflow,status:deriveRunStatus(row),runId:row.runId};
-      const warningVerdict={kind:row.warningCount===null?"unread":row.warningCount===0?"none":"present"};
-      const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
-      counts.runs += 1;
-      workflows.set(surface.workflowId, counts);
-
-      const statusBucket = statuses.get(surface.status) ?? { runs: 0, sample: [] };
-      statusBucket.runs += 1;
-
-
-      if (
-        !TERMINAL_QUEUE_STATUSES.has(surface.status)
-        && statusBucket.sample.length < ACTIVITY_SAMPLE_LIMIT
-      ) {
-        statusBucket.sample.push(surface.runId);
+    function* rows(): Generator<ActivityReportRow> {
+      for (const row of inRange) {
+        const status = deriveRunStatus(row);
+        const durationMs = row.lifecycle.state === "terminal" ? row.durationMs : null;
+        const failureStep = status === "failed"
+          ? failureStepOfTaskSpans(taskSpansForRun(database, row.runId), deps.descriptors.resolve(row.workflow)?.timeline)
+          : undefined;
+        let terminal: ActivityReportRow["terminal"];
+        if (runResultCurrent(row)) {
+          terminal = { outcome: row.lifecycle.outcome };
+          if (row.lifecycle.failureId !== undefined) {
+            if (row.failureCode === null || row.failureTransient === null) throw new Error("run-summary-failure-unavailable");
+            terminal.failure = { code: row.failureCode, transient: row.failureTransient };
+          }
+        }
+        const completion = row.warningCount !== null && row.warningCount > 0 ? "warnings"
+          : row.warningCount === 0 && row.receiptResult === "verified-done" ? "readBack" : "warningsUnknown";
+        yield { day: row.localDay, enqueuedAt: row.enqueuedAt, workflowId: row.workflow, runId: row.runId,
+          parentRunId: row.parent?.runId ?? null, status, lifecycleState: row.lifecycle.state, durationMs, completion,
+          ...(terminal === undefined ? {} : { terminal }), ...(failureStep === undefined ? {} : { failureStep }) };
       }
-      statuses.set(surface.status, statusBucket);
-
-      const axis = ACTIVITY_STATUS_BUCKET[surface.status];
-      if (axis !== "completion") {
-        counts[axis] += 1;
-      } else {
-
-
-
-        const arm = warningVerdict.kind === "present"
-          ? "warnings"
-          : warningVerdict.kind === "none" && row.receiptResult === "verified-done"
-            ? "readBack"
-            : "warningsUnknown";
-        counts.completion[arm] += 1;
-        completion[arm] += 1;
-      }
-
-      const durationMs = authority.lifecycle.state === "terminal" && row.durationMs !== null ? row.durationMs : null;
-      const failureStep = surface.status === "failed"
-        ? failureStepOfTaskSpans(taskSpansForRun(database, surface.runId), deps.descriptors.resolve(surface.workflowId)?.timeline)
-        : undefined;
-      analytics.observe({ workflowId: surface.workflowId, day, status: surface.status, lifecycleState: authority.lifecycle.state, durationMs, ...(failureStep === undefined ? {} : { failureStep }) });
-      if (!runResultCurrent(authority)) continue;
-      terminalRuns += 1;
-      outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
-
-      if (durationMs !== null) measured.push({ runId: surface.runId, ms: durationMs });
-      else unmeasured += 1;
-      const { failureId } = authority.lifecycle;
-      if (failureId === undefined) continue;
-      if (row.failureCode === null || row.failureTransient === null) throw new Error("run-summary-failure-unavailable");
-      const failure={code:row.failureCode,transient:row.failureTransient};
-      const key = JSON.stringify([surface.workflowId, failure.code]);
-      const bucket = failures.get(key) ?? { workflowId: surface.workflowId, code: failure.code, runs: 0, transient: 0, sample: [] };
-      bucket.runs += 1;
-      if (failure.transient) bucket.transient += 1;
-      if (bucket.sample.length < ACTIVITY_SAMPLE_LIMIT) bucket.sample.push(surface.runId);
-      failures.set(key, bucket);
     }
 
-    const timingRows = inRange.map(row => ({ workflowId: row.workflow, status: deriveRunStatus(row), parentRunId: row.parent?.runId ?? null, durationMs: row.durationMs }));
-    const categories = new Map<string, number>();
-    let unregisteredCategoryRuns = 0;
-    const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, counts]) => {
-      const typicalTime = activityTypicalTime(successfulActivityTiming(workflowId, timingRows));
-      const descriptor = deps.descriptors.resolve(workflowId);
-      if (descriptor === undefined) {
-        unregisteredCategoryRuns += counts.runs;
-        return {
-          ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-          workflowId,
-          registration: {
-            state: "unregistered",
-            reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable`,
-          },
-        };
-      }
-      categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
-      return {
-        ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-        workflowId,
-        registration: {
-          state: "registered",
-          label: descriptor.label,
-          code: descriptor.code,
-          categoryId: descriptor.category,
-        },
-      };
-    });
-
-    const sorted = [...measured].sort((a, b) => a.ms - b.ms);
-    const longest = sorted.at(-1);
-    const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
-    const typicalMedian = activityMedian(measured.map(entry => entry.ms));
-    const volume = {
-      state:"complete" as const,
-      timeZone:volumeSkeleton.timeZone,
-      granularity:volumeSkeleton.granularity,
-      interval:volumeSkeleton.interval,
-      coveredRuns:inRange.length,
-      buckets:volumeSkeleton.buckets.map((bucket,index)=>({...bucket,runs:volumeCounts[index]})),
-    };
-    if(volumeCounts.reduce((total,count)=>total+count,0)!==inRange.length)throw new Error("activity-volume-count-mismatch");
-
-    return ActivityReportWireSchema.parse({
-      wireVersion: 1,
-      from: start,
-      to: end,
-      generatedAt: bounds.generatedAt,
-      ...queryAssistantUsage(database, bounds),
-      totalRuns: inRange.length,
-      terminalRuns,
-      inFlightRuns: inRange.length - terminalRuns,
-      people,
-      completion,
-      outcomeSplit: analytics.outcomeSplit(),
-      typicalMedian,
-      volume,
-      days: analytics.days(),
-      workflows: workflowTotals,
-      categories: [
-        ...[...categories.entries()].sort(([a], [b]) => a.localeCompare(b))
-          .map(([categoryId, runs]) => ({ category: { state: "registered", categoryId }, runs })),
-        ...(unregisteredCategoryRuns === 0 ? [] : [{
-          category: { state: "unregistered", reason: "the workflows behind these runs are no longer registered" },
-          runs: unregisteredCategoryRuns,
-        }]),
-      ],
-      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))
-        .map(([status, bucket]) => ({ status, runs: bucket.runs, sample: bucket.sample })),
-      outcomes: [...outcomes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([outcome, runs]) => ({ outcome, runs })),
-      failures: [...failures.values()].sort((a, b) => a.workflowId.localeCompare(b.workflowId) || a.code.localeCompare(b.code))
-        .map(bucket => ({ ...bucket, sentence: operatorFailureSentence(bucket.code),
-          registration: workflowTotals.find(workflow => workflow.workflowId === bucket.workflowId)!.registration })),
-      durations: {
-        measuredRuns: measured.length,
-        unmeasuredRuns: unmeasured,
-        medianMs: median === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: median.ms },
-        longestMs: longest === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: longest.ms, runId: longest.runId },
-        totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
-      },
-
-      ledger: deps.ledger.foldActivityRange(start, end),
+    return buildActivityReport({
+      ...bounds, rows: rows(), people, descriptors: deps.descriptors,
+      assistantUsage: () => queryAssistantUsage(database, bounds),
+      ledger: () => deps.ledger.foldActivityRange(bounds.from, bounds.to),
     });
   });
 }
