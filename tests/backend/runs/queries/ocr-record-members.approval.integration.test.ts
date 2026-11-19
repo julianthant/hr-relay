@@ -18,7 +18,8 @@ import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/sea
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
-import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { isQueueTopLevel, isQueueMember } from "../../../../src/models/dashboard/queue-parent.js";
 import type { QueueRecordMember, QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 import { correctedOcrRecord } from "../../../../src/dashboard/surfaces/run-detail/review/review-model.js";
@@ -38,7 +39,7 @@ type Fixture = Awaited<ReturnType<typeof world.fixture>>;
 function authorityState(f: Fixture, database = f.database) {
   return database.withAuthorityReadSnapshot(() => {
     const repositories = database.authority;
-    const runs = ["emergency-contact", "ocr", "emergency-contact-member", "ocr-page", "person-lookup", "i9-lookup"]
+    const runs = ["emergency-contact", "ocr", "emergency-contact-member", "onbase", "ocr-page", "person-lookup", "i9-lookup"]
       .flatMap(workflow => repositories.runs.listByWorkflow(workflow));
     const review = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
     return { generation: database.getMeta().authorityGeneration, runs,
@@ -112,13 +113,14 @@ for (const dryRun of [true, false]) {
     let ticks = Date.parse(contactPage.page.observedAt);
     const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
       displayedEid: employee.emplId, displayedName: employee.name }), () => new Date(++ticks).toISOString());
-    const sessions = sessionFactoryHarness({ ucpath: () => {
+    const filing = await onbaseFilingFixture(3);
+    const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: () => {
       const session = persistence.session();
       return createDeterministicUcpathPersonOrgDriver({ results: [employee],
         selection: { status: "resolved", selected: employee, candidateEids: [employee.emplId] } }, undefined, session.port, session.save);
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const f = await world.fixture({ coordinator: true, member: childWorkflowModuleOf("emergency-contact", "emergency-contact-member"),
-      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true,
+      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true, documentBytes: filing.bytes,
       reviewedPages: Array.from({ length: 3 }, () => ({ employeeName: employee.name,
         contactName: "Original Contact", correctedContactName: "Released Contact" })),
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
@@ -260,7 +262,11 @@ for (const dryRun of [true, false]) {
     for (const member of members) {
       const result = repositories.runResults.get(member.child.envelope.runId); assert.ok(result);
       if (dryRun) {
-        assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
+        // The member previews its Save and then its OnBase filing.
+        const preview = RunDelegatedDryRunPreviewResultSchema.parse(result.result.value);
+        assert.equal(preview.externalCommit, "none");
+        assert.equal(preview.steps.find(step => step.nodeId === "contact-preview")?.state, "transaction-preview");
+        assert.equal(preview.steps.find(step => step.nodeId === "onbase-filing")?.state, "delegation-preview");
         assert.deepEqual(repositories.writeIntents.listByRun(member.child.envelope.runId), []);
       } else {
         const output = EmergencyContactMemberResultSchema.parse(result.result.value);
@@ -268,6 +274,13 @@ for (const dryRun of [true, false]) {
         assert.equal(output.proof.effect.name, "Released Contact");
       }
     }
+    const filings = members.flatMap(member => repositories.runs.listChildren(member.child.envelope.runId));
+    // The two approved records come from different pages, so each member files its own page.
+    assert.equal(filings.length, 2);
+    assert.ok(filings.every(run => run.envelope.workflow === "onbase" && run.envelope.dryRun === dryRun
+      && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"));
+    for (const run of filings) if (dryRun) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
+    assert.equal(filing.imports(), dryRun ? 0 : filings.length, "each live filing clicks Import once; a dry run never does");
     assert.deepEqual(repositories.ocrExtractions.findBySource(f.reading.input.image.sha256), extractions);
     const mismatch = (id: string) => {
       const descriptor = f.resolve(id);
@@ -297,14 +310,14 @@ for (const dryRun of [true, false]) {
   }, scaledMs(60_000));
 }
 
-it("keeps failed OCR pages on their own Logs while hiding successful reads under the hosted review", async () => {
+it("keeps failed OCR pages on their own Logs, on the host row too, while hiding successful reads under the hosted review", async () => {
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, failManualPageOnce: 2 });
   const view = served(f, f.database, f.canonical.lifecycle, true);
-  assert.equal(view.logsChecked[1], 1, "the failed page's row opens its own served log");
+  assert.deepEqual(view.logsChecked, [2, 1], "the host row serves its reading log and the failed page's own log; the OCR row serves the failed page's log");
   assert.equal(view.parent.status, "running");
   assert.equal(view.parentDetail.gate.state, "absent");
   assert.equal(view.ocrDetail.gate.state, "open");
-  assert.deepEqual(view.parent.recordMembers?.members.map(member => member.statusLabel), ["Reading"]);
+  assert.deepEqual(view.parent.recordMembers?.members.map(member => member.statusLabel), ["Reading", "Failed"]);
   const pages = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(run => run.envelope.workflow === "ocr-page");
   assert.equal(pages.length, 3);
   const failed = pages.find(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed"); assert.ok(failed);
@@ -316,6 +329,7 @@ it("keeps failed OCR pages on their own Logs while hiding successful reads under
   assert.equal(failure.ownerRunId, f.run.envelope.runId);
   assert.equal(failure.statusLabel, "Failed");
   assert.equal(failure.target.runId, failed.envelope.runId);
+  assert.deepEqual(view.parent.recordMembers?.members.filter(member => member.kind === "page-failure"), [failure]);
   assert.equal(failure.target.workflowId, "ocr-page");
   assert.equal(failure.target.section, "logs");
   assert.deepEqual(failure.childRunIds, [failed.envelope.runId]);
@@ -325,4 +339,20 @@ it("keeps failed OCR pages on their own Logs while hiding successful reads under
     assert.equal(members.some(member => member.target.runId === page.envelope.runId), false);
   }
   assert.equal(f.database.authority.runs.listByWorkflow("emergency-contact-member").length, 0);
+});
+
+it("shows a hosted OCR whose every page failed as failed pages on the Emergency Contact row, not as Reading", async () => {
+  const f = await world.fixture({ coordinator: true, record: true, pageCount: 1, failManualPageOnce: 1, stopAfterPageFailure: true });
+  const resumed = await f.canonical.execute(f.parentRun, new AbortController().signal);
+  assert.deepEqual(resumed.outcomes.map(outcome => outcome.state), ["parked-gate"]);
+  const view = served(f, f.database, f.canonical.lifecycle, true);
+  assert.equal(view.ocrDetail.gate.state, "open");
+  assert.equal(view.review.ocr?.revision.records.length, 0);
+  const [failed] = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(run => run.envelope.workflow === "ocr-page");
+  assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
+  assert.deepEqual(view.parent.recordMembers?.members.map(member => ({ kind: member.kind, title: member.title, statusLabel: member.statusLabel,
+    runId: member.target.runId, section: member.target.section })), [
+    { kind: "page-failure", title: "Page 1", statusLabel: "Failed", runId: failed.envelope.runId, section: "logs" },
+  ]);
+  assert.equal(view.logsChecked[0], 1, "the Emergency Contact row opens the failed page's own served log");
 });

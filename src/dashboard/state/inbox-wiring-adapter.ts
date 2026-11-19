@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { attemptUnresolved } from "../app/commands/command-outcome.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
-import type { DsToast } from "../ds/ui.js";
 import { NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
 import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
 import type { NotificationCollectionTarget } from "../../models/notifications/notifications.js";
 import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
 import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import type { NotificationControl, NotificationDestination, NotificationItem, NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
@@ -28,7 +27,7 @@ const policies = {
   "bulk-incomplete": { trigger: "command", tone: "warning", detail: "Some items in this batch were not done. Open it to see each one." },
 } as const satisfies Readonly<Record<NotificationTriggerEvent["kind"], { trigger: string; tone: NotificationItem["tone"]; detail: string }>>;
 
-export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_HISTORY_INCOMPLETE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_RECEIPT_MISSING" | "NOTIFICATION_CONTEXT_UNAVAILABLE" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_HISTORY_INCOMPLETE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_RECEIPT_MISSING" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 export function notificationPolicy(row: NotificationWire) {
   const source = row.sourceEvent;
@@ -53,12 +52,25 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   return false;
 }
 
-const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "long" }), MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" });
-const dayStart = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-/** Day group once out of Priority: Today, Yesterday, the weekday within a week, else the date. */
+const WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", weekday: "long" }), MONTH_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "long", day: "numeric" });
+const PACIFIC = "America/Los_Angeles";
+const PACIFIC_DATE = new Intl.DateTimeFormat("en-US", { timeZone: PACIFIC, year: "numeric", month: "numeric", day: "numeric" });
+const pacificDay = (value: Date) => {
+  const parts = Object.fromEntries(PACIFIC_DATE.formatToParts(value).map(part => [part.type, part.value]));
+  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+};
+/** Day group once out of Priority, by the Pacific day whatever the host zone: Today, Yesterday, the weekday within a week, else the date. */
 export function notificationDay(occurredAt: string, nowIso: string): string {
-  const when = new Date(occurredAt), ago = Math.round((dayStart(new Date(nowIso)) - dayStart(when)) / 86_400_000);
+  const when = new Date(occurredAt), ago = Math.round((pacificDay(new Date(nowIso)) - pacificDay(when)) / 86_400_000);
   return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? WEEKDAY.format(when) : MONTH_DAY.format(when);
+}
+
+function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
+  if (row.kind === "command") return row.summary;
+  const source = row.sourceEvent;
+  if (row.summary !== undefined && (source?.state === "available" ? source.kind === "run-failed"
+    : row.trigger === "failed" && Object.values(ERROR_CATALOG).some(entry => entry.text === row.summary))) return row.summary;
+  return notificationPolicy(row)?.detail;
 }
 
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
@@ -71,11 +83,10 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       kind: command ? "command" as const : row.link?.kind === "storage" ? "storage" as const : "run" as const,
       // Notices the server marks as commands carry their own priority; error and warning notices still need the operator.
       priority: command ? row.priority : tone === "danger" || tone === "warning",
-      subject: context.state === "available" ? context.subject : inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE"),
+      subject: context.state === "available" ? context.subject : "",
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
-      detail: command ? row.summary : row.sourceEvent?.state === "available" && row.sourceEvent.kind === "run-failed" && row.summary !== undefined
-        ? row.summary
-        : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
+      detail: notificationDetail(row) ?? "",
+      ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
       day: notificationDay(row.occurredAt, nowIso),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
@@ -88,26 +99,27 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
   const items: NotificationItem[] = [];
   for (const row of rows) {
     if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    const policy = notificationPolicy(row);
-    if (policy === undefined) notices.add(inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"));
     items.push(notificationItem(row, nowIso));
   }
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
   return { state: { state: "ready", items, pinned: [] }, notice: [...notices].join(" "), needsYou };
 }
 
+export type InboxArrival = Readonly<{ sourceId: string; item: NotificationItem }>;
+
 export interface InboxWiring {
   readonly state: NotificationsState;
   readonly notice: string;
   control(id: string, action: NotificationControl | "snooze" | "unsnooze"): Promise<boolean>;
   readAll(): Promise<void>;
+  /** Delivers each distinct publication once, as the item it adds; snapshots never deliver. */
+  onPublication(listener: (arrival: InboxArrival) => void): () => void;
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
-export function useInboxWiring({ client, enabled, binding, toast }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding;
-  toast: (input: Omit<DsToast, "id">) => string }): InboxWiring {
+export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
   const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
-  const current = useRef({ request, binding, toast, fresh: false }); current.current = { request, binding, toast, fresh: false };
+  const current = useRef({ request, binding, fresh: false }); current.current = { request, binding, fresh: false };
   const [revision, refresh] = useState(0);
   const readEpoch = useRef(0);
   const [settled, setSettled] = useState<{ request: typeof request; read: object; rows: readonly NotificationWire[] | undefined; notice: string; failed?: boolean }>();
@@ -134,6 +146,7 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
   }, [client, enabled, request, read]);
   const rows = settled?.request === request ? settled.rows : undefined;
   const rowsRef = useRef(rows); rowsRef.current = rows;
+  const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
   useEffect(() => {
     if (!enabled) return;
     const delivered = new Set<string>();
@@ -143,17 +156,14 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
       current.current.fresh = false;
       readEpoch.current++;
       refresh(value => value + 1);
-      const row = publication.notification, policy = notificationPolicy(row);
-      if (row.kind === "backfill-gap" || policy === undefined) {
-        setPublicationNotice({ request, text: inboxMessage(row.kind === "backfill-gap" ? "NOTIFICATION_HISTORY_INCOMPLETE" : "NOTIFICATION_SOURCE_UNAVAILABLE") }); return;
-      }
+      const row = publication.notification;
+      if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
       if (row.state === "snoozed") return;
+      const arrival = { sourceId: publication.sourceId, item: notificationItem(row, current.current.binding.authority.nowIso) };
+      for (const listener of arrivalListeners.current) listener(arrival);
       void client.notificationTarget(row.notificationId).then(target => {
         if (current.current.request !== request) return;
         if (!notificationTargetMatches(row, target)) { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return; }
-        const item = { ...notificationItem(row, current.current.binding.authority.nowIso), destination: target };
-        current.current.toast({ tone: policy.tone === "positive" ? "success" : policy.tone, title: item.title,
-          description: policy.tone === "positive" ? `${item.subject} · ${item.workflow}` : item.detail });
       }).catch(() => { if (current.current.request === request) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); });
     });
   }, [client, enabled, request, subscribePublications]);
@@ -162,26 +172,36 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
     const row = rowsRef.current?.find(row => row.notificationId === id);
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
     const owner = current.current.binding;
-    const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
-      && ("members" in attempt.request.target ? attempt.request.target.members.some(member => member.notificationId === id) : attempt.request.target.notificationId === id) && attempt.request.target.actorId === request.scope.actorId
-      && attemptUnresolved(attempt));
-    if (retained !== undefined) { setCommandNotice({ request, text: retained.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
-    const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
-      source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: id, actorId: request.scope.actorId, expectedVersion: row.revision } });
+    const members = row.group?.members ?? [{ notificationId: id, revision: row.revision }];
+    for (const member of members) {
+      const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
+        && ("members" in attempt.request.target ? attempt.request.target.members.some(entry => entry.notificationId === member.notificationId) : attempt.request.target.notificationId === member.notificationId) && attempt.request.target.actorId === request.scope.actorId
+        && attemptUnresolved(attempt));
+      if (retained !== undefined) { setCommandNotice({ request, text: retained.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
+    }
     setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
-    const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
-      publish: outcome => {
-        if (current.current.request !== request) return;
-        if (outcome.kind === "confirmed") {
-          const confirmed = NotificationWireSchema.parse(outcome.readback);
-          const next = rowsRef.current?.map(row => row.notificationId === confirmed.notificationId ? confirmed : row);
-          rowsRef.current = next;
-          if (next !== undefined) setSettled(previous => previous?.request === request ? { ...previous, rows: next } : previous);
-          setCommandNotice({ request, text: "" });
-          if (!current.current.fresh) { readEpoch.current++; refresh(value => value + 1); }
-        }
-        else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); if (outcome.kind === "conflict") { current.current.fresh = false; refresh(value => value + 1); } }
-      } });
+    let outcome: Awaited<ReturnType<typeof owner.executor.execute>> | undefined;
+    // A group acts on every durable member it holds; the authoritative snapshot is read again afterwards.
+    for (const member of members) {
+      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
+        source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: member.notificationId, actorId: request.scope.actorId, expectedVersion: member.revision } });
+      outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
+        publish: outcome => {
+          if (current.current.request !== request) return;
+          if (outcome.kind === "confirmed") {
+            const confirmed = NotificationWireSchema.parse(outcome.readback);
+            const next = rowsRef.current?.map(row => row.notificationId === confirmed.notificationId ? confirmed : row);
+            rowsRef.current = next;
+            if (next !== undefined) setSettled(previous => previous?.request === request ? { ...previous, rows: next } : previous);
+            setCommandNotice({ request, text: "" });
+            if (!current.current.fresh) { readEpoch.current++; refresh(value => value + 1); }
+          }
+          else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); if (outcome.kind === "conflict") { current.current.fresh = false; refresh(value => value + 1); } }
+        } });
+      if (outcome.kind !== "confirmed") break;
+    }
+    if (outcome === undefined) return false;
+    if (members.length > 1 && current.current.request === request) { current.current.fresh = false; readEpoch.current++; refresh(value => value + 1); }
     const replacement = current.current;
     if (replacement.request !== request && replacement.request.enabled && replacement.request.client === client
       && replacement.binding.scope.client === owner.scope.client && replacement.binding.scope.actorId === owner.scope.actorId
@@ -194,6 +214,7 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
     : inboxProjection(rows, binding.authority.nowIso);
   return { state: projection.state, notice: [rows !== undefined && !current.current.fresh && !settled?.failed ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "", projection.notice, settled?.request === request ? settled.notice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
+    onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },
     readAll: async () => {
       if (!enabled || current.current.request !== request || !current.current.fresh || client.notificationCollection === undefined) return;
       const owner = current.current.binding;

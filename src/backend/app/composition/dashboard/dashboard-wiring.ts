@@ -16,6 +16,7 @@ import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.j
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { createAssistantService } from "../../../assistant/service.js";
+import { createAssistantActivityQuery } from "../../../assistant/activity.js";
 import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
 import { createAssistantProposals } from "../../../assistant/proposals.js";
 import { assistantWorkflowFacts, loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
@@ -72,7 +73,29 @@ import { composeWorkerPool,productionWorkerLaunch,realWorkerProcessSpawner } fro
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
 
 
+const DASHBOARD_WORKFLOW_SOURCES = ["served", "hidden"] as const;
+type DashboardWorkflowSource = (typeof DASHBOARD_WORKFLOW_SOURCES)[number];
+
+export class DashboardWorkflowSourceRefusedError extends Error {
+  readonly name = "DashboardWorkflowSourceRefusedError";
+
+  constructor(readonly workflowId: string, readonly value: unknown) {
+    super(`config/dashboard-workflow-sources.json: workflow ${workflowId} has source ${JSON.stringify(value)}; expected "served" or "hidden"`);
+  }
+}
+
+function parseDashboardWorkflowSources(configured: unknown): Readonly<Record<string, DashboardWorkflowSource>> {
+  const sources: Record<string, DashboardWorkflowSource> = {};
+  for (const [workflowId, value] of Object.entries(z.record(z.string(), z.unknown()).parse(configured))) {
+    const source = DASHBOARD_WORKFLOW_SOURCES.find(candidate => candidate === value);
+    if (source === undefined) throw new DashboardWorkflowSourceRefusedError(workflowId, value);
+    sources[workflowId] = source;
+  }
+  return Object.freeze(sources);
+}
+
 export async function composeDashboardRuntimeStartup(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody): Promise<DashboardRuntime> {
+  const workflowSources = parseDashboardWorkflowSources(configuredWorkflowSources);
   const environment = prepareDashboardEnvironment(input, custody);
   const { repoRoot, frontend } = environment;
   const staticBundle = frontend === "built-bundle"
@@ -81,7 +104,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
-  const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, timeZone, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
+  const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
   const ledger = createTransactionHistory(database.authority);
   const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
   const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
@@ -94,7 +117,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     return { commandId: request.commandId };
   };
 
-  const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger, timeZone });
+  const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
   const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
@@ -157,7 +180,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
-  const workflowSources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredWorkflowSources);
   const servedDescriptors = DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served");
   // The manifest identity hashes the facts from the running definitions; the on-disk pin is checked only when the assistant runs.
   const factsSha256 = assistantWorkflowFacts(servedDescriptors).sha256;
@@ -268,6 +290,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     search: () => shell.search, notifications: () => notifications,
     workbooks: () => workbookLibrary, attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
   const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
+    activity: createAssistantActivityQuery({ database, clock, assertCurrent, workflowLabel: workflowId => {
+      const descriptor = descriptors.resolve(workflowId);
+      if (descriptor === undefined) throw new Error(`assistant-activity-workflow-missing:${workflowId}`);
+      return descriptor.label;
+    } }),
     assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
     owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
     plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
@@ -306,13 +333,9 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
         context.assertCurrent();
       } };
     } });
-  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync,
-    resultRun: runId => {
-      const run = database.authority.runs.get(runId);
-      return run === undefined ? undefined : { workflowId: run.envelope.workflow, enqueuedAt: run.envelope.enqueuedAt };
-    } });
+  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
-  const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
+  const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, projection, activity, clock, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
@@ -347,6 +370,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       readStatus: async signal => { assertCurrent(); const result = await chatGptAccount.readStatus(signal); assertCurrent(); return result; },
       refreshAccount: async () => { assertCurrent(); const result = await chatGptAccount.refreshAccount(); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
+      signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
     },
     notifications,
     ...(staticBundle === undefined ? {} : { staticBundle }),
@@ -413,5 +437,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
 }

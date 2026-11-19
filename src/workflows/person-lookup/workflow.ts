@@ -9,7 +9,9 @@ import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { personLookupActiveStatusDefinition } from "./steps/active-status/step.js";
 import { personLookupCrmDatesDefinition } from "./steps/crm-dates/step.js";
 import { personLookupCrossVerifyDefinition } from "./steps/cross-verify/step.js";
+import { personLookupReferenceCheckDefinition } from "./steps/reference-check/step.js";
 import { personLookupSearchingDefinition } from "./steps/searching/step.js";
+import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
 
 export { PersonLookupCanonicalInput, PersonLookupInput };
 
@@ -21,7 +23,8 @@ const SEARCH_ENTRIES = { split: { kind: "delimited", delimiters: [";", "\n"] }, 
 export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
   requiredWorkbookFields: [],
-  version: 3,
+  workbookCheck: REFERENCE_CHECK,
+  version: 4,
   code: "pl",
   label: "Person Lookup",
   summary: "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
@@ -62,15 +65,15 @@ export const personLookupWorkflow = defineWorkflow({
         modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
         modes: [
           {
-            value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
-            defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+            value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or Shift+Enter.", placeholder: "10000001; Lee, Jordan",
+            defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: true } }],
             parser: { kind: "entries", spec: SEARCH_ENTRIES },
             display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
           },
           {
-            value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons.", placeholder: "Lee, Jordan, 01/01/2000, x",
+            value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with a semicolon or Shift+Enter.", placeholder: "Lee, Jordan, 01/01/2000, x",
             defaults: [{ field: "crmCheck", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
-            parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS" },
+            parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS", shapeRefusal: "Use Last, First, DOB, SSN; separate people with semicolons.", missingRefusal: "Match needs DOB or SSN; both cannot be x." },
             display: { kind: "tuple", fields: ["lastName", "firstName", "dob", "ssn"], separator: ", ", missing: "x", masked: ["ssn"] }, identityFields: ["lastName", "firstName", "dob", "ssn"],
           },
         ],
@@ -79,9 +82,9 @@ export const personLookupWorkflow = defineWorkflow({
           { field: "keepNonHdh", label: "Keep non-HDH candidates", placement: "hidden", modes: ["search"], requires: [] },
           { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
         ],
-      }, placeholder: "Enter employee IDs or names separated by semicolons or new lines", parser: {
+      }, placeholder: "Enter employee IDs or names separated by a semicolon or Shift+Enter", parser: {
         ...SEARCH_ENTRIES,
-        constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: true } }],
       }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }]
     }
   },
@@ -94,12 +97,20 @@ export const personLookupWorkflow = defineWorkflow({
   input: PersonLookupInput,
   intake: personLookupIntake,
   role: defineWorkflowRole({ kind: "composition" }),
+  // The reference check reads the Employee ID the search resolved, so it shows under Search for person.
+  rows: [
+    { key: "searching", label: "Search for person", members: [{ step: "searching" }, { step: "reference-check" }], target: { step: "searching" } },
+    { key: "cross-verify", label: "Cross-check identity", members: [{ step: "cross-verify" }], target: { step: "cross-verify" } },
+    { key: "active-status", label: "Read employment status", members: [{ step: "active-status" }], target: { step: "active-status" } },
+    { key: "crm-dates", label: "Read CRM dates", members: [{ step: "crm-dates" }], target: { step: "crm-dates" } },
+  ],
   scenarios: ["person-lookup/s1", ...Array.from({ length: 15 }, (_, index) => `person-lookup/s${index + 2}`), "person-lookup/m1b", ...Array.from({ length: 5 }, (_, index) => `person-lookup/m${index + 1}`), ...Array.from({ length: 5 }, (_, index) => `person-lookup/f${index + 1}`)],
   steps: author => {
     const searching = personLookupSearchingDefinition.build(author);
     const crossverify = personLookupCrossVerifyDefinition.build(author, searching);
     const activestatus = personLookupActiveStatusDefinition.build(author, searching, crossverify);
     const crmdates = personLookupCrmDatesDefinition.build(author, searching, crossverify, activestatus);
-    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps], result: crmdates.result };
+    const referencecheck = personLookupReferenceCheckDefinition.build(author, searching, crossverify, activestatus);
+    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps, ...referencecheck.steps], result: crmdates.result };
   },
 });

@@ -57,6 +57,20 @@ export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: str
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
 
+/** A queued run that already reports what it is doing has begun starting: the row and panel say Starting, not Queued. */
+export function isStarting(surface: Pick<QueueSurfaceWire, "status" | "liveMessage" | "surfaceKind">): boolean {
+  return surface.surfaceKind !== "operation" && dsStatusOf(surface.status) === "queued" && surface.liveMessage.state === "present";
+}
+
+export const STARTING_LABEL = "Starting";
+
+/** A run held only by the operator's Duo approval; the served `operatorWait` is the sole source, never the live message. */
+export const NEEDS_DUO_LABEL = "Needs Duo";
+export function isNeedsDuo(surface: Pick<QueueSurfaceWire, "operatorWait">): boolean {
+  return surface.operatorWait.state === "present";
+}
+export const NEEDS_DUO_MEANING = "Relay is waiting for your Duo approval. Approve the sign-in on your phone to continue.";
+
 export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 
 export type PipelineStep = QueueSurfaceWire["pipeline"][number];
@@ -369,16 +383,27 @@ export function queueMemberLines(surface: OperationSurfaceWire | QueueBatch, mem
   return [...runs, ...records].sort((a, b) => MEMBER_TIER[dsStatusOf(status(a))] - MEMBER_TIER[dsStatusOf(status(b))]);
 }
 
-export function queueMemberPresentation(line: QueueMemberLine, selectedRunId?: string) {
+/** A failed card's chip repeats the served plain sentence; the receipt's first warning carries task names and codes. */
+export function queueWarningTitle(surface: QueueSurfaceWire): string | undefined {
+  if (surface.warnings.state !== "present") return undefined;
+  return dsStatusOf(surface.status) === "failed" && surface.liveMessage.state === "present" ? surface.liveMessage.value : surface.warnings.first;
+}
+
+/** Assistive name of a member row: "<name>, <workflow>, <status>". */
+export function queueMemberAccessibleName(name: string, workflow: string, status: string): string {
+  return `${name}, ${workflow}, ${status.toLowerCase()}`;
+}
+
+export function queueMemberPresentation(line: QueueMemberLine, selectedRunId?: string, workflowLabel = "") {
   if (line.kind === "record") return { key: line.key, title: line.member.title, status: line.member.status,
     statusLabel: line.member.statusLabel, statusAccessibleLabel: line.member.statusLabel, paused: false, buttonTitle: line.member.title,
-    accessibleName: `${line.member.title} ${line.member.statusLabel.toLowerCase()}`, native: undefined };
+    accessibleName: queueMemberAccessibleName(line.member.title, workflowLabel, line.member.statusLabel), native: undefined };
   const item = line.item;
   const surface = item.attempts.find(attempt => attempt.runId === selectedRunId) ?? item.representative;
   const pause = queuePauseLabel(surface), status = dsStatusOf(surface.status), title = queueRowTitle(surface);
   return { key: String(surface.runId), title, status: surface.status, paused: pause === "Paused",
     statusLabel: pause ?? surface.outcome?.label ?? statusText(status), statusAccessibleLabel: pause ?? surface.outcome?.label ?? statusAccessibleName(status), buttonTitle: surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason,
-    accessibleName: `${title} ${surface.subtitle.state === "present" ? surface.subtitle.value : (pause ?? statusAccessibleName(status)).toLowerCase()}`,
+    accessibleName: queueMemberAccessibleName(title, workflowLabel, pause ?? surface.outcome?.label ?? statusAccessibleName(status)),
     native: { surface, item } };
 }
 

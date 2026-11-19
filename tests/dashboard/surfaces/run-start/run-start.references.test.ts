@@ -5,6 +5,7 @@ import { workbookRowChoices } from '../../../../src/dashboard/surfaces/run-start
 import { EditableWorkbookWireSchema } from '../../../../src/models/dashboard/workbooks.js';
 import { launchWorkbookReferences } from '../../../../src/dashboard/surfaces/run-start/run-start-model.js';
 import { WorkbookLibraryEntrySchema } from '../../../../src/models/dashboard/workbook-library.js';
+import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 const entry = WorkbookLibraryEntrySchema.parse({ libraryId: 'roster', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 1,
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: 'roster-type', sharePoint: null },
   type: { id: 'roster-type', name: 'Roster', keyFieldId: 'email', fields: ['email', 'fullName'], defaultWorkbookId: 'roster' },
@@ -17,6 +18,26 @@ it('sends the exact named version, selection identity for each parsed input', ()
     { entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
     { entry: 2, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
   ]);
+});
+it('sends no reference for a workflow whose only spreadsheet need is the optional check', () => {
+  expect(launchWorkbookReferences([], [entry], {}, 2, sources, false)).toEqual([]);
+  expect(launchWorkbookReferences([], [], {}, 1, [], false)).toEqual([]);
+});
+it('sends each check pick with its declaration beside the required reference, for every parsed input', () => {
+  const check = { typeId: 'reference-check', picks: [{ libraryId: 'roster', versionId: 'current', sheetId: 'people' }] };
+  expect(launchWorkbookReferences([], [entry], {}, 2, sources, false, undefined, check)).toEqual([1, 2].map(number => (
+    { typeId: 'reference-check', entry: number, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 })));
+  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 1, sources, false, undefined, check)).toEqual([
+    { entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
+    { typeId: 'reference-check', entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
+  ]);
+  expect(launchWorkbookReferences([], [entry], {}, 1, sources, false, undefined, { typeId: 'reference-check', picks: [] })).toEqual([]);
+  expect(() => launchWorkbookReferences([], [entry], {}, 1, [], false, undefined, check)).toThrow();
+  expect(() => launchWorkbookReferences([], [], {}, 1, sources, false, undefined, check)).toThrow();
+});
+it('names the missing required reference when only a check spreadsheet is picked', () => {
+  const check = { typeId: 'reference-check', picks: [{ libraryId: 'roster', versionId: 'current', sheetId: 'people' }] };
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], {}, 1, sources, false, undefined, check)).toThrow(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
 });
 it('refuses missing reference identities, unavailable named versions', () => {
   expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1, sources, false)).toThrow();
@@ -113,4 +134,8 @@ it('refuses missing returned references and selections outside the input vector'
   delete proposed.planned[0].workbookReferences;
   await expect(launch(proposed).preview(request)).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });
   await expect(launch(plan).preview({ ...request, workbookReferences: [...(request.workbookReferences ?? []), { entry: 4, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 }] })).rejects.toMatchObject({ name: 'RUN_LAUNCH_PLAN_IDENTITY_MISMATCH' });
+});
+
+it('names a required reference with no selection as a plain refusal, not a malformed workbook', () => {
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], {}, 1, sources, false)).toThrow('Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.');
 });

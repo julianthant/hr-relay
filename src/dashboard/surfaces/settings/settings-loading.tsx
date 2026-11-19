@@ -1,6 +1,7 @@
 import { useDelayedLoading } from "../shared/loading/loading-model.js";
-import { BodySection, Field, FormGroup, PageHeading, Skeleton, Switch } from "../../ds/ui.js";
-import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "../shared/loading/loading.js";
+import { BodySection, FormGroup, PageHeading, Skeleton } from "../../ds/ui.js";
+import { LoadingRegion, SettingsRowsSkeleton } from "../shared/loading/loading.js";
+import { GENERAL_RUN_GROUPS } from "./general/general-groups-model.js";
 import { routeLoadingGroups } from "./routes/settings-routes-model.js";
 
 export function SettingsSectionSkeleton({ section, contentOnly = false }: { section: string; contentOnly?: boolean }) {
@@ -14,13 +15,7 @@ export function SettingsSectionSkeleton({ section, contentOnly = false }: { sect
     {show && <LoadingRegion label={`Loading ${copy.title.toLowerCase()}`} className="settings-compact-form">
       <div className="ds-body-stack">
         {section === "general" ? <>
-          <BodySection title="Employment"><FormGroup label="Employment loading"><SettingsRowsSkeleton rows={1} /></FormGroup></BodySection>
-          <BodySection title="Browser"><FormGroup label="Browser loading">
-            <div className="settings-compact-row"><Switch label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} checked={false} disabled onCheckedChange={() => {}} /></div>
-            <div className="settings-compact-row"><Field orientation="horizontal" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />}><div className="hub-window-size">
-              <Skeleton className="h-[var(--ds-h-body-control)] w-0 flex-1" /><span aria-hidden>×</span><Skeleton className="h-[var(--ds-h-body-control)] w-0 flex-1" />
-            </div></Field></div>
-          </FormGroup></BodySection>
+          {[...contentOnly ? [] : [{ title: "ChatGPT", rows: 1, singleLine: [] as number[] }, { title: "Permissions", rows: 1, singleLine: [] as number[] }], { title: "General", rows: 5, singleLine: [2, 3] }, ...GENERAL_RUN_GROUPS.map(group => ({ title: group.title, rows: group.rows.length, singleLine: [] as number[] }))].map(group => <BodySection key={group.title} title={group.title}><FormGroup label={`${group.title} loading`}><SettingsRowsSkeleton rows={group.rows} singleLine={group.singleLine} /></FormGroup></BodySection>)}
         </> : section === "performance" ? <>
           {[{ title: "Navigation", rows: 3 }, { title: "Work", rows: 3 }, { title: "Sign-in & Duo", rows: 4 }, { title: "Additional limits", rows: 4 }].map(group => <BodySection key={group.title} title={group.title}><FormGroup label={`${group.title} loading`}><SettingsRowsSkeleton rows={group.rows} presentation={group.title === "Additional limits" ? "disclosure" : "field"} /></FormGroup></BodySection>)}
         </> : section === "routes" ? <>

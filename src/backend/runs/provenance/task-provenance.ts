@@ -54,6 +54,8 @@ export type TaskProvenanceCollectorInput = Readonly<{
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
   readonly canonicalInput?: JsonValue;
+  /** Declared reference ids the run picked a spreadsheet for, so a skip on that condition can be verified. */
+  readonly references?: readonly string[];
   readonly continuation?: AuthenticatedRunContinuation;
   readonly observationSpanPath?: string;
 
@@ -267,7 +269,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (input.canonicalInput === undefined) throw new Error(`skipped node ${id} requires the validated canonical input`);
     const dependency = nodeConditionDependency(skipped.when);
     if (dependency !== undefined && outputs[dependency] === undefined && !skippedIds.has(dependency)) throw new Error(`skipped node ${id} has no condition dependency evidence for ${dependency}`);
-    if (evaluateNodeCondition(skipped.when, { input: input.canonicalInput, outputs })) throw new Error(`task ${execution.taskId} cannot skip required ${skipped.kind === "gate" ? "gate" : "task"} ${id}`);
+    if (evaluateNodeCondition(skipped.when, { input: input.canonicalInput, outputs, ...(input.references === undefined ? {} : { references: input.references }) })) throw new Error(`task ${execution.taskId} cannot skip required ${skipped.kind === "gate" ? "gate" : "task"} ${id}`);
   }
   const childFacts = (evidence.children ?? []).flatMap((child) => {
     const declared = nodes.find((candidate) => candidate.id === child.evidence.nodeId);
@@ -334,7 +336,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     const aliases = (point.aliases ?? []).map(alias => {
       const target = readObservationPath(point.value, alias.path);
       let source: JsonValue;
-      let originAt: (path: readonly (string | number)[]) => DataObservationOrigin;
+      let originAt: ((path: readonly (string | number)[]) => DataObservationOrigin) | undefined;
       if (alias.source.kind === "local") {
         const local = points.get(alias.source.field);
         if (local === undefined) throw new Error("observation alias source is not a prior local point");
@@ -348,7 +350,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
         const checkpoint = evidence.checkpoints.find(row => row.nodeId === nodeId);
         if (checkpoint === undefined) throw new Error("observation alias source is not an admitted dependency");
         source = readObservationPath(checkpoint.output.value, alias.source.path);
-        originAt = path => {
+        // An operator-typed dependency has no observation to forward; its leaves keep this task's own origin.
+        originAt = checkpoint.assertion !== undefined ? undefined : path => {
           const origin = checkpoint.observationOrigins?.find(entry => canonicalJsonStringify(entry.path) === canonicalJsonStringify(path))?.origin;
           if (origin === undefined) throw new Error(`observation alias source checkpoint ${checkpoint.nodeId} origin unavailable`);
           return origin;
@@ -364,7 +367,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (spanPath === undefined || aliases.length === 0) return undefined;
     const origins = observationLeafPaths(point.value).flatMap(path => {
       const alias = aliases.find(alias => alias.path.every((part, index) => path[index] === part));
-      if (alias === undefined) return [];
+      if (alias?.originAt === undefined) return [];
       const origin = alias.originAt([...alias.source.path, ...path.slice(alias.path.length)]);
       return canonicalJsonStringify(origin) === canonicalJsonStringify(resolveObservationOrigin({ ...execution, spanPath }, point, path))
         ? [] : [{ path: [...path], origin }];

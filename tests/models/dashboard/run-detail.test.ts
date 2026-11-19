@@ -3,12 +3,61 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema,QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
-import { NativeRunEventWireSchema, GateDecisionWireSchema,CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { NativeRunEventWireSchema, GateDecisionWireSchema,CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema,FailureDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { failureDetailWireFixture,receiptWireFixture } from "../../support/helpers/trust/trust-wire-fixtures.js";
 
 const { BOOTSTRAP, RUN_1, RUN_2, NOTE_1, RECORD_1, HASH_A, HASH_B, NOW, QUEUE, DAY, DETAIL, NOTE_PAGE, REVIEW_PAGE, PEOPLE_PAGE, ARTIFACT } = createDashboardModelFixtures();
 
 const FAILURE_1 = "99999999-9999-4999-8999-999999999999";
+
+it("binds a cancellation ending to the cancelled run, recorded time and requester", () => {
+  const cancellation = { title: "Run cancelled", at: NOW, requestedBy: "operator", outcome: "You cancelled this run." };
+  const candidate = { ...DETAIL, header: { ...DETAIL.header, status: "cancelled" },
+    outcome: { state: "terminal", result: "cancelled", completedAt: NOW }, cancellation };
+  assert.equal(RunDetailWireSchema.safeParse(candidate).success, true);
+  assert.equal(RunDetailWireSchema.safeParse(DETAIL).success, true, "existing snapshots may omit the new field");
+  const parent = { ...candidate, header: { ...candidate.header, parentRunId: RUN_2 },
+    cancellation: { ...cancellation, requestedBy: "parent", outcome: "This run was cancelled when its parent was stopped." } };
+  assert.equal(RunDetailWireSchema.safeParse(parent).success, true);
+  const unavailable = { ...candidate, cancellation: { ...cancellation, requestedBy: "unavailable", outcome: "This run was cancelled." } };
+  assert.equal(RunDetailWireSchema.safeParse(unavailable).success, true);
+  for (const changed of [
+    { ...candidate, header: { ...candidate.header, status: "failed" } },
+    { ...candidate, header: { ...candidate.header, status: "running" } },
+    { ...candidate, outcome: { state: "absent", reason: "still running" } },
+    { ...candidate, outcome: { ...candidate.outcome, result: "failed" } },
+    { ...candidate, cancellation: { ...cancellation, at: "2026-07-31T17:00:01.000Z" } },
+    { ...parent, header: candidate.header },
+    { ...candidate, cancellation: { ...cancellation, outcome: parent.cancellation.outcome } },
+    { ...unavailable, cancellation: { ...unavailable.cancellation, outcome: cancellation.outcome } },
+    { ...unavailable, cancellation: { ...unavailable.cancellation, outcome: parent.cancellation.outcome } },
+    { ...candidate, cancellation: { ...cancellation, outcome: unavailable.cancellation.outcome } },
+    { ...parent, cancellation: { ...parent.cancellation, outcome: unavailable.cancellation.outcome } },
+    { ...candidate, cancellation: { ...cancellation, title: "Internal task name" } },
+    { ...candidate, cancellation: { ...cancellation, outcome: "Unreviewed reason" } },
+    { ...candidate, cancellation: { ...cancellation, nodeId: "fabricated-node" } },
+  ]) assert.equal(RunDetailWireSchema.safeParse(changed).success, false);
+});
+
+it("binds a failure decision to its closed unwritten retry descriptor", () => {
+  const failure = failureDetailWireFixture({ runId: RUN_1, failureId: FAILURE_1, traceId: "on-120000-1111", workflowId: "onboarding" });
+  const retry = { key: "retry-failed-step", label: "Retry step", kind: "command", command: "retry", expectedVersion: 3,
+    intent: "neutral", icon: "retry", placement: ["banner"] };
+  const candidate = { ...failure, writeState: "not-attempted", retry,
+    decision: { type: "failed-retryable", title: "A step failed", options: [{ id: "retry", label: "Retry step", hint: "Nothing was written.",
+      send: { via: "action", actionKey: retry.key } }] } };
+  assert.equal(FailureDetailWireSchema.safeParse(candidate).success, true);
+  for (const writeState of ["prepared", "attempting", "unknown", "committed", "verified"]) {
+    assert.equal(FailureDetailWireSchema.safeParse({ ...candidate, writeState }).success, false);
+  }
+  for (const changed of [
+    { ...candidate, retry: undefined },
+    { ...candidate, retry: { ...retry, command: "restart" } },
+    { ...candidate, retry: { ...retry, expectedVersion: 0 } },
+    { ...candidate, retry: { ...retry, key: "another-action" } },
+    { ...candidate, retry: { ...retry, label: "Unreviewed text" } },
+  ]) assert.equal(FailureDetailWireSchema.safeParse(changed).success, false);
+});
 
 it("binds the child retry action to a failed child and its exact served revision", () => {
   const candidate = { ...DETAIL, header: { ...DETAIL.header, status: "failed", parentRunId: RUN_2 },
@@ -30,7 +79,7 @@ it("binds the child retry action to a failed child and its exact served revision
 it("lets a run-level decision send only the served child retry", () => {
   const childRetry = { key: "retry-child", kind: "command", command: "retry", expectedVersion: DETAIL.rowRevision,
     label: "Retry", intent: "neutral", icon: "retry", placement: ["banner"] };
-  const memberFailed = (actionKey: string) => ({ type: "member-failed", title: "This member failed",
+  const memberFailed = (actionKey: string) => ({ type: "member-failed", title: "Member failed",
     options: [{ id: "retry", label: "Retry member", hint: "Run this member again.", send: { via: "action", actionKey } }] });
   const failed = { ...DETAIL, header: { ...DETAIL.header, status: "failed", parentRunId: RUN_2 } };
   assert.equal(RunDetailWireSchema.safeParse({ ...failed, childRetry, decision: memberFailed("retry-child") }).success, true);

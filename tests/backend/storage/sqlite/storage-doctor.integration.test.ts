@@ -1,26 +1,37 @@
 import { default as assert } from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import fs,{ mkdirSync,mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname,join } from "node:path";
+import { basename,dirname,join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { afterAll,afterEach,describe,it,vi } from "vitest";
 import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
 
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 
+import { appendLocalDebug, importLocalDebugLog, readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 
 import { SpanEventWireSchema } from "../../../../src/models/events/types.js";
+import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 import { createBoundProfileFixture,createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
+import { debugTimelineFixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m2,composeStorageCommand,doctorAuthorityStorage as doctorAuthorityStorage_m2,syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
 
@@ -28,19 +39,192 @@ import { AuthorityDatabase as AuthorityDatabase_m2,composeStorageCommand,doctorA
 const diagnosticProfiles = createProfileFixtureSet();
 afterAll(() => diagnosticProfiles.close());
 
+function growAuthority(path: string, mebibytes: number): void {
+  using raw = new DatabaseSync(path);
+  raw.exec(`CREATE TABLE fixture_padding (bytes BLOB);
+    WITH RECURSIVE sizes(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM sizes WHERE n<${String(mebibytes)})
+    INSERT INTO fixture_padding SELECT zeroblob(1048576) FROM sizes;
+    DROP TABLE fixture_padding; PRAGMA wal_checkpoint(TRUNCATE);`);
+  assert.ok(fs.statSync(path).size >= mebibytes * 1024 * 1024);
+}
+
+it("captures a stopped logout inspection snapshot above 512 MiB", async () => {
+  const f = await diagnosticProfiles.create();
+  growAuthority(f.path, 513);
+  const now = "2026-10-21T12:00:00.000Z";
+  const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
+    activity: { hasUnquiescedWork: () => true },
+    prepareLogout(_profileId, owner) {
+      const database = AuthorityDatabase.open(owner, { path: f.path, busyTimeoutMs: 250, migrationOwner: "logout-size-fixture" });
+      try { return { source: database.capturePendingLogoutSource(), intentFailed(error): never { throw error; } }; }
+      finally { database.close(); }
+    } });
+  try {
+    const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: now });
+    assert.ok(active.state === "active");
+    const result = session.logOut(active.token, { at: now });
+    assert.ok(result.state === "cancelling" && result.operationId !== undefined);
+    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${result.operationId}.json`);
+    const operation = LogoutOperationSchema.parse(JSON.parse(fs.readFileSync(operationPath, "utf8")));
+    session.close();
+    const owner = f.machine.admitProfileSettlement(operation.operationId);
+    try {
+      const restore = f.machine.beginOfflineMaintenance();
+      try {
+        const stopped = f.machine.forStoppedLogoutSettlement(owner, operation, restore);
+        try {
+          const open = fs.openSync;
+          let linkedDuringOpen = false;
+          const openWithLink = vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+            if (typeof path === "string" && basename(path) === "authority.sqlite"
+              && basename(dirname(path)).startsWith(`relay-readonly-authority-pid${process.pid}-`)) {
+              fs.linkSync(path, `${path}.second-link`);
+              linkedDuringOpen = true;
+            }
+            return open(path, flags, mode);
+          });
+          syncBuiltinESMExports();
+          try {
+            assert.throws(() => stopped.capturePendingLogoutSnapshot().dispose(), /inspected copy changed during open/u);
+            assert.ok(linkedDuringOpen);
+          } finally { openWithLink.mockRestore(); syncBuiltinESMExports(); }
+
+          const { admission, snapshot, dispose } = stopped.capturePendingLogoutSnapshot();
+          try {
+            const row = withAuthorityDatabaseReadOnly(admission, snapshot.path,
+              database => database.prepare("SELECT profile_id FROM database_states WHERE id=1").get());
+            assert.equal(row?.profile_id, active.profileId);
+            fs.truncateSync(snapshot.path, 4096);
+            assert.throws(() => admission.assertReadOnlyAuthorityDatabase(snapshot.path), /inspected copy digest changed/u);
+          } finally { dispose(); }
+        } finally { stopped.release(); }
+      } finally { restore.release(); }
+    } finally { owner.release(); }
+  } finally { session.close(); await f.close(); }
+});
+
+it("settles logout and signs out with a 513 MiB database", async () => {
+  const f = await createBoundProfileFixture();
+  const profileId = f.admission.profileBinding.profileId;
+  let source: AuthorityDatabase | undefined;
+  let completed: { profileId: string; epoch: number } | undefined;
+  const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
+    activity: { hasUnquiescedWork: () => false },
+    prepareLogout(_profileId, owner) {
+      source = AuthorityDatabase.open(owner, { path: f.path, busyTimeoutMs: 250, migrationOwner: "logout-size-completion-fixture" });
+      return { source: source.capturePendingLogoutSource(), intentFailed(error): never { throw error; } };
+    },
+    prepareLogoutContinuation(operation) { assert.equal(operation.profileId, profileId); },
+    completedLogout: () => completed });
+  try {
+    growAuthority(f.path, 513);
+    const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
+    assert.equal(active.state, "active");
+    const result = session.logOut(active.token, { at: "2026-10-21T12:01:00.000Z" });
+    assert.ok(result.state === "cancelling" && result.operationId !== undefined);
+    const path = join(f.machine.stateRoot, "machine", "operations", `${result.operationId}.json`);
+    const readOperation = () => LogoutOperationSchema.parse(JSON.parse(fs.readFileSync(path, "utf8")));
+    const operation = readOperation();
+    assert.ok(source);
+    const stopped = await source.settlePendingLogout(f.machine, operation, { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
+    try {
+      assert.equal(readOperation().settlement?.phase, "done");
+      await stopped.complete();
+    } finally { stopped.dispose(); }
+    completed = { profileId: active.profileId, epoch: operation.sessionGeneration + 1 };
+    assert.equal(fs.existsSync(path), false);
+    assert.deepEqual(session.resumeLogout(operation.operationId), { state: "signed-out" });
+  } finally { source?.close(); session.close(); await f.close(); }
+});
+
+it("publishes profile selection across two full boot-log rotations and imports all retained evidence", async () => {
+  const f = await diagnosticProfiles.create();
+  try {
+    const registry = createProfileRegistry(f.machine), root = f.machine.stateRoot;
+    const before = registry.read();
+    assert.ok(before.activeProfileId);
+    const path = join(root, "logs", "boot.jsonl");
+    const original = fs.readFileSync(path, "utf8");
+    const padding = "m".repeat(60_000);
+    appendLocalDebug({ stateRoot: root, build: "test", now: new Date(NOW),
+      event: { category: "boot", phase: "failed", area: "boot-size-fixture", reason: "database-unavailable", message: padding, pinned: false } });
+    const template = fs.readFileSync(path, "utf8").slice(original.length);
+    const initial = readLocalDebugLog(root);
+    assert.strictEqual(initial.state, "present");
+    const eventId = initial.records.at(-1)?.eventId;
+    assert.ok(eventId);
+    const pinned = initial.records.find(record => record.payload.kind === "debug" && record.payload.event.pinned === true);
+    assert.ok(pinned);
+    const target = 5 * 1024 * 1024 - 128;
+    const fill = () => {
+      let size = fs.statSync(path).size;
+      const lines: string[] = [];
+      while (size + template.length <= target) {
+        lines.push(template.replaceAll(eventId, randomUUID()));
+        size += template.length;
+      }
+      const tailPadding = target - size - (template.length - padding.length);
+      assert.ok(tailPadding >= 0);
+      lines.push(template.replaceAll(eventId, randomUUID()).replace(padding, "m".repeat(tailPadding)));
+      fs.appendFileSync(path, lines.join(""));
+      assert.equal(fs.statSync(path).size, target);
+      return lines.length;
+    };
+
+    const initialCount = initial.records.length + fill();
+    assert.equal(registry.advanceSession(null), before.sessionGeneration + 1);
+    assert.equal(registry.read().activeProfileId, null);
+    const local = readLocalDebugLog(root);
+    assert.strictEqual(local.state, "present");
+    assert.equal(local.records.length, initialCount + 2);
+    assert.deepEqual(local.records.slice(-2).map(record => record.payload.kind === "debug" && record.payload.event.phase), ["started", "settled"]);
+    const { repository, records } = debugTimelineFixture();
+    vi.spyOn(repository, "get").mockReturnValueOnce(undefined);
+    assert.throws(() => importLocalDebugLog(root, repository), /boot-log-import-verification-failed/u);
+    const total = local.records.length + fill() + 2;
+    assert.equal(registry.advanceSession(before.activeProfileId), before.sessionGeneration + 2);
+    assert.equal(registry.read().activeProfileId, before.activeProfileId);
+    const retained = readLocalDebugLog(root);
+    assert.strictEqual(retained.state, "present");
+    assert.equal(retained.records.length, total);
+    assert.deepEqual(retained.records.slice(0, local.records.length), local.records);
+    assert.equal(importLocalDebugLog(root, repository), total);
+    assert.deepEqual(records.map(record => record.eventId), retained.records.map(record => record.eventId));
+    assert.ok(records.some(record => record.eventId === pinned.eventId));
+    assert.equal(readLocalDebugLog(root).state, "absent");
+  } finally { await f.close(); }
+});
+
 
 
 {
 
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 
-const _afterEachFixture0 = () => {
-  for (const cleanup of cleanups.reverse()) cleanup();
+const _afterEachFixture0 = async () => {
+  for (const cleanup of cleanups.reverse()) await cleanup();
   cleanups.length = 0;
 };
 
 const { fixture, snapshot } = createCredentialDoctorFixtures(cleanups);
 
+describe("storage doctor recovery copy limits", () => {
+  afterEach(_afterEachFixture0);
+
+  it("keeps readiness healthy with three preserved copies of a 90 MiB database", async () => {
+    const f = await fixture();
+    growAuthority(f.options.authorityPath, 90);
+    const directory = join(f.root, "backups", "suspects");
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    for (let index = 0; index < 3; index++) {
+      fs.copyFileSync(f.options.authorityPath, join(directory, `suspect-20261118000000000-${randomUUID()}.sqlite`));
+    }
+    const report = await new AuthorityHealthPreflightRunner(f.admission, f.options, undefined, f.credentialStore).run({
+      signal: new AbortController().signal, timeoutMs: 20_000, deadlineMonotonicMs: 20_000, redaction: "presence-only",
+    });
+    assert.equal(report.state, "healthy", report.summary);
+  });
+});
 
 
 describe("read-only upgrade phase reporting", () => {
@@ -113,7 +297,7 @@ afterEach(_afterEachFixture0);
       mkdirSync(dirname(authorityPath), { recursive: true, mode: 0o700 });
       const doctorOptions = {
         stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
-        backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
+        backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 500,
       };
       const expected = boundary === "doctor"
         ? "runtime-admission: fixture overlaps installation witness"
@@ -199,7 +383,7 @@ afterEach(_afterEachFixture0);
     }
     const doctorOptions = {
       stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
-      backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
+      backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 500,
     };
     let output: string;
     if (boundary === "cli-json") {

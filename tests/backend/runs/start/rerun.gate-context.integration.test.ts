@@ -10,7 +10,7 @@ import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-regis
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { validateCompletedTransactionContinuations } from "../../../../src/backend/runs/start/recovery-plan.js";
-import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
+import { previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { sourceBoundReadContract, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, writeFixtureMemoDescriptor as prior,
@@ -53,7 +53,7 @@ async function harness(descriptor: AnyWorkflowDescriptor, failOn: readonly numbe
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  });
+  }, undefined, undefined, undefined, [], undefined, true);
   cleanups.push(h.dispose);
   return h;
 }
@@ -132,6 +132,45 @@ for (const door of ["recover", "operator-recover"] as const) it(`${door} classif
   const next = door === "recover" ? retry(h, source) : operatorRecover(h, source);
   assert.equal((await h.execute(next)).state, "done");
   assert.deepEqual(transactionEffects(h), before);
+});
+
+async function skippedGateRerunSource(h: Harness) {
+  h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+  const queued = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID, "supplied-eid"));
+  assert.equal((await h.execute(queued)).state, "failed");
+  const run = h.fresh(queued);
+  const { runId } = run.envelope;
+  const rows = h.database.authority.timelineEvents.page({ runId });
+  const skip = rows.find(({ payload }) => payload.kind === "span" && payload.event.t === "span.ended"
+    && payload.event.kind === "task" && payload.event.spanPath.includes("/approval#")
+    && payload.event.outcome === "skipped" && payload.event.notRunReason === "condition-false");
+  assert.ok(skip);
+  assert.deepEqual(h.database.authority.gateResults.listByRun(runId), []);
+  const source = { runId, expectedVersion: run.version, intent: "rerun" as const,
+    selectedStepKeys: h.descriptor.timeline.map(({ key }) => key) };
+  return { run, source, skip };
+}
+
+it("plans a fresh rerun from a transaction with a recorded conditional gate skip", async () => {
+  const h = await harness(gateTransaction, [1]);
+  const { run, source } = await skippedGateRerunSource(h);
+  const preview = h.planner.previewWarnings({ workflowId: h.descriptor.id, source });
+  assert.deepEqual(preview.rerun.warnings.map(({ nodeId }) => nodeId), [WRITE_FIXTURE_NODE_ID]);
+  const plan = h.proposal(run, undefined, false, WRITE_FIXTURE_EID, "supplied-eid");
+  assert.equal(plan.rerun?.warningDigest, preview.rerun.warningDigest);
+  assert.equal(h.kernel.execute(h.command(plan)).state, "confirmation-required");
+  const confirmed = h.proposal(run, preview.rerun.warningDigest, false, WRITE_FIXTURE_EID, "supplied-eid");
+  assert.notEqual(h.start(confirmed).envelope.runId, source.runId);
+});
+
+it("refuses a rerun when the conditional gate has neither a result nor a recorded skip", async () => {
+  const h = await harness(gateTransaction, [1]);
+  const { source, skip } = await skippedGateRerunSource(h);
+  const repositories = h.database.authority;
+  const timelineEvents = repositories.timelineEvents;
+  assert.throws(() => previewRerunWarnings({ ...repositories, timelineEvents: {
+    ...timelineEvents, page: request => timelineEvents.page(request).filter(row => row.eventId !== skip.eventId),
+  } }, h.descriptor, source), error => error instanceof RerunRefusedError && error.code === "invalid-value");
 });
 
 it("refuses missing gate authority when corrected input makes the conditional gate required", async () => {

@@ -27,7 +27,6 @@ async function setup() { const h = await launchHarness(); cleanup.push(h.dispose
 type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {
-  if (name === "Continue" && [...document.querySelectorAll("button")].some(node => node.textContent?.trim() === "Preview plan")) name = "Preview plan";
   const matches = [...document.querySelectorAll("button")].filter((node) => (node.textContent?.trim() === name || node.getAttribute("aria-label") === name));
   assert.equal(matches.length, 1, `one button ${name}: ${text()}`); return matches[0];
 }
@@ -41,14 +40,14 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
   const workflows = [h.workflow]; const sourceRef = { runId: source.envelope.runId, expectedVersion: source.version };
   function Launcher() { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => controller.openRerun(sourceRef) }, "Rerun source"),
-    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
+    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Launcher) })));
   button("Rerun source").focus(); await press("Rerun source");
 }
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
-  for (const outcome of ["failed", "interrupted"] as const) it(`${outcome} defaults preserve required completed work and select unfinished work`, async () => {
+  for (const outcome of ["failed", "interrupted"] as const) it(`${outcome} reruns initially select every step and explain missing source values`, async () => {
     const h = await setup(); const source = h.start(h.proposal(undefined, undefined, true));
     if (outcome === "failed") {
       h.world.onPrepare = () => { throw new Error("synthetic prepare failure"); };
@@ -71,9 +70,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     }
     await mount(h, h.fresh(source)); assert.equal(checkbox("Read employee").checked, true);
     assert.equal(checkbox("File transaction").checked, true);
-    assert.equal(checkbox("Check employee").checked, outcome !== "failed");
-    await act(async () => checkbox("File transaction").click()); assert.equal(checkbox("File transaction").checked, false);
-    await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /Unavailable/u);
+    assert.equal(checkbox("Check employee").checked, true);
+    await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /The earlier run did not (?:get far enough to record|record) this\./u);
   });
 
 });

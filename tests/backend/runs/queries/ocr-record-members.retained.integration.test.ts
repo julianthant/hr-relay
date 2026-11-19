@@ -27,8 +27,16 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emergency-contact-member/workflow.js";
 import { createRetainedApprovedRecordReader, retainedSnapshotContract, retainedSnapshotStore } from "../../../support/fixtures/ocr/retained-approved-records.js";
 import { ReadApprovedOcrSnapshot } from "../../../../src/models/processing/ocr/read-approved-snapshot.js";
+import { defineTaskContract } from "../../../../src/models/task/task-contract.js";
+import { ReadOcrReviewSeed } from "../../../../src/models/workflows/ocr/read-review-seed.js";
+import { PreManualOcrReviewCheckpointSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { defineWorkflowStore } from "../../../../src/workflow-kit/task-registry.js";
+import { buildOcr } from "../../../../src/workflows/ocr/steps/source-pages/step.js";
+import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
@@ -54,7 +62,43 @@ const historicalParent = composeWorkflowModule(compileWorkflow(defineWorkflow({ 
 const historicalOcr = composeWorkflowModule(compileWorkflow({ ...ocrWorkflow, version: ocrWorkflow.version + 1 }), ocrModule.stores);
 const historicalMember = composeWorkflowModule(compileWorkflow({ ...contactSaveMember.definition, version: contactSaveMember.definition.version + 1 }), taskStoreRegistry.stores);
 bindWorkflowDelegationTargets([historicalParent.descriptor, historicalOcr.descriptor, historicalMember.descriptor,
+  childWorkflowModuleOf("emergency-contact-member", "onbase").descriptor,
   ...["ocr-page", "person-lookup", "i9-lookup"].map(id => childWorkflowModuleOf("ocr", id).descriptor)]);
+
+it("opens Records during a retained lookup bound to the pre-manual compact checkpoint", async () => {
+  const { __sealed: _seal, ...reviewSpec } = ReadOcrReviewSeed;
+  const contract = defineTaskContract({ ...reviewSpec, output: PreManualOcrReviewCheckpointSchema,
+    example: PreManualOcrReviewCheckpointSchema.parse(reviewSpec.example) });
+  const store = defineWorkflowStore("ocr", { ...ocrWorkflowStore.tasks, readReviewSeed: defineTask(contract, {
+    sessions: [], async run(args) {
+      return contract.output.parse(await ocrWorkflowStore.tasks.readReviewSeed.impl.run(args));
+    },
+  }) });
+  const producer = composeWorkflowModule(compileWorkflow(defineWorkflow({ ...ocrWorkflow,
+    version: ocrWorkflow.version + 1, steps: author => buildOcr({ ...author,
+      task: (identity, references, bind) => author.task({ ...identity,
+        contract: identity.contract.id === contract.id ? contract : identity.contract }, references, bind),
+    }),
+  })), ocrModule.stores.map(entry => entry.namespace === store.namespace ? store : entry));
+  const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"], pauseAtLookup: true, ocr: producer });
+  const repositories = f.database.authority;
+  const checkpoint = repositories.runCheckpoints.listByAttempt(f.run.envelope.workflow, f.run.envelope.itemId,
+    "build-review", f.run.envelope.attempt).at(-1);
+  assert.ok(checkpoint);
+  assert.equal(checkpoint.output.schemaHash, "70eabd1dfa14218417c0f4933e81bc2a9704b5bef5b72fc845b2a3ecb449f4fa");
+  const lookup = repositories.runs.listChildren(f.run.envelope.runId).find(child => child.envelope.workflow === "person-lookup");
+  assert.ok(lookup);
+
+  const records = f.database.withAuthorityReadSnapshot(() => readQueueRecordMembers(repositories, f.canonical.lifecycle,
+    f.run, [], id => id === "ocr" ? ocrModule.descriptor : f.resolve(id)));
+  assert.ok(records);
+  assert.equal(records.members.length, 1);
+  const [record] = records.members;
+  assert.ok(record);
+  assert.equal(record.kind, "record");
+  assert.equal(record.statusLabel, "Looking up");
+  assert.ok(record.childRunIds.includes(lookup.envelope.runId));
+});
 
 for (const dryRun of [false, true]) {
   it(`reads the full day and restarts a retained approved ${dryRun ? "preview" : "ordinary"} tree with its original record schema and omitted member associations`, async () => {
@@ -66,14 +110,15 @@ for (const dryRun of [false, true]) {
     let ticks = Date.parse(contactPage.page.observedAt);
     const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
       displayedEid: employee.emplId, displayedName: employee.name }), () => new Date(++ticks).toISOString());
-    const sessions = sessionFactoryHarness({ ucpath: () => {
+    const filing = await onbaseFilingFixture(1);
+    const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: () => {
       const session = persistence.session();
       return createDeterministicUcpathPersonOrgDriver(lookup, undefined, session.port, session.save);
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const f = await world.fixture({ coordinator: true, parent: historicalParent, ocr: historicalOcr, member: historicalMember,
       approvedStore: retainedSnapshotStore,
       approvedReader: deps => createRetainedApprovedRecordReader({ ...deps, snapshotContract: retainedSnapshotContract }),
-      record: true, pageCount: 1, dryRun, operatorEvidence: true, sessions,
+      record: true, pageCount: 1, dryRun, operatorEvidence: true, sessions, documentBytes: filing.bytes,
       reviewedPages: [{ employeeName: employee.name, contactName: "Original Contact", correctedContactName: "Released Contact" }],
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
     assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
@@ -97,6 +142,9 @@ for (const dryRun of [false, true]) {
     const input = EmergencyContactMemberInputSchema.parse(member.child.input.parsed.value);
     assert.equal(input.approval.sourceRunId, f.run.envelope.runId);
     assert.equal(input.record.assertedEid, employee.emplId);
+    const filings = f.database.authority.runs.listChildren(member.child.envelope.runId);
+    assert.deepEqual(filings.map(run => [run.envelope.workflow, run.envelope.dryRun, run.lifecycle.state === "terminal" && run.lifecycle.outcome]), [["onbase", dryRun, "done"]]);
+    assert.equal(filing.imports(), dryRun ? 0 : 1, "the live filing clicks Import once; a dry run never does");
     for (const run of [f.parentRun, f.run, member.child]) {
       assert.notEqual(run.envelope.contractFingerprint, currentResolve(run.envelope.workflow)?.contractFingerprint);
     }

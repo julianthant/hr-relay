@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { STEP_PROOF_DESCRIPTORS } from "../../src/backend/app/registries/step-proof-modules.js";
 import { DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../src/backend/app/registries/workflow-registry.js";
-import { workflowDryRunSupport } from "../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../src/workflow-kit/workflow.js";
 import { childUnsupportedPreviewRoot, childUnsupportedPreviewTarget } from "../support/fixtures/child-execution-write-workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../src/workflows/registry.js";
 import { plan1Child, plan1Leaf, plan1Parent } from "../support/fixtures/plan1-operation-workflows.js";
@@ -67,6 +67,18 @@ describe("workflow descriptor registry", () => {
     }
   });
 
+  it("resolves OnBase only as the Emergency Contact member's child and never lists it", () => {
+    const children = CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor);
+    const registry = createWorkflowDescriptorRegistry(DESCRIPTORS, children);
+    const onbase = children.find(descriptor => descriptor.id === "onbase");
+    assert.ok(onbase);
+    expect(registry.resolve("onbase")).toBeUndefined();
+    expect(registry.descriptors.some(descriptor => descriptor.id === "onbase")).toBe(false);
+    expect(registry.resolveChild("emergency-contact-member", "onbase")).toBe(onbase);
+    expect([...DESCRIPTORS, ...children].filter(descriptor => descriptorRuntimeNodes(descriptor)
+      .some(node => node.kind === "child-run" && node.target.id === "onbase")).map(descriptor => descriptor.id)).toEqual(["emergency-contact-member"]);
+  });
+
   it("derives a parent preparation boundary from real registered descendants", () => {
     const parent = workflowModuleOf("emergency-contact").descriptor;
     assert.deepEqual(workflowDryRunSupport(parent), { state: "supported", firstDelegationNodeId: "members" });
@@ -113,8 +125,9 @@ describe("workflow descriptor registry", () => {
     expect(separations?.timeline.map(({ key, label }) => [key, label])).toEqual([
       ["kuali-extraction", "Kuali extraction"],
       ["identity-check", "Identity check"],
-      ["job-summary", "Job summary"],
       ["kronos-timecard", "Kronos timecard"],
+      ["identity-review", "Identity approval"],
+      ["reference-check", "Check reference spreadsheets"],
       ["ucpath-transaction", "UCPath transaction"],
       ["kuali-finalization", "Kuali finalization"],
     ]);

@@ -27,12 +27,12 @@ it("keeps heartbeat-only derivation identity stable and notices presentation cha
   }finally{await f.dispose();}
 });
 
-it("uses the local enqueue day across a UTC boundary without changing the instant",async ()=>{
+it("uses the Pacific enqueue day across a UTC boundary whatever the machine zone",async ()=>{
   const f=await foundationFixture(),prior=process.env.TZ;
   try{
     const run=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,enqueuedAt:"2026-09-09T00:30:00.000Z"}});
     const source={run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[],delegationWait:null,parent:null};
-    process.env.TZ="UTC";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-09");
+    process.env.TZ="UTC";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-08");
     process.env.TZ="America/Los_Angeles";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-08");
   }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;await f.dispose();}
 });

@@ -1,5 +1,6 @@
 import { createLoginContractTestWorld } from "../../../support/helpers/backend/login-contract-world.js";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { createDuoCeremonyGateFactory, DUO_CEREMONY_LEASE_POLL_MS, DuoCeremonyLeaseExpiredError, DuoCeremonyLeaseHeldError, DuoCeremonyReleaseFailedError } from "../../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
@@ -10,6 +11,11 @@ import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-cer
 import { duoCeremonyGatesOver, FIXTURE_DUO_CREDENTIAL_KEY, FIXTURE_DUO_LEASE_GRACE_MS, FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import type { DuoCeremonyLeaseRepository } from "../../../support/helpers/synthetic-storage-admission.js";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { workerSessionDiagnostics } from "../../../../src/backend/app/composition/worker-compose.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { fillDiagnosticBudget } from "../../../support/helpers/backend/full-diagnostic-budget.js";
+import { TimelineDiagnosticBudgetError } from "../../../../src/models/events/timeline.js";
 
 const {WORKER_A, SYSTEM, NEED, T0, recipeFactory, managerFor, sharedAuthority, leaseRow, cleanup } = createLoginContractTestWorld();
 
@@ -45,6 +51,47 @@ async function advance(clock: TestClock, scheduler: ManualScheduler, ms: number)
 afterEach(cleanup);
 
 describe("two workers, one credential, one ceremony at a time", () => {
+  it("propagates a pinned diagnostic refusal and an unexpected writer failure", () => {
+    const event = { phase: "acquired" as const, correlationId: "fixture-lease" };
+    const unavailable = new Error("writer unavailable");
+    const failing = workerSessionDiagnostics({ emit() { throw unavailable; } });
+    assert.throws(() => failing("duo", WORKER_A, event), error => error === unavailable);
+    const full = new TimelineDiagnosticBudgetError();
+    const pinned = workerSessionDiagnostics({ emit() { throw full; } });
+    assert.throws(() => pinned("duo", WORKER_A, { ...event, phase: "expired", pinned: true }), error => error === full);
+  });
+
+  it("uses and releases the acquired lease at diagnostic capacity", async () => {
+    const clock = manualClock(T0), scheduler = new ManualScheduler(clock);
+    const database = await sharedAuthority(clock);
+    const timeline = database.authority.timelineEvents;
+    fillDiagnosticBudget(DatabaseSync, syntheticDatabasePath(database), timeline, clock);
+    const before = timeline.highWaterMark();
+    const report = workerSessionDiagnostics(createDebugEventWriter({ repository: timeline, clock, build: "test" }));
+    const phases: string[] = [];
+    const gate = createDuoCeremonyGateFactory({
+      leases: database.authority.duoCeremonyLeases, credentialKey: FIXTURE_DUO_CREDENTIAL_KEY, clock, scheduler,
+      sessionAcquireMs: FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS, graceMs: FIXTURE_DUO_LEASE_GRACE_MS, pollIntervalMs: POLL_MS,
+      onDebug(workerId, event) { phases.push(event.phase); report("duo", workerId, event); },
+    }).openGate({ workerId: WORKER_A, system: SYSTEM, envelopeDeadlineMonotonicMs: () => clock.monotonicMs() + BUDGET_MS,
+      cancelCeremony: () => assert.fail("unexpected cancellation"), signal: new AbortController().signal });
+    try {
+      const generation = await gate.withCeremony(async token => {
+        assert.equal(leaseRow(database).state, "held");
+        assert.equal(token.holder.workerId, WORKER_A);
+        return token.generation;
+      });
+      assert.equal(leaseRow(database).generation, generation);
+      assert.equal(leaseRow(database).state, "released");
+      assert.deepEqual(phases, ["acquired", "released"]);
+      assert.equal(timeline.highWaterMark(), before);
+      report("duo", WORKER_A, { phase: "expired", correlationId: "fixture-expiry", pinned: true });
+      const [expiry] = timeline.page({ after: before });
+      assert.equal(expiry.payload.kind, "debug");
+      assert.equal(expiry.payload.event.pinned, true);
+    } finally { gate.dispose(); }
+  });
+
   it("starts the second worker's ceremony strictly after the first worker's verifier returned", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
@@ -135,6 +182,47 @@ describe("two workers, one credential, one ceremony at a time", () => {
     await managerB.closeAll("worker-stop");
   });
 
+  it("a waiter whose acquisition was extended keeps its Duo budget from the extended deadline", async () => {
+    const clock = manualClock(T0);
+    const scheduler = new ManualScheduler(clock);
+    const database = await sharedAuthority(clock);
+    const holdA = deferred();
+    const a = recipeFactory(WORKER_A, { onCeremony: async () => holdA.promise });
+    const b = recipeFactory(WORKER_B, { onCeremony: async () => undefined });
+    // B first waits on an exclusive lease another worker is actively using, extending its acquisition as the session factory does.
+    const leaseWait = deferred();
+    let extend: (() => void) | undefined;
+    const waitingFactory: typeof b.factory = { ...b.factory, async open(input) {
+      extend = input.extendAcquisition;
+      await leaseWait.promise;
+      return b.factory.open(input);
+    } };
+    const managerA = managerFor(WORKER_A, a.factory, clock, scheduler, duoCeremonyGatesOver(database, clock, scheduler));
+    const managerB = managerFor(WORKER_B, waitingFactory, clock, scheduler, duoCeremonyGatesOver(database, clock, scheduler));
+
+    const runB = managerB.withDriver(NEED, "prod", new AbortController().signal, async () => "b");
+    const outcome = runB.then(value => value, (error: unknown) => error);
+    await flush();
+    assert.ok(extend !== undefined, "the manager hands the factory its acquisition extension");
+    for (let step = 0; step < 4; step += 1) { await advance(clock, scheduler, FIXTURE_SESSION_ACQUIRE_MS / 2); extend(); }
+    // A starts its ceremony only now, so its own acquisition bound outlasts the rest of the test.
+    const runA = managerA.withDriver(NEED, "prod", new AbortController().signal, async () => "a");
+    await flush();
+    assert.equal(leaseRow(database).holder.workerId, WORKER_A);
+    leaseWait.resolve();
+    await flush();
+    // B now meets A's Duo lease two envelopes after it started: it waits instead of being refused at once.
+    assert.equal(await Promise.race([outcome.then(value => `settled: ${String(value)}`), flush().then(() => "pending")]), "pending");
+    await advance(clock, scheduler, BUDGET_MS - POLL_MS);
+    assert.equal(await Promise.race([outcome.then(value => `settled: ${String(value)}`), flush().then(() => "pending")]), "pending");
+    holdA.resolve();
+    assert.equal(await runA, "a");
+    await advance(clock, scheduler, POLL_MS);
+    assert.equal(await outcome, "b");
+    await managerA.closeAll("worker-stop");
+    await managerB.closeAll("worker-stop");
+  });
+
   it("a lease past its TTL is taken over at the next generation, and the old holder's in-flight ceremony is cancelled", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
@@ -142,10 +230,11 @@ describe("two workers, one credential, one ceremony at a time", () => {
     const gatesA = duoCeremonyGatesOver(database, clock, scheduler);
     const gatesB = duoCeremonyGatesOver(database, clock, scheduler);
     const cancellations: Error[] = [];
+    const envelopeA = clock.monotonicMs() + 10 * TTL_MS;
     const gateA = gatesA.openGate({
       workerId: WORKER_A, system: SYSTEM,
       // The envelope deliberately sits BEYOND the TTL here, so the TTL is the arm under test.
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + 10 * TTL_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeA,
       cancelCeremony: (reason) => cancellations.push(reason),
       signal: new AbortController().signal,
     });
@@ -161,9 +250,10 @@ describe("two workers, one credential, one ceremony at a time", () => {
     assert.ok(cancellations[0] instanceof DuoCeremonyLeaseExpiredError);
     assert.match(cancellations[0].message, /expired at .* before the content verifier returned/);
 
+    const envelopeB = clock.monotonicMs() + FIXTURE_SESSION_ACQUIRE_MS;
     const gateB = gatesB.openGate({
       workerId: WORKER_B, system: "crm",
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_SESSION_ACQUIRE_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeB,
       cancelCeremony: () => undefined,
       signal: new AbortController().signal,
     });
@@ -227,10 +317,11 @@ describe("Gate#release preserves the original error when the store's release() i
       graceMs: FIXTURE_DUO_LEASE_GRACE_MS,
       pollIntervalMs: DUO_CEREMONY_LEASE_POLL_MS,
     });
+    const envelopeDeadline = clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS;
     const gate = factory.openGate({
       workerId: WORKER_A,
       system: SYSTEM,
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeDeadline,
       cancelCeremony: () => undefined,
       signal: new AbortController().signal,
     });
@@ -282,10 +373,11 @@ describe("Gate#release preserves the original error when the store's release() i
       graceMs: FIXTURE_DUO_LEASE_GRACE_MS,
       pollIntervalMs: DUO_CEREMONY_LEASE_POLL_MS,
     });
+    const envelopeDeadline = clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS;
     const gate = factory.openGate({
       workerId: WORKER_A,
       system: SYSTEM,
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeDeadline,
       cancelCeremony: () => undefined,
       signal: new AbortController().signal,
     });

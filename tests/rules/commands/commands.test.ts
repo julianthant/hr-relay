@@ -40,7 +40,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
     family: "worker-browser", type, target: { workflowId: "person-lookup", workerId: "person-lookup-worker-1", lifetimeId: null,
       expectedVersion: 1 } })),
   { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "failure-resolution", type: "annotate-failure",
-    target: { runId: UUID_1, failureId: UUID_2, expectedVersion: 1 }, payload: { action: "resolve", note: "Synthetic operator annotation" } },
+    target: { runId: UUID_1, failureId: UUID_2, expectedVersion: 1 }, payload: { action: "resolve" } },
   {
     commandId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", requestedAt: NOW,
     requestedBy: "local-operator", source: "dashboard",
@@ -64,6 +64,15 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 ]);
 
 describe("authority classification and command families", () => {
+
+  it("keeps failure resolution actions but refuses a note on either action", () => {
+    const command = { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "run-detail",
+      family: "failure-resolution", type: "annotate-failure", target: { runId: UUID_1, failureId: UUID_2, expectedVersion: 1 } };
+    for (const action of ["resolve", "reopen"]) {
+      assert.equal(CommandRequestSchema.safeParse({ ...command, payload: { action } }).success, true);
+      assert.equal(CommandRequestSchema.safeParse({ ...command, payload: { action, note: "Reviewed evidence" } }).success, false);
+    }
+  });
 
   it("accepts proof-free rechecks and refuses the removed operator-present command", () => {
     const command = COMMAND_FIXTURES.map(input => CommandRequestSchema.parse(input)).find(input => input.type === "recheck-write");

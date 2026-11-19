@@ -55,7 +55,7 @@ async function mode(value: string) { const radio = document.querySelector<HTMLIn
 async function select(index: number) { const checkbox = checkboxRows()[index]; assert.ok(checkbox); await act(async () => checkbox.click()); }
 async function chooseCurrent() { await h.chooseReference('Roster', 'Reviewed', 'First'); }
 function proposal(request: StartPlanRequest, partial = false) {
-  return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId,
+  return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId, priority: request.priority,
     ...(request.rerunSource ? { rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } } : {}),
     planned: request.submissions.flatMap((_, index) => partial && index === 1 ? [] : [{ logicalKey: `entry-${index}`, title: `Row ${index + 1}`, matchKey: `row-${index}`,
       workbookReferences: (request.workbookReferences ?? []).filter(reference => reference.entry === index + 1).map(reference => ({ libraryId: reference.libraryId, version: 1, versionId: reference.versionId, versionName: "Reviewed", worksheets: entry.worksheets.filter(sheet => sheet.id === reference.sheetId).map(sheet => ({ sheetId: sheet.id, name: sheet.name })), type: entry.type,
@@ -87,7 +87,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
       children: createElement(DashboardClientProvider, { client,
         children: createElement(ToastProvider, { children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID,
           children: createElement(RunStartDialog, { open: route.start === true, onOpenChange() {},
-            catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)),
+            catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)),
             panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} }) }) }) }) });
   }
   await act(async () => root.render(createElement(Harness)));
@@ -97,15 +97,24 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
     const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
     await act(async () => button.click());
   };
-  await press("Continue"); await press("Preview plan");
+  await press("Continue"); await press("Continue"); for (let wait = 0; wait < 6; wait += 1) await h.settle();
+  await press(h.buttons().some(button => h.buttonName(button) === "Start live run") ? "Start live run" : "Start run");
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
-  assert.match(document.body.textContent ?? "", /Entry 1 · Accepted/u);
-  const stepsRow = [...document.querySelectorAll("dt")].find(row => row.textContent === "Steps");
-  assert.ok(stepsRow, "Confirm must show the Steps summary");
-  const count = stepsRow.nextElementSibling?.textContent;
-  assert.equal(count, `${planned.selectedStepKeys.length} / ${workflow.steps.length} included`);
-  assert.equal(planned.selectedStepKeys.length, 7, "Onboarding defaults include all seven steps");
+  assert.equal(planned.selectedStepKeys.length, 8, "Onboarding defaults include all eight steps, with the reference check");
+});
+
+it("reads catalog and compatibility without the workbook list while the launcher moves between stages", async () => {
+  const reads = { workbookList: 0, workbookCatalog: 0, workbookCompatibility: 0 };
+  const counted = { ...libraryReads,
+    workbookList: async () => { reads.workbookList += 1; return []; },
+    workbookCatalog: async () => { reads.workbookCatalog += 1; return libraryReads.workbookCatalog(); },
+    workbookCompatibility: async () => { reads.workbookCompatibility += 1; return libraryReads.workbookCompatibility(); } };
+  const dialog = await h.openDialog(h.stubClient({ ...counted }), { workflows: [workflow], panelWorkflowId: descriptor.id });
+  await h.settle(); await chooseCurrent(); await select(0); await mode("rehire");
+  await dialog.press("Continue"); await h.settle(); await dialog.press("Continue"); await h.settle();
+  assert.equal(reads.workbookList, 0, "Start run never lists whole workbooks");
+  assert.deepEqual([reads.workbookCatalog, reads.workbookCompatibility], [1, 1], "each reference read happens once per dialog open");
 });
 
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {
@@ -118,13 +127,13 @@ it("uses saved rows only, requires a common explicit mode and preserves duplicat
   await select(1); await select(0); assert.equal(dialog.disabled("Continue"), true);
   await mode("rehire"); await dialog.press("Continue");
   assert.equal(dialog.text().includes("Reference spreadsheet"), false, "row-source reference controls are only in Input");
-  await dialog.press("Continue"); assert.ok(planned);
+  await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "duplicate@example.test", mode: "rehire" }, { email: "duplicate@example.test", mode: "rehire" }]);
   assert.deepEqual(planned.workbookReferences?.map(reference => [reference.entry, reference.libraryId, reference.versionId, reference.selectedRow]), [
     [1, "roster", "version", { sheetId: "first", rowId: "same-row" }], [2, "roster", "version", { sheetId: "first", rowId: "next-row" }],
   ]);
-  assert.match(dialog.text(), /Entry 1 · Accepted/u); assert.match(dialog.text(), /Entry 2 · Refused/u);
-  assert.match(dialog.text(), /First · Row 3: duplicate@example.test/u); assert.match(dialog.text(), /Duplicate email refused/u);
+  assert.match(dialog.text(), /First · Row 3: duplicate@example\.test already has a run in progress\./u);
+  assert.doesNotMatch(dialog.text(), /Duplicate email refused/u, "the refusal notice is one plain sentence, never the server text");
 });
 
 it("retains the original issued envelope after an unknown result and later mode edits", async () => {
@@ -132,7 +141,7 @@ it("retains the original issued envelope after an unknown result and later mode 
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, submitStartPlan: async input => proposal(StartPlanRequestSchema.parse(input)),
     executeCommand: async input => { commands.push(input); throw new Error("Reply lost after dispatch"); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id });
-  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire"); await dialog.press("Continue"); await dialog.press("Continue"); await dialog.press("Start 1 run");
+  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire"); await dialog.press("Continue"); await dialog.press("Start live run");
   const retained = window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""); assert.ok(retained);
   await dialog.press("Back"); await dialog.press("Back"); await mode("rehire");
   assert.equal(window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""), retained);
@@ -152,7 +161,7 @@ it("keeps Rerun single-source with its restored mode and a fresh explicit refere
   await dialog.press("Continue"); assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
   await chooseCurrent();
   assert.equal(document.querySelector<HTMLInputElement>('input[value="rehire"]')?.checked, true);
-  await dialog.press("Continue"); await dialog.press("Continue"); assert.ok(planned);
+  await dialog.press("Continue"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
   assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1 }]);
 });
@@ -176,7 +185,7 @@ it("keeps the row selection silently when the dialog is reopened for the same sp
   const client = h.stubClient({ ...libraryReads });
   const render = (open: boolean) => act(async () => reopenRoot?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
     children: createElement(FixtureCommandBinding, { actorId: h.ACTOR_ID, children: createElement(RunStartDialog, { open, onOpenChange() {}, panelWorkflowId: descriptor.id, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {},
-      catalog: buildWorkflowCatalog([workflow], false, servedFixtureSources([workflow])) }) }) }) })));
+      catalog: buildWorkflowCatalog([workflow], servedFixtureSources([workflow])) }) }) }) })));
   await render(true); await h.settle(); await chooseCurrent(); await select(0);
   await render(false); await h.settle(); await render(true); await h.settle();
   assert.equal(document.body.textContent?.includes("Previous row selection"), false);

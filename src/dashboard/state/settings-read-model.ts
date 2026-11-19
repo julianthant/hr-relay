@@ -16,23 +16,26 @@ export function createSettingsRead<Value>() {
   let pending: Promise<Value> | undefined;
   let sequence = 0;
   const listeners = new Set<() => void>();
+  const supersede = (): void => { sequence += 1; pending = undefined; snapshot = snapshot.value === undefined ? { state: "idle" } : { state: "loaded", value: snapshot.value }; };
   const publish = (next: RetainedRead<Value>): void => { snapshot = next; for (const listener of listeners) listener(); };
   return {
     snapshot: () => snapshot,
     subscribe(this: void, listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    supersede() { sequence += 1; pending = undefined; snapshot = snapshot.value === undefined ? { state: "idle" } : { state: "loaded", value: snapshot.value }; },
+    supersede,
     reset() { sequence += 1; pending = undefined; snapshot = { state: "idle" }; },
     accept(value: Value) { sequence += 1; pending = undefined; publish({ state: "loaded", value }); },
-    read(read: () => Promise<Value>, code: ErrorCatalogCode, milliseconds = SETTINGS_READ_DEADLINE_MS): Promise<Value> {
+    /** An aborted read (its section was left) is superseded at once, so a re-entry starts a fresh read. */
+    read(read: (signal: AbortSignal) => Promise<Value>, code: ErrorCatalogCode, milliseconds = SETTINGS_READ_DEADLINE_MS, signal?: AbortSignal): Promise<Value> {
       if (pending !== undefined) return pending;
       const started = ++sequence;
       publish({ state: "loading", value: snapshot.value });
-      const reading = readWithDeadline(() => read(), code, milliseconds).then(value => {
+      signal?.addEventListener("abort", () => { if (started === sequence) supersede(); }, { once: true });
+      const reading = readWithDeadline(read, code, milliseconds, signal).then(value => {
         if (started !== sequence) throw new SettingsReadSuperseded();
         publish({ state: "loaded", value });
         return value;
       }, (error: unknown) => {
-        if (started !== sequence) throw new SettingsReadSuperseded();
+        if (started !== sequence || signal?.aborted === true) throw new SettingsReadSuperseded();
         publish({ state: "failed", value: snapshot.value, error });
         throw error;
       }).finally(() => { if (started === sequence) pending = undefined; });

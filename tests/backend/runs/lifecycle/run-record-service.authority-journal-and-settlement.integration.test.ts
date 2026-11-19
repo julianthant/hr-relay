@@ -5,8 +5,8 @@ import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } fro
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { DatabaseSync, StatementSync } from "node:sqlite";
+import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
 import { CreateRunRequestSchema, RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
@@ -181,9 +181,13 @@ describe("canonical run-record service", () => {
     it(`rolls back ${operation} state and journal when required timeline persistence fails`, async () => {
       const f = await fixture();
       const run = operation === "enqueue" ? undefined : created(f.service, f.request);
-      const raw = new DatabaseSync(join(f.root, "state.db"));
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with the original statement.
+      const nativeGet = StatementSync.prototype.get;
+      const read = vi.spyOn(StatementSync.prototype, "get").mockImplementation(function (this: StatementSync, ...args) {
+        if (/INSERT INTO timeline_events/iu.test(this.sourceSQL)) throw new Error("injected timeline failure");
+        return Reflect.apply(nativeGet, this, args);
+      });
       try {
-        raw.exec("CREATE TRIGGER injected_timeline_failure BEFORE INSERT ON timeline_events BEGIN SELECT RAISE(ABORT, 'injected timeline failure'); END");
         const before = f.database.getMeta();
         const events = f.database.authority.timelineEvents.page({});
         const state = run === undefined ? undefined : f.service.read(run.envelope.runId);
@@ -202,7 +206,7 @@ describe("canonical run-record service", () => {
         assert.equal(f.database.authority.lifecycleJournal.getCommand(commandId), undefined);
         if (run !== undefined) assert.deepEqual(f.service.read(run.envelope.runId), state);
         else assert.equal(f.database.authority.runs.listByWorkflow(WORKFLOW_ID).length, 0);
-      } finally { raw.close(); }
+      } finally { read.mockRestore(); }
     });
   }
 
@@ -651,10 +655,9 @@ describe("canonical run-record service", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: join(root, "backups", "authority"),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 250,
     }, clock);
-    assert.deepEqual(doctor.spanAuthority, { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] });
+    assert.deepEqual(doctor.spanAuthority, { state: "reconciled", streamRunCount: 0, liveRunCount: 0, deleted: [] });
     assert.deepEqual(service.read(runId), { state: "absent", runId });
     assert.equal(countTasks(), 0);
   });

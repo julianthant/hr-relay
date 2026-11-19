@@ -143,7 +143,7 @@
 .launch-dialog .ds-choice-picker > button { @apply font-normal; }
 .launch-dialog .launch-options fieldset > div > label > span { @apply h-7; }
 .launch-dialog .launch-values-fields { @apply grid-cols-1; }
-.launch-dialog .launch-values-fields > div { @apply max-w-[280px]; }
+.launch-dialog .launch-values-fields > div { @apply max-w-[420px]; }
 .launch-dialog .launch-values-fields > div > div { @apply gap-[5px]; }
 .launch-dialog .launch-values-fields input { @apply h-[34px]; }
 .launch-dialog .launch-values-omission { @apply mt-[4px]; }
@@ -197,8 +197,3 @@
 .launch-dialog .launch-flags .ds-checkbox-row { flex-direction:row-reverse;align-items:center;justify-content:space-between; }
 .launch-dialog .launch-flags .ds-checkbox-copy { flex:1; }
 .launch-dialog .launch-flags .ds-switch-row { width:100%; }
-
-.launch-confirm-row { display:grid; grid-template-columns:minmax(120px,1fr) minmax(0,2fr); gap:24px; align-items:start; padding:14px 18px; font-size:var(--ds-text-ui); line-height:var(--ds-lh-ui); }
-.launch-confirm-row+.launch-confirm-row { border-top:1px solid var(--ui-stroke); }
-.launch-confirm-row dt { color:var(--ui-muted); }
-.launch-confirm-row dd { margin:0; overflow-wrap:anywhere; }

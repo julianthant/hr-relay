@@ -34,6 +34,7 @@ import { registerBoundFixtureWorker, registerBoundProfile, unregisterBoundProfil
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
+import { onbaseFilingFixture } from "./onbase-filing-fixture.js";
 
 export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
@@ -41,13 +42,18 @@ const facts = ["Example, Avery", "Example, Blake"].map((employeeName, index) => 
 const SqliteTableSchema = z.object({ name: z.string(), sql: z.string().nullable() });
 const SqliteColumnSchema = z.object({ name: z.string(), type: z.string() });
 
-type RetryOptions = Readonly<{ failures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }>;
-type ContactSeed = Readonly<{ emplId: string; persisted: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>; submissions: ReturnType<ReturnType<typeof createDeterministicContactPersistence>["snapshot"]>[] }>;
-type MemberStageSeed = Readonly<{
-  ticks: number; approvedReadFailed: boolean; failuresRemaining: number; failAfterSave: boolean;
-  snapshotReads: number; recordReads: number; wall: string; monotonic: number; mintedIds: number; contacts: readonly ContactSeed[];
-}>;
-type MemberStageTemplate = Readonly<{ workspace: string; profileId: string; dbRelative: string; seed: MemberStageSeed }>;
+type RetryOptions = Readonly<{ failures?: number; /** OnBase session opens that fail while the template is built: the first saved person then waits on a failed filing. */ filingFailures?: number; failApprovedRecordOnce?: boolean; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }>;
+const MemberStageSeedSchema = z.strictObject({
+  ticks: z.number(), approvedReadFailed: z.boolean(), failuresRemaining: z.number(), failAfterSave: z.boolean(),
+  snapshotReads: z.number(), recordReads: z.number(), wall: z.string(), monotonic: z.number(), mintedIds: z.int().nonnegative(),
+  contacts: z.array(z.strictObject({ emplId: z.string(), persisted: UcpathContactPageSnapshotSchema,
+    submissions: z.array(UcpathContactPageSnapshotSchema) })),
+});
+export const MemberStageTemplateSchema = z.strictObject({
+  workspace: z.string(), profileId: z.string(), dbRelative: z.string(), seed: MemberStageSeedSchema,
+});
+type MemberStageSeed = z.infer<typeof MemberStageSeedSchema>;
+type MemberStageTemplate = z.infer<typeof MemberStageTemplateSchema>;
 
 function quoteIdent(name: string) {
   return `"${name.replaceAll("\"", "\"\"")}"`;
@@ -153,14 +159,14 @@ function adoptWorkers(database: AuthorityDatabase, path: string, clock: TestCloc
 }
 
 function templateKey(options: RetryOptions) {
-  return JSON.stringify({ failures: options.failures ?? 1, failApprovedRecordOnce: options.failApprovedRecordOnce === true, secondMemberAlreadyPresent: options.secondMemberAlreadyPresent === true });
+  return JSON.stringify({ failures: options.failures ?? 1, filingFailures: options.filingFailures ?? 0, failApprovedRecordOnce: options.failApprovedRecordOnce === true, secondMemberAlreadyPresent: options.secondMemberAlreadyPresent === true });
 }
 
 export function createEmergencyContactRetryWorld() {
   const world = createOcrReviewWorld();
   const templates = new Map<string, MemberStageTemplate>();
   const adopted: (() => Promise<void>)[] = [];
-  function pieces(options: RetryOptions, seed?: MemberStageSeed) {
+  function pieces(options: RetryOptions, filing: Awaited<ReturnType<typeof onbaseFilingFixture>>, seed?: MemberStageSeed) {
     const control = { failuresRemaining: seed?.failuresRemaining ?? options.failures ?? 1, unknownAfterSave: false, failAfterSave: seed?.failAfterSave ?? options.secondMemberAlreadyPresent === true, failAccounting: false, changeApprovedSnapshot: false, snapshotReads: seed?.snapshotReads ?? 0, changeApprovedRecord: false, recordReads: seed?.recordReads ?? 0 };
     const hooks: { onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void; onTransactionSettled?: () => void } = {};
     let ticks = seed?.ticks ?? Date.parse(fixture.page.observedAt);
@@ -171,7 +177,8 @@ export function createEmergencyContactRetryWorld() {
       for (const submission of contact.submissions) backend.submissions.push(UcpathContactPageSnapshotSchema.parse(submission));
       persistence.set(contact.emplId, backend);
     }
-    const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+    const clock: { current?: TestClock } = {};
+    const sessions = sessionFactoryHarness({ onbase: filing.session(() => { assert.ok(clock.current); return clock.current; }), ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
       const base = createDeterministicUcpathPersonOrgDriver();
       let activeEid: string | undefined;
       let active: ReturnType<typeof createDeterministicUcpathPersonOrgDriver> | undefined;
@@ -237,12 +244,14 @@ export function createEmergencyContactRetryWorld() {
         return readEmergencyContactResultTask.impl.run(args);
       },
     }) });
-    return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed };
+    return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed, filing, clock };
   }
   async function build(options: RetryOptions) {
-    const live = pieces({ ...options, onFencedSave: undefined });
+    const live = pieces({ ...options, onFencedSave: undefined }, await onbaseFilingFixture());
+    live.filing.next.unavailable = options.filingFailures ?? 0;
     const ids = sequentialIdFactory("b");
-    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore, documentBytes: live.filing.bytes,
+      onHarness: harness => { live.clock.current = harness.authority.clock; },
       approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
       onTransactionSettled: run => {
         live.hooks.onTransactionSettled?.();
@@ -270,6 +279,15 @@ export function createEmergencyContactRetryWorld() {
     }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
+    // A saved member waits on its OnBase filing child; settle every member before the template is captured.
+    const memberActive = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId)
+      .some(child => child.envelope.workflow === "emergency-contact-member" && child.lifecycle.state !== "terminal"
+        && f.database.authority.dependencies.waitState(child.envelope.runId)?.state !== "blocked");
+    while (memberActive()) {
+      const next = await f.canonical.step(f.parentRun, new AbortController().signal);
+      assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation"
+        || (options.filingFailures ?? 0) > 0 && next.run.envelope.workflow === "onbase" && next.outcome.state === "failed", `filing stopped: ${next.run.envelope.workflow} ${next.outcome.state}`);
+    }
     return { ...f, live, mintedIds: ids.minted().length };
   }
   function present(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>) {
@@ -278,7 +296,15 @@ export function createEmergencyContactRetryWorld() {
       type, source: "run-detail" as const, requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const children = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member");
-    return { ...f, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
+    // A member step includes its OnBase filing: the yield, the filing child and the member's re-entry.
+    const step: typeof f.canonical.step = async (root, signal) => {
+      const executed = await f.canonical.step(root, signal);
+      if (executed.run.envelope.workflow !== "emergency-contact-member" || executed.outcome.state !== "yielded-delegation") return executed;
+      const filed = await f.canonical.step(root, signal);
+      assert.equal(filed.run.envelope.workflow, "onbase"); assert.equal(filed.run.envelope.parent?.runId, executed.run.envelope.runId);
+      return f.canonical.step(root, signal);
+    };
+    return { ...f, raw: f.canonical, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children, filing: live.filing };
   }
   async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
     const source = built.harness.authority.profile.workspace;
@@ -310,10 +336,11 @@ export function createEmergencyContactRetryWorld() {
     const close = () => adoptedWorld.cleanup();
     adopted.push(close);
     try {
-      const live = pieces(options, template.seed);
+      const live = pieces(options, await onbaseFilingFixture(), template.seed);
       const ids = sequentialIdFactory("b");
       for (let index = 0; index < template.seed.mintedIds; index += 1) ids.uuid();
       const f = await adoptedWorld.fixture({ ids, adoptExisting: true, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+        onHarness: harness => { live.clock.current = harness.authority.clock; },
         approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
         onTransactionSettled: run => {
           live.hooks.onTransactionSettled?.();
@@ -339,8 +366,18 @@ export function createEmergencyContactRetryWorld() {
     for (const template of templates.values()) rmSync(template.workspace, { recursive: true, force: true });
     templates.clear();
   };
+  async function prepareTemplate(options: RetryOptions): Promise<MemberStageTemplate> {
+    const key = templateKey(options);
+    let template = templates.get(key);
+    if (template === undefined) {
+      const built = await build(options);
+      template = await capture(built);
+      templates.set(key, template);
+    }
+    return template;
+  }
   process.on("exit", releaseTemplates);
-  return { releaseTemplates, async releaseSources() {
+  return { prepareTemplate, reopenTemplate: reopen, releaseTemplates, async releaseSources() {
     releaseTemplates();
     await world.cleanup();
   }, cleanup: async () => {
@@ -351,13 +388,6 @@ export function createEmergencyContactRetryWorld() {
     }
     if (failures.length !== 0) throw new AggregateError(failures, "executor-fixture-closure-unproved");
   }, async fixture(options: RetryOptions = {}) {
-    const key = templateKey(options);
-    let template = templates.get(key);
-    if (template === undefined) {
-      const built = await build(options);
-      template = await capture(built);
-      templates.set(key, template);
-    }
-    return reopen(template, options);
+    return reopen(await prepareTemplate(options), options);
   } };
 }

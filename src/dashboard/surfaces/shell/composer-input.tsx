@@ -1,19 +1,22 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { ArrowUp, ChevronDown, Hand, Paperclip, Mic, Plus, ShieldAlert, X } from 'lucide-react';
-import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
+import { Skeleton, InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';
-import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODEL, FULL_ACCESS, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
+import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODEL, FULL_ACCESS, composerEnterAction, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
 import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import { useFullAccessAllowed } from './assistant-approval-model.js';
 import './composer-input.css';
+import { usePersonPreferences } from '../../lib/person-preferences.js';
 import type { AssistantModelCatalog, AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from '../../../models/config/assistant-model-preference.js';
 
-export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference, models, onModelChoice }: AssistantPorts & {
-  modelPreference?: AssistantModelPreferenceView['preference']; models?: AssistantModelCatalog['models']; onModelChoice?: (preference: AssistantModelPreference) => void; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
+export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelLoading = false, modelPreference, models, onModelChoice }: AssistantPorts & {
+  modelLoading?: boolean; modelPreference?: AssistantModelPreferenceView['preference']; models?: AssistantModelCatalog['models']; onModelChoice?: (preference: AssistantModelPreference) => void; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
+  const { sendShortcut } = usePersonPreferences().value;
   const id = useId();
   const displayedModel = preview ? ASSISTANT_MODEL : modelPreference === undefined ? 'Model unavailable' : assistantModelLabel(modelPreference.slug);
   const displayedEffort = preview ? composer.effort : modelPreference === undefined ? undefined : ASSISTANT_EFFORT_LABELS[modelPreference.effort];
@@ -21,9 +24,13 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   const focusMessageOnClose = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
-  async function attach(load: () => Promise<AssistantFile | null | void>) {
+  const sources = useRef(new Map<string, File>());
+  async function attach(load: () => Promise<AssistantFile | null | void>, source?: File, replaces?: string) {
     setAttaching(true); setError(null);
-    try { const file = await load(); if (file) composer.setFiles(files => [...files.filter(existing => existing.id !== file.id), file]); }
+    try {
+      const file = await load();
+      if (file) { if (source) sources.current.set(file.id, source); composer.setFiles(files => [...files.filter(existing => existing.id !== file.id && existing.id !== replaces), file]); }
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not attach the file. Try again.'); }
     finally { setAttaching(false); composer.textarea.current?.focus(); }
   }
@@ -35,7 +42,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   const servedChoice = !preview && modelPreference !== undefined && onModelChoice !== undefined;
   function menu(kind: ComposerMenu, label: string, trigger: React.ReactNode, children: React.ReactNode, size: 'sm' | 'icon-sm' = 'icon-sm', className?: string) {
     return <DropdownMenu open={composer.menu === kind} onOpenChange={open => { if (open) focusMessageOnClose.current = false; composer.setMenu(open ? kind : null); }}>
-      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} className={className} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach' && !(kind === 'model' && servedChoice)}>{trigger}</InputGroupButton></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} className={className} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach' && !(kind === 'model' && servedChoice) && !(kind === 'approval' && modelPreference !== undefined)}>{kind === 'model' && modelLoading ? <><Skeleton className="h-3.5 w-20" /><span className="hub-effort"><Skeleton className="h-3.5 w-10" /></span></> : trigger}</InputGroupButton></DropdownMenuTrigger>
       <DropdownMenuContent ref={composer.popup} finalFocus={() => kind === 'voice' && focusMessageOnClose.current ? composer.textarea.current : true} side="top" align="start" sideOffset={8} collisionAvoidance={{ side: 'none', align: 'shift' }} collisionPadding={8} className="hub-assistant-menu hub-menu" data-menu={kind}>
         <DropdownMenuGroup>{children}</DropdownMenuGroup>
       </DropdownMenuContent>
@@ -43,14 +50,24 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   }
   return <div className="hub-composer-wrap">
     <InputGroup aria-label="Message composer" onSubmit={event => { event.preventDefault(); void composer.send(); }}>
-      {composer.files.map(file => <div key={file.id} className="hub-attachment"><Paperclip aria-hidden /><span>{file.name}</span><button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
+      {composer.files.map(file => <div key={file.id} className="hub-attachment" data-stage={file.stage?.state}><Paperclip aria-hidden /><span>{file.name}</span>
+        {file.stage?.state === 'spreadsheet' && <small className="hub-caption">Added to Spreadsheets only. Not sent to the assistant.</small>}
+        {file.stage?.state === 'failed' && <><small className="hub-attachment-failure" role="alert">{file.stage.message}</small>
+          {sources.current.has(file.id) && onAttachFile && <button className="hub-btn" type="button" disabled={attaching} onClick={() => { const source = sources.current.get(file.id)!; void attach(() => onAttachFile(source), source, file.id); }}>Retry</button>}</>}
+        <button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
       <label className="hub-sr-only" htmlFor={id}>Message Relay</label>
       <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={1} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
         onChange={event => { composer.setText(event.target.value); onEdit?.(event.target.value); }} onKeyDown={event => {
-          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void composer.send(); }
+          const action = composerEnterAction(sendShortcut, event.nativeEvent);
+          if (action === 'native') return;
+          event.preventDefault();
+          if (action === 'send') { void composer.send(); return; }
+          const field = event.currentTarget, start = field.selectionStart, next = `${field.value.slice(0, start)}\n${field.value.slice(field.selectionEnd)}`;
+          flushSync(() => { composer.setText(next); onEdit?.(next); });
+          field.setSelectionRange(start + 1, start + 1);
         }} />
       <InputGroupAddon aria-label="Message controls">
-        {menu('attach', 'Add files', <Plus aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Add to this chat</DropdownMenuLabel>
+        {menu('attach', 'Add files', <Plus aria-hidden />, <>{preview && <DropdownMenuLabel className="hub-menu-title">Add to this chat</DropdownMenuLabel>}
           <DropdownMenuItem className="hub-menu-option" onSelect={() => composer.fileInput.current?.click()}><Plus aria-hidden /><span className="hub-option-copy"><span>Attach file</span><small>Images, spreadsheets and documents</small></span></DropdownMenuItem></>)}
         {menu('approval', approval, full ? <><ShieldAlert aria-hidden /><span>{FULL_ACCESS}</span></> : <Hand aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={approval} onValueChange={setApproval}>
           {approvals.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
@@ -64,13 +81,13 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
           </DropdownMenuRadioGroup></> : <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
           {ASSISTANT_EFFORTS.map(value => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={value} value={value}><span className="hub-option-copy">{value}</span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>, 'sm')}
-        {menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}
+        {preview && menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}
         <InputGroupButton type="submit" id="hub-send" aria-label="Send message" disabled={disabled || attaching} aria-disabled={!composer.text.trim() || undefined}><ArrowUp aria-hidden /></InputGroupButton>
       </InputGroupAddon>
     </InputGroup>
     <input type="file" hidden ref={composer.fileInput} onChange={event => {
       const file = event.target.files?.[0]; event.target.value = '';
-      if (file) void attach(() => onAttachFile ? onAttachFile(file) : readAssistantAttachment(file));
+      if (file) void attach(() => onAttachFile ? onAttachFile(file) : readAssistantAttachment(file), file);
     }} />
     {error ? <p className="hub-composer-error" role="alert">{error}</p> : null}
   </div>;

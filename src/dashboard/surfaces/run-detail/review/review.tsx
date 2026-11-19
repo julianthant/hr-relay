@@ -8,6 +8,7 @@ import type { LogSelection } from "../logs/log-selection-model.js";
 import { Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Select, Skeleton, Textarea, dsFocus, Notice } from "../../../ds/ui.js";
 import { LogSkeleton, LoadingRegion } from "../../shared/loading/loading.js";
 import { cn } from "../../../lib/utils.js";
+import { useAuthenticatedImage } from "../../shared/authenticated-image.js";
 import { displayExtractedDate } from "../../../lib/date-format.js";
 import { ReviewEscape } from "./review-escape.js";
 import { ocrReviewCards } from "./review-model.js";
@@ -56,10 +57,11 @@ function ReviewSourcePreview({ recordId, subject, pages, recordPage, onPageChang
   const [loadedImage, setLoadedImage] = useState<string>();
   const imageViewport = useRef<HTMLDivElement>(null);
   const source = pages[sourceIndex];
-  const imageError = source !== undefined && failedImage === source.imageUrl;
+  const image = useAuthenticatedImage(source?.imageUrl ?? "");
+  const imageError = source !== undefined && (failedImage === source.imageUrl || image.failed);
   const fitPage = () => { setZoom(100); imageViewport.current?.scrollTo({ left: 0, top: 0 }); };
   const available = Boolean(source && !imageError);
-  const loading = available && loadedImage !== source.imageUrl;
+  const loading = available && (image.src === undefined || loadedImage !== source.imageUrl);
   return <section aria-label="Source PDF" data-review-fullscreen={fullscreen || undefined} className={cn("min-w-0 bg-ui-table p-3", fullscreen ? "flex min-h-0 flex-1 flex-col" : "border-r border-ui-stroke")}>
     <div className="mb-2 flex flex-wrap items-center gap-2">
       {source && <div className="min-w-0 flex-1">{pages.length > 1 ? <Select aria-label="Source page" value={String(sourceIndex)} onChange={event => { setSourceIndex(Number(event.target.value)); onPageChange?.(pages[Number(event.target.value)].page); setFailedImage(undefined); fitPage(); }} className="w-44 max-w-full">{pages.map((page, index) => <option key={page.page} value={index}>{page.label ?? `Page ${page.page}`}</option>)}</Select> : <span className="text-caption text-ui-muted">Page {source.page}</span>}</div>}
@@ -71,7 +73,7 @@ function ReviewSourcePreview({ recordId, subject, pages, recordPage, onPageChang
     </div>
     <div data-review-preview className={cn("relative min-w-0", fullscreen && "min-h-0 flex-1")} style={fullscreen ? undefined : { aspectRatio }}>
       <div ref={imageViewport} tabIndex={0} aria-label="PDF page image" className={cn("absolute inset-0 overflow-auto rounded-sm border border-ui-stroke", dsFocus)}>
-        {available ? <img src={source.imageUrl} alt={`Source page ${source.page} of ${subject}`} loading="lazy" className="mx-auto block max-w-none" style={fullscreen ? { height: `${zoom}%`, width: "auto" } : { width: `${zoom}%`, height: "auto" }} onLoad={event => { setAspectRatio(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight); setLoadedImage(source.imageUrl); }} onError={() => setFailedImage(source.imageUrl)} /> : <p role="status" className="m-0 p-3 text-body text-ui-muted">{imageError ? "Source page unavailable" : "No source page for this record"}</p>}
+        {available ? image.src !== undefined && <img src={image.src} alt={`Source page ${source.page} of ${subject}`} loading="lazy" className="mx-auto block max-w-none" style={fullscreen ? { height: `${zoom}%`, width: "auto" } : { width: `${zoom}%`, height: "auto" }} onLoad={event => { setAspectRatio(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight); setLoadedImage(source.imageUrl); }} onError={() => setFailedImage(source.imageUrl)} /> : <p role="status" className="m-0 p-3 text-body text-ui-muted">{imageError ? "Source page unavailable" : "No source page for this record"}</p>}
         {loading && <LoadingRegion label="Loading source PDF" className="absolute inset-0"><Skeleton className="h-full w-full rounded-none" /></LoadingRegion>}
       </div>
     </div>
@@ -100,8 +102,10 @@ function ReviewRecordCard({ runId, subject, record, name, original, pages, readO
         <CardBody className="space-y-2 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading role="heading" aria-level={3} tabIndex={-1} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{name}</span></>} checked={record.selected} disabled={disabled || selectionDisabled || readOnly || record.unknown} onCheckedChange={selected => onChange?.({ ...record, selected: selected === true })} />
+            {record.unconfirmed !== undefined && <Badge tone="warning">Unconfirmed</Badge>}
             {disposition && <Badge tone={disposition.tone}>{disposition.label}</Badge>}
           </div>
+          {record.unconfirmed !== undefined && <p role="status" className="m-0 text-caption text-ui-warning">Identity not confirmed: {record.unconfirmed}</p>}
           {record.warnings.length > 0 && <div role="status">{record.warnings.map(warning => <p key={warning} className="m-0 text-caption text-ui-warning">{warning}</p>)}</div>}
           {!readOnly && record.selected && approvalError !== undefined && <p role="status" className="m-0 text-caption text-ui-warning">{approvalError}</p>}
         </CardBody>
@@ -114,6 +118,7 @@ function ReviewRecordCard({ runId, subject, record, name, original, pages, readO
 export function RecordReview({ runId, subject, cards, readOnly, discarded, selectedCount: count, disabled, actionsDisabled, focusId: requestedFocus,
   approvalError, onEditField, onCommit, onChange, onApprove, onDiscard, onRestore }: RecordReviewProps) {
   const records = cards.map(card => card.record);
+  const blocked = cards.filter(card => card.record.selected && (card.record.blockers?.length ?? 0) > 0);
   const body = useRef<HTMLDivElement>(null);
   const focusId = useRef(records[0]?.id);
   const focusRecord = (id: string | undefined, selector: string, preventScroll = false) => {
@@ -165,7 +170,7 @@ export function RecordReview({ runId, subject, cards, readOnly, discarded, selec
         onFocus={() => { focusId.current = card.record.id; }} onFullscreen={() => setFullscreenId(card.record.id)} onEditField={(key, value) => onEditField?.(card.record.id, key, value)} onChange={onChange} />)}
     </div>
     {(onApprove || onDiscard) && !discarded && !fullscreen && <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-table px-3 py-3">
-      {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}</div>}
+      {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}{blocked.length > 0 && <ul aria-label="Blocking records" className="m-0 mt-1 list-none space-y-0.5 p-0 text-ui-warning">{blocked.map(({ record, name }) => <li key={record.id}>Page {record.page} · {name}: {record.blockers?.join("; ")}</li>)}</ul>}</div>}
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {onDiscard && !discarded && <Button disabled={disabled || actionsDisabled} onClick={() => {
           onDiscard(); requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true));

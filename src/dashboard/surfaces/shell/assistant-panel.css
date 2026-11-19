@@ -7,9 +7,8 @@
 #hub-panel-assistant .hub-icon:active,#hub-panel-assistant .hub-btn:active{transform:translateY(1px)}
 #hub-panel-assistant{display:flex;flex-direction:column;overflow:visible}
 #hub-panel-assistant>.hub-panel-header>span:first-child{display:none}
-#hub-panel-assistant .hub-panel-title{min-width:0;font-size:14px;line-height:20px;display:flex;overflow:hidden}
+#hub-panel-assistant .hub-panel-title{min-width:0;font-size:14px;line-height:20px;display:flex;overflow:visible}
 #hub-panel-assistant>.hub-panel-content{padding:0;gap:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
-#hub-panel-assistant .hub-chat-title{display:inline-flex;width:fit-content;max-width:100%;font-weight:500;padding:0 3px;min-height:22px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #hub-panel-assistant .hub-header-actions{display:flex;gap:2px;flex:none}
 #hub-panel-assistant .hub-transcript{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 16px;scrollbar-width:thin;display:flex;flex-direction:column;gap:20px;font-size:13px;line-height:1.65}
 #hub-panel-assistant .hub-message{max-width:94%;padding:10px 12px;border-radius:12px;background:var(--ui-table);align-self:flex-start;overflow-wrap:anywhere}
@@ -45,9 +44,7 @@
 #hub-panel-assistant .hub-caption{font-size:11px}
 #hub-panel-assistant [data-action=approve].primary, .hub-assistant-detail .hub-btn.primary{border:1px solid var(--hub-primary-border)}
 #hub-panel-assistant .hub-spinner{display:inline-block;width:10px;height:10px;flex:none;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:middle;margin-right:5px;animation:hub-spin .8s linear infinite}
-#hub-panel-assistant .hub-chat-title{border:0;background:transparent;border-radius:8px;padding:4px 6px;min-height:28px}
 #hub-panel-assistant .hub-chat-title>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#hub-panel-assistant .hub-chat-title:hover{background:var(--ui-hover)}
 #hub-panel-assistant>.hub-panel-content{overflow:visible}
 #hub-panel-assistant{transform-origin:bottom right}
 #hub-panel-assistant :is(button,a){transition:background-color 120ms ease,color 120ms ease,border-color 120ms ease,opacity 120ms ease}
@@ -100,9 +97,6 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 #hub-panel-assistant .hub-sent-file{display:flex;align-items:center;gap:6px;margin-top:8px;padding:4px 8px;border:1px solid var(--ui-stroke);border-radius:999px;width:fit-content;max-width:100%;font-size:11px;color:var(--ui-secondary);overflow-wrap:anywhere}
 #hub-panel-assistant .hub-sent-file svg{width:12px;height:12px;flex:none}
 #hub-panel-assistant .hub-assistant-line .hub-message{background:transparent;padding:0;max-width:100%;flex:1;min-width:0}
-#hub-panel-assistant .hub-assistant-strip{display:flex;align-items:center;gap:10px;margin:0 12px;padding:8px 10px;border:1px solid var(--ui-stroke);border-radius:10px;font-size:12px;line-height:18px;color:var(--ui-secondary)}
-#hub-panel-assistant .hub-assistant-strip>span{flex:1;min-width:0;overflow-wrap:anywhere}
-#hub-panel-assistant .hub-assistant-strip>button{flex:none}
 
 #hub-panel-assistant strong{font-weight:500}
 /* Assistant mock: primary actions use the Start a run blue. */
@@ -116,3 +110,30 @@ body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;backgroun
 #hub-panel-assistant .hub-pill:hover{background:var(--ui-hover)}
 #hub-panel-assistant .hub-answered{display:flex;align-items:center;gap:6px;margin:-8px 0 0;align-self:flex-end;font-size:11px;color:var(--ui-muted)}
 #hub-panel-assistant .hub-answered svg{width:12px;height:12px;color:var(--ui-positive)}
+
+/* Floating panel: its own surface (stronger edge and the floating shadow) over Logs. */
+.hub-slot:has(#hub-panel-assistant){border-color:var(--ds-border-loud);box-shadow:var(--ds-elev-3)}
+/* Header controls: a visible hover tint, the composer's focus ring, and a title aligned with the body column. */
+#hub-panel-assistant{--hub-tint-hover:color-mix(in srgb,var(--ui-primary) 12%,transparent);--hub-tint-press:color-mix(in srgb,var(--ui-primary) 18%,transparent)}
+#hub-panel-assistant .hub-chat-title{display:inline-flex;align-items:center;width:fit-content;max-width:calc(100% + 8px);min-height:28px;margin-left:-8px;padding:0 8px;border-radius:8px;font-weight:500;line-height:20px}
+#hub-panel-assistant .hub-chat-title:hover,#hub-panel-assistant .hub-icon:hover{background:var(--hub-tint-hover);color:var(--ui-primary)}
+#hub-panel-assistant .hub-chat-title:active,#hub-panel-assistant .hub-icon:active{background:var(--hub-tint-press);transform:none}
+#hub-panel-assistant>.hub-panel-header :is(button,a):focus-visible{outline:2px solid var(--ui-primary)!important;outline-offset:2px;background:var(--hub-tint-hover)!important;color:var(--ui-primary)!important}
+/* History rows: row actions overlay the row end on hover or focus instead of reserving width, so titles use the whole row. */
+.hub-slot .hub-chat-row{position:relative}
+.hub-slot .hub-chat-row .hub-icon{position:absolute;top:50%;translate:0 -50%;background:var(--ui-table)}
+.hub-slot .hub-chat-row .hub-icon:nth-of-type(2){right:29px}
+.hub-slot .hub-chat-row .hub-icon:nth-of-type(3){right:5px}
+.hub-slot .hub-chat-row .hub-icon:hover{background:var(--ui-hover)}
+.hub-slot .hub-chat-row:is(:hover,:focus-within) .hub-chat-open{padding-right:56px}
+#hub-panel-assistant .hub-transcript-skeleton{display:flex;flex-direction:column;gap:20px}
+#hub-panel-assistant .hub-transcript-skeleton .hub-message{width:100%}
+#hub-panel-assistant .hub-transcript-skeleton .hub-message.operator{width:fit-content;min-width:140px}
+#hub-panel-assistant .hub-typing{display:flex;align-items:center;gap:8px;min-height:28px;font-size:13px;line-height:1.65;color:var(--ui-secondary)}
+#hub-panel-assistant .hub-typing>span:nth-child(2){flex:1;min-width:0}
+#hub-panel-assistant .hub-typing-dots{display:inline-flex;gap:3px;align-items:center}
+#hub-panel-assistant .hub-typing-dots i{width:5px;height:5px;border-radius:50%;background:var(--ui-muted);animation:hub-typing 1.2s ease-in-out infinite}
+#hub-panel-assistant .hub-typing-dots i:nth-child(2){animation-delay:.15s}
+#hub-panel-assistant .hub-typing-dots i:nth-child(3){animation-delay:.3s}
+@keyframes hub-typing{0%,60%,100%{opacity:.3}30%{opacity:1}}
+@media (prefers-reduced-motion:reduce){#hub-panel-assistant .hub-typing-dots i{animation:none;opacity:.6}}

@@ -25,6 +25,14 @@ describe("error catalog", () => {
     }
   });
 
+  it("words the dashboard failures in plain language with a next step", () => {
+    const codes = ["QUEUE_READ_UNAVAILABLE", "RUN_READ_UNAVAILABLE", "PROFILE_DETAILS_CHANGE_UNKNOWN", "CHATGPT_CONNECT_FAILED", "CHATGPT_DISCONNECT_FAILED", "SETTINGS_SAVE_UNCONFIRMED", "OCR_UPLOAD_FAILED", "TASK_UNHANDLED_FAILURE", "PREFLIGHT_READ_UNAVAILABLE", "PREFLIGHT_RERUN_UNAVAILABLE", "PREFLIGHT_REPORT_INVALID", "PREFLIGHT_EVIDENCE_EXPIRED", "SETTINGS_INITIAL_READ_UNAVAILABLE", "PROFILE_NAME_REFUSED", "OCR_SOURCE_REFUSED", "ASSISTANT_CONTEXT_STALE", "ASSISTANT_RESPONSE_FAILED", "ASSISTANT_RESPONSE_INCOMPLETE", "ASSISTANT_USAGE_LIMIT", "ASSISTANT_OUTCOME_UNKNOWN"] as const;
+    for (const code of codes) {
+      assert.equal(ErrorCatalogCodeSchema.parse(code), code);
+      assert.doesNotMatch(ERROR_CATALOG[code].text, /preflight|exact scope|unclassified|public source context|runtime|timekeeper name|saved review|diagnostic/iu, code);
+    }
+  });
+
   it("explains an unsatisfied delegation join with fixed text", () => {
     const resolved = resolveErrorCatalogFailure({ code: "DELEGATION_OUTCOME_POLICY_UNSATISFIED", parameters: {}, summary: "delegation-outcome-policy-unsatisfied" }, "http-response");
     assert.equal(resolved.state, "resolved");
@@ -94,7 +102,7 @@ describe("error catalog", () => {
 
   it("registers the exact Settings integration codes and fixed messages", () => {
     const expected = {
-      SETTINGS_INITIAL_READ_UNAVAILABLE: "Settings could not be read. Try again.",
+      SETTINGS_INITIAL_READ_UNAVAILABLE: "Relay could not load your settings. Reload the page to try again.",
       SETTINGS_REFRESH_UNAVAILABLE: "Current settings could not be read. Your drafts are retained.",
       SETTINGS_DRAFT_INVALID: "Check the draft values. No request was sent.",
       PROTECTED_SETTINGS_DRAFT_INVALID: "Check the credential draft. No request was sent.",

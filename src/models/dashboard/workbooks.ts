@@ -78,7 +78,23 @@ export function decodeSavedWorkbook(value: unknown): SavedWorkbook {
   const record = SavedWorkbookWireSchema.parse(value);
   return deepFreeze(SavedWorkbookSchema.parse({ ...record, workbook: decodeEditableWorkbook(record.workbook) }));
 }
-export const WorkbookListWireSchema = z.array(SavedWorkbookWireSchema);
+export const WorkbookSummarySchema = z.strictObject({
+  libraryId: WorkbookIdSchema, name: NameSchema, typeId: WorkbookIdSchema, version: WorkbookRevisionSchema,
+  createdAt: IsoInstantSchema, savedAt: IsoInstantSchema, rowCount: IndexSchema,
+  sheets: z.array(z.strictObject({ name: NameSchema, headerRow: z.number().int().positive(),
+    columns: z.array(z.string()).min(1), columnBindings: z.array(BindingSchema).optional(),
+  }).superRefine((sheet, ctx) => {
+    const bindings = sheet.columnBindings;
+    if (bindings !== undefined && (bindings.length !== sheet.columns.length
+      || new Set(bindings.map(binding => binding.id)).size !== bindings.length
+      || new Set(bindings.flatMap(binding => binding.fieldId === null || binding.basis === 'unmapped' ? [] : [binding.fieldId])).size
+        !== bindings.filter(binding => binding.fieldId !== null && binding.basis !== 'unmapped').length))
+      ctx.addIssue({ code: 'custom', message: 'invalid column bindings' });
+  })).min(1),
+}).refine(record => Date.parse(record.savedAt) >= Date.parse(record.createdAt)
+  && new Set(record.sheets.map(sheet => sheet.name.toLowerCase())).size === record.sheets.length);
+export type WorkbookSummary = z.infer<typeof WorkbookSummarySchema>;
+export const WorkbookListWireSchema = z.array(WorkbookSummarySchema);
 export const WorkbookHistoryWireSchema = z.array(SavedWorkbookWireSchema);
 export const WorkbookCreateRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
 export const WorkbookImportRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
@@ -281,6 +297,10 @@ export const RunWorkbookNamedAllRowsReferenceSchema = z.strictObject({ request: 
   });
 export const RunWorkbookSnapshotReferenceSchema = z.union([RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema,
   RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema]);
+/** The declared reference ids a run holds picked spreadsheets for. */
+export function runWorkbookReferenceTypeIds(references: readonly SchemaBoundCanonicalValue[] | undefined): readonly string[] {
+  return [...new Set((references ?? []).map(bound => parseRunWorkbookReference(bound).request.typeId))];
+}
 export function parseRunWorkbookReference(bound: SchemaBoundCanonicalValue): z.output<typeof RunWorkbookSnapshotReferenceSchema> {
   for (const schema of [RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema]) {
     const hash = deriveSchemaHash(schema, "output");

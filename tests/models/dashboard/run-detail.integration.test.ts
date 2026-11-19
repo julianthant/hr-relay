@@ -131,7 +131,7 @@ describe("fictional separation run through production authority", () => {
     try {
       const lifecycle = server.database.authority.runs.get(server.runId)?.lifecycle;
       assert.ok(lifecycle?.state === "terminal" && lifecycle.outcome === "failed");
-      assert.ok(server.database.authority.failures.listByRun(server.runId).some((item) => item.code === "DOCUMENT_READ_TIMEOUT"));
+      assert.ok(server.database.authority.failures.listByRun(server.runId).some((item) => item.code === "UNREADABLE_PAGE"));
       const response = await fetch(`${server.baseUrl}/api/v1/runs/${server.runId}/logs`);
       const section = RunDetailSectionResponseSchema.parse(await response.json());
       assert.equal(section.section, "logs");
@@ -139,7 +139,7 @@ describe("fictional separation run through production authority", () => {
       assert.equal(responseFailure.status, 200);
       const failure = RunDetailSectionResponseSchema.parse(await responseFailure.json());
       assert.equal(failure.section, "failure");
-      assert.match(JSON.stringify(failure.payload), /DOCUMENT_READ_TIMEOUT/u);
+      assert.match(JSON.stringify(failure.payload), /UNREADABLE_PAGE/u);
     } finally { await server.close(); }
   });
 });

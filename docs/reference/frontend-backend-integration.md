@@ -90,17 +90,15 @@ Bootstrap projects the admitted person registry name as the actor label. Appeara
 ## Static workflow source policy
 
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
-Every declared value is `mock`, `served` or `hidden`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
+Every declared value is `served` or `hidden`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. Other configured workflows use `mock`.
-Product mock queues start empty. `WorkflowComposition.initialMockRuns` supplies initial rows; the product supplies none, while the mock composition supplies `seedMockRuns`. The mock composition starts from an explicit mock policy and opts fixture workflows into served capability tests. There is no runtime served-to-mock fallback.
+`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. A workflow that is not built and ready for testing is not declared, so it appears nowhere in the product. The design-mock harness composes its own surfaces in `tests/mocks/helpers/workflow-composition.ts`. There is no runtime served-to-mock fallback.
 
-`WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,
-`dataSources`, `catalogIncludesMocks`, and `servedDay` allow explicit fixture composition.
+`WorkflowComposition.sources` controls workflow presentation; `explorerCatalog`, `logs`,
+`dataSources` and `servedDay` allow explicit fixture composition.
 The independent `inbox` and `search` sources are served in the product and mock in the mock composition.
-`sessions` selects its existing served or fixture producer. `sourceForRoute` chooses the
-route's producer. `buildWorkflowCatalog` combines served registration with the preview catalog,
-keeping availability, executable registration, and preview capability separate. Only a workflow's
+`sessions` selects its existing served or fixture producer. `buildWorkflowCatalog` lists the
+served registrations the policy marks `served`; it never adds a preview entry. Only a workflow's
 own wiring task changes its source policy after its accepted behavior is implemented across
 Run, Rerun, Queue, Logs, Explorer, Records, notifications, and Analytics where applicable.
 
@@ -129,7 +127,7 @@ Preflight, storage, and intake already have typed clients; local previews are ex
 | Historical reports (unmounted) | Archive page, navigation, queue snapshot composition and notification shortcut are absent; historical readers and archive model and backend archival authority are retained | Stored reports remain unchanged. A unified run-history query/read model needs exact identity, date/status/workflow filtering, cross-version data migration and historical evidence access before backend wiring. Current day filters are not a complete historical index. Legacy Archive URLs show a removal notice and return to the dashboard without queries or version commands. Backend archival and upgrade authority remain independent of this UI. |
 | Analytics | `activity-wiring-adapter.ts` feeds `ActivityView` from the AP1 population and authoritative browse; explicit fixture composition retains `activitySample` | The complete ordered population supplies generic counts. Successful root runs alone enter workflow timing averages; duration tiles cover all terminal runs. Zero and unavailable timing remain distinct. Browse revalidates the exact snapshot and injects server paging once; pending filter reads retain controls and mark stale authority. Mock workflow detail never joins fictional logs to served IDs. The Export CSV control awaits the snapshot-bound AP1 download and reports refusal. AS1 retains distinct summary/XLSX export. |
 | Explorer | `WorkflowExplorer` uses local workflow fixtures and choice/source models | Stable workflow/node/operation/field IDs, source metadata and ordered timeline. Public display conditions compare string, boolean and null values exactly; withheld/missing values are not guessed. Definition/runtime compiler wiring remains separate. |
-| Spreadsheets | Served workbook library through `spreadsheet-wiring-adapter.ts`, with real CSV/XLSX workers and explicit mock fixtures | Workbook/sheet/row/column identities, values/types/fills, number formats, hyperlinks, rich-text runs and optional canonical bindings. Editable XLSX copies import all records, including hidden/filtered rows; worksheet/table filter rules are not imported. Unsupported Excel table color-filter metadata is removed from a private parsing copy only; original bytes remain unchanged, values and supported cell fills survive, and malformed table XML still refuses import. `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs. Bindings retain source headers, source column coordinates (null for inserted columns), header-row provenance, original worksheet row numbers and suggestion/manual basis. Import detects/selects a header row, retains unbound columns and tracker text, rejects duplicate fields per sheet, and physically removes preamble and excluded columns/sheets. Canonical coercion/schema issues show original worksheet rows and columns without blocking library import; workflow Intake still refuses invalid execution rows. Stable-field read/write helpers preserve headers, formatting and row identity and refuse invalid patches atomically. OCR matching, person-lookup fallback and workflow roster updates remain backend wiring work; no frontend automatic match or durable write is implied. Preserve validation, cancellation, draft exit guards and the 50-version Undo bound. Save uses the opened library version and matching readback; conflicts and uncertain writes retain the draft. The workbook-to-Intake bridge binds the exact saved version. Spreadsheet types use the served library catalog; explicit mock compositions own their separate types. Roster-only fields keep original tracker values; workflow-specific transaction semantics belong to execution admission. |
+| Spreadsheets | Served workbook library through `spreadsheet-wiring-adapter.ts`, with real CSV/XLSX workers; the mock library is test support under `tests/support/fixtures/dashboard/` | Workbook/sheet/row/column identities, values/types/fills, number formats, hyperlinks, rich-text runs and optional canonical bindings. Editable XLSX copies import all records, including hidden/filtered rows; worksheet/table filter rules are not imported. Unsupported Excel table color-filter metadata is removed from a private parsing copy only; original bytes remain unchanged, values and supported cell fills survive, and malformed table XML still refuses import. `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs. Bindings retain source headers, source column coordinates (null for inserted columns), header-row provenance, original worksheet row numbers and suggestion/manual basis. Import detects/selects a header row, retains unbound columns and tracker text, rejects duplicate fields per sheet, and physically removes preamble and excluded columns/sheets. Canonical coercion/schema issues show original worksheet rows and columns without blocking library import; workflow Intake still refuses invalid execution rows. Stable-field read/write helpers preserve headers, formatting and row identity and refuse invalid patches atomically. OCR matching, person-lookup fallback and workflow roster updates remain backend wiring work; no frontend automatic match or durable write is implied. Preserve validation, cancellation, draft exit guards and the 50-version Undo bound. Save uses the opened library version and matching readback; conflicts and uncertain writes retain the draft. The workbook-to-Intake bridge binds the exact saved version. Spreadsheet types use the served library catalog; explicit mock compositions own their separate types. Roster-only fields keep original tracker values; workflow-specific transaction semantics belong to execution admission. |
 
 `QueueSurfaceWire.outcome` is an optional `{ label, tone }` value with tone `success`, `warning`, or `neutral`. The backend projects it only for a `done` run with a verified `completion.terminal-result` receipt. The receipt must match the Queue row's run, trace, attempt, workflow, descriptor, and config identities. A declared workflow outcome must match a satisfied, unredacted fact at the declared field path. A missing receipt, unverified result, or absent or unvalidated fact leaves the outcome unset. A mismatched identity or undeclared raw value throws a projection error. Served Queue wiring maps canonical outcomes by run ID to UI2's existing badge. Rows without an outcome keep the lifecycle badge.
 
@@ -152,13 +150,13 @@ resolved at its owning contract before workflow execution.
 | Save a setting | Effective/default/override metadata → typed edit → revision-bound save after typing settles (700 ms ordinary, 1200 ms credentials) or focus leaves the field → matching readback. Moving within a composite field does not flush; invalid drafts keep inline validation. Ordinary folders retain native pickers; app-data paths are read-only. | No Unsaved changes text. Only matching acknowledgment plus readback emits the shared value-free saved toast. Refusal emits a danger toast; conflict or uncertainty emits a warning toast. Retain drafts and exact retry identity; blur never automatically retries a failed attempt. Persisted and active revisions stay distinct; save feedback survives toast expiry. Protected values follow existing backend authority. | `settings-feedback.test.ts`, `settings.editor-surface.test.ts`, `settings-protected-model.integration.test.ts`, `index.settings-path-picker.test.ts`. |
 | Connect ChatGPT | Continue invokes the account port directly; show verified account state and acknowledged sign-out. | OAuth, consent, eligibility and secure token persistence are backend responsibilities. A logged-in identity alone does not establish subscription-based OCR eligibility. Keep expired, unavailable and usage-limit states distinct. | `chatgpt-account.test.ts` and the ChatGPT account browser specs. Check official eligibility before replacing the preview adapter. |
 | Manage a worker and keep an idle browser alive | Resource state → add/pause/resume/stop/remove command. A white five-minute ring requests refresh only while idle and every resource is ready. | Refresh the owned physical browser session, not the dashboard page. Backend checks session identity, ownership/generation and busy/replaced refusal. Rearm only after matching acknowledgment; use/unavailability/unmount cancels the timer. No uncertain/refused automatic resubmission. | `session-preview-command-model.served.test.ts`, `session-idle-model.test.ts`. Pending controls hydrate from native operations after remount; use, another control, replacement, unavailable authority or unmount cancels the ring. Only all exact physical acknowledgments rearm it. |
-| Inspect readiness | Served Preflight/storage checks with scope/fingerprint/time → rerun → remedy navigation. | Retain completed geometry during rerun; acknowledge the checked identity/time. A remedy navigates, never repairs merely by rendering. Missing checks remain explicit. | `settings-preflight.test.ts`, `storage-settings-model.test.ts`; Preflight browser spec. |
+| Inspect readiness | Served Preflight/storage checks with scope/fingerprint/time → rerun → remedy navigation. | Retain completed geometry during rerun; acknowledge the checked identity/time. A remedy navigates, never repairs merely by rendering. Missing checks remain explicit. | `settings-preflight.test.ts`; Preflight browser spec. |
 | Find a run or open a notice | Complete authoritative search / canonical inbox event → validated exact destination. Mark read separately from resolution. | Signed `sc1` pages retain one query, facet set and snapshot through completion. Refused or expired cursors fail visibly. Read/unread/read-all and canonical snooze use the shared command executor and matching readback; uncertainty retains the original attempt without automatic retry. | `search-wiring-adapter.test.ts`, `inbox-wiring-adapter.test.ts`, `run-navigation.test.ts`, `dashboard-app.notifications.test.ts`; mocks retain the existing local fixtures and controls. |
 | Undo an edit or discarded review | Settings text fields retain native typing undo without inline Undo buttons; unsaved date/folder selections revert within their field. A discarded OCR review restores with Ctrl+Z/Cmd+Z while focus remains in Records; approval cannot be reversed this way. | Preserve exact run identity and draft records through discard/restore. Do not turn text undo into a global run action or retry an uncertain write. | `settings-editor.test.ts`; `review.test.ts`. |
 | Review OCR document fields | Roster and document-type choices share one row. Supported direct choices exclude Verify. Every current OCR shape omits Notes; valid manually entered Employee IDs show no provenance warning. | Preserve manual identity provenance separately from verified lookup evidence. Employee IDs must match `^10\d{6}$`; invalid IDs, unknown records and other required approval fields still refuse release. Parent document type controls predefined fields. | `review.test.ts`, `workflow-catalog-model.test.ts` and `workflow-manual-model.test.ts`. |
 | Enter a date | Shared segmented date controls display MM/DD/YYYY, preserve month/day during year entry and retain partial segments during unrelated rerenders. | Keep ISO transport values separate from display formatting; the US-format parser and emitted four-digit year must round-trip. Invalid/incomplete edits remain editor state. | `date-format.test.ts`; `primitives-date.test.ts` checks date bounds, invalid drafts, calendar selection and partial-year publication. |
 | Explain dashboard outcomes | Complete selected run population → period/status/workflow selection → matching population and exact Logs. Successful measured root runs alone supply workflow duration averages; all terminal runs supply duration tiles. | Count, export and drilldown must agree on one population. Missing duration differs from measured zero. Sorting/filtering precede paging; no labor-saving metric is implied. | `activity-duration-model.test.ts`, `activity-drilldown.test.ts`, `activity-volume.test.ts`; Analytics filter browser spec. |
-| Explain a workflow | Stable definition/node/operation/field IDs, display conditions and sources → Explorer disclosure or source destination. | Use compiler/catalog authority; do not turn a preview definition into executable availability. Missing/withheld source values remain explicit. | `explorer-workflow-model.test.ts` and Explorer browser specs. |
+| Explain a workflow | Stable definition/node/operation/field IDs, display conditions and sources → Explorer disclosure or source destination. | Use compiler/catalog authority; do not turn a preview definition into executable availability. Missing/withheld source values remain explicit. | `explorer-spec-view.integration.test.ts` and Explorer browser specs. |
 
 Served Sessions availability uses `SESSIONS_UNAVAILABLE`; actual crashed and expired lifetimes use `WORKER_CRASHED` and `WORKER_LEASE_EXPIRED`. The shared catalog owns fixed text with empty parameters. Command/context failures reuse `COMMAND_*` and `DASHBOARD_AUTHORITY_REPLACED`; original diagnostics remain nonrendered and never become message parameters. Operator stop and shutdown labels are informational.
 
@@ -182,7 +180,6 @@ field membership and discriminated states. The client checks identity as well as
 | ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel` under the account path |
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
-| Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |
 | Clear run history | `queries/storage-queries.ts`, `commands/settings-commands.ts` | `storage.ts`: `GET /api/v1/storage/run-history`, confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition; Clear/result carry the confirmed profile ID and session epoch, admitted before effects and stripped from the internal journal request |
 | Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/status`, `/:notificationId/target` |
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
@@ -374,7 +371,7 @@ patch application trigger a resnapshot. Malformed envelopes or non-network strea
 with visible error. Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
 
-Notification subjects use the registered title projection and the matching retained evidence receipt when a workflow declares one, through the same canonical title resolver as Queue. Unavailable or refused title authority stays unavailable; it does not fall back to a checkpoint or guessed name. Other declared subject projections retain their checkpoint identity checks. This display context belongs only to the served inbox; durable notification summaries and OS delivery are unchanged.
+Notification subjects use the registered title projection and the matching retained evidence receipt when a workflow declares one, through the same canonical title resolver as Queue. Unavailable or refused title authority withholds the subject without falling back to a checkpoint or guessed name; a readable linked run and descriptor still serve the workflow-only context. Other declared subject projections retain their checkpoint identity checks. Workflow-only previews omit the subject and retain the reason. A retained failed-row summary can supply that reason when the source publication is unavailable only if it exactly matches a current error-catalog sentence; other retained summaries leave the reason unavailable. Toast eligibility still requires the source-event policy. Run rows show the unavailable notice when their context or display reason cannot be read. This display context belongs only to the served inbox; durable notification summaries and OS delivery are unchanged.
 
 Notification publications originate after the authority transaction commits. They are live-only,
 nonretained events with explicit source identity; baseline reads, replay, reconnect and resnapshot
@@ -435,14 +432,30 @@ retains stopped exclusive custody through source inspection, verified backup, mi
 readback. A failed upgrade prevents the public shell from starting and reports
 `STORAGE_PROFILE_UPGRADE_REFUSED`; uncertain native closure retains its actual resource owners.
 
-Sign-in authenticates a current profile through the ordinary endpoint and session cookie. It does
-not dispatch storage maintenance or restart the app. Pending onboarding and logout continue through
-their existing recovery boundaries.
+Successful password sign-in or authenticated onboarding completion returns two headers. The dashboard sends
+`x-relay-session` on protected requests to its exact origin. It stores `x-relay-resume` in that
+origin's local storage and presents it to the profile state and resume endpoints. The proof is
+bound to the installation, profile, session generation and origin, including the port.
+
+An enrolled tab reads `/api/v1/profile/state` and posts to `/api/v1/profile/resume` when the
+response reports `resumable`. During a cold mount, tabs with a valid proof for the preceding
+generation can join that mount and receive credentials for the new generation. The browser holds
+an origin-wide lock through resume and storage of the successor proof. A tab starting during that
+exchange waits for the proof before reading state or posting its own resume. A browser without
+a valid proof signs in with the existing password form. Signing in to the mounted profile retains
+its generation, and a failed sign-in leaves the selection intact.
+
+When logout or account deletion starts, the initiating tab saves its session credential in session
+storage. After a reload in the same runtime, submitting the login form with the original profile's
+password continues its pending ordinary logout. The server checks the tab credential, password
+lockout, profile, generation and original logout operation or completion receipt. The form returns
+to signed-out after closure. Account deletion requires its explicit confirmation, profile and epoch.
+Successful sign-out clears the tab's continuation credential and the origin's resume proof.
 
 The Relay login is the work email and password saved as the profile's UCPath sign-in.
 `POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
 `POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
-session cookie only. They return `{state: "changed"}`, `{state: "unknown", code}` or
+session authenticated by `x-relay-session`. They return `{state: "changed"}`, `{state: "unknown", code}` or
 `{state: "refused", code}`. A wrong current password counts toward the sign-in lockout. A new
 username must be a plain `@ucsd.edu` address the sign-in form accepts, must change the verifier key
 and must not be taken; a new username or password longer than the form's 160 characters, or a
@@ -483,7 +496,8 @@ timekeeper name and initials it captured.
 
 ### Profile onboarding boundary
 
-Details returns canonical `onboarding` state and a limited HttpOnly cookie scoped to profile routes.
+Details returns canonical `onboarding` state and a draft credential in `x-relay-session`. The
+dashboard keeps it in the tab's session storage for draft state reads and onboarding requests.
 `readProfileSession` carries current server method states. The onboarding Duo start, confirm and
 exact-attempt cancel routes operate only on the issued operation and attempt; closing a setup popup
 preserves the draft. Whole-draft cancellation returns signed-out only after canonical custody and
@@ -491,9 +505,9 @@ erasure proof. Neither Details, Duo completion nor entering Ready publishes a sa
 
 The Ready Finish callback invokes `completeProfileOnboarding({operationId})`. Backend receipts for
 both software FastDuo and native Mac Touch ID, proved provider closure and explicit Finish precede
-registry/verifier/active-session publication. Only the ordinary returned session cookie mounts
-bootstrap, Queue, Run and HR data authority. Failed or unknown publication remains a defined HOLD;
-public error codes never expose private causes or credential values.
+registry/verifier/active-session publication. The active `x-relay-session` credential returned by
+Finish authorizes bootstrap, Queue, Run and HR data requests. Failed or unknown publication remains
+a defined HOLD; public error codes never expose private causes or credential values.
 
 Sign-up creates a fresh private profile; there is no existing-data claim route or form state.
 Before composing profile runtime, dashboard startup migrates a pre-profile flat store into an empty
@@ -507,7 +521,7 @@ A stale or signed-out public session returns to login and does not reopen a reta
 
 The typed profile client parses defined wire errors into public refusal codes. Login and sign-up
 render the refusal's catalog sentence; network reachability failures use the connection-failed catalog sentence. Other client exceptions retain the authority-unavailable sentence.
-Show setup browser may refresh unavailable public authority with the current cookie, then shows only
+Show setup browser may refresh unavailable public authority with the current draft credential, then shows only
 that same operation and profile. Unknown method outcomes stay unknown while that draft is active.
 Show focuses the owned extension tab or recreates that tab once in the same live context. A closed
 window is replaced only after the exact context close event, all tracked pages, the observed process,

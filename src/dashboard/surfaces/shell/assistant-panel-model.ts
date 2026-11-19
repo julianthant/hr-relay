@@ -1,114 +1,46 @@
 import { assistantSetupCommand } from '../assistant/assistant-model.js';
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { useEffect, useRef, useState } from 'react';
-import type { DashboardClient } from '../../client/index.js';
-import type { ChatGptAccountView } from '../../../models/dashboard/chatgpt-account.js';
 import { importSpreadsheetInWorker } from '../spreadsheets/spreadsheet-import-client.js';
-import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
-import { MOCK_WORKFLOWS } from '../workflows/mocks/workflow-mock-catalog.js';
+import type { EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import type { ComposerValue } from './composer-model.js';
+import { ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENTS_PER_SEND, ASSISTANT_FAILURES, type AssistantAttachmentMediaType } from '../../../models/dashboard/assistant.js';
 
-export interface AssistantFile { readonly id: string; readonly name: string; readonly status: 'Attached' | 'Updated' | 'Generated'; readonly workbook?: EditableWorkbook }
-export type AssistantScene = 'new' | 'conversation' | 'ask-read' | 'ask-write' | 'permission-changed' | 'working' | 'cancelling' | 'done' | 'failed' | 'handoff' | 'destructive' | 'delete-working' | 'resolved' | 'declined';
-export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
-export interface AssistantRow { readonly sheet: string; readonly row: number; readonly person: string; readonly values: Readonly<Record<string, string>>; readonly issue: string | null }
-export interface AssistantWorkflow { readonly workflowId: string; readonly label: string; readonly file: AssistantFile; readonly rows: readonly AssistantRow[]; readonly state: 'review' | 'running' | 'complete' | 'uncertain' | 'failed'; readonly outputs: readonly AssistantFile[]; readonly message?: string }
-export interface AssistantConversation { readonly id: string; readonly title: string; readonly source: 'mock'; readonly scene: AssistantScene; readonly messages: readonly AssistantMessage[]; readonly files: readonly AssistantFile[]; readonly workflow?: AssistantWorkflow }
+/** Where a served attachment stands: staged for the model, failed with its reason, or kept on the spreadsheet path and never sent. */
+export type AssistantFileStage = { readonly state: 'staged' } | { readonly state: 'failed'; readonly message: string } | { readonly state: 'spreadsheet' };
+export interface AssistantFile { readonly id: string; readonly name: string; readonly status: 'Attached' | 'Updated' | 'Generated'; readonly workbook?: EditableWorkbook; readonly stage?: AssistantFileStage }
+const SPREADSHEET_NAME = /\.(xlsx?|csv|tsv)$/i;
+function attachmentType(name: string): { mediaType: AssistantAttachmentMediaType; maxBytes: number } | undefined {
+  const extension = /\.([^.]+)$/u.exec(name)?.[1]?.toLowerCase();
+  for (const [mediaType, type] of Object.entries(ASSISTANT_ATTACHMENT_TYPES) as [AssistantAttachmentMediaType, typeof ASSISTANT_ATTACHMENT_TYPES[AssistantAttachmentMediaType]][])
+    if (extension !== undefined && (type.extensions as readonly string[]).includes(extension)) return { mediaType, maxBytes: type.maxBytes };
+  return undefined;
+}
+/** What the panel keeps of one chat besides its served messages. */
+export interface AssistantConversation { readonly id: string; readonly title: string; readonly files: readonly AssistantFile[] }
 export interface AssistantConversationPort {
   initial(): AssistantConversation;
   retain?(conversation: AssistantConversation): void;
-  send(conversation: AssistantConversation, value: ComposerValue): Promise<AssistantConversation>;
-  act(conversation: AssistantConversation, action: 'approve' | 'decline' | 'cancel'): Promise<AssistantConversation>;
 }
-export interface AssistantWorkflowRequest { readonly workflowId: string; readonly source: 'mock'; readonly dryRun: true; readonly conversationId: string; readonly file: AssistantFile; readonly rows: readonly AssistantRow[] }
-export type AssistantWorkflowResult = { readonly state: 'complete'; readonly source: 'mock'; readonly files: readonly AssistantFile[] } | { readonly state: 'uncertain' | 'failed'; readonly message: string };
 export interface AssistantPorts {
   readonly onAttachFile?: (file?: File) => Promise<AssistantFile | null>;
   readonly onRegisterSpreadsheet?: (file: AssistantFile) => Promise<void>;
-  readonly onRunWorkflow?: (request: AssistantWorkflowRequest) => Promise<AssistantWorkflowResult>;
-}
-const workflowOptions = [
-  { name: 'Separations', label: 'Separations', command: /\brun\s+(?:the\s+)?separations\b/i, date: /last day|separation date|termination date/i, identifier: /^kuali\s*id$/iu, identifierLabel: 'Kuali ID' },
-  { name: 'Onboarding', label: 'Onboardings', command: /\brun\s+(?:the\s+)?onboardings?\b/i, date: /start date|hire date/i, identifier: /^(?:work\s*)?email(?:\s*address)?$/iu, identifierLabel: 'email address' },
-].map(option => {
-  const workflow = MOCK_WORKFLOWS.find(workflow => workflow.label === option.name);
-  if (!workflow) throw new Error('Assistant sample workflow is unavailable.');
-  return { ...option, id: workflow.id };
-});
-export function assistantWorkflowOption(id: string) { return workflowOptions.find(option => option.id === id); }
-export function assistantWorkflowRows(file: AssistantFile, workflowId: string): readonly AssistantRow[] {
-  const option = workflowOptions.find(option => option.id === workflowId);
-  if (!option) throw new Error('This sample workflow is unavailable.');
-  if (!file.workbook) throw new Error('Attach a spreadsheet with readable rows.');
-  return file.workbook.sheets.flatMap(sheet => {
-    const headerIndex = (sheet.headerRow ?? 1) - 1;
-    const headers = sheet.rows[headerIndex]?.cells.map(cellText);
-    if (!headers?.length) throw new Error(`Choose a header row for ${sheet.name}.`);
-    return sheet.rows.slice(headerIndex + 1).flatMap((row, index) => {
-      const cells = row.cells.map(cellText);
-      if (cells.every(value => !value.trim())) return [];
-      const values = Object.fromEntries(headers.map((header, column) => [header, cells[column] ?? '']));
-      const personColumn = headers.findIndex(header => /^(person|name|full name|employee name)$/i.test(header));
-      const dateColumn = headers.findIndex(header => option.date.test(header));
-      const person = cells[personColumn]?.trim() ?? '';
-      const date = cells[dateColumn]?.trim() ?? '';
-      return [{ sheet: sheet.name, row: headerIndex + index + 2, person: person || `Row ${headerIndex + index + 2}`, values,
-        issue: !person ? 'Needs name' : !date ? 'Needs date' : null }];
-    });
-  });
-}
-export function createAssistantMockProducer(scene: AssistantScene = 'new'): AssistantConversationPort {
-  return {
-    initial: () => ({ id: 'assistant-mock', title: scene === 'new' ? 'New chat' : 'Update Alex Rivera work email', source: 'mock', scene, messages: scene === 'conversation' ? [{ role: 'operator', text: 'What should I check before saving?' }, { role: 'assistant', text: 'Check the person, the destination, and the values you want to change. I’ll show the details before asking you to approve.' }, { role: 'operator', text: 'Can I keep working while you check?' }, { role: 'assistant', text: 'Yes. You can leave this chat open while you work. Come back here to review the result.' }] : [], files: [] }),
-    async send(conversation, value) {
-      const option = workflowOptions.find(option => option.command.test(value.text));
-      const workflowId = option?.id;
-      if (workflowId && conversation.workflow?.state === 'uncertain') throw new Error('The previous run outcome is unknown. Check that run before starting again.');
-      const file = value.files.find(candidate => candidate.workbook);
-      if (workflowId && !file) throw new Error('Attach a spreadsheet before starting this workflow.');
-      if (workflowId && file) {
-        const rows = assistantWorkflowRows(file, workflowId);
-        if (!rows.length) throw new Error('The spreadsheet has no people to review.');
-        return { ...conversation, title: conversation.title === 'New chat' ? `Run ${option.label.toLowerCase()}` : conversation.title, scene: 'conversation',
-          messages: [...conversation.messages, { role: 'operator', text: value.text }], files: [...conversation.files, ...value.files],
-          workflow: { workflowId, label: option.label.toLowerCase(), file, rows, state: 'review', outputs: [] } };
-      }
-      if (/send me the updated/i.test(value.text)) return { ...conversation, messages: [...conversation.messages, { role: 'operator', text: value.text },
-        { role: 'assistant', text: conversation.files.some(file => file.status === 'Updated') ? 'Your updated spreadsheet is ready below.' : 'There is no updated spreadsheet in this chat yet.' }] };
-      return { ...conversation, scene: 'conversation', title: conversation.title === 'New chat' ? value.text.slice(0, 55) : conversation.title,
-        files: [...conversation.files, ...value.files], messages: [...conversation.messages, { role: 'operator', text: value.text },
-          { role: 'assistant', text: 'I’ll review the record and show you the action before continuing.' }] };
-    },
-    async act(conversation, action) { return { ...conversation, scene: action === 'decline' ? 'declined' : action === 'cancel' ? 'cancelling' : conversation.scene === 'destructive' ? 'delete-working' : 'working' }; },
-  };
 }
 export async function readAssistantAttachment(file: File): Promise<AssistantFile> {
   const workbook = /\.(xlsx?|csv|tsv)$/i.test(file.name) ? await importSpreadsheetInWorker(file.name, await file.arrayBuffer()) : undefined;
   return { id: crypto.randomUUID(), name: file.name, status: 'Attached', ...(workbook ? { workbook } : {}) };
 }
-/** The producer appends this send's operator message at `sentAt`, then any reply after it. */
-function withSentAttachments(conversation: AssistantConversation, sentAt: number, attachments: readonly { id: string; name: string }[]): AssistantConversation {
-  if (!attachments.length || conversation.messages[sentAt]?.role !== 'operator') return conversation;
-  return { ...conversation, messages: conversation.messages.map((message, index) => index === sentAt ? { ...message, attachments } : message) };
-}
-export function useAssistantPanel({ producer, accountClient, ports, served }: { served?: ReturnType<typeof useAssistantController>; producer: AssistantConversationPort; accountClient: Pick<DashboardClient, 'chatGptAccount'>; ports: AssistantPorts }) {
-  const [conversation, setConversation] = useState(() => producer.initial());
-  useEffect(() => { producer.retain?.(conversation); }, [producer, conversation]);
-  const [account, setAccount] = useState<ChatGptAccountView | null>(null);
+export function useAssistantPanel({ conversationPort, ports, served }: { served: ReturnType<typeof useAssistantController>; conversationPort: AssistantConversationPort; ports: AssistantPorts }) {
+  const [conversation, setConversation] = useState(() => conversationPort.initial());
+  useEffect(() => { conversationPort.retain?.(conversation); }, [conversationPort, conversation]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [detail, setDetail] = useState<'record' | 'sign-in' | null>(null);
   const transcript = useRef<HTMLDivElement>(null);
   const [showLatest, setShowLatest] = useState(false);
   const generation = useRef(0);
   const pending = useRef(false);
-  const currentAuthority = useRef(served?.authorityKey); currentAuthority.current = served?.authorityKey;
-  const servedMode = served !== undefined;
-  useEffect(() => {
-    let current = true;
-    if (!servedMode) void accountClient.chatGptAccount().then(value => { if (current) setAccount(value.account); }, () => { if (current) setError('Could not load ChatGPT account. Open Settings to try again.'); });
-    return () => { current = false; generation.current += 1; };
-  }, [accountClient, servedMode]);
+  const currentAuthority = useRef(served.authorityKey); currentAuthority.current = served.authorityKey;
+  useEffect(() => () => { generation.current += 1; }, []);
   async function perform(work: () => Promise<AssistantConversation>): Promise<boolean> {
     if (pending.current) return false;
     pending.current = true; setBusy(true); setError(null);
@@ -120,60 +52,55 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     return committed;
   }
   function refuseAttachments(value: Pick<ComposerValue, 'text' | 'files'>) {
-    if (served !== undefined && assistantSetupCommand(value.text) !== undefined && value.files.length > 0) {
+    if (assistantSetupCommand(value.text) !== undefined && value.files.length > 0) {
       setError('Assistant setup commands accept text only. Remove attachments before sending.'); return true;
+    }
+    if (value.files.some(file => file.stage?.state === 'failed')) { setError('An attachment did not upload. Retry or remove it before sending.'); return true; }
+    if (value.files.filter(file => file.stage?.state === 'staged').length > ASSISTANT_ATTACHMENTS_PER_SEND) {
+      setError(`Attach at most ${ASSISTANT_ATTACHMENTS_PER_SEND} files to one message.`); return true;
     }
     return false;
   }
   function refuseAttachmentInput() {
-    if (served !== undefined && assistantSetupCommand(served.state.draft) !== undefined) {
+    if (assistantSetupCommand(served.state.draft) !== undefined) {
       setError('Assistant setup commands accept text only. Remove attachments before sending.'); return true;
     }
     return false;
   }
   async function attachFile(file?: File): Promise<AssistantFile | null> {
     if (refuseAttachmentInput()) return null;
-    return ports.onAttachFile?.(file) ?? null;
+    if (file !== undefined && !SPREADSHEET_NAME.test(file.name)) {
+      const type = attachmentType(file.name);
+      if (type === undefined) throw new Error(ASSISTANT_FAILURES.ASSISTANT_ATTACHMENT_UNSUPPORTED);
+      if (file.size > type.maxBytes) throw new Error(ASSISTANT_FAILURES.ASSISTANT_ATTACHMENT_TOO_LARGE);
+    }
+    const attached = await ports.onAttachFile?.(file) ?? null;
+    if (attached === null || file === undefined) return attached;
+    if (SPREADSHEET_NAME.test(file.name)) return { ...attached, stage: { state: 'spreadsheet' } };
+    try {
+      const result = await served.stageAttachment({ name: file.name, mediaType: attachmentType(file.name)!.mediaType, bytes: new Uint8Array(await file.arrayBuffer()) });
+      return result.state === 'staged' ? { ...attached, id: result.attachment.id, stage: { state: 'staged' } }
+        : { ...attached, stage: { state: 'failed', message: ASSISTANT_FAILURES[result.code] } };
+    } catch { return { ...attached, stage: { state: 'failed', message: 'Could not attach the file. Try again.' } }; }
   }
   async function send(value: ComposerValue) {
     if (refuseAttachments(value)) return false;
     const identity = generation.current, authority = currentAuthority.current;
     let dispatched = false;
-    const committed = await perform(async () => {
-      const attachments = value.files.map(file => ({ id: file.id, name: file.name }));
-      const sentMock = served ? undefined : await producer.send(conversation, value);
-      const next = sentMock === undefined ? { ...conversation, files: [...conversation.files, ...value.files] } : withSentAttachments(sentMock, conversation.messages.length, attachments);
-      for (const file of value.files) if (file.workbook) await ports.onRegisterSpreadsheet?.(file);
-      if (served && identity === generation.current && authority === currentAuthority.current) {
-        served.onAction({ type: 'edit', value: value.text }); served.onAction({ type: 'send', attachments }); dispatched = true;
-      }
-      return next;
-    });
-    return served ? dispatched : committed;
-  }
-  async function runWorkflow() {
-    const workflow = conversation.workflow;
-    if (!workflow || workflow.state !== 'review' || !ports.onRunWorkflow) return;
-    const rows = workflow.rows.filter(row => row.issue === null);
-    if (!rows.length) return;
     await perform(async () => {
-      const running = { ...conversation, workflow: { ...workflow, state: 'running' as const } };
-      setConversation(running);
-      let result: AssistantWorkflowResult;
-      try { result = await ports.onRunWorkflow!({ workflowId: workflow.workflowId, source: 'mock', dryRun: true, conversationId: conversation.id, file: workflow.file, rows }); }
-      catch { return { ...conversation, workflow: { ...workflow, state: 'uncertain', message: 'The run outcome is unknown. Check the run before continuing.' } }; }
-      if (result.state !== 'complete') return { ...conversation, workflow: { ...workflow, state: result.state, message: result.message } };
-      const completed = { ...conversation, files: [...conversation.files, ...result.files], workflow: { ...workflow, state: 'complete' as const, outputs: result.files } };
-      setConversation(completed);
-      for (const file of result.files) if (file.workbook) await ports.onRegisterSpreadsheet?.(file);
-      return completed;
+      const attachments = value.files.map(file => ({ id: file.id, name: file.name }));
+      for (const file of value.files) if (file.workbook) await ports.onRegisterSpreadsheet?.(file);
+      if (identity === generation.current && authority === currentAuthority.current) {
+        served.onAction({ type: 'edit', value: value.text });
+        served.onAction({ type: 'send', attachments, staged: value.files.filter(file => file.stage?.state === 'staged').map(file => file.id) }); dispatched = true;
+      }
+      return { ...conversation, files: [...conversation.files, ...value.files] };
     });
+    return dispatched;
   }
   function latest() { const element = transcript.current; if (element) element.scrollTop = element.scrollHeight; setShowLatest(false); }
-  return { conversation, account, error, busy, refuseAttachments, attachFile, detail, setDetail, transcript, showLatest, latest, send, runWorkflow,
+  return { conversation, error, busy, refuseAttachments, attachFile, transcript, showLatest, latest, send,
     onScroll: () => { const el = transcript.current; if (el) setShowLatest(el.scrollHeight - el.clientHeight - el.scrollTop >= 48); },
-    finishMockSignIn: () => { setConversation(current => ({ ...current, scene: 'ask-write' })); setDetail(null); },
-    act: (action: 'approve' | 'decline' | 'cancel') => perform(() => producer.act(conversation, action)),
-    newChat: () => { generation.current += 1; setConversation({ ...producer.initial(), id: crypto.randomUUID(), title: 'New chat', scene: 'new', messages: [], files: [] }); if (account) setError(null); },
+    newChat: () => { generation.current += 1; setConversation({ id: crypto.randomUUID(), title: 'New chat', files: [] }); },
   };
 }

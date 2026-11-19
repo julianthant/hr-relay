@@ -1,25 +1,25 @@
-import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockProposal } from "../assistant/assistant-model.js";
+import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { Fragment, useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, X } from "lucide-react";
-import { assistantFrame, ASSISTANT_FRAMES } from "../assistant/assistant-mock-frames.js";
-import { AssistantMockThread, AssistantReply } from "./assistant-mock-thread.js";
-import type { DashboardClient } from '../../client/index.js';
-import { Button } from '../../ds/ui.js';
+import { AssistantReply, AssistantText } from "./assistant-thread.js";
+import { Button, FailureNotice, Skeleton } from '../../ds/ui.js';
 import type { ComposerDraftPort } from './composer-model.js';
 import { ComposerInput } from './composer-input.js';
 import { useAssistantPanel, type AssistantConversationPort, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import { assistantActivity, type AssistantTurnPhase } from './assistant-launcher-model.js';
 import './assistant-panel.css';
-import { type AssistantModelPreferenceView, type AssistantProposalRow } from '../../../models/dashboard/assistant.js';
+import { ASSISTANT_FAILURES, type AssistantFailureCode, type AssistantModelPreferenceView, type AssistantProposalRow } from '../../../models/dashboard/assistant.js';
 
 export function AssistantFileChip({ file }: { file: AssistantFile }) {
   return <div className="hub-file-chip"><Paperclip aria-hidden /><span>{file.name}<small>{file.status} spreadsheet</small></span></div>;
 }
+/** A refusal about the ChatGPT account is fixed in Settings; every other refusal is answered by sending the message again. */
+const accountRefusal = (code: AssistantFailureCode) => code === 'ASSISTANT_PLAN_DISABLED' || code === 'ASSISTANT_ACCOUNT_EXPIRED' || code.startsWith('CHATGPT_AUTH');
 const HIDDEN_PROPOSAL_FACTS = new Set(['Input', 'Runs', 'Expires', 'Browser', 'Captures', 'Configuration', 'Options', 'Mode']);
 const MODE_LABEL = { 'dry-run': 'Dry run', 'read-only': 'Read only', 'local-change': 'Local change' } as const;
 /** The served card's planned rows; the server derives each row's display from the planned input. */
-function proposalRows(proposal: AssistantMockProposal): readonly AssistantProposalRow[] {
+function proposalRows(proposal: AssistantProposal): readonly AssistantProposalRow[] {
   const issued = proposal.issued;
   return issued?.effect === 'workflow-start' ? issued.startPlan.planned : issued?.effect === 'run-action' ? [issued.row] : [];
 }
@@ -35,7 +35,7 @@ function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
     {rows.length > 1 && <><dt>Total</dt><dd>{rows.length}</dd></>}
   </>;
 }
-export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
+export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
   const rows = proposalRows(proposal), only = rows.length === 1 ? rows[0] : undefined;
   const target = only === undefined ? proposal.issued?.targetLabel : only.display.kind === 'person' ? only.display.name ?? only.display.employeeId ?? only.title : only.display.kind === 'document' ? only.display.documentNumber : only.display.kind === 'file' ? only.display.fileName : only.title;
   // An unknown outcome is one plain line, carried by the transcript message.
@@ -57,54 +57,73 @@ export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfi
       <Button size="sm" variant="primary" disabled={proposal.action === undefined || busy || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
   </article>;
 }
-export function AssistantPanel({ producer, accountClient, onAttachFile, onRegisterSpreadsheet, onRunWorkflow, onOpenSettings,
-  onClose, onChats, onNewChat, onRename, title, headerProps, fresh = false, onSendMessage, draft, served, onAutomaticTitle, historyNotice, modelPreference, initialText = '' }: AssistantPorts & {
-  fresh?: boolean; historyNotice?: string; modelPreference?: AssistantModelPreferenceView['preference'];
-  onAutomaticTitle?: (title: string) => void; served?: ReturnType<typeof useAssistantController>; producer: AssistantConversationPort; accountClient: Pick<DashboardClient, 'chatGptAccount'>; onClose?: () => void; onChats?: () => void;
-  onNewChat?: () => void; onRename?: () => void; title?: string; headerProps?: HTMLAttributes<HTMLElement>; onOpenSettings?: (section?: string) => void; onSendMessage?: () => void; initialText?: string; draft?: ComposerDraftPort;
+/** Bubble-shaped placeholders for a chat that is still loading; sizes match the loaded messages. */
+function TranscriptSkeleton() {
+  return <div role="status" aria-label="Loading chat" className="hub-transcript-skeleton">
+    <div className="hub-message operator"><Skeleton className="h-4 w-36" /></div>
+    <div className="hub-assistant-line"><div className="hub-message"><Skeleton className="mb-2 h-4 w-full" /><Skeleton className="mb-2 h-4 w-11/12" /><Skeleton className="h-4 w-2/3" /></div></div>
+  </div>;
+}
+/** The prompt a refused reply answered: the operator message before it. */
+const keptPrompt = (messages: readonly { role: string; text: string }[], index: number) => messages.slice(0, index).findLast(message => message.role === 'operator')?.text;
+export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSpreadsheet, onOpenSettings,
+  onClose, onChats, onNewChat, onRename, title, headerProps, onSendMessage, draft, served, onAutomaticTitle, historyNotice, loading = false, modelPreference, initialText = '' }: AssistantPorts & {
+  historyNotice?: string; loading?: boolean; modelPreference?: AssistantModelPreferenceView['preference'];
+  onAutomaticTitle?: (title: string) => void; served: ReturnType<typeof useAssistantController>; conversationPort: AssistantConversationPort; onClose?: () => void; onChats?: () => void;
+  onNewChat?: () => void; onRename?: () => void; title?: string; headerProps?: HTMLAttributes<HTMLElement>; onOpenSettings?: (section?: string, target?: string) => void; onSendMessage?: () => void; initialText?: string; draft?: ComposerDraftPort;
 }) {
-  const model = useAssistantPanel({ producer, accountClient, served, ports: { onAttachFile, onRegisterSpreadsheet, onRunWorkflow } });
-  // The mock chat opens on the first approved frame; a served chat starts empty.
-  const frame = fresh ? undefined : assistantFrame() ?? (served ? undefined : ASSISTANT_FRAMES[0]);
-  if (frame) { title = frame.title; initialText = frame.draft ?? ""; }
+  const model = useAssistantPanel({ conversationPort, served, ports: { onAttachFile, onRegisterSpreadsheet } });
   const conversation = model.conversation;
   const wasAtLatest = useRef(true);
-  useLayoutEffect(() => { const element = model.transcript.current; if (element && wasAtLatest.current) element.scrollTop = element.scrollHeight; }, [conversation, served?.state, model.transcript]);
+  useLayoutEffect(() => { const element = model.transcript.current; if (element && wasAtLatest.current) element.scrollTop = element.scrollHeight; }, [conversation, served.state, model.transcript]);
   // The automatic title waits for the first settled reply: its receipt has advanced the cached chat revision, so the rename is not refused as stale.
-  const firstPrompt = served?.state.messages.find(message => message.role === 'operator')?.text;
-  const settled = served?.state.messages.some(message => message.role === 'assistant') === true;
+  const firstPrompt = served.state.messages.find(message => message.role === 'operator')?.text;
+  const settled = served.state.messages.some(message => message.role === 'assistant') === true;
   useEffect(() => { if (title === 'New chat' && settled && firstPrompt !== undefined) onAutomaticTitle?.(firstPrompt.slice(0, 55)); }, [title, settled, firstPrompt, onAutomaticTitle]);
-  // A new mock chat is always ready to compose; the served account decides for served chats.
-  const accountReady = served ? served.accountAvailable : fresh || model.account?.state === 'connected';
-  const canCompose = served?.canCompose ?? accountReady;
-  const turn = served?.state.turn;
-  const proposal = turn?.state === 'proposal' ? turn.proposal : undefined;
-  const phase: AssistantTurnPhase = turn?.state === 'waiting' || !served && model.busy ? 'waiting' : turn?.state === 'proposal' && turn.disposition === 'confirming' ? 'confirming' : turn?.state === 'failed' || turn?.state === 'unknown' ? 'failed' : 'settled';
+  const accountReady = served.accountAvailable;
+  const canCompose = served.canCompose;
+  // The account read has no action while it is still loading; the composer stays disabled without a strip.
+  const accountLoading = !served.accountAvailable && served.accountAction === undefined;
+  const turn = served.state.turn;
+  const historyFailed = historyNotice === ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE;
+  const lastMessage = served.state.messages.at(-1);
+  // Only the newest failed reply is shown, as one notice; it is never a chat bubble and an older failure is not repeated.
+  const lastRefusal = lastMessage?.role === 'assistant' && lastMessage.code !== undefined ? { text: lastMessage.text, code: lastMessage.code } : undefined;
+  const proposal = turn.state === 'proposal' ? turn.proposal : undefined;
+  const phase: AssistantTurnPhase = turn.state === 'waiting' ? 'waiting' : turn.state === 'proposal' && turn.disposition === 'confirming' ? 'confirming' : turn.state === 'failed' || turn.state === 'unknown' ? 'failed' : 'settled';
   useEffect(() => { assistantActivity.report(phase); }, [phase]);
-  return <section id="hub-panel-assistant" className="hub-assistant-panel" role="region" aria-label="Relay assistant" data-source={served ? "served" : conversation.source}>
-    <header {...headerProps} className="hub-panel-header"><div className="hub-panel-title"><button type="button" className="hub-chat-title hub-plain" title="Rename chat" onClick={onRename} disabled={!onRename}><span>{title ?? conversation.title}</span></button></div>
+  return <section id="hub-panel-assistant" className="hub-assistant-panel" role="region" aria-label="Relay assistant" data-source="served">
+    <header {...headerProps} className="hub-panel-header"><div className="hub-panel-title"><button type="button" className="hub-chat-title hub-plain" title="Rename chat" onClick={onRename} disabled={!onRename || loading}>{loading ? <Skeleton className="h-4 w-28" /> : <span>{title ?? conversation.title}</span>}</button></div>
       <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="History" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
     </header><div className="hub-panel-content">
       <div className="hub-thread-wrap"><><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
-        {frame && <AssistantMockThread frame={frame} />}<>
-        {!frame && (served ? served.state.messages.length === 0 : conversation.scene === 'new') ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
-        {(served?.state.messages ?? conversation.messages).map((message, index) => message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}{message.attachments?.map(file => <span className="hub-sent-file" key={file.id}><Paperclip aria-hidden />{file.name}</span>)}</div> : <AssistantReply key={index}>{message.text}</AssistantReply>)}
+        {loading ? <TranscriptSkeleton /> : <>
+        {historyFailed && <FailureNotice sentence="Couldn't load chat history." action={{ label: 'Reload', onClick: () => window.location.reload() }} />}
+        {!loading && !historyFailed && served.state.messages.length === 0 ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
+        {served.state.messages.map((message, index) => message.role === 'assistant' && 'code' in message && message.code !== undefined ? null
+          : message.role === 'assistant' && turn.state === 'proposal' && turn.disposition === 'unknown' && message.text === ASSISTANT_UNKNOWN_NOTICE ? null : message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}{message.attachments?.map(file => <span className="hub-sent-file" key={file.id}><Paperclip aria-hidden />{file.name}</span>)}</div> : <AssistantReply key={index}><AssistantText text={message.text} /></AssistantReply>)}
         {conversation.files.filter(file => file.status !== 'Attached').map(file => <AssistantFileChip key={file.id} file={file} />)}
-        {served && proposal && turn?.state === 'proposal' && <ProposalCard proposal={proposal} disposition={turn.disposition} refusal={assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) ?? served.confirmRefusal}
+        {proposal && turn.state === 'proposal' && <ProposalCard proposal={proposal} disposition={turn.disposition} refusal={assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) ?? served.confirmRefusal}
           onCancel={() => { served.onAction({ type: 'cancel' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }}
           onConfirm={() => { served.onAction({ type: 'confirm' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }} />}
-        {served && turn?.state === 'waiting' && <p className="hub-footer-status" role="status">Preparing a reply…<button className="hub-btn" type="button" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button></p>}
-        {served && turn?.state === 'failed' && <p className="hub-footer-status" role="alert">Reply unavailable. Your request is kept.<button className="hub-btn" type="button" disabled={!accountReady || served.state.draft !== turn.prompt} onClick={() => served.onAction({ type: 'retry' })}>Retry reply</button></p>}
-        {served && turn?.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
-        {served && turn?.state === 'cancelled' && <p className="hub-caption" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
-        {served?.state.restored && <p className="hub-caption">Restored chat. Previous proposals cannot be confirmed.</p>}
-        {historyNotice && <p role="status" className="hub-caption">{historyNotice}</p>}
+        {turn.state === 'waiting' && <AssistantReply><div className="hub-typing" role="status"><span className="hub-typing-dots" aria-hidden><i /><i /><i /></span><span>Preparing a reply…</span><button className="hub-btn" type="button" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button></div></AssistantReply>}
+        {lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text}
+          action={turn.state !== 'idle' ? undefined : accountRefusal(lastRefusal.code) ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
+            : keptPrompt(served.state.messages, served.state.messages.length - 1) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(served.state.messages, served.state.messages.length - 1)! }); served.onAction({ type: 'send' }); } }} />}
+        {turn.state === 'failed' && <FailureNotice sentence="Reply unavailable."
+          action={accountReady && served.state.draft === turn.prompt ? { label: 'Retry', onClick: () => served.onAction({ type: 'retry' }) } : undefined} />}
+        {turn.state === 'proposal' && turn.disposition === 'unknown' && <FailureNotice sentence={ASSISTANT_UNKNOWN_NOTICE}
+          action={onClose ? { label: 'Check Queue', onClick: onClose } : undefined} />}
+        {turn.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
+        {turn.state === 'cancelled' && <p className="hub-caption" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
+        {historyNotice && !historyFailed && <p role="status" className="hub-caption">{historyNotice}</p>}
         {model.error ? <p role="alert" className="hub-footer-status">{model.error}</p> : null}
-        {frame || fresh ? null : !served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
-        </>
+        </>}
       </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</></div>
-      {served && !accountReady && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings('general')}>{served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}</div>}
-      <ComposerInput key={conversation.id} modelPreference={modelPreference} models={served?.models} onModelChoice={served?.chooseModel} draft={frame ? undefined : draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={!frame && (model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
+      {!accountReady && !accountLoading && !loading && <FailureNotice className="mx-3 mb-2" sentence={served.accountNotice}
+        action={served.accountAction === 'retry' ? { label: 'Retry', onClick: served.accountRetry }
+          : onOpenSettings && served.accountAction ? { label: served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') } : undefined} />}
+      <ComposerInput key={conversation.id} modelLoading={loading} modelPreference={modelPreference} models={served.models} onModelChoice={served.chooseModel} draft={draft} settlementKey={served.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus initialText={initialText} onEdit={value => served.onAction({ type: 'edit', value })} preview={false} onSend={async value => { if (model.refuseAttachments(value)) return false; onSendMessage?.(); await model.send(value); return false; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={(model.busy || turn.state === 'waiting' || turn.state === 'unknown' || turn.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
     </div>
   </section>;
 }

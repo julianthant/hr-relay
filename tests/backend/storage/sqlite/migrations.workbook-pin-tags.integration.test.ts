@@ -26,9 +26,9 @@ function schema29Store() {
   return database;
 }
 
-it('is schema version 30, under the change log\'s current 31', () => {
+it('is schema version 30, under the workbook sync status\'s current 36', () => {
   expect(WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version).toBe(30);
-  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(31);
+  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(36);
 });
 
 it('validates a schema-29 library as a predecessor and refuses it as current', () => {

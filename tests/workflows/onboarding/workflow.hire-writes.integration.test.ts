@@ -18,6 +18,13 @@ function terminal(result: Awaited<ReturnType<Awaited<ReturnType<typeof world.exe
   return result.run;
 }
 
+function assertNewProfilePreview(preview: ReturnType<typeof RunDryRunPreviewResultSchema.parse>) {
+  assert.deepEqual(preview.steps.filter(step => step.state === "transaction-preview").map(step => step.nodeId),
+    ["i9-profile-save", "hire-create"]);
+  assert.deepEqual(preview.steps.find(step => step.nodeId === "i9-remote-create"),
+    { nodeId: "i9-remote-create", state: "unavailable", reason: "requires-unsubmitted-output" });
+}
+
 describe("public onboarding write execution", () => {
   it("starts from the selected saved row, parks before all writes, then files three fenced receipts and patches only the captured live master", async () => {
     const h = await world.executionFixture(false, { match: "unique", selectedRow: true }), root = h.start();
@@ -68,8 +75,7 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(h.database.authority.failures.listByRun(root.envelope.runId), []);
     const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
     const preview = RunDryRunPreviewResultSchema.parse(stored.result.value);
-    assert.deepEqual(preview.steps.filter(step => step.state === "transaction-preview").map(step => step.nodeId),
-      ["i9-profile-save", "i9-remote-create", "hire-create"]);
+    assertNewProfilePreview(preview);
     assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(root.envelope.runId),
       { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false);
@@ -106,8 +112,7 @@ describe("public onboarding write execution", () => {
     assert.equal(h.approve(root, { decision: "new-hire", ruledOut: ["10800001", "10800002"] }).state, "applied");
     terminal(await h.rawExecution.execute(root, signal()));
     const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
-    const transactions = RunDryRunPreviewResultSchema.parse(stored.result.value).steps.filter(step => step.state === "transaction-preview");
-    assert.deepEqual(transactions.map(step => step.nodeId), ["i9-profile-save", "i9-remote-create", "hire-create"]);
+    assertNewProfilePreview(RunDryRunPreviewResultSchema.parse(stored.result.value));
     assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(root.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
   });
@@ -138,7 +143,7 @@ describe("public onboarding write execution", () => {
     assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.equal(h.hire.events.includes("commit:hire"), false);
   });
 
-  it("fills the full public preview with labelled samples and no intents, receipts or master writes", async () => {
+  it("previews a new hire without opening a Tracker profile that has not been saved", async () => {
     const h = await world.executionFixture(false, { match: "unique", selectedRow: true, dryRun: true }), root = h.start();
     const review = await h.rawExecution.execute(root, signal());
     assert.ok(review.run?.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE, JSON.stringify(review.run?.lifecycle));
@@ -151,6 +156,8 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []);
     assert.equal(h.approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
     const resumed = await h.rawExecution.execute(root, signal());
+    assert.equal(h.i9.events.includes("prepare:remote-profile"), false);
+    assert.equal(h.i9.events.includes("probe:remote"), false);
     assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(root.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     assert.equal(h.i9.events.some(event => event.startsWith("commit:")), false); assert.equal(h.hire.events.includes("commit:hire"), false);
     assert.deepEqual(h.i9.profiles, []); assert.deepEqual(h.i9.records, []); assert.deepEqual(h.hire.rows, []);
@@ -158,9 +165,10 @@ describe("public onboarding write execution", () => {
     terminal(resumed);
     const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
     const output = RunDryRunPreviewResultSchema.parse(stored.result.value);
-    const transactions = output.steps.filter(step => step.state === "transaction-preview");
-    assert.deepEqual(transactions.map(step => step.nodeId), ["i9-profile-save", "i9-remote-create", "hire-create"]);
-    assert.equal(transactions[2]?.samples[0]?.value, DRY_RUN_I9_PROFILE_ID);
+    assertNewProfilePreview(output);
+    const hire = output.steps.find(step => step.nodeId === "hire-create");
+    assert.ok(hire?.state === "transaction-preview");
+    assert.equal(hire.samples[0]?.value, DRY_RUN_I9_PROFILE_ID);
     for (const run of [root, ...h.database.authority.runs.listChildren(root.envelope.runId)]) {
       assert.equal(h.database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId)
         .some(checkpoint => containsDryRunSample(checkpoint.output.value)), false);

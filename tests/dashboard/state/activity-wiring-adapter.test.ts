@@ -18,7 +18,7 @@ import { createActivityReportFixtures } from "../../support/helpers/dashboard/ac
 
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => vi.unstubAllGlobals());
-const sources = Object.freeze({ fixture: "mock" as const });
+const sources = Object.freeze({ fixture: "hidden" as const });
 function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ status: "done", durationMs: 0 }, { status: "failed", durationMs: 42000 }, { status: "queued" }]): ActivityPopulationSelection {
   const empty = createActivityReportFixtures().EMPTY;
   const population = rowsInput.map((row, index) => ({ runId: RunIdSchema.parse(`00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`), workflowId: "fixture", title: `Person ${index + 1}`, attempt: 1, parentRunId: null, shape: "single" as const, day: "2026-08-03", status: "queued" as const, terminal: ["done", "failed", "cancelled", "partial"].includes(row.status ?? "queued"), durationMs: null, readback: null, receiptResult: null, warningCount: null, ...row }));
@@ -98,9 +98,10 @@ it("combines failure codes across workflows for the global most common failure",
   const host = document.createElement("div"); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, onRange: () => {} })));
-    assert.deepEqual(projected.analytics.reasons.map(row => [row.label, row.runs]), [["Synthetic failure A", 3], ["Synthetic failure A", 2], ["Synthetic failure B", 4]]);
     assert.equal(projected.analytics.typicalSeconds, selected.report.typicalMedian.medianMs.state === "present" ? selected.report.typicalMedian.medianMs.value / 1000 : null);
-    assert.match(host.textContent ?? "", /Why runs failed/); assert.match(host.textContent ?? "", /Synthetic failure B/);
+    assert.deepEqual(projected.analytics.assistant.messages, selected.report.assistantMessages.days.map(row => ({ date: row.day, count: row.count })));
+    assert.deepEqual(projected.analytics.assistant.actions, selected.report.assistantActions.days.map(row => ({ date: row.day, proposed: row.proposed })));
+    assert.doesNotMatch(host.textContent ?? "", /Why runs failed/);
   } finally { await act(async () => root.unmount()); }
 });
 it("uses authoritative page rows once and refuses fixture logs for served identities", async () => {

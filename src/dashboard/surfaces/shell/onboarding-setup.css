@@ -27,3 +27,9 @@
 .duo-signup-card button { align-self:flex-start; }
 .duo-signup-icon { display:flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--ui-stroke);border-radius:var(--ds-radius-md); }
 .duo-signup-icon svg { width:20px;height:20px; }
+
+.hub-duo-setup main{padding-bottom:0}
+.hub-duo-setup .setup-footer{position:sticky;bottom:0;z-index:5;background:var(--ui-canvas);margin-top:36px;padding:16px 0}
+.hub-duo-setup .setup-notice{margin:16px 0 0;padding:10px 12px;border:1px solid var(--ui-stroke);border-radius:8px;font-size:13px;color:var(--ui-primary)}
+.hub-duo-setup .setup-notice[data-tone=failure]{border-color:var(--ui-danger)}
+.hub-duo-setup .btn:disabled{opacity:.5;cursor:not-allowed}

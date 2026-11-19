@@ -50,7 +50,13 @@ export function createSettingsApplicationExecutor(
       return undefined;
     },
     commitPrivate(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>) {
-      const outcome = credentials.apply(protectedInput(command));
+      const input = protectedInput(command);
+      const changesLogin = input.entries.ucpathUserId !== undefined || input.entries.ucpathPassword !== undefined;
+      if (changesLogin && !credentials.ownsCommandId(input.commandId)) {
+        return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "not-editable",
+          message: "Change your Relay login in Account with your current password." });
+      }
+      const outcome = changesLogin ? credentials.verifyReplay(input) : credentials.apply(input);
       return outcome.state === "applied" ? undefined : outcome;
     },
     applyOrdinary(command: Extract<SettingsCommand, { type: "apply-settings" }>, repositories: AuthorityRepositories, current: SettingsFileRecord) {

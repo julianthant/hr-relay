@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
 applyStartStepSelection,
+projectStartRows,
 projectStartSteps,
 resolveStartStepOmissions,
 StartStepOmissionRefusedError,
@@ -21,6 +22,9 @@ omissionCascadingDescriptor,
 READING_FORM,
 } from "../../../support/fixtures/start-step-omission-fixtures.js";
 import { personLookupDescriptor,separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
+
+const READING_LABELS = { effectiveDate: "Effective date", eid: "Employee id" };
 
 describe("start step selection", () => {
   it("projects the current conditional person-lookup step as selectable", () => {
@@ -29,10 +33,11 @@ describe("start step selection", () => {
         key, includedByDefault, state: control.state,
       })),
       [
-        { key: "searching", includedByDefault: true, state: "required" },
+        { key: "searching", includedByDefault: true, state: "omittable" },
         { key: "cross-verify", includedByDefault: true, state: "selectable" },
-        { key: "active-status", includedByDefault: true, state: "required" },
-        { key: "crm-dates", includedByDefault: false, state: "selectable" },
+        { key: "active-status", includedByDefault: true, state: "omittable" },
+        { key: "crm-dates", includedByDefault: true, state: "selectable" },
+        { key: "reference-check", includedByDefault: true, state: "required" },
       ],
     );
   });
@@ -47,17 +52,18 @@ describe("start step selection", () => {
     );
   });
 
-  it("projects Separations' three omittable write-side steps and keeps its read steps required", () => {
+  it("projects Separations' one omittable step and keeps its other steps required", () => {
     const steps = projectStartSteps(separationsDescriptor);
     assert.deepEqual(
       steps.map(({ key, control }) => [key, control.state]),
       [
         ["kuali-extraction", "required"],
         ["identity-check", "required"],
-        ["job-summary", "required"],
         ["kronos-timecard", "omittable"],
-        ["ucpath-transaction", "omittable"],
-        ["kuali-finalization", "omittable"],
+        ["identity-review", "required"],
+        ["reference-check", "required"],
+        ["ucpath-transaction", "required"],
+        ["kuali-finalization", "required"],
       ],
     );
     for (const step of steps) {
@@ -116,10 +122,10 @@ describe("start step omission projection", () => {
     );
   });
 
-  it("leaves Person Lookup steps locked", () => {
-    assert.ok(
-      projectStartSteps(personLookupDescriptor).every(({ control }) => control.state !== "omittable"),
-      String(personLookupDescriptor.id),
+  it("offers only Person Lookup's two required reading steps for manual entry", () => {
+    assert.deepEqual(
+      projectStartSteps(personLookupDescriptor).filter(({ control }) => control.state === "omittable").map(({ key }) => key),
+      ["searching", "active-status"],
     );
   });
 });
@@ -145,7 +151,7 @@ describe("resolveStartStepOmissions", () => {
         ["folding"],
         [{ step: "auditing", facts: AUDITING_FACTS }, { step: "reading", facts: READING_FACTS }],
       ),
-      [{ step: "reading", facts: READING_FACTS }, { step: "auditing", facts: AUDITING_FACTS }],
+      [{ step: "reading", facts: READING_FACTS, labels: READING_LABELS }, { step: "auditing", facts: AUDITING_FACTS, labels: { reviewed: "Reviewed" } }],
     );
   });
 
@@ -264,7 +270,7 @@ describe("resolveStartStepOmissions", () => {
         ["auditing"],
         [{ step: "reading", facts: READING_FACTS }, { step: "folding", facts: { folded: "typed" } }],
       ),
-      [{ step: "reading", facts: READING_FACTS }, { step: "folding", facts: { folded: "typed" } }],
+      [{ step: "reading", facts: READING_FACTS, labels: READING_LABELS }, { step: "folding", facts: { folded: "typed" }, labels: { folded: "Folded" } }],
     );
   });
 });
@@ -291,7 +297,7 @@ function authoredSelection(options: Readonly<{
     presentation: { title: value => value.eid }, scenarios: ["ucpath/person-org-happy"],
     timeline: [{ key: "reading", label: "Read", nodes: ["read"],
       selection: { inputField: options.inputField ?? "enabled", selectedWhen: true },
-      ...(options.omission ? { omission: { form: READING_FORM, produces: {} } } : {}),
+      ...(options.omission ? { manual: { form: READING_FORM, produces: {}, skips: ["read"] } } : {}),
     }],
     flow: flow(input).step("read", FixtureReadReceipt, { dependsOn: [], replay: "checkpoint",
       when: { kind: options.contradictory ? "is-false" : "is-true", of: { from: "input", path: "enabled" } },
@@ -313,7 +319,33 @@ describe("authored start selection admission", () => {
       [{ nonBoolean: true, booleanSample: true }, /field must be boolean/],
       [{ missingDefault: true }, /requires a boolean default/],
       [{ contradictory: true }, /contradicts its condition/],
-      [{ omission: true }, /both selection and omission/],
     ] as const) assert.throws(() => authoredSelection(options), reason);
+    assert.equal(projectStartSteps(authoredSelection({ omission: true }))[0].control.state, "selectable");
+  });
+});
+
+describe("served start rows", () => {
+  const SERVED_ROWS: Readonly<Record<string, readonly (readonly [string, string, string | null])[]>> = {
+    "person-lookup": [["searching", "switch", null], ["cross-verify", "switch", null], ["active-status", "switch", null], ["crm-dates", "switch", null]],
+    separations: [["kuali-extraction", "locked", "bound-read"], ["identity-check", "locked", "guard-read"], ["kronos-timecard", "switch", null], ["identity-review", "locked", "approval"],
+      ["pending-termination", "locked", "form-action"], ["submit-termination", "locked", "form-action"], ["kuali-finalization", "locked", "form-action"]],
+    onboarding: [["crm-data", "locked", "guard-read"], ["ucpath-search", "locked", "guard-read"], ["i9-search", "locked", "guard-read"], ["hire-review", "locked", "approval"], ["i9-creation", "locked", "form-action"], ["ucpath-hire", "locked", "form-action"], ["master-results", "locked", null]],
+    "work-study": [["ucpath-auth", "locked", "guard-read"], ["transaction", "locked", "form-action"]],
+    "i9-check-start": [["read-forms", "locked", null], ["match-people", "locked", null], ["review-records", "locked", "approval"],
+      ["ucpath-match", "switch", null], ["ucpath-dates", "switch", null], ["tracker-row", "locked", "form-action"]],
+    "crm-doc-download": [["search-records", "locked", null], ["reference", "locked", "approval"], ["read-idocs", "locked", null], ["package-worksheets", "locked", null]],
+    "emergency-contact": [["read-emergency-contact", "locked", null], ["match-extracted-people", "locked", null], ["review-extracted-records", "locked", "approval"],
+      ["read-existing-contacts", "locked", "bound-read"], ["fill-emergency-contact", "locked", "form-action"], ["save-emergency-contact", "locked", "form-action"]],
+  };
+
+  it("serves one row per step with its kind and lock reason for every public workflow", () => {
+    assert.deepEqual(Object.fromEntries(WORKFLOW_MODULES.map(({ descriptor }) => [String(descriptor.id),
+      projectStartRows(descriptor).map((row) => [row.key, row.kind, row.lockReason ?? null])])), SERVED_ROWS);
+  });
+
+  it("omits nothing for every public workflow when every switch is on and nothing is typed", () => {
+    for (const { descriptor } of WORKFLOW_MODULES) {
+      assert.equal(resolveStartStepOmissions(descriptor, projectStartSteps(descriptor).map(({ key }) => key), undefined), undefined, String(descriptor.id));
+    }
   });
 });

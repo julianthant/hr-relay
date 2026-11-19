@@ -88,7 +88,7 @@ if (process.argv[2] === "worker") {
   const directory = join(profile.stateRoot, "backups", "authority");
   const backup = async () => {
     const report = await new AuthorityBackupService(profile.admission, database, { directory }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
     const manifest = report.manifests[0]; assert.ok(manifest);
     return join(directory, manifest.backupFileName + ".manifest.json");
   };

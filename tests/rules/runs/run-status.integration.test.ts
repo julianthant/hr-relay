@@ -131,7 +131,7 @@ describe("one task-outcome vocabulary", () => {
       const w = await world();
       queuedEventOf(w, { seed: 10 });
       claimEventOf(w, 10);
-      taskEventsOf(w, 10, NODE, outcome, outcome === "skipped" ? "condition-false" : undefined);
+      taskEventsOf(w, 10, NODE, outcome);
 
       const chip = w.projection.queueSurface(uuidOf(10))?.pipeline.find((step) => step.id === NODE);
       const detail = detailOf(w, 10, TIMELINE);

@@ -1,5 +1,7 @@
-import { descriptorStatus, fileStatus, privateFileNumber } from "../file-identity.js";
+import { descriptorStatus, fileStatus, privateFileNumber, type DirectoryIdentity } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { AuthorityDatabase } from "./authority-database.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -12,13 +14,14 @@ import {
   fsyncSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { readPrivateFile } from "../configuration/credential-safe-file.js";
+import { noSymlinkAncestry, readPrivateFile, removeExactPath, statDirectory } from "../configuration/credential-safe-file.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -29,6 +32,7 @@ import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly, typ
 import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import {
   StoppedAuthorityBackupManifestSchema,
   UnboundPredecessorBackupManifestSchema,
@@ -41,10 +45,10 @@ import {
 
 export const AuthorityBackupServiceOptionsSchema = z.strictObject({
   directory: z.string().min(1),
-  purpose: z.literal("clean-shutdown").optional(),
+  purpose: z.enum(["clean-shutdown", "in-session"]).optional(),
 });
 
-type AuthorityBackupSource = Pick<
+export type AuthorityBackupSource = Pick<
   AuthorityBackupSourceReadOnly,
   "getMeta" | "getSourceDatabaseIdentity" | "onlineBackupTo"
 >;
@@ -246,22 +250,98 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
   return result;
 }
 
+function backupSuffix(purpose: "clean-shutdown" | "in-session" | undefined): string {
+  if (purpose === "clean-shutdown") return ".shutdown";
+  return purpose === "in-session" ? ".session" : "";
+}
+
+const BackupAttemptToken = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const BackupStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.(?:sqlite\\.tmp(?:-(?:journal|wal|shm))?|manifest\\.json\\.tmp)$`, "u");
+const FinalBackupName = new RegExp(`^authority-g\\d+-\\d{17}-${BackupAttemptToken}(?:\\.shutdown|\\.session)?\\.sqlite$`, "u");
+
+export function reconcileBackupsAfterBrowserClosure(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission,
+  operation: OfflineMaintenanceOperation): ProfileBrowserClosure {
+  return {
+    workerDirectory: input => browserClosure.workerDirectory(input),
+    async probeClosed(...args) {
+      await browserClosure.probeClosed(...args);
+      const owner = args[4];
+      if (!("assertLive" in owner)) throw new Error("abandoned-backup-stopped-profile-required");
+      const admission = requireRuntimeAdmission(owner);
+      const assertHeld = () => {
+        admission.assertReadyStoppedProfileUpgradeOwner(machine);
+        admission.assertOfflineMaintenance(operation);
+      };
+      assertHeld();
+      reconcileAbandonedBackups(admission, assertHeld);
+    },
+  };
+}
+
+function reconcileAbandonedBackups(admission: RuntimeAdmission, assertHeld: () => void): void {
+  const directory = join(admission.stateRoot, "backups", "authority");
+  const ancestry = new Map<string, DirectoryIdentity>();
+  if (!noSymlinkAncestry(directory, ancestry)) return;
+  const names = new Set(readdirSync(directory));
+  const stages = [...names].filter(name => BackupStageName.test(name));
+  const unpaired = [...names].filter(name => FinalBackupName.test(name)
+    && !names.has(`${name}.manifest.json`) && !names.has(`${name}.manifest.json.retiring`));
+  if (stages.length === 0 && unpaired.length === 0) return;
+  assertMaintenanceCustodyAvailable("backup");
+  statDirectory(directory, "authority backup", 0o700);
+
+  const claimed = new Set<string>();
+  if (unpaired.length > 0) {
+    // A missing manifest cannot make a recorded upgrade backup eligible for cleanup.
+    for (const record of AuthorityDatabase.readProfileMaintenanceInventory(admission).upgrades) {
+      if (record.phase === "settled") claimed.add(basename(record.backup.manifestPath, ".manifest.json"));
+    }
+    for (const name of names) {
+      if (!name.endsWith(".manifest.json") && !name.endsWith(".manifest.json.retiring")) continue;
+      const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 64_000 });
+      if (file === undefined) throw new Error("abandoned-backup-manifest-changed");
+      const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
+      claimed.add(parseCurrentBackupManifest(value).backupFileName);
+    }
+  }
+  const privateFile = (name: string) => {
+    const path = join(directory, name), status = fileStatus(path);
+    if (!status.isFile() || privateFileNumber(status.nlink) !== 1 || privatePathRejects(path, status, "group-write")) {
+      throw new Error("abandoned-backup-file-unsafe");
+    }
+    return { path, device: status.dev, inode: status.ino };
+  };
+  const orphans = unpaired.filter(name => !claimed.has(name));
+  for (const name of orphans) {
+    if (["-wal", "-shm", "-journal"].some(suffix => names.has(`${name}${suffix}`))) throw new Error("abandoned-backup-companion-unproved");
+  }
+  const abandoned = [...stages, ...orphans].map(privateFile);
+  for (const file of abandoned) {
+    assertHeld();
+    noSymlinkAncestry(directory, ancestry);
+    removeExactPath(file.path, file, false, "abandoned-backup-file-changed");
+  }
+  if (abandoned.length > 0) fsyncPath(directory);
+}
+
 export class AuthorityBackupService {
   #admission: RuntimeAdmission;
   #source: AuthorityBackupSource;
   #directory: string;
-  #cleanShutdown: boolean;
+  #purpose: "clean-shutdown" | "in-session" | undefined;
+  #signal: AbortSignal | undefined;
   #clock: Clock;
   #inFlight: Promise<AuthorityBackupRunReport> | undefined;
   #requiredGeneration = 0;
   #coalescedRequests = 0;
 
-  constructor(admissionInput: RuntimeAdmission, source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock) {
+  constructor(admissionInput: RuntimeAdmission, source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock, signal?: AbortSignal) {
     this.#admission = requireRuntimeAdmission(admissionInput);
     const options = AuthorityBackupServiceOptionsSchema.parse(input);
     this.#source = source;
     this.#directory = resolve(options.directory);
-    this.#cleanShutdown = options.purpose === "clean-shutdown";
+    this.#purpose = options.purpose;
+    this.#signal = signal;
     this.#admission.assertStateRoot(this.#directory);
     this.#clock = clock;
   }
@@ -341,7 +421,12 @@ export class AuthorityBackupService {
       const inspectedDigest = await sha256File(temporaryBackupPath);
       const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
       let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
-      try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, this.#source.getMeta().schemaVersion); }
+      try {
+        const schemaVersion = this.#source.getMeta().schemaVersion;
+        inspection = this.#purpose === "in-session"
+          ? await inspectAuthorityBackupOffThread(copyAdmission, temporaryBackupPath, schemaVersion, { ...(this.#signal === undefined ? {} : { signal: this.#signal }) })
+          : inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
+      }
       finally { copyAdmission.release(); }
       assertExpectedBackupSource(expected, inspection);
       removeReadOnlyInspectionCompanions(temporaryBackupPath);
@@ -350,7 +435,7 @@ export class AuthorityBackupService {
       const createdAt = this.#clock.now().toISOString();
       const compactTime = createdAt.replaceAll(/[^0-9]/g, "");
       const stem = `authority-g${String(inspection.authorityGeneration)}-${compactTime}-${token}`;
-      const backupFileName = `${stem}${this.#cleanShutdown ? ".shutdown" : ""}.sqlite`;
+      const backupFileName = `${stem}${backupSuffix(this.#purpose)}.sqlite`;
       const finalBackupPath = join(this.#directory, backupFileName);
       renameSync(temporaryBackupPath, finalBackupPath);
       finalPaths.push(finalBackupPath);

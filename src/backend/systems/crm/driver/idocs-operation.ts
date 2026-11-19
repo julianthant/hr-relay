@@ -8,6 +8,7 @@ const VIEWER_ORIGIN = "https://crickportal-ext.bfs.ucsd.edu";
 const VIEWER_PATH = "/iDocsForSalesforce/Content/pdfjs/web/PDFjsViewer.aspx";
 const DOCUMENT_PATH = "/iDocsForSalesforce/iDocsForSalesforceDocumentServer";
 const BOUND_MS = 30_000;
+const READY_COUNTER_TEXT = /^\s*(?:of\s+)?(0*[1-9]\d*)\s*$/u;
 
 function viewer(frame: Frame): boolean {
   if (frame.url() === "") return false;
@@ -80,11 +81,23 @@ export async function readCrmIdocsOnPage(assertCurrent: () => void, page: Page,
   let total: number;
   if (count === null) {
     const counter = frame.locator("#numDocs");
-    if (await counter.count() !== 1) throw new Error("CRM iDocs count is unavailable");
-    const text = await counter.textContent({ timeout: BOUND_MS });
-    const match = text === null ? null : /^\s*(?:of\s+)?(\d+)\s*$/u.exec(text);
-    if (match?.[1] === undefined) throw new Error("CRM iDocs count is invalid");
-    total = Number(match[1]);
+    const readCount = async (): Promise<string | undefined> => {
+      assertRecord();
+      if (frame.url() !== url.href) throw new Error("CRM iDocs viewer changed");
+      const matches = await counter.count();
+      if (matches > 1) throw new Error("CRM iDocs count is unavailable");
+      if (matches === 0) return undefined;
+      const text = await counter.textContent({ timeout: BOUND_MS });
+      return READY_COUNTER_TEXT.exec(text ?? "")?.[1];
+    };
+    let readyCount = await readCount();
+    if (readyCount === undefined) {
+      assertRecord();
+      await counter.filter({ hasText: READY_COUNTER_TEXT }).first().waitFor({ state: "attached", timeout: BOUND_MS });
+      readyCount = await readCount();
+    }
+    if (readyCount === undefined) throw new Error("CRM iDocs count is invalid");
+    total = Number(readyCount);
   } else {
     if (!/^\d+$/u.test(count)) throw new Error("CRM iDocs count is invalid");
     total = Number(count);

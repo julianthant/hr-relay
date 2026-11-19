@@ -99,6 +99,8 @@ describe("person-lookup full walk", () => {
       ["span.ended", taskSpanPath(trace, node("active-status"), 1, 1), "done"],
       ["span.started", taskSpanPath(trace, node("crm-dates"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("crm-dates"), 1, 1), "skipped"],
+      ["span.started", taskSpanPath(trace, node("reference-check"), 1, 1), ""],
+      ["span.ended", taskSpanPath(trace, node("reference-check"), 1, 1), "skipped"],
       ["span.ended", trace, "done"],
     ]);
 

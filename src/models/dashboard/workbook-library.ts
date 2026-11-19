@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { ERROR_CATALOG } from "../failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema, CommandIdSchema } from "../../rules/identity/ids.js";
-import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema } from "./workbooks.js";
+import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema, WorkbookImportRequestSchema } from "./workbooks.js";
 import { SPREADSHEET_FIELDS } from "../fields/workbook-fields.js";
 
 export const WorkbookSourceSelectionSchema = z.strictObject({
@@ -23,10 +23,16 @@ export const WorkbookFieldRequirementSchema = z.strictObject({
   id: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema, mode: z.enum(["keys", "all"]),
   writableFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
 });
+/** An optional second check: any library sheet whose key field is bound fits, and a run may pick none. */
+export const WorkbookCheckRequirementSchema = z.strictObject({ id: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema });
 export const WorkbookRequirementDeclarationSchema = z.strictObject({
   requiredWorkbookFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
   workbookReference: WorkbookFieldRequirementSchema.optional(),
+  workbookCheck: WorkbookCheckRequirementSchema.optional(),
 }).superRefine((workflow, context) => {
+  if (workflow.workbookCheck !== undefined && workflow.workbookCheck.id === workflow.workbookReference?.id) {
+    context.addIssue({ code: "custom", message: "workbook check and workbook reference need distinct ids" });
+  }
   const reference = workflow.workbookReference;
   if (workflow.requiredWorkbookFields.length === 0 ? reference !== undefined : reference === undefined
     || reference !== undefined && (!workflow.requiredWorkbookFields.includes(reference.keyFieldId)
@@ -126,6 +132,8 @@ export const WorkbookCompatibilitySchema = z.strictObject({
 export type WorkbookCompatibility = z.infer<typeof WorkbookCompatibilitySchema>;
 
 export const WorkbookActiveSelectionSchema = z.strictObject({
+  /** Which declaration the pick answers; absent means the workflow's required reference. */
+  typeId: WorkbookIdSchema.optional(),
   entry: z.number().int().positive(), libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema,
   sheetId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema,
   selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
@@ -202,6 +210,11 @@ const NameSchema = z.string().refine(value => value.trim().length > 0);
 /** Tags the operator typed; workflow-derived tags come from `origin` and are never stored here. */
 export const WorkbookLibraryTagsSchema = z.array(z.string().min(1).max(40).refine(tag => tag.trim() === tag, { message: "tags are trimmed" })).max(20)
   .refine(tags => new Set(tags.map(tag => tag.toLowerCase())).size === tags.length, { message: "tags must be unique" });
+export const WorkbookCloneRequestSchema = z.strictObject({ name: NameSchema, tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookLocalImportRequestSchema = WorkbookImportRequestSchema.safeExtend({ tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookSharePointImportRequestSchema = z.strictObject({ source: z.literal('sharepoint'),
+  url: WorkbookLinkSchema.shape.url, name: NameSchema, tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookLibraryImportRequestSchema = z.union([WorkbookLocalImportRequestSchema, WorkbookSharePointImportRequestSchema]);
 export const WorkbookLibraryOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local") }),
   z.strictObject({ kind: z.literal("workflow"), runId: RunIdSchema, partitionDay: DateOnlySchema, workflowId: WorkflowIdSchema, workflowLabel: NameSchema,
@@ -229,14 +242,26 @@ export const WorkbookLibraryStateSchema = z.strictObject({
     context.addIssue({ code: "custom", message: "library versions must have unique identities and retain the version in use" });
   }
 });
+/** The last finished SharePoint sync of one library entry, stored with the link it read. */
+export const WorkbookLibrarySyncRecordSchema = z.discriminatedUnion("result", [
+  z.strictObject({ url: WorkbookLinkSchema.shape.url, finishedAt: IsoInstantSchema, result: z.literal("ok") }),
+  z.strictObject({ url: WorkbookLinkSchema.shape.url, finishedAt: IsoInstantSchema, result: z.literal("failed"), code: ErrorCatalogCodeSchema }),
+]);
+/** Served on SharePoint-linked entries only; the last result is absent until a sync of the current link finishes. */
+export const WorkbookLibrarySyncStatusSchema = z.strictObject({
+  state: z.enum(["idle", "running"]),
+  lastFinishedAt: IsoInstantSchema.optional(), lastResult: z.enum(["ok", "failed"]).optional(), lastFailureCode: ErrorCatalogCodeSchema.optional(),
+}).refine(sync => (sync.lastFinishedAt === undefined) === (sync.lastResult === undefined)
+  && (sync.lastFailureCode !== undefined) === (sync.lastResult === "failed"), { message: "a finished sync carries its result, and only a failure carries a code" });
 export const WorkbookLibraryEntrySchema = z.strictObject({
   libraryId: WorkbookIdSchema, version: WorkbookRevisionSchema, name: NameSchema,
   /** Saved time of the selected content, unaffected by metadata or version-label changes. */
   updatedAt: IsoInstantSchema,
   worksheets: z.array(z.strictObject({ id: WorkbookIdSchema, name: z.string().min(1) })).min(1),
   rowCount: z.number().int().nonnegative(), metadata: WorkbookMetadataSchema, type: WorkbookTypeSchema,
-  state: WorkbookLibraryStateSchema,
+  state: WorkbookLibraryStateSchema, sync: WorkbookLibrarySyncStatusSchema.optional(),
 }).refine(entry => entry.libraryId === entry.state.libraryId && entry.metadata.typeId === entry.type.id
+  && (entry.sync === undefined || entry.metadata.sharePoint !== null)
   && entry.updatedAt === entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.savedAt);
 export const WorkbookLibraryCatalogSchema = z.array(WorkbookLibraryEntrySchema)
   .refine(entries => new Set(entries.map(entry => entry.libraryId)).size === entries.length);
@@ -291,26 +316,9 @@ export const WorkbookLibraryActionStatusSchema = z.discriminatedUnion("state", [
 
 export type WorkbookLibraryState = z.infer<typeof WorkbookLibraryStateSchema>;
 export type WorkbookLibraryEntry = z.infer<typeof WorkbookLibraryEntrySchema>;
+export type WorkbookLibrarySyncRecord = z.infer<typeof WorkbookLibrarySyncRecordSchema>;
+export type WorkbookLibrarySyncStatus = z.infer<typeof WorkbookLibrarySyncStatusSchema>;
 export type WorkbookLibraryVersion = z.infer<typeof WorkbookLibraryVersionSchema>;
 export type WorkbookLibraryAction = z.infer<typeof WorkbookLibraryActionSchema>;
 export type WorkbookLibraryActionResult = z.infer<typeof WorkbookLibraryActionResultSchema>;
 export type WorkbookLibraryActionRecord = z.infer<typeof WorkbookLibraryActionRecordSchema>;
-
-export const WorkbookResultsSchema = z.strictObject({
-  workflows: z.array(z.strictObject({ workflowId: WorkflowIdSchema, workflowLabel: NameSchema,
-    runs: z.array(z.strictObject({ runId: RunIdSchema, partitionDay: DateOnlySchema,
-      enqueuedAt: IsoInstantSchema.nullable(), entries: z.array(WorkbookLibraryEntrySchema).min(1),
-    })).min(1),
-  })),
-  unavailable: z.array(WorkbookLibraryEntrySchema),
-}).superRefine((results, ctx) => {
-  const runs = results.workflows.flatMap(workflow => workflow.runs.map(run => run.runId));
-  const entries = [...results.workflows.flatMap(workflow => workflow.runs.flatMap(run => run.entries)), ...results.unavailable];
-  if (new Set(results.workflows.map(workflow => workflow.workflowId)).size !== results.workflows.length || new Set(runs).size !== runs.length
-    || new Set(entries.map(entry => entry.libraryId)).size !== entries.length || results.unavailable.some(entry => entry.state.origin.kind !== "unavailable")
-    || results.workflows.some(workflow => workflow.runs.some(run => run.entries.some(entry => {
-      const origin = entry.state.origin;
-      return origin.kind !== "workflow" || origin.workflowId !== workflow.workflowId
-        || origin.runId !== run.runId || origin.partitionDay !== run.partitionDay;
-    })))) ctx.addIssue({ code: "custom", message: "workbook result group identity mismatch" });
-});

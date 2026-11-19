@@ -10,7 +10,7 @@ buildRunSection,
 resolveIdentityGateAnswer,
 type RunDetailQueryDeps,
 } from "../../../../src/backend/runs/queries/run-detail.js";
-import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "../../../support/helpers/ucpath-job-rows.js";
 import { TimelineEventRecordSchema, timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
@@ -97,7 +97,7 @@ function packetOf(overrides: Readonly<{
   const source = overrides.source ?? "name-resolved";
   const eid = overrides.eid ?? EID;
   const ucpathName = overrides.ucpathName ?? "Hernandez, Jose Santos";
-  const rows = [deriveJobRowFromCells([
+  const rows = [jobRowFromCells([
     "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
   ], 0)];
@@ -108,7 +108,7 @@ function packetOf(overrides: Readonly<{
     emplIdSource: source,
     documentEidConflicts: false,
     jobSummary: {
-      pageStateId: "ucpath.person-org.detail-ready",
+      pageStateId: "ucpath.workforce-job-summary.detail-ready",
       emplId: eid as never,
       displayedName: ucpathName,
       jobRows: rows,
@@ -194,6 +194,7 @@ function depsOf(
   attemptingWriteIntents: readonly unknown[] = [],
 ): RunDetailQueryDeps {
   const timelineEvents = {
+    ...w.timeline,
     get: (eventId: string) => checkpointEvents.get(w)?.get(eventId),
   };
   const canonical = {
@@ -401,6 +402,22 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.deepEqual(command.target, { runId: RUN_ID, gateId: "identity-approval", expectedVersion: 4 });
     // The value the kernel will parse through the descriptor's gate schema.
     assert.deepEqual(resolvedValue(command), { decision: "approved", eid: EID, chosenFrom: "checked", evidenceDigest: deriveIdentityEvidenceDigest(packet) });
+  });
+
+  it("reports a retained gate as historical and refuses a fresh answer after descriptor drift", async () => {
+    const w = await world();
+    seed(w);
+    putCheckpoint(w, checkpointOf(packetOf()));
+    const { value } = available(gateSection(w));
+    const request = answerOf(value, { decision: "approved", gateRef: value.gateRef, optionRef: optionRefOf(value) });
+    const descriptor = { ...IDENTITY_DESCRIPTOR, version: IDENTITY_DESCRIPTOR.version + 1 };
+    const deps = depsOf(w, GATE_NODES, true, descriptor);
+    const before = w.authority.getRun(RUN_ID);
+
+    assert.deepEqual(gateSection(w, deps), { state: "missing",
+      reason: "This gate was opened under an earlier workflow definition. Its identity review is unavailable." });
+    assert.equal(resolveIdentityGateAnswer(deps, request, undefined).state, "refused");
+    assert.deepEqual(w.authority.getRun(RUN_ID), before);
   });
 
   it("labels every option with the choice the post-gate node will verify", async () => {

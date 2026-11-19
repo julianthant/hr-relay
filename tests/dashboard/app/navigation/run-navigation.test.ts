@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveRunNavigation } from "../../../../src/dashboard/app/navigation/run-navigation.js";
 import { parseRoute, routeToSearch } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { PRODUCT_WORKFLOW_COMPOSITION } from "../../../../src/dashboard/app/workflow-sources.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../../mocks/helpers/workflow-composition.js";
 import { FIXTURE_DAY_WIRE } from "../../../mocks/helpers/fixture-queue.js";
 import { FIXTURE_RUN_DETAILS } from "../../../mocks/helpers/fixture-detail.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../../support/fixtures/dashboard/run-detail/receipts-failures.js";
@@ -26,14 +25,9 @@ const clients = () => ({ dashboardDay: vi.fn(async () => FIXTURE_DAY_WIRE), runD
 const target: Extract<NotificationTarget, { kind: "run" }> = { kind: "run", runId, day };
 
 describe("notification composition and canonical navigation", () => {
-  it("selects served product and explicit mock inbox/search independently of workflows", () => {
-    expect(PRODUCT_WORKFLOW_COMPOSITION.inbox).toBe("served");
-    expect(PRODUCT_WORKFLOW_COMPOSITION.search).toBe("served");
-    expect(PRODUCT_WORKFLOW_COMPOSITION.sources["onbase"]).toBe("mock");
+  it("selects the served product workflow sources", () => {
+    expect(PRODUCT_WORKFLOW_COMPOSITION.sources["onbase"]).toBe("hidden");
     expect(PRODUCT_WORKFLOW_COMPOSITION.sources["emergency-contact"]).toBe("served");
-    const mockComposition = MOCK_WORKFLOW_COMPOSITION([]);
-    expect(mockComposition.inbox).toBe("mock");
-    expect(mockComposition.search).toBe("mock");
   });
   it("freshly revalidates a historical run against its exact day and run detail", async () => {
     const client = clients();

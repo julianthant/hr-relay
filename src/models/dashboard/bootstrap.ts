@@ -1,5 +1,6 @@
-import { WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
+import { WorkbookCheckRequirementSchema, WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
 import { z } from "zod";
+import { StorageAuthoritySummarySchema } from "../storage/storage-status.js";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
 import { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
 import {
@@ -14,7 +15,13 @@ import { InputRunSurfaceSchema, UploadRunSurfaceSchema } from "../workflow/ingre
 import { WorkflowModuleRoleSchema } from "../../workflow-kit/validation/module-role.js";
 import { PreflightCheckIdSchema } from "../preflight/preflight-contract.js";
 import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
-import { StepOmissionFormSchema } from "../workflow/step-omission.js";
+import {
+  StartRowKindSchema,
+  StartRowLockReasonSchema,
+  StartRowMemberSchema,
+  StartRowTargetSchema,
+  StepOmissionFormSchema,
+} from "../workflow/step-omission.js";
 import {
   AppVersionSchema,
   DashboardWireVersionSchema,
@@ -27,10 +34,6 @@ export const ActorWireSchema = LocalOperatorActorSchema;
 export const ServerClockWireSchema = z.strictObject({
   now: IsoInstantSchema,
   zone: ActivityTimeZoneSchema,
-});
-/** Store failure throws; no reduced handle can report an intermediate availability. */
-export const StorageHealthSummaryWireSchema = z.strictObject({
-  authority: z.enum(["healthy", "unavailable"]),
 });
 
 /** Serve descriptor codes and raw category/role facts; the frontend owns presentation. */
@@ -62,6 +65,8 @@ export const WorkflowStartWireSchema = z.strictObject({
   spreadsheetIntake: z.boolean(),
   requiredWorkbookFields: z.array(z.string().min(1)).refine(ids => new Set(ids).size === ids.length),
   workbookReference: WorkbookFieldRequirementSchema.optional(),
+  /** The optional second check: the launcher lists every sheet that maps its key field, and a start may pick none. */
+  workbookCheck: WorkbookCheckRequirementSchema.optional(),
   steps: z.array(z.strictObject({
     key: StepKeySchema,
     label: z.string().min(1),
@@ -78,10 +83,23 @@ export const WorkflowStartWireSchema = z.strictObject({
       z.strictObject({ state: z.literal("required"), reason: z.string().min(1) }),
     ]),
   })).min(1),
+  /** The rows Start run shows: kind, lock reason, members and the step a switch addresses. The backend always serves it. */
+  rows: z.array(z.strictObject({
+    key: StepKeySchema,
+    label: z.string().min(1),
+    includedByDefault: z.boolean(),
+    kind: StartRowKindSchema,
+    lockReason: StartRowLockReasonSchema.optional(),
+    members: z.array(StartRowMemberSchema).min(1),
+    target: StartRowTargetSchema.optional(),
+    manual: z.strictObject({ form: StepOmissionFormSchema, forces: z.array(StepKeySchema) }).optional(),
+    selection: z.strictObject({ inputField: z.string().min(1) }).optional(),
+  })).min(1).optional(),
 }).superRefine((start, context) => {
   const checked = WorkbookRequirementDeclarationSchema.safeParse({
     requiredWorkbookFields: start.requiredWorkbookFields,
     ...(start.workbookReference === undefined ? {} : { workbookReference: start.workbookReference }),
+    ...(start.workbookCheck === undefined ? {} : { workbookCheck: start.workbookCheck }),
   });
   if (!checked.success) context.addIssue({ code: "custom", message: "invalid workflow workbook requirement" });
 });
@@ -138,7 +156,7 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     projectionGeneration: ProjectionGenerationSchema,
     actor: ActorWireSchema,
     serverClock: ServerClockWireSchema,
-    storage: StorageHealthSummaryWireSchema,
+    storage: StorageAuthoritySummarySchema,
     workflows: z.array(parts.workflow),
     workbookCompatibility: WorkbookCompatibilitySchema,
     systemInstances: z.array(parts.systemInstance),

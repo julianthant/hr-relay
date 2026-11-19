@@ -326,8 +326,10 @@ describe("explain run", () => {
     const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
     let after = 0; const categories = new Set<string>();
+    const pages: ReturnType<typeof AuthorityDatabase.inspectTimelinePageReadOnly>[] = [];
     for (;;) {
       const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, path, { after, limit: 2 });
+      pages.push(page);
       assert.ok(page.records.length <= 2);
       const rendered = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation,
         args: ["diagnostics", "--after", String(after), "--limit", "2", "--json"] });
@@ -342,11 +344,24 @@ describe("explain run", () => {
       if (!page.hasMore) break;
     }
     assert.equal(categories.size, 7);
+    const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+    try {
+      const batched = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation,
+        args: ["diagnostics", "--limit", "2", "--pages", "3", "--json"] });
+      const view = z.object({ records: z.array(z.object({ eventId: z.string() })), after: z.number(), nextCursor: z.number(),
+        through: z.number(), highWaterMark: z.number(), hasMore: z.boolean() }).parse(JSON.parse(batched));
+      const last = pages[2]; assert.ok(last);
+      assert.deepEqual(view, { records: pages.slice(0, 3).flatMap(page => page.records.map(({ eventId }) => ({ eventId }))),
+        after: 0, nextCursor: last.nextCursor, through: last.through, highWaterMark: last.highWaterMark, hasMore: last.hasMore });
+      assert.equal(prepare.mock.calls.filter(([sql]) => sql === "PRAGMA quick_check").length, 1);
+    } finally { prepare.mockRestore(); }
     assert.deepEqual(readFileSync(path), before, "state.db"); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
     for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes, name);
     assert.throws(() => parseDiagnosticArgs(["--limit", "1001"]));
     assert.throws(() => parseDiagnosticArgs(["--after", "-1"]));
     assert.throws(() => parseDiagnosticArgs(["--boot", "--run", EXIT_RUN_ID]));
+    assert.throws(() => parseDiagnosticArgs(["--boot", "--pages", "2"]));
+    assert.throws(() => parseDiagnosticArgs(["--limit", "1000", "--pages", "2"]));
   });
 
   it("keeps a cause's code and class name and drops its stack, path and free text", async () => {

@@ -220,21 +220,28 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
 
     const references = selections.filter(selection => selection.entry === entry);
-    const requirement = planning.workbookReference;
+    const requirement = planning.workbookReference, check = planning.workbookCheck;
+    const checkPicks = references.filter(selection => check !== undefined && selection.typeId === check.id);
+    const requiredPicks = references.filter(selection => !checkPicks.includes(selection));
     if (lookups.length !== (requirement === undefined ? 0 : 1)
       || lookups.some(lookup => lookup.typeId !== requirement?.id)) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
     }
     const sourceIdentity = (selection: typeof references[number]) => JSON.stringify([selection.libraryId, selection.versionId, selection.sheetId]);
-    if ((requirement === undefined ? references.length !== 0 : references.length < 1 || references.length > MAX_SELECTED_WORKBOOK_SOURCES)
+    if (requirement !== undefined && requiredPicks.length === 0) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text); continue;
+    }
+    if ((requirement === undefined ? requiredPicks.length !== 0 : requiredPicks.length > MAX_SELECTED_WORKBOOK_SOURCES)
+      || requiredPicks.some(selection => selection.typeId !== undefined && selection.typeId !== requirement?.id)
+      || checkPicks.some(selection => selection.selectedRow !== undefined)
       || new Set(references.map(sourceIdentity)).size !== references.length) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
     }
-    let workbookReferences: SchemaBoundCanonicalValue[] | undefined;
+    let workbookReferences: SchemaBoundCanonicalValue[] | undefined, checkReferences: SchemaBoundCanonicalValue[] = [];
     if (references.length > 0) {
       if (captureReference === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
       try {
-        workbookReferences = references.map(({ entry: _entry, ...selection }) => {
+        workbookReferences = requiredPicks.map(({ entry: _entry, typeId: _typeId, ...selection }) => {
           const lookup = lookups[0];
           if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           if (selection.selectedRow !== undefined) {
@@ -256,6 +263,15 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
             expectedVersion: selection.expectedVersion,
             ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }) });
           return bindRunWorkbookReference(reference, snapshot);
+        });
+        if (workbookReferences.length === 0) workbookReferences = undefined;
+        checkReferences = checkPicks.map(selection => {
+          if (check === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          const fields = [check.keyFieldId];
+          const snapshot = captureReference({ kind: "selected-source", typeId: check.id, keyFieldId: check.keyFieldId, fields,
+            writableFields: [], mode: "keys", keys: [], libraryId: selection.libraryId, versionId: selection.versionId,
+            sheetId: selection.sheetId, expectedVersion: selection.expectedVersion });
+          return bindRunWorkbookReference({ typeId: check.id, keys: [], fields, libraryId: selection.libraryId, versionId: selection.versionId }, snapshot);
         });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
@@ -294,10 +310,11 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
     // A dry run publishes nothing, so it plans no outputs.
     const outputs = request.dryRun ? [] : planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => parseRunWorkbookReference(reference)));
+    const capturedReferences = [...workbookReferences ?? [], ...checkReferences];
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(outputs.length === 0 ? {} : { outputs }),
-      ...(workbookReferences === undefined ? {} : { workbookReferences }),
+      ...(capturedReferences.length === 0 ? {} : { workbookReferences: capturedReferences }),
       ...(descriptor.enqueue !== "supersede-active" && request.supersedeRunId === undefined ? {} : { supersedeTargets: startSupersedeTargets(itemRuns) }),
       itemId,
       ...display,

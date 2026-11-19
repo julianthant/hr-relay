@@ -143,7 +143,7 @@ it.each([8, 9, 10, 11, 12, 13] as const)("automatically upgrades registered sche
     application = await composeDashboardApplication({ lifetimeLock: profile.lifetime, admission: machine, isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     assert.equal(starts, 1);
-    const response = await post(application.port); assert.equal(PublicProfileStateSchema.parse(await response.json()).state, "active"); assert.ok(response.headers.get("set-cookie"));
+    const response = await post(application.port); assert.equal(PublicProfileStateSchema.parse(await response.json()).state, "active"); assert.ok(response.headers.get("x-relay-session"));
     await application.stop(); application = undefined; machine = undefined;
     await upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts);
     assert.equal(starts, 1);

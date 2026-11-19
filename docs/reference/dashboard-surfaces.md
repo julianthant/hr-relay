@@ -15,20 +15,20 @@ All source paths in this table are relative to `src/dashboard/`.
 | --- | --- | --- |
 | Startup | `app/dashboard-app.tsx` `BootGate` | `state/use-bootstrap.ts` |
 | Workspace and workflow rail | `surfaces/shell/workspace-rail.tsx`, `workflow-rail.tsx` | Shared workflow catalog and current run counts |
-| Search | `surfaces/shell/search/navbar-view.tsx` | Loaded current queue/mock records composed by the app |
+| Search | `surfaces/shell/search/navbar-view.tsx` | Served cross-date search; the harness may supply sample results |
 | Action panel and date | `surfaces/queue/queue-focus.tsx`, app composition | Selected workflow/day, filters, and shared served clock |
-| Queue | `surfaces/queue/queue.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Day/preview model or workflow mock runs |
-| Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Local ordered log and workflow producers |
+| Queue | `surfaces/queue/queue.tsx` | Day/preview model |
+| Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx` | Served ordered logs; the harness injects sample logs through `DashboardHarness.LogPreview` from `tests/support/fixtures/dashboard/log-preview/` |
 | OCR Records | `surfaces/run-detail/review/review.tsx` | Authenticated review revisions, edit/gate authority and source-page manifest; explicit previews supply local records |
-| Run and Rerun | `surfaces/run-start/run-launch.tsx`, `workflows/mocks/workflow-mock-run.tsx` | Catalog, planner/client for served launches, mock drafts for previews |
+| Run and Rerun | `surfaces/run-start/run-launch.tsx` | Catalog and planner/client for served launches |
 | Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
-| Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | `sessionsSample` and `createSessionPreviewPort` |
+| Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | The served day through `createSessionPreviewPort`; the harness supplies `sessionsSampleHarness` |
 | Settings | `surfaces/settings/settings.tsx` | Typed editor, protected authority, readiness, storage, and local preferences |
 | ChatGPT account | `surfaces/settings/general/chatgpt-account.tsx` | `ChatGptAccountContext` default memory preview port |
-| Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Served library and versioned Save through `state/spreadsheet-wiring-adapter.ts`; explicit fixture composition retains the mock library |
+| Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Served library and versioned Save through `state/spreadsheet-wiring-adapter.ts`; the mock library lives in `tests/support/fixtures/dashboard/spreadsheet-mock-model.ts` |
 | Intake | `surfaces/intake/intake.tsx` | Typed intake session and command client |
-| Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; explicit fixture composition uses `activitySample` |
-| Explorer | `surfaces/explorer/explorer.tsx`, `explorer-flow.tsx` | Local workflow definitions, choices, and source models |
+| Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; the harness supplies `useActivitySampleReport` |
+| Explorer | `surfaces/explorer/explorer.tsx`, `explorer-spec-view.tsx` | The served review spec, options and source drawer |
 | Design-system specimen | `kit/main.tsx`, `kit/kit-page.tsx` | Real `ds/` primitives, no service data |
 
 ## Startup and persistent shell
@@ -63,13 +63,13 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR and I-9 Lookup are `hidden`; the other configured values are `mock`. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR, I-9 Lookup and OnBase are `hidden`; no other workflow is declared. Emergency Contact members start OnBase to file each person's page. The I-9 Check person child has no source entry. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
 rows rather than a second browser status authority.
 
 The public catalog contains Separations, Onboarding, Person Lookup, Work-Study,
-Kronos Pay Rule, Oath Signature, Oath Upload, Emergency Contact, OnBase, I-9 Check,
+Kronos Pay Rule, Oath Signature, Oath Upload, Emergency Contact, I-9 Check,
 CRM Doc Download, SharePoint Download, and Old Kronos Reports. SharePoint Download is parent-only.
 Hidden children have no public catalog choice. Explicit fixtures retain their mock definitions.
 I-9 Check launches through its served PDF input and awaits operator acceptance. Its read-only graph
@@ -213,7 +213,7 @@ when a later producer introduces paging.
 
 ## Logs and timeline
 
-When a live timeline is supplied and the workflow version or contract fingerprint differs from the retained run, older runs use its current step names. Every node recorded by that run's spans, checkpoints, gates, actions and same-run action lineage must map to exactly one keyed live category; missing or ambiguous mappings refuse as `LOGS_IDENTITY_REFUSED`. Notification display applies the same rule and retains its unavailable state on incompatibility. Matching version and fingerprint skip this structural evidence check; notification subject projection still reads its declared checkpoint. Run detail skips timeline reads when the fold has no task spans or gates, except that an older run with a live timeline reads it once for structural compatibility. Missing live category keys still refuse for every run. Frozen action evidence and every write, gate-resolution, resume, rerun and checkpoint-replay fingerprint check remain exact.
+When a live timeline is supplied and the workflow version or contract fingerprint differs from the retained run, older runs use its current step names. Every node recorded by that run's spans, checkpoints, gates, actions and same-run action lineage must map to exactly one keyed live category; missing or ambiguous mappings refuse as `LOGS_IDENTITY_REFUSED`. Notification subject display applies the same rule: incompatibility withholds the subject while retaining the linked run’s registered workflow label. A missing run or workflow descriptor leaves the notification context unavailable. Matching version and fingerprint skip this structural evidence check; notification subject projection still reads its declared checkpoint. Run detail skips timeline reads when the fold has no task spans or gates, except that an older run with a live timeline reads it once for structural compatibility. Missing live category keys still refuse for every run. Frozen action evidence and every write, gate-resolution, resume, rerun and checkpoint-replay fingerprint check remain exact.
 
 Served Logs combines action notes, declared operator observations, fences and decisions in native ingestion order. Contiguous actions nest under their registered timeline group and system; helper completions do not create their own headings. Unknown field paths remain in Run data instead of becoming operator labels. Browser action labels come from exact frozen declarations; gestures labelled only by the UI registry stay in Run data and are not shown. Values appear only through declared fields and existing frozen classification; legacy unbound gesture values remain explicitly unavailable. Captures join exact bundle, artifact, node, attempt and physical session metadata while their labels stay operator text. Within each displayed step, identical declared field labels and values render once at their first observation time; different values stay separate. Run data retains all source observations, and repeated-field captures remain visible.
 
@@ -268,8 +268,9 @@ number and sends it with the recheck. Not saved composes `resolve-write-absent`.
 write from the operator's statement alone. Every choice uses its served command confirmation and
 binds the run version, intent, generation, write attempt, binding proof digest and occurrence key
 digest. Superseded choices refuse before dispatch.
-A failure after a write the run settled offers Mark as failed or Add note; both send
-`annotate-failure` with the served resolution version and never run, retry or file anything.
+A failure after a write the run settled offers Mark as failed, which sends `annotate-failure`
+with the served resolution version and never runs, retries or files anything. Failure resolution
+commands accept no note; stored notes remain readable.
 Pending, refused, uncertain with exact replay, and settled feedback use the existing command
 executor. Local result copy describes the request, without claiming verification or continuation.
 
@@ -381,8 +382,7 @@ individual read/unread controls, and exact destination actions. Rows show subjec
 workflow, and age. Empty inbox, no failures, nothing needing attention, and all caught up are
 separate filtered states.
 
-`notificationPreviewState` derives events from current queue/mock runs. Workspace rail read flags
-live in memory. Read is separate from urgency resolution. Opening a valid target marks read and
+The rail reads one `InboxWiring`; the harness supplies sample notifications derived from current queue rows by `useNotificationsSampleInbox`, with read flags in memory. Read is separate from urgency resolution. Opening a valid target marks read and
 closes the inbox; a missing target reports refusal without navigating to an approximate workflow.
 Escape returns focus to the bell unless an inner dialog/menu owns it. A removed read control
 restores focus to a reachable filter. A ping uses the shared toast; the bell opens the inbox.
@@ -393,7 +393,7 @@ not use them as its default producer.
 
 ## Sessions and workers
 
-`SessionPanel` mounts `SessionsView` with `sessionsSample` and a memory `createSessionPreviewPort`.
+`SessionPanel` mounts `SessionsView` with the served day and `createSessionPreviewPort`; a harness may replace both through `sessionsHarness`.
 Catalog IDs resolve worker labels. Unknown worker workflows throw. Loading, unavailable, ready
 with no workers, and ready workers are distinct states. The expandable strip contains horizontally
 scrolling worker cards and an Add workers dialog.
@@ -427,8 +427,8 @@ Do not derive an empty requirement set from an empty open-session list. Actual w
 
 ## Assistant
 
-The served assistant starts closed and opens through its launcher. Explicit mock specimens retain
-their open panel for presentation checks.
+The served assistant starts closed and opens through its launcher; the mock harness opens it through
+the `assistantOpen` URL switch.
 
 The HUB shell is the single mounted assistant. Product chats retain C1 controller state per chat and
 send through the typed assistant client. Account, selected-profile and authority changes invalidate
@@ -457,8 +457,7 @@ rename, named versions). An attached PDF can start a served workflow whose input
 (Emergency Contact), through a confirmed card only. Sent attachments show as name-only pills on the
 operator message. The model,
 effort, approval and voice controls remain unavailable. The served model and effort labels come from
-the selected person’s preference; setup changes use the existing composer command. The explicit mock composition supplies approved mock conversations and sample workflow
-scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
+the selected person’s preference; setup changes use the existing composer command. The assistant has no mock conversation or sample-workflow path; the mock harness renders the served panel. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
 tab’s session storage, scoped only after the server verifies the selected person. Another person’s
 key is never adopted. Saved text confers no command or model authority: restored pending requests
 remain unknown, and review proposals expire. File bodies and
@@ -684,7 +683,7 @@ Successful enqueue closes the takeover to the dashboard; navigation alone is not
 
 The displayed label is Analytics; its source folder and route IDs remain `activity`.
 `ActivityReport` uses the served report-calendar date and feeds `ActivityView` from the complete
-AP1 population. Explicit fixture composition retains the sample date, values and local interactions.
+AP1 population. A harness may replace the report hook with `useActivityReport` to show sample values.
 Invalid ranges, loading, empty periods and read/refusal failures remain distinct.
 
 The page provides period/range selection, status/workflow filtering, outcome/duration/volume/transaction/

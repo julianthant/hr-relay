@@ -58,3 +58,8 @@ export function useDashboardClient(): DashboardClient {
   }
   return client;
 }
+
+/** The client when a provider exists above; static previews render without one. */
+export function useOptionalDashboardClient(): DashboardClient | undefined {
+  return useContext(DashboardClientContext);
+}

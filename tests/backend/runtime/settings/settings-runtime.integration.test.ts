@@ -73,7 +73,7 @@ async function fixture(probe: () => void = () => {}) {
     assert.equal(result.state, "applied"); return readSettings(database.authority);
   };
   const protectedCommand = (value: string | null) => ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-    target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: value === null ? { clear: true } : { set: value } } } });
+    target: { expectedRevision: store.read().revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { sharepointOnboardingRosterUrl: value === null ? { clear: true } : { set: value } } } });
   return { root, profile, database, databasePath, clock, store, initial, active, reader, execute, apply, protectedCommand, reads: () => reads,
     protectedReader: createProtectedSettingsRuntimeReader(store) };
 }
@@ -110,7 +110,7 @@ afterEach(_afterEachFixture0);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
       const leaves = editor.sections.flatMap((section) => section.leaves);
-      assert.equal(leaves.length, 61);
+      assert.equal(leaves.length, 68);
       assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot" || leaf.path === "paths.duoCredential"), false);
     }
     assert.equal(existsSync(join_m0(f.root, "settings")), false);
@@ -150,21 +150,21 @@ describe("independent protected Settings reader", () => {
 afterEach(_afterEachFixture0);
 
   it("serves the stored credential value with the authenticated readback", async () => {
-    const f = await fixture(); const revision = f.store.read().revision; f.execute(f.protectedCommand("synthetic-protected-readback"));
+    const f = await fixture(); const revision = f.store.read().revision; f.execute(f.protectedCommand("https://roster.example.test/synthetic-protected-readback"));
     const snapshot = f.protectedReader.read(); assert.equal(snapshot.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
     ProtectedSettingsReadbackSchema.parse(snapshot.readback); assert.equal(snapshot.readback.revision, revision + 1);
-    assert.equal(snapshot.record.entries.ucpathPassword?.value, "synthetic-protected-readback");
-    assert.equal(JSON.stringify(snapshot).includes("synthetic-protected-readback"), true);
+    assert.equal(snapshot.record.entries.sharepointOnboardingRosterUrl?.value, "https://roster.example.test/synthetic-protected-readback");
+    assert.equal(JSON.stringify(snapshot).includes("https://roster.example.test/synthetic-protected-readback"), true);
   });
   it("verifies exact retry and refuses value-divergent reuse", async () => {
-    const f = await fixture(); const command = f.protectedCommand("synthetic-first-value"); f.execute(command);
+    const f = await fixture(); const command = f.protectedCommand("https://roster.example.test/synthetic-first-value"); f.execute(command);
     assert.equal(f.execute(command).state, "already-applied");
-    const divergent = structuredClone(command); divergent.payload.entries.ucpathPassword = { set: "synthetic-different-value" };
+    const divergent = structuredClone(command); divergent.payload.entries.sharepointOnboardingRosterUrl = { set: "https://roster.example.test/synthetic-different-value" };
     assert.equal(f.execute(divergent).state, "rejected");
-    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-first-value");
+    assert.equal(requireSecret("sharepointOnboardingRosterUrl", createCredentialSecretSource(f.store)), "https://roster.example.test/synthetic-first-value");
   });
   it("independent committed credentials remain available without a SQLite audit", async () => {
-    const f = await fixture(); const revision = f.store.read().revision; const command = f.protectedCommand("synthetic-before-audit");
+    const f = await fixture(); const revision = f.store.read().revision; const command = f.protectedCommand("https://roster.example.test/synthetic-before-audit");
     const result = f.store.apply(ProtectedSettingsApplyInputSchema.parse({ ...command.payload, commandId: command.commandId,
       commandFingerprint: deriveSettingsCommandFingerprint(command), expectedRevision: command.target.expectedRevision, updatedAt: command.requestedAt }));
     assert.equal(result.state, "applied"); assert.equal(f.database.authority.commands.get(command.commandId), undefined);
@@ -173,26 +173,26 @@ afterEach(_afterEachFixture0);
   it("observes each credential at next use without changing ordinary runtime identity", async () => {
     const f = await fixture(); const before = f.reader.read(); const source = createCredentialSecretSource(f.store);
     assert.equal(f.execute(f.protectedCommand(null)).state, "applied");
-    assert.throws(() => requireSecret("ucpathPassword", source), /ucpathPassword is missing/u);
-    f.execute(f.protectedCommand("synthetic-next-use-one")); assert.equal(requireSecret("ucpathPassword", source), "synthetic-next-use-one");
-    f.execute(f.protectedCommand("synthetic-next-use-two")); assert.equal(requireSecret("ucpathPassword", source), "synthetic-next-use-two");
+    assert.throws(() => requireSecret("sharepointOnboardingRosterUrl", source), /sharepointOnboardingRosterUrl is missing/u);
+    f.execute(f.protectedCommand("https://roster.example.test/synthetic-next-use-one")); assert.equal(requireSecret("sharepointOnboardingRosterUrl", source), "https://roster.example.test/synthetic-next-use-one");
+    f.execute(f.protectedCommand("https://roster.example.test/synthetic-next-use-two")); assert.equal(requireSecret("sharepointOnboardingRosterUrl", source), "https://roster.example.test/synthetic-next-use-two");
     assert.deepEqual(f.reader.read(), before);
   });
   it("authenticates its own history even when SQLite is unavailable", async () => {
-    const f = await fixture(); const revision = f.store.read().revision; f.execute(f.protectedCommand("synthetic-owned-value")); f.database.close();
+    const f = await fixture(); const revision = f.store.read().revision; f.execute(f.protectedCommand("https://roster.example.test/synthetic-owned-value")); f.database.close();
     assert.equal(f.protectedReader.read().readback.revision, revision + 1);
     const path = join_m0(f.root, "credentials", "protected.json");
     const originalBytes = readFileSync(path);
     try {
       const document = z.looseObject({ record: z.looseObject({ entries: z.looseObject({
-        ucpathPassword: z.looseObject({ value: z.string(), valueId: z.uuid() }),
+        sharepointOnboardingRosterUrl: z.looseObject({ value: z.string(), valueId: z.uuid() }),
       }) }) }).parse(readAuthenticatedCredentialFixture(f.profile.machine.stateRoot, f.profile.admission.profileBinding.profileId));
-      const originalValue = document.record.entries.ucpathPassword.value;
-      assert.equal(originalValue === "synthetic-owned-value", true);
-      const originalValueId = document.record.entries.ucpathPassword.valueId;
-      document.record.entries.ucpathPassword.valueId = randomUUID();
-      assert.notEqual(document.record.entries.ucpathPassword.valueId, originalValueId);
-      assert.equal(document.record.entries.ucpathPassword.value, originalValue);
+      const originalValue = document.record.entries.sharepointOnboardingRosterUrl.value;
+      assert.equal(originalValue === "https://roster.example.test/synthetic-owned-value", true);
+      const originalValueId = document.record.entries.sharepointOnboardingRosterUrl.valueId;
+      document.record.entries.sharepointOnboardingRosterUrl.valueId = randomUUID();
+      assert.notEqual(document.record.entries.sharepointOnboardingRosterUrl.valueId, originalValueId);
+      assert.equal(document.record.entries.sharepointOnboardingRosterUrl.value, originalValue);
       rewriteAuthenticatedCredentialFixture(f.profile.machine.stateRoot, f.profile.admission.profileBinding.profileId, () => document);
       assert.throws(() => f.protectedReader.read(), /disagrees with its identity history/u);
     } finally { writeFileSync(path, originalBytes); }

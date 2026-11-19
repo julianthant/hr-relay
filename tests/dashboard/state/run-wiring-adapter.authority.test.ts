@@ -17,8 +17,8 @@ import { projectRunLogs, readRunLogs, useRunWiring, type RunWiringConfirm } from
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/actions/actions.js";
-import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
-import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
+import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
 import { RunWorkbookReferenceChoiceWireSchema, FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
@@ -808,8 +808,8 @@ function failedAt(selected: LogSelection) {
       expectedVersion: 3, retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: 3,
         confirm: { title: "Check again", confirmLabel: "Check again", tone: "neutral" } },
       confirm: { title: "Enter EID", confirmLabel: "Enter EID", tone: "neutral" },
-      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check", "job-summary"],
-        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check", "job-summary"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
+      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check"],
+        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
     } }));
 }
 function failureClient(selected: LogSelection, sent: DashboardCommandRequest[], planned: unknown[], execute: (command: DashboardCommandRequest) => Promise<unknown>, failed = failedAt(selected)) {
@@ -934,7 +934,6 @@ describe("failure resolution from the decision card", () => {
 
   for (const [choice, answer, payload] of [
     ["mark-as-failed", {}, { action: "resolve" }],
-    ["add-note", { text: " Checked T00042871 in UCPath " }, { action: "resolve", note: "Checked T00042871 in UCPath" }],
   ] as const) it(`closes the failure with ${choice} and nothing else`, async () => {
     const selected = selectionAt(3), sent: DashboardCommandRequest[] = [];
     const fixture = failureClient(selected, sent, [], applied, committedAt(selected));
@@ -948,11 +947,10 @@ describe("failure resolution from the decision card", () => {
     assert.equal(request.source, "run-detail");
   });
 
-  it("sends no note without its text, and nothing for a failure option the server no longer serves", async () => {
+  it("sends nothing for a failure option the server no longer serves", async () => {
     const selected = selectionAt(3), sent: DashboardCommandRequest[] = [];
     const fixture = failureClient(selected, sent, [], applied, committedAt(selected));
     const h = await harness(fixture.client); await h.render(selected);
-    await act(async () => h.state?.onDecision?.(FAILURE, failureOption(fixture.failed, "add-note"), { text: "  " }));
     await act(async () => h.state?.onDecision?.(FAILURE, { ...failureOption(fixture.failed, "mark-as-failed"), id: "retry" }, {}));
     assert.equal(sent.length, 0);
   });

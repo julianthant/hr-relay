@@ -123,6 +123,7 @@ describe("task-owned screenshots", () => {
     ] : []);
     assert.deepEqual(warnings, [{ message: "Screenshot capture unavailable.", fields: {
       code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary: "step", reason: failure === "unavailable" ? "page-changed" : "Error",
+      captureFailure: failure === "unavailable" ? "page-changed" : "Error",
     } }]);
     await sessions.closeAll("worker-stop");
   });

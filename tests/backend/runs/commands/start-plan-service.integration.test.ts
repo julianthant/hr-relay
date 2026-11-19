@@ -23,13 +23,15 @@ import { OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js
 import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const CLOCK = manualClock(new Date(NOW));
 // Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
-const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
+const READING_LABELS = { eid: "Employee id", effectiveDate: "Effective date" };
+const READING_FACTS = { eid: "10800000", effectiveDate: "01/02/2026" };
 const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];
 const databases: AuthorityDatabase[] = [];
 
@@ -132,7 +134,7 @@ describe("start plan step omissions", () => {
     // The wire is a projection; the RECORD is what a `start-run` command
     // consumes, so the omissions have to be durable there too.
     const stored = harness.database.authority.startPlans.get(wire.startPlanId);
-    assert.deepEqual(stored?.stepOmissions, [{ step: "reading", facts: READING_FACTS }]);
+    assert.deepEqual(stored?.stepOmissions, [{ step: "reading", facts: READING_FACTS, labels: READING_LABELS }]);
     assert.equal(stored?.planned.length, 1);
   });
 
@@ -149,7 +151,7 @@ describe("start plan step omissions", () => {
     const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
-      stepOmissions: [{ step: "reading", facts: { eid: "20111222", effectiveDate: "2026-01-02" } }],
+      stepOmissions: [{ step: "reading", facts: { eid: "10800000", effectiveDate: "2026-01-02" } }],
     })));
 
     assert.equal(error.code, "facts-invalid");
@@ -215,7 +217,7 @@ describe("start plan step omissions", () => {
     assert.deepEqual(wire.omittedSteps, ["reading", "folding"]);
     assert.deepEqual(
       harness.database.authority.startPlans.get(wire.startPlanId)?.stepOmissions,
-      [{ step: "reading", facts: READING_FACTS }, { step: "folding", facts: { folded: "typed" } }],
+      [{ step: "reading", facts: READING_FACTS, labels: READING_LABELS }, { step: "folding", facts: { folded: "typed" }, labels: { folded: "Folded" } }],
     );
   });
 });
@@ -296,9 +298,31 @@ it("plans one dry-run Emergency Contact PDF start against a header-only ocr-rost
     rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
   library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
   const wire = h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
-    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" } }],
+    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" }],
     workbookReferences: [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
       expectedVersion: library.read(roster.libraryId).version }] });
   assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
   assert.equal(wire.planned.length, 1);
+});
+
+it("names the missing reference spreadsheet when an Emergency Contact start sends only a check pick", async () => {
+  const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
+  let library: WorkbookLibraryService | undefined;
+  const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }));
+  assert.ok(library);
+  library.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
+  const applicants = library.create({ name: "Student Applicants", themes: [], hasFormulas: false, sheets: [{ id: "july", name: "July 6", width: 2, hidden: [], headerRow: 1,
+    columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+    rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }, { id: "r1", cells: [{ value: "10873698" }, { value: "Doe, Jane" }] }] }] });
+  const pick = { entry: 1, libraryId: applicants.libraryId, versionId: library.libraryVersion(applicants.libraryId).version.id, sheetId: "july",
+    expectedVersion: library.read(applicants.libraryId).version };
+  const plan = (workbookReferences: readonly Record<string, unknown>[]) => h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
+    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" }],
+    workbookReferences });
+
+  const checkOnly = plan([{ ...pick, typeId: "reference-check" }]);
+  assert.deepEqual(checkOnly.refused.map(refusal => [refusal.code, refusal.message]),
+    [["capability-unavailable", ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text]]);
+  assert.equal(checkOnly.planned.length, 0);
+  assert.equal(plan([pick]).planned.length, 1);
 });

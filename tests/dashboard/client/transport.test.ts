@@ -129,20 +129,6 @@ describe("Settings read deadlines", () => {
       assert.ok(failure instanceof DashboardClientError); assert.equal(failure.kind, "network"); assert.equal(failure.retryable, true); assert.equal(failure.cause, reason);
     } finally { vi.useRealTimers(); }
   });
-  it("gives doctor reads sixty seconds without bounding mutation requests", async () => {
-    const { vi } = await import("vitest"); vi.useFakeTimers();
-    const write = Promise.withResolvers<Response>();
-    const transport = createDashboardTransport({ baseUrl: "http://bff.test", fetchImpl: (_url, init) => init?.method === "POST" ? write.promise : new Promise(() => {}) });
-    try {
-      let wrote = false;
-      const writing = transport.requestJson("/api/v1/settings/editable", { method: "POST" }).then(() => { wrote = true; });
-      let settled = false;
-      const reading = transport.requestJson("/api/v1/storage/doctor").catch((error: unknown) => { settled = true; return error; });
-      await vi.advanceTimersByTimeAsync(59_999); assert.equal(settled, false); assert.equal(wrote, false);
-      await vi.advanceTimersByTimeAsync(1); assert.ok(await reading instanceof DashboardClientError); assert.equal(wrote, false);
-      write.resolve(new Response("{}")); await writing; assert.equal(wrote, true);
-    } finally { vi.useRealTimers(); }
-  });
 });
 
 it("keeps OAuth completion pending for its five-minute ceremony then bounds body delivery", async () => {

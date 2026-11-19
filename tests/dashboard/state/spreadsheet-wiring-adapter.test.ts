@@ -9,17 +9,22 @@ import { datasetOf } from '../../../src/dashboard/surfaces/spreadsheets/design/s
 import { prepareSpreadsheetColumns } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
 import { DashboardClientError } from '../../../src/dashboard/client/errors.js';
 import type { WorkbookLibraryQueries } from '../../../src/dashboard/client/queries/workbook-library-queries.js';
-import { SavedWorkbookSchema, encodeEditableWorkbook, type SavedWorkbook } from '../../../src/models/dashboard/workbooks.js';
+import { SavedWorkbookSchema, encodeEditableWorkbook, type SavedWorkbook, type WorkbookSummary } from '../../../src/models/dashboard/workbooks.js';
 const book = () => ({ ...newEditableWorkbook(), libraryId: 'saved' });
 const saved = (version = 3, workbook = book()): SavedWorkbook => SavedWorkbookSchema.parse({ libraryId: workbook.libraryId, version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-15T00:00:00Z', workbook });
+const summaryOf = (record: SavedWorkbook): WorkbookSummary => ({ libraryId: record.libraryId, name: record.workbook.name, typeId: 'general', version: record.version, createdAt: record.createdAt, savedAt: record.savedAt,
+  rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
+  sheets: record.workbook.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1, columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cell => String(cell.value ?? '')),
+    ...(sheet.columnBindings === undefined ? {} : { columnBindings: sheet.columnBindings }) })) });
 function setup() {
   const client = {
-    workbookResults: vi.fn<WorkbookLibraryQueries['workbookResults']>(async () => { throw new Error('Unexpected workbookResults call'); }),
     workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
+    workbookClone: vi.fn<WorkbookLibraryQueries['workbookClone']>(async () => { throw new Error('Unexpected workbookClone call'); }),
+    workbookImportSharePoint: vi.fn<WorkbookLibraryQueries['workbookImportSharePoint']>(async () => { throw new Error('Unexpected workbookImportSharePoint call'); }),
     workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [
       { libraryId: 'saved', versionId: 'original', sheets: [{ sheetId: 'sheet', sheetName: 'People', mappings: [], workflows: [] }] },
     ] })),
-    workbookList: vi.fn(async () => [saved()]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>() } satisfies WorkbookLibraryQueries;
+    workbookList: vi.fn(async () => [summaryOf(saved())]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>() } satisfies WorkbookLibraryQueries;
   return { client, adapter: createSpreadsheetWiringAdapter(client) };
 }
 describe('served workbook authority', () => {
@@ -49,7 +54,7 @@ describe('served workbook authority', () => {
   });
   it('never adopts a create by matching content after losing its generated identity', async () => {
     const { client, adapter } = setup(); const draft = newEditableWorkbook(); const id = adapter.create(draft);
-    client.workbookCreate.mockRejectedValue(new Error('lost response')); client.workbookList.mockResolvedValue([saved(1, { ...draft, libraryId: 'generated' })]);
+    client.workbookCreate.mockRejectedValue(new Error('lost response')); client.workbookList.mockResolvedValue([summaryOf(saved(1, { ...draft, libraryId: 'generated' }))]);
     assert.equal((await adapter.save(id, draft)).state, 'uncertain'); assert.equal((await adapter.save(id, draft)).state, 'uncertain');
     assert.equal(client.workbookCreate.mock.calls.length, 1); assert.equal(client.workbookList.mock.calls.length, 2); assert.equal(adapter.draft(id)?.document.libraryId, undefined);
   });
@@ -62,7 +67,7 @@ describe('served workbook authority', () => {
   });
   it('retains stale list authority on read failure and ignores superseded lists', async () => {
     const { client, adapter } = setup(); await adapter.list(); client.workbookList.mockRejectedValueOnce(new Error('offline')); await adapter.list(); assert.equal(adapter.snapshot().files.length, 1); assert.equal(adapter.snapshot().error, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
-    let resolve!: (records: SavedWorkbook[]) => void; client.workbookList.mockImplementationOnce(() => new Promise(done => { resolve = done; })); const earlier = adapter.list(); const shared = adapter.list(); assert.equal(earlier, shared); adapter.discard(); await adapter.list(); resolve([]); await earlier; assert.equal(adapter.snapshot().files.length, 1);
+    let resolve!: (records: WorkbookSummary[]) => void; client.workbookList.mockImplementationOnce(() => new Promise(done => { resolve = done; })); const earlier = adapter.list(); const shared = adapter.list(); assert.equal(earlier, shared); adapter.discard(); await adapter.list(); resolve([]); await earlier; assert.equal(adapter.snapshot().files.length, 1);
   });
 });
 
@@ -124,7 +129,7 @@ it('discards every ordinary draft and prevents late list and open responses from
   const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
   adapter.change('saved', { ...book(), name: 'Discard.xlsx' }, true);
   const local = adapter.create(newEditableWorkbook());
-  const lateList = Promise.withResolvers<SavedWorkbook[]>(), lateOpen = Promise.withResolvers<SavedWorkbook>();
+  const lateList = Promise.withResolvers<WorkbookSummary[]>(), lateOpen = Promise.withResolvers<SavedWorkbook>();
   client.workbookList.mockImplementationOnce(() => lateList.promise);
   client.workbookOpen.mockImplementationOnce(() => lateOpen.promise);
   const listing = adapter.list(), opening = adapter.open('other');
@@ -132,7 +137,7 @@ it('discards every ordinary draft and prevents late list and open responses from
   assert.equal(adapter.draft('saved'), undefined); assert.equal(adapter.draft(local), undefined);
   assert.deepEqual(adapter.snapshot().files.map(file => file.name), [book().name]);
   assert.equal(adapter.snapshot().loading, false); assert.equal(adapter.snapshot().opening, undefined);
-  lateList.resolve([saved(1, { ...book(), name: 'Stale.xlsx' })]);
+  lateList.resolve([summaryOf(saved(1, { ...book(), name: 'Stale.xlsx' }))]);
   lateOpen.resolve(saved(1, { ...book(), libraryId: 'other', name: 'Stale.xlsx' }));
   await Promise.all([listing, opening]);
   assert.equal(adapter.draft('other'), undefined); assert.equal(adapter.draft('saved'), undefined);
@@ -158,7 +163,7 @@ it('keeps a pending create and its UNKNOWN intent when discarding other ordinary
 it('retains the exact loaded library during a shared pending revisit and ends rejection in catalog failure', async () => {
   const { client, adapter } = setup(); await adapter.list();
   const files = adapter.snapshot().files;
-  const pending = Promise.withResolvers<SavedWorkbook[]>(); client.workbookList.mockImplementationOnce(() => pending.promise);
+  const pending = Promise.withResolvers<WorkbookSummary[]>(); client.workbookList.mockImplementationOnce(() => pending.promise);
   const first = adapter.list(), second = adapter.list(); assert.equal(first, second);
   assert.equal(client.workbookList.mock.calls.length, 2); assert.equal(adapter.snapshot().files, files); assert.equal(adapter.snapshot().loading, false);
   pending.reject(new Error('synthetic offline')); await first;
@@ -301,9 +306,9 @@ describe('spreadsheet page writes', () => {
     client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
     assert.equal((await importWorkbook(adapter, missing)).state, 'pending');
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...missing, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', rowsWithoutEid: 2 });
+    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 2 });
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...valid, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', rowsWithoutEid: 0 });
+    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 0 });
   });
   it('joins an import that is still saving instead of creating again', async () => {
     const { client, adapter } = setup(); const document = newEditableWorkbook();

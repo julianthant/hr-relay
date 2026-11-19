@@ -18,7 +18,7 @@ import type { EditableWorkbook } from "../../../src/models/dashboard/workbooks.j
 import { DatabaseSync } from "node:sqlite";
 import { Workbook, writeXlsx } from "@shbernal/ts-xlsx";
 import { afterEach, expect, it } from "vitest";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -27,7 +27,7 @@ const databases: DatabaseSync[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
 function fixture() {
   const database = new DatabaseSync(":memory:"); databases.push(database);
-  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
+  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(statement);
   const transaction = <T>(work: () => T): T => {
     database.exec("BEGIN IMMEDIATE");
     try { const result = work(); database.exec("COMMIT"); return result; }
@@ -133,7 +133,11 @@ it.each(["payload", "columns"])("refuses corrupt stored %s without replacing it"
   failure(() => f.service.read(created.libraryId), "WORKBOOK_STORAGE_CORRUPT");
   failure(() => f.service.list(), "WORKBOOK_STORAGE_CORRUPT");
   failure(() => f.service.history(created.libraryId), "WORKBOOK_STORAGE_CORRUPT");
+  const storedRow = f.database.prepare("SELECT * FROM workbook_library WHERE id=?");
+  const beforeSave = storedRow.get(created.libraryId);
+  expect(beforeSave).toBeDefined();
   failure(() => f.service.save(created.libraryId, 1, created.workbook), "WORKBOOK_STORAGE_CORRUPT");
+  expect(storedRow.get(created.libraryId)).toStrictEqual(beforeSave);
 });
 
 it("retains manual named versions against update, delete and replacement", () => {

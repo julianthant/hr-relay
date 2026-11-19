@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { IsoInstantSchema } from "../identity/ids.js";
 import type { KualiDateField } from "../../models/ui/kuali-separation-document.js";
+import { PACIFIC_TIME_ZONE } from "../../models/dashboard/search-calendar.js";
 
 /** `MM/DD/YYYY`, the spelling Kuali, UCPath Smart HR and WFD all render. */
 export const SeparationDateSchema = z.string().regex(
@@ -171,7 +172,7 @@ export function shiftMonths(value: string, months: number): string {
 export function pacificCalendarDay(instant: string): string {
   const at = new Date(IsoInstantSchema.parse(instant));
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles",
+    timeZone: PACIFIC_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import "./analytics-charts.css";
+import { countScale } from "./analytics-model.js";
 
 const AXIS = "text-[12px] leading-4 tabular-nums text-ui-secondary";
 
@@ -85,7 +86,7 @@ function ChartFrame({ label, days, ticks, top, height, header, footer, tip, plot
 export function StackedBars({ label, days, series, unit, height = 160, header, footer }: {
   label: string; days: readonly ChartDay[]; series: readonly ChartSeries[]; unit: readonly [string, string]; height?: number; header?: ReactNode; footer?: ReactNode;
 }) {
-  const { top, ticks } = barScale(Math.max(...days.map((_, index) => sumAt(series, index))));
+  const { top, ticks } = countScale(Math.max(...days.map((_, index) => sumAt(series, index))));
   return <ChartFrame label={label} days={days} ticks={ticks} top={top} height={height} header={header} footer={footer}
     tip={index => ({ title: `${sumAt(series, index)} ${sumAt(series, index) === 1 ? unit[0] : unit[1]}`, rows: series.map(line => ({ name: line.label, value: String(line.values[index] ?? 0), color: line.color })) })}
     plot={active => <div className="pointer-events-none absolute inset-0 flex items-end">
@@ -95,12 +96,6 @@ export function StackedBars({ label, days, series, unit, height = 160, header, f
         </div>
       </div>)}
     </div>} />;
-}
-
-/** Counts in multiples of 6 so four ticks fall on whole numbers. */
-function barScale(max: number) {
-  const top = Math.max(6, Math.ceil(max / 6) * 6);
-  return { top, ticks: [top, top * 2 / 3, top / 3, 0].map(value => ({ value, label: String(value) })) };
 }
 
 /** Consecutive measured days; a missing day breaks the line instead of plotting zero. */

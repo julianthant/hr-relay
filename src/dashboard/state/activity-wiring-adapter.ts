@@ -41,7 +41,7 @@ function projectAnalytics(selection: ActivityPopulationSelection): AnalyticsData
       failedAt: workflow.failedAt.map(step => ({ label: step.state === "known" ? step.title : "Step not recorded", runs: step.runs })),
       days: workflow.days.map(day => ({ date: day.day, ...day.outcomes, seconds: day.typicalTime.medianMs.state === "present" ? day.typicalTime.medianMs.value / 1000 : null })),
     })),
-    reasons: report.failures.map(failure => ({ label: failure.sentence, workflow: label(failure), runs: failure.runs })),
+    assistant: { messages: report.assistantMessages.days.map(row => ({ date: row.day, count: row.count })), actions: report.assistantActions.days.map(row => ({ date: row.day, proposed: row.proposed })) },
   };
 }
 
@@ -114,7 +114,9 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const settled = observedBrowse?.request === browseRequest ? observedBrowse : cachedBrowse.value === undefined ? observedBrowse : { request: browseRequest, result: cachedBrowse.value };
   useEffect(() => {
     if (!enabled || client === undefined) return;
-    void resource.read(() => client.activityPopulation(request.from, request.to), "DASHBOARD_READ_FAILED").catch(() => undefined);
+    const controller = new AbortController();
+    void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).catch(() => resource.snapshot());
+    return () => controller.abort();
   }, [client, enabled, request, resource]);
   useEffect(() => {
     if (!enabled || client === undefined || selection === undefined || browseInput?.success !== true) return;

@@ -48,7 +48,7 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
       let backup: Awaited<ReturnType<AuthorityBackupService["request"]>>;
       try {
         backup = await new AuthorityBackupService(f.admission, database, { directory: backupDirectory }, clock)
-          .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+          .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
       } finally { database.close(); }
       const manifest = backup.manifests[0]; assert.ok(manifest);
       const manifestPath = join(backupDirectory, `${manifest.backupFileName}.manifest.json`);

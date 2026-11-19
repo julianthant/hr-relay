@@ -1,6 +1,6 @@
 import { Bell, Check, Mail, MailOpen, MoreHorizontal, X } from "lucide-react";
-import { forwardRef, useEffect, useRef, type ReactNode } from "react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
+import { forwardRef, useEffect, type ReactNode } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
 import { itemDay, itemPreview, itemSource, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
@@ -21,10 +21,10 @@ function NotificationRow({ item, active, onOpen, actions }: { item: Notification
       <span className="notification-item-head">
         {!item.read && <span aria-hidden className="notification-unread-dot" />}
         <span className="notification-item-title">{item.title}</span>
-        <span className="notification-item-tag">{itemSource(item)}</span>
+        {item.count !== undefined && <span className="notification-item-count"><span className="sr-only">{item.count} times</span><span aria-hidden>×{item.count}</span></span>}
         {!item.read && <span className="sr-only">Unread</span>}
       </span>
-      <span className="notification-item-line">{itemPreview(item)}</span>
+      <span className="notification-item-line">{itemSource(item) !== "" && <span className="notification-item-source">{itemSource(item)} · </span>}{itemPreview(item)}</span>
     </button>
     <span className="notification-item-actions">
       <RowActionButton label={item.read ? "Mark as unread" : "Mark as read"} icon={item.read ? <Mail aria-hidden className={dsIcon.md} /> : <MailOpen aria-hidden className={dsIcon.md} />} onClick={() => actions.onControl(item.id, item.read ? "unread" : "read")} />
@@ -33,8 +33,8 @@ function NotificationRow({ item, active, onOpen, actions }: { item: Notification
   </li>;
 }
 
-function NotificationGroup({ label, items, activeId, onOpen, actions, action, empty }: { label: string; items: readonly NotificationItem[]; activeId: string; onOpen: Open; actions: RowActions; action?: ReactNode; empty?: string }) {
-  return <section aria-label={label} className="notification-group"><div className="notification-group-head"><h3 className="notification-group-label">{label}</h3>{action}</div>
+function NotificationGroup({ label, items, activeId, onOpen, actions, empty }: { label: string; items: readonly NotificationItem[]; activeId: string; onOpen: Open; actions: RowActions; empty?: string }) {
+  return <section aria-label={label} className="notification-group"><div className="notification-group-head"><h3 className="notification-group-label">{label}</h3></div>
     {items.length === 0 ? <p className="notification-empty">{empty}</p>
       : <ul className="notification-list">{items.map(item => <NotificationRow key={item.id} item={item} active={item.id === activeId} onOpen={onOpen} actions={actions} />)}</ul>}
   </section>;
@@ -62,7 +62,7 @@ export function NotificationsPanel({ state, activeId, showPriority, onShowPriori
     return () => document.removeEventListener("keydown", escape);
   }, [onBack]);
   const menu = <DropdownMenu><DropdownMenuTrigger asChild><IconButton label="Notification actions" size="xs" icon={<MoreHorizontal aria-hidden className={dsIcon.md} />} /></DropdownMenuTrigger>
-    <DropdownMenuContent align="start" alignOffset={3} className="notification-menu">
+    <DropdownMenuContent align="end" alignOffset={3} aria-label="Notification actions" className="notification-menu">
       <DropdownMenuGroup><DropdownMenuLabel>Show</DropdownMenuLabel>
       <DropdownMenuItem role="menuitemcheckbox" aria-checked={showPriority} className="pr-[34px]" onClick={() => onShowPriority(!showPriority)}>Priority section<span className="ds-menu-indicator">{showPriority && <Check aria-hidden className="ds-menu-check" />}</span></DropdownMenuItem></DropdownMenuGroup>
       <DropdownMenuSeparator />
@@ -76,8 +76,10 @@ export function NotificationsPanel({ state, activeId, showPriority, onShowPriori
     <div className="notification-panel-scroll rail-scroll">
       {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="h-10 flex-1" /></div>)}</div></LoadingRegion>
         : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>
-        : groups.length === 0 ? <div className="notification-group-head justify-end">{menu}</div>
-        : groups.map((group, index) => <NotificationGroup key={group.label} label={group.label} items={group.items} activeId={activeId} onOpen={onOpen} actions={actions} empty={group.empty} action={index === 0 ? menu : undefined} />)}
+        : <>
+          <div className="notification-panel-head"><h2 className="notification-panel-title">Notifications</h2>{menu}</div>
+          {groups.map(group => <NotificationGroup key={group.label} label={group.label} items={group.items} activeId={activeId} onOpen={onOpen} actions={actions} empty={group.empty} />)}
+        </>}
     </div>
     {notice && <p role="status" className="notification-notice">{notice}</p>}
   </section>;
@@ -88,10 +90,3 @@ export const NotificationBell = forwardRef<HTMLButtonElement, { label: string; o
   return <Tooltip side="bottom" content="Notifications"><IconButton ref={ref} variant="ghost" size="sm" className="rail-notification-toggle" aria-pressed={open} label={label} title="" onClick={onToggle}
     icon={<><Bell aria-hidden className="size-4" />{unread && <span data-testid="notification-unread-dot" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ui-info" />}</>} /></Tooltip>;
 });
-
-export function NotificationPing({ item }: { item: NotificationItem }) {
-  const { toast } = useToasts();
-  const sent = useRef(false);
-  useEffect(() => { if (sent.current) return; sent.current = true; toast({ tone: "success", title: item.title, description: `${item.subject} · ${item.workflow}`}); }, [item, toast]);
-  return null;
-}

@@ -5,7 +5,7 @@ export type NotificationFilter = "all" | "unread" | "attention" | "failed";
 export type NotificationKind = "storage" | "chatgpt" | "run" | "command";
 export type NotificationDestination = NotificationTarget
   | Readonly<{ kind: "preview-run"; runId: string; day: string; records: boolean }>
-  | Readonly<{ kind: "settings"; section: "subscription" }>
+  | Readonly<{ kind: "settings"; section: "general"; target?: "chatgpt.account" }>
   | Readonly<{ kind: "local-recovery"; key: string }>
   | Readonly<{ kind: "local-command-result"; id: string }>
   | Readonly<{ kind: "local-bulk-result" }>
@@ -15,6 +15,8 @@ export type NotificationItem = Readonly<{
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
   kind?: NotificationKind;
+  /** Repeats folded into this notice; shown only above one. */
+  count?: number;
   /** Priority: still needs the operator. Resolved items fall into their day group. */
   priority?: boolean;
   /** Day group label once out of Priority: Today, Yesterday, a weekday or a date. */
@@ -56,4 +58,4 @@ export const itemDay = (item: NotificationItem) => item.day ?? "Today";
 /** The grey tag on the title line: the workflow, or the system the notice is about. */
 export const itemSource = (item: NotificationItem) => item.kind === "storage" ? "Storage" : item.kind === "chatgpt" ? "ChatGPT" : item.kind === "command" ? "Commands" : item.workflow;
 /** Runs name the subject on the grey preview; the other notices carry their own sentence. */
-export const itemPreview = (item: NotificationItem) => item.kind === "run" ? `${item.subject} · ${item.detail}` : item.detail;
+export const itemPreview = (item: NotificationItem) => item.kind === "run" && item.subject !== "" ? `${item.subject} · ${item.detail}` : item.detail;

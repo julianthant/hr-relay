@@ -430,8 +430,8 @@ describe("workflow-layout — the src/workflows/ tree IS the rail and the timeli
     assert.ok(harnessSteps.every((step) => separations.timelineKeys.includes(step)));
     assert.deepEqual(
       separations.timelineKeys.filter((key) => !harnessSteps.includes(key)),
-      ["job-summary"],
-      "job-summary is the declared group proved inside identity-check's harness and has no folder",
+      ["identity-review"],
+      "identity-review is the declared group proved inside identity-check's harness and has no folder",
     );
   });
 

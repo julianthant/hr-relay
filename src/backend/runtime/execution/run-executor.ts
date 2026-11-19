@@ -51,7 +51,7 @@ import { evaluateNodeCondition } from "../../../models/workflow/node-condition.j
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import { planStepOmissions } from "../../../models/workflow/step-omission.js";
 import { jsonLeafPaths } from "../../runs/provenance/task-provenance.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { authenticateStoredParkedWriteRecheck, type AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { createProviderClient, type ProviderAdapterRegistry, type ProviderClientDependencies, type ProviderRequestIdFactory } from "../../processing/providers/provider-client.js";
@@ -60,6 +60,7 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
+import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import { RunResultRecordSchema, AnyRunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunMutationOutcome, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
@@ -83,6 +84,19 @@ type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 type ChildRunRuntimeNode = Extract<RuntimeFlowNode, { kind: "child-run" }>;
 type TaskRuntimeNode = Extract<RuntimeFlowNode, { kind: "task" }>;
 
+export function requestedPayPathRecheck(
+  repositories: Pick<AuthorityRepositories, "writeIntents"> & Parameters<typeof authenticateStoredParkedWriteRecheck>[0],
+  run: RunRecord,
+  node: TransactionRuntimeNode,
+) {
+  if (run.envelope.dryRun || run.envelope.startAt !== node.id || node.commit.uses.id !== "ucpath/submit-paypath-work-study") return undefined;
+  const matches = repositories.writeIntents.listByRun(run.envelope.runId).filter(intent => intent.status === "parked"
+    && intent.taskId === node.commit.uses.id && intent.runAttempt === run.envelope.attempt && intent.recheck?.nodeId === node.id);
+  if (matches.length > 1) throw new RunContinuationRefusedError("paypath-recheck-intent-ambiguous");
+  const [intent] = matches;
+  if (intent?.status !== "parked" || intent.recheck === undefined) return undefined;
+  return authenticateStoredParkedWriteRecheck(repositories, intent, intent.recheck);
+}
 
 export interface WriteSequencerContext {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -250,6 +264,7 @@ class RunAbandonedError extends Error {
 }
 
 class RunPauseRequestedError extends RunAbandonedError {}
+class RunCancellationRequestedError extends RunAbandonedError {}
 
 /** The worker's abort of the current step for a pause or stop request it read from the run. */
 export class RunControlAbortError extends Error {
@@ -401,16 +416,16 @@ export async function executeClaimedRun(
     checkPause(getRun());
   };
 
+  const workerTransition = (current: RunRecord, lifecycle: RunLifecycle): RunMutationOutcome => deps.lifecycle.workerTransition({
+    commandId: lifecycleCommandId("executor-transition", { runId, generation: claim.claimGeneration, version: current.version }),
+    runId, claim, lifecycle,
+    ...(lifecycle.state === "parked-gate" ? { expectedVersion: current.version } : {}),
+  });
+
   const transitionTo = (lifecycle: RunLifecycle): RunRecord => {
     const current = getRun();
-    checkCancellation();
-    const outcome = deps.lifecycle.workerTransition({
-      commandId: lifecycleCommandId("executor-transition", { runId, generation: claim.claimGeneration, version: current.version }),
-      runId,
-      claim,
-      lifecycle,
-    });
-    return requireLifecycleApplied(outcome);
+    checkCancellation(current);
+    return requireLifecycleApplied(workerTransition(current, lifecycle));
   };
 
   const runningLifecycle = (currentNodeId?: NodeId): RunLifecycle => RunLifecycleSchema.parse({
@@ -462,14 +477,8 @@ export async function executeClaimedRun(
     }));
   };
 
-  const checkCancellation = (): void => {
-    const current = getRun();
-    if (pendingInterruptOf(current) !== "stop-requested") return;
-    requireLifecycleApplied(deps.lifecycle.terminalize({
-      kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
-      runId, expectedVersion: current.version, claim, endedAt: instant(),
-    }, descriptor));
-    throw new RunAbandonedError("cancelled");
+  const checkCancellation = (current = getRun()): void => {
+    if (pendingInterruptOf(current) === "stop-requested") throw new RunCancellationRequestedError("cancelled");
   };
 
 
@@ -656,7 +665,7 @@ export async function executeClaimedRun(
             ...(current.delegationRefresh === undefined ? {} : { refreshCommandId: current.delegationRefresh.commandId, claimGeneration: current.claimGeneration }) }),
           terminal: { result: built.record, authorization },
         }, descriptor, built.authorization);
-        if (accounting === undefined && outcome.state === "refused" && outcome.refusal.reason === "lost")
+        if (outcome.state === "refused" && outcome.refusal.reason === "lost")
           throw new RunTerminalAdmissionLostError(outcome, authorization.expectedVersion);
         requireLifecycleApplied(outcome);
       };
@@ -684,11 +693,14 @@ export async function executeClaimedRun(
         throw new Error(`run ${runId} has no validated canonical input; entry validation must have refused`);
       }
       const picked: Record<string, JsonValue> = {};
+      const asserted: string[] = [];
       for (const dependency of dependsOn) {
         const value = outputs[String(dependency)];
         if (value !== undefined) picked[String(dependency)] = value;
+        if (value !== undefined && omissionPlan.asserted.has(String(dependency))) asserted.push(String(dependency));
       }
-      return { input: canonicalInput, outputs: Object.freeze(picked),
+      return { input: canonicalInput, outputs: Object.freeze(picked), references: runWorkbookReferenceTypeIds(getRun().input.workbookReferences),
+        ...(asserted.length === 0 ? {} : { asserted }),
         ...(envelope.dryRun ? { dryRun: { transactions: [...dryRunSteps.values()].filter(step => step.state === "transaction-preview") } } : {}),
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
@@ -705,6 +717,7 @@ export async function executeClaimedRun(
       const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
       if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
+      const asserted: string[] = [];
       for (const dependency of dependsOn) {
         const dependencyNode = nodes.find(node => node.id === dependency);
         if (conditions && (dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
@@ -712,6 +725,7 @@ export async function executeClaimedRun(
         const checkpoint = pick(source, dependency);
         const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
         if (checkpoint !== undefined) {
+          if (checkpoint.assertion !== undefined) asserted.push(String(dependency));
           values[String(dependency)] = dependencyNode?.kind === "transaction"
             ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope", { checkpoint, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) })) : checkpoint.output.value;
         }
@@ -725,7 +739,8 @@ export async function executeClaimedRun(
           throw new RunContinuationRefusedError("run-continuation-input-context-unavailable");
         }
       }
-      return { input: source.input.parsed.value, outputs: values,
+      return { input: source.input.parsed.value, outputs: values, references: runWorkbookReferenceTypeIds(source.input.workbookReferences),
+        ...(asserted.length === 0 ? {} : { asserted }),
         protectedInputBindings: retainedRunProtectedBindings(source) };
     };
     // Mirrors sourceScopeFor's walk: a child reached directly or through a conditional dependency is authenticated only there.
@@ -746,6 +761,39 @@ export async function executeClaimedRun(
     }
 
     const startNode = startIndex === undefined ? undefined : nodes[startIndex];
+    const startsAtPayPath = startNode?.kind === "transaction" && startNode.commit.uses.id === "ucpath/submit-paypath-work-study";
+    // A Saved recheck needs the original fenced target. Fresh reads could bind it to another position.
+    const payPathRecheckInputs = !startsAtPayPath ? undefined : deps.authority.withAuthorityTransaction?.(repositories => {
+      const intent = requestedPayPathRecheck(repositories, initial, startNode);
+      if (intent === undefined) return undefined;
+      const ancestors = new Set(nodes.slice(0, startIndex).filter(node => node.kind === "task").map(node => node.id));
+      const checkpoints = new Map<string, RunCheckpointRecord>();
+      const fencedAt = Date.parse(intent.fencedAt);
+      // Native replay records retain the source checkpoint, even when it belongs to another run.
+      for (let after = 0; ;) {
+        const page = repositories.timelineEvents.page({ runId, after, limit: 1000 });
+        for (const { eventId, source, payload, occurredAt } of page) {
+          if (source.kind !== "native") continue;
+          if (payload.kind === "write-parked" && payload.writeIntentId === intent.writeIntentId && payload.generation === intent.generation) return checkpoints;
+          if (payload.kind !== "checkpoint-recorded" && payload.kind !== "checkpoint-replayed") continue;
+          const reference = payload.checkpoint;
+          if (payload.runId !== runId || payload.workflow !== descriptor.id || payload.attempt !== envelope.attempt
+            || payload.claimGeneration >= claim.claimGeneration || Date.parse(occurredAt) > fencedAt
+            || Date.parse(reference.writtenAt) > fencedAt || !ancestors.has(reference.nodeId)) continue;
+          if (payload.kind === "checkpoint-replayed" && eventId !== lifecycleCommandId("timeline-checkpoint-replayed", {
+            runId, nodeId: reference.nodeId, claimGeneration: payload.claimGeneration,
+          })) throw new RunContinuationRefusedError("paypath-recheck-replay-identity-mismatch");
+          const record = repositories.runCheckpoints.get(descriptor.id, envelope.itemId, reference.nodeId, reference.attempt, reference.claimGeneration);
+          if (record === undefined || canonicalJsonStringify(timelineCheckpointReference(record)) !== canonicalJsonStringify(reference)) {
+            throw new RunContinuationRefusedError("paypath-recheck-checkpoint-unavailable");
+          }
+          checkpoints.set(reference.nodeId, record);
+        }
+        const last = page.at(-1);
+        if (last === undefined || page.length < 1000) return checkpoints;
+        after = last.cursor;
+      }
+    });
     const previousNode = startIndex === undefined ? undefined : nodes[startIndex - 1];
     const resolvedResumeGate = envelope.continuation === undefined
       ? (startNode?.kind === "gate" ? readContinuationGate(deps.authority.authority, envelope, String(startNode.id)) : undefined)
@@ -775,7 +823,8 @@ export async function executeClaimedRun(
     });
 
     const retainedTransaction = (node: RuntimeFlowNode) => node.kind === "transaction"
-      && envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true;
+      && (payPathRecheckInputs !== undefined && node === startNode
+        || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true);
     const pendingCommits = nodes.filter(node => node.kind === "transaction" && !retainedTransaction(node)
       && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
     // An explicit start node requires every ancestor to resolve without executing it.
@@ -791,6 +840,11 @@ export async function executeClaimedRun(
         continue;
       }
       if (omissionPlan.asserted.has(String(node.id))) {
+        // A typed value stands for a reading that would have run: a node this input never runs stays skipped.
+        if (node.kind === "task" && node.when?.of.from === "input" && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+          plan.set(String(node.id), { mode: "skipped-condition" });
+          continue;
+        }
         const own = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
         const ownRecord = own === undefined ? undefined : RunCheckpointRecordSchema.parse(own);
         const replay = ownRecord !== undefined
@@ -800,6 +854,8 @@ export async function executeClaimedRun(
           ? ownRecord
           : undefined;
         plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
+        // This run's own assertion row is its output; later conditions read it as known.
+        if (replay !== undefined) outputs[String(node.id)] = JsonValueSchema.parse(replay.output.value);
         continue;
       }
       // A dry run re-derives a publication boundary and everything behind it; stored state never stands in.
@@ -823,8 +879,9 @@ export async function executeClaimedRun(
         plan.set(String(node.id), { mode: "execute" });
         continue;
       }
+      const recheckAncestor = payPathRecheckInputs !== undefined && index < (startIndex ?? 0);
       if (node.kind === "task") {
-        if (node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
+        if (!recheckAncestor && node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
           // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
           plan.set(String(node.id), { mode: "execute" });
           continue;
@@ -832,7 +889,9 @@ export async function executeClaimedRun(
         let conditionKnown = true;
         for (const dependency of node.dependsOn) {
           const dependencyEntry = plan.get(String(dependency));
-          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted"
+          if (recheckAncestor && dependencyEntry?.mode === "skipped-condition") continue;
+          if (dependencyEntry === undefined || dependencyEntry.mode === "execute"
+            || dependencyEntry.mode === "asserted" && dependencyEntry.replay === undefined
             || !Object.hasOwn(outputs, String(dependency))) {
             conditionKnown = false;
           }
@@ -845,10 +904,11 @@ export async function executeClaimedRun(
             continue;
           }
         }
-        const stored = retainedAccounting
+        const stored = recheckAncestor ? payPathRecheckInputs.get(node.id) : retainedAccounting
           ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
             .filter(record => record.runId === runId).at(-1)
-          : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
+          : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true,
+            node.when?.of.from === "reference" ? node.when.of.typeId : undefined);
 
         if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined && envelope.continuation === undefined) && stored !== undefined && stored.runId !== runId) {
           if (explicit) {
@@ -886,15 +946,19 @@ export async function executeClaimedRun(
         }
         if (load.found) {
           const record = requireStoredCheckpoint(stored, String(node.id));
-          // A stale always-rerun fact is read again; only checkpoint tasks refuse.
-          if (node.replay === "always-rerun" && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+          // A stale always-rerun fact is read again, and so is a stale ancestor of a plain Start;
+          // only an explicit start node or a continuation refuses a stale checkpoint.
+          const implicitAncestor = !explicit && envelope.continuation === undefined && !retainedAccounting;
+          if (!recheckAncestor && (node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
             replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: record.provenance }],
             scheduled: pendingCommits, now: clock.now(), attempt: envelope.attempt,
             ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) }).length > 0) {
+            if (node.replay !== "always-rerun") ancestorRegionOpen = false;
             plan.set(String(node.id), { mode: "execute" });
             continue;
           }
-          const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency)));
+          const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency))
+            && !(recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"));
           if (!deferred && envelope.continuation !== undefined) {
             const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn, boundAt(record))));
             const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
@@ -941,7 +1005,7 @@ export async function executeClaimedRun(
           });
           continue;
         }
-        if (explicit || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id)) {
+        if (explicit || recheckAncestor || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id)) {
           problems.push(
             `missing context "${node.id}" (${labelOf(node)} → ${node.uses.id}) — ${load.reason}: ${load.detail}; `
             + `replay policy is "checkpoint".`,
@@ -954,7 +1018,8 @@ export async function executeClaimedRun(
       }
       if (node.kind === "gate") {
         if (node.resolvedBy === "operator" && node.when !== undefined
-          && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined)
+          && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined
+            || (recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"))
           && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
           if (readContinuationGate(deps.authority.authority, envelope, String(node.id)) !== undefined) {
             problems.push(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`);
@@ -1035,6 +1100,13 @@ export async function executeClaimedRun(
 
     for (const refusal of omissionPlan.refusals) {
       problems.push(`step omission refused [${refusal.code}]: ${refusal.message}`);
+    }
+    const typedSteps = new Set([...omissionPlan.asserted.values()].map(({ step }) => step));
+    for (const step of typedSteps) {
+      const produced = [...omissionPlan.asserted].filter(([, assertion]) => assertion.step === step).map(([nodeId]) => nodeId);
+      if (produced.every((nodeId) => plan.get(nodeId)?.mode === "skipped-condition")) {
+        problems.push(`step "${step}" carries typed values, but this input runs none of the nodes they stand for (${produced.join(", ")})`);
+      }
     }
     if (problems.length > 0) {
       const failure = buildEntryValidationFailureRecord({
@@ -1138,7 +1210,7 @@ export async function executeClaimedRun(
         descriptor,
         schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority),
         ...(continuationAuthority === undefined ? {} : { continuation: continuationAuthority }),
-        canonicalInput,
+        canonicalInput, references: runWorkbookReferenceTypeIds(getRun().input.workbookReferences),
         execution: {
           runId,
           traceId: envelope.traceId,
@@ -1331,18 +1403,22 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          const captureRefusals: string[] = [];
+          const captureRefusals: Readonly<{ reason: string; detail?: string }>[] = [];
           const screenshotLog: Pick<TaskLogger, "warn"> = { warn: (message, fields) => {
-            if (fields?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && typeof fields.reason === "string") captureRefusals.push(fields.reason);
+            if (fields?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && typeof fields.reason === "string") {
+              const detail = fields.captureFailure;
+              captureRefusals.push(typeof detail === "string" && detail !== fields.reason ? { reason: fields.reason, detail } : { reason: fields.reason });
+            }
             taskLogger.warn(message, fields);
           } };
           let operationFailure: Readonly<{ error: unknown }> | undefined;
           let stopped: Readonly<{ error: unknown }> | undefined;
           const failureCapture: { state: "pending" | "settled" } = { state: "pending" };
-          const failureCaptureRefused = (reason: string): void => {
+          const failureCaptureRefused = (refusal: Readonly<{ reason: string; detail?: string }>): void => {
             if (failureCapture.state === "settled") return;
             failureCapture.state = "settled";
-            failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: `Failure screenshot not taken: ${reason}` });
+            failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: `Failure screenshot not taken: ${refusal.reason}` });
+            if (refusal.detail !== undefined) failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: `Screenshot capture stopped at ${refusal.detail}` });
           };
           try {
             raw = await withBrowserActionNotes(clock,
@@ -1352,8 +1428,14 @@ export async function executeClaimedRun(
                       let captured = false;
                       let captureFailure: Readonly<{ error: unknown }> | undefined;
                       const requiredCapture = async (): Promise<void> => {
+                        const earlierRefusals = captureRefusals.length;
                         try { await captureScreenshot(); captured = true; }
-                        catch (error) { captureFailure = { error }; throw error; }
+                        catch (error) {
+                          captureFailure = { error };
+                          const refusal = captureRefusals.slice(earlierRefusals).at(-1);
+                          if (refusal !== undefined) failureCaptureRefused(refusal);
+                          throw error;
+                        }
                       };
                       let output: unknown;
                       try {
@@ -1368,7 +1450,7 @@ export async function executeClaimedRun(
                         if (captureFailure === undefined || captureFailure.error !== taskFailure) {
                           const earlierRefusals = captureRefusals.length;
                           try { await captureScreenshot(); }
-                          catch { failureCaptureRefused(captureRefusals.slice(earlierRefusals).at(-1) ?? (controller.signal.aborted ? "task-deadline" : "lease-ended")); }
+                          catch { failureCaptureRefused(captureRefusals.slice(earlierRefusals).at(-1) ?? { reason: controller.signal.aborted ? "task-deadline" : "lease-ended" }); }
                         }
                         failureCapture.state = "settled";
                         throw taskFailure;
@@ -1395,7 +1477,7 @@ export async function executeClaimedRun(
             // A deadline or lease fault after the task stopped is recorded beside the task's own failure, not in its place.
             if (stopped === undefined || error === stopped.error || error instanceof RunAbandonedError) throw error;
             if (failureCapture.state === "settled") failureCauses.push(followingFailureCause(error, "The browser lease failed after the task stopped"));
-            else failureCaptureRefused(controller.signal.aborted ? "task-deadline" : "lease-ended");
+            else failureCaptureRefused({ reason: controller.signal.aborted ? "task-deadline" : "lease-ended" });
             throw stopped.error;
           }
         }
@@ -1719,8 +1801,10 @@ export async function executeClaimedRun(
             replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: entry.record.provenance }],
             scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute" && !retainedTransaction(candidate)).map(candidate => candidate.id),
             now: clock.now(), attempt: envelope.attempt, ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) });
-          if (freshness.length > 0) return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
-            problems: freshness, occurredAt: instant() }));
+          if (freshness.length > 0) {
+            transitionTo(runningLifecycle(node.id));
+            return await failNode(node, node.uses.id, new TaskError(node.uses.id, "RESUME_VALIDATION_FAILED", freshness.join("\n")));
+          }
           if (entry.patches !== undefined) {
             let patched: ReturnType<typeof applyCheckpointPatches>;
             try {
@@ -1968,38 +2052,44 @@ export async function executeClaimedRun(
             continue;
           }
           transitionTo(runningLifecycle(node.id));
-          let sourceBinding: unknown;
-          if (node.resolvedBy !== "operator") {
-            if (deps.gateSources === undefined || canonicalInput === undefined) {
-              return await failNode(node, undefined, new Error(
-                `gate "${node.id}" is resolved by ${node.resolvedBy}, but its registered source runtime is unavailable`,
-              ));
-            }
-            try {
-              const current = getRun();
-              sourceBinding = deps.gateSources.bind(node, {
-                run: current,
-                canonicalInput,
-                dependencyOutputs: scopeFor(node.dependsOn).outputs,
-                parkedVersion: current.version + 1,
-              });
-            } catch (error) {
-              return await failNode(node, undefined, error instanceof Error
-                ? error
-                : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
-            }
-          }
-          // A parked write owns durable checkpoints; recovery resumes without inventing task execution.
           await deps.sessions.closeAll("parked");
-          const resumeAt = nodes[index + 1]?.id ?? node.id;
-          transitionTo(RunLifecycleSchema.parse({
-            state: "parked-gate",
-            gateId: GateIdSchema.parse(String(node.id)),
-            parkedAt: instant(),
-            resumeAt,
-            ...(sourceBinding === undefined ? {} : { sourceBinding }),
-          }));
-          return RunExecutionOutcomeSchema.parse({ state: "parked-gate", runId, gateId: String(node.id) });
+          // A new version can carry Cancel or change the version a source gate must bind.
+          for (;;) {
+            const current = getRun();
+            requireOriginalClaim(current);
+            checkCancellation(current);
+            let sourceBinding: unknown;
+            if (node.resolvedBy !== "operator") {
+              if (deps.gateSources === undefined || canonicalInput === undefined) {
+                return await failNode(node, undefined, new Error(
+                  `gate "${node.id}" is resolved by ${node.resolvedBy}, but its registered source runtime is unavailable`,
+                ));
+              }
+              try {
+                sourceBinding = deps.gateSources.bind(node, {
+                  run: current,
+                  canonicalInput,
+                  dependencyOutputs: scopeFor(node.dependsOn).outputs,
+                  parkedVersion: current.version + 1,
+                });
+              } catch (error) {
+                return await failNode(node, undefined, error instanceof Error
+                  ? error
+                  : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
+              }
+            }
+            const resumeAt = nodes[index + 1]?.id ?? node.id;
+            const outcome = workerTransition(current, RunLifecycleSchema.parse({
+              state: "parked-gate",
+              gateId: GateIdSchema.parse(String(node.id)),
+              parkedAt: instant(),
+              resumeAt,
+              ...(sourceBinding === undefined ? {} : { sourceBinding }),
+            }));
+            if (outcome.state === "refused" && outcome.refusal.reason === "lost" && getRun().version > current.version) continue;
+            requireLifecycleApplied(outcome);
+            return RunExecutionOutcomeSchema.parse({ state: "parked-gate", runId, gateId: String(node.id) });
+          }
         }
         case "transaction": {
           transitionTo(runningLifecycle(node.id));
@@ -2306,39 +2396,36 @@ export async function executeClaimedRun(
         if (input.signal.reason instanceof RunControlAbortError) throw new RunPauseRequestedError("resumed");
       } catch (control) { failure = control; }
     }
-    if (failure instanceof RunTerminalAdmissionLostError) {
-      const admissionVersion = failure.admissionVersion;
+    if (failure instanceof RunTerminalAdmissionLostError || failure instanceof RunPauseRequestedError) {
       try {
-        checkCancellation();
-        const acknowledged = deps.authority.withAuthorityTransaction?.(repositories => {
-          const current = getRun();
-          requireOriginalClaim(current);
-          if (pendingInterruptOf(current) === "stop-requested" || !authenticateDelegationRetryPause(repositories, descriptor, current, admissionVersion)) return false;
-          requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-            commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause?.commandId }),
-            runId, claim,
-          }));
-          return true;
-        });
-        if (acknowledged) return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" }) };
-      } catch (admissionFailure) { failure = admissionFailure; }
-    }
-    if (failure instanceof RunPauseRequestedError) {
-      try {
-        checkCancellation();
         const current = getRun();
         requireOriginalClaim(current);
-        const released = requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, ...(current.pause === undefined ? {} : { commandId: current.pause.commandId }) }),
-          runId, claim,
-        }));
-        return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: released.pause === undefined ? "resumed" : "paused" }) };
+        checkCancellation(current);
+        // Resume can withdraw Pause between a lost terminal admission and this read.
+        if (!(failure instanceof RunTerminalAdmissionLostError) || current.version > failure.admissionVersion) {
+          const released = requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+            commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, ...(current.pause === undefined ? {} : { commandId: current.pause.commandId }) }),
+            runId, claim,
+          }));
+          const unpausedReason = failure instanceof RunPauseRequestedError ? "resumed" : "requeued";
+          return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: released.pause === undefined ? unpausedReason : "paused" }) };
+        }
       } catch (pauseFailure) { failure = pauseFailure; }
     }
     // A command can commit cancellation between a boundary read and terminal admission.
     // Settle it here, after any enclosing evidence transaction has unwound.
     if (failure instanceof RunLifecycleRefusedError) {
       try { checkCancellation(); } catch (cancellation) { failure = cancellation; }
+    }
+    if (failure instanceof RunCancellationRequestedError) {
+      try {
+        const settle = () => requireLifecycleApplied(deps.lifecycle.terminalize({
+          kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
+          runId, expectedVersion: getRun().version, claim, endedAt: instant(),
+        }, descriptor));
+        if (deps.authority.withAuthorityTransaction === undefined) settle();
+        else deps.authority.withAuthorityTransaction(settle);
+      } catch (cancellation) { failure = cancellation; }
     }
     if (failure instanceof RunAbandonedError || (failure instanceof RunLifecycleRefusedError
       && failure.outcome.state === "refused" && failure.outcome.refusal.reason === "lost")) {

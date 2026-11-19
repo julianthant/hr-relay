@@ -1,7 +1,7 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { ChevronDown, Download, LogOut, MoreHorizontal, Search, UserPlus, Users, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Download, Loader2, LogOut, MoreHorizontal, Search, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
 import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
-import { type Sheet, tagsOf } from './sheets-v2-model.js';
+import { type Sheet, addTag, stamp, syncFailureWhy, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
 import { MENU } from './sheets-v2-menu.js';
 
 // soft = secondary (grey fill), line = outline (faint border), plain = ghost; primary is only a dialog's confirming action.
@@ -21,9 +21,9 @@ export const Grey = ({ children, className = '' }: { children: ReactNode; classN
 // The workflow chip carries the workflow's sidebar icon (category icons where the rail has one, the workflow's own icon otherwise).
 const WORKFLOW_ICONS: Readonly<Record<string, LucideIcon>> = { 'Person Lookup': Search, Separations: LogOut, Onboarding: UserPlus, 'Emergency Contact': Users };
 export const WorkflowIcon = ({ name }: { name: string }) => { const Icon = WORKFLOW_ICONS[name]; return Icon ? <Icon size={14} aria-hidden className="shrink-0" /> : null; };
-export const Tag = ({ children, workflow }: { children: string; workflow?: boolean }) => {
+export const Tag = ({ children, onRemove, workflow }: { children: string; onRemove?: () => void; workflow?: boolean }) => {
   const Icon = workflow ? WORKFLOW_ICONS[children] : undefined;
-  return <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{Icon && <Icon size={11} aria-hidden />}{children}</span>;
+  return <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[5px] bg-ui-hover px-1.5 text-[11px] text-ui-secondary">{Icon && <Icon size={11} aria-hidden />}{children}{onRemove && <button type="button" aria-label={`Remove tag ${children}`} className={`rounded-sm ${dsFocus}`} onClick={onRemove}><X size={11} aria-hidden /></button>}</span>;
 };
 /** Chips for a spreadsheet: the automatic workflow chip first, then its own tags. */
 export const SheetChips = ({ sheet }: { sheet: Sheet }) => <>{tagsOf(sheet).map(tag => <Tag key={tag} workflow={tag === sheet.workflow}>{tag}</Tag>)}</>;
@@ -52,17 +52,41 @@ export function TagsFit({ sheet }: { sheet: Sheet }) {
   </div>;
 }
 
-export type MenuAction = 'sync' | 'link' | 'rename' | 'delete' | 'download' | 'pin' | 'tags';
+/** Chips with an input that adds a tag on Enter, comma or blur; the library's tag limits apply. */
+export function TagEditor({ tags, onChange }: { tags: readonly string[]; onChange: (tags: readonly string[]) => void }) {
+  const [draft, setDraft] = useState('');
+  const add = () => { const next = addTag(tags, draft); if (next) onChange(next); setDraft(''); };
+  return <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border border-ui-stroke px-2 py-1">
+    {tags.map(tag => <Tag key={tag} onRemove={() => onChange(tags.filter(item => item !== tag))}>{tag}</Tag>)}
+    <input aria-label="Add a tag" maxLength={MAX_TAG_LENGTH} placeholder={tags.length ? '' : 'Add a tag'} value={draft} onChange={event => setDraft(event.target.value)} onBlur={add}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); } }} className="h-5 min-w-16 flex-1 bg-transparent text-[13px] outline-none placeholder:text-ui-muted" />
+  </div>;
+}
+
+/** One line under the SharePoint link: syncing, last synced, last sync failed, or not synced yet. */
+export function SyncStatus({ sheet }: { sheet: Sheet }) {
+  const sync = sheet.sync;
+  if (!sync) return null;
+  if (sync.state === 'running') return <span data-sync="running" className="inline-flex items-center gap-1 text-ui-info"><Loader2 size={11} aria-hidden className="shrink-0 animate-spin motion-reduce:animate-none" /><span className="truncate">Syncing…</span></span>;
+  const failed = sync.lastResult === 'failed', never = sync.lastFinishedAt === undefined;
+  const text = never ? 'Not synced yet' : failed ? 'Sync failed' : `Synced ${stamp(sync.lastFinishedAt!)}`;
+  const line = <span data-sync={never ? 'never' : failed ? 'failed' : 'ok'} title={failed || never ? undefined : `Synced ${stamp(sync.lastFinishedAt!)}`} tabIndex={failed ? 0 : undefined} className={`inline-flex min-w-0 items-center gap-1.5 ${failed ? `text-ui-danger ${dsFocus}` : ''}`}>
+    <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${failed ? 'bg-ui-danger' : never ? 'bg-ui-stroke' : 'bg-ui-positive'}`} /><span className="truncate">{text}</span></span>;
+  return failed ? <Tooltip content={`${syncFailureWhy(sheet)} (${stamp(sync.lastFinishedAt!)})`}>{line}</Tooltip> : line;
+}
+
+export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'rename' | 'tags' | 'delete' | 'download';
 /** Same menu on every row and on the detail page. */
 export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
   const item = (action: MenuAction, text: string) => <DropdownMenuItem onSelect={() => onAction(action)}>{text}</DropdownMenuItem>;
   return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
     {withDownload && item('download', 'Download')}
-    {sheet.sharePoint && item('sync', 'Sync now')}
-    {item('link', sheet.sharePoint ? 'Change SharePoint link…' : 'Link to SharePoint…')}
-    {item('rename', 'Rename')}
     {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
-    {item('tags', 'Edit tags…')}
+    {sheet.sharePoint && (sheet.sync?.state === 'running' ? <DropdownMenuItem disabled>Syncing…</DropdownMenuItem> : item('sync', sheet.sync?.lastResult === 'failed' ? 'Retry sync' : 'Sync now'))}
+    {item('link', sheet.sharePoint ? 'Change SharePoint link…' : 'Link to SharePoint…')}
+    {item('clone', 'Clone')}
+    {item('rename', 'Rename')}
+    {item('tags', 'Edit tags')}
     <DropdownMenuSeparator />
     <DropdownMenuItem variant="destructive" onSelect={() => onAction('delete')}>Delete</DropdownMenuItem>
   </DropdownMenuContent></DropdownMenu>;

@@ -1,13 +1,14 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../workflow-kit/workflow.js";
-import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { PACIFIC_TIME_ZONE } from "../../../models/dashboard/search-calendar.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire, type WorkflowStartReadiness } from "../../../models/dashboard/bootstrap.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
 import { BrowserSystemIdSchema, LOCAL_OPERATOR_ACTOR_ID, WorkflowIdSchema, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
-import { projectStartSteps, startStepWireControl } from "../start/step-selection.js";
+import { projectStartRows, projectStartSteps, startRowWire, startStepWireControl } from "../start/step-selection.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import type { WorkbookLibraryService, WorkbookReferenceWorkflow } from "../../workbooks/workbook-library-service.js";
@@ -26,8 +27,6 @@ export interface BootstrapQueryDeps {
   readonly appVersion: string;
   readonly actorLabel: () => string;
   readonly clock: Clock;
-  /** Composition's local-calendar authority, shared with Activity summaries. */
-  readonly timeZone?: string;
   /** The composition root's own tuple — never a re-listed copy of it. */
   readonly modules: readonly BootstrapModuleView[];
   readonly descriptorSetHash: Fingerprint;
@@ -108,7 +107,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     projectionGeneration: deps.projection.generation(),
     actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: deps.actorLabel() },
-    serverClock: { now: deps.clock.now().toISOString(), zone: deps.timeZone ?? runtimeTimeZone() },
+    serverClock: { now: deps.clock.now().toISOString(), zone: PACIFIC_TIME_ZONE },
     storage: {
       authority: storageAuthority,
     },
@@ -139,6 +138,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         // The modal's Options and Confirm facts use the envelope's descriptor version.
         version: descriptor.version,
         steps: projectWorkflowStartSteps(descriptor),
+        rows: projectStartRows(descriptor).map(startRowWire),
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),
@@ -147,6 +147,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         spreadsheetIntake: intake !== undefined,
         requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
         ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
+        ...(descriptor.workbookCheck === undefined ? {} : { workbookCheck: descriptor.workbookCheck }),
       },
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({

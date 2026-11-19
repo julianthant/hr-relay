@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { it } from "vitest";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/models/config/authority-schema-versions.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import type { StorageRouteDeps } from "../../../../../src/backend/transports/http/routes/storage-types.js";
 import { registerStorageRoutes } from "../../../../../src/backend/transports/http/routes/storage.js";
@@ -8,12 +9,12 @@ import { StorageDoctorLatestWireSchema,StorageDoctorWireSchema,type StorageDocto
 
 const report = StorageDoctorWireSchema.parse({
   mode: "read-only", checkedAt: "2026-09-26T12:00:00.000Z", recovery: { state: "clear" },
-  authority: { state: "healthy", schemaVersion: 1, authorityGeneration: 1, pageCount: 1 },
+  authority: { state: "healthy", schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 1, pageCount: 1 },
   authorityUpgrades: { state: "absent", reason: "journal-empty" },
-  protectedSettings: { state: "unavailable", cause: { code: "unavailable", summary: "unavailable" } },
+  protectedSettings: { state: "unavailable", cause: { code: "authority-unavailable", summary: "unavailable" } },
   counts: { state: "available", values: { pendingCommands: 0, unresolvedWriteIntents: 0, providerReservations: 0, artifactOutbox: 0 } },
-  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] },
-  backup: { state: "missing", cause: { code: "missing", summary: "none" } }, restoreCandidates: [],
+  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, deleted: [] },
+  backup: { state: "missing", cause: { code: "backup-missing", summary: "none" } }, restoreCandidates: [],
   service: { state: "never-run", reason: "none" },
 });
 

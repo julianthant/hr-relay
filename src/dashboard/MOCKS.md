@@ -23,7 +23,8 @@ use the `graphite-warm` theme with `data-demo-theme="dark"`. Fixture processes a
 `helpers/bundle.ts` owns `dist/mock-dashboard` and its input stamp. Fixture/seeded BFF servers use
 ephemeral ports and owned temporary state rather than dashboard runtime ports or live HR state.
 `helpers/workflow-composition.ts` selects the test composition explicitly. `tests/mocks/app-entry.tsx`
-sets the harness flag that `mockParam` in `src/dashboard/app/mock-surfaces.ts` reads, so a served
+sets the harness flag that `mockParam` in `src/dashboard/app/mock-surfaces.ts` reads, and
+`helpers/workflow-composition.ts` hands the app its sample Analytics, Sessions, notifications, search and status frames through `WorkflowComposition.harness`, so a served
 dashboard never shows a mock.
 
 Playwright writes failure artifacts under `tests/mocks/.output/`.
@@ -35,7 +36,7 @@ presentation.
 
 - Search uses first Escape to clear a nonempty query and a second Escape to close.
 - Intake dismisses through the header’s Close control; closing preserves the durable session.
-- An unknown Explorer workflow offers Open Separations as its recovery destination.
+- An unknown Explorer workflow offers the first served workflow as its recovery destination.
 - The desktop canvas stays side by side at 1024×720 and scrolls below the minimum.
 - Queue uses mixed workflow rows, focus mode, one-line footers, `#attempt`, and plain trace text.
 - Review is a blue decision pill; Done with warnings keeps short Done text plus a warning count.
@@ -61,8 +62,7 @@ presentation.
   typed fields, selected header/column import, real XLSX workers and bounded editor history.
   The former Library/Types tabs and Date added column are absent.
 - The HUB Assistant mounts in the shell. Product conversations use the served assistant controller with per-chat cancellation and account authority.
-  Canonical selected-run actions require explicit Confirm and show their exact public plan. Confirmed starts and cancellations resolve in the thread; unknown outcomes retain the disabled card. Other proposals without issued action authority keep confirmation unavailable. Explicit mock composition retains the approved conversation and workflow
-  samples; workbook registration and exact-version reads use the served library.
+  Canonical selected-run actions require explicit Confirm and show their exact public plan. Confirmed starts and cancellations resolve in the thread; unknown outcomes retain the disabled card. Other proposals without issued action authority keep confirmation unavailable. Workbook registration and exact-version reads use the served library; there is no mock conversation.
 - Archive and UI catalog URLs show removal notices; their pages and Queue context menus are absent.
 - Loading skeletons preserve the geometry of the surface they replace.
 

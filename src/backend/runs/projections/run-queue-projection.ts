@@ -8,7 +8,7 @@ import { displayScalar } from "../queries/data.js";
 import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
-import { notificationDisplayContext } from "../queries/notification-display.js";
+import { notificationListProjection } from "./notification-list.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -17,12 +17,10 @@ import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/e
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { localDatePart } from "../../../rules/time/clock.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import {
   DashboardDayWireSchema,
   WorkerCardUnavailableReasonSchema,
-  notificationWireOf,
-  notificationSourceEventOf,
   QUEUE_NOT_STARTING_NO_WORKER,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
@@ -37,6 +35,7 @@ import {
   activityMedian,
   type ActivityLedgerBlock,
   type ActivityReportWire,
+  type ActivityAssistantUsage,
   type ActivityWorkflowTotal,
 } from "../../../models/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
@@ -47,6 +46,8 @@ import {
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
   type Fingerprint,
+  type BrowserSystemId,
+  type IsoInstant,
 } from "../../../rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
@@ -136,6 +137,7 @@ export interface ServedSummaryQueries {
 }
 
 export interface RunQueueProjectionDeps {
+  readonly assistantUsage?: (from: string, to: string, generatedAt: string) => ActivityAssistantUsage;
   readonly timeline: TimelineRepository;
   readonly reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> & { readonly summaries?: ServedSummaryQueries };
   readonly stateRoot: string;
@@ -150,6 +152,7 @@ export interface RunQueueProjectionDeps {
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
     batchMemberRetryAvailable?(run: RunRecord): boolean;
+    aggregateMemberRetryAvailable?(run: RunRecord): boolean;
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
@@ -168,7 +171,7 @@ export interface RunQueueProjectionDeps {
     workerMembers?(): readonly WorkerMemberView[];
     /** Whether a capacity step for the workflow is still starting its members. */
     workerStartupPending?(workflowId: string): boolean;
-    heldDuoSystems?(workerId: string): readonly string[];
+    heldDuoLeases?(workerId: string): readonly { system: BrowserSystemId; since: IsoInstant }[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
     /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
@@ -765,7 +768,7 @@ export class RunQueueProjection {
           }
           continue;
         }
-        const day = localDatePart(new Date(authority.envelope.enqueuedAt));
+        const day = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
         const replacement = this.#surface(row, authority, children.get(runId) ?? [], context);
         const batch = replacement.session;
         if (batch.state === "present" && batch.presentation !== undefined
@@ -786,7 +789,7 @@ export class RunQueueProjection {
           if (this.#parentFact(context, holder)?.visibility === "linked") break;
           const parent = byId.get(holder.envelope.parent.runId);
           if (parent === undefined) throw new ProjectionDegradedError("queue-parent-source-unavailable");
-          if (localDatePart(new Date(parent.envelope.enqueuedAt)) !== day) crossDayMembersChanged = true;
+          if (searchPartitionDay(new Date(parent.envelope.enqueuedAt)) !== day) crossDayMembersChanged = true;
           holder = parent;
         }
         if (crossDayMembersChanged) snapshotNeeded = true;
@@ -848,7 +851,8 @@ export class RunQueueProjection {
       built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
       if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
     }
-    const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version }));
+    const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
+      duoLeases: this.#deps.authority.heldDuoLeases?.(view.member.workerId) }));
     const writeInFlight = built.claimedIds.map((id) => [id, this.#deps.authority.writeInFlight?.(id)]);
     const members = this.#deps.authority.listWorkerSlots?.();
     const startupPending = [...new Set(members?.map(member => member.workflow))].filter(workflowId => this.#deps.authority.workerStartupPending?.(workflowId) === true);
@@ -860,8 +864,18 @@ export class RunQueueProjection {
 
   /* ── the authority join ────────────────────────────────────────────────── */
 
-  #status(authority: RunRecord, delegationWait = this.#deps.authority.delegationWait?.(authority.envelope.runId)): z.infer<typeof QueueSurfaceWireSchema>["status"] {
-    return deriveRunStatus({ ...authority, delegationWait });
+  #operatorWait(authority: RunRecord): QueueSurfaceWire["operatorWait"] {
+    const claim = runClaim(authority);
+    if (claim === undefined) return { state: "absent" };
+    const worker = this.#deps.authority.workerMembers?.().find(view => view.member.workerId === claim.workerId);
+    if (worker?.state !== "running" || worker.activity?.runId !== authority.envelope.runId) return { state: "absent" };
+    const lease = this.#deps.authority.heldDuoLeases?.(claim.workerId)[0];
+    return lease === undefined ? { state: "absent" } : { state: "present", kind: "duo", ...lease };
+  }
+
+  #status(authority: RunRecord, delegationWait = this.#deps.authority.delegationWait?.(authority.envelope.runId), operatorWait = this.#operatorWait(authority)): QueueSurfaceWire["status"] {
+    const status = deriveRunStatus({ ...authority, delegationWait });
+    return status === "running" && operatorWait.state === "present" ? "awaiting-approval" : status;
   }
 
 
@@ -1116,7 +1130,7 @@ export class RunQueueProjection {
   #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
     const known = context.links.get(run.envelope.runId);
     if (known !== undefined) return known;
-    const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))),
+    const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
       panelKind: panelKindOf(run.envelope.shape, this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
@@ -1261,7 +1275,8 @@ export class RunQueueProjection {
     for (const child of children) context.runs.set(child.envelope.runId, child);
     const shape = queued.shape;
     const delegationWait = this.#deps.authority.delegationWait?.(queued.runId);
-    const status = this.#status(authority, delegationWait);
+    const operatorWait = this.#operatorWait(authority);
+    const status = this.#status(authority, delegationWait, operatorWait);
     // Nonterminal rows read no receipt; terminal facts and warnings share one read.
     const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
@@ -1328,6 +1343,7 @@ export class RunQueueProjection {
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
+      operatorWait,
       ...(notStarting === undefined ? {} : { notStarting }),
       ...(status === "cancelled" ? { cancelledBy: cancelledBy(authority) } : {}),
       liveMessage: interrupt?.step === "finish-write" ? { state: "present", value: "Finishing the save first" }
@@ -1362,6 +1378,7 @@ export class RunQueueProjection {
 
         hasReviewPanel: descriptor?.capabilities?.review ?? false,
         batchMemberRetryAvailable: this.#deps.authority.batchMemberRetryAvailable?.(authority) === true,
+        aggregateMemberRetryAvailable: this.#deps.authority.aggregateMemberRetryAvailable?.(authority) === true,
       }),
       rowRevision: authority.version,
     };
@@ -1439,7 +1456,7 @@ export class RunQueueProjection {
       const children = canonicalRunChildren(runs);
       for (const authority of runs) {
         const row = this.#rows.get(authority.envelope.runId);
-        const rowDay = localDatePart(new Date(authority.envelope.enqueuedAt));
+        const rowDay = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
         if (rowDay.startsWith(monthPrefix) && isQueueTopLevel({ parent: this.#parentFact(context, authority) })) {
           monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
         }
@@ -1468,7 +1485,7 @@ export class RunQueueProjection {
     const visibleItems = new Map(surfaces.map(surface => [itemKey(surface.workflowId, surface.itemId),
       { workflowId: surface.workflowId, itemId: surface.itemId }]));
     const attempts = visibleItems.size === 0 ? [] : summaries === undefined ? fixtureRuns?.filter(candidate =>
-      localDatePart(new Date(candidate.envelope.enqueuedAt)) === parsedDay)
+      searchPartitionDay(new Date(candidate.envelope.enqueuedAt)) === parsedDay)
       : summaries.itemAttempts(parsedDay, [...visibleItems.values()]);
     if (attempts === undefined) throw new ProjectionDegradedError("queue-attempt-history-unavailable");
     const surfaceByRunId = new Map(surfaces.map(surface => [surface.runId, surface]));
@@ -1479,7 +1496,7 @@ export class RunQueueProjection {
       const relatedMember = related.has(envelope.runId) && surface !== undefined && isQueueMember(surface)
         && parent?.surfaceKind === "operation" && parent.memberRunIds.includes(envelope.runId);
       if (surface === undefined || (!selectedDayIds.has(envelope.runId) && !relatedMember)
-        || (!relatedMember && localDatePart(new Date(envelope.enqueuedAt)) !== parsedDay)
+        || (!relatedMember && searchPartitionDay(new Date(envelope.enqueuedAt)) !== parsedDay)
         || surface.workflowId !== envelope.workflow || surface.itemId !== envelope.itemId
         || surface.attempt !== envelope.attempt || Number(surface.rowRevision) !== Number(candidate.version)) {
         throw new ProjectionDegradedError("queue-attempt-history-membership-mismatch");
@@ -1527,7 +1544,7 @@ export class RunQueueProjection {
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
           workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
             startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
-            duoSystems: this.#deps.authority.heldDuoSystems?.(member.workerId),
+            duoSystems: this.#deps.authority.heldDuoLeases?.(member.workerId).map(lease => lease.system),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),
             ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
@@ -1580,16 +1597,17 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
-        .map((record) => notificationWireOf(record, this.#deps.clock.nowMs(), notificationDisplayContext(record, {
+      notifications: notificationListProjection(this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID), this.#deps.clock.nowMs(), {
+        display: {
           read: id => this.#deps.reader.read(id),
           descriptor: id => this.#deps.descriptors.resolve(id),
           receipt: id => this.#deps.authority.getReceipt(id),
           presentation: this.#deps,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
           command: id => this.#deps.authority.command?.(id),
-        }), notificationSourceEventOf(record, this.#deps.authority.latestNotificationSource?.(record.notificationId))))
-        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
+        },
+        source: id => this.#deps.authority.latestNotificationSource?.(id),
+      }),
     });
   }
 
@@ -1612,7 +1630,7 @@ export class RunQueueProjection {
     const children = canonicalRunChildren(runs);
     for (const authority of runs) {
       const row = this.#rows.get(authority.envelope.runId);
-      const day = localDatePart(new Date(authority.envelope.enqueuedAt));
+      const day = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
       if (day < start || day > end) continue;
 
       if (authority.envelope.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
@@ -1737,11 +1755,14 @@ export class RunQueueProjection {
     const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
     const typicalMedian = activityMedian(measured.map(entry => entry.ms));
 
+    if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
+    const generatedAt = this.#deps.clock.now().toISOString();
     return ActivityReportWireSchema.parse({
       wireVersion: 1,
       from: start,
       to: end,
-      generatedAt: this.#deps.clock.now().toISOString(),
+      generatedAt,
+      ...this.#deps.assistantUsage(start, end, generatedAt),
       totalRuns: inRange.length,
       terminalRuns,
       inFlightRuns: inRange.length - terminalRuns,

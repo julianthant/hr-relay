@@ -30,7 +30,6 @@ export type SettingsNavIcon =
   | "capabilities"
   | "keyboard"
   | "unrendered"
-  | "subscription"
   | "spreadsheets"
   | "explorer"
   | "activity";
@@ -52,6 +51,7 @@ const EDITOR_SECTIONS = new Set(["general", "display", "performance", "paths", "
 const FOLDED_EDITOR_SECTIONS = new Set(["display", "annual-dates"]);
 const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   display: "general",
+  subscription: "general",
   "annual-dates": "general",
   "runtime-isolation": "general",
   paths: "general",
@@ -111,6 +111,7 @@ export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer
 export const SETTINGS_GEAR_ID = "settings-gear";
 
 export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
+export const DASHBOARD_LOGS_REGION_ID = "dashboard-logs-region";
 
 
 /** Which id to focus when the takeover closes: the gear it was opened from, or
@@ -129,7 +130,6 @@ export function buildSettingsNav(
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
     clientEntry("account", "Account", "credentials"),
-    clientEntry("subscription", "Subscription", "subscription"),
   ] });
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
     .map(section => servedEntry(section.id, section.label)) ?? [];
@@ -180,5 +180,5 @@ export { useSettingsFacts } from "./editor/settings-facts-model.js";
 export type { SettingsFactsState } from "./editor/settings-facts-model.js";
 export { SYSTEM_HOST_PRESENTATION } from "./general/settings-hosts-model.js";
 export type { SystemHostPresentation } from "./general/settings-hosts-model.js";
-export { spanAuthorityProblemDetail,storageNeedsAttention } from "./storage/storage-settings-model.js";
-export type { SpanAuthorityProblem,StorageHealthSummary } from "./storage/storage-settings-model.js";
+export { storageNeedsAttention } from "./storage/storage-settings-model.js";
+export type { StorageHealthSummary } from "./storage/storage-settings-model.js";

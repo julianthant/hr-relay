@@ -22,7 +22,6 @@ import { searchPersonMatchWithPort } from "../../../src/backend/systems/ucpath/d
 import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
 import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
 import { previewRunInput } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { CrmDiscoveredRecordSchema } from "../../../src/models/systems/crm/search-onboarding-records.js";
@@ -56,6 +55,7 @@ interface Case {
 }
 const matchInput = { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", ssn: "123456789" };
 const hit = { emplId: candidate.emplId, name: candidate.name };
+const { ssn: _ssn, ...matchWithoutSsn } = matchInput;
 const cases: readonly Case[] = [
   { id: "S1", state: "active", crm: "Found" },
   { id: "S2", candidates: [{ ...candidate, employeeStatus: "terminated", hrStatus: "Terminated", terminationDate: "09/01/2026", terminationReason: "Resigned" }], state: "inactive" },
@@ -74,7 +74,9 @@ const cases: readonly Case[] = [
   { id: "S15", input: { emplId: candidate.emplId, crmCheck: false }, state: "active", crm: "Not checked" },
   { id: "S16", input: { emplId: candidate.emplId, includeCrmDates: true }, state: "active", dates: true },
   { id: "M1", input: matchInput, matches: { hits: [hit], confirmed: [hit], dropped: [] }, state: "found", crm: "Not checked" },
-  { id: "M1b", input: matchInput, matches: { hits: [hit], confirmed: [], dropped: [{ ...hit, reason: "Person Org name does not match" }] }, state: "not-found-in-ucpath", crm: "Not checked" },
+  { id: "M1b", input: matchWithoutSsn, matches: { hits: [hit], confirmed: [], dropped: [{ ...hit, reason: "Person Org name does not match" }] }, state: "not-found-in-ucpath", crm: "Not checked" },
+  // Name, DOB and SSN with one exact-name hit is that person, even where Person Org shows another name.
+  { id: "M1c", input: matchInput, matches: { hits: [hit], confirmed: [], dropped: [{ ...hit, reason: "Person Org name does not match" }] }, state: "found", crm: "Not checked" },
   { id: "M2", input: matchInput, matches: { hits: [], confirmed: [], dropped: [] }, state: "not-found-in-ucpath", crm: "Not checked" },
   { id: "M3", input: matchInput, matches: { hits: [hit, { ...hit, emplId: other.emplId }], confirmed: [hit, { ...hit, emplId: other.emplId }], dropped: [] }, state: "multiple-matches", code: "PERSON_LOOKUP_MATCH_MULTIPLE_MATCHES" },
   { id: "M5", input: { ...matchInput, crmCheck: true }, matches: { hits: [hit], confirmed: [hit], dropped: [] }, state: "found", crm: "Found" },
@@ -184,7 +186,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(result.state, testCase.state === "failed" ? "failed" : "done", database.authority.failures.listByRun(queued.envelope.runId).map((failure) => failure.summary).join("; "));
     const events = harness.emitter.events();
     const tasks = events.filter((event) => event.t === "span.ended" && event.kind === "task");
-    assert.deepEqual(personLookupDescriptor.timeline.map((step) => step.label), ["Search for person", "Cross-check identity", "Read employment status", "Read CRM dates"]);
+    assert.deepEqual(personLookupDescriptor.timeline.map((step) => step.label), ["Search for person", "Cross-check identity", "Read employment status", "Read CRM dates", "Check reference spreadsheets"]);
     const runEvents = JSON.stringify(database.authority.timelineEvents.page({}));
     assert.equal(runEvents.includes("123456789"), false);
     assert.equal(runEvents.includes("sign-in"), false);
@@ -208,7 +210,7 @@ describe("approved Person Lookup scenarios", () => {
     const verifiedRecord = terminal.dependencies.find(row => row.nodeId === "crm-selected-record")?.state === "resolved";
     assert.equal(agreement.verdict === "verified", verifiedRecord);
     assert.equal(selection.verdict === "verified", output.activeStatus.ucpathSelection === "resolved");
-    if (input.mode === "match") {
+    if (input.mode === "match" && input.ssn !== undefined) {
       const run = database.authority.runs.get(queued.envelope.runId); assert.ok(run);
       const receipt = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, result: terminal,
         checkpoints: database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId) });
@@ -226,7 +228,7 @@ describe("approved Person Lookup scenarios", () => {
     const resolved = !ambiguous && !missing;
     const expectedCrm = testCase.crm ?? (matchMode ? "Not checked" : ambiguous ? "Not found" : missing ? "Not found" : "Found");
     assert.deepEqual(output.activeStatus.details, {
-      search: matchMode ? "Example, Person, 01/15/2000, [masked]" : "emplId" in input ? candidate.emplId : candidate.name,
+      search: matchMode ? `Example, Person, 01/15/2000, ${input.ssn === undefined ? "x" : "[masked]"}` : "emplId" in input ? candidate.emplId : candidate.name,
       name: resolved ? candidate.name : null, eid: resolved ? candidate.emplId : null,
       department: resolved ? matchMode ? expectedCrm === "Found" ? record.department : null : testCase.state === "crm-only" ? record.department : expectedPerson.department : null,
       hrStatus: resolved && !matchMode && testCase.state !== "crm-only" ? expectedPerson.hrStatus : null,
@@ -253,12 +255,14 @@ describe("approved Person Lookup scenarios", () => {
     const order = personLookupDescriptor.nodes.map((node) => String(node.id));
     assert.deepEqual(endedIds, [...endedIds].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
     const statuses = stepStatuses(harness);
-    assert.deepEqual(statuses, ["completed", input.crmCheck && (!matchMode || testCase.state === "found") ? "completed" : "skipped", matchMode ? "skipped" : "completed", testCase.dates ? "completed" : "skipped"]);
+    assert.deepEqual(statuses, ["completed", input.crmCheck && (!matchMode || testCase.state === "found") ? "completed" : "skipped", matchMode ? "skipped" : "completed", testCase.dates ? "completed" : "skipped", "skipped"]);
     const actions = database.authority.timelineEvents.page({}).flatMap((event) => event.payload.kind === "note" && event.payload.note.action !== undefined ? [event.payload.note.action] : []);
     const searchActions = ["ucpath.person-org.summary", "ucpath.person-org.criteria", "ucpath.person-org.search-button"];
     const byName = input.mode === "search" && !("emplId" in input);
     const people = testCase.candidates ?? [candidate];
-    const expectedActions = matchMode ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results", "ucpath.match.last-name-check",
+    const strongMatch = matchMode && "ssn" in input && input.ssn !== undefined && testCase.matches?.hits.length === 1;
+    const expectedActions = strongMatch ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results", "ucpath.match.result"]
+      : matchMode ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results", "ucpath.match.last-name-check",
       ...(testCase.matches?.hits ?? []).flatMap(() => ["ucpath.match.person-org-confirmation", "ucpath.match.confirmed-name"]),
       ...((testCase.matches?.hits.length ?? 0) > 0 ? ["ucpath.match.search", "ucpath.match.criteria", "ucpath.match.search", "ucpath.match.results"] : []), "ucpath.match.result"]
       : [...(byName ? ["ucpath.person-org.search-attempt"] : []), ...searchActions,
@@ -339,7 +343,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.ok(surface);
     const refused = previewRunInput(surface, "Example, Person, x, X", { mode: "match" });
     assert.deepEqual(refused.submissions, []);
-    assert.ok(refused.problem?.includes(ERROR_CATALOG.PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS.text));
+    assert.equal(refused.problem, "Match needs DOB or SSN; both cannot be x.");
     assert.equal(PersonLookupInput.safeParse({ mode: "match", lastName: "Example", firstName: "Person", dob: "x" }).success, false);
   });
   it("F3", async () => {
@@ -364,7 +368,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.ok(events.length > 0);
     assert.equal(JSON.stringify(database.authority.timelineEvents.page({}).filter(event => event.payload.kind === "note")).includes(".login"), false);
     assert.ok(events.some(event => typeof event === "object" && event !== null && "reason" in event && event.reason === "login-failed"));
-    assert.deepEqual(stepStatuses(harness), system === "crm" ? ["completed", "failed", "not-started", "not-started"] : ["failed", "not-started", "not-started", "not-started"]);
+    assert.deepEqual(stepStatuses(harness), system === "crm" ? ["completed", "failed", "not-started", "not-started", "not-started"] : ["failed", "not-started", "not-started", "not-started", "not-started"]);
     if (system !== "crm") assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
     }
   });
@@ -380,7 +384,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(database.authority.runs.get(queued.envelope.runId)?.lifecycle.state, "terminal");
     assert.equal(harness.sessions.opens(), 0);
     assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
-    assert.deepEqual(stepStatuses(harness), ["not-started", "not-started", "not-started", "not-started"]);
+    assert.deepEqual(stepStatuses(harness), ["not-started", "not-started", "not-started", "not-started", "not-started"]);
     const running = await makeCase({ id: "F4-midrun", state: "cancelled", onCrmSearch: () => {
       const run = running.harness.authority.database.authority.runs.get(running.queued.envelope.runId); assert.ok(run);
       assert.equal(testRunService(running.harness.authority.database, running.harness.authority.clock).transition({ commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }).state, "applied");
@@ -390,7 +394,7 @@ describe("approved Person Lookup scenarios", () => {
     const checkpoints = running.harness.authority.database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, midClaim.run.envelope.itemId);
     assert.ok(checkpoints.some(checkpoint => checkpoint.nodeId === "searching"));
     assert.equal(checkpoints.some(checkpoint => checkpoint.nodeId === "active-status"), false);
-    assert.deepEqual(stepStatuses(running.harness), ["completed", "completed", "not-started", "not-started"]);
+    assert.deepEqual(stepStatuses(running.harness), ["completed", "completed", "not-started", "not-started", "not-started"]);
     const cancelled = running.harness.authority.database.authority.runs.get(midClaim.run.envelope.runId); assert.ok(cancelled);
     assert.ok(cancelled.lifecycle.state === "terminal"); assert.equal(cancelled.lifecycle.outcome, "cancelled");
 

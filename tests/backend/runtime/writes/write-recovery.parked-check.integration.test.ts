@@ -255,7 +255,7 @@ describe("held-only parked write checks", () => {
       handlers: createWorkerChildControls({ sessions: () => sessions, signal: controller.signal, pause: () => null, resume: () => null,
         checkParkedWrite: async (_sessions, admitted) => checkParkedWrite({ ...h.input, target: admitted.target, signal: controller.signal, sessions,
           probe: { ...h.input.probe, scheduler } }) }) });
-    const message = { kind: "worker-request", requestId: UUID_2, sentAt: NOW, deadlineMs: 180_000,
+    const message = { kind: "worker-request", requestId: UUID_2, sequence: 1, sentAt: NOW, deadlineMs: 180_000,
       request: { type: "check-parked-write", command: JsonValueSchema.parse(request) } };
     channel.receive(message);
     try {

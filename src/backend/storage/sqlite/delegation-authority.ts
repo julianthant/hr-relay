@@ -3,7 +3,7 @@ import { readRunCheckpoint, RunContinuationRefusedError, captureRunContinuation,
 import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
 import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
-import { authenticateRootRun, authenticateRunPriority } from "./delegation-root-authority.js";
+import { authenticateRootRun, authenticateRunPriority, type RootRunProof } from "./delegation-root-authority.js";
 import { z } from "zod";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { DependencyRecord } from "../../../rules/workflow/dependencies.js";
@@ -11,6 +11,7 @@ import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { ChildTerminalDependencySchema, RunResultRecordSchema, readRunPreviewResult, terminalEvidenceResult, DelegationTerminalDependencySchema, DelegationTerminalEvidenceSchema, delegationDependencyRecord } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { delegationChildInputFingerprint, delegationPlanFingerprint } from "../../../models/workflow/delegation.js";
+import { delegatedStepOmissions } from "../../../models/workflow/step-omission.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -44,10 +45,18 @@ type DelegationGroupProof = { parent: RunRecord; invocation: OriginalDelegationP
     terminal: (Exclude<ReturnType<typeof readChildTerminalSettlement>, undefined> & { run: RunRecord }) | undefined;
   })[] };
 type MemoizedProofs<Proof> = Map<string, { manifest: string; proof: Proof }>;
-/** Proofs already authenticated against one repositories object, each bound to the exact manifest it was authenticated for. */
-export type DelegationAuthenticationMemo = { originals: MemoizedProofs<OriginalDelegationProof>; groups: MemoizedProofs<DelegationGroupProof> };
+/** Successful authentications against one repositories object, each bound to the exact manifest or run it was authenticated for; a refused home is not kept. */
+export type DelegationAuthenticationMemo = { originals: MemoizedProofs<OriginalDelegationProof>; groups: MemoizedProofs<DelegationGroupProof>;
+  roots: Map<string, { run: string; proof: RootRunProof }>; homes: Map<string, string>;
+  parents: Map<string, ReadonlyMap<string, QueueParent>> };
 
-export const newDelegationAuthenticationMemo = (): DelegationAuthenticationMemo => ({ originals: new Map(), groups: new Map() });
+export const newDelegationAuthenticationMemo = (): DelegationAuthenticationMemo => ({ originals: new Map(), groups: new Map(), roots: new Map(), homes: new Map(), parents: new Map() });
+
+/** Authenticates against the open read snapshot's memo and copies the result out of it; outside a read snapshot the memo lasts for this one call. */
+function authenticated<Result>(repositories: AuthorityRepositories, authenticate: (memo: DelegationAuthenticationMemo) => Result): Result {
+  const shared = repositories.dependencies.snapshotMemo(repositories);
+  return shared === undefined ? authenticate(newDelegationAuthenticationMemo()) : structuredClone(authenticate(shared));
+}
 
 function memoizedProof<Proof>(proofs: MemoizedProofs<Proof>, manifest: DelegationManifest): Proof | undefined {
   const cached = proofs.get(manifest.manifestId);
@@ -57,12 +66,14 @@ function memoizedProof<Proof>(proofs: MemoizedProofs<Proof>, manifest: Delegatio
 export const memoizedDelegationGroup = (memo: DelegationAuthenticationMemo, manifest: DelegationManifest) => memoizedProof(memo.groups, manifest);
 
 export function authenticateOriginalDelegationGroup(repositories: AuthorityRepositories, manifest: DelegationManifest, scopePath = new Set<string>()): OriginalDelegationProof {
-  return authenticateOriginalGroup(repositories,manifest,scopePath,newDelegationAuthenticationMemo());
+  return authenticated(repositories,memo => authenticateOriginalGroup(repositories,manifest,scopePath,memo));
 }
 
+/** A caller that passes its own memo copies the proof itself. */
 export function authenticateDelegationGroup(repositories: AuthorityRepositories, manifest: DelegationManifest, scopePath = new Set<string>(),
-  memo = newDelegationAuthenticationMemo()): DelegationGroupProof {
-  return authenticateGroup(repositories,manifest,scopePath,memo);
+  memo?: DelegationAuthenticationMemo): DelegationGroupProof {
+  return memo === undefined ? authenticated(repositories,shared => authenticateGroup(repositories,manifest,scopePath,shared))
+    : authenticateGroup(repositories,manifest,scopePath,memo);
 }
 
 function authenticateOriginalGroup(repositories: AuthorityRepositories, manifest: DelegationManifest, scopePath: Set<string>, memo: DelegationAuthenticationMemo): OriginalDelegationProof {
@@ -151,6 +162,7 @@ function authenticateOriginalGroup(repositories: AuthorityRepositories, manifest
       "configSnapshotId", "configFingerprint", "requestedInstance", "resolvedInstance", "shape", "dryRun", "browserMode",
       "captureBrowserScreenshots", "recovery", "stepOmissions", "sourceBound", "parent", "retryOf"] as const;
     if (creationFields.some(field => canonicalJsonStringify(requested[field] ?? null) !== canonicalJsonStringify(child.envelope[field] ?? null))
+      || canonicalJsonStringify(child.envelope.stepOmissions ?? null) !== canonicalJsonStringify(delegatedStepOmissions(parent.envelope.stepOmissions, invocation.target.workflowId) ?? null)
       || requested.appVersion !== child.appVersion || requested.sessionId !== child.sessionId) throw new Error("delegation-child-options-authority-mismatch");
     if (canonicalJsonStringify(valueFreeProtectedData(child.input, retainedRunProtectedBindings(child))) !== canonicalJsonStringify(requested.input)
       || canonicalJsonStringify(child.envelope.resolvedInstance) !== canonicalJsonStringify(requested.resolvedInstance)
@@ -203,6 +215,11 @@ function authenticateGroup(repositories: AuthorityRepositories, manifest: Delega
   return proof;
 }
 
+function groupForProjection(repositories: AuthorityRepositories, manifest: DelegationManifest) {
+  const memo = repositories.dependencies.snapshotMemo(repositories);
+  return memo === undefined ? repositories.dependencies.authenticateGroup(manifest) : authenticateGroup(repositories, manifest, new Set(), memo);
+}
+
 export function childTerminalSettlement(child: RunRecord, repositories: AuthorityRepositories) {
   return readChildTerminalSettlement(child,() => repositories.runResults.get(child.envelope.runId));
 }
@@ -247,8 +264,9 @@ export function readDelegationEvidence(repositories: AuthorityRepositories, pare
   return evidence;
 }
 
-export function readDelegationInvocationEvidence(repositories: AuthorityRepositories, commandId: string, scopePath = new Set<string>(), cited?: z.infer<typeof DelegationTerminalDependencySchema> | z.infer<typeof ChildTerminalDependencySchema>) {
-  return readInvocationEvidence(repositories, commandId, scopePath, cited, newDelegationAuthenticationMemo());
+export function readDelegationInvocationEvidence(repositories: AuthorityRepositories, commandId: string, scopePath = new Set<string>(),
+  cited?: z.infer<typeof DelegationTerminalDependencySchema> | z.infer<typeof ChildTerminalDependencySchema>): z.infer<typeof DelegationTerminalEvidenceSchema> {
+  return authenticated(repositories, memo => readInvocationEvidence(repositories, commandId, scopePath, cited, memo));
 }
 
 function readInvocationEvidence(repositories: AuthorityRepositories, commandId: string, scopePath: Set<string>,
@@ -301,6 +319,16 @@ function readInvocationEvidence(repositories: AuthorityRepositories, commandId: 
 }
 
 export function authenticateDescendantHome(repositories: AuthorityRepositories, candidate: RunRecord, homeWorkflow: string): boolean {
+  const homes = repositories.dependencies.snapshotMemo(repositories)?.homes;
+  if (homes === undefined) return authenticateHome(repositories, candidate, homeWorkflow);
+  const key = canonicalJsonStringify([candidate.envelope.runId, homeWorkflow]), run = canonicalJsonStringify(candidate);
+  if (homes.get(key) === run) return true;
+  const home = authenticateHome(repositories, candidate, homeWorkflow);
+  if (home) homes.set(key, run);
+  return home;
+}
+
+function authenticateHome(repositories: AuthorityRepositories, candidate: RunRecord, homeWorkflow: string): boolean {
   const ancestry: RunRecord[] = [], visited = new Set<string>();
   let child = candidate;
   while (true) {
@@ -319,7 +347,12 @@ export function authenticateDescendantHome(repositories: AuthorityRepositories, 
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
     const selected = delegationGroupForChild(repositories,parent.envelope.runId,member.envelope.runId);
     if (index === 0 && !selected.group.children.some(entry => entry.child.envelope.runId === member.envelope.runId)) throw new Error("delegation-dispatch-membership-unavailable");
-    if (parent.cancelRequested === true && selected.manifest.policy.cascadeCancel !== "independent") return false;
+    // A child carrying its own cancel request stays in its home only to settle: queued, it is claimed to end cancelled before any step;
+    // claimed, it keeps its claim while this attempt's fenced write settles once (committed, or parked UNKNOWN), then ends at its next boundary.
+    if (parent.cancelRequested === true && selected.manifest.policy.cascadeCancel !== "independent"
+      && (member.cancelRequested !== true || runClaim(member) !== undefined
+        && !repositories.writeIntents.listByRun(member.envelope.runId).some(intent => (intent.status === "attempting" || intent.status === "committed" || intent.status === "parked")
+          && intent.runAttempt === member.envelope.attempt))) return false;
   }
   return true;
 }
@@ -447,7 +480,7 @@ function readReleasedDelegation(repositories: AuthorityRepositories, parent: Run
       || canonicalJsonStringify(manifest.policy) !== canonicalJsonStringify(leaf.policy)
       || manifest.inputSchemaHash !== deriveSchemaHash(leaf.target.input, "input")
       || manifest.resultSchemaHash !== deriveSchemaHash(leaf.target.result, "output"))) throw new Error("delegation-manifest-binding-mismatch");
-    repositories.dependencies.authenticateGroup(manifest);
+    groupForProjection(repositories, manifest);
     const scope = readDelegationScopeEvidence(repositories, parent, request.scopeEvidence);
     if (sha256Hex(canonicalJsonStringify(valueFreeProtectedData(scope))) !== request.observedScopeDigest) throw new Error("delegation-approval-binding-mismatch");
     manifests.push(manifest);
@@ -603,7 +636,7 @@ export function delegationAccountingExecution(repositories: AuthorityRepositorie
   const groups = retainedGroups.filter(({ group }) => group.invocation.nodeId === plan.joinNodeId);
   if (!groups.some(({ group }) => group.children.some(member => member.attempt === "retry"))) return;
   if (groups.length !== 1 || parent.envelope.startAt !== undefined || parent.envelope.injected !== undefined
-    || (parent.envelope.stepOmissions?.length ?? 0) > 0) throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
+    || ((parent.envelope.stepOmissions?.length ?? 0) > 0 && groups.some(({ group }) => group.children.length > 1))) throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
   const retainedScope = groups.flatMap(({ group }) => readDelegationScopeEvidence(repositories, parent, group.invocation.scopeEvidence));
   const snapshot = () => {
     const current = repositories.runs.get(parent.envelope.runId);
@@ -678,21 +711,38 @@ function assertOrdinaryChild(parent: RunRecord["envelope"], child: RunRecord["en
 /** Includes every physical sibling for each requested parent. */
 export function readQueueParents(repositories: AuthorityRepositories, envelopes: readonly RunRecord["envelope"][]) {
   const result = new Map<string, QueueParent | null>();
+  const memo = repositories.dependencies.snapshotMemo(repositories);
   const parents = new Set(envelopes.flatMap(envelope => envelope.parent === undefined ? [] : [envelope.parent.runId]));
   for (const parentId of parents) {
     const parent = repositories.runs.get(parentId);
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
-    const manifests = retainedDelegationManifests(repositories, parentId);
-    const children = repositories.runs.listChildren(parentId);
-    if (manifests.length === 0) {
-      for (const child of children) {
-        assertOrdinaryChild(parent.envelope, child.envelope);
-        result.set(child.envelope.runId, { runId: parentId, visibility: child.envelope.shape === "operation-member" ? "inline" : "linked" });
-      }
-      continue;
+    let facts = memo?.parents.get(parentId);
+    if (facts === undefined) {
+      facts = readQueueParentFacts(repositories, parent);
+      memo?.parents.set(parentId, facts);
     }
+    for (const [runId, fact] of facts) result.set(runId, { ...fact });
+  }
+  for (const envelope of envelopes) {
+    if (envelope.parent === undefined) result.set(envelope.runId, null);
+    else if (result.get(envelope.runId)?.runId !== envelope.parent.runId) throw new Error("queue-parent-source-unavailable");
+  }
+  return result;
+}
+
+function readQueueParentFacts(repositories: AuthorityRepositories, parent: RunRecord) {
+  const parentId = parent.envelope.runId;
+  const result = new Map<string, QueueParent>();
+  const manifests = retainedDelegationManifests(repositories, parentId);
+  const children = repositories.runs.listChildren(parentId);
+  if (manifests.length === 0) {
+    for (const child of children) {
+      assertOrdinaryChild(parent.envelope, child.envelope);
+      result.set(child.envelope.runId, { runId: parentId, visibility: child.envelope.shape === "operation-member" ? "inline" : "linked" });
+    }
+  } else {
     const edges = new Map<string, DependencyRecord>();
-    for (const manifest of manifests) for (const member of repositories.dependencies.authenticateGroup(manifest).children) {
+    for (const manifest of manifests) for (const member of groupForProjection(repositories, manifest).children) {
       for (const runId of member.history) edges.set(runId, member.dependency);
     }
     for (const child of children) {
@@ -701,10 +751,6 @@ export function readQueueParents(repositories: AuthorityRepositories, envelopes:
         || child.envelope.parent.tracePrefix !== parent.envelope.traceId) throw new Error("delegation-child-membership-unavailable");
       result.set(child.envelope.runId, { runId: parentId, visibility: edge.policy.visibility });
     }
-  }
-  for (const envelope of envelopes) {
-    if (envelope.parent === undefined) result.set(envelope.runId, null);
-    else if (result.get(envelope.runId)?.runId !== envelope.parent.runId) throw new Error("queue-parent-source-unavailable");
   }
   return result;
 }
@@ -756,11 +802,12 @@ export function readDelegationReadiness(repositories: AuthorityRepositories, run
   return result;
 }
 
-export function readDelegationScopeEvidence(repositories: AuthorityRepositories, parent: RunRecord, references: z.infer<typeof DelegationScopeEvidenceSchema>, scopePath = new Set<string>()) {
-  return readScopeEvidence(repositories, parent, references, scopePath, newDelegationAuthenticationMemo());
+export function readDelegationScopeEvidence(repositories: AuthorityRepositories, parent: RunRecord, references: z.infer<typeof DelegationScopeEvidenceSchema>,
+  scopePath = new Set<string>()): ReturnType<typeof readScopeEvidence> {
+  return authenticated(repositories, memo => readScopeEvidence(repositories, parent, references, scopePath, memo));
 }
 
-/** One memo per top-level authentication, so a group cited by several scope references is authenticated once. */
+/** One memo per read snapshot or top-level authentication, so a group cited by several scope references is authenticated once. */
 function readScopeEvidence(repositories: AuthorityRepositories, parent: RunRecord, references: z.infer<typeof DelegationScopeEvidenceSchema>,
   scopePath: Set<string>, memo: DelegationAuthenticationMemo) {
   return references.map(reference => {

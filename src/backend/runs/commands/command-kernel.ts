@@ -17,12 +17,13 @@ import { PreflightEvidenceExpiredError, PreflightAdmissionRefusal,type Preflight
 import { localDatePart } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import { runtimeBuildIsCurrent } from "../../runtime/build-id.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { executeFailureResolution } from "../lifecycle/failure-resolution.js";
-import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
+import { assertOcrReviewChildrenCurrent,assertOcrSelectionCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
 import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
 import { admitProtectedInput,protectedSubjectDisplay } from "../start/protected-input.js";
@@ -70,7 +71,7 @@ import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type Target
 import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
-import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference, runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
@@ -285,7 +286,7 @@ export interface CommandKernelDependencies {
   readonly authorityInstallationId?: string;
   readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
   readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
-  readonly workflowSources?: Readonly<Record<string, "mock" | "served" | "hidden">>;
+  readonly workflowSources?: Readonly<Record<string, "served" | "hidden">>;
   /** The pinned assistant workflow facts; a change stales every outstanding assistant proposal. */
   readonly assistantFactsSha256?: () => string;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
@@ -525,8 +526,10 @@ function readStartPlan(
   for (const planned of plan.planned) {
     const captured = planned.workbookReferences ?? [];
     const sources: { libraryId: string; sheetId: string }[] = [];
-    const requirement = descriptor.workbookReference;
-    if (requirement === undefined ? captured.length !== 0 : captured.length < 1 || captured.length > MAX_SELECTED_WORKBOOK_SOURCES) {
+    const requirement = descriptor.workbookReference, check = descriptor.workbookCheck;
+    const checkCount = check === undefined ? 0 : captured.filter(bound => parseRunWorkbookReference(bound).request.typeId === check.id).length;
+    const requiredCount = captured.length - checkCount;
+    if (requirement === undefined ? requiredCount !== 0 : requiredCount < 1 || requiredCount > MAX_SELECTED_WORKBOOK_SOURCES) {
       reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
     }
     for (const bound of captured) {
@@ -534,9 +537,17 @@ function readStartPlan(
         const reference = parseRunWorkbookReference(bound);
         const snapshot = reference.snapshot;
         const worksheet = snapshot.worksheets[0];
-        if (requirement === undefined || snapshot.worksheets.length !== 1 || worksheet === undefined
-          || !("versionId" in snapshot) || snapshot.versionId === undefined
-          || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if (snapshot.worksheets.length !== 1 || worksheet === undefined
+          || !("versionId" in snapshot) || snapshot.versionId === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if (check !== undefined && reference.request.typeId === check.id) {
+          const recaptured = captureReference({ kind: "selected-source", typeId: check.id, keyFieldId: check.keyFieldId,
+            fields: [check.keyFieldId], writableFields: [], mode: "keys", keys: [], libraryId: snapshot.libraryId,
+            versionId: snapshot.versionId, sheetId: worksheet.sheetId, expectedVersion: snapshot.version });
+          if (canonicalJsonStringify(bindRunWorkbookReference(reference.request, recaptured)) !== canonicalJsonStringify(bound))
+            throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+          continue;
+        }
+        if (requirement === undefined || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const refreshed = captureReference({
           kind: "selected-source", typeId: requirement.id, keyFieldId: requirement.keyFieldId,
           fields: descriptor.requiredWorkbookFields, writableFields: requirement.writableFields,
@@ -572,6 +583,9 @@ function executeStartRun(
   now: string,
 ): CommandApplication {
   const { descriptor, plan, selectedSources } = readStartPlan(dependencies, repositories, request, now);
+  if (!runtimeBuildIsCurrent()) {
+    reject(request, "RUN_START_RESTART_REQUIRED", ERROR_CATALOG.RUN_START_RESTART_REQUIRED.text);
+  }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
@@ -1757,6 +1771,7 @@ function executeResolveGate(
       approvedBy: request.requestedBy, approvedAt: now });
     if (!parsed.success) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     const snapshot = parsed.data;
+    assertOcrSelectionCurrent(review.revision.seed, snapshot.records);
     if (canonicalJsonStringify(parsedValue.data) !== canonicalJsonStringify({ snapshotId: snapshot.snapshotId,
       sourceRunId: snapshot.sourceRunId, revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) })) reject(request, "schema-mismatch", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     repositories.ocrReviews.approve(snapshot);
@@ -1909,7 +1924,7 @@ function gateEvidenceScope(
     return outputs[nodeId]!;
   };
   for (const dependency of gate.dependsOn) buildOutput(String(dependency));
-  return { input, outputs, checkpoints };
+  return { input, outputs, checkpoints, references: runWorkbookReferenceTypeIds(run.input.workbookReferences) };
 }
 
 function valueAtPath(value: unknown, path: string): unknown {
@@ -2188,7 +2203,7 @@ async function executeWorkerPoolCommand(
           throw error;
         }
       };
-      const { member, result } = transact(repositories => {
+      const { member, result, releaseClaimHold } = transact(repositories => {
         repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
         requireMemberFence(pool, request);
@@ -2200,9 +2215,18 @@ async function executeWorkerPoolCommand(
           ...workerPauseHeldRuns(repositories, member.workerId, "paused").map(held => journaledResetCancel(repositories, held, true))];
         const reset = applied(request, [workerTarget(member.workerId), ...cancels.flatMap(cancel => cancel.result.state === "applied" ? cancel.result.affectedTargets : [])],
           cancels.flatMap(cancel => cancel.versionChanges), cancels.flatMap(cancel => cancel.affectedDependencyIds));
-        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset) };
+        const slot = repositories.workerSlots.get(member.workerId);
+        if (slot === undefined) throw new Error("worker-slot-not-found");
+        if (!slot.paused) repositories.workerSlots.setPaused({ workerId: member.workerId, paused: true, now });
+        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset), releaseClaimHold: !slot.paused };
       });
-      try { await pool.stop(member.workerId, "reset"); await pool.start(member); }
+      try { await pool.stop(member.workerId, "reset"); }
+      catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; return result; }
+      // Stop proves the old process exited. Keep any pause that preceded the Reset.
+      if (releaseClaimHold) transact(repositories => repositories.workerSlots.setPaused({
+        workerId: member.workerId, paused: false, now: dependencies.clock.now().toISOString(),
+      }));
+      try { await pool.start(member); }
       catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }
       return result;
     }
@@ -2212,7 +2236,8 @@ async function executeWorkerPoolCommand(
       const result = transact(repositories => {
         if (!paused) repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
-        requireMemberFence(pool, request);
+        const state = requireMemberFence(pool, request);
+        if (!paused && state === "stopping") reject(request, "invalid-state", "WORKER_EXIT_UNOBSERVED");
         if (!paused && workerPauseHeldRuns(repositories, member.workerId, "requested").length !== 0) reject(request, "WORKER_PAUSE_SETTLING", ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
         const slot = repositories.workerSlots.setPaused({ workerId: member.workerId, paused, now });
         // Worker Pause holds its claimed run (the step restarts on Resume); Resume releases only the runs that pause held. A pending cancel wins.
@@ -2375,16 +2400,11 @@ function dispatchActive(
       if (request.type === "pause-all-and-quit" && dependencies.applicationQuitAvailable !== true) reject(request, "capability-unavailable", "Application quit host is unavailable.");
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", "Application commands require the dashboard operator.");
       if (repositories.runtimeConfig.get()?.generation !== request.target.runtimeGeneration) reject(request, "runtime-stale", "Application runtime changed.");
-      const active: RunRecord[] = [];
-      const pageSize = 1000;
-      for (let offset = 0; ; offset += pageSize) {
-        const page = repositories.runs.listPage({ offset, limit: pageSize });
-        active.push(...page.filter(run => run.lifecycle.state !== "terminal"));
-        if (page.length < pageSize) break;
-      }
-      if (new Set(request.payload.targets.map(target => target.runId)).size !== request.payload.targets.length
+      const active = repositories.runs.listNonTerminal();
+      const targets = new Map(request.payload.targets.map(target => [target.runId, target.expectedVersion]));
+      if (targets.size !== request.payload.targets.length
         || active.length !== request.payload.targets.length
-        || active.some(run => !request.payload.targets.some(target => target.runId === run.envelope.runId && target.expectedVersion === run.version))) {
+        || active.some(run => targets.get(run.envelope.runId) !== run.version)) {
         reject(request, "policy-refused", "Active run membership changed; reload before pausing all.");
       }
       const changes: VersionChange[] = [];
@@ -2411,6 +2431,9 @@ function dispatchActive(
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const current = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
       if (current === undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      const descriptors = dependencies.readableDescriptors ?? dependencies.descriptors;
+      const descriptor = resolveDescriptorOrReject({ ...dependencies, descriptors }, request, current.run.envelope.workflow);
+      requireDescriptorMatchesEnvelope(request, descriptor, current.run);
       if (readOcrSnapshotsAuthority(repositories, current).length > 0) throw new OcrReviewRefusedError();
       if (current.revision.revision !== request.target.expectedRevision) conflict(request, current.revision.revision, ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const revision = repositories.ocrReviews.append(reviseOcrReview(current.revision, request, now), current.revision.revision);
@@ -2444,7 +2467,8 @@ function dispatchActive(
         case "retry":
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
-        case "cancel": return executeCancel(dependencies, repositories, request, now);
+        // Stop on a run: a claimed run's fenced write finishes and settles once, then the tree ends cancelled.
+        case "cancel": return executeCancel(dependencies, repositories, request, now, true);
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);

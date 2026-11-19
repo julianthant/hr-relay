@@ -35,9 +35,9 @@ it("normalizes Search people, removes a duplicate identity from the textbox and 
   assert.equal(parsed.querySelectorAll(".ds-run-row").length, 3);
   assert.match(parsed.textContent ?? "", /3 runs/u);
   await dialog.press("Continue");
-  await dialog.press("Continue");
+  await dialog.press("Start run");
   const submissions = StartPlanRequestSchema.parse(request).submissions;
-  const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: false };
+  const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: true };
   assert.deepEqual(submissions, [{ ...search, emplId: "10000001" }, { ...search, emplId: "10000002" }, { ...search, name: "Other, Person" }]);
   for (const submission of submissions) assert.deepEqual(PersonLookupInput.parse(submission), submission);
 });
@@ -99,7 +99,7 @@ it.each([";", "|"])("preserves two Match tuples through Search blur before the m
   assert.equal(parsed.textContent?.includes("902481357"), false);
   assert.match(parsed.textContent ?? "", /\[masked\]/u);
   await dialog.press("Continue");
-  await dialog.press("Continue");
+  await dialog.press("Start run");
   assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [
     { mode: "match", lastName: "Example", firstName: "First", dob: "01/15/2000", crmCheck: false, includeCrmDates: false },
     { mode: "match", lastName: "Other", firstName: "Second", ssn: "902481357", crmCheck: false, includeCrmDates: false },

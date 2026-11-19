@@ -69,6 +69,9 @@ it("retains selected physical row authority with explicit library, version and a
   assert.equal(WorkbookActiveSelectionSchema.safeParse({ entry: 1, selectedRow }).success, false);
   assert.equal(WorkbookActiveSelectionSchema.safeParse({ entry: 1, typeId: request.typeId,
     libraryId: request.libraryId, versionId: request.versionId, sheetId: selectedRow.sheetId,
+    expectedVersion: 1 }).success, true);
+  assert.equal(WorkbookActiveSelectionSchema.safeParse({ entry: 1, keys: request.keys,
+    libraryId: request.libraryId, versionId: request.versionId, sheetId: selectedRow.sheetId,
     expectedVersion: 1 }).success, false);
   assert.equal(WorkbookActiveSelectionSchema.safeParse({ entry: 1, libraryId: request.libraryId,
     versionId: request.versionId, sheetId: selectedRow.sheetId }).success, false);

@@ -10,9 +10,15 @@ import { assistantMessageStream, completedAssistantStream } from "../../support/
 import { createAssistantService, type AssistantServiceOptions } from "../../../src/backend/assistant/service.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { AssistantAuthorizationError } from "../../../src/backend/assistant/authorization.js";
-import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
+import { AssistantWorkflowFactsError, assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
+import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
+import { createAssistantProposals } from "../../../src/backend/assistant/proposals.js";
+import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
+import { PreflightAdmissionRefusal } from "../../../src/rules/preflight/preflight-admission.js";
+import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
@@ -23,7 +29,8 @@ const WireSchema = AssistantInferenceRequestSchema.safeExtend({ store: z.literal
   include: z.tuple([z.literal("reasoning.encrypted_content")]) });
 
 type Step = string | ((body: z.infer<typeof AssistantInferenceRequestSchema>) => string);
-async function world(input: { tools?: readonly AssistantTool[]; options?: Partial<AssistantServiceOptions> } = {}) {
+async function world(input: { tools?: readonly AssistantTool[] | ((db: Awaited<ReturnType<typeof openBoundDatabaseFixture>>) => readonly AssistantTool[]);
+  options?: Partial<AssistantServiceOptions> } = {}) {
   const db = await openBoundDatabaseFixture("assistant-service-test", systemClock, 250, undefined, undefined, undefined, profiles.create);
   const owned = await chatGptFixture(db.profile.admission);
   const f = { ...owned, async cleanup() { await owned.cleanup(); await db.close(); } };
@@ -43,7 +50,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
   const echo: AssistantTool = { kind: "read", tier: "read", name: "echo", description: "Echo a value with references expanded.", parameters: Echo, output: EchoOutput,
     privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value, context) { invoked.push("echo"); return { value: context.references.expandArgument(Echo.parse(value).value, ["E"]) }; } };
-  const plugin: AssistantPlugin = { domain: "test", tools: input.tools ?? [echo] };
+  const plugin: AssistantPlugin = { domain: "test", tools: typeof input.tools === "function" ? input.tools(db) : input.tools ?? [echo] };
   const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => FACTS,
     owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), plugins: () => [plugin],
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent: () => { if (!preferenceCurrent) throw new Error("assistant-model-preference-changed"); } }),
@@ -254,6 +261,20 @@ it("refuses before inference without plugins, with a failed facts pin or a model
       assert.equal(w.posts(), 0);
     } finally { await w.f.cleanup(); }
   }
+});
+
+it("logs which served workflow's facts failed to load in the mirrored dashboard log, without personal data", async () => {
+  const lines: Record<string, unknown>[] = [], timeline = debugTimelineFixture();
+  const debugEvents = createDebugEventWriter({ repository: timeline.repository, clock: systemClock, build: "test", development: true,
+    writeStderr(line) { lines.push(z.record(z.string(), z.unknown()).parse(JSON.parse(line))); } });
+  const w = await world({ options: { debugEvents, facts: () => { throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_STALE", "onboarding"); } } });
+  try {
+    assert.deepEqual(await w.ask("hi PRIVATE_CANARY"), { state: "refused", code: "ASSISTANT_CONTEXT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_CONTEXT_UNAVAILABLE });
+    const context = lines.filter(line => line.area === "assistant-context");
+    assert.deepEqual(context.filter(line => line.code === "ASSISTANT_CONTEXT_UNAVAILABLE").map(line => line.reason), ["onboarding"]);
+    assert.ok(context.some(line => line.code === "ASSISTANT_WORKFLOW_FACTS_STALE"));
+    assert.equal(JSON.stringify(lines).includes("CANARY"), false);
+  } finally { await w.f.cleanup(); }
 });
 
 it("refuses an invalid selected run before inference", async () => {
@@ -505,6 +526,127 @@ it("refuses a whole send whose attachment text exceeds the context bound, withou
   } finally { await w.f.cleanup(); }
 });
 
+it("keeps no references from a send refused for its size after assembly, so a later send in the chat gets fresh ones", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    // 2 attachment references and 498 distinct EID-shaped values fill the 500-entry table exactly; together the files exceed the 48 KiB text bound.
+    const half = (from: number) => new TextEncoder().encode(Array.from({ length: 249 }, (_, index) => String(20_000_000 + from + index)).join("\n").padEnd(26 * 1024, "A"));
+    const ids = [await stagedId(w, conversationId, "a.txt", "text/plain", half(0)), await stagedId(w, conversationId, "b.txt", "text/plain", half(249))];
+    const refused = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(refused.kind === "result" && refused.result.state === "refused" && refused.result.code, "ASSISTANT_ATTACHMENT_TOO_LARGE");
+    assert.equal(w.posts(), 0);
+    w.script.push(assistantMessageStream("Found."));
+    assert.deepEqual(await w.ask("Look up 30000000", undefined, conversationId), { state: "answered", text: "Found." });
+    const [body] = w.bodies; assert.ok(body);
+    assert.match(userTexts(body).at(-1) ?? "", /^Look up \[\[E1\.g\d+\]\]$/u);
+  } finally { await w.f.cleanup(); }
+});
+
+it("never replays a refused or delivery-unknown turn or its attachments, and keeps both in local history", async () => {
+  let slug = "gpt-unlisted";
+  const w = await world({ options: { selectedModel: () => ({ preference: { slug, effort: "medium" }, assertCurrent: () => {} }) } });
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const refusedIds = [await stagedId(w, conversationId, "scan.png", "image/png", PNG),
+      await stagedId(w, conversationId, "refused.txt", "text/plain", new TextEncoder().encode("REFUSED_ATTACHMENT_SENTINEL"))];
+    const refused = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "REFUSED_TURN_SENTINEL",
+      attachments: refusedIds }, new AbortController().signal);
+    assert.deepEqual(refused.kind === "result" && refused.result.state === "refused" && refused.result.code, "ASSISTANT_MODEL_UNAVAILABLE");
+    assert.equal(w.posts(), 0);
+
+    slug = "gpt-6.1-sol";
+    const unknownIds = [await stagedId(w, conversationId, "unknown.txt", "text/plain", new TextEncoder().encode("UNKNOWN_ATTACHMENT_SENTINEL"))];
+    w.script.push(assistantMessageStream("Half an answer").split("\n\n").slice(0, 3).join("\n\n") + "\n\n");
+    const unknown = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "UNKNOWN_TURN_SENTINEL",
+      attachments: unknownIds }, new AbortController().signal);
+    assert.equal(unknown.kind === "delivery" && unknown.receipt.delivery, "delivery-unknown");
+
+    w.script.push(assistantMessageStream("Plain answer."));
+    assert.deepEqual(await w.ask("Plain follow-up", undefined, conversationId), { state: "answered", text: "Plain answer." });
+    const follow = w.bodies.at(-1); assert.ok(follow);
+    const serialized = JSON.stringify(follow.input);
+    for (const sentinel of ["REFUSED_TURN_SENTINEL", "REFUSED_ATTACHMENT_SENTINEL", "UNKNOWN_TURN_SENTINEL", "UNKNOWN_ATTACHMENT_SENTINEL", Buffer.from(PNG).toString("base64").slice(0, 64)])
+      assert.equal(serialized.includes(sentinel), false, sentinel);
+    assert.deepEqual(userParts(follow), []);
+    assert.deepEqual(userTexts(follow), ["Plain follow-up"]);
+    assert.deepEqual(w.service.conversation(conversationId)?.messages.map(row => [row.kind, row.delivery, row.text, row.attachments.map(file => file.name)]), [
+      ["turn", "refused", "REFUSED_TURN_SENTINEL", ["scan.png", "refused.txt"]], ["turn", "delivery-unknown", "UNKNOWN_TURN_SENTINEL", ["unknown.txt"]],
+      ["turn", "answered", "Plain follow-up", []], ["answer", "settled", "Plain answer.", []]]);
+  } finally { await w.f.cleanup(); }
+});
+
+it("masks spaced, hyphenated, mixed and unseparated SSNs in the composer text and its replay while keeping EID references", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(), masked = /^SSN \[redacted SSN\], \[redacted SSN\], \[redacted SSN\], \[redacted SSN\] and \[redacted SSN\]; EID \[\[E1\.g\d+\]\]$/u;
+    w.script.push(assistantMessageStream("Noted."), assistantMessageStream("Again."));
+    assert.deepEqual(await w.ask("SSN 123 45 6789, 123-45-6789, 123-456789, 12345 6789 and 123456789; EID 10812345", undefined, conversationId), { state: "answered", text: "Noted." });
+    assert.deepEqual(await w.ask("Next", undefined, conversationId), { state: "answered", text: "Again." });
+    const [first, second] = w.bodies; assert.ok(first && second);
+    for (const body of [first, second]) assert.equal(JSON.stringify(body.input).includes("6789"), false);
+    assert.match(userTexts(first)[0] ?? "", masked);
+    assert.match(userTexts(second)[0] ?? "", masked);
+  } finally { await w.f.cleanup(); }
+});
+
+it("masks an SSN a stored answered turn or its stored reply still holds when replaying them, keeping stored references, model text and local text", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(), messageId = randomUUID(), history = w.db.database.authority.assistantHistory, now = w.f.clock.now().toISOString();
+    const stored = "SSN 123 45 6789 for [[E1.g1]]";
+    assert.equal(history.accept({ conversationId, expectedRevision: w.revision(conversationId), messageId, text: stored, modelText: stored, subjectRef: null, attachments: [], now }).state, "accepted");
+    const echoed = "Noted 123-45-6789 and 123456789 for [[E1.g1]].";
+    assert.equal(typeof history.settle(conversationId, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Noted.", modelText: echoed } }, now), "number");
+    w.script.push(assistantMessageStream("Again."));
+    assert.deepEqual(await w.ask("Next", undefined, conversationId), { state: "answered", text: "Again." });
+    const [body] = w.bodies; assert.ok(body);
+    for (const digits of ["6789", "123456789"]) assert.equal(JSON.stringify(body.input).includes(digits), false, digits);
+    assert.deepEqual(userTexts(body), ["SSN [redacted SSN] for [[E1.g1]]", "Next"]);
+    assert.deepEqual(assistantTexts(body), ["Noted [redacted SSN] and [redacted SSN] for [[E1.g1]]."]);
+    assert.deepEqual(w.service.conversation(conversationId)?.messages.map(row => row.text), [stored, "Noted.", "Next", "Again."]);
+    assert.deepEqual(history.replay(conversationId, 3).map(row => row.modelText), [stored, echoed]);
+  } finally { await w.f.cleanup(); }
+});
+
+it("keeps no references from a send refused while its request was assembled, so a later send in the chat gets fresh ones", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const many = Array.from({ length: 500 }, (_, index) => String(20_000_000 + index)).join("\n");
+    const ids = [await stagedId(w, conversationId, "many.txt", "text/plain", new TextEncoder().encode(many))];
+    const refused = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(refused.kind === "result" && refused.result.state === "refused" && refused.result.code, "ASSISTANT_LIMIT");
+    assert.equal(w.posts(), 0);
+    w.script.push(assistantMessageStream("Found."));
+    assert.deepEqual(await w.ask("Look up 30000000", undefined, conversationId), { state: "answered", text: "Found." });
+    const [body] = w.bodies; assert.ok(body);
+    assert.equal(JSON.stringify(body.input).includes("30000000"), false);
+    assert.match(userTexts(body).at(-1) ?? "", /^Look up \[\[E1\.g\d+\]\]$/u);
+  } finally { await w.f.cleanup(); }
+});
+
+it("masks a text attachment's decoded content like the composer text, on first send and on replay", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const ids = [await stagedId(w, conversationId, "notes.txt", "text/plain", new TextEncoder().encode("SSN 123-45-6789 / 123 45 6789\nEID 10812345 [[E9.g1]]"))];
+    w.script.push(assistantMessageStream("Read."), assistantMessageStream("Again."));
+    const first = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(first.kind === "result" && first.result, { state: "answered", text: "Read." });
+    assert.deepEqual(await w.ask("And now?", undefined, conversationId), { state: "answered", text: "Again." });
+    for (const body of w.bodies) {
+      assert.equal(JSON.stringify(body.input).includes("6789"), false);
+      assert.equal(JSON.stringify(body.input).includes("10812345"), false);
+      const [parts] = userParts(body); assert.ok(parts);
+      assert.match(JSON.stringify(parts.at(-1)), /^\{"type":"input_text","text":"SSN \[redacted SSN\] \/ \[redacted SSN\]\\nEID \[\[E1\.g\d+\]\] \[ \[E9\.g1\] \]"\}$/u);
+    }
+  } finally { await w.f.cleanup(); }
+});
+
 it("issues the selected run's useful first label with its pin and sends only its token to inference", async () => {
   const id = randomUUID(), version = 3, label = "Person Lookup · EID 10000001 · 2026-11-08T12:00:00Z · attempt 1";
   const selected: AssistantTool = { kind: "read", tier: "read", name: "selected_reference", description: "Return the selected reference without personal data.",
@@ -531,5 +673,79 @@ it("refuses a changed selected row before inference instead of issuing a generic
     assert.deepEqual(await w.ask("Explain", undefined, undefined, { subjectRef: `run_${randomUUID()}_1` }),
       { state: "refused", code: "ASSISTANT_READ_STALE", message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
     assert.equal(w.posts(), 0);
+  } finally { await w.f.cleanup(); }
+});
+
+/** The served proposal owner over the real start planner; Separations readiness is blocked, as on a profile whose Separations checks fail. */
+function separationsProposalTools(db: Awaited<ReturnType<typeof openBoundDatabaseFixture>>, readiness: () => void) {
+  seedInitialSettingsRuntimeConfig(db.database, systemClock);
+  const config = db.database.authority.runtimeConfig.get(); assert.ok(config);
+  const resolve = (id: string) => DESCRIPTORS.find(descriptor => descriptor.id === id);
+  const unused = () => { throw new Error("unused before readiness"); };
+  const plans = createStartPlanService({ authority: db.database, authorityRead: db.database, descriptors: { resolve }, clock: systemClock, ids: { uuid: randomUUID },
+    planTtlMs: 600_000, configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, plannedBy: "local-operator",
+    preflight: { prepare: () => Promise.resolve(undefined as never), read: unused, assertReady: readiness } });
+  return createAssistantProposals({ database: db.database, plans, descriptors: { resolve }, served: () => true, actorId: "local-operator", clock: systemClock, assertCurrent() {},
+    authorization: unused as never, kernel: unused as never, commands: unused as never, workbooks: unused, attachment: unused, ocrSources: unused,
+    runs: { read: unused }, rerunValues: unused }).plugin.tools;
+}
+
+it("hands the model a Separations dry-run proposal refused by readiness under its readiness code and logs it", async () => {
+  const events: Record<string, unknown>[] = [];
+  const w = await world({ tools: db => separationsProposalTools(db, () => { throw new PreflightAdmissionRefusal("blocked", "Preflight blocks this scope: PRIVATE_CANARY."); }),
+    options: { debugEvents: { emit(event) { events.push(event); } } } });
+  try {
+    w.script.push(call("propose_workflow_start", { workflow: "separations", entries: ["1234"] }), body => {
+      assert.deepEqual(lastOutput(body), { error: "RUN_START_READINESS_BLOCKED", text: ASSISTANT_FAILURES.RUN_START_READINESS_BLOCKED });
+      return assistantMessageStream("Separations is not ready to start.");
+    });
+    assert.deepEqual(await w.ask("Prepare an unconfirmed Separations dry-run proposal for Kuali document 1234."),
+      { state: "refused", code: "RUN_START_READINESS_BLOCKED", message: ASSISTANT_FAILURES.RUN_START_READINESS_BLOCKED });
+    assert.ok(events.some(event => event.code === "RUN_START_READINESS_BLOCKED" && event.area === "assistant-tool"));
+    assert.equal(JSON.stringify(events).includes("CANARY"), false);
+  } finally { await w.f.cleanup(); }
+});
+
+it("logs an unclassified tool failure before answering that the assistant is unavailable", async () => {
+  const events: Record<string, unknown>[] = [];
+  const w = await world({ tools: db => separationsProposalTools(db, () => { throw new Error("PRIVATE_CANARY 1234"); }),
+    options: { debugEvents: { emit(event) { events.push(event); } } } });
+  try {
+    w.script.push(call("propose_workflow_start", { workflow: "separations", entries: ["1234"] }));
+    assert.deepEqual(await w.ask("Prepare a Separations dry run for 1234."),
+      { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE });
+    assert.ok(events.some(event => event.code === "ASSISTANT_UNAVAILABLE" && event.area === "assistant-turn"));
+    assert.ok(events.some(event => event.message === "Error"));
+    assert.equal(JSON.stringify(events).includes("CANARY"), false);
+  } finally { await w.f.cleanup(); }
+});
+
+it("answers the model list from memory after the first read and reads it again after a sign-in change", async () => {
+  const w = await world();
+  try {
+    const reads = () => w.f.calls.filter(call => call.url.endsWith("/models")).length;
+    const before = reads();
+    const first = await w.service.models(new AbortController().signal);
+    assert.equal(reads(), before + 1);
+    w.f.setModels({ models: [{ slug: "other", display_name: "Other", visibility: "list" }] });
+    assert.deepEqual(await w.service.models(new AbortController().signal), first);
+    assert.equal(reads(), before + 1);
+    await w.f.service.signOut(); await w.f.connected();
+    const afterSignIn = reads();
+    assert.deepEqual(await w.service.models(new AbortController().signal), { models: [{ slug: "other", displayName: "Other" }] });
+    assert.equal(reads(), afterSignIn + 1);
+  } finally { await w.f.cleanup(); }
+});
+
+it("never remembers a failed model list read", async () => {
+  const w = await world();
+  try {
+    const reads = () => w.f.calls.filter(call => call.url.endsWith("/models")).length;
+    w.f.setModelsHook(async () => new Response("unavailable", { status: 503 }));
+    const before = reads();
+    await assert.rejects(w.service.models(new AbortController().signal));
+    w.f.setModelsHook(async () => Response.json({ models: [{ slug: "gpt-6.1-sol", display_name: "Sol", visibility: "list" }] }));
+    assert.deepEqual(await w.service.models(new AbortController().signal), { models: [{ slug: "gpt-6.1-sol", displayName: "Sol" }] });
+    assert.equal(reads(), before + 2);
   } finally { await w.f.cleanup(); }
 });

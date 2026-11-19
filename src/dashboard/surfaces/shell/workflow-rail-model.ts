@@ -1,21 +1,26 @@
 import { useCallback, useState } from "react";
-import { MOCK_WORKFLOWS } from "../workflows/mocks/workflow-mock-catalog.js";
+import { WORKFLOW_SOURCES } from "../../app/workflow-sources.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
-import { groupWorkflowsByCategory, workflowCategoryLabel, type WorkflowCategoryGroup } from "../workflows/workflow-category.js";
+import { groupWorkflowsByCategory, type WorkflowCategoryGroup } from "../workflows/workflow-category.js";
 
 export interface WorkflowNavigationEntry {
   readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole;
 }
 
-const CATEGORY_ORDER = ["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
+const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
 
-export function workflowRailCategory(id: string, categoryId: string): string {
-  return MOCK_WORKFLOWS.find(flow => flow.id === id)?.category ?? workflowCategoryLabel(categoryId);
+const WORKFLOW_ORDER: readonly string[] = Object.keys(WORKFLOW_SOURCES);
+
+/** The one place a workflow's position is decided: the order the dashboard workflow sources declare. A workflow they do not list follows the listed ones, in the order given. */
+function workflowPosition(id: string): number {
+  const index = WORKFLOW_ORDER.indexOf(id);
+  return index < 0 ? WORKFLOW_ORDER.length : index;
 }
 
 export function workflowNavigationGroups<Entry extends WorkflowNavigationEntry>(entries: readonly Entry[]): WorkflowCategoryGroup<Entry>[] {
+  const ordered = [...entries].sort((left, right) => workflowPosition(left.id) - workflowPosition(right.id));
   const rank = (category: string) => { const index = CATEGORY_ORDER.findIndex(label => label === category); return index < 0 ? CATEGORY_ORDER.length : index; };
-  return groupWorkflowsByCategory(entries).sort((left, right) => rank(left.label) - rank(right.label));
+  return groupWorkflowsByCategory(ordered).sort((left, right) => rank(left.label) - rank(right.label));
 }
 
 const words = (label: string) => label.split(/[\s-]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean);

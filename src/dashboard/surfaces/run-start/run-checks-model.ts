@@ -1,0 +1,88 @@
+import { useCallback, useEffect, useState } from "react";
+import { PreflightSelectionSchema, type PreflightReadinessWire } from "../../../models/preflight/preflight-contract.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { readWithDeadline } from "../../client/read-deadline.js";
+import type { PreflightQueries } from "../../client/queries/preflight-queries.js";
+import type { SettingsQueries } from "../../client/queries/settings-queries.js";
+import { useDashboardCommandBinding } from "../../state/client-context.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { CHECK_COPY } from "../settings/preflight/preflight-check-copy.js";
+import { runCheckFix, runCheckHint } from "../settings/preflight/preflight-remedy-model.js";
+
+export type RunCheckVerdict = "pass" | "warning" | "fail";
+export interface RunCheckRow {
+  readonly check: string;
+  readonly title: string;
+  readonly description: string;
+  readonly verdict: RunCheckVerdict;
+  /** The Settings section a failed, fixable check opens, and the button's name; absent means nothing to fix here. */
+  readonly fix?: Readonly<{ section: string; label: string; target?: string }>;
+}
+
+export type RunChecksState =
+  | Readonly<{ state: "checking" }>
+  | Readonly<{ state: "ready"; rows: readonly RunCheckRow[] }>
+  | Readonly<{ state: "unavailable"; message: string }>;
+
+const RANK: Readonly<Record<RunCheckVerdict, number>> = { fail: 0, warning: 1, pass: 2 };
+
+/** Every check of the served report as a row, problems first; text comes from the readiness check copy. */
+export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
+  if (wire.state !== "present") return { state: "unavailable", message: wire.reason };
+  const rows = wire.report.results.map((result): RunCheckRow => {
+    const copy = CHECK_COPY[result.check];
+    if (copy === undefined) throw new Error(`Run check "${result.check}" has no readiness copy`);
+    const fix = result.status === "fail" ? runCheckFix(result.check) : null;
+    const description = result.status === "pass" ? copy.description
+      : result.status === "fail" && fix === null ? `${runCheckHint(result.check)} ${result.summary}` : result.summary;
+    return { check: result.check, title: copy.name, description,
+      verdict: result.status, ...(fix === null ? {} : { fix }) };
+  });
+  return { state: "ready", rows: rows.map((row, index) => ({ row, index })).sort((a, b) => RANK[a.row.verdict] - RANK[b.row.verdict] || a.index - b.index).map(({ row }) => row) };
+}
+
+/** Start stays off until every check was read and none failed; warnings do not block. */
+export const runChecksBlocked = (state: RunChecksState): boolean =>
+  state.state !== "ready" || state.rows.some(row => row.verdict === "fail");
+
+/** Prepares missing exact-scope evidence and explicitly reruns it on `recheck`. */
+export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings">, workflowId: string | undefined, active: boolean): Readonly<{ state: RunChecksState; recheck: () => void }> {
+  const binding = useDashboardCommandBinding();
+  const actorId = binding?.scope.actorId;
+  const authority = binding?.authority.epoch;
+  const [state, setState] = useState<RunChecksState>({ state: "checking" });
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (!active || workflowId === undefined) return;
+    let current = true;
+    setState({ state: "checking" });
+    const check = async (): Promise<PreflightReadinessWire | undefined> => {
+      const selection = PreflightSelectionSchema.parse({ workflowId });
+      if (round === 0) {
+        const wire = await readWithDeadline(() => client.readPreflight(selection), "PREFLIGHT_READ_UNAVAILABLE");
+        if (!current || wire.state === "present") return wire;
+      }
+      if (actorId === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
+      const [settings, workflows] = await readWithDeadline(() => Promise.all([client.editableSettings(), client.preflightScopes()]), "PREFLIGHT_SCOPE_UNAVAILABLE");
+      if (!current) return;
+      const workflow = workflows.find(candidate => candidate.id === workflowId);
+      if (workflow === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
+      if (settings.runtimeStatus.state !== "current") return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SETTINGS_RESTART_REQUIRED.text };
+      await readWithDeadline(() => client.rerunPreflight({
+        commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: actorId,
+        source: "run-start", type: "rerun-preflight", target: {
+          expectedConfigFingerprint: settings.activeConfigFingerprint,
+          expectedDescriptorFingerprint: workflow.descriptorFingerprint, selection,
+        },
+      }), "PREFLIGHT_RERUN_UNAVAILABLE");
+      if (!current) return;
+      return readWithDeadline(() => client.readPreflight(selection), "PREFLIGHT_READ_UNAVAILABLE");
+    };
+    void check().then(
+      wire => { if (current && wire !== undefined) setState(runCheckRows(wire)); },
+      () => { if (current) setState({ state: "unavailable", message: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text }); });
+    return () => { current = false; };
+  }, [client, workflowId, active, round, actorId, authority]);
+  const recheck = useCallback(() => setRound(value => value + 1), []);
+  return { state, recheck };
+}

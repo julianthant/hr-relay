@@ -14,13 +14,14 @@ export type WorkStudyInputValue = z.output<typeof WorkStudyInput>;
 export const WORK_STUDY_INPUT_PARSER = InputParserSpecSchema.parse({
   split: { kind: "delimited", delimiters: [",", ";", "\n"] },
   rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }],
+  unmatched: "Employee IDs must contain at least five digits.",
 });
 export const WORK_STUDY_TYPED_INPUT = TypedInputSurfaceSchema.parse({
   modeField: "mode", modeLabel: "Input", initialMode: "employee-ids", submitsMode: false,
   description: "Each Employee ID starts one run; every run uses the one effective date.",
   modes: [{
-    value: "employee-ids", label: "Employee IDs", inputLabel: "Employee IDs", hint: "Separate IDs with commas, semicolons or new lines.",
-    placeholder: "10000001, 10000002", defaults: [], parser: { kind: "entries", spec: WORK_STUDY_INPUT_PARSER },
+    value: "employee-ids", label: "Employee IDs", inputLabel: "Employee IDs", hint: "Separate values with a semicolon or Shift+Enter.",
+    placeholder: "10000001; 10000002", defaults: [], parser: { kind: "entries", spec: WORK_STUDY_INPUT_PARSER },
     display: { kind: "first-present", fields: ["emplId"] }, identityFields: ["emplId"],
   }],
   controls: [{ kind: "date", field: "effectiveDate", label: "Effective date", placement: "input", modes: ["employee-ids"], requires: [],

@@ -1,4 +1,5 @@
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { ocrRecordSourcePages } from "../../../../models/ocr/review-record.js";
 import { contactEffectIdentity } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactInputSchema } from "../../../../models/workflows/emergency-contact/input.js";
@@ -12,10 +13,16 @@ import { approvedRecordHasEid,buildApprovedOcrRecords } from "../../../ocr/steps
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 export const READ_DOCUMENT_STEP = Object.freeze({ key: "read-document", label: "Read and approve PDF", system: "local" as const,
-  review: { pages: [], branchLabels: [] } as const,
+  review: { pages: [{ id: "approved-pdf", title: "Emergency Contact PDF", mode: "Read only", nodeIds: ["read-document", "approved-records"],
+    lines: [
+      { id: "read-and-approve", kind: "read", text: "Read the uploaded PDF and wait for you to review and approve its records in Logs.", nodeIds: ["read-document"] },
+      { id: "approved-selection", kind: "check", text: "Use only the current approved records and their original PDF pages.", nodeIds: ["approved-records"] },
+    ], fields: [{ id: "pdf", label: "PDF", inputField: "fileName", example: "Fictional emergency-contact.pdf",
+      source: { origin: "PDF upload", detail: "The PDF attached when this run starts.", chain: [] } }],
+  }], branchLabels: [], starts: [{ nodeId: "read-document", each: "This PDF" }] } as const,
 });
 export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof EmergencyContactInputSchema>) {
-  const graph = buildApprovedOcrRecords(author, { ocrInput: input => ({ ...input, formType: "emergency-contact" }),
+  const graph = buildApprovedOcrRecords(author, { ocrInput: ({ onbaseFiling: _onbaseFiling, ...input }) => ({ ...input, formType: "emergency-contact" }),
       target: { id: WorkflowIdSchema.parse("emergency-contact-member"), input: EmergencyContactMemberInputSchema, result: EmergencyContactMemberResultSchema },
       memberSystem: "ucpath", memberLabel: "Preview approved Emergency Contacts", filter: approvedRecordHasEid,
       validate: records => {
@@ -32,7 +39,13 @@ export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof Emerg
           employees.set(employee, desired);
         }
       },
-      memberInput: (_input, approved) => approved });
+      // An earlier record of the same person on the same first page already files it: OnBase admits one filing per employee, PDF and page.
+      memberInput: (input, approved, ocr, records) => {
+        const filing = (record: typeof approved.record) => ({ emplId: approvedEmergencyContact(record).emplId, page: ocrRecordSourcePages(ocr.review.records, record)[0] });
+        const own = filing(approved.record), index = records.findIndex(record => record.recordId === approved.record.recordId);
+        const filed = records.slice(0, index).some(record => { const other = filing(record); return other.emplId === own.emplId && other.page === own.page; });
+        return { ...approved, document: input.document, sourcePage: filed ? null : own.page, onbaseFiling: input.onbaseFiling };
+      } });
   return { ...graph, steps: [[READ_DOCUMENT_STEP, graph.steps[0][1]]] as const,
     result: author.result(ReadApprovedOcrSnapshot.output, [graph.approved], ({ outputs }) => outputs["approved-records"]) };
 }

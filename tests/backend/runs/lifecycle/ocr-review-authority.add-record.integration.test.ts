@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
+import { retainedOcrModule } from "../../../support/fixtures/ocr/retained-review-producer.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
@@ -16,7 +19,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { replaceOcrCommandRead, replaceOcrAuditRead } from "../../../support/helpers/backend/ocr-proof-reads.js";
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
-import { RunDelegatedDryRunPreviewResultSchema, RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
@@ -24,7 +27,7 @@ import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpa
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { scaledMs } from "../../../support/time-scale.js";
-import { ocrForm } from "../../../../src/models/ocr/form-registry.js";
+import * as forms from "../../../../src/models/ocr/form-registry.js";
 import { sourceFixture, submittedPage } from "../../../support/fixtures/ocr/source-pages.js";
 
 const world = createOcrReviewWorld();
@@ -47,7 +50,7 @@ function add(f: Fixture, expectedRevision = 1, sourcePage = 2) {
 it.each(["oath", "emergency-contact", "i9"] as const)("creates and approves an operator-added %s record when no record was extracted", async formType => {
   const f = await world.fixture({ release: true, pageCount: 2, formType }), read = reviewReader(f), before = read(); assert.ok(before.ocr);
   assert.equal(before.ocr.revision.records.length, 0);
-  const form = ocrForm(formType), source = sourceFixture(2, formType);
+  const form = forms.ocrForm(formType), source = sourceFixture(2, formType);
   const pages = form.pageKinds.map((pageKind, index) => ({ pageKind, sourcePage: index + 1 }));
   const request = CommandRequestSchema.parse({ ...add(f), payload: { pages } });
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
@@ -73,16 +76,20 @@ it.each(["oath", "emergency-contact", "i9"] as const)("creates and approves an o
 });
 
 it("durably creates, corrects and approves an operator-added record through native downstream dry-run execution and restart", async () => {
-  const contact = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
-    displayedEid: "10800001", displayedName: "Example, Manual" }) });
-  const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+  // Every UCPath session opens the persisted contact page afresh; a dry run never saves, so it stays the original.
+  const contactPages: ReturnType<typeof createDeterministicUcpathContactPage>[] = [];
+  const filing = await onbaseFilingFixture(2);
+  const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+    const contact = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
+      displayedEid: "10800001", displayedName: "Example, Manual" }) });
+    contactPages.push(contact);
     const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, contact);
     return { ...driver, async searchPersonOrg(input) {
       return input.kind === "by-name" ? SearchPersonOrgOutputSchema.parse({ results: [],
         selection: { status: "not-found", selected: null, candidateEids: [], searchName: input.name } }) : driver.searchPersonOrg(input);
     } };
   }, crm: healthyCrmDriver });
-  const f = await world.fixture({ coordinator: true, record: true, release: true, pageCount: 2, dryRun: true, sessions });
+  const f = await world.fixture({ coordinator: true, record: true, release: true, pageCount: 2, dryRun: true, sessions, documentBytes: filing.bytes });
   const read = reviewReader(f), original = read(); assert.ok(original.ocr);
   const request = add(f), runId = f.run.envelope.runId, repositories = f.database.authority;
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
@@ -151,9 +158,19 @@ it("durably creates, corrects and approves an operator-added record through nati
   assert.equal(input.record.recordId, manual.recordId); assert.equal(input.record.assertedEid, "10800001");
   assert.deepEqual(input.record.provenance?.pages, [{ pageKind: "emergency-contact", sourcePage: 1 }]);
   const result = repositories.runResults.get(member.envelope.runId); assert.ok(result);
-  assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
-  for (const run of [f.parentRun, f.run, member]) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
-  assert.ok(contact.actions.includes("fill-fields:1"));
+  // The member previews its Save and then files the operator-added record's page to OnBase as a preview.
+  const memberPreview = RunDelegatedDryRunPreviewResultSchema.parse(result.result.value);
+  assert.equal(memberPreview.externalCommit, "none");
+  assert.equal(memberPreview.steps.find(step => step.nodeId === "contact-preview")?.state, "transaction-preview");
+  assert.equal(memberPreview.steps.find(step => step.nodeId === "onbase-filing")?.state, "delegation-preview");
+  const filings = repositories.runs.listChildren(member.envelope.runId);
+  assert.deepEqual(filings.map(run => run.envelope.workflow), ["onbase"]);
+  const onbase = filings[0]; assert.ok(onbase?.envelope.dryRun);
+  assert.deepEqual(onbase.input.parsed.value, { ucpathId: "10800001", document: input.document, sourcePage: 1 });
+  assert.ok(onbase.lifecycle.state === "terminal" && onbase.lifecycle.outcome === "done");
+  for (const run of [f.parentRun, f.run, member, onbase]) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
+  assert.equal(filing.imports(), 0, "a dry run never clicks Import");
+  assert.ok(contactPages[0]?.actions.includes("fill-fields:1"));
   const snapshot = repositories.ocrReviews.snapshots(runId)[0]; assert.ok(snapshot);
   await f.harness.manager.closeAll("worker-stop"); f.database.close();
   const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 500, migrationOwner: "ocr-add-record-restart" }, f.clock,
@@ -194,4 +211,53 @@ it("refuses stale/foreign additions and missing or altered original creation evi
     assert.deepEqual(observe(), before);
     assert.equal(f.database.getMeta().authorityGeneration, generation + 6);
   }
+});
+
+it("opens an operator addition and correction saved with the original emergency-contact field list", async () => {
+  const f = await world.fixture({ release: true, pageCount: 2 });
+  const form = forms.ocrForm("emergency-contact");
+  const earlier = vi.spyOn(forms, "ocrForm").mockReturnValue({ ...form, fields: form.fields.map(field =>
+    field.path === "employee.dateCompleted" ? { ...field, path: "employee.pid", canonicalFieldId: "pid", localKind: null } : field) });
+  try {
+    const request = add(f);
+    assert.equal(f.canonical.kernel.execute(request).state, "applied");
+    const created = reviewReader(f)();
+    const manual = created.ocr?.revision.records[0]; assert.ok(manual?.provenance);
+    const correction = CommandRequestSchema.parse({ ...request, commandId: randomUUID(), type: "correct-ocr-record",
+      target: { ...request.target, expectedRevision: 2 },
+      payload: correctedOcrRecord(created, manual.recordId, { "employee.name": "Example, Manual" }) });
+    assert.equal(f.canonical.kernel.execute(correction).state, "applied");
+  } finally { earlier.mockRestore(); }
+  const review = readOcrReviewAuthority(f.database.authority, f.canonical.lifecycle, f.run.envelope.runId);
+  assert.ok(review);
+  assert.equal(review.revision.revision, 3);
+  assert.ok(review.revision.records[0].fields.answers.some(answer => answer.path === "employee.pid"));
+  assert.ok(review.revision.records[0].fields.answers.some(answer => answer.path === "employee.name" && answer.state === "read"));
+  const restore = CommandRequestSchema.parse({ ...add(f, 3), type: "restore-ocr-record", payload: { recordId: review.revision.records[0].recordId } });
+  assert.equal(f.canonical.kernel.execute(restore).state, "rejected");
+  assert.deepEqual(f.database.authority.ocrReviews.latest(f.run.envelope.runId), review.revision);
+});
+
+it("refuses fresh OCR edits when the registered workflow is missing or differs from the saved one", async () => {
+  const f = await world.fixture({ release: true, record: true });
+  const saved = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(saved);
+  assert.notEqual(retainedOcrModule.descriptor.contractFingerprint, f.run.envelope.contractFingerprint);
+  for (const replacement of [undefined, retainedOcrModule.descriptor]) {
+    const kernel = canonicalChildExecution(f.harness.deps, f.database, f.path, id => id === "ocr" ? replacement : f.resolve(id)).kernel;
+    assert.equal(kernel.execute(f.command("discard-ocr-record", 1)).state, "rejected");
+    assert.deepEqual(f.database.authority.ocrReviews.latest(f.run.envelope.runId), saved);
+  }
+});
+
+it("refuses removal of an operator-add blocker with the original command intact", async () => {
+  const f = await world.fixture({ release: true, pageCount: 2 });
+  assert.equal(f.canonical.kernel.execute(add(f)).state, "applied");
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  const saved = repositories.ocrReviews.latest(runId); assert.ok(saved);
+  const [entry] = saved.records;
+  assert.equal(entry.fields.blockingPaths.length, 3);
+  const altered = { ...saved, records: [{ ...entry, fields: { ...entry.fields, blockingPaths: entry.fields.blockingPaths.slice(1) } }] };
+  assert.throws(() => readOcrReviewAuthority({ ...repositories, ocrReviews: { ...repositories.ocrReviews,
+    latest: () => altered, revision: (id, revision) => revision === saved.revision ? altered : repositories.ocrReviews.revision(id, revision),
+  } }, f.canonical.lifecycle, runId), /OCR_REVIEW_REFUSED/u);
 });

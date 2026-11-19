@@ -15,6 +15,7 @@ export const OcrInputSchema = z.strictObject({
   readingId: ItemIdSchema,
   formType: OcrFormTypeSchema,
   roster: OcrWorkbookRosterEvidenceSchema.nullable(),
+  extractWithOcr: z.boolean().optional(),
   reading: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("subscription") }),
     z.strictObject({ kind: z.literal("manual"), actorId: z.string().min(1), assertions: z.array(ManualOcrAssertionSchema).min(1) }),

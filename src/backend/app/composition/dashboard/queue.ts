@@ -1,4 +1,4 @@
-import { batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
+import { aggregateMemberRetryAvailable, batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
@@ -7,14 +7,15 @@ import {
 } from "../../../storage/sqlite/index.js";
 
 import { createRunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
-import { hostedOcrRun, readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
-import { readOcrReviewAuthority } from "../../../runs/lifecycle/ocr-review-authority.js";
+import { endedUnfinished, hostedOcrRun, offeredOcrReview, readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
 import { workflowQueueCapabilities } from "../../registries/workflow-registry.js";
+import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
+export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline" | "assistantUsage"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   return createRunQueueProjection({
+    assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }),
     timeline: database.authority.timelineEvents,
     stateRoot,
     clock,
@@ -25,6 +26,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     queueCapabilities: workflowQueueCapabilities,
     authority: {
       batchMemberRetryAvailable: run => batchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow), workflowQueueCapabilities(run.envelope.workflow)),
+      aggregateMemberRetryAvailable: run => aggregateMemberRetryAvailable(database.authority, input.reader, run, id => descriptors.resolve(id)),
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
         run, children, id => descriptors.resolve(id))),
@@ -32,7 +34,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
         const current = input.reader.read(runId);
         if (current.state !== "present" || current.disposition !== "live") return false;
         const ocr = current.run.envelope.workflow === "ocr" ? current.run : hostedOcrRun(database.authority, current.run);
-        return ocr !== undefined && readOcrReviewAuthority(database.authority, input.reader, ocr.envelope.runId) !== undefined;
+        return ocr !== undefined && !endedUnfinished(current.run) && offeredOcrReview(database.authority, input.reader, ocr) !== undefined;
       }),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       command: (commandId) => database.authority.commands.get(commandId),
@@ -44,7 +46,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
       ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
-      heldDuoSystems: workerId => database.heldDuoSystems(workerId),
+      heldDuoLeases: workerId => database.heldDuoLeases(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
