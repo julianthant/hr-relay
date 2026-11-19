@@ -77,8 +77,7 @@ it("reads a saved revision and a following metadata revision with a retained key
   expect(() => service.revision(id, saved.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
 });
 
-it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as const)("reads revision %s from earlier keyed settlements (%s)", version => {
-  using database = new DatabaseSync(":memory:");
+function preCatalogueWorkbook(database: DatabaseSync) {
   const id = "retained-roster", eid = "10800000";
   const metadata = { typeId: "roster", sharePoint: null };
   const first = encodeSavedWorkbook({ libraryId: id, version: 1, createdAt: savedAt, savedAt,
@@ -98,8 +97,6 @@ it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as
     JSON.stringify({ id: "roster", name: "Roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null }));
 
   const resolvedRow = { sheetId: "people", rowId: "text-key" };
-  const source = { kind: "run", runId: "10000000-0000-4000-8000-000000000001" };
-  const names = ["First Fixture", "Second Fixture", "Third Fixture"];
   const insert = database.prepare("INSERT INTO workbook_operations(sequence,workbook_id,operation_id,digest,request_json,receipt_json) VALUES(?,?,?,?,?,?)");
   function settle(sequence: number, input: unknown, effects: object) {
     const request = WorkbookOperationSchema.parse(input);
@@ -109,11 +106,35 @@ it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as
     insert.run(sequence, id, request.operationId, sha256Hex(json), json, JSON.stringify(receipt));
   }
   settle(1, { operationId: "assign-type", at: savedAt, source: { kind: "operator" }, change: { kind: "metadata", expectedVersion: 1, metadata } }, {});
-  names.forEach((newValue, index) => {
-    const expectedVersion = index + 2;
-    settle(expectedVersion, { operationId: `fill-${index}`, at: savedAt, source,
+  function migrate(head: typeof first, ownerRow: string, value: string) {
+    database.prepare("UPDATE workbook_library SET version=?, payload_json=?, metadata_json=?, ownership_json=? WHERE id=?")
+      .run(head.version, JSON.stringify(head), JSON.stringify(metadata), JSON.stringify({
+        [JSON.stringify(["people", ownerRow, "fullName"])]: { owner: "relay", value },
+      }), id);
+    for (const migration of [WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+      for (const statement of migration.statements) database.exec(statement);
+    }
+    const repository = createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work() });
+    const service = createWorkbookLibraryService({ repository, clock: manualClock(new Date(savedAt)), sync: unexpectedWorkbookSync });
+    const live = service.read(id);
+    service.save(id, live.version, { ...live.workbook, name: "Latest.xlsx" });
+    return service;
+  }
+  function patch(expectedVersion: number, oldValue: string | null, newValue: string) {
+    settle(expectedVersion, { operationId: `fill-${expectedVersion}`, at: savedAt,
+      source: { kind: "run", runId: "10000000-0000-4000-8000-000000000001" },
       change: { kind: "patch", expectedVersion, key: eid, values: { fullName: newValue } } },
-    { key: eid, candidates: [resolvedRow], changes: [{ ...resolvedRow, fieldId: "fullName", oldValue: names[index - 1] ?? null, newValue }] });
+    { key: eid, candidates: [resolvedRow], changes: [{ ...resolvedRow, fieldId: "fullName", oldValue, newValue }] });
+  }
+  return { first, id, migrate, patch, settle };
+}
+
+it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as const)("reads revision %s from earlier keyed settlements (%s)", version => {
+  using database = new DatabaseSync(":memory:");
+  const { first, id, migrate, patch } = preCatalogueWorkbook(database);
+  const names = ["First Fixture", "Second Fixture", "Third Fixture"];
+  names.forEach((newValue, index) => {
+    patch(index + 2, names[index - 1] ?? null, newValue);
   });
   const retained = (revision: number) => {
     const workbook = structuredClone(first.workbook);
@@ -122,18 +143,35 @@ it.each([[3, "named history"], [4, "journal only"], [5, "migration current"]] as
   };
   database.prepare("INSERT INTO workbook_library_history VALUES(?,?,?,?,?,?,?)")
     .run(id, "Reviewed", "operator", 3, savedAt, savedAt, JSON.stringify(retained(3)));
-  database.prepare("UPDATE workbook_library SET version=?, payload_json=?, metadata_json=?, ownership_json=? WHERE id=?")
-    .run(5, JSON.stringify(retained(5)), JSON.stringify(metadata), JSON.stringify({
-      [JSON.stringify(["people", "text-key", "fullName"])]: { owner: "relay", value: names[2] },
-    }), id);
-  for (const migration of [WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
-    for (const statement of migration.statements) database.exec(statement);
-  }
-  const repository = createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work() });
-  const service = createWorkbookLibraryService({ repository, clock: manualClock(new Date(savedAt)), sync: unexpectedWorkbookSync });
-  const live = service.read(id);
-  service.save(id, live.version, { ...live.workbook, name: "Latest.xlsx" });
+  const service = migrate(retained(5), "text-key", names[2]);
   expect(service.revision(id, version)).toEqual(retained(version));
+});
+
+it.each([[4, false], [5, false], [5, true]] as const)("reads revision %s after an earlier Sync (corrupt Sync receipt %s)", (version, corruptSync) => {
+  using database = new DatabaseSync(":memory:");
+  const { first, id, migrate, patch, settle } = preCatalogueWorkbook(database);
+  const name = "Earlier Relay fill", external = "Updated in SharePoint";
+  patch(2, null, name);
+  const incoming = structuredClone(first.workbook);
+  incoming.sheets[0].rows[1].id = "imported-key";
+  incoming.sheets[0].rows[1].cells[1].value = "SharePoint cell";
+  incoming.sheets[0].rows[2].cells[1].value = external;
+  settle(3, { operationId: "earlier-sync", at: savedAt, source: { kind: "sync", syncId: "earlier-sync" },
+    change: { kind: "sync", expectedVersion: 3, workbook: incoming } },
+  { changes: [{ sheetId: "people", rowId: "numeric-key", fieldId: "fullName", oldValue: null, newValue: external }] });
+  const synced = { ...first, version: 4, workbook: structuredClone(incoming) };
+  synced.workbook.sheets[0].rows[1].cells[1].value = name;
+  const saved = { ...synced, version: 5, workbook: { ...synced.workbook, name: "Earlier save.xlsx" } };
+  settle(4, { operationId: "earlier-save", at: savedAt, source: { kind: "operator" },
+    change: { kind: "save", expectedVersion: 4, workbook: saved.workbook } }, {});
+  const service = migrate(saved, "imported-key", name);
+
+  if (corruptSync) {
+    database.exec("DROP TRIGGER workbook_operations_immutable");
+    database.prepare("UPDATE workbook_operations SET receipt_json=json_set(receipt_json,'$.changes[0].newValue','Wrong fixture') WHERE operation_id='earlier-sync'").run();
+    expect(() => service.revision(id, synced.version)).toThrow(expect.objectContaining({ code: "WORKBOOK_STORAGE_CORRUPT" }));
+  }
+  expect(service.revision(id, version)).toEqual(version === 4 ? synced : saved);
 });
 
 it.each(["oldValue", "newValue"] as const)("rejects a retained patch receipt with a contradictory %s", field => {
