@@ -615,8 +615,9 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?intake=e1f2a3b4-0000-4000-8000-000000000001");
     await press(buttonNamed("Close"));
 
-    const door = buttonNamed("Start run");
-    assert_m1.equal(door.id, RUN_START_DOOR_ID_m1);
+    const door = document.getElementById(RUN_START_DOOR_ID_m1);
+    assert_m1.ok(door instanceof HTMLButtonElement, "the toolbar Start run door is missing");
+    assert_m1.equal(door.getAttribute("aria-label"), "Start run");
     assert_m1.equal(document.activeElement === door, true);
     assert_m1.equal(
       [...document.querySelectorAll("button")].find(
@@ -832,7 +833,8 @@ it_m2("renders an authenticated child workflow without a public launch source", 
   assert_m2.ok(parent?.surfaceKind === "operation");
   const member = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.runId === parent.memberRunIds[0]);
   assert_m2.ok(member);
-  const rows = [parent, { ...member, workflowId: "ocr-page" }];
+  // A lone member that repeats its parent's status draws no row of its own, so this child differs from it.
+  const rows = [parent, { ...member, workflowId: "ocr-page", status: member.status === "queued" ? "blocked" as const : "queued" as const }];
   const day = DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: "pc:201",
     queueSurfaces: rows, attemptHistory: undefined });
   const h = await mount();
@@ -1110,7 +1112,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const button = [...row.querySelectorAll("button")].find(entry => entry.getAttribute("aria-label")?.startsWith(action.label));
     assert_m2.ok(button);
     await act_m2(async () => button.click());
-    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(entry => entry.textContent?.trim() === "Delete");
+    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(entry => entry.textContent?.trim() === action.label);
     assert_m2.ok(confirm instanceof HTMLButtonElement);
     await act_m2(async () => confirm.click()); await settle();
     assert_m2.equal(commands.length, 1);
