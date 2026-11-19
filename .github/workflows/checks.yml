@@ -211,7 +211,27 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
+        run: |
+          if [[ "$SUITE" == unit ]]; then
+            # Give the sampler and its children one process group for cleanup.
+            set -m
+            (
+              while true; do
+                date -u
+                free -m
+                df -m /dev/shm "$TMPDIR" /
+                du -sm "$TMPDIR" || echo "Partial temp sample: du could not read every entry" >&2
+                ps -ww -eo rss=,args= | awk '
+                  /\/vitest\/dist\/workers\/forks[.]js([[:space:]]|$)/ { count++; rss += $1 }
+                  END { printf "vitest_forks=%d vitest_fork_rss_KiB=%.0f\n", count, rss }'
+                sleep 10
+              done
+            ) &
+            sampler=$!
+            set +m
+            trap 'kill -- "-$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true' EXIT
+          fi
+          scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
