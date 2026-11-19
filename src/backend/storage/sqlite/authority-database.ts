@@ -1,3 +1,4 @@
+import { hasIntactStartupWal } from "./startup-wal-check.js";
 import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
@@ -12,7 +13,7 @@ import { readContinuationGate, validateRunContinuation } from "./run-continuatio
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
-import { existsSync,statSync } from "node:fs";
+import { existsSync,lstatSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
 import { DatabaseSync,backup as sqliteBackup,type SQLInputValue,type SQLTagStore } from "node:sqlite";
 import { pathToFileURL } from "node:url";
@@ -1971,6 +1972,21 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   return withoutNativeRecordReadMemo(() => inspectNativeAuthorityImage(database, expectedSchemaVersion, requireOperationalPragmas, missingRunSearch, workbookPayloads));
 }
 
+function checkSqliteIntegrity(database: DatabaseSync): void {
+  const quickCheck = database.prepare("PRAGMA quick_check(1)").get();
+  inspectStoredData(() => QuickCheckRowSchema.parse(quickCheck));
+  const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
+  if (foreignKeyFailures.length > 0) throw authorityIntegrityError(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
+}
+
+function checkInspectionPragmas(database: DatabaseSync, requireOperationalPragmas: boolean): void {
+  if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
+  if (requireOperationalPragmas) {
+    if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
+    if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
+  }
+}
+
 function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersion: number, requireOperationalPragmas: boolean,
   missingRunSearch: boolean, workbookPayloads: boolean) {
   const applicationId = readIntPragma(database, "application_id");
@@ -1981,10 +1997,7 @@ function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersi
   assertPublishedAssistantNumbering(database);
   if ((!isSupportedStoppedAuthoritySchemaVersion(expectedSchemaVersion) && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
   assertNativeSchema(database, schemaVersion, missingRunSearch);
-  const quickCheck = database.prepare("PRAGMA quick_check(1)").get();
-  inspectStoredData(() => QuickCheckRowSchema.parse(quickCheck));
-  const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
-  if (foreignKeyFailures.length > 0) throw authorityIntegrityError(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
+  checkSqliteIntegrity(database);
   const names = inspectionTableNames(database);
   const expected = [...migrationTableNames(expectedSchemaVersion)].filter(name => !missingRunSearch || name !== "run_search").sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
@@ -2000,11 +2013,7 @@ function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersi
   const violations = invariantViolations(database);
   if (violations.length > 0) throw authorityIntegrityError(`authority database invariant validation failed: ${violations.join("; ")}`);
   if (!missingRunSearch) inspectStoredData(() => createRunSearchIndex(database).validateCoverage(inspectionRunReader(expectedSchemaVersion)));
-  if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
-  if (requireOperationalPragmas) {
-    if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
-    if (readIntPragma(database, "synchronous") !== 2) throw new Error("authority database synchronous mode is not FULL");
-  }
+  checkInspectionPragmas(database, requireOperationalPragmas);
   const currentTables = AuthorityCopyInspectionSchema.shape.tables;
   const predecessorTables = [...(expectedSchemaVersion < 10 ? ["explorer_overrides" as const] : []),
     ...(expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION ? [RETIRED_ASSISTANT_GRANT_TABLE] : []),
@@ -2033,6 +2042,69 @@ function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersi
 
 function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: boolean, workbookPayloads = true): AuthorityCopyInspection {
   return AuthorityCopyInspectionSchema.parse(inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas, false, workbookPayloads));
+}
+
+type StartupPosition = Pick<ChangeLogReader, "cursor" | "singleton" | "schemaCookie">;
+type StartupFile = { identity: string; changed: bigint; wal?: string };
+type StartupCheckpoint = {
+  file: StartupFile;
+  digest: string;
+  inspection?: AuthorityCopyInspection;
+  pending?: StartupPosition;
+};
+
+// A different validator module or runtime lifetime always starts with a full inspection.
+const startupCheckpoints = new WeakMap<RuntimeAdmission["lifetime"], Map<string, StartupCheckpoint>>();
+
+function checkpointsFor(admission: RuntimeAdmission) {
+  const lifetime = admission.lifetime;
+  let checkpoints = startupCheckpoints.get(lifetime);
+  if (checkpoints === undefined) {
+    checkpoints = new Map<string, StartupCheckpoint>();
+    startupCheckpoints.set(lifetime, checkpoints);
+  }
+  return checkpoints;
+}
+
+function startupFile(path: string): StartupFile | undefined {
+  try {
+    const file = lstatSync(path, { bigint: true });
+    const wal = lstatSync(path + "-wal", { bigint: true, throwIfNoEntry: false });
+    return { identity: [file.dev, file.ino, file.birthtimeNs].join(":"), changed: file.ctimeNs,
+      wal: wal && wal.size > 0n ? [wal.dev, wal.ino, wal.ctimeNs, wal.size].join(":") : undefined };
+  } catch { return undefined; } // Full inspection does not need a checkpoint stamp.
+}
+
+function matchesStartupCheckpoint(prior: StartupCheckpoint | undefined, file: StartupFile | undefined,
+  digest: string | undefined): prior is StartupCheckpoint {
+  return prior !== undefined && file !== undefined && prior.digest === digest && prior.file.identity === file.identity
+    && prior.file.changed === file.changed && prior.file.wal === file.wal;
+}
+
+function startupImageDigest(database: DatabaseSync): string | undefined {
+  try {
+    // serialize reads this transaction's pages, including committed WAL frames. Bound its temporary allocation.
+    const pages = PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count;
+    const size = z.strictObject({ page_size: z.number().int().positive() }).parse(database.prepare("PRAGMA page_size").get()).page_size;
+    if (pages * size > 256 * 1024 * 1024) return undefined;
+    return createHash("sha256").update(database.serialize()).digest("hex");
+  } catch { return undefined; } // An unavailable proof leaves the ordinary full inspection in force.
+}
+
+function checkStartupChanges(database: DatabaseSync, from: StartupPosition): boolean {
+  if (from.schemaCookie !== readIntPragma(database, "schema_version")) return false;
+  let entries: readonly ChangeEntry[];
+  try {
+    const count = changeLogHighWater(database) - from.cursor;
+    if (count <= 0 || count > CHANGE_LOG_RETAINED_ENTRIES) return false;
+    entries = readAuthorityChanges(database, from.cursor);
+    if (entries.length !== count || !entries.every((entry, i) => entry.seq === from.cursor + i + 1)) return false;
+  } catch { return false; } // An unreadable suffix cannot support a scoped inspection.
+  assertNativeSchema(database);
+  checkSqliteIntegrity(database);
+  inspectStoredData(() => validateAuthorityChanges(database, entries, singletonChangeKeys(from.singleton, readSingletonImage(database))));
+  inspectStoredData(() => validateNotificationMetadata(database));
+  return true;
 }
 
 /** Internal stopped-upgrade barrier; never exported through the repository entrypoint. */
@@ -2558,6 +2630,8 @@ export class AuthorityDatabase implements Disposable {
   #projectionRowReads: ProjectionRowReads | undefined;
   /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
   #changeReader: ChangeLogReader | undefined;
+  #startupOwner?: { checkpoints: Map<string, StartupCheckpoint>; file: StartupFile;
+    digest: string; position: StartupPosition; dataVersion: number; inspection?: AuthorityCopyInspection };
   #lastChangePruneMs: number | undefined;
   #pageCacheChanges = 0;
   #transactionDepth = 0;
@@ -2677,9 +2751,9 @@ export class AuthorityDatabase implements Disposable {
       }
       this.#database.exec("BEGIN");
       if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
-      else this.#validateDatabase();
+      else this.#validateDatabase(purpose === "ordinary" && existed, admittedDataVersion);
       readAppSettings(this.#database);
-      if (readIntPragma(this.#database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) this.#changeReader = changeLogBaseline(this.#database);
+      if (readIntPragma(this.#database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) this.#changeReader ??= changeLogBaseline(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
         if (purpose === "stopped-startup-recovery") return stoppedProfileOwnsCredentialCommand(this.#admission, "startup-recovery", commandId);
@@ -2722,6 +2796,7 @@ export class AuthorityDatabase implements Disposable {
       database.resumeRunDeletionFiles();
       return database;
     } catch (error) {
+      database.#startupOwner = undefined;
       try { database.close(); }
       catch (closeError) { throw retainAuthoritySourceClosure([error, closeError], { database, admission }); }
       throw error;
@@ -3138,24 +3213,31 @@ export class AuthorityDatabase implements Disposable {
     const id = z.uuid().parse(profileId);
     const path = AuthorityDatabase.#registeredPersonPath(machine, id);
     if (!existsSync(path)) throw new Error("profile-startup-database-missing");
-    {
-      return AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version) => {
-        const inspection = inspectNativeAuthority(database, version);
-        machine.assertOfflineMaintenance(machine.maintenanceOperation());
-        if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
-        const journal = readAuthorityUpgradeJournal(database);
-        const continuation = journal.journal === "settled" ? journal.latestForward?.startupLogout : undefined;
-        const file = continuation === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${continuation.operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
-        const nativeContinuation = file !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)))) === canonicalJsonStringify(continuation?.operation);
-        const context = machine.readInstallationContext();
-        if (context === undefined) throw new Error("profile-startup-installation-required");
-        const layout = readFixedLayoutIntent(context.workspace);
-        const layoutLogout = layout?.phase === "complete" ? layout.profiles.find(plan => plan.profileId === id)?.logout : undefined;
-        const layoutFile = layoutLogout?.settlement === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${layoutLogout.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
-        const layoutContinuation = layoutFile !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(layoutFile.bytes)))) === canonicalJsonStringify(layoutLogout);
-        return { ...inspection, requiresContinuation: nativeContinuation || layoutContinuation };
-      });
-    }
+    const source = startupFile(path);
+    const checkpoints = checkpointsFor(machine);
+    const prior = checkpoints.get(path);
+    let checkpoint: StartupCheckpoint | undefined;
+    const result = AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version) => {
+      const digest = source !== undefined && version === CURRENT_AUTHORITY_SCHEMA_VERSION ? startupImageDigest(database) : undefined;
+      const cached = matchesStartupCheckpoint(prior, source, digest) ? prior.inspection : undefined;
+      const inspection = cached === undefined ? inspectNativeAuthority(database, version) : AuthorityCopyInspectionSchema.parse(cached);
+      if (source !== undefined && digest !== undefined) checkpoint = { file: source, digest, inspection: AuthorityCopyInspectionSchema.parse(inspection) };
+      machine.assertOfflineMaintenance(machine.maintenanceOperation());
+      if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
+      const journal = readAuthorityUpgradeJournal(database);
+      const continuation = journal.journal === "settled" ? journal.latestForward?.startupLogout : undefined;
+      const file = continuation === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${continuation.operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+      const nativeContinuation = file !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)))) === canonicalJsonStringify(continuation?.operation);
+      const context = machine.readInstallationContext();
+      if (context === undefined) throw new Error("profile-startup-installation-required");
+      const layout = readFixedLayoutIntent(context.workspace);
+      const layoutLogout = layout?.phase === "complete" ? layout.profiles.find(plan => plan.profileId === id)?.logout : undefined;
+      const layoutFile = layoutLogout?.settlement === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${layoutLogout.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+      const layoutContinuation = layoutFile !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(layoutFile.bytes)))) === canonicalJsonStringify(layoutLogout);
+      return { ...inspection, requiresContinuation: nativeContinuation || layoutContinuation };
+    });
+    if (checkpoint !== undefined) checkpoints.set(path, checkpoint);
+    return result;
   }
 
   static async prepareStartupLogoutConversion(admission: RuntimeAdmission, operation: LogoutOperation): Promise<StartupLogoutConversion | undefined> {
@@ -3786,9 +3868,40 @@ export class AuthorityDatabase implements Disposable {
   close(): void {
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
+    const owner = this.#startupOwner;
+    this.#startupOwner = undefined;
+    let checkpoint: StartupCheckpoint | undefined;
+    if (owner !== undefined) {
+      try {
+        const db = this.#database;
+        if (!db.isTransaction) {
+          db.exec("PRAGMA busy_timeout=0; BEGIN");
+          const cookie = readIntPragma(db, "schema_version"); // Pin the snapshot before observing peer commits.
+          const file = startupFile(this.#path);
+          if (file !== undefined && file.identity === owner.file.identity && file.changed === owner.file.changed && cookie === owner.position.schemaCookie
+            && readIntPragma(db, "data_version") === owner.dataVersion) {
+            const digest = startupImageDigest(db);
+            if (digest === owner.digest && file.wal === owner.file.wal) checkpoint = { file, digest, inspection: owner.inspection };
+            else if (digest !== undefined && owner.file.wal === undefined && file.wal !== undefined
+              && this.#changeReader !== undefined && this.#changeReader.failed === undefined && this.#changeReader.cursor === changeLogHighWater(db)
+              && this.#changeReader.cursor > owner.position.cursor && hasIntactStartupWal(this.#path, AUTHORITY_WAL_SIZE_LIMIT_BYTES)) {
+              checkpoint = { file, digest, pending: owner.position };
+            }
+          }
+          db.exec("ROLLBACK");
+        }
+      } catch { /* The native close releases any read transaction; no proof is required to close. */ checkpoint = undefined; }
+    }
     try { this.#database.close(); }
     catch (error) { this.#failNativeClosure([error]); }
     this.#closed = true;
+    if (owner !== undefined && checkpoint !== undefined) {
+      // The last SQLite close can checkpoint the WAL into the main file.
+      const file = startupFile(this.#path);
+      if (file !== undefined && file.identity === checkpoint.file.identity && (file.wal === undefined || file.wal === checkpoint.file.wal)) {
+        owner.checkpoints.set(this.#path, { ...checkpoint, file });
+      }
+    }
   }
 
   [Symbol.dispose](): void {
@@ -5101,10 +5214,28 @@ export class AuthorityDatabase implements Disposable {
     inspectOpenDatabase(this.#database, false);
   }
 
-  #validateDatabase(): void {
+  #validateDatabase(ordinary: boolean, dataVersion: number): void {
     const migrationViolations = auditMigrationTableCoverage();
     if (migrationViolations.length > 0) throw new Error(migrationViolations.join("; "));
-    inspectOpenDatabase(this.#database, true);
+    const db = this.#database;
+    if (!ordinary) { inspectOpenDatabase(db, true); return; }
+    const checkpoints = checkpointsFor(this.#admission);
+    const prior = checkpoints.get(this.#path);
+    checkpoints.delete(this.#path);
+    const file = startupFile(this.#path);
+    const digest = file === undefined ? undefined : startupImageDigest(db);
+    let inspection: AuthorityCopyInspection | undefined;
+    if (matchesStartupCheckpoint(prior, file, digest)
+      && (prior.pending === undefined || checkStartupChanges(db, prior.pending))) {
+      checkInspectionPragmas(db, true);
+      inspection = prior.inspection;
+    } else inspection = inspectOpenDatabase(db, true);
+    if (file !== undefined && digest !== undefined) {
+      this.#changeReader = changeLogBaseline(db);
+      // The live reader advances past own writes; attestation needs the position that was actually inspected.
+      this.#startupOwner = { checkpoints, file,
+        digest, inspection, position: { ...this.#changeReader }, dataVersion };
+    }
   }
 
   #tableNames(): TableName[] {
