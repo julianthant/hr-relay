@@ -27,26 +27,23 @@ describe("Separations shared Person Org search safety", () => {
       for (const exact of [false, true]) {
         const name = exact ? "Petra Quillan" : "Petral Quillanmore";
         const returnedEid = searchesByEid && !exact ? "10401814" : eid;
-        const rows = parsePersonOrgGridRows([[returnedEid, "0", "Active", "SDCMP", "004921", "Fictional analyst", exact ? "Quillan" : "Quillanmore", name]]);
-        let drills = 0;
-        const read = searchPersonOrgWithPagePort(() => undefined, {
+        const row = [returnedEid, "0", "Active", "SDCMP", "004921", "Fictional analyst", exact ? "Quillan" : "Quillanmore", name];
+        const rows = parsePersonOrgGridRows(searchesByEid && exact
+          ? [["10401814", "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillan", name], row]
+          : [row]);
+        const drills: number[] = [];
+        const output = await searchPersonOrgWithPagePort(() => undefined, {
           search: async () => ({ kind: "grid", rows }),
-          drill: async () => {
-            drills += 1;
+          drill: async rowIndex => {
+            drills.push(rowIndex);
             return { observedEid: eid, displayedName: name, employmentInstances: "already-complete",
               startDate: "", terminationDate: "", terminationReason: "",
               cells: [["0", "08/01/2026", "Active", "SDCMP", "40000000", "000412", "Fictional department", "004921", "Fictional analyst", "", "0.50", "Student"]] };
           },
           returnToResults: async () => rows,
         }, input);
-        if (searchesByEid && !exact) {
-          await assert.rejects(read, /unexpected results grid/u);
-          assert.equal(drills, 0);
-          continue;
-        }
-        const output = await read;
         assert.equal(output.selection.status, exact ? "resolved" : "not-found");
-        assert.equal(drills, exact ? 2 : 0);
+        assert.deepEqual(drills, exact ? (searchesByEid ? [1, 1] : [0, 0]) : []);
         if (exact) {
           assert.equal(output.selection.selected?.emplId, eid);
         } else {

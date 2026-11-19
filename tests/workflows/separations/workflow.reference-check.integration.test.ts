@@ -4,11 +4,12 @@ import { dataOriginViewsOf } from "../../../src/backend/app/composition/dashboar
 import { stepProofModuleOf } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { buildRunGate } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { projectObservedOperatorFields } from "../../../src/backend/runs/queries/run-logs.js";
+import { readRunCheckpoint } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { referenceCheckStop } from "../../../src/models/processing/workbooks/reference-check-stop.js";
+import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
 import { SeparationsReadReferenceStop } from "../../../src/models/workflows/separations/read-reference-stop.js";
 import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
-import type { SearchPersonOrgOutput } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { projectFailureForOperator } from "../../../src/models/trust/failure.js";
 import { separationsWorkflow } from "../../../src/workflows/separations/workflow.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -17,6 +18,7 @@ import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-ha
 import { registeredModule, separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../src/backend/systems/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
+import { parsePersonOrgGridRows, searchPersonOrgWithPagePort, type PersonOrgSearchPageOutcome } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { createDeterministicUcpathSmartHrWorldDriver, createUcpathSmartHrFakeWorld } from "../../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
 import { UCPATH_PERSON_ORG_DETAIL_READY, UCPATH_PERSON_ORG_DETAIL_SCREEN, UCPATH_PERSON_ORG_DISPLAYED_EID, UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN } from "../../../src/models/ui/ucpath-person-org.js";
@@ -129,7 +131,7 @@ describe("Separations composition with a reference spreadsheet", () => {
   const REFERENCE_GATE = "reference-check-review";
   const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
 
-  async function composition(options: Readonly<{ documentEid?: string; searchOutput?: SearchPersonOrgOutput }> = {}) {
+  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome }> = {}) {
     const clock = manualClock(new Date(COMPOSITION_NOW));
     const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber: COMPOSITION_DOCUMENT, displayedEid: COMPOSITION_EID });
     kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: options.documentEid ?? COMPOSITION_EID, employeeType: "Student",
@@ -142,7 +144,7 @@ describe("Separations composition with a reference spreadsheet", () => {
     const sessions = sessionFactoryHarness({
       kuali: () => createDeterministicKualiDriver(kuali, clock),
       ucpath: () => {
-        const person = createDeterministicUcpathPersonOrgDriver(options.searchOutput ?? FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_JOB_SUMMARY_READ);
+        const person = createDeterministicUcpathPersonOrgDriver(FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_JOB_SUMMARY_READ);
         const filing = createDeterministicUcpathSmartHrWorldDriver(ucpath, () => clock.now());
         const personScreens: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_SCREEN, UCPATH_PERSON_ORG_DETAIL_SCREEN];
         const personStates: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_READY, UCPATH_PERSON_ORG_DETAIL_READY];
@@ -151,7 +153,13 @@ describe("Separations composition with a reference spreadsheet", () => {
           stagePendingTerminationSweep: filing.stagePendingTerminationSweep, commit: filing.commit,
           searchPersonOrg: (input: typeof searches[number]) => {
             searches.push(input);
-            return person.searchPersonOrg(input);
+            const outcome = options.searchOutcome;
+            if (outcome === undefined) return person.searchPersonOrg(input);
+            return searchPersonOrgWithPagePort(() => undefined, {
+              search: async () => outcome,
+              drill: async () => assert.fail("a nonmatching row must never be opened"),
+              returnToResults: async () => assert.fail("a nonmatching row must never be opened"),
+            }, input);
           },
           goto: (next: never) => personScreens.includes(next) ? person.goto(next) : filing.goto(next),
           waitFor: (stateId: never) => personStates.includes(stateId) ? person.waitFor(stateId) : filing.waitFor(stateId),
@@ -184,11 +192,15 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.deepEqual(c.writeIntents(run), []);
   });
 
-  it("stops before Job Summary when UCPath finds no exact Employee ID match", async () => {
-    const c = await composition({ documentEid: COMPOSITION_EID, searchOutput: {
-      results: [],
-      selection: { status: "not-found", selected: null, candidateEids: [], searchName: COMPOSITION_EID },
-    } });
+  const unmatchedOutcomes: readonly PersonOrgSearchPageOutcome[] = [
+    { kind: "not-found", marker: "No matching values were found" },
+    { kind: "grid", rows: parsePersonOrgGridRows([
+      ["10000009", "0", "Active", "SDCMP", "004921", "Fictional analyst", "Example", "Blair Example"],
+    ]) },
+  ];
+
+  it.each(unmatchedOutcomes)("stops before Job Summary when $kind has no exact Employee ID match", async searchOutcome => {
+    const c = await composition({ searchOutcome });
     const run = await c.execute(c.begin([], true));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
     const [failure] = c.database.authority.failures.listByRun(run.envelope.runId);
@@ -266,6 +278,11 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.equal(c.parkedAt(parked), REFERENCE_GATE);
     assert.deepEqual(c.searches, [{ kind: "by-eid", emplId: COMPOSITION_EID }]);
     assert.deepEqual(c.nodeSpans(parked, "identity-approval"), [["skipped", "condition-false"]]);
+    const checkpoint = readRunCheckpoint(c.database.authority, parked.envelope, "comparison");
+    const comparison = MatchIdentityOutputSchema.parse(checkpoint?.output.value);
+    assert.equal(comparison.approvalRequired, false);
+    assert.ok(comparison.packet.comparisons.some(row => row.documentValue === COMPOSITION_EID
+      && row.note === "the Employee ID lookup and Job Summary confirm the same person"));
     assert.equal(c.continueAnyway(started).state, "applied");
     const resumed = await c.execute(c.current(started));
     assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", JSON.stringify(resumed.lifecycle));

@@ -423,6 +423,7 @@ export function buildIdentity({ task, gate, group }: Author, extraction: Extract
         emplIdSource: outputs[SUBJECT_NODE].emplIdSource,
         jobSummary: outputs[JOB_SUMMARY_NODE],
         nameSelection: requireFact(outputs[NAME_SEARCH_NODE]?.selection, NAME_SEARCH_NODE, "selection"),
+        searchedEmployeeId: outputs[SUBJECT_NODE].searchedEmployeeId,
         plan: {
           state: "planned" as const,
           termination: {
@@ -594,13 +595,13 @@ export const separationsIdentityCheckDefinition = defineStep({
         const jobSummary = task(jobSummaryNode, [], ({ input }) => ({
           emplId: input.emplId,
         }));
-        const nameSearch = task(employeeIdSearchNode, [], ({ input }) => ({
+        const eidSearch = task(employeeIdSearchNode, [], ({ input }) => ({
           kind: "by-eid" as const,
           emplId: input.emplId,
         }));
         const comparison = task(
           comparisonNode,
-          [jobSummary, nameSearch],
+          [jobSummary, eidSearch],
           ({ input, outputs }) => ({
             documentNumber: input.documentNumber,
             documentName: input.employeeName,
@@ -609,6 +610,7 @@ export const separationsIdentityCheckDefinition = defineStep({
             emplIdSource: input.emplIdSource,
             jobSummary: outputs[JOB_SUMMARY_NODE],
             nameSelection: outputs[NAME_SEARCH_NODE].selection,
+            searchedEmployeeId: input.emplId,
             plan: noSeparationWritePlan(
               "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
             ),
@@ -626,7 +628,7 @@ export const separationsIdentityCheckDefinition = defineStep({
         );
         return {
           steps: [
-            [IDENTITY_CHECK_STEP, [nameSearch, jobSummary]],
+            [IDENTITY_CHECK_STEP, [eidSearch, jobSummary]],
             [IDENTITY_REVIEW_STEP, [comparison, identityGate, approval]],
           ],
           result: result(
