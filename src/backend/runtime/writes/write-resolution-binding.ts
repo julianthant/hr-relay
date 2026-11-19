@@ -13,7 +13,7 @@ import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import { FingerprintSchema, PositiveIntSchema } from "../../../rules/identity/ids.js";
 import {
   deriveIdempotencyKeyDigest,
   IdempotencyKeySchema,
@@ -232,7 +232,7 @@ function rebuildCommitInputWithoutFence(
       }
       if (!conditionSource) return JsonValueSchema.parse(checkpoint.output.value);
       const loaded = loadCheckpoint(checkpoint, {
-        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+        descriptorVersion: PositiveIntSchema.parse(descriptor.version), contractFingerprint: descriptor.contractFingerprint,
         implFingerprint: taskImplFingerprint(dependency.uses), outputSchemaHash: deriveSchemaHash(dependency.uses.output, "output"),
       }, dependency.uses.output);
       if (!loaded.found) throw new WriteCommitInputRebuildError("schema-failure", `condition-checkpoint:${id}:${loaded.reason}`);

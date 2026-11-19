@@ -762,7 +762,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       if (change.kind === 'metadata') {
         typeId = change.metadata.typeId;
         if (!type(typeId)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      } else if (change.kind !== 'version') {
+      } else {
         const position = { kind: change.kind, sequence: settled.sequence, version: settled.version, at: settled.at };
         if (change.kind === 'save' || change.kind === 'sync') anchor = { position, previous: previousContent, typeId };
         previousContent = position;

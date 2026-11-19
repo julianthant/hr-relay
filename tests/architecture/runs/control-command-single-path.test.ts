@@ -166,7 +166,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
       "data===undefined||data.rows.state!==\"resolve-required\"||!(\"commandId\"ingate)",
       "complete===undefined||gate.runId!==run.envelope.runId||gate.gateId!==CRM_DOCUMENT_ROW_CHOICE_GATE_ID||String(gate.nodeId)!==String(gate.gateId)||gate.result.schemaHash!==deriveSchemaHash(CrmDocumentRowChoiceSchema,\"output\")||gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)||canonicalJsonStringify(gate.result.value)!==canonicalJsonStringify(complete)||command?.family!==\"run\"||command.type!==\"resolve-workbook-reference-row\"||command.target.runId!==gate.runId||command.target.gateId!==gate.gateId||command.target.expectedVersion!==gate.expectedVersion||command.requestedBy!==gate.resolvedBy||audit?.result.state!==\"applied\"||audit.completedAt!==gate.resolvedAt||canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)||event===undefined||event.gate!==gate.gateId||event.ts!==gate.resolvedAt||event.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)||recorded===undefined",
     ], bindings: {
-      data: "crmReferenceRows(repositories,run)",
+      data: "crmReferenceRows(repositories,run,retained)",
       complete: "completeCrmReferenceChoice(data,crmReferenceSelections(repositories,run,data))",
       command: "repositories.commands.get(gate.commandId)",
       audit: "repositories.commandAudits.findByCommand(gate.commandId)",
