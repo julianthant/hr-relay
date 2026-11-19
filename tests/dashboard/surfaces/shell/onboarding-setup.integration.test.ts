@@ -30,7 +30,7 @@ it.each([
   const f = await mount(draft({ state: "failed", generation: 2, code }), { reopenBrowser: async () => { calls.push("reopen"); return draft({ state: "open", generation: 3 }); } });
   try {
     assert.match(f.host.querySelector("[role=alert]")?.textContent ?? "", sentence);
-    assert.equal(f.button("Start capture")?.disabled, true);
+    assert.equal(f.button("Add this device")?.disabled, true);
     await act(async () => { f.button("Reopen")?.click(); });
     assert.deepEqual(calls, ["reopen"]);
   } finally { await f.close(); }
@@ -46,14 +46,14 @@ it("tells the operator the setup browser was closed and offers Reopen; a healthy
   try { assert.equal(open.button("Reopen"), undefined); } finally { await open.close(); }
 });
 
-it("shows one plain failure and disables Start capture when the status read fails, with re-enrolment wording", async () => {
+it("shows one plain failure and disables Add this device when the status read fails, with re-enrolment wording", async () => {
   const f = await mount(draft({ state: "open", generation: 1 }), { unavailable: true });
   try {
     const alerts = [...f.host.querySelectorAll("[role=alert]")].map(item => item.textContent);
     assert.equal(alerts.length, 1);
     assert.match(alerts[0] ?? "", /could not read the setup status/u);
-    assert.equal(f.button("Start capture")?.disabled, true);
-    assert.doesNotMatch(f.host.textContent ?? "", /Current profile authority is unavailable|sign-up|Onboarding 1/u);
-    assert.match(f.host.textContent ?? "", /Security · Duo re-enrolment/u);
+    assert.equal(f.button("Add this device")?.disabled, true);
+    assert.doesNotMatch(f.host.textContent ?? "", /Current profile authority is unavailable|sign-up|Onboarding 1|Fast Duo|capture|software key|enrol/iu);
+    assert.equal(f.host.querySelector("h1")?.textContent, "Set up Duo again");
   } finally { await f.close(); }
 });
