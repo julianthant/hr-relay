@@ -253,6 +253,7 @@ export const UploadFieldSpecSchema = z.discriminatedUnion("kind", [
     field: InputFieldNameSchema,
     label: z.string().min(1),
     initial: z.boolean(),
+    description: z.string().min(1).optional(),
   }),
   z.strictObject({
     kind: z.literal("select"),
