@@ -21,7 +21,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { workflowDefinitionRegistry } from "../../../../src/workflow-kit/validation/workflow-module-audit.js";
-import { workflowDefinitionOf } from "../../../../src/workflow-kit/workflow-definition.js";
+import { workflowDefinitionOf, type AnyWorkflowDefinition } from "../../../../src/workflow-kit/workflow-definition.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
 import { explorerQueryDeps, readFixtureExplorer } from "../../../support/fixtures/explorer-seams.js";
@@ -58,7 +58,8 @@ describe("workflow definition registry conformance", () => {
   });
 
   it("refuses to register a workflow definition without an icon", () => {
-    const definition = { ...personLookupWorkflow };
+    const registered: AnyWorkflowDefinition = personLookupWorkflow;
+    const definition = { ...registered };
     Reflect.deleteProperty(definition, "icon");
 
     assert.throws(() => composeRegisteredWorkflow(definition), (error: unknown) =>
