@@ -203,9 +203,15 @@ jobs:
         run: npx playwright install chromium
       - run: npm run web:build
         if: matrix.suite == 'integration'
-      - name: Put test temp on tmpfs
+      - name: Set test temp directory
+        env:
+          SUITE: ${{ matrix.suite }}
         run: |
-          dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
+          parent=/dev/shm
+          if [[ "$SUITE" == unit ]]; then
+            parent="$RUNNER_TEMP"
+          fi
+          dir=$(mktemp -d "$parent/relay-tmp.XXXXXX")
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - name: Tests
         env:
