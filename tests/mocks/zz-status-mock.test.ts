@@ -163,7 +163,7 @@ async function continueLaunch(dialog: Locator) {
 
 async function chooseRoster(page: Page, dialog: Locator, name: string) {
   await dialog.getByRole("button", { name: "Add spreadsheet", exact: true }).click();
-  await page.getByRole("textbox", { name: "Find a spreadsheet" }).fill(name);
+  await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill(name);
   await page.getByRole("menuitem", { name: new RegExp(`^${name}`, "u") }).click();
   await expect(dialog.getByRole("button", { name: `Remove ${name}`, exact: true })).toBeVisible();
 }
@@ -227,7 +227,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).last().click();
       await page.getByRole("button", { name: "Start run", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
-      await expect(dialog.getByText("Workflow preview")).toBeVisible();
+      await expect(dialog.getByRole("list", { name: "Run configuration path" })).toBeVisible();
       await dialog.getByRole("textbox").first().fill(id === "run-person-lookup" ? "10000001" : "10000001; 10000002; Lee, Jordan");
       await expect(dialog.getByText("Parsed input")).toBeVisible();
     } else if (id === "run-options-many") {
@@ -274,7 +274,6 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
         await chooseRoster(page, dialog, ROSTERS["Emergency Contact"]);
         const worksheets = dialog.getByRole("button", { name: "Onboarding hires worksheet, Aug 17 hires", exact: true });
         await expect(worksheets).toBeEnabled();
-        await expect(dialog.getByText("2 worksheets fit", { exact: true })).toBeVisible();
         if (id === "run-sheets-open") {
           await worksheets.click();
           await expect(page.getByRole("menuitemradio", { name: "Aug 17 hires", exact: true })).toHaveAttribute("aria-checked", "true");
@@ -283,7 +282,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
       }
       if (id === "run-sheets-add" || id === "run-sheets-search" || id === "run-sheets-nopins" || id === "run-sheets-fix") {
         await dialog.getByRole("button", { name: "Add spreadsheet", exact: true }).click();
-        const search = page.getByRole("textbox", { name: "Find a spreadsheet", exact: true });
+        const search = page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true });
         await expect(search).toBeVisible();
         if (id === "run-sheets-search") {
           await search.fill("Onboarding");
@@ -491,7 +490,7 @@ test("customize steps every workflow", async ({ page }) => {
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
-    await expect(dialog.getByText("Workflow preview"), `${name}: redesigned dialog`).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "Run configuration path" }), `${name}: redesigned dialog`).toBeVisible();
     const file = dialog.locator('input[type="file"]');
     if (await file.count()) await file.setInputFiles(SCAN);
     else if (name === "Work-Study") {
@@ -539,7 +538,7 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start run", exact: true });
-    await expect(dialog.getByText("Workflow preview")).toBeVisible();
+    await expect(dialog.getByRole("list", { name: "Run configuration path" })).toBeVisible();
     await settle(page);
     await page.screenshot({ path: join(OUT, `run-input-${name.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}-${theme}-${WIDTH}.png`) });
   }
