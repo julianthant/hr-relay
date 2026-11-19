@@ -1,4 +1,5 @@
-import { elapsedSecondsBetween, fmtElapsed } from "../../shared/status/format.js";
+import { elapsedSecondsBetween } from "../../shared/status/format.js";
+import { formatDuration } from "../../../lib/date-format.js";
 import type { RunDetailWireSchema } from "../../../../models/dashboard/run-detail.js";
 import type { z } from "zod";
 
@@ -52,5 +53,5 @@ export function timelineAxisTotals(
 
 /** The age of the decision currently waiting on the operator. */
 export function decisionAge(openedAt: string, nowIso: string): string {
-  return fmtElapsed(elapsedSecondsBetween(openedAt, nowIso));
+  return formatDuration(elapsedSecondsBetween(openedAt, nowIso));
 }

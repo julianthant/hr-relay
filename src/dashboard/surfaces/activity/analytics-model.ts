@@ -1,4 +1,5 @@
 import type { ActivityDateRange } from "./activity-model.js";
+import { formatDay, formatDuration, formatMonthDay, formatWeekday } from "../../lib/date-format.js";
 
 export interface AnalyticsDayRow { date: string; done: number; failed: number; attention: number; seconds: number | null }
 export interface AnalyticsWorkflow {
@@ -18,9 +19,6 @@ export interface AnalyticsBucket { date: string; label: string; start: string; e
 const DAY = 86_400_000;
 const MAX_DAILY_BARS = 31;
 const MAX_BARS = 32;
-const WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
-const FULL_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-const MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const parse = (date: string) => Date.parse(`${date}T00:00:00.000Z`);
 const iso = (time: number) => new Date(time).toISOString().slice(0, 10);
 
@@ -43,8 +41,8 @@ export function analyticsBuckets(range: ActivityDateRange, workflows: readonly A
   for (let offset = 0; offset < total; offset += step) {
     const start = shiftDate(range.from, offset);
     const end = shiftDate(range.from, Math.min(offset + step, total) - 1);
-    const label = step === 1 && total <= 7 ? `${WEEKDAY.format(parse(start))} ${new Date(parse(start)).getUTCDate()}` : step > 7 ? FULL_DATE.format(parse(start)) : MONTH_DAY.format(parse(start));
-    const bucket: AnalyticsBucket = { date: start === end ? FULL_DATE.format(parse(start)) : analyticsPeriodLabel({ from: start, to: end }), label, start, end, step, done: 0, failed: 0, attention: 0, seconds: {} };
+    const label = step === 1 && total <= 7 ? `${formatWeekday(new Date(parse(start)), "UTC", "short")} ${new Date(parse(start)).getUTCDate()}` : step > 7 ? formatDay(new Date(parse(start)), "UTC") : formatMonthDay(new Date(parse(start)), "UTC", "short");
+    const bucket: AnalyticsBucket = { date: start === end ? formatDay(new Date(parse(start)), "UTC") : analyticsPeriodLabel({ from: start, to: end }), label, start, end, step, done: 0, failed: 0, attention: 0, seconds: {} };
     for (const workflow of workflows) {
       const days = workflow.days.filter(day => day.date >= start && day.date <= end);
       for (const day of days) { bucket.done += day.done; bucket.failed += day.failed; bucket.attention += day.attention; }
@@ -63,12 +61,12 @@ export const bucketCounts = (buckets: readonly AnalyticsBucket[], rows: readonly
 /** "Sep 20 – 26, 2026", or "Aug 28 – Sep 26, 2026" across months. */
 export function analyticsPeriodLabel(range: ActivityDateRange): string {
   const first = new Date(parse(range.from)), last = new Date(parse(range.to));
-  if (range.from === range.to) return `${MONTH_DAY.format(first)}, ${last.getUTCFullYear()}`;
+  if (range.from === range.to) return `${formatMonthDay(first, "UTC", "short")}, ${last.getUTCFullYear()}`;
   const sameMonth = first.getUTCMonth() === last.getUTCMonth() && first.getUTCFullYear() === last.getUTCFullYear();
-  return `${MONTH_DAY.format(first)} – ${sameMonth ? last.getUTCDate() : MONTH_DAY.format(last)}, ${last.getUTCFullYear()}`;
+  return `${formatMonthDay(first, "UTC", "short")} – ${sameMonth ? last.getUTCDate() : formatMonthDay(last, "UTC", "short")}, ${last.getUTCFullYear()}`;
 }
 
-export const analyticsClock = (seconds: number | null) => seconds === null ? "—" : `${Math.floor(seconds / 60)}m ${String(Math.round(seconds % 60)).padStart(2, "0")}s`;
+export const analyticsClock = (seconds: number | null) => seconds === null ? "—" : formatDuration(seconds);
 
 /** Counts in multiples of 6 so four ticks fall on whole numbers. */
 export function countScale(max: number) {

@@ -185,9 +185,9 @@ describe_m1("approved mixed queue presentation", () => {
     const done = single("done");
     const unknown = render(QueueSurfaceWireSchema_m1.parse({ ...done, endedAt: { state: "absent", reason: "Historical end not retained" } }));
     assert_m1.ok(!unknown.textContent?.includes("duration unknown"));
-    assert_m1.ok(!unknown.textContent?.includes("0s"));
+    assert_m1.ok(!unknown.textContent?.includes("<1s"));
     const zero = render(QueueSurfaceWireSchema_m1.parse({ ...done, endedAt: { state: "present", value: done.startedAt } }));
-    assert_m1.ok(zero.textContent?.includes("0s"));
+    assert_m1.ok(zero.textContent?.includes("<1s"));
   });
   it_m1("places the bulk selector outside the card and keeps the row's selection target", () => {
     const row = single("queued");
@@ -262,7 +262,7 @@ describe_m2("the row's accessible name carries the age", () => {
       workflowLabelOf: () => "Person Lookup",
     }));
 
-    assert_m2.ok(markup.includes('aria-label="Jordan Reyes — review · 18m 0s"'));
+    assert_m2.ok(markup.includes('aria-label="Jordan Reyes — review · 18m 00s"'));
   });
 });
 }

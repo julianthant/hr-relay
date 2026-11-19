@@ -12,6 +12,7 @@ import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } f
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import type { NotificationControl, NotificationDestination, NotificationItem, NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
+import { formatLocalDay, formatMonthDay, formatWeekday } from "../lib/date-format.js";
 
 const policies = {
   "run-failed": { trigger: "failed", tone: "danger", detail: "Review the failed run before continuing." },
@@ -52,17 +53,12 @@ export function notificationTargetMatches(row: NotificationWire, target: Notific
   return false;
 }
 
-const WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", weekday: "long" }), MONTH_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "long", day: "numeric" });
 const PACIFIC = "America/Los_Angeles";
-const PACIFIC_DATE = new Intl.DateTimeFormat("en-US", { timeZone: PACIFIC, year: "numeric", month: "numeric", day: "numeric" });
-const pacificDay = (value: Date) => {
-  const parts = Object.fromEntries(PACIFIC_DATE.formatToParts(value).map(part => [part.type, part.value]));
-  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
-};
+const pacificDay = (value: Date) => Date.parse(`${formatLocalDay(value, PACIFIC)}T00:00:00Z`);
 /** Day group once out of Priority, by the Pacific day whatever the host zone: Today, Yesterday, the weekday within a week, else the date. */
 export function notificationDay(occurredAt: string, nowIso: string): string {
   const when = new Date(occurredAt), ago = Math.round((pacificDay(new Date(nowIso)) - pacificDay(when)) / 86_400_000);
-  return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? WEEKDAY.format(when) : MONTH_DAY.format(when);
+  return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? formatWeekday(when, PACIFIC, "long") : formatMonthDay(when, PACIFIC, "long");
 }
 
 function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {

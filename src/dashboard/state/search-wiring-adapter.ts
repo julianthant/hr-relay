@@ -9,6 +9,7 @@ import type { DashboardClient } from "../client/index.js";
 import type { NavbarData, NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
 import type { WorkbookSummary } from "../../models/dashboard/workbooks.js";
+import { formatMonthDay } from "../lib/date-format.js";
 
 export const searchMessage = (code: "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
@@ -57,9 +58,8 @@ export function withQueueSubjects(results: readonly NavbarSearchResult[], titles
   return results.map(result => result.subject === missing && titles.has(result.id) ? { ...result, subject: titles.get(result.id)! } : result);
 }
 
-const shortDay = (iso: string) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
 export const paletteSheets = (records: readonly Pick<WorkbookSummary, "libraryId" | "name" | "version" | "savedAt">[]): readonly PaletteSheet[] =>
-  [...records].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map(record => ({ id: record.libraryId, name: record.name, detail: `v${record.version} · Updated ${shortDay(record.savedAt)}` }));
+  [...records].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map(record => ({ id: record.libraryId, name: record.name, detail: `v${record.version} · Updated ${formatMonthDay(record.savedAt, undefined, "short")}` }));
 
 export function workspaceSearchQuery(query: string, workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]): CrossDateSearchQueryInput {
   const normalized = query.trim().toLowerCase();

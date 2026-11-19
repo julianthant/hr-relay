@@ -1,6 +1,6 @@
 /** Tab and terminal copy for the run-detail composition. */
 import type { z } from "zod";
-import { fmtClock } from "../shared/status/format.js";
+import { formatTime } from "../../lib/date-format.js";
 import type { RunDetailWireSchema } from "../../../models/dashboard/run-detail.js";
 import type { RunDetailSectionSchema } from "../../../models/dashboard/primitives.js";
 
@@ -42,7 +42,7 @@ export function terminalOutcomeText(
   outcome: Extract<RunDetailWire["outcome"], { state: "terminal" }>,
 ): string {
   const rehearsal = outcome.rehearsal === true ? "dry run · " : "";
-  return `${rehearsal}${outcome.result} · ${fmtClock(outcome.completedAt)}`;
+  return `${rehearsal}${outcome.result} · ${formatTime(outcome.completedAt)}`;
 }
 
 export { timelineAxisTotals, timelineHasOrphanGate, timelineSegmentUnmeasured } from "./timeline/timeline-model.js";

@@ -15,7 +15,8 @@ import type { PreflightCheckWire } from "../../shell/preflight-popover-model.js"
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import "../../shared/run-evidence/diagnostic-presentation.css";
 import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "../../shared/loading/loading.js";
-import { fmtClock, fmtInstantDay } from "../../shared/status/format.js";
+import { fmtInstantDay } from "../../shared/status/format.js";
+import { formatTime } from "../../../lib/date-format.js";
 import { CHECK_COPY } from "./preflight-check-copy.js";
 
 function checkCopy(id: string): { name: string; description: string } {
@@ -138,7 +139,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         <StatusDot status={busy ? "running" : historical ? "queued" : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
         {busy ? "Checking readiness…" : historical ? "Previous check" : attentionCount === 0 ? "Ready to run" : `${attentionCount} ${attentionCount === 1 ? "check needs" : "checks need"} attention`}
       </span>}
-        value={<span className="diagnostic-summary-meta">Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {fmtClock(displayed.report.checkedAt)}</time></span>} />
+        value={<span className="diagnostic-summary-meta">Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {formatTime(displayed.report.checkedAt)}</time></span>} />
     </FormGroup>)}
     </BodySection>
     {displayed !== undefined && <>
@@ -176,7 +177,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
     {previousMessage !== undefined && <Notice sticky tone="warning" title="Readiness check is out of date" description={`${previousMessage} Run it again in Settings > Preflight.`} />}
     {displayed !== undefined && <>
       <span className={cn(dsText.meta, "break-words text-[color:var(--ds-fg-muted)]")}>
-        Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {fmtClock(displayed.report.checkedAt)}</time>
+        Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {formatTime(displayed.report.checkedAt)}</time>
       </span>
       <div className="settings-preflight-list">
         {displayed.checks.map(check => <div key={check.id} className="settings-preflight-item">

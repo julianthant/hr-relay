@@ -4,6 +4,7 @@ import type { QueueSurfaceWire } from "../shell/shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
 import { workerBrowserView, workerDirectiveNote, workerElapsedSeconds } from "./session-panel-model.js";
+import { formatDuration } from "../../lib/date-format.js";
 
 type WorkerCardWire = DashboardDayWire["workerCards"][number];
 type UnavailableWorkerCard = NonNullable<DashboardDayWire["unavailableWorkerCards"]>[number];
@@ -118,7 +119,7 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       ...(row === undefined ? {} : { subject: row.title }),
       action: recordGone ? card.stopReason === undefined ? RUNLESS_LINE.failed : SETTLED_LINE[card.stopReason] : settled ? stepLabel ?? "Last step unknown" : row?.liveMessage.state === "present" ? row.liveMessage.value : stepLabel
         ?? RUNLESS_LINE[card.state],
-      ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s` }),
+      ...(card.state === "idle" ? {} : { elapsed: formatDuration(seconds) }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
       ...(problem === undefined ? {} : { problem }),
       ...(note === undefined ? {} : { note }),

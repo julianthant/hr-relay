@@ -5,7 +5,7 @@ import { Check, Clock, ImageOff, PauseCircle, ScanSearch, TriangleAlert, UserRou
 import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Field, Input } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
-import { fmtActionClock } from "../../shared/status/format.js";
+import { formatTime } from "../../../lib/date-format.js";
 import { DecisionCard, DecisionChoice } from "./decision-card.js";
 import { answeredOutcome, choiceOptions, decisionAnswerValid, LOG_DECISION_STATUS, recommendedOption, TYPED_ROW, type LogDecision, type LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
@@ -34,7 +34,7 @@ function Compare({ rows }: { rows: NonNullable<LogDecision["comparison"]> }) {
   </table></div>;
 }
 
-const answeredLine = (decision: LogDecision & { answered: NonNullable<LogDecision["answered"]> }) => ({ ...answeredOutcome(decision), time: fmtActionClock(decision.answered.at).slice(0, 5),
+const answeredLine = (decision: LogDecision & { answered: NonNullable<LogDecision["answered"]> }) => ({ ...answeredOutcome(decision), time: formatTime(decision.answered.at),
   by: decision.answered.actor.kind === "person" ? decision.answered.actor.name : `assistant on behalf of ${decision.answered.actor.onBehalfOf.name}` });
 
 // The served context line names what is asked; without one, the write outcome is the caution, or the footer note on a failure.
