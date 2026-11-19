@@ -1,18 +1,19 @@
 import { afterAll, afterEach, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
-import { LogIdentityRefusedError } from "../../../../src/backend/runs/commands/refusals.js";
+import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
+import { LogDisplayRefusedError, LogIdentityRefusedError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { readRunLogs, projectRunLogs } from "../../../../src/dashboard/state/run-wiring-adapter.js";
 import { TimelineAppendSchema, TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { assertRunTimelineCompatible } from "../../../../src/backend/runs/queries/run-timeline-compatibility.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
-import { taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { failureRecordOf, runEndedEventOf, taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupModule } from "../../../support/helpers/registered-workflows.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -68,13 +69,75 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
   assert.match(JSON.stringify(projected.steps[0].entries), /Quillan, Petra A\./u);
 });
 
-it.each([false, true])("refuses a recorded task absent from the current timeline (changed fingerprint %s)", async changed => {
+it.each(["historical", "current"] as const)("checks unmapped observations when opening failed-run Logs (%s)", async definition => {
+  const w = await world();
+  const original = personLookupModule.descriptor;
+  const at = w.clock.now().toISOString();
+  const nodeId = "active-status";
+  const taskId = "workflow:person-lookup/read-active-status";
+  const failure = FailureRecordSchema.parse({ ...failureRecordOf({ seed: 82, code: "UNEXPECTED_PAGE_STATE" }),
+    nodeId, taskId, occurredAt: at });
+  queuedEventOf(w, { seed: 82, descriptor: original,
+    lifecycle: { state: "terminal", outcome: "failed", failureId: failure.failureId, endedAt: at } });
+  w.authority.failures.set(failure.failureId, failure);
+  const run = w.authority.getRun(failure.runId);
+  assert.ok(run);
+  taskEventsOf(w, 82, nodeId);
+  const identity = { ts: at, workflow: run.envelope.workflow, runId: run.envelope.runId, attempt: 1,
+    traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/${nodeId}#1` };
+  w.writer.emit({ ...identity, t: "data.observed", observedAt: at, nodeId, taskId,
+    points: [{ direction: "read", field: "status", values: [{ key: "status", state: "allowed",
+      classification: "safe-diagnostic", transform: "allow", value: "retired-status" }] }] });
+  w.writer.emit({ ...identity, t: "span.ended", kind: "task", outcome: "failed", failureId: failure.failureId });
+  runEndedEventOf(w, 82, "failed", { failureId: failure.failureId });
+  w.projection.ingestFromTimeline();
+  const row = w.projection.buildDashboardDayWire(at.slice(0, 10)).queueSurfaces.find(row => row.runId === run.envelope.runId);
+  assert.ok(row);
+  const descriptor = { ...original, version: original.version + (definition === "historical" ? 1 : 0),
+    dataOrigins: dataOriginViewsOf(personLookupModule).map(origin => origin.taskId !== taskId ? origin : {
+      ...origin, operatorFields: [{ label: "Status", kind: "output" as const, fieldPath: "status",
+        display: { cases: [{ value: "active", text: "Active" }] } }],
+    }) };
+  const deps: RunDetailQueryDeps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot,
+    projection: w.projection, authority: w.authority, descriptors: { resolve: () => descriptor },
+    trust: { getFailure: id => w.authority.getFailure(id), countFailuresByFingerprint: () => 1,
+      ensureReceipt: () => { throw new Error("opening Logs must not derive a receipt"); } } };
+  const sections: string[] = [];
+  const opening = readRunLogs({ runDetail: async id => buildRunDetail(deps, id),
+    runSection: async (id, name) => { sections.push(name); return buildRunSection(deps, id, name); } },
+    { row, workflowLabel: "Person lookup" }, new AbortController().signal);
+  if (definition === "current") {
+    await assert.rejects(opening, LogDisplayRefusedError);
+    assert.deepEqual(sections, ["logs"]);
+    assert.throws(() => buildRunSection(deps, run.envelope.runId, "failure"), LogDisplayRefusedError);
+    return;
+  }
+  const snapshot = await opening;
+  const failureSection = snapshot.sections.find(section => section.section === "failure");
+  assert.ok(failureSection?.payload.state === "available");
+  assert.equal(failureSection.payload.value.failureId, failure.failureId);
+  assert.equal(failureSection.payload.value.display?.field, undefined);
+  assert.match(JSON.stringify(snapshot.logs), /Unavailable for this historical run/u);
+  assert.doesNotMatch(JSON.stringify(snapshot), /retired-status/u);
+});
+
+it.each(["version", "fingerprint", "current"] as const)("reads removed task membership only for retained runs (%s)", async drift => {
   const { w, run, descriptor, deps } = await fixture();
-  if (changed) descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
-  else descriptor.version++;
+  if (drift === "fingerprint") descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
+  if (drift === "version") descriptor.version++;
   taskEventsOf(w, 81, "searching", "done");
   descriptor.timeline[0].nodes = descriptor.timeline[0].nodes.filter(node => node.id !== "searching");
-  assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+  if (drift === "current") {
+    assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+    return;
+  }
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  const historical = detail.timeline.steps?.find(step => step.label === "Historical steps");
+  assert.ok(historical?.key);
+  assert.deepEqual(historical.members.map(({ nodeId, label, state }) => ({ nodeId, label, state })),
+    [{ nodeId: "searching", label: "searching", state: "done" }]);
+  assert.equal(detail.timeline.events[0]?.categoryKey, historical.key);
+  assert.equal(detail.timeline.events[0]?.native?.nodeId, "searching");
 });
 
 it.each([false, true])("still refuses a current timeline category without a key (changed fingerprint %s)", async changed => {
@@ -86,7 +149,7 @@ it.each([false, true])("still refuses a current timeline category without a key 
   assert.throws(() => buildRunDetail(missingKey, run.envelope.runId), LogIdentityRefusedError);
 });
 
-it("refuses an unmapped checkpoint-only node when no task span exists", async () => {
+it("retains the identity of an unmapped checkpoint-only node when no task span exists", async () => {
   const { w, run, descriptor, deps } = await fixture();
   descriptor.version++;
   const at = w.clock.now().toISOString();
@@ -98,10 +161,12 @@ it("refuses an unmapped checkpoint-only node when no task span exists", async ()
   w.authority.putCheckpoint(checkpoint);
   assert.equal(w.database.authority.runCheckpoints.insert(checkpoint).state, "inserted");
   assert.equal(descriptor.contractFingerprint, run.envelope.contractFingerprint);
-  assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  assert.equal(detail.timeline.steps?.find(step => step.label === "Historical steps")?.members[0]?.nodeId, "removed-node");
+  assert.deepEqual(detail.timeline.events, []);
 });
 
-it.each([false, true])("refuses an unmapped action-only node (declared operation %s)", async declared => {
+it.each([false, true])("retains an unmapped action-only node (declared operation %s)", async declared => {
   const { w, run, descriptor, deps } = await fixture();
   descriptor.version++;
   const at = w.clock.now().toISOString();
@@ -114,7 +179,9 @@ it.each([false, true])("refuses an unmapped action-only node (declared operation
           nodeId: "removed-node", taskId: "ucpath/search-person-org", attempt: 1, claimGeneration: 1, taskAttempt: 1,
           invocationId: "search", occurrencePath: ["search"], logicalActionId: "search", occurrence: 1,
           logicalSessionId: "ucpath" } } : {}) } } } }));
-  assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  assert.equal(detail.timeline.steps?.find(step => step.label === "Historical steps")?.members[0]?.nodeId, "removed-node");
+  assert.deepEqual(detail.timeline.events, []);
 });
 
 it("refuses ambiguous recorded membership while preserving the explicit no-timeline mode", async () => {
@@ -237,9 +304,11 @@ it.each(["version", "fingerprint", "missing-version", "missing-fingerprint"] as 
       points: [{ direction: "read", field: "results", values: [{ key: "results", state: "allowed",
         classification: "safe-diagnostic", transform: "allow", value: [] }] }] } } }));
   let timelineReads = 0;
-  assert.throws(() => buildRunDetail({ ...deps, descriptors: { resolve: () => current }, timeline: { ...deps.timeline, page(input) {
+  const readDetail = () => buildRunDetail({ ...deps, descriptors: { resolve: () => current }, timeline: { ...deps.timeline, page(input) {
     timelineReads++;
     return deps.timeline.page(input);
-  } } }, run.envelope.runId), LogIdentityRefusedError);
+  } } }, run.envelope.runId);
+  if (drift === "missing-version" || drift === "missing-fingerprint") assert.throws(readDetail, LogIdentityRefusedError);
+  else assert.equal(readDetail().timeline.steps?.find(step => step.label === "Historical steps")?.members[0]?.nodeId, "outside-timeline");
   assert.equal(timelineReads, 1);
 });

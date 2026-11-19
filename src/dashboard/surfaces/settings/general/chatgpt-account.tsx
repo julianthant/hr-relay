@@ -1,7 +1,8 @@
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { useContext, useEffect, useRef, useState } from "react";
-import { ExternalLink } from "lucide-react";
-import { BodySection, Button, ButtonLink, Dialog, DialogContent, DialogFooter, FormGroup, ResultRow, Skeleton, dsIcon, FailureNotice } from "../../../ds/ui.js";
+import { ExternalLink, TriangleAlert } from "lucide-react";
+import { cn } from "../../../lib/utils.js";
+import { BodySection, Button, ButtonLink, Dialog, DialogContent, DialogFooter, FormGroup, ResultRow, Skeleton, dsIcon } from "../../../ds/ui.js";
 import { LoadingRegion, SkeletonText } from "../../shared/loading/loading.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatGptAccountPort } from "./chatgpt-account-model.js";
@@ -87,21 +88,26 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const label = "ChatGPT";
   const checkFailed = account.state === "unavailable" && account.account === undefined && port.getResource?.().state !== "refused";
   const held = account.state === "unavailable" && account.account !== undefined && account.account.state !== "signed-out";
+  const failure: { sentence: string; label: string; onClick: () => void } | undefined = disconnectError !== undefined ? { sentence: disconnectError, label: "Try again", onClick: () => { void disconnect(); } }
+    : error !== undefined ? { sentence: error, label: "Try again", onClick: () => { void perform("sign-in"); } }
+    : account.state !== "unavailable" ? undefined
+    : checkFailed ? { sentence: "Couldn't check ChatGPT.", label: "Retry", onClick: () => { void port.refresh?.(); } }
+    : held ? { sentence: account.message, label: "Retry", onClick: () => { void port.refresh?.(); } }
+    : { sentence: account.message, label: "Try again", onClick: () => { void perform("sign-in"); } };
+  const status = failure === undefined ? undefined : <span role="alert" className="flex min-w-0 items-center gap-2"><TriangleAlert aria-hidden className={cn(dsIcon.sm, "shrink-0")} /><span className="truncate" title={failure.sentence}>{failure.sentence}</span></span>;
   const description = connected ? <><span className="flex min-w-0 items-baseline gap-2"><span className="truncate" title={displayed.name}>{displayed.name}</span>{displayed.email !== "" && <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]" title={displayed.email}>{displayed.email}</span>}</span>{plan !== "enabled" && <span className="block">{plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span>}</>
     : signingIn ? "Finish signing in to ChatGPT in your browser."
       : signInExpired ? "Your sign-in attempt expired. Sign in to try again."
         : "Not connected";
   return <BodySection title="ChatGPT">
-      {disconnectError !== undefined && <FailureNotice sentence={disconnectError} stillWorks="ChatGPT is still connected." action={{ label: "Try again", onClick: () => { void disconnect(); } }} />}
-      {error !== undefined && <FailureNotice sentence={error} stillWorks="ChatGPT is still not connected." action={{ label: "Try again", onClick: () => { void perform("sign-in"); } }} />}
-      {account.state === "unavailable" && !checkFailed && <FailureNotice sentence={account.message}
-        stillWorks={held ? "This is the last account Relay confirmed." : "ChatGPT is still not connected."}
-        action={!held ? { label: "Try again", onClick: () => { void perform("sign-in"); } } : { label: "Retry", onClick: () => { void port.refresh?.(); } }} />}
     <div ref={region} data-settings-path="chatgpt.account" onFocusCapture={event => { if (event.target instanceof HTMLElement) actionFocus.current = event.target; }}>
-      {checkFailed ? <FailureNotice sentence="Relay couldn't check ChatGPT." stillWorks="Nothing was changed." action={{ label: "Retry", onClick: () => { void port.refresh?.(); } }} />
-        : <FormGroup label="ChatGPT">{account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow className={FIT} controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
-        : <ResultRow className={FIT} controlWidth="wide" label={label} description={description}
+      <FormGroup label="ChatGPT">{checkFailed && failure !== undefined ? <ResultRow className={FIT} controlWidth="wide" label={label}
+          description={status}
+          value={<Button variant="secondary" disabled={pending !== undefined} onClick={failure.onClick}>{failure.label}</Button>} />
+        : account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow className={FIT} controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
+        : <ResultRow className={FIT} controlWidth="wide" label={label} description={status === undefined ? description : <span className="flex min-w-0 flex-col gap-1">{description}{status}</span>}
           value={<div className="flex min-w-0 max-w-full items-center justify-end gap-3">
+            {held && failure !== undefined && <Button variant="secondary" onClick={failure.onClick}>{failure.label}</Button>}
             {signingIn && <>
               {"authorizationUrl" in displayed && displayed.authorizationUrl !== undefined && <ButtonLink variant="secondary" href={displayed.authorizationUrl} target="_blank" rel="noopener noreferrer">Reopen sign-in page</ButtonLink>}
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
@@ -109,7 +115,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
             {connected && plan !== "disabled" && <ButtonLink variant="secondary" href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>}
             {connected && account.state === "connected" && <Button variant="secondary" data-destructive disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect"}</Button>}
-          </div>} />}</FormGroup>}
+          </div>} />}</FormGroup>
     </div>
     {confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
       <DialogContent size="sm" title="Disconnect ChatGPT?" description="Relay forgets this account; the assistant and OCR stop until you connect again.">

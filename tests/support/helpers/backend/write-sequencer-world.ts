@@ -44,6 +44,7 @@ export function createWriteSequencerTestWorld() {
   async function harness(options: Readonly<{
     onCapture?: (boundary: "step" | "before-submit" | "after-submit" | undefined) => Promise<void>;
     captureFailure?: "before-submit" | "after-submit" | "probe" | "prepare" | "verify";
+    log?: ReturnType<typeof recordingLogger>["log"];
     hooks?: WriteSequencerHooks;
     commitHooks?: AuthorityWriteCommitHooks;
     emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
@@ -126,7 +127,7 @@ export function createWriteSequencerTestWorld() {
       scheduler,
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log,
+      log: options.log ?? recordingLogger().log,
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
     });
     const execute = (context: WriteSequencerContext): Promise<unknown> =>

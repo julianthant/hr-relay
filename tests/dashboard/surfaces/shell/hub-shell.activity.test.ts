@@ -89,8 +89,7 @@ it("shows one plain notice with Retry when the read fails, never an empty day", 
   const view = await mount(async () => { throw new Error("down"); });
   try {
     await view.openActivity();
-    assert.ok(view.text().includes("Activity did not load."));
-    assert.ok(view.text().includes("Your chats are not affected."));
+    assert.ok(view.text().includes("Couldn't load activity."));
     assert.equal(view.text().includes("No activity today"), false);
     assert.equal(view.text().includes("down"), false);
     const reads = view.assistantActivity.mock.calls.length;

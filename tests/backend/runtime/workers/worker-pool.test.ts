@@ -414,18 +414,39 @@ describe("worker pool", () => {
     assert.equal((await again).state, "running");
   });
 
-  it("records pause as its own message and keeps directive apart from a busy run", async () => {
+  it("sequences controls per child lifetime and keeps the pause directive apart from a busy run", async () => {
     const w = world(), { port, view, target } = await running(w);
     assert.equal(view.directive, "run");
     const paused = w.pool.pause(target); await flush();
     const message = port.sent.at(-1);
     assert.equal(message?.kind, "worker-pause");
     assert.ok(message?.kind === "worker-pause");
+    assert.equal(message.sequence, 1);
     port.message({ kind: "worker-reply", requestId: message.requestId, outcome: { state: "done", result: { directive: "pause" } } });
     assert.equal((await paused).directive, "pause");
     port.message({ kind: "worker-activity", activity: { state: "busy", runId: "00000000-0000-4000-8000-000000000001" } });
     assert.equal(w.pool.snapshot()[0]?.directive, "pause");
     assert.equal(w.pool.snapshot()[0]?.activity?.state, "busy");
+
+    const pausedView = w.pool.snapshot()[0]; assert.ok(pausedView);
+    const resumed = w.pool.resume({ ...target, expectedVersion: pausedView.version }); await flush();
+    const resume = port.sent.at(-1); assert.ok(resume?.kind === "worker-resume");
+    assert.equal(resume.sequence, 2);
+    port.message({ kind: "worker-reply", requestId: resume.requestId, outcome: { state: "done", result: { directive: "run" } } });
+    const resumedView = await resumed;
+    const requested = w.pool.request({ ...target, expectedVersion: resumedView.version }, { type: "close-for-removal" }, 1_000); await flush();
+    const request = port.sent.at(-1); assert.ok(request?.kind === "worker-request");
+    assert.equal(request.sequence, 3);
+    port.message({ kind: "worker-reply", requestId: request.requestId, outcome: { state: "done", result: null } });
+    assert.equal(await requested, null);
+
+    port.exit(1, null); await flush();
+    const replacement = await running(w);
+    const replacementPause = w.pool.pause(replacement.target); await flush();
+    const replacementMessage = replacement.port.sent.at(-1); assert.ok(replacementMessage?.kind === "worker-pause");
+    assert.equal(replacementMessage.sequence, 1);
+    replacement.port.message({ kind: "worker-reply", requestId: replacementMessage.requestId, outcome: { state: "done", result: { directive: "pause" } } });
+    assert.equal((await replacementPause).directive, "pause");
   });
 
   it("bounds stopAll when a member never exits", async () => {

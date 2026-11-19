@@ -36,7 +36,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 
         </div>
       </Field>
-      : <div className="settings-performance-fallback"><SettingsValueControl leaf={leaf} operation={operation} error={error} disabled={editor.locked} update={rawValue => editor.update(leaf.path, rawValue)} />
+      : <div className="settings-performance-fallback"><SettingsValueControl leaf={leaf} operation={operation} error={error} disabled={editor.locked} update={(rawValue, immediate) => editor.update(leaf.path, rawValue, immediate)} />
         </div>}
     {leaf.validity === "unset" && <p className="settings-performance-hazard">Not set</p>}
     {leaf.hazard !== undefined && <p className="settings-performance-hazard">{leaf.hazard}</p>}

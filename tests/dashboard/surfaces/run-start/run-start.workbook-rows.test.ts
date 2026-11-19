@@ -104,6 +104,19 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
   assert.equal(planned.selectedStepKeys.length, 8, "Onboarding defaults include all eight steps, with the reference check");
 });
 
+it("reads catalog and compatibility without the workbook list while the launcher moves between stages", async () => {
+  const reads = { workbookList: 0, workbookCatalog: 0, workbookCompatibility: 0 };
+  const counted = { ...libraryReads,
+    workbookList: async () => { reads.workbookList += 1; return []; },
+    workbookCatalog: async () => { reads.workbookCatalog += 1; return libraryReads.workbookCatalog(); },
+    workbookCompatibility: async () => { reads.workbookCompatibility += 1; return libraryReads.workbookCompatibility(); } };
+  const dialog = await h.openDialog(h.stubClient({ ...counted }), { workflows: [workflow], panelWorkflowId: descriptor.id });
+  await h.settle(); await chooseCurrent(); await select(0); await mode("rehire");
+  await dialog.press("Continue"); await h.settle(); await dialog.press("Continue"); await h.settle();
+  assert.equal(reads.workbookList, 0, "Start run never lists whole workbooks");
+  assert.deepEqual([reads.workbookCatalog, reads.workbookCompatibility], [1, 1], "each reference read happens once per dialog open");
+});
+
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned, true); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });

@@ -67,7 +67,7 @@ export function displayScalar(value: string | number | boolean): string {
 
 type FactProvenanceWire = Pick<ContextDataEntry, "observedAt" | "source" | "correctedAt" | "assertedStep" | "typedMark">;
 
-function provenanceFor(run: RunRecord, descriptor: AnyWorkflowDescriptor, stored: RunCheckpointRecord, fieldPath: string): FactProvenanceWire {
+function provenanceFor(run: RunRecord, descriptor: AnyWorkflowDescriptor | undefined, stored: RunCheckpointRecord, fieldPath: string): FactProvenanceWire {
   let best: RunCheckpointRecord["provenance"][number] | undefined;
   for (const point of stored.provenance) {
     const path = String(point.path);
@@ -76,7 +76,7 @@ function provenanceFor(run: RunRecord, descriptor: AnyWorkflowDescriptor, stored
   }
   const asserted = stored.assertion === undefined ? {} : {
     assertedStep: String(stored.assertion.step),
-    typedMark: typedMarkOf(run, descriptor, String(stored.assertion.step), String(stored.nodeId), fieldPath),
+    ...(descriptor === undefined ? {} : { typedMark: typedMarkOf(run, descriptor, String(stored.assertion.step), String(stored.nodeId), fieldPath) }),
   };
   if (best === undefined) return asserted;
   return {
@@ -150,7 +150,8 @@ function entryOf(
   descriptor: RunDetailDescriptorView | undefined,
   exactDescriptor: AnyWorkflowDescriptor,
   field: Readonly<{ nodeId: string; fieldPath: string; label: string }>,
-): ContextDataEntry {
+  archived: boolean,
+): ContextDataEntry | undefined {
   const coordinate = {
     nodeId: NodeIdSchema.parse(field.nodeId),
     fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
@@ -160,6 +161,7 @@ function entryOf(
     return malformedEntry(field.label, field.nodeId, field.fieldPath, "checkpoint-identity-mismatch");
   }
   if (selected === undefined) {
+    if (archived) return undefined;
     return {
       label: field.label,
       coordinate,
@@ -176,16 +178,16 @@ function entryOf(
     return malformedEntry(field.label, field.nodeId, field.fieldPath, "checkpoint-identity-mismatch");
   }
   if (stored.descriptorVersion !== run.envelope.descriptorVersion
-    || stored.contractFingerprint !== run.envelope.contractFingerprint
-    || stored.descriptorVersion !== exactDescriptor.version
-    || stored.contractFingerprint !== exactDescriptor.contractFingerprint) {
+    || stored.contractFingerprint !== run.envelope.contractFingerprint) {
     return malformedEntry(field.label, field.nodeId, field.fieldPath, "descriptor-mismatch");
   }
   const expectedSchemaHash = outputSchemaHashOf(exactDescriptor, field.nodeId);
   if (expectedSchemaHash === undefined || stored.output.schemaHash !== expectedSchemaHash) {
-    return malformedEntry(field.label, field.nodeId, field.fieldPath, "output-schema-mismatch");
+    return archived ? undefined : malformedEntry(field.label, field.nodeId, field.fieldPath, "output-schema-mismatch");
   }
 
+  const provenance = provenanceFor(run, archived ? undefined : exactDescriptor, stored, field.fieldPath);
+  if (archived && provenance.source === undefined) return undefined;
   const lookup = scalarAtPath(stored.output.value, field.fieldPath);
   const checkpoint = {
     state: "present" as const,
@@ -197,8 +199,7 @@ function entryOf(
     schemaHash: stored.output.schemaHash,
     writtenAt: stored.writtenAt,
   };
-  const attribution = originOf(descriptor, field.nodeId, field.fieldPath);
-  const provenance = provenanceFor(run, exactDescriptor, stored, field.fieldPath);
+  const attribution = originOf(archived ? undefined : descriptor, field.nodeId, field.fieldPath);
   if (lookup.kind === "absent") {
     return {
       label: field.label,
@@ -234,12 +235,8 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
       runId, state: "unavailable", reason: "descriptor-unavailable", entries: [], observations,
     });
   }
-  if (exactDescriptor.version !== run.envelope.descriptorVersion
-    || exactDescriptor.contractFingerprint !== run.envelope.contractFingerprint) {
-    return ContextDataSectionSchema.parse({
-      runId, state: "unavailable", reason: "descriptor-mismatch", entries: [], observations,
-    });
-  }
+  const archived = exactDescriptor.version !== run.envelope.descriptorVersion
+    || exactDescriptor.contractFingerprint !== run.envelope.contractFingerprint;
   const fields = typeof descriptor.capabilities?.editData === "object"
     ? descriptor.capabilities.editData.fields
     : [];
@@ -259,13 +256,18 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
         ));
       }
     }
-    return fields.map((field) => entryOf(
-      run, rowsByNode.get(String(field.nodeId)) ?? [], descriptor, exactDescriptor,
-      { nodeId: String(field.nodeId), fieldPath: field.fieldPath, label: field.label },
-    ));
+    return fields.flatMap((field) => {
+      const nodeId = String(field.nodeId);
+      const entry = entryOf(run, rowsByNode.get(nodeId) ?? [], descriptor, exactDescriptor,
+        { nodeId, fieldPath: field.fieldPath, label: field.label }, archived);
+      return entry === undefined ? [] : [entry];
+    });
   });
+  if (archived && entries.length === 0 && observations.length === 0) {
+    return ContextDataSectionSchema.parse({ runId, state: "unavailable", reason: "descriptor-mismatch", entries, observations });
+  }
   return ContextDataSectionSchema.parse({
-    runId, state: "available", entries, observations,
+    runId, state: archived ? "archived" : "available", entries, observations,
   });
 }
 

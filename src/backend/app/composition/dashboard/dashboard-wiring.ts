@@ -333,11 +333,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
         context.assertCurrent();
       } };
     } });
-  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync,
-    resultRun: runId => {
-      const run = database.authority.runs.get(runId);
-      return run === undefined ? undefined : { workflowId: run.envelope.workflow, enqueuedAt: run.envelope.enqueuedAt };
-    } });
+  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
   const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, projection, activity, clock, ids, artifacts, descriptors,
     actorLabel: () => {
@@ -441,5 +437,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
 }

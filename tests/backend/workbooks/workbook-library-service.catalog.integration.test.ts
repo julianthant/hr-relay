@@ -16,7 +16,7 @@ import { spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadshe
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
-function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: Pick<Parameters<typeof createWorkbookLibraryService>[0], 'resultRun'> = {}) {
+function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(sql);
   const selectionTable = SQLITE_MIGRATIONS.find(migration => migration.version === 25)?.statements
@@ -31,7 +31,7 @@ function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: P
   };
   const repository = createWorkbookLibraryRepository({ database, read: transaction, mutate: work => transaction(() => work().result) });
   const clock = manualClock(new Date('2026-11-02T00:00:00Z'));
-  const service = createWorkbookLibraryService({ repository, sync, clock, ...options });
+  const service = createWorkbookLibraryService({ repository, sync, clock });
   const record = service.create({ name: 'Roster.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'people', name: 'Sheet 1', hidden: [], width: 2,
     columnBindings: ['eid', 'fullName'].map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: ['EID', 'Name'][index], fieldId, basis: 'manual' })),
     rows: [{ id: 'header', cells: [{ value: 'EID' }, { value: 'Name' }] }, { id: 'person', cells: [{ value: '10000001' }, { value: 'Example, Person' }] }] }] });
@@ -320,22 +320,16 @@ it('serves selected content time across saves, metadata, retained versions and v
   expect(f.service.catalog()[0].updatedAt).toBe(first);
 });
 
-it('groups results using run enqueue authority, stable ties and explicit unavailable authority', () => {
-  const runIds = ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000004'];
-  const f = fixture(unexpectedWorkbookSync, { resultRun: id => id === runIds[3] ? undefined : { workflowId: id === runIds[2] ? 'second' : 'first',
-    enqueuedAt: id === runIds[0] ? '2026-10-01T00:00:00Z' : '2026-11-01T00:00:00Z' } });
-  const create = (id: string, runId: string, workflowId = 'first') => f.repository.create({ ...f.record, libraryId: id, workbook: { ...f.record.workbook, libraryId: id } },
-    WorkbookLibraryOriginSchema.parse({ kind: 'workflow', runId, workflowId, workflowLabel: workflowId, partitionDay: '2026-11-02', rowCount: 1, rowSubject: 'person' }));
-  create('a', runIds[0]); create('b', runIds[1]); create('c', runIds[1]); create('d', runIds[2], 'second'); create('e', runIds[3]);
-  f.repository.create({ ...f.record, libraryId: 'legacy-output', workbook: { ...f.record.workbook, libraryId: 'legacy-output' } }, { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' });
-  const result = f.service.results();
-  expect(result.unavailable.map(entry => entry.libraryId)).toEqual(['legacy-output']);
-  expect(result.workflows.map(workflow => workflow.workflowId)).toEqual(['first', 'second']);
-  expect(result.workflows[0].runs.map(run => run.runId)).toEqual([runIds[1], runIds[0], runIds[3]]);
-  expect(result.workflows[0].runs[0].entries.map(entry => entry.libraryId)).toEqual(['b', 'c']);
-  expect(result.workflows[0].runs[2].enqueuedAt).toBeNull();
-  create('conflict', runIds[1], 'second');
-  expect(() => f.service.results()).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_CORRUPT' }));
+it('keeps local, workflow and unavailable output origins in the workbook catalog', () => {
+  const f = fixture();
+  const workflow = WorkbookLibraryOriginSchema.parse({ kind: 'workflow', runId: '00000000-0000-4000-8000-000000000001', workflowId: 'first',
+    workflowLabel: 'First workflow', partitionDay: '2026-11-02', rowCount: 1, rowSubject: 'person' });
+  const unavailable = { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' } as const;
+  f.repository.create({ ...f.record, libraryId: 'output', workbook: { ...f.record.workbook, libraryId: 'output' } }, workflow);
+  f.repository.create({ ...f.record, libraryId: 'legacy-output', workbook: { ...f.record.workbook, libraryId: 'legacy-output' } }, unavailable);
+  expect(Object.fromEntries(f.service.catalog().map(entry => [entry.libraryId, entry.state.origin]))).toEqual({
+    [f.record.libraryId]: { kind: 'local' }, output: workflow, 'legacy-output': unavailable,
+  });
 });
 
 function captureRequest(f: ReturnType<typeof fixture>, keys = ['10000001']) {

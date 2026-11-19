@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { buildWorkflowExplorer } from "../../src/backend/runs/queries/explorer.js";
 import { READABLE_WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
 import type { ExplorerReviewSpec } from "../../src/models/dashboard/explorer-review-spec.js";
 import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../../src/models/workflow/review-spec.js";
@@ -8,7 +7,7 @@ import { FingerprintSchema } from "../../src/rules/identity/ids.js";
 import { manualClock } from "../../src/rules/time/clock.js";
 import { compileWorkflow, composeWorkflowModule } from "../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
-import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../support/fixtures/explorer-seams.js";
 
 function assertFrozenRecursively(value: unknown): void {
   if (value === null || typeof value !== "object") return;
@@ -32,7 +31,7 @@ it("authors every registered step and retains every visible operator field exact
 });
 
 const deps = () => explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64)));
-const explorer = () => buildWorkflowExplorer(deps());
+const explorer = () => readFixtureExplorer(deps());
 const rowsWithoutSample = (spec: ExplorerReviewSpec) => spec.steps.flatMap(step => step.blocks.flatMap(block =>
   block.kind === "card" ? block.rows.filter(row => row.value === undefined).map(row => `${step.id}/${block.id}/${row.id}`) : []));
 
@@ -45,7 +44,7 @@ it("fails the completeness check on a broken Person Lookup example or an outcome
   const rebuild = (edit: (review: WorkflowStepReview) => WorkflowStepReview) => {
     const definition = { ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries]) =>
       [group.key !== "searching" || group.review === undefined ? group : { ...group, review: edit(group.review) }, entries] as const) };
-    return buildWorkflowExplorer({ ...deps(), modules: [composeWorkflowModule(compileWorkflow(definition), original.stores)] }).workflows[0]?.reviewSpec;
+    return readFixtureExplorer({ ...deps(), modules: [composeWorkflowModule(compileWorkflow(definition), original.stores)] }).workflows[0]?.reviewSpec;
   };
   const broken = rebuild(review => ({ ...review, pages: review.pages.map(page => ({ ...page, fields: page.fields.map(field => {
     if (!("inputField" in field) || field.inputField !== "name") return field;
