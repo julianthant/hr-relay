@@ -27,6 +27,8 @@ export const ERROR_CATALOG = Object.freeze({
   DOCUMENT_NOT_IN_ACTION_LIST: catalogEntry("The Kuali Action List does not contain this separation document. Check the document number and current list.", EmptyParametersSchema),
   DOCUMENT_NUMBER_MISMATCH: catalogEntry("Kuali opened a different document than the one requested. Check the document number before continuing.", EmptyParametersSchema),
   EMPLID_NOT_RECOGNIZED: catalogEntry("UCPath did not recognize the employee ID. Check the ID on the separation document and review the person record.", EmptyParametersSchema),
+  EMPLOYEE_ID_ABSENT: catalogEntry("The separation document does not show an Employee ID. Review the document before continuing.", EmptyParametersSchema),
+  EMPLOYEE_ID_NO_MATCH: catalogEntry("No UCPath person matched the Employee ID on the separation document. Review the document before continuing.", EmptyParametersSchema),
   EMPLOYEE_NAME_ABSENT: catalogEntry("The separation document does not show an employee name. Review the document before continuing.", EmptyParametersSchema),
   EMPLOYEE_NOT_FOUND: catalogEntry("The employee could not be found with the supplied search details. Check the name or employee ID.", EmptyParametersSchema),
   EMPLOYMENT_RECORD_MISMATCH: catalogEntry("The UCPath employment record does not match the record selected for this termination. Review the employee’s job history.", EmptyParametersSchema),

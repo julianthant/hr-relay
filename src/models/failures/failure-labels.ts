@@ -43,6 +43,8 @@ const FAILURE_LABELS: Readonly<Partial<Record<ErrorCatalogCode, string>>> = {
   DOCUMENT_NUMBER_MISMATCH: "Different document opened",
   DOCUMENT_UNAVAILABLE: "Document not opened",
   EMPLID_NOT_RECOGNIZED: "Employee ID not recognized",
+  EMPLOYEE_ID_ABSENT: "Employee ID missing",
+  EMPLOYEE_ID_NO_MATCH: "Employee ID not found",
   EMPLOYEE_NAME_ABSENT: "Employee name missing",
   EMPLOYEE_NOT_FOUND: "Employee not found",
   EMPLOYMENT_RECORD_MISMATCH: "Job record differs",
