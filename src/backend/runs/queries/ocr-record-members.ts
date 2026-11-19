@@ -3,7 +3,8 @@ import { delegationChildInputFingerprint } from "../../../models/workflow/delega
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { OcrApprovalReferenceSchema, OcrResultSchema } from "../../../models/workflows/ocr/result.js";
 import { OcrCanonicalInputSchema } from "../../../models/workflows/ocr/input.js";
-import { RetainedOcrReviewSeedSchema, RetainedOcrArtifactRosterSeedSchema, type OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
+import { PreManualOcrReviewCheckpointSchema, RetainedOcrReviewSeedSchema, RetainedOcrArtifactRosterSeedSchema,
+  type OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
 import { OcrPageWorkflowInputSchema } from "../../../models/workflows/ocr-page/input.js";
 import { ReadOcrReviewSeed } from "../../../models/workflows/ocr/read-review-seed.js";
 import { DelegationRefreshRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
@@ -14,7 +15,7 @@ import { initialOcrReviewRecords, ocrRecordName, ocrSnapshotDigest } from "../..
 import { ocrRecordSourcePages } from "../../../models/ocr/review-record.js";
 import { PersonLookupResultSchema } from "../../../models/workflows/person-lookup/result.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
-import { RetainedOcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
+import { RetainedOcrPageAccountingSchema, RetainedOcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { deriveRunStatus, panelKindOf } from "../../../rules/runs/run-status.js";
@@ -35,6 +36,25 @@ import { checkpointLookupKey, type RunCheckpointRecord } from "../../../models/w
 import { descriptorRuntimeNodes, workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 
 type AuthenticatedGroup = ReturnType<AuthorityRepositories["dependencies"]["authenticateGroup"]>;
+
+const compactReviewHash = deriveSchemaHash(ReadOcrReviewSeed.output, "output");
+const preManualCompactReviewHash = deriveSchemaHash(PreManualOcrReviewCheckpointSchema, "output");
+const preManualRetainedReview = RetainedOcrReviewSeedSchema.safeExtend({
+  accounting: RetainedOcrPageAccountingSchema.options[0],
+  pages: PreManualOcrReviewCheckpointSchema.shape.pages,
+});
+const artifactRosterReviewSchemas = [
+  RetainedOcrArtifactRosterSeedSchema,
+  preManualRetainedReview.safeExtend({ roster: RetainedOcrArtifactRosterSeedSchema.shape.roster }),
+];
+const fullReviewSchemas = new Map(
+  [RetainedOcrReviewSeedSchema, preManualRetainedReview, ...artifactRosterReviewSchemas]
+    .map(schema => [deriveSchemaHash(schema, "output"), schema] as const),
+);
+const artifactRosterResults = new Map(artifactRosterReviewSchemas.map(review => [
+  deriveSchemaHash(review, "output"),
+  OcrResultSchema.extend({ review, identities: OcrResultSchema.shape.identities.element.options[0].array() }),
+] as const));
 
 function retainedField(value: unknown, field: string): unknown {
   if (value === null || typeof value !== "object" || !Object.hasOwn(value, field)) throw new OcrReviewRefusedError();
@@ -84,7 +104,10 @@ function pageFailureMembers(repositories: AuthorityRepositories, owner: RunRecor
 
 function lookupReviewSeed(repositories: AuthorityRepositories, owner: RunRecord, { checkpoint, scope }: ReturnType<typeof originalCheckpoint>) {
   const { schemaHash, value } = checkpoint.output;
-  if (schemaHash === deriveSchemaHash(ReadOcrReviewSeed.output, "output")) {
+  if (schemaHash === compactReviewHash || schemaHash === preManualCompactReviewHash) {
+    if (schemaHash === preManualCompactReviewHash && !PreManualOcrReviewCheckpointSchema.safeParse(value).success) {
+      throw new OcrReviewRefusedError();
+    }
     const seed = readOcrReviewCheckpointSeed(repositories, owner, value);
     const pages = scope.filter(source => source.nodeId === "read-pages");
     const receipt = pages[0]?.delegation;
@@ -94,8 +117,7 @@ function lookupReviewSeed(repositories: AuthorityRepositories, owner: RunRecord,
       !== canonicalJsonStringify(seed.accounting.outcomes)) throw new OcrReviewRefusedError();
     return seed;
   }
-  const schema = [RetainedOcrReviewSeedSchema, RetainedOcrArtifactRosterSeedSchema].find(schema => deriveSchemaHash(schema, "output") === schemaHash);
-  const full = schema?.safeParse(value);
+  const full = fullReviewSchemas.get(schemaHash)?.safeParse(value);
   if (!full?.success || canonicalJsonStringify(full.data.roster) !== canonicalJsonStringify(retainedField(owner.input.parsed.value, "roster"))) {
     throw new OcrReviewRefusedError();
   }
@@ -115,12 +137,10 @@ function assertPublishedCheckpoint(repositories: AuthorityRepositories, owner: R
     || canonicalJsonStringify(publication.payload.checkpoint) !== canonicalJsonStringify(timelineCheckpointReference(checkpoint))) throw new OcrReviewRefusedError();
 }
 
-const artifactRosterResult = OcrResultSchema.extend({ review: RetainedOcrArtifactRosterSeedSchema,
-  identities: OcrResultSchema.shape.identities.element.options[0].array() });
-
 function artifactRosterAssociations(repositories: AuthorityRepositories, owner: RunRecord, group: AuthenticatedGroup,
   build: RunCheckpointRecord, seed: OcrReviewSeed) {
-  if (group.invocation.nodeId !== "lookup-identities" || build.output.schemaHash !== deriveSchemaHash(RetainedOcrArtifactRosterSeedSchema, "output")
+  const artifactRosterResult = artifactRosterResults.get(build.output.schemaHash);
+  if (group.invocation.nodeId !== "lookup-identities" || artifactRosterResult === undefined
     || group.invocation.children.some(child => child.sourceRecordIds !== undefined)) throw new OcrReviewRefusedError();
   const results = repositories.runCheckpoints.listByAttempt(owner.envelope.workflow, owner.envelope.itemId, "read-result", owner.envelope.attempt)
     .filter(row => row.runId === owner.envelope.runId && row.claimGeneration >= build.claimGeneration);

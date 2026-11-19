@@ -39,6 +39,29 @@ function assertSlowOperation(event: DebugEvent | undefined, category: "http" | "
 }
 
 describe("slow storage operations in the debug report", () => {
+  it("records the first slow read and summarizes a burst by worst duration and omitted rows", async () => {
+    const profile = await createBoundProfileFixture();
+    const clock = manualClock(AT);
+    const context = composeSelectedProfileStorage({ machineAdmission: profile.machine, admission: profile.admission,
+      credentials: boundProfileCredentials(profile.admission), hostFacts: { primaryDisplay: null }, clock });
+    try {
+      const slowRead = (durationMs: number) => context.database.withAuthorityReadSnapshot(() => clock.advanceMonotonic(durationMs));
+      slowRead(51);
+      const firstGeneration = context.database.getMeta().authorityGeneration;
+      slowRead(190);
+      slowRead(90);
+      assert.equal(context.database.getMeta().authorityGeneration, firstGeneration);
+      clock.advanceMonotonic(60_000);
+      slowRead(70);
+      const events = slowOperationEvents(context.database).filter(event => event.code === "read-snapshot");
+      assert.deepEqual(events.map(event => [event.durationMs, event.omitted]), [[51, undefined], [190, 2]]);
+    } finally {
+      await context.account.close();
+      context.database.close();
+      await profile.close();
+    }
+  });
+
   it("records one event from the dashboard backend", async () => {
     const profile = await createBoundProfileFixture();
     const clock = manualClock(AT);

@@ -47,6 +47,8 @@ function authorityWithoutFinalizationCheckpoint(
           ),
         listByItem: (workflowId, itemId) =>
           authority.runCheckpoints.listByItem(workflowId, itemId),
+        listByRunAttempt: (workflowId, itemId, runId, attempt) =>
+          authority.runCheckpoints.listByRunAttempt(workflowId, itemId, runId, attempt),
       },
     },
     afterAuthorityCommit: (publish) =>

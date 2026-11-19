@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { Clock } from "../../rules/time/clock.js";
+import { emitOptionalDiagnostic } from "./debug-events.js";
 
 export const EVENT_LOOP_STALL_THRESHOLD_MS = 200;
 const STALL_EVENT_INTERVAL_MS = 10_000;
@@ -25,14 +26,16 @@ export function startLoopDelayMonitor(deps: {
   const histogram = monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
   let lastEventAt = -Infinity;
+  let omitted = 0;
   const timer = setInterval(() => {
     const durationMs = histogram.max / 1_000_000;
     histogram.reset();
     if (durationMs <= EVENT_LOOP_STALL_THRESHOLD_MS) return;
     const now = deps.clock.monotonicMs();
     if (now - lastEventAt < STALL_EVENT_INTERVAL_MS) return;
-    deps.debugEvents.emit({ category: "boot", phase: "settled", area: "event-loop",
-      reason: "event-loop-stall", correlationId: randomUUID(), durationMs });
+    const result = emitOptionalDiagnostic(() => deps.debugEvents.emit({ category: "boot", phase: "settled", area: "event-loop",
+      reason: "event-loop-stall", correlationId: randomUUID(), durationMs, ...(omitted > 0 ? { omitted } : {}) }));
+    omitted = result === "budget-full" ? omitted + 1 : 0;
     lastEventAt = now;
   }, SAMPLE_INTERVAL_MS);
   timer.unref();
