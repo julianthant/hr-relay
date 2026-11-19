@@ -113,12 +113,9 @@ it("traces the no-password restart sequence across two checkouts without clearin
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(checkout, name));
   }
   let machine = f.machine, app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
-  let origin = "", cookie: string | undefined;
+  let origin = "", port = 0;
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
-    const response = await fetch(`${origin}${new URL(url).pathname}`, { ...init,
-      headers: { ...init?.headers, origin, ...(cookie === undefined ? {} : { cookie }) } });
-    const next = response.headers.get("set-cookie"); if (next !== null) cookie = next.split(";", 1)[0];
-    return response;
+    return fetch(`${origin}${new URL(url).pathname}`, { ...init, headers: { ...init?.headers, origin } });
   } });
   const trace = (step: string) => {
     const selected = machine.readProfileRegistry();
@@ -133,18 +130,21 @@ it("traces the no-password restart sequence across two checkouts without clearin
       machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
       trace(`startup preparation ${index + 1}`);
       app = await composeDashboardApplication({ admission: machine, lifetimeLock: f.lifetime, repoRoot, isolation: rebuildRuntimeIsolation,
-        backendPortOverride: 0, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+        backendPortOverride: port, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
         workerProcess: { spawn() { throw new Error("restart trace must not spawn a worker"); } } });
-      origin = `http://127.0.0.1:${app.port}`;
+      port = app.port; origin = `http://127.0.0.1:${port}`;
       trace(`start ${index + 1}`);
-      cookie = undefined;
-      assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
-      trace(`new browser without cookie ${index + 1}`);
-      assert.equal((await client.resumeProfile()).state, "active");
+      if (index === 0) {
+        assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false });
+        assert.deepEqual(await client.resumeProfile(), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+        assert.equal((await client.signInProfile({ email: fields.email, password: fields.password })).state, "active");
+      } else {
+        assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
+        assert.equal((await client.resumeProfile()).state, "active");
+      }
       await client.bootstrap();
       trace(`resumed without password ${index + 1}`);
-      cookie = undefined;
-      trace(`browser closed ${index + 1}`);
+      trace(`before stop ${index + 1}`);
       await app.stop(); app = undefined;
       machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
       trace(`clean Ctrl+C stop ${index + 1}`);
@@ -162,26 +162,28 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
   }
   let repoRoot = f.workspace;
   let machine = f.machine, app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
-  let origin = "", cookie: string | undefined, spawns = 0;
+  let origin = "", port = 0, credential: string | undefined, spawns = 0;
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
-    const response = await fetch(`${origin}${new URL(url).pathname}`, { ...init,
-      headers: { ...init?.headers, origin, ...(cookie === undefined ? {} : { cookie }) } });
-    const next = response.headers.get("set-cookie"); if (next !== null) cookie = next.split(";", 1)[0];
+    const headers = new Headers(init?.headers);
+    headers.set("origin", origin);
+    if (credential === undefined) headers.delete("x-relay-session");
+    const response = await fetch(`${origin}${new URL(url).pathname}`, { ...init, headers });
+    const next = response.headers.get("x-relay-session"); if (next !== null) credential = next;
     return response;
   } });
   const start = async () => {
     const running = await composeDashboardApplication({ admission: machine, lifetimeLock: f.lifetime, repoRoot, isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      backendPortOverride: port, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       workerProcess: { spawn() { spawns++; throw new Error("planning must not spawn a worker"); } } });
-    origin = `http://127.0.0.1:${running.port}`;
+    port = running.port; origin = `http://127.0.0.1:${port}`;
     return running;
   };
   try {
     app = await start();
     const first = await client.signInProfile({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     assert.equal(first.state, "active"); if (first.state !== "active") throw new Error("actual initial sign-in required");
-    await client.bootstrap(); assert.ok(cookie); const oldCookie = cookie;
-    cookie = undefined;
+    await client.bootstrap(); assert.ok(credential); const oldCredential = credential;
+    credential = undefined;
     await assert.rejects(client.bootstrap());
     assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
     assert.deepEqual(await client.resumeProfile(), first);
@@ -190,15 +192,15 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
     machine = acquireEntrypointAdmission(f.workspace, mode, f.lifetime);
     repoRoot = otherCheckout;
     app = await start();
-    cookie = undefined;
+    credential = undefined;
     await assert.rejects(client.bootstrap());
     assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
     const resumed = await client.resumeProfile();
     assert.equal(resumed.state, "active"); if (resumed.state !== "active") throw new Error("current resume authority required");
-    assert.equal(resumed.profileId, first.profileId); assert.ok(resumed.epoch > first.epoch); assert.notEqual(cookie, oldCookie);
+    assert.equal(resumed.profileId, first.profileId); assert.ok(resumed.epoch > first.epoch); assert.notEqual(credential, oldCredential);
     await client.bootstrap();
-    for (const rejectedCookie of [oldCookie, oldCookie.replace(/=.*/u, "=foreign")]) {
-      const response = await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie: rejectedCookie } });
+    for (const rejectedCredential of [oldCredential, "foreign"]) {
+      const response = await fetch(`${origin}/api/v1/bootstrap`, { headers: { "x-relay-session": rejectedCredential } });
       assert.equal(response.status, 401); assert.deepEqual(await response.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
     }
     for (const input of [
@@ -209,21 +211,21 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
     await app?.stop(); app = undefined;
     machine = acquireEntrypointAdmission(f.workspace, mode, f.lifetime);
     repoRoot = f.workspace;
-    app = await start(); cookie = undefined;
+    app = await start(); credential = undefined;
     assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
     const final = await client.resumeProfile();
     assert.equal(final.state, "active"); if (final.state !== "active") throw new Error("final resume required");
     await client.bootstrap();
-    assert.ok(cookie); const browserA = cookie;
-    cookie = undefined;
+    assert.ok(credential); const browserA = credential;
+    credential = undefined;
     assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
     assert.deepEqual(await client.resumeProfile(), final);
-    assert.ok(cookie); const browserB = cookie;
+    assert.ok(credential); const browserB = credential;
     const browsers = [browserA, browserB];
-    assert.deepEqual(await Promise.all(browsers.map(async browserCookie =>
-      (await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie: browserCookie } })).status)), [200, 200]);
+    assert.deepEqual(await Promise.all(browsers.map(async browserCredential =>
+      (await fetch(`${origin}/api/v1/bootstrap`, { headers: { "x-relay-session": browserCredential } })).status)), [200, 200]);
     const foreign = await fetch(`${origin}/api/v1/profile/resume`, { method: "POST", headers: { origin: "https://foreign.invalid", "content-type": "application/json" }, body: "{}" });
-    assert.equal(foreign.status, 403); assert.equal(foreign.headers.get("set-cookie"), null);
+    assert.equal(foreign.status, 403); assert.equal(foreign.headers.get("x-relay-session"), null);
     assert.equal(machine.readProfileRegistry().activeProfileId, final.profileId);
     const ended = await (ending === "logout" ? client.logOutProfile()
       : client.deleteProfileAccount({ confirmed: true, expectedProfileId: final.profileId, expectedEpoch: final.epoch }));
@@ -239,8 +241,8 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
     assert.deepEqual(changes, ["started", "settled"].map(phase => ({ phase, reason: "profile-logout-requested",
       caller: "src/backend/profiles/profile-session.ts:logOut", oldGeneration: final.epoch, newGeneration: final.epoch + 1 })));
     assert.equal(JSON.stringify(changes).includes(final.profileId), false);
-    assert.deepEqual(await Promise.all(browsers.map(async browserCookie =>
-      (await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie: browserCookie } })).status)), [401, 401]);
+    assert.deepEqual(await Promise.all(browsers.map(async browserCredential =>
+      (await fetch(`${origin}/api/v1/bootstrap`, { headers: { "x-relay-session": browserCredential } })).status)), [401, 401]);
     assert.equal((await client.readProfileSession()).state, "signed-out");
     assert.deepEqual(await client.resumeProfile(), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
     await assert.rejects(client.bootstrap());
@@ -250,28 +252,30 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
 it("joins two resumes fired at once after a restart, so neither page is told to wait for another profile", async () => {
   const f = await createBoundProfileFixture({ sharedMachine: true }), clock = manualClock(new Date("2026-11-04T12:00:00Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-  let machine = f.machine, app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, origin = "";
+  let machine = f.machine, app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, origin = "", port = 0;
   const start = async () => {
     const running = await composeDashboardApplication({ admission: machine, lifetimeLock: f.lifetime, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      backendPortOverride: port, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       workerProcess: { spawn() { throw new Error("resume must not spawn a worker"); } } });
-    origin = `http://127.0.0.1:${running.port}`;
+    port = running.port; origin = `http://127.0.0.1:${port}`;
     return running;
   };
-  const post = (path: string, body: unknown) => fetch(`${origin}${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+  const post = (path: string, body: unknown, proof?: string) => fetch(`${origin}${path}`, { method: "POST", headers: { origin, "content-type": "application/json", ...(proof === undefined ? {} : { "x-relay-resume": proof }) }, body: JSON.stringify(body) });
   try {
     app = await start();
-    assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: fields.email, password: fields.password })).json()).state, "active");
+    const enrolled = await post("/api/v1/profile/sign-in", { email: fields.email, password: fields.password });
+    assert.equal(PublicProfileStateSchema.parse(await enrolled.json()).state, "active");
+    const proof = enrolled.headers.get("x-relay-resume"); assert.ok(proof);
     await app.stop(); app = undefined;
     machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
     app = await start();
-    const responses = await Promise.all([post("/api/v1/profile/resume", {}), post("/api/v1/profile/resume", {})]);
+    const responses = await Promise.all([post("/api/v1/profile/resume", {}, proof), post("/api/v1/profile/resume", {}, proof)]);
     const bodies = await Promise.all(responses.map(async response => PublicProfileStateSchema.parse(await response.json())));
     assert.deepEqual(responses.map(response => response.status), [200, 200], JSON.stringify(bodies));
     assert.deepEqual(bodies.map(body => body.state), ["active", "active"], JSON.stringify(bodies));
     assert.deepEqual(bodies[0], bodies[1]);
-    const cookies = responses.map(response => response.headers.get("set-cookie")?.split(";", 1)[0]);
-    assert.ok(cookies[0]); assert.equal(cookies[0], cookies[1]);
-    assert.equal((await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie: cookies[0] ?? "" } })).status, 200);
+    const credentials = responses.map(response => response.headers.get("x-relay-session"));
+    assert.ok(credentials[0]); assert.equal(credentials[0], credentials[1]);
+    assert.equal((await fetch(`${origin}/api/v1/bootstrap`, { headers: { "x-relay-session": credentials[0] ?? "" } })).status, 200);
   } finally { await app?.stop(); await f.close(); }
 });

@@ -15,7 +15,6 @@ import type {
 } from "../browser-shared/login-contract.js";
 import {
   abortIfCancelled,
-  fillSsoCredentials,
   raceCancellation,
   submitSsoForm,
   verifyUcsdAuthenticatedApplication,
@@ -153,8 +152,6 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
     await waitForSsoForm(SYSTEM, context, token);
     context.assertCurrent();
     await ensureActiveDirectorySelected(context, token);
-    context.assertCurrent();
-    await fillSsoCredentials(SYSTEM, context, token);
     context.assertCurrent();
     await submitSsoForm(SYSTEM, context, token);
     context.assertCurrent();

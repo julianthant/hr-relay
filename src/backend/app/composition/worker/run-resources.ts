@@ -73,8 +73,7 @@ export function createRunResourcesFactory(input:Readonly<{
     configSnapshots:input.authority.configSnapshots,idFactory:{next:()=>input.ids.uuid()}},
   });
  };
- const cache=new Map<string,ReturnType<typeof compose>>();
- const runCache=new Map<string,WorkerRunResources>();
+ let cachedBaseline:{fingerprint:string;resources:ReturnType<typeof compose>}|undefined;
  return Object.freeze({
   baseline:compose,
   stop:()=>nominatim.stop(),
@@ -87,14 +86,15 @@ export function createRunResourcesFactory(input:Readonly<{
    const snapshot=ConfigSnapshotRecordSchema.parse(selectRunSettings(input.authority,run.envelope));
    input.assertBrowserRoot(snapshot.config.paths.browserProfileRoot);
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint)throw new Error("run-resources-retained-snapshot-unavailable");
-   const previous=cache.get(snapshot.fingerprint);
-   const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
-   const key=`${run.envelope.runId}:${run.envelope.attempt}:${run.claimGeneration}:${snapshot.fingerprint}`;
+   if(cachedBaseline?.fingerprint!==snapshot.fingerprint){
+    cachedBaseline={fingerprint:snapshot.fingerprint,resources:compose(StoredConfigSchema.parse(snapshot.config))};
+   }
+   const baseline=cachedBaseline.resources;
    const approvedOcr=input.runReader===undefined?undefined:createApprovedOcrRecordReader({database:input.database,reader:input.runReader,run,resolveDescriptor,assertCurrent:()=>{
     input.admission.assertProfileRuntime();const claim=runClaim(run);if(claim===undefined)throw new OcrPublicationRefusedError();
     input.assertProfileOwner(claim.workerId);
    }});
-   const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
+   const resources=Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
     ...(approvedOcr===undefined?{}:{"ocr.review":createOcrReviewAdapter({reader:approvedOcr,clock:input.clock})}),
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
      publicationSource:()=>{
@@ -106,7 +106,6 @@ export function createRunResourcesFactory(input:Readonly<{
     "ocr.approved-snapshot":createOcrApprovedSnapshotAdapter({clock:input.clock,...(approvedOcr===undefined?{}:{reader:approvedOcr})}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run,resolveDescriptor)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
-   runCache.set(key,resources);
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});
   },
  });

@@ -54,7 +54,7 @@ function protectedSettingsCommand(
     payload: {
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId,
-      entries: { ucpathPassword: { set: value } },
+      entries: { sharepointOnboardingRosterUrl: { set: value } },
     },
   });
 }
@@ -100,7 +100,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       clock.now().toISOString(),
       protectedRevision,
       writeId,
-      "disposable-fixture-password",
+      "https://roster.example.test/first-fixture",
     ));
     assert.equal(first.state, "applied");
     if (first.state === "applied") assert.equal(first.revision, protectedRevision + 1);
@@ -132,7 +132,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       clock.now().toISOString(),
       resumedProtectedRevision,
       writeId,
-      "second-synthetic-protected-value",
+      "https://roster.example.test/second-fixture",
     ));
 
     assert.equal(reused.state, "rejected");

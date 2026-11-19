@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, statSync, statfsSync } from "node:fs";
 import { join } from "node:path";
 import type { Clock } from "../../../../rules/time/clock.js";
-import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
+import { inspectAuthorityOffThread } from "../../../storage/sqlite/authority-inspection-off-thread.js";
 import { parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
@@ -10,11 +11,24 @@ import { StorageHealthConcernSchema } from "../../../../rules/notifications/noti
 import { listCanonicalRuns } from "../../../runs/queries/canonical-runs.js";
 import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
+import { isAuthoritySourceChanged } from "../../../storage/sqlite/readonly-authority-snapshot.js";
+
+type InspectionVerdict = "sound" | "failed" | "overtaken";
+/** The whole-store inspection runs on a worker thread because it takes seconds on a real store. An aborted pass throws; a refused inspection is a failed verdict the caller turns into a failed-health notification. */
+async function inspectStore(admission: RuntimeAdmission, path: string, signal: AbortSignal | undefined): Promise<InspectionVerdict> {
+  try { await inspectAuthorityOffThread(admission, path, { signal }); return "sound"; }
+  catch (error) {
+    if (signal?.aborted === true) throw error;
+    return isAuthoritySourceChanged(error) ? "overtaken" : "failed";
+  }
+}
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
 type ChangeKey = ReturnType<AuthorityDatabase["changeKey"]>;
 /** Integrity and live-run heartbeats both hold until the store changes; lease age is re-judged against the clock on every pass. */
 const inspected = new WeakMap<AuthorityDatabase, { key: ChangeKey; integrityFailed: boolean; heartbeats: readonly number[] }>();
+/** The key an inspection still on its worker thread will be remembered under; an owned write while it runs moves it like a remembered one. */
+const inFlight = new WeakMap<AuthorityDatabase, { key: ChangeKey }>();
 const sameKey = (a: ChangeKey, b: ChangeKey) => a.authorityGeneration === b.authorityGeneration && a.dataVersion === b.dataVersion && a.totalChanges === b.totalChanges;
 /** Runs a synchronous write this observer owns that touches no notification source; remembered keys follow it only when nothing else moved them before or during the write. */
 function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
@@ -25,6 +39,8 @@ function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
   // A changed dataVersion means another connection committed, which this observer does not own.
   if (after.dataVersion !== before.dataVersion) return result;
   if (entry !== undefined && sameKey(entry.key, before)) inspected.set(database, { ...entry, key: after });
+  const flight = inFlight.get(database);
+  if (flight !== undefined && sameKey(flight.key, before)) flight.key = after;
   followOwnedWrite(database, before, after);
   return result;
 }
@@ -51,9 +67,14 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
   if (prior !== undefined && sameKey(prior.key, opening)) ({ integrityFailed, heartbeats } = prior);
   else {
     heartbeats = listCanonicalRuns(input.reader, "live").flatMap(run => "heartbeatAt" in run.lifecycle ? [Date.parse(run.lifecycle.heartbeatAt)] : []);
-    integrityFailed = false;
-    try { AuthorityDatabase.inspectExistingReadOnly(input.admission, join(stateRoot, "state.db")); } catch { integrityFailed = true; }
-    inspected.set(input.database, { key: opening, integrityFailed, heartbeats });
+    const flight = { key: opening };
+    inFlight.set(input.database, flight);
+    let verdict: InspectionVerdict;
+    try { verdict = await inspectStore(input.admission, join(stateRoot, "state.db"), input.signal); }
+    finally { if (inFlight.get(input.database) === flight) inFlight.delete(input.database); }
+    // A write that landed during the inspection is no verdict: the last one, remembered or stored, holds and the next pass inspects again.
+    integrityFailed = verdict === "overtaken" ? prior?.integrityFailed ?? input.database.authority.notificationHealth.get("integrity-check")?.active === true : verdict === "failed";
+    if (verdict !== "overtaken") inspected.set(input.database, { key: flight.key, integrityFailed, heartbeats });
   }
   const leaseExpired = heartbeats.some(heartbeatAt => clock.nowMs() - heartbeatAt > 60_000);
   let backupFailed = false;

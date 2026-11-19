@@ -19,13 +19,15 @@ import { ReadOcrResult } from "../../../models/workflows/ocr/read-result.js";
 import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../models/workflows/ocr/read-source-pages.js";
 import { ExtractPdfPages, ExtractPdfPagesOutputSchema } from "../../../models/processing/extraction/extract-pdf-pages.js";
 import { publishOcrReview, authenticateOcrOperator } from "./ocr-review-authority.js";
-import { taskId } from "../../../rules/identity/ids.js";
 import { TaskError } from "../../../workflow-kit/errors.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 export class OcrPublicationRefusedError extends Error {
   readonly code = "OCR_PUBLICATION_REFUSED";
-  constructor() { super("OCR_PUBLICATION_REFUSED"); this.name = "OcrPublicationRefusedError"; }
+  constructor(detail?: string) {
+    super(detail === undefined ? "OCR_PUBLICATION_REFUSED" : `OCR_PUBLICATION_REFUSED: ${detail}`);
+    this.name = "OcrPublicationRefusedError";
+  }
 }
 
 function same(left: unknown, right: unknown): boolean {
@@ -82,11 +84,30 @@ function declaredImplFingerprint(resolve: ResolveDescriptor, run: RunRecord, nod
   return taskImplFingerprint(node.uses);
 }
 
-export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "read">, captured: RunRecord, resolve: ResolveDescriptor) {
+export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "read">, captured: RunRecord,
+  resolve: ResolveDescriptor): (repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord) => void {
+  const { workflow, contractFingerprint, descriptorVersion } = captured.envelope;
+  if (workflow !== "ocr" && workflow !== "ocr-page") return () => undefined;
+  const descriptor = resolve(workflow);
+  if (descriptor?.id !== workflow || descriptor.contractFingerprint !== contractFingerprint || descriptor.version !== descriptorVersion) {
+    throw new OcrPublicationRefusedError(`${workflow} publication requires the run's registered descriptor`);
+  }
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const contracts = workflow === "ocr" ? [ReadOcrResult] : [ReadManualOcrReading, ReadOcrPageReading];
+  const publications = new Map(contracts.map(contract => {
+    const matches = nodes.filter(node => node.kind === "task" && node.uses.id === contract.id);
+    const [node] = matches;
+    if (node?.kind !== "task" || matches.length !== 1) {
+      throw new OcrPublicationRefusedError(`${workflow} publication requires exactly one node for ${contract.id}`);
+    }
+    return [String(node.id), { task: contract.id, schemaHash: deriveSchemaHash(contract.output, "output"),
+      implFingerprint: taskImplFingerprint(node.uses) }] as const;
+  }));
   return (repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord): void => {
-    const review = captured.envelope.workflow === "ocr" && checkpoint.nodeId === "read-result";
-    if (!review && (captured.envelope.workflow !== "ocr-page"
-      || !["read-page-reading", "manual-reading"].includes(checkpoint.nodeId))) return;
+    const publication = publications.get(checkpoint.nodeId);
+    if (publication === undefined) return;
+    const review = publication.task === ReadOcrResult.id;
+    const manual = publication.task === ReadManualOcrReading.id;
     try {
       const read = (runId: string) => {
         const existence = reader.read(runId);
@@ -106,8 +127,8 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
         || Number(checkpoint.claimGeneration) !== Number(run.claimGeneration) || run.claimGeneration !== captured.claimGeneration
         || checkpoint.descriptorVersion !== run.envelope.descriptorVersion
         || checkpoint.contractFingerprint !== run.envelope.contractFingerprint || stored === undefined || !same(stored, checkpoint)
-        || checkpoint.output.schemaHash !== deriveSchemaHash(review ? ReadOcrResult.output : OcrPageReadingSchema, "output")
-        || checkpoint.implFingerprint !== declaredImplFingerprint(resolve, run, checkpoint.nodeId, review ? ReadOcrResult : checkpoint.nodeId === "manual-reading" ? ReadManualOcrReading : ReadOcrPageReading)) throw new OcrPublicationRefusedError();
+        || checkpoint.output.schemaHash !== publication.schemaHash
+        || checkpoint.implFingerprint !== publication.implFingerprint) throw new OcrPublicationRefusedError();
       if (review) { publishOcrReview(repositories, reader, run, checkpoint); return; }
       const input = OcrPageWorkflowInputSchema.parse(run.input.parsed.value);
       const reading = OcrPageReadingSchema.parse(checkpoint.output.value);
@@ -126,11 +147,11 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
       if (!authenticateDescendantHome(repositories, run, root.envelope.workflow)) throw new OcrPublicationRefusedError();
       const actor = authenticateRootRun(repositories, root).command.requestedBy;
       if (input.reading.kind === "manual") {
-        if (checkpoint.nodeId !== "manual-reading" || request.reading.kind !== "manual"
+        if (!manual || request.reading.kind !== "manual"
           || request.reading.actorId !== actor || input.reading.actorId !== actor
           || reading.extraction.source.kind !== "operator" || reading.extraction.source.actorId !== actor
           || !same(input.reading.extraction, reading.extraction)) throw new OcrPublicationRefusedError();
-      } else if (checkpoint.nodeId !== "read-page-reading" || request.reading.kind !== "subscription"
+      } else if (manual || request.reading.kind !== "subscription"
         || reading.extraction.source.kind !== "provider" || reading.extraction.source.providerId !== "chatgpt-subscription") {
         throw new OcrPublicationRefusedError();
       }
@@ -145,9 +166,7 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
       repositories.ocrExtractions.insert(reading);
     } catch (cause) {
       const code = review ? "OCR_REVIEW_REFUSED" : "OCR_PUBLICATION_REFUSED";
-      const task = taskId(review ? "workflow:ocr/read-result" : checkpoint.nodeId === "manual-reading"
-        ? "workflow:ocr-page/read-manual-reading" : "workflow:ocr-page/read-page-reading");
-      throw new TaskError(task, code, ERROR_CATALOG[code].text, { cause });
+      throw new TaskError(publication.task, code, ERROR_CATALOG[code].text, { cause });
     }
   };
 }
