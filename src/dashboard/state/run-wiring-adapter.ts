@@ -75,12 +75,15 @@ export interface RunLogSnapshot {
 
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
+  // The first log page is requested with the detail; the detail's identity and capability checks still gate its use.
+  const firstPage = client.runSection(row.runId, "logs", undefined, signal);
+  firstPage.catch(() => undefined);
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
-  const section = await client.runSection(row.runId, "logs", undefined, signal);
+  const section = await firstPage;
   if (section.section !== "logs" || section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   let logs = section.payload;
   logRowsOf(logs, "initial");
@@ -612,7 +615,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
-    void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
+    const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
       if (active.current === request && !controller.signal.aborted) { ended(); setSettled({ request, value: { state: "loaded", snapshot } }); }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
@@ -634,6 +637,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
           : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
+    // Start after the mount settles: a mount cancelled in the same tick sends nothing.
+    queueMicrotask(() => { if (!controller.signal.aborted) read(); });
     return () => { controller.abort(); reading.current = false; };
   }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;

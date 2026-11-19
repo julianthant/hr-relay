@@ -25,10 +25,15 @@ export function observeResource<Value>(
   onError: (error: unknown) => void,
 ): () => void {
   let live = true;
-  void read().then(
-    (value) => { if (live) onValue(value); },
-    (error: unknown) => { if (live) onError(error); },
-  );
+  // The read starts after the mount settles: a mount cancelled in the same tick
+  // (StrictMode's probe mount) sends nothing. A throwing read settles as an error.
+  queueMicrotask(() => {
+    if (!live) return;
+    void Promise.resolve().then(read).then(
+      (value) => { if (live) onValue(value); },
+      (error: unknown) => { if (live) onError(error); },
+    );
+  });
   return () => { live = false; };
 }
 
