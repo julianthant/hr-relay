@@ -226,10 +226,16 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     emitter.emit(ExecutorSpanEventSchema.parse({ ts: instant(), workflow: workflowId, ...event }));
   };
 
+  const undeliveredTransitions: string[] = [];
   const recordTransition = (reason: "worker-idle" | "worker-active" | "sessions-parking"): void => {
-    deps.debugEvents?.emit({
-      category: "worker", phase: "started", area: "worker-lifecycle", reason, correlationId: streamId,
-    }, { kind: "worker", workerId });
+    try {
+      deps.debugEvents?.emit({
+        category: "worker", phase: "started", area: "worker-lifecycle", reason, correlationId: streamId,
+      }, { kind: "worker", workerId });
+    } catch {
+      // Report after the claim turn so diagnostic delivery cannot interrupt execution or parking.
+      undeliveredTransitions.push(reason);
+    }
   };
 
   const sessions = new WorkerSessionManager({
@@ -464,6 +470,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       } finally {
         deps.claimTurn?.end();
+        for (const state of undeliveredTransitions.splice(0)) {
+          deps.log.warn("Worker lifecycle diagnostic delivery failed.", { workerId, state });
+        }
         if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
       }
     }

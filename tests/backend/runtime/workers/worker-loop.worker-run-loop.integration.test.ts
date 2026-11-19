@@ -10,8 +10,11 @@ import { afterEach, describe, it, vi } from "vitest";
 import { runWorkerLoop, WorkerLoopReportSchema } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
-import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { RunIdSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
+import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { EXECUTOR_EID, EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
@@ -22,6 +25,9 @@ import { OcrPublicationRefusedError } from "../../../../src/backend/runs/lifecyc
 import { requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
 import { createPreflightAdmission, PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
+
+const ocr = createOcrReviewWorld();
+afterEach(ocr.cleanup);
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 
@@ -240,18 +246,44 @@ describe("worker run loop", () => {
     assert.equal(h.authority.database.authority.runs.get(queued.envelope.runId)?.lifecycle.state, "queued");
   });
 
-  for (const recover of [false, true]) it(`authenticates both systems needed for a cold Person Lookup (Duo recovery ${recover})`, async () => {
-    const h = await loopHarness();
-    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+  for (const recover of [false, true]) it(`claims a cold delegated Person Lookup on an Emergency Contact worker (Duo recovery ${recover})`, async () => {
+    // The page-failure fixture pauses just before OCR admits Person Lookup for the surviving page.
+    const f = await ocr.fixture({ coordinator: true, record: true, pageCount: 2, employeeIds: [EXECUTOR_EID, null],
+      failManualPageOnce: 2, stopAfterPageFailure: true, dryRun: true });
+    const signal = new AbortController().signal;
+    const admitted = await f.canonical.step(f.parentRun, signal);
+    assert.equal(admitted.outcome.state, "yielded-delegation");
+    const lookup = f.database.authority.runs.listChildren(f.run.envelope.runId).find(child => child.envelope.workflow === "person-lookup");
+    assert.equal(lookup?.lifecycle.state, "queued");
+    const home = emergencyContactModule.descriptor;
+    const owner = testWorkerLifetime(f.database, home.id, 1);
+    const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
     const starts: string[] = [];
     const discards: string[] = [];
+    let claimed = false;
     const report = await runWorkerLoop({
-      ...h.deps,
+      ...f.harness.deps, workflowId: home.id, workerId: WorkerIdSchema.parse(owner.workerId), descriptor: home,
+      lifecycle: f.canonical.lifecycle, stopSignal: signal, heartbeatIntervalMs: 500, idleRepollMs: 1000, exitWhenIdle: true,
+      sessionAcquireMs: 30_000, duoCeremony: duoCeremonyGatesOver(f.database, f.clock),
+      browserScreenshotCapture: { capture: async () => undefined },
+      controlPoll: () => claimed ? "stop" : "run",
+      resolveExecution: run => {
+        assert.equal(run.envelope.runId, lookup?.envelope.runId);
+        return { descriptor: personLookupDescriptor, stores: f.stores };
+      },
+      claimNext: request => {
+        const next = f.canonical.lifecycle.claimNext({ commandId: request.commandId, workflow: request.workflow,
+          workerId: request.workerId, runtimeConfig: { generation: runtime.generation,
+          settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+        assert.ok("run" in next && next.run.envelope.runId === lookup?.envelope.runId);
+        claimed = true;
+        return next;
+      },
       sessionFactory: {
-        ...h.sessions.factory,
+        ...f.harness.sessions.factory,
         discardProfile: async input => { discards.push(input.system); return { profileDirectory: "/fixture/profile" }; },
         open: async input => {
-          const resource = await h.sessions.factory.open(input);
+          const resource = await f.harness.sessions.factory.open(input);
           return { ...resource, authentication: { authenticate: (system, options) => input.duoCeremony.withCeremony(async () => {
             starts.push(system);
             if (recover && starts.length === 1) {
@@ -314,6 +346,40 @@ describe("worker run loop", () => {
     assert.deepEqual(transitions, [["worker-idle", at, 0], ["sessions-parking", at, 0]]);
     assert.equal(harness.sessions.opens("ucpath"), 1);
     assert.deepEqual(harness.sessions.closeReasons(), ["parked", "parked"]);
+  });
+
+  it("finishes a claim and proves parking when worker lifecycle diagnostics fail", async () => {
+    const h = await loopHarness();
+    const writer = createDebugEventWriter({ clock: h.authority.clock, repository: h.authority.database.authority.timelineEvents, build: "test" });
+    const warn = vi.fn(h.deps.log.warn);
+    let polls = 0;
+    const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, descriptor: emergencyContactModule.descriptor,
+      log: { ...h.deps.log, warn },
+      resolveExecution: () => ({ descriptor: personLookupDescriptor, stores: taskStoreRegistry }),
+      debugEvents: { emit: (input, ...args) => {
+        if (typeof input === "object" && input !== null && "area" in input && input.area === "worker-lifecycle") {
+          throw new Error("injected diagnostic failure");
+        }
+        return writer.emit(input, ...args);
+      } },
+      claimNext: (request, sessions) => {
+        polls++;
+        if (polls === 2) h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+        if (polls === 3) h.stop.abort();
+        return h.deps.claimNext(request, sessions);
+      },
+    });
+    try {
+      await Promise.race([looping, new Promise<void>(resolve => setImmediate(resolve))]);
+      const timer = h.scheduler.pending()[0];
+      assert.ok(timer); timer.fire();
+      const report = await looping;
+      assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["done"]);
+      assert.equal(report.closure, "proved");
+      assert.deepEqual(h.sessions.closeReasons(), ["parked", "parked"]);
+      assert.ok(warn.mock.calls.some(call => call[1]?.state === "worker-active"));
+      assert.ok(warn.mock.calls.some(call => call[1]?.state === "sessions-parking"));
+    } finally { h.stop.abort(); await looping; }
   });
 
   it("returns accumulated outcomes and a failed worker span when session closure is unproved", async () => {

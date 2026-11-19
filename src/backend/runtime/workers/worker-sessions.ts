@@ -182,6 +182,17 @@ function closureUnproved(state: WorkerSessionState): boolean {
   return state.state === "failed" || browser.state === "closure-unproved" || browser.state === "closing" && browser.owner === "session";
 }
 
+// A parked write wraps its capture error. An aggregate can carry an independent transaction failure.
+function requiredCaptureFailed(error: unknown): boolean {
+  const seen = new Set<Error>();
+  while (error instanceof Error && !(error instanceof AggregateError) && !seen.has(error)) {
+    if (error instanceof TaskError) return error.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED";
+    seen.add(error);
+    error = error.cause;
+  }
+  return false;
+}
+
 function abortError(system: BrowserSystemId): Error {
   return new Error(`${system} driver lease was aborted before acquisition`);
 }
@@ -726,8 +737,7 @@ export class WorkerSessionManager {
           }
         }
         let retained = false;
-        const captureFailed = operationCompleted || (leaseError instanceof TaskError && leaseError.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED");
-        if (mayReset && !signal.aborted && (need.access === "read" || captureFailed)) {
+        if (mayReset && !signal.aborted && (need.access === "read" || operationCompleted || requiredCaptureFailed(leaseError))) {
           try {
             await this.#resetLease(resource, signal);
             retained = true;
@@ -800,6 +810,7 @@ export class WorkerSessionManager {
       throw new Error(`worker ${this.#workerId} browser sessions are already closing for ${this.#closingReason}`);
     }
     this.#closingReason = reason;
+    let parkingFailure: { error: unknown } | undefined;
     const failures: unknown[] = [];
     try {
       const sessions = [...this.#systems];
@@ -810,7 +821,7 @@ export class WorkerSessionManager {
         ...sessions.filter(([, session]) => session.turn !== undefined).map(([system]) => system),
       ]);
       if (reason === "parked" && systems.size > 0) {
-        try { this.#onParking?.(); } catch (error) { failures.push(error); }
+        try { this.#onParking?.(); } catch (error) { parkingFailure = { error }; }
       }
       // A pending login's context is closed instead of awaited, so the login ends and closure is proved.
       for (const system of systems) this.#session(system).stopLogin?.(reason);
@@ -850,8 +861,10 @@ export class WorkerSessionManager {
       this.#closingReason = undefined;
     }
     if (failures.length > 0) {
+      if (parkingFailure !== undefined) failures.push(parkingFailure.error);
       throw new WorkerSessionClosureUnprovedError(this.#workerId, failures);
     }
+    if (parkingFailure !== undefined) throw parkingFailure.error;
   }
 
   async #withSystemTurn<Result>(

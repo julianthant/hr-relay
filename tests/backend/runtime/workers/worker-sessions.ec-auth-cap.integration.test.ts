@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { WorkerSessionManager, type WorkerBrowserSessionFactory, type WorkerSessionEvent } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { WorkflowIdSchema, taskId } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createWorkerSessionManagerTestWorld } from "../../../support/helpers/backend/worker-session-manager-world.js";
-import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
+import { createWriteSequencer, WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
+import { absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { ManualScheduler, recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
+
+const writes = createWriteSequencerTestWorld();
+afterEach(writes.cleanup);
 
 const world = createWorkerSessionManagerTestWorld();
 const signal = new AbortController().signal;
@@ -14,10 +22,10 @@ const need = { system: "ucpath", access: "read", session: "reuse-worker" } as co
 const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
 const context = { runId: "00000000-0000-4000-8000-000000000099", descriptorFingerprint: world.RUN_FINGERPRINT };
 
-function manager(factory: WorkerBrowserSessionFactory, events: WorkerSessionEvent[] = [], workflow = "emergency-contact") {
+function manager(factory: WorkerBrowserSessionFactory, events: WorkerSessionEvent[] = [], workflow = "emergency-contact", onParking?: () => void) {
   const sessions = new WorkerSessionManager({
     workflowId: WorkflowIdSchema.parse(workflow), workerId: world.WORKER_ID,
-    stores: taskStoreRegistry, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: 30_000,
+    onParking, stores: taskStoreRegistry, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: 30_000,
     factory, duoCeremony: { openGate: () => ({
       retainedForRecovery: () => true, dispose: () => undefined,
       withCeremony: async () => { throw new Error("unexpected ceremony in synthetic authentication"); },
@@ -97,6 +105,46 @@ describe("Emergency Contact worker claim authentication", () => {
     } finally { sessions.releaseRunConfigFingerprint(); await sessions.closeAll("worker-stop"); }
   });
 
+  it.each(["after-submit", "verify"] as const)("keeps the authenticated browser until the explicit UNKNOWN park after %s capture fails", async boundary => {
+    const h = await writes.harness();
+    const { run, claim } = writes.claimRunning(h.database, h.clock);
+    const events: WorkerSessionEvent[] = [];
+    const stores = buildWriteFixtureRegistry(h.world);
+    const sessions = new WorkerSessionManager({
+      workerId: world.WORKER_ID, workflowId: WorkflowIdSchema.parse("emergency-contact"),
+      onEvent: event => events.push(event),
+      clock: h.clock, scheduler: h.scheduler, acquireDeadlineMs: 30_000, stores, factory: h.sessions.factory,
+      duoCeremony: duoCeremonyGatesOver(h.database, h.clock),
+      browserScreenshotCapture: { capture: async ({ trigger }) => {
+        if (trigger.kind === "task-point" && (trigger.boundary === boundary ||
+          (boundary === "verify" && trigger.boundary === "step" && h.world.events.includes("verify")))) {
+          throw new Error("synthetic capture failure");
+        }
+      } },
+    });
+    sessions.configureExecution(run.envelope.workflow, stores);
+    sessions.bindRunConfigFingerprint(run.envelope.configFingerprint, "headless", {
+      runId: run.envelope.runId, descriptorFingerprint: run.envelope.contractFingerprint,
+    });
+    const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(h.database, h.clock), stores, authority: h.database,
+      sessions, emitter: h.emitter.emitter, clock: h.clock, ids: h.ids, scheduler: h.scheduler, taskDeadlineMs: 60_000,
+      operator: "local-operator", log: recordingLogger().log });
+    try {
+      h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+      h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+      await assert.rejects(sequencer.executeTransaction(writes.contextFor(run, claim, writeFixtureSaveDescriptor)),
+        error => error instanceof WriteParkedError && error.parkCode === "unknown");
+      assert.equal(writes.intentByKey(h.database)?.status, "parked");
+      assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-write");
+      assert.equal(h.database.authority.runCheckpoints.latest(run.envelope.workflow, run.envelope.itemId, WRITE_FIXTURE_NODE_ID), undefined);
+      assert.ok(h.world.events.includes("verify"));
+      assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
+      assert.deepEqual(events.slice(-2).map(event => event.type), ["browser-session:reset", "browser-session:close"]);
+      assert.deepEqual(h.sessions.closeReasons(), ["parked"]);
+      assert.equal(h.sessions.opens("ucpath"), 1);
+    } finally { sessions.releaseRunConfigFingerprint(); await sessions.closeAll("worker-stop"); }
+  });
+
   it("propagates a broken session's reset and capture errors without reacquiring in the claim", async () => {
     const harness = world.sessionFactory({ resetFailureAt: 1, screenshotFailure: true });
     const sessions = manager(harness.factory);
@@ -112,6 +160,18 @@ describe("Emergency Contact worker claim authentication", () => {
       });
       await assert.rejects(read(), error => error === failure);
       assert.equal(harness.opens(), 1);
+      assert.equal(harness.closes(), 1);
+    } finally { sessions.releaseRunConfigFingerprint(); await sessions.closeAll("worker-stop"); }
+  });
+
+  it("reports a parking observer failure separately from proved closure", async () => {
+    const harness = world.sessionFactory();
+    const observerError = new Error("parking observer failed");
+    const sessions = manager(harness.factory, [], "emergency-contact", () => { throw observerError; });
+    try {
+      await sessions.withDriver(need, "prod", signal, async () => undefined);
+      await assert.rejects(sessions.closeAll("parked"), error => error === observerError);
+      assert.deepEqual(sessions.activeSystems(), []);
       assert.equal(harness.closes(), 1);
     } finally { sessions.releaseRunConfigFingerprint(); await sessions.closeAll("worker-stop"); }
   });
