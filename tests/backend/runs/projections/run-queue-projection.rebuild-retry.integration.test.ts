@@ -15,8 +15,9 @@ import { DashboardStreamHub } from "../../../../src/backend/transports/http/subs
 import { ASSISTANT_DEFAULT_EFFORT, ASSISTANT_DEFAULT_MODEL } from "../../../../src/models/dashboard/assistant.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
-import { APP_VERSION, DAY, DESCRIPTOR_SET_HASH, queuedEventOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { APP_VERSION, DAY, DESCRIPTOR_SET_HASH, notificationRecordOf, queuedEventOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const { world, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
@@ -90,6 +91,71 @@ it("keeps a connected day cursor contiguous across a log-only poll", async () =>
   } finally {
     hub.close();
   }
+});
+
+it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm notice only when %s belongs to a run whose timeline it reads", async type => {
+  const w = await world();
+  const descriptor = personLookupDescriptor;
+  const retained = { ...descriptor, version: descriptor.version - 1 };
+  const relevant = queuedEventOf(w, { seed: 1, descriptor: retained, displayName: "Synthetic older run" });
+  const unrelated = queuedEventOf(w, { seed: 2, descriptor });
+  const notice = notificationRecordOf({ seed: 1, title: "Run needs attention", lastSeenAt: relevant.ts });
+  w.database.authority.notifications.create(notice);
+
+  const unexpected = (): never => { throw new Error("unexpected write or Activity read"); };
+  const runReader = new RunRecordService({ database: w.database, clock: w.clock, ids: { uuid: unexpected }, publishQueued: unexpected });
+  const summaries = composeQueueSummaries(w.database);
+  let queueReads = 0;
+  const makeProjection = () => {
+    const projection = createOperatorProjection({
+      database: w.database, stateRoot: w.stateRoot, clock: w.clock,
+      appVersion: APP_VERSION, descriptorSetHash: DESCRIPTOR_SET_HASH,
+      reader: {
+        read: runId => runReader.read(runId), list: input => runReader.list(input),
+        withRunTreeSnapshot: (ids, read) => runReader.withRunTreeSnapshot(ids, read),
+        summaries: { ...summaries, activity: unexpected, queue(input) { queueReads += 1; return summaries.queue(input); } },
+      },
+      ledger: createTransactionHistory(w.database.authority),
+      descriptors: { resolve: workflow => workflow === descriptor.id ? descriptor : undefined },
+      workerMembers: () => [],
+    });
+    projection.rebuildFromTimeline();
+    assert.equal(projection.health().state, "live");
+    return projection;
+  };
+  const append = ({ workflow, runId, traceId, attempt, ts }: typeof relevant) => {
+    const writer = createTimelineEmitter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4243 });
+    const base = { t: type, ts, workflow, runId, traceId, attempt, spanPath: `${traceId}/removed-node/commit` };
+    writer.emit(type === "transaction.fenced" ? { ...base, node: "removed-node", taskId: "ucpath/search-person-org" }
+      : { ...base, observedAt: ts, nodeId: "removed-node", taskId: "ucpath/search-person-org", points: [
+        { direction: "read", field: "selection", values: [
+          { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "resolved" },
+        ] },
+      ] });
+  };
+  const noticeContext = (projection: ReturnType<typeof makeProjection>) => {
+    const row = projection.buildDashboardDayWire(DAY).notifications.find(row => row.notificationId === notice.notificationId);
+    assert.ok(row?.kind === "notification");
+    return row.context;
+  };
+  const projection = makeProjection();
+  const cursor = projection.cursor();
+  const visible = { state: "available", workflow: descriptor.label, subject: "Synthetic older run" };
+  assert.deepEqual(noticeContext(projection), visible);
+  assert.equal(queueReads, 1);
+
+  append(unrelated);
+  projection.ingestFromTimeline();
+  assert.deepEqual(noticeContext(projection), visible);
+  assert.equal(queueReads, 1, "log evidence for another same-day run reuses the warm day");
+
+  append(relevant);
+  projection.ingestFromTimeline();
+  assert.equal(projection.cursor(), cursor);
+  const hidden = { state: "workflow-only", workflow: descriptor.label };
+  assert.deepEqual(noticeContext(makeProjection()), hidden, "fresh reads withhold the incompatible subject");
+  assert.deepEqual(noticeContext(projection), hidden, "warm reads also withhold the incompatible subject");
+  assert.equal(queueReads, 3);
 });
 
 it("shares an unchanged day across a GET and stream connects and refreshes it when the runs change", async () => {

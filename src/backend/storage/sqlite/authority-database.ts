@@ -3843,6 +3843,7 @@ export class AuthorityDatabase implements Disposable {
   checkQueueDaySources(day: string, previous?: Readonly<{
     through: number;
     runIds: readonly string[];
+    timelineRunIds: readonly string[];
     commandIds: readonly string[];
     items: readonly { workflowId: string; itemId: string }[];
     month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
@@ -3880,10 +3881,16 @@ export class AuthorityDatabase implements Disposable {
         ))
         OR (table_name = 'timeline_events'
           AND EXISTS (SELECT 1 FROM json_each(keys_json) WHERE value LIKE 'run:%')
-          AND (op = 'delete' OR EXISTS (SELECT 1 FROM timeline_events
-            WHERE cursor = CAST(json_extract(row_key, '$[0]') AS INTEGER)
-            AND kind IN ('note','transaction.previewed','checkpoint-recorded','checkpoint-replayed','operation-confirmed','write-parked'))))
-      ) LIMIT 1`).get(JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), previous.through);
+          AND (op = 'delete' OR EXISTS (
+            SELECT 1 FROM timeline_events event
+            WHERE event.cursor = CAST(json_extract(change.row_key, '$[0]') AS INTEGER)
+              AND (
+                event.kind IN ('note','transaction.previewed','checkpoint-recorded','checkpoint-replayed','operation-confirmed','write-parked')
+                OR (event.kind IN ('data.observed','transaction.fenced') AND event.run_id IN (SELECT value FROM json_each(?)))
+              )
+          ))
+        )
+      ) LIMIT 1`).get(JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), previous.through, JSON.stringify(previous.timelineRunIds));
       if (sharedChange !== undefined) return { through, changed: true };
 
       const changedRuns = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}

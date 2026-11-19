@@ -135,6 +135,7 @@ export interface ServedSummaryQueries {
 interface QueueDaySources {
   readonly through: number;
   readonly runIds: readonly string[];
+  readonly timelineRunIds: readonly string[];
   readonly commandIds: readonly string[];
   readonly items: readonly { workflowId: string; itemId: string }[];
   readonly month: { from: string; to: string; counts: DashboardDayWire["monthCounts"] };
@@ -522,14 +523,15 @@ export class RunQueueProjection {
     return contract === undefined ? undefined : "id" in contract ? String(contract.id) : String(contract.taskId);
   }
 
-  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[], readRun: RunQueueProjectionDeps["reader"]["read"]): NonNullable<WorkerCardWire["timeline"]> {
+  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[], readRun: RunQueueProjectionDeps["reader"]["read"],
+    presentation: RunTimelineEvidenceSource): NonNullable<WorkerCardWire["timeline"]> {
     const read = readRun(runId);
     if (read.state !== "present" || read.disposition !== "live") return { state: "unavailable", reason: "run-unavailable" };
     const descriptor = this.#deps.descriptors.resolve(read.run.envelope.workflow);
     if (descriptor !== undefined && (descriptor.version !== read.run.envelope.descriptorVersion
       || descriptor.contractFingerprint !== read.run.envelope.contractFingerprint)) {
       try {
-        assertRunTimelineCompatible(read.run, descriptor.timeline, { timeline: this.#deps.timeline, authority: this.#deps.authority }, this.#rows.get(runId));
+        assertRunTimelineCompatible(read.run, descriptor.timeline, presentation, this.#rows.get(runId));
       } catch (error) {
         if (error instanceof LogIdentityRefusedError) return { state: "unavailable", reason: "timeline-incompatible" };
         throw error;
@@ -1558,6 +1560,17 @@ export class RunQueueProjection {
     let members: readonly WorkerSlotRecord[] | undefined;
     const sharedRuns = new Set<string>();
     const notificationCommands = new Set<string>();
+    const timelineRunIds = new Set<string>();
+    const presentation: RunTimelineEvidenceSource = {
+      authority: this.#deps.authority,
+      timeline: {
+        ...this.#deps.timeline,
+        page: input => {
+          if (input.runId !== undefined) timelineRunIds.add(input.runId);
+          return this.#deps.timeline.page(input);
+        },
+      },
+    };
     const readSharedRun: RunQueueProjectionDeps["reader"]["read"] = runId => {
       sharedRuns.add(runId);
       return this.#deps.reader.read(runId);
@@ -1584,7 +1597,7 @@ export class RunQueueProjection {
             duoSystems: this.#deps.authority.heldDuoLeases?.(member.workerId).map(lease => lease.system),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),
-            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces, readSharedRun) }
+            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces, readSharedRun, presentation) }
               : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
             resolveRun: runId => {
               const read = readSharedRun(runId);
@@ -1639,7 +1652,7 @@ export class RunQueueProjection {
           read: readSharedRun,
           descriptor: id => this.#deps.descriptors.resolve(id),
           receipt: id => this.#deps.authority.getReceipt(id),
-          presentation: this.#deps,
+          presentation,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
           command: id => {
             notificationCommands.add(id);
@@ -1659,7 +1672,7 @@ export class RunQueueProjection {
     }
     const items = new Map([...context.runs.values()].map(({ envelope: { workflow, itemId } }) =>
       [itemKey(workflow, itemId), { workflowId: workflow, itemId }] as const));
-    return { wire, sources: { runIds: [...runIds], commandIds: [...notificationCommands], items: [...items.values()],
+    return { wire, sources: { runIds: [...runIds], timelineRunIds: [...timelineRunIds], commandIds: [...notificationCommands], items: [...items.values()],
       month: { from: monthFrom, to: monthTo, counts: wire.monthCounts } } };
   }
 
