@@ -28,7 +28,7 @@ function stubPort(onboarding?: ProfileOnboardingState): ServedOnboardingPort {
     complete: never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never, submit: never });
 }
 
-interface Scene { step?: OnboardingStep; setup?: boolean; problem?: string; draft?: ProfileOnboardingState; submit?: boolean }
+interface Scene { step?: OnboardingStep; setup?: boolean; duo?: boolean; confirm?: boolean; problem?: string; draft?: ProfileOnboardingState; submit?: boolean }
 
 /** One state per scene, named for what the operator sees. */
 export const ONBOARDING_SCENES = {
@@ -47,6 +47,8 @@ export const ONBOARDING_SCENES = {
   "setup-key-complete": { setup: true, draft: draft("complete", "idle") },
   "setup-both-complete": { setup: true, draft: draft("complete", "complete") },
   "setup-key-failed": { setup: true, draft: draft("unknown", "idle") },
+  "setup-duo-waiting": { setup: true, duo: true, draft: draft("pending", "idle") },
+  "setup-duo-confirm": { setup: true, duo: true, confirm: true, draft: draft("pending", "idle") },
 } as const satisfies Record<string, Scene>;
 export type OnboardingSceneId = keyof typeof ONBOARDING_SCENES;
 export const ONBOARDING_SCENE_IDS = Object.keys(ONBOARDING_SCENES) as OnboardingSceneId[];
@@ -58,7 +60,7 @@ export function OnboardingScenePage({ id }: { id: OnboardingSceneId }) {
   const port = stubPort(scene.draft);
   return <div data-app-root="" className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]">
     <TooltipProvider>{scene.setup
-      ? <OnboardingSetup page="fast" port={port} />
+      ? <OnboardingSetup page={scene.duo === true ? "duo" : "fast"} port={port} />
       : <Onboarding step={scene.step ?? "login"} onStep={noop} onDashboard={noop} port={port} authenticated={false} {...(scene.problem === undefined ? {} : { problem: scene.problem })} />}</TooltipProvider>
   </div>;
 }

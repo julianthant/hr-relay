@@ -55,6 +55,11 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`onboarding frames 
       await page.getByRole("button", { name: looked.name }).click();
       await expect(page.locator(".ds-field-error").filter({ hasText: /\S/ }).first(), `${id}: field error`).toBeVisible({ timeout: 5_000 });
     }
+    if (ONBOARDING_SCENES[id].confirm === true) {
+      await page.getByRole("button", { name: "Add this device" }).click();
+      await expect(page.getByRole("dialog"), `${id}: confirmation dialog`).toBeVisible({ timeout: 5_000 });
+      await page.screenshot({ path: join(OUT, `${id}-dialog-${theme}-${width}.png`) });
+    }
     const box = await page.evaluate(() => ({ title: document.querySelector("h1")?.getBoundingClientRect().top, column: document.querySelector(".auth-layout")?.getBoundingClientRect().left }));
     if (box.column !== undefined) measured.push(`${id}: title top ${box.title}, column left ${box.column}`);
     if (box.column !== undefined) anchors.add(`${box.title}/${box.column}`);
