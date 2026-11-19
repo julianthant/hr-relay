@@ -93,6 +93,16 @@ describe("Work-Study reference spreadsheet check", () => {
     assert.deepEqual(f.database.authority.writeIntents.listByRun(started.envelope.runId), []);
   });
 
+  it("stops before staging when a repeated name token has only one worksheet match", async () => {
+    const f = await fixture({ read: { ...read, displayedName: "Lee Lee" } });
+    const reference = f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [["10000001", "Lee Thompson"]]);
+    const parked = await f.execute(f.start(INPUT, [reference]));
+    assert.ok(parked.lifecycle.state === "parked-gate" && String(parked.lifecycle.gateId) === "reference-check-review");
+    assert.deepEqual(f.checkLines(parked), ["Fall roster · Hires: name differs in row 2"]);
+    assert.deepEqual([f.stages(), f.commits()], [0, 0]);
+    assert.deepEqual(f.database.authority.writeIntents.listByRun(parked.envelope.runId), []);
+  });
+
   it("never stops a dry run for the check, and still records its line", async () => {
     const f = await fixture(), run = await f.execute(f.start(INPUT, [f.missing()], true));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(f.database.authority.failures.listByRun(run.envelope.runId)));

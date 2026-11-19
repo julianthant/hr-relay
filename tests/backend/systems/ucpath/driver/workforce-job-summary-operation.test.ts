@@ -104,8 +104,11 @@ describe("pickRowInEffect", () => {
     assert.equal(pickRowInEffect(rows, undefined).effectiveDate, "06/21/2026");
   });
 
-  it("picks the earliest row when every row is after the as-of date", () => {
-    assert.equal(pickRowInEffect(rows, LocalDateSchema.parse("2024-12-31")).effectiveDate, "01/31/2025");
+  it("refuses when every row is after the as-of date", () => {
+    assert.throws(
+      () => pickRowInEffect(rows, LocalDateSchema.parse("2024-12-31")),
+      /Workforce Job Summary has no row in effect on 2024-12-31/u,
+    );
   });
 
   it("breaks a same-date tie by the higher Seq", () => {

@@ -4,7 +4,8 @@ import { UcpathPayPathWorkStudyTargetSchema } from "../../../src/models/ui/ucpat
 import { UcpathTransactionFindingsSchema, type UcpathTransactionFindings } from "../../../src/models/ui/ucpath-transaction-findings.js";
 
 const target = UcpathPayPathWorkStudyTargetSchema.parse({
-  emplId: "10000001", expectedName: "Lee, Jordan", effectiveDate: "08/03/2026", positionChangeReason: "JRL", positionPool: "F",
+  emplId: "10000001", expectedName: "Lee, Jordan", positionNumber: "40012345", effectiveDate: "08/03/2026",
+  positionChangeReason: "JRL", positionPool: "F",
   comments: "Updated pool id to F per work study award 08/03/2026",
 });
 const row = (overrides: Readonly<Record<string, string>> = {}) => ({

@@ -16,7 +16,10 @@ afterEach(async () => { for (const world of worlds.splice(0)) await world.dispos
 it("an already filed termination ends already present through the step's own probe, staging and submitting nothing, and the receipt node records it", async () => {
   const filed = { transactionId: "T009000002", emplId: COMPOSITION_EID, action: "TER", approvalStatus: "Pending" as const,
     startDate: COMPOSITION_EFFECTIVE_DATE, displayedName: COMPOSITION_UCPATH_NAME };
-  const h = await compositionHarness({ rows: [filed] }); worlds.push(h);
+  const h = await compositionHarness({
+    rows: [filed],
+    employmentRecords: [{ transactionId: filed.transactionId, emplRecord: COMPOSITION_SCOPE_OUTPUTS.employment.emplRecord }],
+  }); worlds.push(h);
   const { run, claim } = compositionClaimRunning(h.database, h.clock, compositionQueuedRun(), TERMINATION_NODE);
   const outcome = await h.bound(() => h.sequencer.executeTransaction(compositionContext(run, claim, TERMINATION_NODE)));
   assert.equal(Reflect.get(outcome as object, "disposition"), "already-present");
