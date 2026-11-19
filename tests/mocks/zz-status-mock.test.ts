@@ -7,6 +7,7 @@ import type { DashboardApp } from "../../src/backend/transports/http/routes/api-
 import { registerWorkbookRoutes } from "../../src/backend/transports/http/routes/workbooks.js";
 import { createWorkbookLibraryService } from "../../src/backend/workbooks/workbook-library-service.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../src/models/dashboard/bootstrap.js";
+import { RowRevisionSchema } from "../../src/models/dashboard/primitives.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../src/models/dashboard/projection.js";
 import { RerunValuesResponseSchema } from "../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../src/models/dashboard/rerun-warning.js";
@@ -117,7 +118,8 @@ async function startStatusServer() {
     });
     app.post("/api/v1/rerun-warnings", async c => {
       const { workflowId, source } = RerunWarningRequestSchema.parse(await c.req.json());
-      if (!rerunRows.some(({ row }) => row.workflowId === workflowId && row.runId === source.runId && row.rowRevision === source.expectedVersion)) {
+      const expectedRevision = RowRevisionSchema.parse(source.expectedVersion);
+      if (!rerunRows.some(({ row }) => row.workflowId === workflowId && row.runId === source.runId && row.rowRevision === expectedRevision)) {
         throw new Error("Unexpected Status rerun warning source");
       }
       return c.json(RerunWarningWireSchema.parse({ workflowId, rerun: { source, warnings: [], warningDigest: "a".repeat(64) } }));
