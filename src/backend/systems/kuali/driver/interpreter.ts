@@ -1620,18 +1620,23 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
         return;
       }
       const request = route.request();
-      let postData: string;
+      let validation: { state: "valid"; postData: string } | { state: "invalid"; error: unknown };
       try {
         assertCurrent();
-        postData = validatedStagedSave(request, expectation);
+        const postData = validatedStagedSave(request, expectation);
         assertCurrent();
+        validation = { state: "valid", postData };
       } catch (error) {
+        validation = { state: "invalid", error };
+      }
+      if (validation.state === "invalid") {
+        const { error } = validation;
         forwardSave = undefined;
         await route.abort().then(() => refused.reject(error), refused.reject);
         return;
       }
       forwarded = request;
-      await route.fallback({ postData }).catch(refused.reject);
+      await route.fallback({ postData: validation.postData }).catch(refused.reject);
     };
     try {
       await clickWithMutationCapability(capability, save, FIELD_TIMEOUT_MS);
