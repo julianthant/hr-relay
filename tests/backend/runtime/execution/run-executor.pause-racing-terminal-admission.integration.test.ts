@@ -13,7 +13,7 @@ const world = createRunExecutorTestWorld(profiles.create);
 afterAll(() => profiles.close());
 afterEach(world.cleanup);
 
-it("releases the original claim when an operator Pause wins success admission", async () => {
+it.each([false, true])("releases the original claim when Pause wins success admission (withdrawn=%s)", async withdrawn => {
   const { authority: { database, clock }, deps } = await world.executorHarness();
   const claimed = world.enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
   const runId = claimed.run.envelope.runId;
@@ -22,15 +22,24 @@ it("releases the original claim when an operator Pause wins success admission", 
     terminalize: (...args) => {
       const current = database.authority.runs.get(runId);
       assert.ok(current?.lifecycle.state === "running");
-      assert.equal(service.pause({ commandId: randomUUID(), runId, expectedVersion: current.version }).state, "applied");
-      return deps.lifecycle.terminalize(...args);
+      const pause = service.pause({ commandId: randomUUID(), runId, expectedVersion: current.version });
+      assert.ok(pause.state === "applied");
+      const admission = deps.lifecycle.terminalize(...args);
+      assert.deepEqual(admission, { state: "refused", refusal: { reason: "lost" } });
+      if (withdrawn) {
+        const resume = service.resumePaused({ commandId: randomUUID(), runId, expectedVersion: pause.run.version });
+        assert.ok(resume.state === "applied");
+        assert.equal(resume.run.pause, undefined);
+        assert.deepEqual(runClaim(resume.run), runClaim(current));
+      }
+      return admission;
     },
   } }, { ...claimed, signal: world.SIGNAL });
-  const paused = database.authority.runs.get(runId);
-  assert.ok(paused);
-  assert.equal(runClaim(paused), undefined);
-  assert.equal(paused.pause?.state, "paused");
-  assert.equal(paused.lifecycle.state, "queued");
-  assert.deepEqual(outcome, { state: "abandoned", runId, reason: "paused" });
+  const released = database.authority.runs.get(runId);
+  assert.ok(released);
+  assert.equal(runClaim(released), undefined);
+  assert.equal(released.pause?.state, withdrawn ? undefined : "paused");
+  assert.equal(released.lifecycle.state, "queued");
+  assert.deepEqual(outcome, { state: "abandoned", runId, reason: withdrawn ? "requeued" : "paused" });
   assert.equal(database.authority.runResults.get(runId), undefined);
 });

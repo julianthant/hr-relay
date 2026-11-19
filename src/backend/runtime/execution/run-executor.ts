@@ -2400,24 +2400,20 @@ export async function executeClaimedRun(
         if (input.signal.reason instanceof RunControlAbortError) throw new RunPauseRequestedError("resumed");
       } catch (control) { failure = control; }
     }
-    if (failure instanceof RunTerminalAdmissionLostError) {
+    if (failure instanceof RunTerminalAdmissionLostError || failure instanceof RunPauseRequestedError) {
       try {
         const current = getRun();
         requireOriginalClaim(current);
         checkCancellation(current);
-        if (current.version > failure.admissionVersion) checkPause(current);
-      } catch (admissionFailure) { failure = admissionFailure; }
-    }
-    if (failure instanceof RunPauseRequestedError) {
-      try {
-        checkCancellation();
-        const current = getRun();
-        requireOriginalClaim(current);
-        const released = requireLifecycleApplied(deps.lifecycle.acknowledgePause({
-          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, ...(current.pause === undefined ? {} : { commandId: current.pause.commandId }) }),
-          runId, claim,
-        }));
-        return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: released.pause === undefined ? "resumed" : "paused" }) };
+        // Resume can withdraw Pause between a lost terminal admission and this read.
+        if (!(failure instanceof RunTerminalAdmissionLostError) || current.version > failure.admissionVersion) {
+          const released = requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+            commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, ...(current.pause === undefined ? {} : { commandId: current.pause.commandId }) }),
+            runId, claim,
+          }));
+          const unpausedReason = failure instanceof RunPauseRequestedError ? "resumed" : "requeued";
+          return { state: "handled", outcome: RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: released.pause === undefined ? unpausedReason : "paused" }) };
+        }
       } catch (pauseFailure) { failure = pauseFailure; }
     }
     // A command can commit cancellation between a boundary read and terminal admission.
