@@ -94,7 +94,7 @@ import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
 import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "./worker-custody-migration.js";
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow, predecessorCustodyRunRow, predecessorLifecycleRequest, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
-import { withNativeRecordReadScope, predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
+import { withNativeRecordReadScope, predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord,withoutNativeRecordReadMemo } from "./run-record-row.js";
 import { SearchStateColumnSchema,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
@@ -1626,6 +1626,11 @@ export type AuthorityChangeRoute = "scoped" | "whole";
  */
 export function validateAuthorityChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
   search: "all" | "progress" | "none" = "all"): AuthorityChangeRoute {
+  return withoutNativeRecordReadMemo(() => validateStoredChanges(database, entries, singletonKeys, search));
+}
+
+function validateStoredChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
+  search: "all" | "progress" | "none"): AuthorityChangeRoute {
   const keys = new Set<DependencyKey>([...entries.flatMap(entry => entry.keys), ...singletonKeys]);
   const searchReady = z.object({ search_state: z.string() }).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   if (keys.has("profile") || (keys.has("search-publication") && searchReady)) {
@@ -1678,11 +1683,13 @@ export function validateAuthorityChanges(database: DatabaseSync, entries: readon
 
 /** The whole-store check a reader runs after another connection commits. */
 export function validateAuthorityStore(database: DatabaseSync, search: "all" | "progress" | "none" = "all"): void {
-  validateAuthorityRecordSchemas(database, search === "all");
-  if (readIntPragma(database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
-  const violations = invariantViolations(database);
-  if (violations.length > 0) throw new Error("current composite authority is invalid");
-  if (search !== "none") createRunSearchIndex(database).validateCoverage();
+  withoutNativeRecordReadMemo(() => {
+    validateAuthorityRecordSchemas(database, search === "all");
+    if (readIntPragma(database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
+    const violations = invariantViolations(database);
+    if (violations.length > 0) throw new Error("current composite authority is invalid");
+    if (search !== "none") createRunSearchIndex(database).validateCoverage();
+  });
 }
 
 function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
@@ -1958,6 +1965,11 @@ function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_
 
 export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
   missingRunSearch = false, workbookPayloads = true) {
+  return withoutNativeRecordReadMemo(() => inspectNativeAuthorityImage(database, expectedSchemaVersion, requireOperationalPragmas, missingRunSearch, workbookPayloads));
+}
+
+function inspectNativeAuthorityImage(database: DatabaseSync, expectedSchemaVersion: number, requireOperationalPragmas: boolean,
+  missingRunSearch: boolean, workbookPayloads: boolean) {
   const applicationId = readIntPragma(database, "application_id");
   if (applicationId !== AUTHORITY_APPLICATION_ID) {
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);

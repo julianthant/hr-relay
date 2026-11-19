@@ -60,8 +60,16 @@ const MAX_MEMO_CHARACTERS = 8 * 1024 * 1024;
 
 /** Enables decoded-row reuse for synchronous SQL read snapshots. */
 export function withNativeRecordReadScope<Result>(read: () => Result): Result {
+  return withNativeRecordReadMemo(true, read);
+}
+
+export function withoutNativeRecordReadMemo<Result>(validate: () => Result): Result {
+  return withNativeRecordReadMemo(false, validate);
+}
+
+function withNativeRecordReadMemo<Result>(enabled: boolean, read: () => Result): Result {
   const previous = nativeRecordReadScope;
-  nativeRecordReadScope = true;
+  nativeRecordReadScope = enabled;
   try { return read(); }
   finally { nativeRecordReadScope = previous; }
 }
