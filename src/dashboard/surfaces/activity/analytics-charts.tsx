@@ -93,7 +93,7 @@ export function StackedBars({ label, days, series, unit, height = RUNS_CHART_HEI
     plot={active => <div className="pointer-events-none absolute inset-0 flex items-end">
       {days.map((day, index) => <div key={day.date} className="flex h-full min-w-0 flex-1 flex-col-reverse items-center">
         <div className="flex w-3/5 max-w-12 flex-col-reverse" style={{ height: `${sumAt(series, index) / top * 100}%`, filter: active === index ? "var(--chart-lift)" : undefined }}>
-          {series.map(line => (line.values[index] ?? 0) > 0 && <span key={line.id} aria-hidden className="block w-full last:rounded-t-[4px]" style={{ flexGrow: line.values[index] ?? 0, flexBasis: 0, background: line.color }} />)}
+          {series.map(line => (line.values[index] ?? 0) > 0 && <span key={line.id} aria-hidden className="block w-full last:rounded-t-[var(--ds-radius-xs)]" style={{ flexGrow: line.values[index] ?? 0, flexBasis: 0, background: line.color }} />)}
         </div>
       </div>)}
     </div>} />;

@@ -696,7 +696,7 @@ for (const theme of THEMES) test(`analytics empty and drilldown @ ${theme} ${WID
   await shot("empty");
   await page.getByRole("group", { name: "Report period" }).getByText("7d").click();
   await page.getByRole("button", { name: "Show Separations details" }).click();
-  await page.getByRole("link", { name: "Open runs" }).click();
+  await page.getByText("Open runs", { exact: true }).click();
   await expect(page.getByRole("region", { name: "Analytics runs" })).toBeVisible();
   await shot("drilldown");
   expect(errors).toEqual([]);
