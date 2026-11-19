@@ -128,6 +128,25 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   return snapshot;
 }
 
+const keptRunLogs = new WeakMap<object, Map<string, RunLogSnapshot>>();
+
+function keepRunLogs(client: object, snapshot: RunLogSnapshot): void {
+  let runs = keptRunLogs.get(client);
+  if (runs === undefined) { runs = new Map(); keptRunLogs.set(client, runs); }
+  runs.set(snapshot.detail.runId, snapshot);
+}
+
+/** The last loaded logs of this exact run. A finished run's logs cannot change, so a kept snapshot of the same
+ * attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
+export function keptRunLogsState(client: object, row: LogSelection["row"]): RunWiringState | undefined {
+  const snapshot = keptRunLogs.get(client)?.get(row.runId);
+  if (snapshot === undefined) return undefined;
+  const { detail } = snapshot;
+  const same = detail.header.traceId === row.traceId && detail.header.attempt === row.attempt && detail.header.workflowId === row.workflowId;
+  if (!same) return undefined;
+  return detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision ? { state: "loaded", snapshot } : { state: "loading", snapshot };
+}
+
 function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
   const { detail, logs } = snapshot;
   if (logs.runId !== detail.runId) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_MISMATCH");
@@ -605,18 +624,20 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
     epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
   [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
-  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
+  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>(() => ({ request, value: keptRunLogsState(client, servedRow) ?? { state: "loading" } }));
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
-    : { state: "loading", ...(sameRun && settled.value.snapshot ? { snapshot: settled.value.snapshot } : {}) }, [settled, request, sameRun]);
+    : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
+    : keptRunLogsState(client, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
+    if (keptRunLogsState(client, request.selection.row)?.state === "loaded") return;
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
     const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) { ended(); setSettled({ request, value: { state: "loaded", snapshot } }); }
+      if (active.current === request && !controller.signal.aborted) { ended(); keepRunLogs(client, snapshot); setSettled({ request, value: { state: "loaded", snapshot } }); }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
       ended();
