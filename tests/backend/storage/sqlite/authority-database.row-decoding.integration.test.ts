@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it, vi } from "vitest";
 import { createAuthorityAccountingTestWorld } from "../../../support/helpers/backend/authority-accounting-world.js";
-import { COMMAND_FIXTURES, LATER, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { COMMAND_FIXTURES, LATER, NOW, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -214,6 +216,32 @@ it("validates a run during inspection inside a later read snapshot", async () =>
     parse.mockRestore();
     raw.close();
   }
+});
+
+it("validates the surviving run while resuming a committed deletion inside a peer read snapshot", async () => {
+  const path = await world.databasePath(), reader = await world.openDatabase(path);
+  const survivor = world.prepareRunning(reader), peer = await world.openDatabase(path);
+  const queued = { ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: UUID_6, itemId: UUID_6, traceId: "pl-170000-6666" } };
+  peer.authority.runs.enqueue(queued);
+  const lifecycle = testRunService(peer, world.CLOCK);
+  const discarded = lifecycle.transition({ commandId: UUID_7, runId: UUID_6, expectedVersion: queued.version,
+    lifecycle: { state: "terminal", outcome: "discarded", endedAt: NOW } });
+  assert.equal(discarded.state, "applied");
+  assert.equal(lifecycle.delete({ commandId: UUID_8, runId: UUID_6, expectedVersion: discarded.run.version }).state, "deleted");
+
+  const { runId } = survivor.envelope;
+  reader.withAuthorityReadSnapshot(() => assert.deepEqual(reader.authority.runs.get(runId), survivor));
+  const parse = vi.spyOn(RunRecordSchema, "parse");
+  try {
+    reader.withAuthorityReadSnapshot(() => {
+      assert.equal(peer.resumeRunDeletionFiles(), 1);
+      assert.ok(parse.mock.calls.length > 0, "deletion cleanup checks the surviving run even with a warm memo");
+      parse.mockClear();
+      assert.deepEqual(reader.authority.runs.get(runId), survivor);
+      assert.equal(parse.mock.calls.length, 0, "the surrounding read snapshot still reuses the memo");
+    });
+    assert.equal(peer.resumeRunDeletionFiles(), 0);
+  } finally { parse.mockRestore(); }
 });
 
 it("reuses the validated command row across snapshots and isolates the returned records", async () => {

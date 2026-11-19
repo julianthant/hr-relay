@@ -1398,23 +1398,24 @@ function validatedRowByRow(table: AuthorityTableName | "explorer_overrides" | ty
 }
 
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
-  const context = storedRowContext(database, expectedSchemaVersion);
-  if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
-  let validated = 0;
-  const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
-  for (const table of migrationTableNames(expectedSchemaVersion)) {
-    // The custody conversion validates the tables it drops.
-    if (!validatedRowByRow(table)) continue;
-    if (table === "run_search" && (!validateSearch || !searchReady)) continue;
-    const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
-      : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
-    for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
-      validateStoredRow(context, table, raw);
-      validated++;
+  return withoutNativeRecordReadMemo(() => {
+    const context = storedRowContext(database, expectedSchemaVersion);
+    if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
+    let validated = 0;
+    const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
+    for (const table of migrationTableNames(expectedSchemaVersion)) {
+      // The custody conversion validates the tables it drops.
+      if (!validatedRowByRow(table)) continue;
+      if (table === "run_search" && (!validateSearch || !searchReady)) continue;
+      const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
+        : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
+      for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
+        validateStoredRow(context, table, raw);
+        validated++;
+      }
     }
-  }
-  validated += validateAuthorityFamilies(context, workbookPayloads);
-  return validated;
+    return validated + validateAuthorityFamilies(context, workbookPayloads);
+  });
 }
 
 /** The library, the assistant preference and settings are each validated as one family; returns the library rows validated. */
