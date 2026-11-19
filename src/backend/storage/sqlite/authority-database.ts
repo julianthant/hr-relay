@@ -3187,7 +3187,7 @@ export class AuthorityDatabase implements Disposable {
     const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
       fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
       planDigest: evidenceSchemaPlanDigest(expectedFingerprint, conversion),
-      evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
+      evidenceSchemas: conversion, backup: { manifestPath: `backups/authority/${backup.manifest.backupFileName}.manifest.json`, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });

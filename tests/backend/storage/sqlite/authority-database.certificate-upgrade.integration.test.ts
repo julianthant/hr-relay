@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
+import { prepareApplicationDataWorkspace } from "../../../../src/backend/app/composition/storage-compose.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { upgradeEvidenceSchemas } from "../../../../src/backend/storage/maintenance/evidence-schema-upgrade.js";
+import { readFixedLayoutIntent } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { backupStoppedAuthority, upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
@@ -20,7 +26,7 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { readyBoundEight, hostFacts } from "../../../support/helpers/storage/ready-bound-upgrade.js";
 
-it("retains and authenticates a historical certificate after a real forward migration", async () => {
+it("authenticates a historical certificate after a forward upgrade and verifies its backup after a layout move", async () => {
   const fixture = await readyBoundEight("queued", 28, false, { owner: "terminal-run", schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output") });
   try {
     const operation = fixture.acquireRestore();
@@ -75,5 +81,27 @@ it("retains and authenticates a historical certificate after a real forward migr
         assert.throws(() => hash({}), /source-changed/u);
       } finally { database.close(); }
     } finally { admission.release(); }
+
+    await fixture.closeController();
+    const target = realpathSync(mkdtempSync(join(tmpdir(), "relay-certificates-layout-")));
+    const lifetime = await RuntimeLifetimeLock.acquire(0);
+    try {
+      await prepareApplicationDataWorkspace(fixture.workspace, target, lifetime, hostFacts);
+      assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
+      const machine = acquireEntrypointAdmission(target, "exclusive", lifetime);
+      try {
+        const stopped = machine.acquireOfflineMaintenance();
+        try {
+          const moved = machine.admitStoppedProfileSettingsUpgrade(fixture.claim, stopped);
+          try {
+            assert.equal(await upgradeEvidenceSchemas(moved, [], profileBrowserClosure, stopped, systemClock,
+              join(target, ".tracker", "data", "locks")), "current");
+            const copy = new DatabaseSync(join(moved.stateRoot, "state.db"), { readOnly: true });
+            try { assert.equal(copy.prepare("SELECT payload_json FROM database_upgrades WHERE id=?").get(run.recordKey)?.payload_json, run.encoded); }
+            finally { copy.close(); }
+          } finally { moved.release(); }
+        } finally { stopped.release(); }
+      } finally { machine.release(); }
+    } finally { await lifetime.close(); rmSync(target, { recursive: true, force: true }); }
   } finally { await fixture.close(); }
 });
