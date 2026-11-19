@@ -1,5 +1,6 @@
-import { z } from "zod";
-import { WorkbookRevisionSchema, WorkbookOperatorOperationRequestSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
+import type { z } from "zod";
+import { WorkbookSummarySchema, WorkbookRevisionSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
+import { cellText } from "../../../../rules/spreadsheets/workbook-io.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import type { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
@@ -20,10 +21,18 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
     if (deps.workbooks === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_FAILED");
     return deps.workbooks;
   };
-  app.get("/api/v1/workbooks/list", c => c.json(service().library.list().map(encodeSavedWorkbook)));
+  app.get("/api/v1/workbooks/list", c =>
+    c.json(service().library.listWithType().map(({ record, typeId }) => WorkbookSummarySchema.parse({
+      libraryId: record.libraryId, name: record.workbook.name, typeId,
+      version: record.version, createdAt: record.createdAt, savedAt: record.savedAt,
+      rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
+      sheets: record.workbook.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1,
+        columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cellText),
+        ...(sheet.columnBindings === undefined ? {} : { columnBindings: sheet.columnBindings }),
+      })),
+    }))));
   app.get("/api/v1/workbooks/catalog", c => c.json(service().library.catalog()));
   app.get("/api/v1/workbooks/compatibility", c => c.json(service().library.compatibility(service().workflows)));
-  app.get("/api/v1/workbooks/results", c => c.json(service().library.results()));
   app.post("/api/v1/workbooks/import", async c => {
     const request = workbookRequest(WorkbookLibraryImportRequestSchema, await c.req.json());
     return c.json('source' in request ? await service().library.importSharePoint(request, c.req.raw.signal)
@@ -46,19 +55,8 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   });
   app.get("/api/v1/workbooks/types", c => c.json(service().library.types()));
   app.post("/api/v1/workbooks/types", async c => c.json(service().library.putType(workbookRequest(WorkbookTypeSchema, await c.req.json()))));
-  app.get("/api/v1/workbooks/:libraryId/metadata", c => c.json(service().library.metadata(c.req.param('libraryId'))));
-  app.get("/api/v1/workbooks/:libraryId/versions", c => c.json(service().library.versions(c.req.param('libraryId'))));
   app.get("/api/v1/workbooks/:libraryId/versions/:versionId", c => c.json(service().library.libraryVersion(c.req.param('libraryId'), c.req.param('versionId'))));
   app.get("/api/v1/workbooks/:libraryId/revisions/:version", c => c.json(encodeSavedWorkbook(service().library.revision(c.req.param('libraryId'), workbookRequest(WorkbookRevisionSchema, Number(c.req.param('version')))))));
-  app.get("/api/v1/workbooks/:libraryId/changes", c => c.json(service().library.journal(c.req.param('libraryId'))));
-  app.post("/api/v1/workbooks/:libraryId/operations", async c => {
-    const request = workbookRequest(z.strictObject({ operationId: z.string().min(1), change: WorkbookOperatorOperationRequestSchema }), await c.req.json());
-    return c.json(service().library.operatorOperation(c.req.param('libraryId'), request.operationId, request.change));
-  });
-  app.post("/api/v1/workbooks/:libraryId/sync", async c => {
-    const request = workbookRequest(z.strictObject({ operationId: z.string().min(1) }), await c.req.json());
-    return c.json(await service().library.sync(c.req.param('libraryId'), request.operationId, c.req.raw.signal));
-  });
   app.get("/api/v1/workbooks/:libraryId", c => c.json(encodeSavedWorkbook(service().library.read(c.req.param("libraryId")))));
   app.post("/api/v1/workbooks/:libraryId/save", async c => {
     const request = workbookRequest(WorkbookSaveRequestSchema, await c.req.json());

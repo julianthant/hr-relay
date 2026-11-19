@@ -6,7 +6,6 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import {
   EXPLORER_SOURCE_ROOT,
-  buildWorkflowExplorer,
   nodeShape,
   readScenarioSources,
   type ExplorerModuleView,
@@ -34,7 +33,7 @@ import {
 } from "../../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { registration as separationsKualiReadWorkflowRegistration } from "../../../../src/workflows/separations/index.js";
-import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../../support/fixtures/explorer-seams.js";
 const separationsKualiReadWorkflow = separationsKualiReadWorkflowRegistration.proofs[1].definition;
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
@@ -42,7 +41,7 @@ const HASH = FingerprintSchema.parse("c".repeat(64));
 
 /** Every task arm of every registered workflow, flattened. */
 function allTasks() {
-  return buildWorkflowExplorer(
+  return readFixtureExplorer(
     explorerQueryDeps(CLOCK, HASH),
   ).workflows.flatMap((workflow) =>
     workflow.nodes.flatMap((node) => node.tasks),
@@ -51,7 +50,7 @@ function allTasks() {
 
 /** The registered separations entry, read through the Explorer's real registry. */
 function separationsExplorerEntry() {
-  const entry = buildWorkflowExplorer(
+  const entry = readFixtureExplorer(
     explorerQueryDeps(CLOCK, HASH),
   ).workflows.find((workflow) => String(workflow.id) === "separations");
   assert.ok(entry, "the Explorer serves no separations workflow");
@@ -92,7 +91,7 @@ describe("compiled Explorer declaration binding", () => {
   });
 
   it("retains the authored onboarding branch in the strict definition preview and graph", () => {
-    const workflow = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(workflow => workflow.id === "onboarding");
+    const workflow = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(workflow => workflow.id === "onboarding");
     assert.ok(workflow?.definitionPreview.state === "compiled");
     const entry = workflow.definitionPreview.groups.flatMap(group => group.entries).find(entry => entry.id === "i9-route");
     assert.deepEqual(entry, { id: "i9-route", kind: "branch", nodeIds: ["i9-route"], dependsOn: ["write-plan"], taskIds: [] });
@@ -120,9 +119,9 @@ describe("compiled Explorer declaration binding", () => {
     const first = deps.modules[0];
     const second = deps.modules[1];
     assert.ok(first?.definition && second?.definition);
-    assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [{ ...first, definition: second.definition }, ...deps.modules.slice(1)] }),
+    assert.throws(() => readFixtureExplorer({ ...deps, modules: [{ ...first, definition: second.definition }, ...deps.modules.slice(1)] }),
       /Explorer definition is not the descriptor's compiled source/u);
-    assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [{ ...first, definition: undefined }, ...deps.modules.slice(1)] }),
+    assert.throws(() => readFixtureExplorer({ ...deps, modules: [{ ...first, definition: undefined }, ...deps.modules.slice(1)] }),
       /workflow person-lookup option search-by has no review row/u);
   });
 });
@@ -366,7 +365,7 @@ describe("the contract field census", () => {
 describe("the workflow explorer projection", () => {
   it("serves descriptor presentation without editor authority", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
-    const wire = buildWorkflowExplorer(deps);
+    const wire = readFixtureExplorer(deps);
     for (const entry of wire.workflows) {
       const descriptor = deps.modules.find(module => module.descriptor.id === entry.id)?.descriptor;
       assert.ok(descriptor);
@@ -422,7 +421,7 @@ describe("the workflow explorer projection", () => {
     }
   });
   it("parses through its own wire schema over the real registry", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const wire = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     // `buildWorkflowExplorer` already parses on the way out; re-parsing proves
     // the returned value is the wire, not a structurally similar object.
     assert.doesNotThrow(() => WorkflowExplorerWireSchema.parse(wire));
@@ -431,8 +430,8 @@ describe("the workflow explorer projection", () => {
   });
 
   it("is a pure function of registration state — two builds agree byte for byte", () => {
-    const first = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const second = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const first = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
+    const second = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     assert.equal(JSON.stringify(first), JSON.stringify(second));
   });
 
@@ -502,7 +501,7 @@ describe("the workflow explorer projection", () => {
 
 
   it("serves each module's declared role and refuses a harness with no composition beside it", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const wire = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     const roles = new Map(
       wire.workflows.map((workflow) => [String(workflow.id), workflow.role]),
     );
@@ -565,7 +564,7 @@ describe("the workflow explorer projection", () => {
       compileWorkflow(separationsKualiReadWorkflow),
       taskStoreRegistry.stores,
     );
-    const withHarness = buildWorkflowExplorer({
+    const withHarness = readFixtureExplorer({
       ...explorerQueryDeps(CLOCK, HASH),
       modules: [...READABLE_WORKFLOW_MODULES, harness],
     });
@@ -597,7 +596,7 @@ describe("the workflow explorer projection", () => {
   });
 
   it("projects the registered Onboarding delegation and its readable child without a start surface", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const wire = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     const onboarding = wire.workflows.find(workflow => workflow.id === "onboarding");
     assert.ok(onboarding);
     const lookup = wire.workflows.find(workflow => workflow.id === "i9-lookup"); assert.ok(lookup);
@@ -684,11 +683,11 @@ describe("the workflow explorer projection", () => {
       ],
     );
     assert.throws(
-      () => buildWorkflowExplorer({ ...explorerQueryDeps(CLOCK, HASH), modules: [module] }),
+      () => readFixtureExplorer({ ...explorerQueryDeps(CLOCK, HASH), modules: [module] }),
       /workflow explorer-delegation-fixture delegates to unregistered-child, which is absent from the catalog/u,
     );
 
-    const entry = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(({ id }) => String(id) === "onboarding");
+    const entry = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(({ id }) => String(id) === "onboarding");
     assert.ok(entry);
     const incompleteTimeline = ExplorerWorkflowWireSchema.safeParse({
       ...entry,
@@ -703,7 +702,7 @@ describe("the workflow explorer projection", () => {
 
   it("reports a scenario with no executable file as unresolved, naming the path it tried", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
-    const wire = buildWorkflowExplorer({
+    const wire = readFixtureExplorer({
       ...deps,
       listScenarioSources: () => [],
     });
@@ -725,7 +724,7 @@ describe("the workflow explorer projection", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
     assert.throws(
       () =>
-        buildWorkflowExplorer({
+        readFixtureExplorer({
           ...deps,
 
           modules: deps.modules.map((module) => ({ ...module, stores: [] })),
@@ -737,7 +736,7 @@ describe("the workflow explorer projection", () => {
   it("reports the absent scenario corpus without claiming executable sources", () => {
     const sources = readScenarioSources(EXPLORER_SOURCE_ROOT);
     assert.deepEqual(sources, []);
-    const wire = buildWorkflowExplorer({
+    const wire = readFixtureExplorer({
       ...explorerQueryDeps(CLOCK, HASH),
       listScenarioSources: () => sources,
     });

@@ -2,7 +2,7 @@ import { PNG } from "pngjs";
 import type { Frame, Locator, Page } from "playwright";
 import type { BrowserCaptureFailure } from "../../../workflow-kit/session.js";
 
-const CAPTURE = { width: 1280, maxWidth: 6000, sliceHeight: 1200, sliceOverlap: 120, maxSlices: 30, maxPixels: 40_000_000 };
+const CAPTURE = { width: 1280, maxWidth: 6000, sliceHeight: 1200, sliceOverlap: 120, maxSlices: 30, maxPixels: 40_000_000, paintTimeoutMs: 1000 };
 
 export class FullPageCaptureRestoreError extends AggregateError {
   constructor(errors: unknown[]) { super(errors, "Full-page capture state restoration failed"); this.name = "FullPageCaptureRestoreError"; }
@@ -18,9 +18,13 @@ export class FullPageCaptureFailedError extends Error {
 }
 
 interface CaptureBand { buffer: Buffer; offsetCss: number; offsetXCss: number; clipHeightCss: number }
-interface CapturePlan { mode: "window" | "element" | "iframe"; scrollHeight: number; clientHeight: number }
+interface BandGeometry {
+  x: number; y: number; width: number; height: number;
+  offset: number; offsetX: number; contentWidth: number; contentHeight: number;
+}
 interface CaptureState {
-  scroll: (left: number, top: number) => { x: number; y: number; width: number; height: number; offset: number; offsetX: number; contentWidth: number };
+  scroll: (left: number, top: number) => boolean;
+  measure: () => BandGeometry;
   restore: () => void;
 }
 type CaptureWindow = Window & { __relayCapture?: CaptureState; __relayCaptureSecrets?: { observer: MutationObserver; seen: boolean; restore: () => void } };
@@ -98,8 +102,8 @@ async function setCaptureWidth(page: Page, assertCurrent: () => void): Promise<v
   await page.setViewportSize({ width: Math.min(Math.max(CAPTURE.width, widest + 24), CAPTURE.maxWidth), height: Math.min(metrics.height, CAPTURE.sliceHeight) });
 }
 
-async function planScrollCapture(page: Page): Promise<CapturePlan> {
-  return page.evaluate(() => {
+async function prepareScrollCapture(page: Page): Promise<void> {
+  await page.evaluate(() => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     // The viewport scrolls only its scrolling element; a body that scrolls under a clipped root is an element target.
@@ -135,21 +139,16 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
       bestFrame = frame;
       bestFrameOverflow = overflow;
     }
-    let mode: CapturePlan["mode"] = "window";
+    let mode: "window" | "element" | "iframe" = "window";
     let target: HTMLElement | null = null;
     let targetWindow: Window = window;
-    let scrollHeight = docH;
-    let clientHeight = vh;
     if (bestFrame && bestFrameOverflow > winOverflow && bestFrameOverflow >= bestElOverflow) {
       mode = "iframe";
       target = bestFrame;
       targetWindow = bestFrame.contentWindow!;
-      const doc = bestFrame.contentDocument!;
-      scrollHeight = (doc.scrollingElement ?? doc.documentElement).scrollHeight;
     } else if (bestEl && bestElOverflow > winOverflow) {
       mode = "element";
       target = bestEl;
-      scrollHeight = bestEl.scrollHeight;
     }
     const scrolls = new Map<HTMLElement, { x: number; y: number }>();
     for (const el of all) if (el.scrollTop || el.scrollLeft) scrolls.set(el, { x: el.scrollLeft, y: el.scrollTop });
@@ -181,21 +180,42 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
         if (errors.length) throw new AggregateError(errors, "Full-page capture plan restoration failed");
       },
       scroll(left, top) {
-        if (mode === "element") target!.scrollTo({ left, top, behavior: "instant" });
-        else targetWindow.scrollTo({ left, top, behavior: "instant" });
-        const r = target?.getBoundingClientRect() ?? { left: 0, top: 0, width: vw, height: Math.min(vh, scrollHeight) };
+        if (mode === "element") {
+          const { scrollLeft, scrollTop } = target!;
+          target!.scrollTo({ left, top, behavior: "instant" });
+          return scrollLeft !== target!.scrollLeft || scrollTop !== target!.scrollTop;
+        }
+        const { scrollX, scrollY } = targetWindow;
+        targetWindow.scrollTo({ left, top, behavior: "instant" });
+        return scrollX !== targetWindow.scrollX || scrollY !== targetWindow.scrollY;
+      },
+      measure() {
+        const { innerWidth, innerHeight } = window;
+        const contentDocument = mode === "iframe" ? bestFrame!.contentDocument! : document;
+        const scroller = contentDocument.scrollingElement ?? contentDocument.documentElement;
+        const contentWidth = mode === "element" ? target!.scrollWidth : Math.max(contentDocument.documentElement.scrollWidth, contentDocument.body?.scrollWidth ?? 0);
+        let contentHeight = mode === "element" ? target!.scrollHeight : scroller.scrollHeight;
+        if (mode === "window" && contentHeight <= innerHeight) {
+          const range = document.createRange();
+          range.selectNodeContents(document.body);
+          contentHeight = Math.max(1, Math.ceil(range.getBoundingClientRect().bottom + window.scrollY));
+        }
+        const r = target?.getBoundingClientRect();
+        const clientWidth = target?.clientWidth ?? innerWidth;
+        const clientHeight = target?.clientHeight ?? Math.min(innerHeight, contentHeight);
         // Chromium paints a box at its pixel-snapped edges, scrolled content with it; a sub-pixel clip loses a band row.
         const dpr = window.devicePixelRatio || 1;
-        const left0 = Math.max(0, r.left + (target?.clientLeft ?? 0));
-        const top0 = Math.max(0, r.top + (target?.clientTop ?? 0));
-        const x = Math.round(left0 * dpr) / dpr;
-        const y = Math.round(top0 * dpr) / dpr;
-        const width = Math.round(Math.min(left0 + (target?.clientWidth ?? r.width), vw) * dpr) / dpr - x;
-        const height = Math.round(Math.min(top0 + clientHeight, vh) * dpr) / dpr - y;
-        const contentDocument = mode === "iframe" ? bestFrame!.contentDocument! : document;
-        const contentWidth = mode === "element" ? target!.scrollWidth : Math.max(contentDocument.documentElement.scrollWidth, contentDocument.body?.scrollWidth ?? 0);
-        return { x, y, width, height, contentWidth,
-          offset: mode === "element" ? target!.scrollTop : targetWindow.scrollY, offsetX: mode === "element" ? target!.scrollLeft : targetWindow.scrollX };
+        const left0 = (r?.left ?? 0) + (target?.clientLeft ?? 0);
+        const top0 = (r?.top ?? 0) + (target?.clientTop ?? 0);
+        const clientX = Math.round(left0 * dpr) / dpr;
+        const clientY = Math.round(top0 * dpr) / dpr;
+        const x = Math.max(0, clientX);
+        const y = Math.max(0, clientY);
+        const width = Math.round(Math.min(left0 + clientWidth, innerWidth) * dpr) / dpr - x;
+        const height = Math.round(Math.min(top0 + clientHeight, innerHeight) * dpr) / dpr - y;
+        return { x, y, width, height, contentWidth, contentHeight,
+          offset: (mode === "element" ? target!.scrollTop : targetWindow.scrollY) + (y - clientY),
+          offsetX: (mode === "element" ? target!.scrollLeft : targetWindow.scrollX) + (x - clientX) };
       },
     };
     if (target) {
@@ -211,20 +231,6 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
     }
     overlays.hide(all);
     if (bestFrame && mode === "iframe") overlays.hide(bestFrame.contentDocument!.querySelectorAll<HTMLElement>("*"));
-    if (target) {
-      clientHeight = target.clientHeight;
-      scrollHeight = mode === "iframe" ? (bestFrame!.contentDocument!.scrollingElement ?? bestFrame!.contentDocument!.documentElement).scrollHeight : target.scrollHeight;
-    } else {
-      scrollHeight = viewportScroller.scrollHeight;
-      clientHeight = vh;
-      if (scrollHeight <= vh) {
-        const range = document.createRange();
-        range.selectNodeContents(document.body);
-        scrollHeight = Math.max(1, Math.ceil(range.getBoundingClientRect().bottom + window.scrollY));
-        clientHeight = scrollHeight;
-      }
-    }
-    return { mode, scrollHeight, clientHeight };
   });
 }
 
@@ -263,50 +269,70 @@ export async function captureFullPage(page: Page, options: Readonly<{
     await assertSafe();
     await setCaptureWidth(page, assertCurrent);
     assertCurrent();
-    const plan = await planScrollCapture(page);
-    assertCurrent();
-    const bandHeight = Math.max(1, Math.min(plan.clientHeight, CAPTURE.sliceHeight));
-    const scrollTo = async (left: number, top: number) => {
+    await prepareScrollCapture(page);
+    const scrollTo = async (left: number, top: number): Promise<void> => {
       assertCurrent();
-      const clip = await page.evaluate(([left, top]) => (window as CaptureWindow).__relayCapture!.scroll(left, top), [left, top] as const);
+      const moved = await page.evaluate(([left, top]) => (window as CaptureWindow).__relayCapture!.scroll(left, top), [left, top] as const);
       assertCurrent();
-      return clip;
+      if (moved) {
+        // Instant scrolling updates offsets before scroll listeners and paint have run.
+        const painted = await page.waitForFunction(() => new Promise<boolean>(resolve => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+        }), undefined, { timeout: CAPTURE.paintTimeoutMs });
+        await painted.dispose();
+      }
+    };
+    const readGeometry = async (): Promise<BandGeometry> => {
+      assertCurrent();
+      const geometry = await page.evaluate(() => (window as CaptureWindow).__relayCapture!.measure());
+      assertCurrent();
+      return geometry;
     };
     // A target wider than its box, such as a timecard grid, is captured in columns as well as bands.
-    const first = await scrollTo(0, 0);
+    await scrollTo(0, 0);
+    const first = await readGeometry();
     if (first.contentWidth > CAPTURE.maxWidth) throw new FullPageCaptureFailedError("horizontal-overflow");
-    const bandWidth = Math.max(1, first.width);
-    const rows = computeSliceOffsets(plan.scrollHeight, bandHeight);
+    if (first.width <= 0 || first.height <= 0 || first.offset > 0 || first.offsetX > 0) throw new FullPageCaptureFailedError("unpainted-gap");
+    const bandWidth = first.width;
+    const bandHeight = Math.min(first.height, CAPTURE.sliceHeight);
+    const rows = computeSliceOffsets(first.contentHeight, bandHeight);
     const columns = computeSliceOffsets(first.contentWidth, bandWidth);
     if (rows.length * columns.length > CAPTURE.maxSlices) throw new FullPageCaptureFailedError("band-limit");
     const bands: CaptureBand[] = [];
     let coveredTo = 0;
-    let widest = first.contentWidth;
     for (const top of rows) {
       let rowOffset: number | undefined;
       let coveredX = 0;
-      let rowHeight = 0;
+      let rowHeight = bandHeight;
       for (const left of columns) {
-        const { offset: actualOffset, offsetX, contentWidth, ...rect } = await scrollTo(left, top);
-        await page.waitForTimeout(250);
+        await scrollTo(left, top);
         await assertSafe();
-        rect.height = Math.min(rect.height, bandHeight);
-        rect.width = Math.min(rect.width, bandWidth);
-        widest = Math.max(widest, contentWidth);
-        if ((rowOffset ?? actualOffset) !== actualOffset || actualOffset > coveredTo || offsetX > coveredX) throw new FullPageCaptureFailedError("unpainted-gap");
-        rowOffset = actualOffset;
-        coveredX = Math.max(coveredX, offsetX + rect.width);
-        rowHeight = rect.height;
+        const { x, y, width, height, offset, offsetX, contentWidth, contentHeight } = await readGeometry();
+        if (contentWidth !== first.contentWidth || contentHeight !== first.contentHeight) {
+          throw new FullPageCaptureFailedError("unpainted-gap", "capture-content-size-changed");
+        }
+        const clip = { x, y, width: Math.min(width, bandWidth), height: Math.min(height, bandHeight) };
+        if (clip.width <= 0 || clip.height <= 0 || (rowOffset ?? offset) !== offset || offset > coveredTo || offsetX > coveredX) {
+          throw new FullPageCaptureFailedError("unpainted-gap");
+        }
         assertCurrent();
-        const buffer = await page.screenshot({ type: "png", clip: rect, mask: options.mask() });
+        const buffer = await page.screenshot({ type: "png", clip, mask: options.mask() });
         await assertSafe();
-        bands.push({ buffer, offsetCss: actualOffset, offsetXCss: offsetX, clipHeightCss: rect.height });
+        const after = await readGeometry();
+        if (after.x !== x || after.y !== y || after.width !== width || after.height !== height
+          || after.offset !== offset || after.offsetX !== offsetX || after.contentWidth !== contentWidth || after.contentHeight !== contentHeight) {
+          throw new FullPageCaptureFailedError("unpainted-gap", "band-geometry-changed");
+        }
+        rowOffset = offset;
+        coveredX = Math.max(coveredX, offsetX + clip.width);
+        rowHeight = Math.min(rowHeight, clip.height);
+        bands.push({ buffer, offsetCss: offset, offsetXCss: offsetX, clipHeightCss: clip.height });
       }
-      if (coveredX < widest) throw new FullPageCaptureFailedError("horizontal-overflow");
+      if (coveredX < first.contentWidth) throw new FullPageCaptureFailedError("horizontal-overflow");
       coveredTo = Math.max(coveredTo, (rowOffset ?? 0) + rowHeight);
     }
-    if (coveredTo < plan.scrollHeight) {
-      throw new FullPageCaptureFailedError("content-bottom-unreached", `page-capture-covered-${String(Math.floor(coveredTo))}-of-${String(plan.scrollHeight)}px`);
+    if (coveredTo < first.contentHeight) {
+      throw new FullPageCaptureFailedError("content-bottom-unreached", `page-capture-covered-${String(Math.floor(coveredTo))}-of-${String(first.contentHeight)}px`);
     }
     assertCurrent();
     const image = stitchCaptureBands(bands);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { request, type IncomingMessage } from "node:http";
+import { DatabaseSync } from "node:sqlite";
 import { Hono } from "hono";
 import { it } from "vitest";
 import { startDashboardHttpServer } from "../../../../src/backend/transports/http/http-server.js";
@@ -18,7 +19,7 @@ it("closes a selected mount after a slow successful response at diagnostic capac
   const f = await foundationFixture();
   try {
     const timeline = f.db.authority.timelineEvents;
-    fillDiagnosticBudget(f.path, timeline, f.clock);
+    fillDiagnosticBudget(DatabaseSync, f.path, timeline, f.clock);
     const before = timeline.highWaterMark();
     const writer = createDebugEventWriter({ repository: timeline, clock: f.clock, build: "test" });
     const app = new Hono<{ Variables: { requestActorId: ActorId } }>();

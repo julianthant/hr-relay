@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
-import { authenticateOcrSnapshotApproval } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
+import { authenticateOcrSnapshotApproval, requireCurrentOcrSnapshot } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { OcrApprovedSnapshotSchema, OcrReviewRevisionSchema } from "../../../../src/models/ocr/review.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { OperatorGateResultRecordSchema } from "../../../../src/models/workflow/gates.js";
@@ -57,6 +57,8 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
 
   const repositories = f.database.authority;
   const gate = OperatorGateResultRecordSchema.parse(repositories.gateResults.get(`${f.run.envelope.runId}:approve-records`));
+  assert.equal(authenticateOcrSnapshotApproval(repositories, f.canonical.lifecycle, gate, () => undefined).snapshotId, approval.commandId);
+  assert.throws(() => requireCurrentOcrSnapshot(repositories, f.canonical.lifecycle, gate.result.value, () => undefined), /OCR_REVIEW_REFUSED/u);
   const run = repositories.runs.get(f.run.envelope.runId); assert.ok(run);
   const result = repositories.runResults.get(f.run.envelope.runId); assert.ok(result);
   const delegations = [readDelegationEvidence(repositories, run.envelope.runId, "read-pages"), readDelegationEvidence(repositories, run.envelope.runId, "lookup-identities"),

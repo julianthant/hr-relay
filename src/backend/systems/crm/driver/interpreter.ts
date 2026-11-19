@@ -25,7 +25,7 @@ import type {
   CrmOnboardingRecordRead,
 } from "../../../../models/ui/crm-onboarding.js";
 import { CRM_UI_REGISTRY } from "./ui-registry.js";
-import { readCrmHireDataOnPage } from "./hire-operation.js";
+import { countCrmSearchRowsWhenReady, readCrmHireDataOnPage } from "./hire-operation.js";
 import { findCrmDocumentRecordOnPage, readCrmIdocsOnPage } from "./idocs-operation.js";
 import type { CrmDocumentSubject, CrmIdocsReadInput } from "../../../../models/systems/crm/documents.js";
 
@@ -112,15 +112,11 @@ async function waitForExactHeading(assertCurrent: () => void, page: Page, name: 
   return heading;
 }
 
-async function waitForSearchReady(assertCurrent: () => void, page: Page, query: string): Promise<void> {
-  assertCurrent();
+function assertSearchQuery(page: Page, query: string): void {
   const url = assertExactCrmLocation(page.url(), CRM_SEARCH_PATH);
   if (url.searchParams.get("q") !== query) {
     throw new Error(`CRM search expected query ${query} but the rendered page used a different query`);
   }
-  assertCurrent();
-  await waitForExactHeading(assertCurrent, page, "Search Results");
-  assertCurrent();
 }
 
 function searchRowsLocator(page: Page): Locator {
@@ -129,10 +125,10 @@ function searchRowsLocator(page: Page): Locator {
   return page.locator(recipe.selector);
 }
 
-function directRowCells(row: Locator): Locator {
+function searchRowCellsSelector(): string {
   const recipe = elementRecipe("crm.onboarding.search-result-row-cells");
   if (recipe.kind !== "row-cells") throw new Error("CRM search-result cells recipe changed kind unexpectedly");
-  return row.locator(recipe.selector);
+  return recipe.selector;
 }
 
 function rowNameLink(row: Locator): Locator {
@@ -166,16 +162,20 @@ async function searchCrmOnboardingRows(
   assertCurrent();
   recordBrowserAction("opened", "crm.onboarding.search");
   assertCurrent();
-  await waitForSearchReady(assertCurrent, page, query);
+  assertSearchQuery(page, query);
+  await waitForExactHeading(assertCurrent, page, "Search Results");
 
   const rows = searchRowsLocator(page);
+  const cellsSelector = searchRowCellsSelector();
+  const emptyHeading = page.getByRole("heading", { name: "No search results were found.", exact: true });
+  const rowCount = await countCrmSearchRowsWhenReady(assertCurrent, rows, cellsSelector, emptyHeading);
   assertCurrent();
-  const rowCount = await rows.count();
+  assertSearchQuery(page, query);
   const results: CrmOnboardingSearchRow[] = [];
   let auxiliaryRows = 0;
   for (let index = 0; index < rowCount; index += 1) {
     const row = rows.nth(index);
-    const cells = directRowCells(row);
+    const cells = row.locator(cellsSelector);
     assertCurrent();
     const cellCount = await cells.count();
     if (cellCount === 2) {
@@ -209,10 +209,6 @@ async function searchCrmOnboardingRows(
     }));
   }
 
-  const emptyHeading = page.getByRole("heading", {
-    name: "No search results were found.",
-    exact: true,
-  });
   if (results.length === 0) {
     assertCurrent();
     await emptyHeading.first().waitFor({ state: "visible", timeout: STATE_TIMEOUT_MS });

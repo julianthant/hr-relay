@@ -51,6 +51,11 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const failureMissing = resource.snapshot !== undefined && initialStepId !== undefined && !projection.steps.some(step => step.id === initialStepId);
   const preview = resource.snapshot?.logs.dryRunPreview;
   const lastStepId = projection.steps.at(-1)?.id;
+  const previewRegion = useMemo(() => preview?.state === "available" ? <FullDryRunPreview
+    stages={preview.stages.map(stage => ({ ...stage, state: stage.submitNotClicked ? "not-clicked" : stage.state }))}
+    facts={preview.stages.flatMap(stage => stage.sample === undefined ? [] : [{ label: stage.label, value: stage.sample.value, sample: true }])} />
+    : preview?.state === "unavailable" ? <Notice tone="warning" title="Dry-run preview unavailable" description={preview.reason === "preview-not-completed" ? "The dry run did not complete." : preview.reason === "preview-result-unreadable" ? "The result could not be read." : "Preview is unavailable."} /> : undefined, [preview]);
+  const emptyPreview = lastStepId === undefined && previewRegion !== undefined ? <div className="mt-4 min-w-0">{previewRegion}</div> : undefined;
   const reviewAvailable = resource.snapshot?.detail.availableSections.includes("review") === true;
   const batchRetry = batchMemberRetryAction(selection.row);
   const retry = selection.row.parent === null || resource.snapshot?.detail.childRetry !== undefined ? undefined : selection.row.actions.find(action => action.kind === "command" && action.command === "retry");
@@ -68,21 +73,18 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     if (action !== undefined) onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description="Relay could not refresh these logs." /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, logsReadFailedTitle]);
-  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence="Relay could not load this run's logs." stillWorks="The queue and the other runs still work."
+  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence="Couldn't load logs."
     action={onRetryLogs === undefined ? undefined : { label: "Retry", onClick: onRetryLogs }} /></div> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, onRetryLogs]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;
     const showFindings = findings?.stepId === id;
-    const showPreview = id === lastStepId && (preview?.state === "available" || preview?.state === "unavailable");
+    const showPreview = id === lastStepId && previewRegion !== undefined;
     if (!showFindings && !showPreview) return undefined;
     return <>{showFindings && findings !== undefined ? <UcpathFoundTransactions key={`${selection.row.runId}:${findings.stepId}`} attemptLabel={findings.attemptLabel}
       presentation={resource.command?.state === "pending" ? { state: "checking" } : findings.presentation}
       onDecision={resource.onUcpathDecision} /> : undefined}
-      {showPreview ? <div className="col-start-2 mt-4 min-w-0">{preview?.state === "available" ? <FullDryRunPreview
-        stages={preview.stages.map(stage => ({ ...stage, state: stage.submitNotClicked ? "not-clicked" : stage.state }))}
-        facts={preview.stages.flatMap(stage => stage.sample === undefined ? [] : [{ label: stage.label, value: stage.sample.value, sample: true }])} />
-        : preview?.state === "unavailable" ? <Notice tone="warning" title="Dry-run preview unavailable" description={preview.reason === "preview-not-completed" ? "The dry run did not complete." : preview.reason === "preview-result-unreadable" ? "The result could not be read." : "Preview is unavailable."} /> : undefined}</div> : undefined}</>;
-  }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, preview]);
+      {showPreview ? <div className="col-start-2 mt-4 min-w-0">{previewRegion}</div> : undefined}</>;
+  }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, previewRegion]);
   const retryRun = useCallback(() => {
     if (retry !== undefined) onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
@@ -108,7 +110,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} footerActions={footerActions}
     content={content}
-    afterStep={afterStep} />
+    afterStep={afterStep} trailingContent={emptyPreview} />
     {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.row.title}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
 }
 

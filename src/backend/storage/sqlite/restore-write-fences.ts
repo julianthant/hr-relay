@@ -236,7 +236,7 @@ export function captureRestoreWriteFenceProof(readAuthority: ReadAuthority): Res
     });
   } catch (error) {
     try { owned?.dispose(); }
-    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-proof-capture-failed"); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-proof-capture-failed", { cause: cleanup }); }
     throw error;
   }
 }

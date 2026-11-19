@@ -65,10 +65,12 @@ it('binds catalogue changes and result lookups to the exact library and action',
   await assert.rejects(harness(exact).client.workbookLibraryVersion(record.libraryId, 'another-version'), schemaFailure);
 });
 
-it("lists, opens and reconstructs Date cells without converting ISO strings", async () => {
+it("lists display summaries and reconstructs full Date cells only on open", async () => {
   const record = saved();
-  const list = harness([encodeSavedWorkbook(record)]);
-  assert.deepEqual(await list.client.workbookList(), [record]);
+  const summary = { libraryId: record.libraryId, name: 'Dates.xlsx', typeId: 'general', version: 1, createdAt: NOW, savedAt: NOW, rowCount: 0,
+    sheets: [{ name: 'Dates', headerRow: 7, columns: ['2026-01-01', NOW] }] };
+  const list = harness([summary]);
+  assert.deepEqual(await list.client.workbookList(), [summary]);
   assert.equal(list.calls[0].url, "http://workbooks.test/api/v1/workbooks/list");
   const open = harness(encodeSavedWorkbook(record));
   assert.deepEqual(await open.client.workbookOpen(record.libraryId), record);
@@ -109,7 +111,9 @@ it("rejects malformed responses, duplicate list IDs and foreign open identity", 
     await assert.rejects(harness(body).client.workbookOpen("library /one"), schemaFailure);
   }
   const record = encodeSavedWorkbook(saved());
-  await assert.rejects(harness([record, record]).client.workbookList(), schemaFailure);
+  const summary = { libraryId: record.libraryId, name: 'Dates.xlsx', typeId: 'general', version: 1, createdAt: NOW, savedAt: NOW, rowCount: 0,
+    sheets: [{ name: 'Dates', headerRow: 7, columns: ['2026-01-01', NOW] }] };
+  await assert.rejects(harness([summary, summary]).client.workbookList(), schemaFailure);
   await assert.rejects(harness(record).client.workbookOpen("another"), schemaFailure);
 });
 
@@ -181,13 +185,6 @@ it('imports a plain workbook at version one and rejects retired purpose or refer
     await assert.rejects(harness({ ...body, ...extra }, 201).client.workbookImport(draft), schemaFailure);
   }
   await assert.rejects(harness({ workbook: encodeSavedWorkbook(saved(2)) }, 201).client.workbookImport(draft), schemaFailure);
-});
-
-it('reads grouped results through the typed facade and rejects malformed group data', async () => {
-  const h = harness({ workflows: [], unavailable: [] });
-  assert.deepEqual(await h.client.workbookResults(), { workflows: [], unavailable: [] });
-  assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/results');
-  await assert.rejects(harness({ workflows: [], unavailable: [], extra: true }).client.workbookResults(), schemaFailure);
 });
 
 it('rejects merge requests before transport and refuses historical merge records on active result/status wires', async () => {

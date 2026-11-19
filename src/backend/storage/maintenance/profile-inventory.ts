@@ -31,7 +31,12 @@ type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfil
 
 export interface ProfileBrowserClosure {
   workerDirectory(input: Readonly<{ profileRoot: string; slotOrdinal: number; system: BrowserSystemId }>): string;
-  probeClosed(profiles: readonly RetainedBrowserProfile[], timing: Readonly<{ launchTimeoutMs: number; closeProofMs: number }>, clock: Clock, signal: AbortSignal, owner: RuntimeAdmission | InstallationLease, operation?: OfflineMaintenanceOperation): Promise<void>;
+  probeClosed(profiles: readonly RetainedBrowserProfile[], timing: Readonly<{ launchTimeoutMs: number; closeProofMs: number }>, clock: Clock,
+    signal: AbortSignal, owner: RuntimeAdmission | InstallationLease, flatSource?: FlatProfileBrowserSource): Promise<void>;
+}
+interface FlatProfileBrowserSource {
+  readonly operation: OfflineMaintenanceOperation;
+  capture(): Readonly<{ profiles: readonly RetainedBrowserProfile[]; identity: string }>;
 }
 export interface RetainedBrowserProfile {
   readonly profileRoot: string;
@@ -50,8 +55,9 @@ export async function probeRetainedBrowsersClosed(input: Readonly<{
 }
 
 export async function probeFlatBrowserInventoryClosed(owner: InstallationLease, operation: OfflineMaintenanceOperation, root: string, clock: Clock, browserClosure: ProfileBrowserClosure) {
-  const census = flatBackupBrowserCensus(root, operation, clock);
-  await browserClosure.probeClosed(census.profiles, census.timing, clock, new AbortController().signal, owner, operation);
+  const capture = () => flatBackupBrowserCensus(root, operation, clock);
+  const census = capture();
+  await browserClosure.probeClosed(census.profiles, census.timing, clock, new AbortController().signal, owner, { operation, capture });
 }
 
 function stoppedBrowserFacts(admission: RuntimeAdmission, clock: Clock, processLockRoot?: string) {
@@ -217,10 +223,12 @@ export async function prepareStoppedBackupClosure(browserClosure: ProfileBrowser
   try {
     held();
     assertMaintenanceCustodyAvailable("backup");
-    const before = stoppedBackupBrowserCensus(admission, operation, clock, processLockRoot, layout);
-    await browserClosure.probeClosed(before.profiles, before.timing, clock, new AbortController().signal, admission);
+    const capture = () => stoppedBackupBrowserCensus(admission, operation, clock, processLockRoot, layout);
+    const before = capture();
+    const flatSource = admission.isFlatBackup() ? { operation, capture } : undefined;
+    await browserClosure.probeClosed(before.profiles, before.timing, clock, new AbortController().signal, admission, flatSource);
     held();
-    const after = stoppedBackupBrowserCensus(admission, operation, clock, processLockRoot, layout);
+    const after = capture();
     if (before.identity !== after.identity) throw new StorageBackupClosureUnprovedError();
     if (admission.isFlatBackup()) proveStoppedBackupSourceUnused(admission);
     held();

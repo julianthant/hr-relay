@@ -57,7 +57,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
-import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
+import { registeredExplorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER,UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/separations-run-fixtures.js";
 import { CONFIG_SNAPSHOT,UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
@@ -483,7 +483,7 @@ export async function harness(options: {
         reason: "the test harness runs no backup lane",
       }),
     },
-    explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
+    explorer: registeredExplorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
   });
   return {
     app,

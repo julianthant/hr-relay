@@ -2,11 +2,14 @@ import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
 import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 
+import { terminalDelegationDependencyRecord, type RunResultRecord } from "../../../models/run/result.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
 import { descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
-import { readDelegationEvidence,currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { readDelegationEvidence, readDelegationInvocationEvidence, currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
 import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { authenticateOcrSnapshotApproval } from "../lifecycle/ocr-review-authority.js";
@@ -73,13 +76,36 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
       })),
     // Gate decisions come from durable gate rows, not task checkpoints.
     listGateResultsByRun: (runId: string) => authority.gateResults.listByRun(runId),
-    listDelegationsByRun: (runId: string) => {
+    listDelegationsByRun: (runId: string, retained?: RunResultRecord) => {
       const run = requireTrustRun(deps.runReader, runId);
       if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return [];
+      const manifests = currentDelegationManifests(authority, runId, retained === undefined ? undefined : run.version);
+      if (retained !== undefined) {
+        const citations = retained.dependencies.filter(dep => dep.state === "child-resolved" || dep.state === "delegation-resolved");
+        const own = citations.filter(citation => citation.parentRunId === runId);
+        if (retained.runId !== runId || own.length !== manifests.length) throw new Error("receipt-delegation-citation-mismatch");
+        const inherited = citations.length === own.length ? [] : continuationDelegationGroups(authority, run.envelope);
+        return citations.map(cited => {
+          const candidates = cited.parentRunId === runId ? manifests : inherited.map(group => group.manifest);
+          const matches = candidates.filter(manifest => manifest.parentRunId === cited.parentRunId && manifest.edgeId === cited.edgeId);
+          const manifest = matches[0];
+          if (matches.length !== 1 || manifest === undefined) throw new Error("receipt-delegation-citation-mismatch");
+          const command = authority.lifecycleJournal.findDelegationInvocation(manifest.manifestId);
+          if (command === undefined) throw new Error("receipt-delegation-invocation-unavailable");
+          const invocation = DelegationInvocationRequestSchema.parse(command.request);
+          if (invocation.runId !== cited.parentRunId || invocation.manifestId !== manifest.manifestId
+            || invocation.nodeId !== cited.nodeId) throw new Error("receipt-delegation-citation-mismatch");
+          const evidence = readDelegationInvocationEvidence(authority, command.commandId, new Set(), cited);
+          if (evidence.children.some(child => child.run.envelope.workflow !== invocation.target.workflowId)
+            || canonicalJsonStringify(terminalDelegationDependencyRecord(evidence)) !== canonicalJsonStringify(cited)) {
+            throw new Error("receipt-delegation-citation-mismatch");
+          }
+          return evidence;
+        });
+      }
       const descriptor = byId.get(run.envelope.workflow);
       if (descriptor === undefined) throw new Error("receipt-delegation-descriptor-unavailable");
       const nodes = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run");
-      const manifests = currentDelegationManifests(authority, runId);
       if (manifests.some(manifest => nodes.filter(node => node.edgeId === manifest.edgeId).length !== 1)) throw new Error("receipt-delegation-edge-unavailable");
       return nodes.filter(node => manifests.some(manifest => manifest.edgeId === node.edgeId))
         .map(node => {
@@ -119,6 +145,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
       assertTrustEvidenceIdentity(run, failure, "failure");
     }
     const outcome = ensureRunEvidenceReceipt({ ...store,
+      readConfirmedWrite: intentId => repositories.writeIntents.getPublication(intentId),
       listGateResultsByRun: id => {
         if (id !== runId) throw new Error("TRUST_RECEIPT_GATE_OWNER_MISMATCH");
         return repositories.gateResults.listByRun(id);
