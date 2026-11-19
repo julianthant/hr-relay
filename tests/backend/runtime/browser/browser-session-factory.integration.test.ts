@@ -22,6 +22,10 @@ import { FingerprintSchema,WorkerIdSchema,WorkflowIdSchema } from "../../../../s
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { workerSessionDiagnostics } from "../../../../src/backend/app/composition/worker-compose.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { fillDiagnosticBudget } from "../../../support/helpers/backend/full-diagnostic-budget.js";
+import { foundationFixture } from "../../../support/helpers/database-foundation/fixtures.js";
 
 const CLOCK = manualClock(new Date("2026-08-03T09:00:00.000Z"));
 const WORKER_ID = WorkerIdSchema.parse("person-lookup-worker-1");
@@ -72,6 +76,32 @@ const closureCause = (pattern: RegExp) => (error: unknown): boolean => error ins
   && error.errors.some(cause => cause instanceof Error && pattern.test(cause.message));
 
 describe("worker browser session factory", () => {
+  it("authenticates and closes the session at diagnostic capacity", async () => {
+    const f = await foundationFixture();
+    try {
+      const timeline = f.db.authority.timelineEvents;
+      fillDiagnosticBudget(f.path, timeline, f.clock);
+      const before = timeline.highWaterMark();
+      const report = workerSessionDiagnostics(createDebugEventWriter({ repository: timeline, clock: f.clock, build: "test" }));
+      const phases: string[] = [];
+      class ObservedFactory extends PlaywrightWorkerSessionFactory {
+        constructor(options: ConstructorParameters<typeof PlaywrightWorkerSessionFactory>[0]) {
+          super({ ...options, onDebug(workerId, event) { phases.push(event.phase); report("session", workerId, event); } });
+        }
+      }
+      await withTempRuntime(async ({ config }) => {
+        const launcher = fakeLauncher();
+        const factory = factoryFor(config, launcher, recordingBindings(), NEVER_SCHEDULER, undefined, ObservedFactory);
+        const session = await factory.open(OPEN_INPUT);
+        try { assert.equal(await session.authentication.authenticate("ucpath", {}), "logged-in"); }
+        finally { await session.close({ reason: "worker-stop" }); }
+        assert.equal(launcher.contextClosed(), true);
+      });
+      assert.deepEqual(phases, ["started", "settled", "released"]);
+      assert.equal(timeline.highWaterMark(), before);
+    } finally { await f.dispose(); }
+  });
+
   it("probes native availability without profile reset, credential reads, provisioning or login", async () => {
     await withTempRuntime(async ({ config }) => {
       const native = fakeLauncher(); let profileAdmissions = 0, secretReads = 0, logins = 0;
@@ -181,9 +211,9 @@ describe("worker browser session factory", () => {
   it("captures only PNG bytes and their actual dimensions", async () => {
     await withTempRuntime(async ({ config }) => {
       const launcher = fakeLauncher();
-      const count = async () => 0;
-      const filter = function <T>(this: T): T { return this; };
-      const frames = [0, 1, 2].map(frameId => ({ ...launcher.page.mainFrame(), locator: (selector: string) => ({ selector, frameId, count, filter }) }));
+      const mainFrame = launcher.page.mainFrame();
+      const emptyLocator = mainFrame.locator("");
+      const frames = [0, 1, 2].map(frameId => ({ ...mainFrame, locator: (selector: string) => ({ ...emptyLocator, selector, frameId }) }));
       launcher.page.frames = () => frames;
       let screenshotOptions: unknown;
       const originalScreenshot = launcher.page.screenshot;
@@ -194,7 +224,11 @@ describe("worker browser session factory", () => {
       const screenshot = await resource.screenshot?.();
       assert.ok(screenshot?.state === "available");
       assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
-      assert.deepEqual(screenshotOptions, { type: "png", clip: { x: 0, y: 0, width: config.display.screenWidth + 24, height: Math.min(config.display.screenHeight, 1200) }, mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count, filter })) });
+      assert.deepEqual(screenshotOptions, {
+        type: "png",
+        clip: { x: 0, y: 0, width: config.display.screenWidth + 24, height: Math.min(config.display.screenHeight, 1200) },
+        mask: frames.flatMap(frame => [frame.locator("[data-relay-capture-mask]"), frame.locator('[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]')]),
+      });
       assert.deepEqual(
         { width: screenshot.width, height: screenshot.height },
         { width: config.display.screenWidth + 24, height: config.display.screenHeight },
@@ -268,7 +302,6 @@ describe("worker browser session factory", () => {
       const child = {
         ...launcher.page.mainFrame(),
         url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-        locator: (selector: string) => { const locator = { selector, count: async () => 0, filter: () => locator }; return locator; },
       };
       const frames = [...launcher.page.frames(), child];
       launcher.page.frames = () => frames;
@@ -297,10 +330,11 @@ describe("worker browser session factory", () => {
           const launcher = fakeLauncher();
           let present = phase === "before";
           let imageReads = 0;
+          const mainFrame = launcher.page.mainFrame();
           const child = {
-            ...launcher.page.mainFrame(),
+            ...mainFrame,
             url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-            locator: (selector: string) => { const locator = { selector, count: async () => present && selector.includes(control) ? 1 : 0, filter: () => locator }; return locator; },
+            locator: (selector: string) => ({ ...mainFrame.locator(selector), count: async () => present && selector.includes(control) ? 1 : 0 }),
           };
           const frames = [...launcher.page.frames(), child];
           launcher.page.frames = () => frames;
@@ -326,7 +360,6 @@ describe("worker browser session factory", () => {
         const child = {
           ...launcher.page.mainFrame(),
           url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-          locator: (selector: string) => { const locator = { selector, count: async () => 0, filter: () => locator }; return locator; },
         };
         const mainFrames = launcher.page.frames();
         let frames = event === "frameattached" ? mainFrames : [...mainFrames, child];

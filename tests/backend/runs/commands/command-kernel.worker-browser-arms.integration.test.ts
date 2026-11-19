@@ -88,6 +88,69 @@ describe("worker-browser arms", () => {
     if (missing.state === "rejected") assert.equal(missing.code, "target-not-found");
   });
 
+  it("refuses a claim after Reset commits and before Stop, then admits the replacement", async () => {
+    let afterCommit: (() => void) | undefined;
+    const harness = await createHarness(undefined, { afterAuthorityCommit: () => afterCommit?.() });
+    const runId = singleAppliedRunId(harness.kernel.execute(startCommand(createPlan(harness, rejectActiveDescriptor, ["10800000"]))));
+    const workflow = rejectActiveDescriptor.id;
+    const { claimNext } = testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    const [{ workerId }] = harness.database.authority.workerSlots.active(workflow);
+    harness.workerMembers.set(workerId, { lifetimeId: UUID_4, version: 3, state: "running" });
+    const reset = workerCommand("stop-worker", { workerId, workflowId: workflow, lifetimeId: UUID_4, expectedVersion: 3 });
+    const claim = () => claimNext({ commandId: nextCommandId(), workflow, workerId });
+    afterCommit = () => {
+      if (harness.database.authority.commandAudits.findByCommand(reset.commandId)?.result.state !== "applied") return;
+      afterCommit = undefined;
+      assert.deepEqual(harness.workerCalls, []);
+      assert.deepEqual(claim(), { state: "refused", refusal: { reason: "none-eligible" } });
+      assert.equal(harness.database.authority.runs.get(runId)?.lifecycle.state, "queued");
+    };
+
+    assert.equal((await harness.kernel.executeWorkerPool(reset)).state, "applied");
+    assert.equal(afterCommit, undefined, "the claim ran at the Reset commit");
+    assert.deepEqual(harness.workerCalls, [`stop:${workerId}:reset`, `start:${workerId}`]);
+    const replacement = claim();
+    assert.ok(replacement.state === "applied");
+    assert.equal(replacement.run.envelope.runId, runId);
+  });
+
+  it("refuses Resume and keeps claims held when Reset cannot observe the old worker exiting", async () => {
+    const harness = await createHarness(undefined, { workerStopExit: "unobserved" });
+    const workflowId = rejectActiveDescriptor.id;
+    const runId = singleAppliedRunId(harness.kernel.execute(startCommand(createPlan(harness, rejectActiveDescriptor, ["10800000"]))));
+    const { claimNext } = testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    const [{ workerId }] = harness.database.authority.workerSlots.active(workflowId);
+    harness.workerMembers.set(workerId, { lifetimeId: UUID_4, version: 3, state: "running" });
+    const target = { workerId, workflowId, lifetimeId: UUID_4, expectedVersion: 3 };
+    assert.equal((await harness.kernel.executeWorkerPool(workerCommand("stop-worker", target))).state, "applied");
+    const member = harness.workerMembers.get(workerId);
+    assert.ok(member?.state === "stopping");
+    assert.equal(harness.database.authority.workerSlots.get(workerId)?.paused, true);
+
+    const resume = workerCommand("resume-worker", { ...target, expectedVersion: member.version });
+    assert.deepEqual(await harness.kernel.executeWorkerPool(resume), {
+      state: "rejected", commandId: resume.commandId, code: "invalid-state", message: "WORKER_EXIT_UNOBSERVED",
+    });
+    assert.deepEqual(harness.workerCalls, [`stop:${workerId}:reset`]);
+    assert.equal(harness.database.authority.workerSlots.get(workerId)?.paused, true);
+    assert.deepEqual(claimNext({ commandId: nextCommandId(), workflow: workflowId, workerId }), { state: "refused", refusal: { reason: "none-eligible" } });
+    assert.equal(harness.database.authority.runs.get(runId)?.lifecycle.state, "queued");
+  });
+
+  it("preserves an operator pause when Reset starts the replacement", async () => {
+    const harness = await createHarness();
+    const workflowId = rejectActiveDescriptor.id;
+    testWorkerPorts(harness.database, harness.clock, { path: join(harness.stateRoot, "state.db"), descriptor: rejectActiveDescriptor, poolIndex: 1 });
+    const [{ workerId }] = harness.database.authority.workerSlots.active(workflowId);
+    harness.workerMembers.set(workerId, { lifetimeId: UUID_4, version: 3, state: "running" });
+    const target = { workerId, workflowId, lifetimeId: UUID_4, expectedVersion: 3 };
+    assert.equal((await harness.kernel.executeWorkerPool(workerCommand("pause-worker", target))).state, "applied");
+
+    assert.equal((await harness.kernel.executeWorkerPool(workerCommand("stop-worker", target))).state, "applied");
+    assert.notEqual(harness.workerMembers.get(workerId)?.lifetimeId, UUID_4);
+    assert.equal(harness.database.authority.workerSlots.get(workerId)?.paused, true);
+  });
+
   for (const write of ["none", "attempting"] as const) it(`resets a worker holding a claimed run through its own journaled run Cancel (write ${write})`, async () => {
     const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);

@@ -10,6 +10,11 @@ import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-cer
 import { duoCeremonyGatesOver, FIXTURE_DUO_CREDENTIAL_KEY, FIXTURE_DUO_LEASE_GRACE_MS, FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import type { DuoCeremonyLeaseRepository } from "../../../support/helpers/synthetic-storage-admission.js";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { workerSessionDiagnostics } from "../../../../src/backend/app/composition/worker-compose.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { fillDiagnosticBudget } from "../../../support/helpers/backend/full-diagnostic-budget.js";
+import { TimelineDiagnosticBudgetError } from "../../../../src/models/events/timeline.js";
 
 const {WORKER_A, SYSTEM, NEED, T0, recipeFactory, managerFor, sharedAuthority, leaseRow, cleanup } = createLoginContractTestWorld();
 
@@ -45,6 +50,47 @@ async function advance(clock: TestClock, scheduler: ManualScheduler, ms: number)
 afterEach(cleanup);
 
 describe("two workers, one credential, one ceremony at a time", () => {
+  it("propagates a pinned diagnostic refusal and an unexpected writer failure", () => {
+    const event = { phase: "acquired" as const, correlationId: "fixture-lease" };
+    const unavailable = new Error("writer unavailable");
+    const failing = workerSessionDiagnostics({ emit() { throw unavailable; } });
+    assert.throws(() => failing("duo", WORKER_A, event), error => error === unavailable);
+    const full = new TimelineDiagnosticBudgetError();
+    const pinned = workerSessionDiagnostics({ emit() { throw full; } });
+    assert.throws(() => pinned("duo", WORKER_A, { ...event, phase: "expired", pinned: true }), error => error === full);
+  });
+
+  it("uses and releases the acquired lease at diagnostic capacity", async () => {
+    const clock = manualClock(T0), scheduler = new ManualScheduler(clock);
+    const database = await sharedAuthority(clock);
+    const timeline = database.authority.timelineEvents;
+    fillDiagnosticBudget(syntheticDatabasePath(database), timeline, clock);
+    const before = timeline.highWaterMark();
+    const report = workerSessionDiagnostics(createDebugEventWriter({ repository: timeline, clock, build: "test" }));
+    const phases: string[] = [];
+    const gate = createDuoCeremonyGateFactory({
+      leases: database.authority.duoCeremonyLeases, credentialKey: FIXTURE_DUO_CREDENTIAL_KEY, clock, scheduler,
+      sessionAcquireMs: FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS, graceMs: FIXTURE_DUO_LEASE_GRACE_MS, pollIntervalMs: POLL_MS,
+      onDebug(workerId, event) { phases.push(event.phase); report("duo", workerId, event); },
+    }).openGate({ workerId: WORKER_A, system: SYSTEM, envelopeDeadlineMonotonicMs: () => clock.monotonicMs() + BUDGET_MS,
+      cancelCeremony: () => assert.fail("unexpected cancellation"), signal: new AbortController().signal });
+    try {
+      const generation = await gate.withCeremony(async token => {
+        assert.equal(leaseRow(database).state, "held");
+        assert.equal(token.holder.workerId, WORKER_A);
+        return token.generation;
+      });
+      assert.equal(leaseRow(database).generation, generation);
+      assert.equal(leaseRow(database).state, "released");
+      assert.deepEqual(phases, ["acquired", "released"]);
+      assert.equal(timeline.highWaterMark(), before);
+      report("duo", WORKER_A, { phase: "expired", correlationId: "fixture-expiry", pinned: true });
+      const [expiry] = timeline.page({ after: before });
+      assert.equal(expiry.payload.kind, "debug");
+      assert.equal(expiry.payload.event.pinned, true);
+    } finally { gate.dispose(); }
+  });
+
   it("starts the second worker's ceremony strictly after the first worker's verifier returned", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);

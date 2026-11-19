@@ -46,6 +46,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/upgrade.ready-bound.schema-matrix.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-18.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-24.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.certificate-upgrade.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",

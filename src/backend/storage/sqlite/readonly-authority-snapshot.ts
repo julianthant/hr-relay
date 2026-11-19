@@ -115,7 +115,14 @@ export interface AuthorityImageOwner {
 }
 
 /** pointInTime: an owner image; later changes to the live files do not make it stale. */
-type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true }>;
+type ReadonlySnapshot = Readonly<{ path: string; assertUnchanged: () => void; dispose: () => void; pointInTime?: true; sourceMarker?: string }>;
+type ReadonlyAuthorityImage = Readonly<{ path: string; marker: string }>;
+const readerImages = new WeakMap<DatabaseSync, ReadonlyAuthorityImage>();
+
+export function readonlyAuthorityImage(database: DatabaseSync): ReadonlyAuthorityImage | undefined {
+  return readerImages.get(database);
+}
+
 type ActiveObservation = { readonly statePath: string; owner: AuthorityImageOwner | undefined; snapshot?: ReadonlySnapshot; view?: ReadonlySnapshot };
 const activeObservation = new AsyncLocalStorage<ActiveObservation>();
 
@@ -165,13 +172,13 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
   const cached = proof?.slots.get(key) as { marker: string; snapshot: ReadonlySnapshot } | undefined;
   if (cached?.marker === marker) {
     cached.snapshot.assertUnchanged();
-    return Object.freeze({ path: cached.snapshot.path, assertUnchanged: cached.snapshot.assertUnchanged, dispose() { if (!proof?.active) cached.snapshot.dispose(); } });
+    return Object.freeze({ ...cached.snapshot, dispose() { if (!proof?.active) cached.snapshot.dispose(); } });
   }
   const snapshot = copyReadonlyAuthoritySnapshot(sourcePath);
   if (proof === undefined) return snapshot;
   proof.slots.set(key, { marker, snapshot });
   proof.release.push(() => { snapshot.dispose(); });
-  return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() { if (!proof.active) snapshot.dispose(); } });
+  return Object.freeze({ ...snapshot, dispose() { if (!proof.active) snapshot.dispose(); } });
 }
 
 // The "pid" marker keeps a legacy UUID name (leading digits, then a hyphen) from reading as an owner.
@@ -272,7 +279,8 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImag
     }
     if (copy.stdout !== "copied") throw copyFailed();
     assertUnchanged();
-    return snapshot;
+    const sourceMarker = sources.map(source => source.stats === undefined ? "absent" : identity(source.stats)).join("|");
+    return Object.freeze({ ...snapshot, sourceMarker });
   } catch (error) {
     try { dispose(); }
     catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { snapshot }); }
@@ -328,7 +336,9 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
  try {
    database = openReadOnlyDatabase(snapshot.path, busyTimeoutMs);
    database.exec("PRAGMA query_only=ON; BEGIN"); transactionOpen = true;
-   result = { value: read(database) };
+   if (snapshot.sourceMarker !== undefined) readerImages.set(database, Object.freeze({ path, marker: snapshot.sourceMarker }));
+   try { result = { value: read(database) }; }
+   finally { readerImages.delete(database); }
    database.exec("COMMIT"); transactionOpen = false;
  } catch (error) { failures.push(error); }
  if (database !== undefined) {
@@ -346,4 +356,67 @@ export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (
  if (failures.length > 1) throw new AggregateError(failures, "authority-read-only-failed", { cause: failures[0] });
  if (result === undefined) throw new Error("authority-read-only-result-missing");
  return result.value;
+}
+
+const RestoreFenceIndexRow = z.strictObject({
+  row_key: z.union([z.string(), z.number()]),
+  canonical: z.instanceof(Uint8Array),
+});
+
+export function createRestoreFenceIndex() {
+  const prefix = join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-fences-`);
+  const path = process.platform === "win32" ? `${prefix}${randomUUID()}` : mkdtempSync(prefix);
+  if (process.platform === "win32") createPrivateDirectory(path, { mode: 0o700 });
+  const directory = { path };
+  let database: DatabaseSync | undefined;
+  const dispose = () => {
+    if (database !== undefined) {
+      try { database.close(); }
+      catch (error) { throw retainAuthoritySourceClosure([error], { database, directory }); }
+    }
+    try { rmSync(path, { recursive: true }); }
+    catch (error) { throw retainAuthoritySourceClosure([error], { directory }); }
+  };
+  try {
+    const index = new DatabaseSync(join(path, "fences.sqlite"));
+    database = index;
+    index.exec(`
+      PRAGMA journal_mode=OFF;
+      PRAGMA cache_size=-2048;
+      PRAGMA cache_spill=ON;
+      PRAGMA temp_store=MEMORY;
+      CREATE TABLE evidence (
+        table_id INTEGER NOT NULL,
+        canonical BLOB NOT NULL,
+        row_key ANY NOT NULL,
+        PRIMARY KEY(table_id,canonical)
+      ) STRICT, WITHOUT ROWID;
+      BEGIN;
+    `);
+    const insert = index.prepare("INSERT INTO evidence (table_id,canonical,row_key) VALUES (?,?,?)");
+    const rows = index.prepare("SELECT row_key, canonical FROM evidence WHERE table_id=? ORDER BY canonical");
+    let sealed = false;
+    return Object.freeze({
+      append(tableId: number, rowKey: string | number, canonical: string) {
+        // Index UTF-16 code units in JavaScript sort order to preserve the restore journal digest.
+        insert.run(tableId, Buffer.from(canonical, "utf16le").swap16(), rowKey);
+      },
+      seal() {
+        index.exec("COMMIT; PRAGMA query_only=ON");
+        sealed = true;
+      },
+      *orderedRows(tableId: number) {
+        if (!sealed) throw new Error("restore-fence-index-unsealed");
+        for (const raw of rows.iterate(tableId)) {
+          const { row_key, canonical } = RestoreFenceIndexRow.parse(raw);
+          yield { key: row_key, canonical: Buffer.from(canonical).swap16().toString("utf16le") };
+        }
+      },
+      dispose,
+    });
+  } catch (error) {
+    try { dispose(); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-index-setup-failed"); }
+    throw error;
+  }
 }

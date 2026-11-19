@@ -22,6 +22,7 @@ import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artif
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
 import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
+import { emitOptionalDiagnostic } from "../../logs/debug-events.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import {
@@ -294,6 +295,17 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   try {
     const parksWhenIdle = descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run");
     let refusalStreak = 0;
+    let lastRefusal: { refusal: WorkerPreflightRefusal; correlationId: string; omitted: number } | undefined;
+    const reportRefusal = (refusal: WorkerPreflightRefusal, correlationId: string, omitted: number) =>
+      emitOptionalDiagnostic(() => deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId,
+        area: "worker-admission", code: refusal.code, reason: "operation-refused",
+        ...(refusal.summary === undefined ? {} : { message: refusal.summary }), ...(omitted > 0 ? { omitted } : {}) }, { kind: "worker", workerId }));
+    const finishRefusal = () => {
+      if (lastRefusal !== undefined && lastRefusal.omitted > 0) {
+        reportRefusal(lastRefusal.refusal, lastRefusal.correlationId, lastRefusal.omitted);
+      }
+      lastRefusal = undefined;
+    };
     const clearRefusal = (): void => {
       refusalStreak = 0;
       deps.onStanding?.(undefined);
@@ -322,9 +334,14 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       const claimed = await deps.claimNext(claimRequest, sessions);
       if (claimed.state === "preflight-refused") {
         preflightRefusal = WorkerPreflightRefusalSchema.parse(claimed);
-        deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId: claimRequest.commandId,
-          area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused",
-          ...(preflightRefusal.summary === undefined ? {} : { message: preflightRefusal.summary }) }, { kind: "worker", workerId });
+        if (refusalStreak > 0 && lastRefusal !== undefined && lastRefusal.refusal.code === preflightRefusal.code
+          && lastRefusal.refusal.summary === preflightRefusal.summary && lastRefusal.refusal.runId === preflightRefusal.runId) {
+          lastRefusal.omitted++;
+        } else {
+          finishRefusal();
+          const result = reportRefusal(preflightRefusal, claimRequest.commandId, 0);
+          lastRefusal = { refusal: preflightRefusal, correlationId: claimRequest.commandId, omitted: result === "budget-full" ? 1 : 0 };
+        }
         if (deps.exitWhenIdle) { stopped = "preflight-refused"; break; }
         // A pool worker stays up. Each consecutive refusal doubles the idle cadence, capped at a minute.
         refusalStreak += 1;
@@ -455,6 +472,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
       }
     }
+    finishRefusal();
   } finally {
     closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;

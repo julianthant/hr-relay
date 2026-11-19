@@ -88,6 +88,7 @@ const FAILURE_LABELS: Readonly<Partial<Record<ErrorCatalogCode, string>>> = {
   PAYPATH_IDENTITY_UNREADABLE: "Employee name not shown",
   PAYPATH_MULTIPLE_RECORDS: "Several job records",
   PAYPATH_POSITION_ALREADY_DATED: "Position change already dated",
+  PAYPATH_POSITION_MISMATCH: "PayPath position changed",
   PAYPATH_SEARCH_NOT_SHOWN: "PayPath search missing",
   PAYPATH_SUBMIT_REFUSED: "Submit answered with alert",
   PAYROLL_TITLE_CODE_UNREADABLE: "Job code unreadable",

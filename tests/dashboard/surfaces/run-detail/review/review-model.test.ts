@@ -5,6 +5,7 @@ import { reviewFieldGroups } from "../../../../../src/dashboard/surfaces/run-det
 import { ocrReviewPageFixture } from "../../../../support/fixtures/dashboard/ocr-review.js";
 import { blankOperatorOcrFields, operatorOcrRecordId, OcrReviewRevisionSchema } from "../../../../../src/models/ocr/review.js";
 import { OcrOperatorPagesSchema } from "../../../../../src/models/ocr/review-record.js";
+import { EidSchema } from "../../../../../src/rules/identity/ids.js";
 
 it("re-admits operator corrections without changing other answers or original source evidence", () => {
   const page = ocrReviewPageFixture(); assert.ok(page.ocr);
@@ -65,4 +66,17 @@ it("projects operator-added provenance and original page choices without inventi
   assert.equal(correction.assertedEid, null);
   assert.throws(() => correctedOcrRecord(page, manual.recordId, { sourcePage: "99" }), /ocr-operator-record-source-invalid/u);
   assert.throws(() => correctedOcrRecord(page, previous.records[0].recordId, { sourcePage: "2" }), /RUN_REVIEW_FIELD_UNAVAILABLE/u);
+});
+
+it("names why an unasserted record's identity is not confirmed and lists it as a blocker", () => {
+  const page = ocrReviewPageFixture(); assert.ok(page.ocr);
+  const cards = ocrReviewCards(page, (_id, _revision, source) => `/source/${source}`);
+  const [first] = cards; assert.ok(first);
+  assert.equal(first.record.unconfirmed, "Not looked up");
+  assert.deepEqual(first.record.blockers?.slice(0, 1), ["Not looked up"]);
+  const asserted = structuredClone(page);
+  asserted.ocr!.revision.records[0].assertedEid = EidSchema.parse("10800000");
+  asserted.ocr!.identityHolds = asserted.ocr!.identityHolds.filter(hold => hold.recordId !== asserted.ocr!.revision.records[0].recordId);
+  const confirmed = ocrReviewCards(asserted, (_id, _revision, source) => `/source/${source}`)[0];
+  assert.equal(confirmed.record.unconfirmed, undefined);
 });
