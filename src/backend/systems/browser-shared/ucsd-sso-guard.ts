@@ -1,6 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { BrowserContext, CDPSession, Page } from "playwright";
 
+export const NEW_KRONOS_SSO_PATH = "/tritON/profile/SAML2/POST/SSO";
+const ssoPaths = Object.freeze(["/tritON/profile/SAML2/Redirect/SSO", "/idp/profile/SAML2/Redirect/SSO", NEW_KRONOS_SSO_PATH] as const);
+export type UcsdSsoPath = typeof ssoPaths[number];
+
+export function requireSsoPath(pathname: string): UcsdSsoPath {
+  const path = ssoPaths.find(candidate => candidate === pathname);
+  if (!path) throw new Error("UCSD_SSO_SCOPE");
+  return path;
+}
+
 interface PinnedFormAttempt {
   readonly form: HTMLFormElement;
   readonly button: HTMLButtonElement;
@@ -38,8 +48,8 @@ export async function withPinnedSsoPost(page: Page, destination: string, assertC
   submit: (allowPost: () => void) => Promise<void>): Promise<void> {
   assertCurrent();
   const source = new URL(page.url()), pin = new URL(destination);
+  requireSsoPath(source.pathname);
   if (source.origin !== "https://a5.ucsd.edu" || source.username || source.password
-    || !["/tritON/profile/SAML2/Redirect/SSO", "/idp/profile/SAML2/Redirect/SSO"].includes(source.pathname)
     || pin.origin !== source.origin || pin.username || pin.password || pin.pathname !== source.pathname
     || submittingPages.has(page)) throw new Error("UCSD_SSO_SCOPE");
   pin.hash = "";
@@ -117,9 +127,9 @@ export async function withPinnedSsoPost(page: Page, destination: string, assertC
   if (failure) throw failure.error;
 }
 
-function installDocumentSsoGuard({ installationId, actionKey }: NativeSsoGuardKeys): void {
+function installDocumentSsoGuard({ installationId, actionKey, paths }: NativeSsoGuardKeys & { paths: readonly string[] }): void {
   if (window !== top || location.origin !== "https://a5.ucsd.edu"
-    || !["/tritON/profile/SAML2/Redirect/SSO", "/idp/profile/SAML2/Redirect/SSO"].includes(location.pathname)) return;
+    || !paths.includes(location.pathname)) return;
   const navigation: unknown = Reflect.get(window, "navigation");
   const navigateEvent: unknown = Reflect.get(window, "NavigateEvent");
   if (!(navigation instanceof EventTarget) || !Reflect.get(navigation, "currentEntry") || typeof navigateEvent !== "function") return;
@@ -200,7 +210,7 @@ function installDocumentSsoGuard({ installationId, actionKey }: NativeSsoGuardKe
 export async function installNativeSsoGuard(context: BrowserContext): Promise<void> {
   const keys = Object.freeze({ installationId: randomUUID(), actionKey: randomUUID() });
   try {
-    await context.addInitScript(installDocumentSsoGuard, keys);
+    await context.addInitScript(installDocumentSsoGuard, { ...keys, paths: ssoPaths });
     ssoGuards.set(context, { keys });
   } catch (error) {
     // Only credential submission depends on this installation.
