@@ -35,8 +35,6 @@ async function choose(trigger: string, value: string) {
   await click(document.querySelector(trigger));
   await click(document.querySelector(`[role="option"][data-value="${value}"]`));
 }
-const titles = (host: HTMLElement) => [...host.querySelectorAll("h3")].map(title => title.textContent);
-
 it("lists the main workflows only; sub-workflows and mock workflows are absent", async () => {
   const host = await mount();
   const options = await openPicker(host);

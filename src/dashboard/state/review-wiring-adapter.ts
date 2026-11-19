@@ -33,7 +33,10 @@ export function useRunReview(client: DashboardClient, selection: LogSelection, b
   const { row } = selection;
   const dayResource = binding?.authority.dayState.day;
   const hostedKey = dayResource?.state === "loaded"
-    ? dayResource.value.queueSurfaces.filter(surface => surface.workflowId === "ocr" && surface.parent?.runId === row.runId).map(surface => surface.runId).join(",") : "";
+    ? dayResource.value.queueSurfaces
+      .filter(surface => surface.parent?.runId === row.runId && surface.parent.visibility !== "inline" && surface.availableSections.includes("review"))
+      .map(surface => surface.runId).join(",")
+    : "";
   const request = useMemo(() => ({ client, selection: { row, workflowLabel: selection.workflowLabel }, hostedRunIds: hostedKey === "" ? [] : hostedKey.split(","), runId: row.runId, revision: row.rowRevision, epoch: binding?.authority.epoch,
     actor: binding?.scope.actorId, day: binding?.authority.day, dayRequest: binding?.authority.dayState.request,
     dayState: binding?.authority.dayState.day.state }),

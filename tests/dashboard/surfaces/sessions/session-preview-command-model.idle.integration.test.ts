@@ -59,7 +59,8 @@ function servedWorld(count: number, gateReads = 0) {
       if (gateReads > 0) await new Promise<void>(release => { held.push(release); if (held.length === gateReads) for (const next of held.splice(0)) next(); });
       return Response.json(snapshot);
     }
-    const command = CommandRequestSchema.parse(JSON.parse(String(init.body)));
+    assert.ok(typeof init.body === "string", "expected a JSON command body");
+    const command = CommandRequestSchema.parse(JSON.parse(init.body));
     assert(command.family === "worker-browser" && command.type !== "plan-worker-count" && command.type !== "spawn-worker");
     const directive = command.type === "pause-worker" ? "pause" : "run";
     day = DashboardDayWireSchema.parse({ ...day, workerCards: day.workerCards.map(card => card.workerId === command.target.workerId ? { ...card, directive } : card) });

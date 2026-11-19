@@ -42,11 +42,10 @@ export function useNotificationRailModel({ open = false, setOpen, onAlert, setNo
   const { notifications: switches } = usePersonPreferences().value;
   const alert = useRef(onAlert); alert.current = onAlert;
   const live = useRef({ open, switches }); live.current = { open, switches };
-  const onPublication = served.onPublication;
-  useEffect(() => onPublication(({ item }) => {
+  useEffect(() => served.onPublication(({ item }) => {
     if (live.current.open || !alertSwitch(item, live.current.switches)) return;
     alert.current?.(item, live.current.switches.sound !== "none");
-  }), [onPublication]);
+  }), [served]);
   return {
     state: served.state, unread: unreadCount(served.state),
     changeOpen: setOpen,
