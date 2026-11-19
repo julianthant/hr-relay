@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { chromium, type Browser, type Page } from "playwright";
@@ -25,7 +26,7 @@ beforeAll(async () => { browser = await chromium.launch({ headless: true }); });
 afterAll(async () => { await browser?.close(); });
 
 async function withPage(body: string, check: (page: Page, resource: WorkerBrowserResource, retries: readonly string[]) => Promise<void>, authenticated = true) {
-  await fixtures.withTempRuntime(async ({ config }) => {
+  await fixtures.withTempRuntime(async ({ config, root }) => {
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
     const page = await context.newPage();
     await page.setContent(html(body));
@@ -40,7 +41,10 @@ async function withPage(body: string, check: (page: Page, resource: WorkerBrowse
         } });
       }
     }
-    const factory = fixtures.factoryFor(config, harness, fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated }).verify }), undefined, undefined, ObservedFactory);
+    const factory = fixtures.factoryFor(
+      { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } },
+      harness, fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated }).verify }), undefined, undefined, ObservedFactory,
+    );
     const resource = await factory.open({ workerId, workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod", configFingerprint: FingerprintSchema.parse("ab".repeat(32)), acceptDownloads: false, exclusive: false, signal: new AbortController().signal, duoCeremony: await fixtureDuoCeremonyGate("ucpath", workerId, clock) });
     try { await check(page, resource, retries); }
     finally { await resource.close({ reason: "worker-stop" }); }
@@ -170,7 +174,8 @@ describe("whole-page factory screenshots", () => {
         return screenshot(options);
       };
       const evidence = await resource.screenshot?.();
-      assert.ok(evidence?.state === "available", evidence?.state === "unavailable" ? evidence.detail : undefined);
+      const detail = evidence?.state === "unavailable" ? evidence.detail : undefined;
+      assert.ok(evidence?.state === "available", detail ?? "Expected a full-page capture");
       const png = PNG.sync.read(Buffer.from(evidence.bytes));
       assert.equal(png.height, 3200);
       assert.deepEqual(pixel(png, 20, 0), [230, 200, 20]);
