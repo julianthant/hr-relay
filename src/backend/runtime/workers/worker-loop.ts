@@ -226,9 +226,23 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     emitter.emit(ExecutorSpanEventSchema.parse({ ts: instant(), workflow: workflowId, ...event }));
   };
 
+  const undeliveredTransitions: string[] = [];
+  const recordTransition = (reason: "worker-idle" | "worker-active" | "sessions-parking"): void => {
+    try {
+      deps.debugEvents?.emit({
+        category: "worker", phase: "started", area: "worker-lifecycle", reason, correlationId: streamId,
+      }, { kind: "worker", workerId });
+    } catch {
+      // Report after the claim turn so diagnostic delivery cannot interrupt execution or parking.
+      undeliveredTransitions.push(reason);
+    }
+  };
+
   const sessions = new WorkerSessionManager({
+    onParking: () => recordTransition("sessions-parking"),
     workerId,
     workflowId,
+    singleAcquisitionPerSystemPerClaim: deps.descriptor.capabilities?.singleAcquisitionPerSystemPerClaim,
     stores: deps.stores,
     factory: deps.sessionFactory,
     clock,
@@ -293,6 +307,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   let preflightRefusal: WorkerPreflightRefusal | undefined;
   try {
     const parksWhenIdle = descriptorRuntimeNodes(deps.descriptor).some(node => node.kind === "child-run");
+    let idle = false;
     let refusalStreak = 0;
     const clearRefusal = (): void => {
       refusalStreak = 0;
@@ -339,6 +354,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
         clearRefusal();
+        if (!idle) recordTransition("worker-idle");
+        idle = true;
         const notBefore = claimed.refusal.notBefore;
         const decision = deps.exitWhenIdle
           ? decideIdleClaim({ exitWhenIdle: true, notBefore })
@@ -357,6 +374,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
 
       clearRefusal();
       const run = requireLifecycleApplied(claimed);
+      if (idle) recordTransition("worker-active");
+      idle = false;
       const claim = {
         workerId,
         claimGeneration: run.claimGeneration,
@@ -452,6 +471,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       } finally {
         deps.claimTurn?.end();
+        for (const state of undeliveredTransitions.splice(0)) {
+          deps.log.warn("Worker lifecycle diagnostic delivery failed.", { workerId, state });
+        }
         if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
       }
     }

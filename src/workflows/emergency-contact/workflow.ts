@@ -16,6 +16,7 @@ export const emergencyContactWorkflow = defineWorkflow({
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
   requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, workbookCheck: REFERENCE_CHECK, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+  capabilities: { review: false, editData: false, singleAcquisitionPerSystemPerClaim: true },
   surfaces: { uploadRun: { title: { segments: [{ kind: "literal", text: "Emergency Contact PDFs" }] },
     fields: [{ kind: "select", field: "onbaseFiling", label: "File to OnBase", required: true, options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] }],
     pdfInput: { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: { roster: null, reading: { kind: "subscription" } } },
