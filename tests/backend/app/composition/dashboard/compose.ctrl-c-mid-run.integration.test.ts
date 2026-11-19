@@ -40,7 +40,7 @@ function pidAlive(pid: number): boolean {
   catch (error) { if (error instanceof Error && "code" in error && error.code === "ESRCH") return false; throw error; }
 }
 
-async function startDashboard(processGroup = false, fault?: "stream-close" | "transport-close" | "worker-stop") {
+async function startDashboard(processGroup = false, fault?: "stream-close" | "stream-close-unproved" | "transport-close" | "worker-stop") {
   const f = await createBoundProfileFixture();
   cleanups.push(() => f.close());
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
@@ -187,3 +187,14 @@ it.each(["stream-close", "transport-close", "worker-stop"] as const)("Ctrl+C com
   const released = await RuntimeLifetimeLock.acquire(lockPort);
   await released.close();
 }, 180_000);
+
+it("Ctrl+C refuses store release and backup when the stream close rejects before disposing subscriptions", async () => {
+  const { child, output, exited, diagnostics, f } = await startDashboard(false, "stream-close-unproved");
+  assert.equal(child.kill("SIGINT"), true);
+  assert.deepEqual(await exited, { code: 1, signal: null }, diagnostics());
+  assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
+    ["closing transport", "stopping workers"], diagnostics());
+  assert.match(output(), /Stream close refused with admission and lifetime held/u);
+  const backups = join(f.stateRoot, "backups", "authority");
+  assert.ok(!existsSync(backups) || !readdirSync(backups).some(name => name.endsWith(".shutdown.sqlite.manifest.json")));
+});

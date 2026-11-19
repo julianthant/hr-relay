@@ -29,7 +29,7 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
   return custodyUnproved;
 }
 
-export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: { close: StartupCleanup }; stopWorkerControl: StartupCleanup; takeWorkerStopFailures(): readonly unknown[]; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
+export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & { timelineTimer: ReturnType<typeof setInterval>; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: { close: StartupCleanup; readonly subscriptionsClosed: boolean }; stopWorkerControl: StartupCleanup; takeWorkerStopFailures(): readonly unknown[]; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
   const { profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, timelineTimer, diagnosticRetentionTimer, hub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, historyTimer, custody } = input;
   const stepFailures: DashboardStopFailure[] = [];
   let producerClosure: Promise<void> | undefined, producersClosed = false;
@@ -48,7 +48,11 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
         try { await notificationObserver.stop(); } catch (error) { failures.push(error); }
       })();
       await transportClosure;
-      try { await hub.close(); } catch (cause) { stepFailures.push({ step: "stream-close", cause }); }
+      try { await hub.close(); }
+      catch (cause) {
+        stepFailures.push({ step: "stream-close", cause });
+        if (!hub.subscriptionsClosed) failures.push(cause);
+      }
       await notificationClosure;
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       producersClosed = true;

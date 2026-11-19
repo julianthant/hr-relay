@@ -7,7 +7,7 @@ import { realWorkerProcessSpawner, type WorkerProcessSpawner } from "../../../sr
 import { createNominatimGeocodeAdapter } from "../../../src/backend/processing/providers/geocode-adapters.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { startRebuildRuntime } from "../../../src/backend/app/composition/runtime-composition.js";
-import { initializeRegisteredPersonStores } from "../../../src/backend/app/composition/storage-compose.js";
+import { initializeRegisteredPersonStores, RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { acquireDashboardEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -18,12 +18,12 @@ import { fixtureWorkerLaunch } from "../helpers/backend/dashboard-child-world.js
 // The dashboard entry as secure bootstrap runs it, on a fixture workspace with OS-assigned ports and fixture pool workers; it owns the real SIGINT/SIGTERM.
 const [workspace, barrier, fault] = process.argv.slice(2);
 if (workspace === undefined || barrier === undefined) throw new Error("dashboard-signal-child requires <workspace> <barrier>");
-if (fault === "stream-close" || fault === "transport-close") {
+if (fault === "stream-close" || fault === "stream-close-unproved" || fault === "transport-close") {
   process.once("SIGINT", () => {
-    if (fault === "stream-close") {
+    if (fault !== "transport-close") {
       mock.method(DashboardStreamHub.prototype, "close", async function (this: DashboardStreamHub) {
         mock.restoreAll();
-        this.close();
+        if (fault === "stream-close") this.close();
         throw new TypeError("private synthetic shutdown detail");
       });
     } else {
@@ -53,6 +53,13 @@ try {
   await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"],
     dashboard: () => composeDashboardApplication({ admission, isolation: rebuildRuntimeIsolation, repoRoot: workspace, lifetimeLock: lifetime,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
-      workerProcess: { launch: fixtureWorkerLaunch(lifetime, barrier), spawn: observeStop } }) });
+      workerProcess: { launch: fixtureWorkerLaunch(lifetime, barrier), spawn: observeStop } }) }).catch((error: unknown) => {
+    if (fault === "stream-close-unproved" && error instanceof RuntimeCustodyUncertainError) {
+      admission.assertLive();
+      lifetime.assertHeld();
+      process.stdout.write("Stream close refused with admission and lifetime held\n");
+    }
+    throw error;
+  });
   await geocode.stop();
 } finally { await lifetime.close(); }
