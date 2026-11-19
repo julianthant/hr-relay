@@ -5,10 +5,8 @@ import { useHubMotion } from "../../../ds/theme/motion.js";
 export function AppearanceSettings({ theme, onToggleTheme }: { theme: DemoTheme; onToggleTheme: () => void }) {
   const motion = useHubMotion();
   const preferences = usePersonPreferences();
-  const notice = preferences.state === "saving" ? "Saving appearance preferences."
-    : preferences.state === "loading" ? "Loading appearance preferences."
-    : preferences.state === "signed-out" ? "Sign in to save appearance preferences." : "Appearance changes are unavailable.";
-  const disabled = preferences.state !== "ready";
+  const notice = preferences.state === "signed-out" ? "Sign in to save appearance preferences." : "Appearance changes are unavailable.";
+  const disabled = preferences.state !== "ready" && preferences.state !== "saving" && preferences.state !== "loading";
   return <>
     <div data-settings-path="appearance.theme" className="settings-compact-row">
       <ResultRow label="Theme" value={<SegmentedChoice hideLabel label="Theme" value={theme} disabled={disabled} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} onChange={next => { if (next !== theme) onToggleTheme(); }} />} />

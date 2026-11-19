@@ -44,9 +44,9 @@ it.each([true, false])("records the expired checkpoint and prior writes on a pla
   bindWorkflowDelegationTargets([plan1ExpiringLeaf.descriptor]);
   const driver = createWriteFixtureWorld();
   const writes = buildWriteFixtureRegistry(driver);
-  let duringRead: (() => void) | undefined;
+  let expireDuringRead = false;
   const reads = plan1ExpiringFailureStores(input => {
-    if (input.text === "read") duringRead?.();
+    if (expireDuringRead && input.text === "read") clock.advanceWall(2_000);
     return false;
   });
   const stores = defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
@@ -67,7 +67,7 @@ it.each([true, false])("records the expired checkpoint and prior writes on a pla
   assert.deepEqual(prior.map(row => row.status), dryRun ? [] : ["committed"]);
 
   // Reclaiming the parent plans a fresh check, then the always-rerun read takes it past its 1 s limit.
-  duringRead = () => clock.advanceWall(2_000);
+  expireDuringRead = true;
   const reclaimed = await execution.step(run, world.SIGNAL);
   assert.equal(reclaimed.run.envelope.runId, runId);
   assert.equal(reclaimed.run.envelope.continuation, undefined);

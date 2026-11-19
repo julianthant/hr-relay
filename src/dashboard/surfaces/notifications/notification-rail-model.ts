@@ -7,10 +7,10 @@ import type { PersonPreferences } from "../../../models/config/person-preference
 
 type NotificationRailInput = Readonly<{
   served: InboxWiring;
-  /** Whether the list is open: items that arrive meanwhile are in front of the operator and raise no alert. */
+  /** Whether the list is open: publications that arrive meanwhile are in front of the operator and raise no alert. */
   open?: boolean;
   setOpen: (open: boolean) => void;
-  /** Delivers one gated alert for a newly arrived served item; `sound` is false when Notification sound is off. */
+  /** Delivers one gated alert per served publication; `sound` is false when Notification sound is off. */
   onAlert?: (item: NotificationItem, sound: boolean) => void;
   setNotice: (notice: string) => void;
   /** The item whose destination just opened. */
@@ -40,21 +40,15 @@ const unreadCount = (state: NotificationsState) => state.state === "ready" ? sta
 
 export function useNotificationRailModel({ open = false, setOpen, onAlert, setNotice, onOpenNotification, onActive, served }: NotificationRailInput): NotificationRailModel {
   const { notifications: switches } = usePersonPreferences().value;
-  const seen = useRef<Set<string> | undefined>(undefined);
   const alert = useRef(onAlert); alert.current = onAlert;
-  const servedState = served.state;
-  useEffect(() => {
-    if (servedState.state !== "ready") return;
-    if (seen.current === undefined) { seen.current = new Set(servedState.items.map(item => item.id)); return; }
-    const arrived = servedState.items.filter(item => !seen.current?.has(item.id));
-    for (const item of arrived) seen.current.add(item.id);
-    if (open) return;
-    for (const item of arrived) if (alertSwitch(item, switches)) alert.current?.(item, switches.sound !== "none");
-  }, [servedState, open, switches]);
-  const changeOpen = (next: boolean) => { setOpen(next); };
+  const live = useRef({ open, switches }); live.current = { open, switches };
+  useEffect(() => served.onPublication(({ item }) => {
+    if (live.current.open || !alertSwitch(item, live.current.switches)) return;
+    alert.current?.(item, live.current.switches.sound !== "none");
+  }), [served]);
   return {
     state: served.state, unread: unreadCount(served.state),
-    changeOpen,
+    changeOpen: setOpen,
     onControl: (id, action) => { setNotice(""); void served.control(id, action); },
     onReadAll: () => { setNotice(""); void served.readAll(); },
     onOpenItem: item => { setNotice(""); served.open(item, onOpenNotification, () => onActive?.(item.id), setNotice); },

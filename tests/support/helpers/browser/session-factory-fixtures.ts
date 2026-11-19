@@ -48,7 +48,7 @@ export function createBrowserSessionFactoryFixtures(
     evaluate: FakeFrame["evaluate"];
     viewportSize: () => { width: number; height: number };
     setViewportSize: (size: { width: number; height: number }) => Promise<void>;
-    waitForTimeout: () => Promise<void>;
+    waitForFunction: () => Promise<{ dispose: () => Promise<void> }>;
     closed: boolean;
     gotoUrls: string[];
     url: () => string;
@@ -94,7 +94,7 @@ export function createBrowserSessionFactoryFixtures(
         realm.document.body.scrollWidth = Math.max(contentSize.width, size.width);
         realm.document.body.scrollHeight = Math.max(contentSize.height, size.height);
       },
-      waitForTimeout: async () => undefined,
+      waitForFunction: async () => ({ dispose: async () => undefined }),
       on: (event, listener) => { frameListeners.set(event, [...frameListeners.get(event) ?? [], listener]); },
       mainFrame: () => mainFrame,
       emitFrameEvent: (event, frame) => { for (const listener of frameListeners.get(event) ?? []) listener(frame); },

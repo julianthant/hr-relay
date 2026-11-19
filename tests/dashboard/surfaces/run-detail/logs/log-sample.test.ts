@@ -14,7 +14,10 @@ import { queueParentFixture } from "../../../../support/helpers/dashboard/queue-
 import { DryRunPreviewWireSchema } from '../../../../../src/models/dashboard/run-detail.js';
 
 const { useRunWiring, projectRunLogs } = vi.hoisted(() => ({ useRunWiring: vi.fn(), projectRunLogs: vi.fn() }));
-vi.mock('../../../../../src/dashboard/state/client-context.js', () => ({ useDashboardClient: () => ({}), useDashboardCommandBinding: () => undefined }));
+vi.mock('../../../../../src/dashboard/state/client-context.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../../src/dashboard/state/client-context.js')>(),
+  useDashboardClient: () => ({}), useDashboardCommandBinding: () => undefined,
+}));
 vi.mock('../../../../../src/dashboard/state/run-wiring-adapter.js', () => ({ projectRunLogs, useRunWiring }));
 vi.mock('../../../../../src/dashboard/surfaces/run-detail/review/review.js', () => ({ RunReview: () => null }));
 
@@ -53,7 +56,7 @@ describe('compact run headers', () => {
     try {
       window.history.replaceState(null, '', '/?logPreview=selected');
       const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' } }));
-      assert.match(markup, /Relay could not load this run&#x27;s logs\./);
+      assert.match(markup, /Couldn&#x27;t load logs\./);
       assert.doesNotMatch(markup, /served logs unavailable/);
       assert.equal(useRunWiring.mock.calls.length, 1);
     } finally { window.history.replaceState(null, '', locationBefore); }
@@ -217,5 +220,16 @@ describe('compact run headers', () => {
       assert.ok(markup.indexOf('aria-label="UCPath found transactions"') < tail);
       assert.ok(markup.indexOf(previewState === 'available' ? 'aria-label="Full dry-run preview"' : 'Dry-run preview unavailable') > tail);
     }
+  });
+
+  it('shows the full dry-run preview for a finished dry run whose logs hold no steps', () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const dryRunPreview = DryRunPreviewWireSchema.parse({ state: 'available', coverage: 'full', stages: [{ id: 'submit', label: 'Submit', state: 'exercised', detail: 'Submit was not clicked.', submitNotClicked: true }] });
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' }, availableSections: ['logs'] }, logs: { dryRunPreview }, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' } }));
+    assert.equal(container.querySelectorAll('[aria-label="Full dry-run preview"]').length, 1);
   });
 });

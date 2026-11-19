@@ -35,7 +35,7 @@ export async function probeSessionCookie(page: Page, input: Readonly<{
   let issued: readonly { name: string; domain: string; value: string }[];
   try {
     input.assertCurrent();
-    issued = await page.context().cookies();
+    issued = await page.context().cookies(page.url());
     input.assertCurrent();
   } catch (error) {
     input.assertCurrent();

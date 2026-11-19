@@ -5,14 +5,13 @@ import { descriptorSetHash } from "../../src/backend/app/registries/workflow-reg
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 import { WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../src/backend/runs/queries/bootstrap.js";
-import { buildWorkflowExplorer } from "../../src/backend/runs/queries/explorer.js";
 import { buildRunDetail } from "../../src/backend/runs/queries/run-detail.js";
 import { projectStartSteps } from "../../src/backend/runs/start/step-selection.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../src/models/dashboard/bootstrap.js";
 import { FingerprintSchema } from "../../src/rules/identity/ids.js";
 import { manualClock } from "../../src/rules/time/clock.js";
 import { composeWorkflowModule,workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
-import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../support/fixtures/explorer-seams.js";
 import { healthyDashboardPreflightReport } from "../support/fixtures/preflight-seams.js";
 import { compileFixtureWorkflow,everyEntryKindWorkflow } from "../support/fixtures/workflow-definition-fixtures.js";
 import { AT,makeWorld,queuedEventOf,taskEventsOf,uuidOf } from "../support/helpers/backend/dashboard-harness.js";
@@ -65,7 +64,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
         .toEqual(expectedGroups.map(({ key, label }) => ({ key, label })));
       expect(start.steps.map(({ key }) => key)).toEqual(projectStartSteps(descriptor).map(({ key }) => key));
 
-      const explorer = buildWorkflowExplorer({
+      const explorer = readFixtureExplorer({
         ...explorerQueryDeps(manualClock(AT), EXPLORER_HASH),
         modules,
       });

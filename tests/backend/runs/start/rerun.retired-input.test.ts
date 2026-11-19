@@ -27,6 +27,7 @@ import { PRE_INITIALS_CANONICAL_INPUT_HASH, PRE_INITIALS_TIMEKEEPER_INITIALS, pr
 import { FINALIZATION_SCOPE_OUTPUTS } from "../../../support/helpers/kuali-finalization-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
+import { debugTimelineFixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { separationsDescriptor as descriptor } from "../../../support/helpers/registered-workflows.js";
 import { COMPOSITION_DOCUMENT, COMPOSITION_SCOPE_OUTPUTS, FINALIZATION_IDEMPOTENCY_KEY, FINALIZE_NODE,
@@ -155,6 +156,7 @@ function hasOwnKey(value: unknown, key: string): boolean {
 
 function repositoriesOf(source: Source, start: Readonly<Record<string, unknown>> = {}): AuthorityRepositories {
   const intents: readonly WriteIntentRecord[] = [source.intent];
+  const timelineEvents = debugTimelineFixture().repository;
   return new Proxy(Object.create(null) as AuthorityRepositories, { get(_target, key) {
     if (typeof key === "string" && Object.hasOwn(start, key)) return start[key];
     switch (key) {
@@ -166,6 +168,7 @@ function repositoriesOf(source: Source, start: Readonly<Record<string, unknown>>
         listByBusinessKey: (system: unknown, digest: unknown) => intents.filter(intent => intent.system === system && intent.idempotencyKeyDigest === digest) };
       case "runCheckpoints": return { listByItem: () => source.checkpoints };
       case "gateResults": return { listByRun: () => [] };
+      case "timelineEvents": return timelineEvents;
       case "failures": return { listByRun: () => [] };
       default: throw new Error(`unexpected authority access: ${String(key)}`);
     }
