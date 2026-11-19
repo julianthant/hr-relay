@@ -1977,7 +1977,7 @@ function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaC
   return sha256Hex(`relay:evidence-schema-conversion:v1\0${upgradeId}\0${canonicalJsonStringify(conversion)}`);
 }
 
-/** Each conversion id is recorded at most once, sealed for this profile, settled at the current schema version. */
+/** Each conversion id is recorded at most once and remains sealed at the schema where it settled. */
 function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: RuntimeAdmission,
   binding: Readonly<{ installationId?: string; profileId?: string }>): ReadonlyMap<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord> {
   const records = new Map<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord>();
@@ -1986,7 +1986,7 @@ function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: Runtim
     admission.assertEvidenceSchemaConversion(stored);
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(stored), conversion = record.evidenceSchemas;
     if (records.has(conversion.id)) throw new Error("evidence-schema-conversion-duplicate");
-    if (record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+    if (record.toSchemaVersion > readIntPragma(database, "user_version")
       || record.planDigest !== evidenceSchemaPlanDigest(record.upgradeId, conversion)) throw new Error("evidence-schema-conversion-unproved");
     if (conversion.installationId !== binding.installationId || conversion.profileId !== binding.profileId) throw new Error("evidence-schema-conversion-foreign");
     records.set(conversion.id, record);
