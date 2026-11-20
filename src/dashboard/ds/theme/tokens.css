@@ -85,11 +85,10 @@
   --ds-accent-hover: color-mix(in srgb, var(--ui-info) 88%, var(--ui-primary));
   --ds-accent-quiet: color-mix(in srgb, var(--ui-info) 12%, transparent);
 
-  /* BRAND — the product-level launch CTA (`Start a run`). Deliberately a
-   NEUTRAL solid, not a hue. It stays a filled control so it still ends the */
-  --ds-brand-solid-bg: var(--ds-surface-3);
-  --ds-brand-solid-fg: var(--ds-fg);
-  --ds-brand-solid-hover: color-mix(in srgb, var(--ds-fg) 12%, var(--ds-surface-3));
+  /* BRAND — the launch CTA (`Start run`) is a primary: the same blue and hover. */
+  --ds-brand-solid-bg: var(--ds-accent);
+  --ds-brand-solid-fg: var(--ds-accent-fg);
+  --ds-brand-solid-hover: var(--ds-accent-hover);
 
   --ds-danger: var(--destructive); /* danger as TEXT */
   --ds-danger-solid: var(--destructive); /* danger as a solid FILL */
@@ -616,12 +615,6 @@ body[data-demo-theme="dark"] {
 
   --ds-accent-mark: #f5a623; /* the identity note — a mark, never a verb */
 
-  /* Neutral launch CTA — see :root. Zinc 700, a full step above the toolbar's
-     transparent outline peers without borrowing a status hue. */
-  --ds-brand-solid-bg: #3f3f46;
-  --ds-brand-solid-fg: #fafafa;
-  --ds-brand-solid-hover: #52525b;
-
   --ds-danger: #f97066;
   --ds-danger-solid: #f04438;
   --ds-danger-fg: #2a0806;
@@ -813,12 +806,6 @@ body[data-demo-theme="light"] {
   --ds-control-fg: var(--foreground);
 
   --ds-accent-mark: #4f46e5;
-
-  /* Neutral launch CTA — see :root. Zinc 600 on paper: dark ink-grey fill,
-     white type, no hue competing with the indigo primary. */
-  --ds-brand-solid-bg: #52525b;
-  --ds-brand-solid-fg: #ffffff;
-  --ds-brand-solid-hover: #3f3f46; /* light hovers DARKEN */
 
   --ds-danger: #b42318;
   --ds-danger-solid: #b42318;
