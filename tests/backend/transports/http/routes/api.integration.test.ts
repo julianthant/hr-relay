@@ -7,6 +7,7 @@ import { afterEach, describe, it, vi } from "vitest";
 import { readTimelineRecords } from "../../../../../src/backend/storage/events/timeline-reader.js";
 import { RequestIdentityRefusedError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { DashboardClientDisconnectedError } from "../../../../../src/backend/transports/http/http-server.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { PreflightRunnerTimeoutError } from "../../../../../src/models/preflight/preflight.js";
 import { PreflightCheckIdSchema } from "../../../../../src/models/preflight/preflight-contract.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -21,7 +22,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     vi.spyOn(h.projection, "runFold").mockImplementation(() => { throw cause; });
     const response = await h.app.request(`/api/v1/runs/${UUID_4}`);
     assert.equal(response.status, 500);
-    assert.equal((await json(response)).code, "INTERNAL_FAILURE");
+    assert.deepEqual(await json(response), {
+      state: "error", code: "INTERNAL_FAILURE", message: ERROR_CATALOG.INTERNAL_FAILURE.text, retryable: false,
+    });
     const records = readTimelineRecords(h.database.authority.timelineEvents).records;
     const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
     assert.equal(diagnostics.length, 1);
@@ -29,6 +32,22 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(diagnostics[0]?.stack, "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7");
     assert.equal(diagnostics[0]?.status, 500);
     assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
+  });
+
+  it.each(["/api/v1/commands", "/api/v1/commands/bulk"])("returns fixed text for malformed JSON at %s and logs the private cause", async (path) => {
+    const h = await harness();
+    const response = await h.app.request(path, {
+      method: "POST", headers: OPERATOR_JSON_HEADERS, body: "fixture invalid JSON",
+    });
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(await json(response), {
+      state: "error", code: "INTERNAL_FAILURE", message: "The command request body must be valid JSON.", retryable: false,
+    });
+    const records = readTimelineRecords(h.database.authority.timelineEvents).records;
+    const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
+    assert.ok(diagnostics.some(event => event.message === "SyntaxError" && event.status === 500));
+    assert.doesNotMatch(JSON.stringify(diagnostics), /fixture invalid JSON/u);
   });
 
   it("logs one preflight-timeout row naming the check that missed its budget", async () => {
@@ -115,5 +134,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 });
 
-import { assertHttpFaultOnly, disposeHttpRouteHarness, faultAuthoritySnapshot, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { assertHttpFaultOnly, disposeHttpRouteHarness, faultAuthoritySnapshot, harness, json, OPERATOR_JSON_HEADERS } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

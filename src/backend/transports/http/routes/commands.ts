@@ -2,9 +2,21 @@ import { CommandRefusal } from "../../../runs/commands/command-refusal.js";
 import { BulkRunCommandRequestSchema, DashboardCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { createOperatorCommandIngress } from "../../../runs/commands/operator-command-ingress.js";
 import { assertRequestActor } from "../request-identity.js";
+import { MalformedCommandJsonError } from "./failure-status.js";
 
+import type { HonoRequest } from "hono";
 import type { DashboardApp } from "./api-types.js";
 import type { CommandsRouteDeps } from "./commands-types.js";
+
+async function readCommandJson(request: HonoRequest): Promise<unknown> {
+  const text = await request.text();
+  try {
+    return JSON.parse(text);
+  } catch (cause) {
+    if (!(cause instanceof SyntaxError)) throw cause;
+    throw new MalformedCommandJsonError(cause);
+  }
+}
 
 export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDeps): void {
   const operatorCommands = createOperatorCommandIngress({
@@ -17,7 +29,7 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
   });
 
   app.post("/api/v1/commands", async (c) => {
-    const body: unknown = await c.req.json();
+    const body = await readCommandJson(c.req);
     const command = DashboardCommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     const result = await operatorCommands.submit(body, async (accepted) => {
@@ -42,7 +54,7 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
   });
 
   app.post("/api/v1/commands/bulk", async (c) => {
-    const body: unknown = await c.req.json();
+    const body = await readCommandJson(c.req);
     const command = BulkRunCommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     const result = await operatorCommands.executeBulk(
