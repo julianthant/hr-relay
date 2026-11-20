@@ -532,7 +532,15 @@ function gateOpen(detail: RunDetailWire): boolean {
   return detail.gate.state === "open" && detail.gate.nodeId !== undefined && detail.captures !== undefined && detail.captures.state !== "error";
 }
 
-export type RunWiringState = Readonly<{ state: "loading" | "loaded" | "failed"; snapshot?: RunLogSnapshot; error?: string; diagnostic?: unknown }>;
+export type RunWiringState = Readonly<{ state: "loading" | "loaded" | "failed"; snapshot?: RunLogSnapshot; error?: string; retryable?: boolean; diagnostic?: unknown }>;
+
+/** One staff sentence for why the logs were refused; the internal code stays in the diagnostic. */
+function identityRefusalReason(cause: unknown): string {
+  const code = cause instanceof Error ? cause.message : "";
+  if (code.endsWith("_MISSING")) return "These logs lack the details that tie them to this run.";
+  if (code.endsWith("_DUPLICATE")) return "These logs repeat an entry.";
+  return "These logs don't match this run.";
+}
 
 interface GateCommandOwner {
   readonly client: DashboardClient;
@@ -623,14 +631,15 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         request.refreshDay();
         return;
       }
-      const error = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED")
-        ? formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text
+      const refused = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED");
+      const retryable = !refused && !(cause instanceof DashboardClientError && !cause.retryable && cause.kind !== "schema");
+      const error = refused ? identityRefusalReason(cause)
         : cause instanceof DashboardClientError && cause.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED"
         ? formatErrorCatalogFailure(createErrorCatalogFailure("RUN_LOG_DISPLAY_VALUE_UNMAPPED", {})).text
         : cause instanceof DashboardClientError && cause.kind !== "schema"
         ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
-      setSettled(current => ({ request, value: { state: "failed", error, diagnostic: cause,
+      setSettled(current => ({ request, value: { state: "failed", error, retryable, diagnostic: cause,
         ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
           : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });

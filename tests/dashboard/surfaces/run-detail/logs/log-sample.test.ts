@@ -62,6 +62,25 @@ describe('compact run headers', () => {
     } finally { window.history.replaceState(null, '', locationBefore); }
   });
 
+  it('shows a refusal that retrying cannot fix as one sentence with no Retry', () => {
+    useRunWiring.mockReturnValue({ state: 'failed', retryable: false, error: "These logs don't match this run." });
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' }, onRetryLogs: () => undefined }));
+    assert.match(markup, /These logs don&#x27;t match this run\./);
+    assert.doesNotMatch(markup, /Couldn&#x27;t load logs/);
+    assert.doesNotMatch(markup, /Retry/);
+  });
+
+  it('keeps Retry for a failed read', () => {
+    useRunWiring.mockReturnValue({ state: 'failed', retryable: true, error: 'served logs unavailable' });
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' }, onRetryLogs: () => undefined }));
+    assert.match(markup, /Couldn&#x27;t load logs\./);
+    assert.match(markup, /Retry/);
+  });
+
   it.each([true, false])('renders the served child retry in the log header with current availability (%s)', available => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
