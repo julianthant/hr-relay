@@ -36,8 +36,14 @@ function processBuild(): string {
 }
 
 export function recordDashboardStopFailure(stateRoot: string, reason: string, error: unknown, now: Date): void {
-  appendLocalDebug({ stateRoot, build: processBuild(), now,
-    event: { category: "boot", phase: "failed", area: "dashboard-shutdown", reason,
+  recordDashboardFault({ stateRoot, build: processBuild(), now, area: "dashboard-shutdown", reason, error });
+}
+
+export function recordDashboardFault(input: { stateRoot: string; build: string; now: Date;
+  area: "dashboard-shutdown" | "event-loop"; reason: string; error: unknown }): void {
+  const { stateRoot, build, now, area, reason, error } = input;
+  appendLocalDebug({ stateRoot, build, now,
+    event: { category: "boot", phase: "failed", area, reason,
       code: "INTERNAL_FAILURE", ...rejectionDetails(error), pinned: true } });
 }
 

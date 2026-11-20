@@ -22,22 +22,45 @@ export function composeLoopDelayMonitor(
 export function startLoopDelayMonitor(deps: {
   readonly clock: Clock;
   readonly debugEvents: { emit(input: unknown): unknown };
+  readonly onFault: (error: unknown) => void;
 }): LoopDelayMonitor {
   const histogram = monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
   let lastEventAt = -Infinity;
   let omitted = 0;
-  const timer = setInterval(() => {
-    const durationMs = histogram.max / 1_000_000;
-    histogram.reset();
-    if (durationMs <= EVENT_LOOP_STALL_THRESHOLD_MS) return;
-    const now = deps.clock.monotonicMs();
-    if (now - lastEventAt < STALL_EVENT_INTERVAL_MS) return;
-    const result = emitOptionalDiagnostic(() => deps.debugEvents.emit({ category: "boot", phase: "settled", area: "event-loop",
-      reason: "event-loop-stall", correlationId: randomUUID(), durationMs, ...(omitted > 0 ? { omitted } : {}) }));
-    omitted = result === "budget-full" ? omitted + 1 : 0;
-    lastEventAt = now;
+  let reportFailure: AggregateError | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined = setInterval(() => {
+    try {
+      const durationMs = histogram.max / 1_000_000;
+      histogram.reset();
+      if (durationMs <= EVENT_LOOP_STALL_THRESHOLD_MS) return;
+      const now = deps.clock.monotonicMs();
+      if (now - lastEventAt < STALL_EVENT_INTERVAL_MS) return;
+      const result = emitOptionalDiagnostic(() => deps.debugEvents.emit({ category: "boot", phase: "settled", area: "event-loop",
+        reason: "event-loop-stall", correlationId: randomUUID(), durationMs, ...(omitted > 0 ? { omitted } : {}) }));
+      omitted = result === "budget-full" ? omitted + 1 : 0;
+      lastEventAt = now;
+    } catch (error) {
+      stopSampling();
+      try { deps.onFault(error); }
+      catch (cause) {
+        reportFailure = new AggregateError([error, cause], "event-loop-stall-fault-reporting-failed", { cause: error });
+      }
+    }
   }, SAMPLE_INTERVAL_MS);
   timer.unref();
-  return Object.freeze({ stop() { clearInterval(timer); histogram.disable(); } });
+
+  function stopSampling(): void {
+    if (timer === undefined) return;
+    clearInterval(timer);
+    timer = undefined;
+    histogram.disable();
+  }
+
+  return Object.freeze({
+    stop() {
+      stopSampling();
+      if (reportFailure !== undefined) throw reportFailure;
+    },
+  });
 }
