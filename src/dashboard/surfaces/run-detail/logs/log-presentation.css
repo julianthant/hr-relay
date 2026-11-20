@@ -19,8 +19,6 @@
 .log-image-error { display: flex; min-height: 112px; width: 100%; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 12px; font-size: var(--text-body); color: var(--ui-danger); }
 .log-image-error span { max-width: 360px; }
 .log-viewer-dialog { width: calc(100vw - 48px); max-width: 1200px; height: auto; max-height: calc(100vh - 48px); background: var(--ui-panel); }
-.log-viewer-dialog > header { align-items: center; padding: 12px 16px; }
-.log-viewer-dialog > header h2 { font-size: var(--text-control); line-height: 20px; }
 .log-viewer { display: grid; grid-template-columns: 184px minmax(0, 1fr); min-height: 0; flex: 1; }
 .log-viewer--single { grid-template-columns: minmax(0, 1fr); }
 .log-capture-sidebar { min-width: 0; overflow-y: auto; border-right: 1px solid var(--ui-stroke); padding: 16px; background: var(--ui-panel); }

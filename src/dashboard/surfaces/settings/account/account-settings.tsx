@@ -105,7 +105,7 @@ function EditTextDialog({ label, value, close, onSave }: { label: string; value:
   return <form onSubmit={event => { void submit(event); }} className="flex min-h-0 flex-col">
     <DialogBody><Field label={label} error={problem}><Input autoFocus aria-label={label} autoComplete="off" spellCheck={false} value={draft} onChange={event => { setDraft(event.target.value); setProblem(undefined); }} /></Field></DialogBody>
     <DialogFooter>
-      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
       <Button type="submit" variant="primary" disabled={next === "" || saving}>Save</Button>
     </DialogFooter>
   </form>;
@@ -184,7 +184,7 @@ function UsernameDialog({ close, onSave }: { close: () => void; onSave: Save }) 
       <Field label="New username" orientation="horizontal" error={problem ?? saved.onNew}><Input type="text" name="newUsername" required maxLength={RELAY_SIGN_IN_FIELD_MAX} spellCheck={false} autoComplete="username" value={next} onChange={event => { setNext(event.target.value); setProblem(undefined); saved.clear(); }} /></Field>
     </DialogBody>
     <DialogFooter>
-      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
       <Button type="submit" variant="primary" disabled={current === "" || next.trim() === "" || saved.saving}>Save</Button>
     </DialogFooter>
   </form>;
@@ -208,7 +208,7 @@ function PasswordDialog({ close, onSave }: { close: () => void; onSave: Save }) 
       <Field label="Confirm new password" orientation="horizontal" error={mismatch ? "The passwords don’t match." : undefined}><SecretField label="Confirm new password" name="confirmPassword" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" value={again} onChange={event => setAgain(event.target.value)} /></Field>
     </DialogBody>
     <DialogFooter>
-      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
       <Button type="submit" variant="primary" disabled={current === "" || next === "" || next !== again || saved.saving}>Save</Button>
     </DialogFooter>
   </form>;

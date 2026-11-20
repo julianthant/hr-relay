@@ -449,6 +449,10 @@
   --ds-radius-lg: var(--radius); /* 8px — cards, panels */
   --ds-radius-xl: calc(var(--radius) + 4px); /* 12px — dialogs, drawers */
   --ds-radius-search: calc(var(--radius) + 4px);
+  --ds-radius-dialog: 24px; /* every dialog: soft card, no border */
+  --ds-dialog-title-size: 20px;
+  --ds-dialog-title-lh: 28px;
+  --ds-dialog-pad: var(--ds-space-section); /* 24px: header, body and footer inset */
   --ds-radius-pill: 9999px;
 
   /* ELEVATION — three steps, and only floating things get them.
