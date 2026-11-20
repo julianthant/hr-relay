@@ -1,4 +1,5 @@
 
+import { systemClock } from "../../../rules/time/clock.js";
 import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { recordBrowserAction } from "../browser-shared/action-notes.js";
 import {
@@ -7,12 +8,10 @@ import {
   probeSessionCookie,
 } from "../browser-shared/authenticated-application.js";
 import { BrowserLoginError } from "../browser-shared/login-contract.js";
-import type { ObservedFact } from "../browser-shared/authenticated-application.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
 } from "../browser-shared/login-contract.js";
-import type { Page } from "playwright";
 import {
   abortIfCancelled,
   raceCancellation,
@@ -30,10 +29,9 @@ const NEW_KRONOS_APP_PATHS = ["/wfd", "/timekeeping"] as const;
 // The WFD application issues kronosAuthToken on its exact domain; a redirect URL alone is not proof.
 const NEW_KRONOS_SESSION_COOKIE = "kronosAuthToken";
 const NEW_KRONOS_COOKIE_DOMAIN = "ucsd-sso.prd.mykronos.com";
-// WFD issues its application cookie after SPA loading, not at the initial SSO redirect.
-const NEW_KRONOS_SESSION_COOKIE_POLL_MS = 250;
-/** 80 x 250ms = a 20s bound on the application's own bootstrap. */
-const NEW_KRONOS_SESSION_COOKIE_POLLS = 80;
+// WFD can redirect and issue its application cookie while bootstrapping.
+const LANDING_POLL_MS = 250;
+const LANDING_TIMEOUT_MS = 20_000;
 
 const SSO_FORM_SELECTOR =
   'input#ssousername, input#ssopassword, button[name="_eventId_proceed"], form[name="loginForm"]';
@@ -48,48 +46,66 @@ function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
 }
 
 
-async function probeIssuedSessionCookie(page: Page, assertCurrent: () => void): Promise<ObservedFact> {
-  assertCurrent();
-  // Bound verification by poll count; the verifier has no Clock and cannot invent a wall-clock source.
-  let observed: ObservedFact = { holds: false, detail: "the session-cookie probe never ran" };
-  for (let poll = 0; poll < NEW_KRONOS_SESSION_COOKIE_POLLS; poll++) {
-    assertCurrent();
-    observed = await probeSessionCookie(page, {
+export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
+  context, phase,
+): Promise<AuthenticationProbe> => {
+  const { page } = context;
+  const deadline = systemClock.monotonicMs() + LANDING_TIMEOUT_MS;
+  const stop = new AbortController();
+  const assertCurrent = (): void => {
+    context.assertCurrent();
+    if (stop.signal.aborted || systemClock.monotonicMs() >= deadline) {
+      throw new BrowserLoginError(SYSTEM, "verify-landing", "WFD landing proof exceeded its 20-second deadline", "");
+    }
+  };
+  const probe = () => verifyUcsdAuthenticatedApplication(SYSTEM, page, {
+    assertCurrent,
+    signal: stop.signal,
+    urlIsApplication: isAuthenticatedNewKronosUrl,
+    urlRefusal:
+      "the observed URL is not the UKG Dimensions (WFD) application; the ForgeRock sign-on host shares the mykronos.com domain and is refused here",
+    positive: () => probeSessionCookie(page, {
       assertCurrent,
       name: NEW_KRONOS_SESSION_COOKIE,
       domainSuffix: NEW_KRONOS_COOKIE_DOMAIN,
       issuer: "UKG Dimensions (WFD)",
-    });
-    assertCurrent();
-    if (observed.holds) return observed;
-    assertCurrent();
-    await new Promise<void>((resolve) => { setTimeout(resolve, NEW_KRONOS_SESSION_COOKIE_POLL_MS); });
-    assertCurrent();
-  }
-  return {
-    holds: false,
-    detail: `${observed.detail} across ${String(NEW_KRONOS_SESSION_COOKIE_POLLS)} polls `
-      + `${String(NEW_KRONOS_SESSION_COOKIE_POLL_MS)}ms apart after landing`,
-  };
-}
-
-/** The two-fact proof: WFD's own session cookie, and no sign-in form. */
-export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
-  context,
-): Promise<AuthenticationProbe> => verifyUcsdAuthenticatedApplication(SYSTEM, context.page, {
-  assertCurrent: context.assertCurrent,
-  urlIsApplication: isAuthenticatedNewKronosUrl,
-  urlRefusal:
-    "the observed URL is not the UKG Dimensions (WFD) application; the ForgeRock sign-on host shares the mykronos.com domain and is refused here",
-  positive: async () => probeIssuedSessionCookie(context.page, context.assertCurrent),
-  additionalAbsences: [
-    async () => probeAbsentControl(context.page, {
-      assertCurrent: context.assertCurrent,
-      selector: SSO_FORM_SELECTOR,
-      description: "the UCSD single sign-on form and the ForgeRock XUI login shell",
     }),
-  ],
-});
+    additionalAbsences: [
+      async () => {
+        const absent = await probeAbsentControl(page, {
+          assertCurrent,
+          selector: SSO_FORM_SELECTOR,
+          description: "the UCSD single sign-on form and the ForgeRock XUI login shell",
+        });
+        assertCurrent();
+        if (absent.holds && phase === "landing") {
+          // Locator waits settle pending main-frame navigation; the verifier rejects a changed document.
+          await page.locator(":root").waitFor({ state: "attached", timeout: 0, signal: stop.signal });
+          assertCurrent();
+        }
+        return absent;
+      },
+    ],
+  });
+  const timer = setTimeout(() => stop.abort(), LANDING_TIMEOUT_MS);
+  try {
+    let result = await probe();
+    assertCurrent();
+    while (!result.authenticated) {
+      const awaitingLanding = phase === "landing" && result.check === "application-route";
+      if (!awaitingLanding && result.check !== "positive-evidence") break;
+      if (deadline - systemClock.monotonicMs() <= LANDING_POLL_MS) break;
+      await new Promise<void>(resolve => setTimeout(resolve, LANDING_POLL_MS));
+      assertCurrent();
+      // A redirect invalidates the prior poll's cookie and form observations.
+      result = await probe();
+      assertCurrent();
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
