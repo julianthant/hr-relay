@@ -117,7 +117,7 @@
       "file": "tests/architecture/runs/operator-mutation-admission.test.ts",
       "status": "active",
       "owner": "docs/reference/frontend-backend-integration.md",
-      "invariant": "Every browser-reachable mutation in the API and public profile shell has a closed admission-table row and a matching loopback Host/Origin guard registered before its handler. Explicit owner claim uses the same JSON door. Onboarding may use its registered wildcard prefix; other paths do not inherit that door. JSON envelopes require application/json; opaque and inline doors own their named contracts. Missing, late or wrong guards, unclassified registrations and stale rows fail, with negative controls.",
+      "invariant": "Every browser-reachable mutation in the API and public profile shell has an admission-table row and matching same-origin loopback Host/Origin middleware registered before its handler. The census resolves Hono receiver bindings and imported registrars in call order. Admission uses an earlier matching use registration or the route’s first middleware argument. The JSON guard requires application/json, opaque uploads retain their file media types, and the Preflight guard leaves JSON diagnostics with the bounded body reader. Missing, late or wrong guards, unclassified registrations or binding uses, and stale rows fail with negative controls.",
       "replacementRequired": true
     },
     {

@@ -94,7 +94,7 @@ describe("operator mutation admission", () => {
   });
 });
 
-const ENTRY = resolve(REPO_ROOT, "src/backend/transports/http/routes/api.ts");
+const ENTRY = resolve(REPO_ROOT, "src/backend/transports/http/routes/fixture-api.ts");
 const CHILD = resolve(dirname(ENTRY), "fixture-child.ts");
 
 function fixtureRegistrations(body: string, child?: string) {
@@ -174,4 +174,20 @@ it("resolves aliased Hono receivers and imported registrars at their call sites"
   assert.deepEqual(auditOperatorMutationAdmission(fixtureRegistrations(`${attach} ${guard}`, guarded), table).violations,
     ["POST /guarded registers its guard AFTER the route"]);
   assert.throws(() => fixtureRegistrations(attach, "export function removed() {}"), /registrar is missing/u);
+  assert.throws(() => fixtureRegistrations(attach, "export function register(deps, { router }) {}"), /expected one Hono binding/u);
+});
+
+it.each([
+  "attachChild({ app });",
+  "attachChild({ router: app });",
+  "attachChild([app]);",
+  "attachChild(...[app]);",
+  "attachChild({ ...app });",
+  "const alias = app; attachChild({ alias });",
+  "return app;",
+])("fails closed when the Hono binding escapes through %s", source => {
+  const { registrations, violations } = fixtureRegistrations(source);
+  assert.deepEqual(registrations, []);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0] ?? "", /unclassified Hono binding use: (app|alias)$/u);
 });

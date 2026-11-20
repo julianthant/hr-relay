@@ -4,15 +4,23 @@ import ts from "typescript";
 import { REPO_ROOT } from "../../support/helpers/guard-files.js";
 
 const API = resolve(REPO_ROOT, "src/backend/transports/http/routes/api.ts");
+const PROFILE_API = resolve(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts");
+const HTTP_SERVER = resolve(dirname(API), "../http-server.ts");
 const INGRESS = resolve(dirname(API), "operator-mutation-ingress.ts");
 const STATIC_BUNDLE = resolve(dirname(API), "../static-bundle.ts");
 const METHODS = new Set(["get", "head", "options", "post", "put", "patch", "delete", "use"]);
-const UNCLASSIFIED = new Set(["all", "on", "route", "mount", "basePath"]);
+const CALLBACKS = new Set(["onError", "notFound"]);
 
 export interface DashboardRouteRegistration {
   readonly method: string;
   readonly path: string;
   readonly firstGuard: string | undefined;
+}
+
+function unwrap(node: ts.Node): ts.Node {
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node)
+    || ts.isSatisfiesExpression(node)) return unwrap(node.expression);
+  return node;
 }
 
 function parseModule(file: string, source: string) {
@@ -23,11 +31,12 @@ function parseModule(file: string, source: string) {
     ...host, getSourceFile: candidate => resolve(candidate) === file ? parsed : undefined,
   }).getTypeChecker();
 
-  function binding(node: ts.Node): ts.Declaration | undefined {
-    if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node)
-      || ts.isSatisfiesExpression(node)) return binding(node.expression);
+  function binding(expression: ts.Node): ts.Declaration | undefined {
+    const node = unwrap(expression);
     if (!ts.isIdentifier(node)) return undefined;
-    const declaration = checker.getSymbolAtLocation(node)?.declarations?.[0];
+    const symbol = ts.isShorthandPropertyAssignment(node.parent) && node.parent.name === node
+      ? checker.getShorthandAssignmentValueSymbol(node.parent) : checker.getSymbolAtLocation(node);
+    const declaration = symbol?.declarations?.[0];
     if (declaration !== undefined && ts.isVariableDeclaration(declaration)
       && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
       && declaration.initializer !== undefined) {
@@ -77,23 +86,26 @@ export function dashboardRouteRegistrations(
       })
       : registrar.parameters.slice(appParameter, appParameter + 1);
     const [app] = roots;
-    if (app === undefined || roots.length !== 1) throw new Error(`expected one Hono binding: ${key}`);
+    if (app === undefined || roots.length !== 1 || !ts.isIdentifier(app.name)
+      || (ts.isParameter(app) && app.dotDotDotToken !== undefined)) {
+      throw new Error(`expected one Hono binding: ${key}`);
+    }
 
     const relativeFile = (specifier: string): string => resolve(dirname(file), specifier.replace(/\.js$/u, ".ts"));
-    const unclassified = (node: ts.Node): void => {
+    const unclassified = (node: ts.Node, shape = "registration"): void => {
       const { line } = module.parsed.getLineAndCharacterOfPosition(node.getStart());
-      violations.push(`${file}:${String(line + 1)} has an unclassified Hono registration: ${node.getText().split("\n", 1)[0]}`);
+      violations.push(`${file}:${String(line + 1)} has an unclassified Hono ${shape}: ${node.getText().split("\n", 1)[0]}`);
     };
+    const classified = new Set<ts.Node>();
     const visit = (node: ts.Node): void => {
       if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && module.binding(node.expression) === app) {
+        classified.add(unwrap(node.expression));
         const method = ts.isPropertyAccessExpression(node) ? node.name.text
           : ts.isStringLiteral(node.argumentExpression) ? node.argumentExpression.text : undefined;
-        if (method === undefined || UNCLASSIFIED.has(method) || METHODS.has(method)) {
-          const call = node.parent;
-          if (!ts.isCallExpression(call) || call.expression !== node) {
-            unclassified(node);
-            return;
-          }
+        const call = node.parent;
+        if (!ts.isCallExpression(call) || call.expression !== node || method === undefined) {
+          unclassified(node);
+        } else if (METHODS.has(method)) {
           const ordered = ts.isExpressionStatement(call.parent) && call.parent.parent === body;
           const path = call.arguments[0];
           const handler = call.arguments[1];
@@ -102,33 +114,51 @@ export function dashboardRouteRegistrations(
           const factory = handler !== undefined && ts.isCallExpression(handler) ? module.imported(handler.expression) : undefined;
           const servesStatic = method === "use" && path !== undefined && ts.isStringLiteral(path) && path.text === "*"
             && factory?.name === "staticBundleHandler" && relativeFile(factory.module) === STATIC_BUNDLE;
-          if (method === undefined || UNCLASSIFIED.has(method)) unclassified(call);
-          else if (!ordered && servesStatic) {
+          if (!ordered && servesStatic) {
             // Optional static serving contributes no admission middleware.
           } else if (!ordered || path === undefined || !ts.isStringLiteral(path)) unclassified(call);
           else registrations.push({ method, path: path.text,
             firstGuard: method === "use" || call.arguments.length > 2 ? firstGuard : undefined });
+        } else if (!CALLBACKS.has(method)) {
+          unclassified(call);
         }
       } else if (ts.isCallExpression(node)) {
-        const argument = node.arguments.findIndex(value => module.binding(value) === app);
-        if (argument !== -1) {
+        const appArgs = node.arguments.flatMap((argument, index) => module.binding(argument) === app ? [{ argument, index }] : []);
+        const [first] = appArgs;
+        if (first !== undefined) {
+          for (const { argument } of appArgs) classified.add(unwrap(argument));
           const imported = module.imported(node.expression);
           const ordered = ts.isExpressionStatement(node.parent) && node.parent.parent === body;
-          if (!ordered || imported === undefined || !imported.module.startsWith(".")) unclassified(node);
-          else scan(relativeFile(imported.module), imported.name, argument);
+          if (appArgs.length !== 1 || !ordered || imported === undefined || !imported.module.startsWith(".")) unclassified(node);
+          else scan(relativeFile(imported.module), imported.name, first.index);
         }
-      } else if (ts.isVariableDeclaration(node) && node.initializer !== undefined && module.binding(node.initializer) === app
-        && (!ts.isIdentifier(node.name) || (node.parent.flags & ts.NodeFlags.Const) === 0)) {
-        unclassified(node);
-      } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && module.binding(node.right) === app) {
-        unclassified(node);
+      } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && (node.parent.flags & ts.NodeFlags.Const) !== 0
+        && node.initializer !== undefined && module.binding(node.initializer) === app) {
+        classified.add(unwrap(node.initializer));
+      } else if (ts.isReturnStatement(node) && file === API && name === "createDashboardApp"
+        && node === body.statements.at(-1) && node.expression !== undefined && module.binding(node.expression) === app) {
+        // The API factory returns the audited instance to the existing composition.
+        classified.add(unwrap(node.expression));
+      } else if (ts.isShorthandPropertyAssignment(node) && file === PROFILE_API && name === "composeDashboardApplication"
+        && module.binding(node.name) === app && ts.isCallExpression(node.parent.parent)) {
+        const call = node.parent.parent;
+        const listener = module.imported(call.expression);
+        if (call.arguments[0] === node.parent && listener?.name === "startDashboardHttpServer"
+          && relativeFile(listener.module) === HTTP_SERVER) classified.add(node.name);
+      } else if (ts.isIdentifier(node) && !classified.has(node) && module.binding(node) === app
+        && !((ts.isVariableDeclaration(node.parent) || ts.isParameter(node.parent)) && node.parent.name === node)) {
+        unclassified(node, "binding use");
       }
       ts.forEachChild(node, visit);
     };
 
     active.add(key);
-    try { visit(body); }
-    finally { active.delete(key); }
+    try {
+      for (const parameter of registrar.parameters) visit(parameter);
+      visit(body);
+    } finally {
+      active.delete(key);
+    }
   }
 
   scan(entry, functionName);
@@ -136,8 +166,5 @@ export function dashboardRouteRegistrations(
 }
 
 export function publicProfileRouteRegistrations() {
-  return dashboardRouteRegistrations(
-    resolve(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"),
-    "composeDashboardApplication",
-  );
+  return dashboardRouteRegistrations(PROFILE_API, "composeDashboardApplication");
 }
