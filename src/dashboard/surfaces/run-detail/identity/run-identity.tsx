@@ -2,7 +2,7 @@ import { Info, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
 import { cn } from "../../../lib/utils.js";
-import { classifyRunShape, shortFingerprint } from "./run-identity-model.js";
+import { classifyRunShape } from "./run-identity-model.js";
 import {
   BulletList,
   Button,
@@ -52,7 +52,6 @@ export function RunProvenanceBar({
   servedDescriptorHash: string | undefined;
 }) {
   const testSystems = testInstanceSystems(surface.resolvedInstances);
-  const ranShape = shortFingerprint(surface.descriptorHash);
   const shape = classifyRunShape(surface.descriptorHash, servedDescriptorHash);
   const shapeMoved = shape.state !== "current";
   /** the build the RUN was enqueued */
@@ -65,11 +64,9 @@ export function RunProvenanceBar({
     <span className="flex min-w-0 shrink-0 items-center gap-[var(--ds-space-snug)]">
       <span
         title={
-          shape.state === "moved"
-            ? `Ran under ${workflowLabel} shape ${ranShape}; ${workflowLabel} runs are served by ${shortFingerprint(shape.servedShape)} now. The run's SHAPE moved, so these are not comparable — a retry would replay retired code.`
-            : shape.state === "unserved"
-              ? `Ran under ${workflowLabel} shape ${ranShape}; this dashboard serves no ${workflowLabel} descriptor at all, so there is nothing to compare it with — and nothing for a retry to run.`
-              : `${workflowLabel} ${ranShape} — the descriptor currently serving ${workflowLabel} runs.`
+          shape.state === "moved" ? "This run used an older version of the workflow."
+            : shape.state === "unserved" ? "This workflow is no longer available to run."
+              : undefined
         }
         className={cn(
           dsText.meta,
@@ -78,8 +75,7 @@ export function RunProvenanceBar({
           shapeMoved ? "text-[color:var(--ds-status-waiting-fg)]" : "text-[color:var(--ds-fg-muted)]",
         )}
       >
-        {}
-        {ranShape}
+        {shapeMoved ? "Older version" : null}
       </span>
 
       {/* Hazards, never disclosed. */}
@@ -107,7 +103,7 @@ export function RunProvenanceBar({
             <KeyValueList
               items={[
 
-                { key: "Workflow", value: `${workflowLabel} ${ranShape}`, tone: shapeMoved ? "warning" : "default" },
+                { key: "Workflow", value: shapeMoved ? `${workflowLabel} (older version)` : workflowLabel, tone: shapeMoved ? "warning" : "default" },
                 {
                   key: "App build",
                   value: ranAppVersion ?? "unstamped",
@@ -131,21 +127,14 @@ export function RunProvenanceBar({
             <BulletList
               items={[
                 surface.priority === "bulk"
-                  ? "Priority is off: this run yields the worker to any run with Priority on — a 50-person packet must never make one urgent separation wait."
-                  : "Priority is on: this run takes a worker ahead of runs without Priority.",
-                shape.state === "moved"
-                  ? `This run's SHAPE is a prior descriptor. It is not comparable with a ${shortFingerprint(shape.servedShape)} run, and a retry would replay retired code.`
-                  : shape.state === "unserved"
-                    ? `This build registers no ${workflowLabel} descriptor, so this run's shape cannot be compared with a current one — and this run cannot be retried here.`
-                    : "The descriptor fingerprint is the run's shape; a row served under the same fingerprint is the same run shape.",
-                ranAppVersion === undefined
-                  ? `${surface.appVersion.state === "absent" ? surface.appVersion.reason : ""} — the app build is the other half of the archive key, so this run can only be told apart from a current one by its descriptor.`
-                  : staleApp
-                    ? `Ran under app ${ranAppVersion}; this dashboard is ${currentAppVersion}. The app build is the other half of the archive key.`
-                    : `Ran under the app build this dashboard is running (${currentAppVersion}), which is why it is stated once on the Sessions bar rather than on every run.`,
+                  ? "Priority is off: this run waits for runs with Priority on."
+                  : "Priority is on: this run goes ahead of runs without it.",
+                ...(shape.state === "moved" ? ["This run used an older version of the workflow, so it cannot be retried."]
+                  : shape.state === "unserved" ? [`${workflowLabel} is no longer available, so this run cannot be retried.`] : []),
+                ...(staleApp ? [`Ran on app ${ranAppVersion}; this dashboard is ${currentAppVersion}.`] : []),
                 /* Rename changes no identity facts; explain it only on named runs. */
                 ...(surface.displayName.state === "present"
-                  ? [`Named by you. The subject is still ${surface.title} and the trace id ${surface.traceId} is unchanged — history matches either way.`]
+                  ? [`Named by you. The subject is still ${surface.title}.`]
                   : []),
               ]}
             />
