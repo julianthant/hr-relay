@@ -32,6 +32,12 @@ export const ViewRouteSchema = z.object({
   activityPreview: z.enum(['normal', 'empty', 'incomplete', 'loading', 'unavailable']).optional(),
 }).strict();
 export type ViewRoute = z.infer<typeof ViewRouteSchema>;
+/** The view without the Start run dialog's coordinates, for when the dialog closes. */
+export function withoutLaunch(view: ViewRoute | undefined): ViewRoute | undefined {
+  if (view === undefined) return undefined;
+  const { launchRerun: _r, launchServed: _s, launchWorkflow: _w, launchSource: _o, launchStage: _t, launchCustomize: _c, ...rest } = view;
+  return Object.keys(rest).length === 0 ? undefined : rest;
+}
 export type RouteSetter = (next: AppRouteState | ((current: AppRouteState) => AppRouteState), mode?: "push" | "replace") => void;
 export interface ViewNavigation { readonly view: ViewRoute; readonly start: boolean; setStart(this: void, open: boolean): void; update(this: void, patch: Partial<ViewRoute>, mode?: "push" | "replace"): void }
 export const ViewNavigationContext = createContext<ViewNavigation | undefined>(undefined);

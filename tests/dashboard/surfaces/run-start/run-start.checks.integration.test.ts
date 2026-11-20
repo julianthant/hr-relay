@@ -202,3 +202,43 @@ describe("the Run dialog's Checks step", () => {
     assert.match(after?.textContent ?? "", /1 check needs fixing/u);
   });
 });
+
+describe("asking for a re-check", () => {
+  const missing = (rerun: () => Promise<never>) => {
+    let reruns = 0;
+    const client = h.stubClient({
+      readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }),
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows),
+      rerunPreflight: async () => { reruns += 1; return rerun(); },
+    });
+    return { client, reruns: () => reruns };
+  };
+
+  it("asks once per open dialog, only from Checks, and not again on a return to Checks", async () => {
+    const served = missing(async () => { throw new Error("refused"); });
+    const dialog = await h.openDialog(served.client);
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(served.reruns(), 0, "opening the dialog asks for no re-check");
+    await reachChecks(dialog);
+    assert.equal(served.reruns(), 1);
+    await dialog.press("Back");
+    await dialog.press("Continue");
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(served.reruns(), 1, "a second visit to Checks only reads");
+  });
+
+  it("shows one message and Check again when the re-check is refused", async () => {
+    const served = missing(async () => { throw new Error("refused"); });
+    const dialog = await reachChecksWith(served.client);
+    const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
+    assert.deepEqual(alerts, ["Relay could not check this run.Check again"]);
+    assert.doesNotMatch(dialog.text(), /Checks are unavailable/u);
+    assert.equal(dialog.disabled("Start run"), true);
+  });
+});
+async function reachChecksWith(client: Parameters<typeof h.openDialog>[0]) {
+  const dialog = await h.openDialog(client);
+  await reachChecks(dialog);
+  return dialog;
+}

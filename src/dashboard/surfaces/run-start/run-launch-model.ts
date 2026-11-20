@@ -62,7 +62,6 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
 export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[], compatibility: WorkbookCompatibility): readonly RunStartWorkflow[] {
   return workflows.map((entry) => {
     const projection = compatibility.workflows.find(workflow => workflow.workflowId === entry.id);
-    if (entry.start.workbookReference !== undefined && projection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${entry.id}`);
     return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
     role: entry.role, icon: entry.icon, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,

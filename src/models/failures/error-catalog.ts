@@ -1021,7 +1021,7 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_LIBRARY_EMPTY: catalogEntry("Import a Library spreadsheet before selecting a workflow source.", EmptyParametersSchema),
   WORKBOOK_FIELDS_MISSING: catalogEntry("A Library worksheet is missing fields required by this workflow. Review its column mappings.", EmptyParametersSchema),
   WORKBOOK_FIELDS_DUPLICATE: catalogEntry("A Library worksheet maps a required field more than once. Review its column mappings.", EmptyParametersSchema),
-  WORKBOOK_REFERENCE_MISSING: catalogEntry("Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.", EmptyParametersSchema),
+  WORKBOOK_REFERENCE_MISSING: catalogEntry("Add the reference spreadsheet first.", EmptyParametersSchema),
   WORKBOOK_BINDING_UNAVAILABLE: catalogEntry("This workflow's selected spreadsheet is unavailable or has a different type. Import a replacement for this reference.", EmptyParametersSchema),
   WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE: catalogEntry("The workbook's workflow source was not retained. Its saved data remains available, but its run cannot be confirmed.", EmptyParametersSchema),
   WORKBOOK_SYNC_LAYOUT_CHANGED: catalogEntry("The SharePoint worksheets or columns no longer match this spreadsheet type. Review the source before creating a version.", EmptyParametersSchema),

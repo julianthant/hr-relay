@@ -228,7 +228,8 @@ export function RunStartDialog({
   const selectedLibrary = library.catalog.find(entry => entry.libraryId === selectedDraft?.libraryId && entry.state.origin.kind === 'local' && !entry.state.removed);
   const selectedVersion = selectedLibrary?.state.versions.find(version => version.id === selectedDraft?.versionId);
   const sourceProjection = library.compatibility?.workflows.find(entry => entry.workflowId === workflowId);
-  if (library.compatibility !== undefined && workbookReference !== undefined && sourceProjection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${workflowId}`);
+  /** Relay answered but has no reference-spreadsheet check for this workflow: the input stage says so, the rest of the dialog keeps working. */
+  const compatibilityMissing = library.compatibility !== undefined && workbookReference !== undefined && sourceProjection === undefined;
   if (sourceProjection !== undefined && selectedWorkflow !== undefined && (canonicalJsonStringify(sourceProjection.requiredWorkbookFields) !== canonicalJsonStringify(selectedWorkflow.requiredWorkbookFields)
     || canonicalJsonStringify(sourceProjection.workbookReference ?? null) !== canonicalJsonStringify(workbookReference ?? null)))
     throw new Error(`WORKBOOK_COMPATIBILITY_DECLARATION_MISMATCH: ${workflowId}`);
@@ -470,7 +471,7 @@ export function RunStartDialog({
   }, [open]);
   useEffect(() => { if (!open) setDraftKept(false); }, [open]);
 
-  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden);
+  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Checks");
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
   const fixCheck = (item: RunCheckRow) => {
@@ -498,9 +499,9 @@ export function RunStartDialog({
     if (rowCapability !== undefined) {
       const selected = selectedWorkbookRows?.choices ?? [];
       const value = previewWorkbookRows(inputRun.surface, selected, selected, typedValues);
-      if (!rowSelectionFresh) return { ...value, submissions: [], problem: "The selected rows belong to earlier spreadsheet data. Clear the previous selection and choose rows again." };
+      if (!rowSelectionFresh) return { ...value, submissions: [], problem: "Selected rows are out of date. Choose them again." };
       if (rowReference === undefined) return { ...value, submissions: [], problem: null };
-      if (workbookRows.state !== "ready") return { ...value, submissions: [], problem: workbookRows.error ?? (workbookRows.state === "loading" ? "Loading saved spreadsheet rows." : "Saved spreadsheet rows are unavailable. Choose an available spreadsheet and version.") };
+      if (workbookRows.state !== "ready") return { ...value, submissions: [], problem: workbookRows.error ?? (workbookRows.state === "loading" ? "Loading saved spreadsheet rows." : "Saved rows are unavailable. Choose another version.") };
       return value;
     }
     return previewRunInput(inputRun.surface, text, typedValues,
@@ -546,7 +547,7 @@ export function RunStartDialog({
   const blockedReason = pdfSurface !== undefined ? pdfInput.loading ? "Reading PDFs…" : pdfInput.error !== null ? "Fix the refused PDF selection first." : preview.entries.length === 0 ? "Choose at least one PDF." : referenceMissing ? MISSING_REFERENCE_REASON : null : inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null
-      ? "Fix the refused entry first."
+      ? preview.dateProblems === undefined ? "Fix the refused entry first." : "Fix the date first."
       : preview.entries.length === 0
         ? rowCapability === undefined ? "Type at least one value." : "Select at least one saved row."
         : referenceMissing
@@ -561,7 +562,7 @@ export function RunStartDialog({
   /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
   const subjectCount = preview.entries.length;
   const multiSubject = subjectCount > 1;
-  const multiSubjectOmissionReason = `Typed values describe one person, and ${String(subjectCount)} people are entered. Enter one person, or turn every step back on.`;
+  const multiSubjectOmissionReason = `Typed values fit one person; ${String(subjectCount)} are entered.`;
   /** The first thing wrong on the Steps stage: more than one person entered with typed values, else the first missing or invalid field. */
   const stepsFailure = !customizeSteps ? null : multiSubject && openRows.length > 0
     ? { text: multiSubjectOmissionReason, rowKey: "", fieldKey: "" } : firstStepsFailure(openRows);
@@ -618,9 +619,9 @@ export function RunStartDialog({
   const checkRows = <RunCheckRows sheets={checkSheets} busy={checkBusy} {...checkHandlers} />;
   const requiredLabelOf = (labels: readonly string[]) => labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels.join('');
   const referenceLoading = (description: string) => <div role="status" aria-label="Loading reference data"><RunList title="Reference spreadsheets" description={description}><RunListSkeleton rows={2} /></RunList></div>;
-  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? referenceLoading("Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.")
+  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? referenceLoading("Optional. Looks people up by Employee ID.")
     : <RunCheckCard sheets={checkSheets} busy={checkBusy} catalogError={library.catalogError} {...checkHandlers} onRefresh={() => void library.adapter.refreshCatalog()} />)
-    : <>{library.catalogLoading ? referenceLoading(`Spreadsheets this run looks people up in. Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`) : types.map(typeId => {
+    : <>{library.catalogLoading ? referenceLoading(`Looks people up by ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`) : types.map(typeId => {
     const draft = referenceDrafts[typeId];
     const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
     const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
@@ -643,8 +644,6 @@ export function RunStartDialog({
   const planRefusal = onLastStage && plan !== null ? planRefusalNotice(plan.refused, preview.entries) : null;
   const notice: { sentence: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
     ? { sentence: planRefusal.sentence, ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
-    : currentStage === "Checks" && checks.state.state === "unavailable"
-    ? { sentence: checks.state.message, action: { label: "Check again", onClick: checks.recheck } }
     : currentStage === "Input" && pdfSurface !== undefined && pdfInput.error !== null
     ? { sentence: pdfInput.error, ...(pdfInput.retryable ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
     : null;
@@ -652,7 +651,7 @@ export function RunStartDialog({
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
     rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
     checksBlocked: runChecksBlocked(checks.state),
-    referencesUnavailable: checkPending || requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
+    referencesUnavailable: checkPending || compatibilityMissing || requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
     path: launchStages.map(stage => stage.label),
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };
@@ -698,10 +697,10 @@ export function RunStartDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, hidden]);
   /** The one thing stopping Continue or Start on this stage, as its own line beside the buttons. */
-  const stageHint = currentStage === "Input" ? blockedReason
+  const stageHint = currentStage === "Input" ? (compatibilityMissing ? null : blockedReason)
     : currentStage === "Options" ? optionsBlockedReason
     : currentStage === "Steps" ? stepsBlockedReason
-    : currentStage === "Checks" && gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : "Checks are unavailable.")
+    : currentStage === "Checks" && gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : null)
     : planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, ".");
   return (
     <Dialog open={open && !hidden} onOpenChange={closeAndReset}>
@@ -751,13 +750,14 @@ export function RunStartDialog({
               <h3 className="text-control font-medium">Steps</h3>
               {workflow && <span className="text-control text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
               </div>
-              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included."}</p>
+              <p className="text-body text-ui-secondary">{isRerun ? "Choose steps. Status shows the earlier result." : "Reading steps can use typed values instead."}</p>
             </section>}
 
-            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} />}
+            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
-              {(currentStage === "Input" || currentStage === "Values") && (
+              {currentStage === "Input" && compatibilityMissing && <FailureNotice sentence="Reference spreadsheets can't be checked." action={{ label: "Retry", onClick: () => void library.adapter.refreshCatalog() }} />}
+              {(currentStage === "Input" && !compatibilityMissing || currentStage === "Values") && (
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {pdfSurface !== undefined ? <>
                     <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
@@ -777,8 +777,8 @@ export function RunStartDialog({
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}
                         {workbookRows.state === "loading" && <div role="status" aria-label="Loading saved rows"><Skeleton className="h-9 w-full" /></div>}
                         {workbookRows.state === "error" && <Banner tone="danger" title="Saved rows unavailable">{workbookRows.error}<Button variant="secondary" onClick={() => void library.adapter.refreshCatalog()}>Refresh reference data</Button></Banner>}
-                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>The selected rows are from earlier spreadsheet data and cannot be planned.</p><Button variant="secondary" onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
-                        {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version contains no rows after the worksheet headers." />}
+                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>Selected rows are out of date.</p><Button variant="secondary" onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
+                        {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version has only headers." />}
                         {rowChoices.length > 0 && <Table label="Saved spreadsheet rows"><THead><TR><TH>Select</TH><TH>Source row</TH><TH>Lookup key</TH></TR></THead><TBody>{rowChoices.map(choice => {
                           const selected = selectedWorkbookRows?.choices.some(row => row.sheetId === choice.sheetId && row.rowId === choice.rowId) ?? false;
                           const label = `${choice.sourceLabel}: ${choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}`;
@@ -862,7 +862,7 @@ export function RunStartDialog({
                       const oneSubjectOnly = multiSubject && row.form !== undefined && included;
                       const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows) || oneSubjectOnly;
                       const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
-                        : oneSubjectOnly ? `Typed values describe one person; this run would create ${String(subjectCount)}.` : row.note;
+                        : oneSubjectOnly ? "One person only." : row.note;
                       const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
                       return <RunListRow key={row.key} title={row.label} description={note}
                         {...(row.kind === "switch" ? { check: { checked: included, disabled, onChange: next => toggleRow(row, next) } } : { locked: true })}
@@ -882,12 +882,12 @@ export function RunStartDialog({
 
               {onLastStage && plan !== null && (
                 <section id="run-start-plan" aria-label="Plan" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  {expiredPlan && <p className="text-body text-ui-secondary">This plan expired, so it was checked again. Review it and press Start again.</p>}
+                  {expiredPlan && <p className="text-body text-ui-secondary">The plan expired and was rebuilt. Review it again.</p>}
                   {omissionMismatch && (
                     <Banner tone="danger" title="This plan does not describe the steps you omitted">
                       {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
                         + `${planOmittedSteps.length === 0 ? "no steps" : planOmittedSteps.join(", ")}. `
-                        + "Go back and plan the run again — this plan would start a different run."}
+                        + "Go back and plan again."}
                     </Banner>
                   )}
                 </section>

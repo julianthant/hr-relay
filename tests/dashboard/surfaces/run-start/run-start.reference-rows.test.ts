@@ -126,7 +126,7 @@ it("draws the Add spreadsheet menu as the mock does: Pinned first, the mock's em
 it("shows the mock's guidance when nothing is pinned", async () => {
   await h.openDialog(h.stubClient({ ...reads([tracker], [source("tracker", { Sheet1: ["eid"] })]) }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
   await h.settle(); await click("Add spreadsheet");
-  assert.match(text(), /Pin spreadsheets in Spreadsheets to list them here\. Search finds the rest\./u);
+  assert.match(text(), /Pinned spreadsheets show here\. Search for the rest\./u);
 });
 
 it("sends no reference when nothing is picked", async () => {

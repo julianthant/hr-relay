@@ -101,3 +101,33 @@ describe("typed input refusals read as one plain sentence and keep their parsed 
     }
   });
 });
+
+describe("Separations and Work-Study entries", () => {
+  const parsedRows = () => [...document.querySelectorAll('[aria-label="Parsed input"] .font-mono')];
+
+  it("drops a repeated Separations ID as Person Lookup does", async () => {
+    const dialog = await open("separations");
+    await dialog.type("1234567; 1234567; 7654321");
+    assert.match(dialog.text(), /Parsed input2 runs/u);
+    assert.deepEqual(parsedRows().map(row => row.textContent), ["1234567", "7654321"]);
+  });
+
+  it("marks only the invalid Separations entry", async () => {
+    const dialog = await open("separations");
+    await dialog.type("1234567; abc; 7654321");
+    assert.deepEqual(parsedRows().map(row => row.classList.contains("text-ui-danger")), [false, true, false]);
+  });
+
+  it("puts an invalid Work-Study effective date on the date field", async () => {
+    const dialog = await open("work-study");
+    await dialog.type("10812345");
+    const date = document.body.querySelector<HTMLInputElement>('input[aria-label="Effective date"]');
+    assert.ok(date);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(date, "13/45/2026"); date.dispatchEvent(new Event("input", { bubbles: true })); });
+    const alert = [...document.querySelectorAll('[role="alert"]')].find(node => node.closest(".ds-run-row")?.contains(date));
+    assert.ok(alert, "the date row holds the error");
+    assert.equal(alert.textContent, "Choose a valid effective date.");
+    assert.doesNotMatch(dialog.text(), /Fix the refused entry first/u);
+    assert.deepEqual(parsedRows().map(row => row.classList.contains("text-ui-danger")), [false]);
+  });
+});

@@ -40,7 +40,7 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
     else if (ticked(picks, sheet).length > 1) setKeys(picks.keys.filter(item => item !== key));
   };
   return <div className="flex min-w-0 flex-col gap-3">
-    <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
+    <RunList title="Reference spreadsheets" description={`Looks people up by ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}.`}>
       {picked.flatMap(sheet => {
         const worksheets = ticked(picks, sheet);
         return [
@@ -80,7 +80,7 @@ export function StatusMockRosterPicker({ picks, onPicks }: { picks: StatusMockPi
           <Search aria-hidden /><input aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
         </div>
         {needle === "" && available.length > 0 && <DropdownMenuGroup><DropdownMenuLabel>Pinned</DropdownMenuLabel></DropdownMenuGroup>}
-        {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] leading-[18px] text-ui-muted">{needle === "" ? "Pin spreadsheets in Spreadsheets to list them here. Search finds the rest." : "No spreadsheets match."}</p>}
+        {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] leading-[18px] text-ui-muted">{needle === "" ? "Pinned spreadsheets show here. Search for the rest." : "No spreadsheets match."}</p>}
         {available.map(sheet => <DropdownMenuItem key={sheet.id} disabled={uncoverable(sheet)} onClick={() => add(sheet)}>
           <DropdownMenuItemCopy title={sheet.name} description={uncoverable(sheet) ? `No worksheet has ${STATUS_MOCK_REQUIRED_FIELDS.replace(", ", " and ")}` : sheet.worksheets.map(worksheet => worksheet.name).join(", ")} />
         </DropdownMenuItem>)}

@@ -141,7 +141,7 @@ describe("the Steps stage draws the served rows", () => {
     await dialog.type(`${h.TYPED}; 10000001`);
     await dialog.press("Continue"); await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
-    assert.deepEqual(alerts(), ["Typed values describe one person, and 2 people are entered. Enter one person, or turn every step back on."]);
+    assert.deepEqual(alerts(), ["Typed values fit one person; 2 are entered."]);
     assert.equal(dialog.disabled("Continue"), true);
   });
 

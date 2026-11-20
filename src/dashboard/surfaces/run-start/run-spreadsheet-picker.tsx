@@ -11,7 +11,7 @@ export interface SheetWorksheet { readonly sheetId: string; readonly sheetName: 
 /** One library spreadsheet the picker can offer. `names` is every worksheet name the search also matches. */
 export interface PickerOption { readonly libraryId: string; readonly name: string; readonly description: string; readonly names: readonly string[]; readonly pinned: boolean; readonly disabled: boolean }
 
-const GUIDANCE = "Pin spreadsheets in Spreadsheets to list them here. Search finds the rest.";
+const GUIDANCE = "Pinned spreadsheets show here. Search for the rest.";
 
 /** The one spreadsheet picker: a Add spreadsheet button that opens a searchable list. An empty search lists the pinned spreadsheets; typing searches every spreadsheet and worksheet name, A-Z. */
 export function SpreadsheetPicker({ label, options, busy, onPick }: {

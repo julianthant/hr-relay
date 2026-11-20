@@ -18,7 +18,7 @@ describe("Start run wording and defaults match the approved mock", () => {
     assert.equal(dialog.stage(), "Steps");
     const text = dialog.text();
     assert.match(text, /Steps\d+ of \d+ included/u);
-    assert.match(text, /Replace reading steps with manual values\. Form actions stay included\./u);
+    assert.match(text, /Reading steps can use typed values instead\./u);
     assert.doesNotMatch(text, /Workflow steps|\d+ \/ \d+ included|requires every node|UCPATH/u);
   });
 
