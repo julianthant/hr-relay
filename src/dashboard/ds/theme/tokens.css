@@ -68,7 +68,7 @@
   --ds-fg: var(--foreground); /* primary text, values, names */
   --ds-fg-secondary: var(--secondary-foreground); /* supporting text */
   --ds-fg-muted: var(--muted-foreground); /* labels, meta, units */
-  --ds-fg-faint: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  --ds-fg-faint: var(--muted-foreground);
   --ds-fg-inverse: var(--primary-foreground); /* on a solid accent fill */
   --ds-fg-link: var(--info);
 
@@ -536,18 +536,18 @@ body[data-demo-theme="dark"] {
   --secondary: #1f1f23;
   --secondary-foreground: #9d9ea2;
   --muted: #131316;
-  --muted-foreground: #808085;
+  --muted-foreground: #95959b;
   --accent: #222226;
   --accent-foreground: #e3e4e6;
-  /* #f04438 is the swatch; as TEXT it drops to 3.96:1 on the raised surface,
+  /* var(--ui-danger) is the swatch; as TEXT it drops to 3.96:1 on the raised surface,
    so the token every `text-destructive` reads is the lifted red and the */
-  --destructive: #f97066;
+  --destructive: var(--ui-danger);
   --destructive-foreground: #2a0806;
-  --info: #4ea1f3;
+  --info: var(--ui-info);
   --info-foreground: #06182b;
-  --success: #12b76a;
+  --success: var(--ui-positive);
   --success-foreground: #04140c;
-  --warning: #f79009;
+  --warning: var(--ui-warning);
   --warning-foreground: #1a1204;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.16);
@@ -567,19 +567,19 @@ body[data-demo-theme="dark"] {
   --ds-body-control-border: #4a4a52;
   --ds-body-fg: #e3e4e6;
   --ds-body-fg-secondary: #b0b1b6;
-  --ds-body-fg-muted: #9a9ba1;
+  --ds-body-fg-muted: #95959b;
 
   /* The categorical log accents sit at a neutral ramp: hue-per-category painted
    on top of four status hues made the noisiest surface in the product. Reads */
   --log-teal: #fafafa; /* a WRITE — the load-bearing direction */
   --log-cyan: #d4d4d8; /* a READ */
   --log-slate: #a1a1aa; /* navigation, search, inert chrome */
-  --log-parked: #f79009; /* unconfirmed / parked — warning, not a category */
+  --log-parked: var(--ui-warning); /* unconfirmed / parked — warning, not a category */
   --chart-1: #fafafa;
   --chart-2: #a1a1aa;
-  --chart-3: #4ea1f3;
-  --chart-4: #12b76a;
-  --chart-5: #f79009;
+  --chart-3: var(--ui-info);
+  --chart-4: var(--ui-positive);
+  --chart-5: var(--ui-warning);
 
   /* --- surface ---------------------------------------------------------- */
   --ds-surface-page: var(--ui-canvas);
@@ -603,7 +603,7 @@ body[data-demo-theme="dark"] {
   --ds-fg: var(--foreground);
   --ds-fg-secondary: var(--secondary-foreground);
   --ds-fg-muted: var(--muted-foreground);
-  --ds-fg-faint: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  --ds-fg-faint: var(--muted-foreground);
   --ds-fg-inverse: var(--primary-foreground);
   --ds-fg-link: var(--info);
 
@@ -615,36 +615,36 @@ body[data-demo-theme="dark"] {
 
   --ds-accent-mark: #f5a623; /* the identity note — a mark, never a verb */
 
-  --ds-danger: #f97066;
-  --ds-danger-solid: #f04438;
+  --ds-danger: var(--ui-danger);
+  --ds-danger-solid: var(--ui-danger);
   --ds-danger-fg: #2a0806;
-  --ds-danger-quiet: color-mix(in srgb, #f04438 12%, transparent);
-  --ds-danger-border: color-mix(in srgb, #f04438 45%, transparent);
+  --ds-danger-quiet: color-mix(in srgb, var(--ui-danger) 12%, transparent);
+  --ds-danger-border: color-mix(in srgb, var(--ui-danger) 45%, transparent);
 
   /* --- status ----------------------------------------------------------- */
-  --ds-status-waiting-fg: #f79009;
-  --ds-status-waiting-mark: #f79009;
-  --ds-status-waiting-bg: color-mix(in srgb, #f79009 14%, transparent);
-  --ds-status-waiting-border: color-mix(in srgb, #f79009 55%, transparent);
-  --ds-status-waiting-solid-bg: #f79009;
+  --ds-status-waiting-fg: var(--ui-warning);
+  --ds-status-waiting-mark: var(--ui-warning);
+  --ds-status-waiting-bg: color-mix(in srgb, var(--ui-warning) 14%, transparent);
+  --ds-status-waiting-border: color-mix(in srgb, var(--ui-warning) 55%, transparent);
+  --ds-status-waiting-solid-bg: var(--ui-warning);
   --ds-status-waiting-solid-fg: #1a1204;
 
-  --ds-status-failed-fg: #f97066;
-  --ds-status-failed-mark: #f04438;
-  --ds-status-failed-bg: color-mix(in srgb, #f04438 14%, transparent);
-  --ds-status-failed-border: color-mix(in srgb, #f04438 55%, transparent);
-  --ds-status-failed-solid-bg: #f04438;
+  --ds-status-failed-fg: var(--ui-danger);
+  --ds-status-failed-mark: var(--ui-danger);
+  --ds-status-failed-bg: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+  --ds-status-failed-border: color-mix(in srgb, var(--ui-danger) 55%, transparent);
+  --ds-status-failed-solid-bg: var(--ui-danger);
   --ds-status-failed-solid-fg: #2a0806;
 
-  --ds-status-parked-fg: #f79009;
-  --ds-status-parked-mark: #f79009;
-  --ds-status-parked-bg: color-mix(in srgb, #f79009 13%, transparent);
-  --ds-status-parked-border: color-mix(in srgb, #f79009 60%, transparent);
+  --ds-status-parked-fg: var(--ui-warning);
+  --ds-status-parked-mark: var(--ui-warning);
+  --ds-status-parked-bg: color-mix(in srgb, var(--ui-warning) 13%, transparent);
+  --ds-status-parked-border: color-mix(in srgb, var(--ui-warning) 60%, transparent);
 
-  --ds-status-done-warnings-fg: #f79009;
-  --ds-status-done-warnings-mark: #f79009;
-  --ds-status-done-warnings-bg: color-mix(in srgb, #f79009 9%, transparent);
-  --ds-status-done-warnings-border: color-mix(in srgb, #f79009 30%, transparent);
+  --ds-status-done-warnings-fg: var(--ui-warning);
+  --ds-status-done-warnings-mark: var(--ui-warning);
+  --ds-status-done-warnings-bg: color-mix(in srgb, var(--ui-warning) 9%, transparent);
+  --ds-status-done-warnings-border: color-mix(in srgb, var(--ui-warning) 30%, transparent);
 
   --ds-status-running-fg: var(--ds-fg-muted);
   --ds-status-running-mark: var(--ds-fg-muted);
@@ -663,24 +663,24 @@ body[data-demo-theme="dark"] {
   --ds-status-cancelled-solid-bg: #737373;
   --ds-status-cancelled-solid-fg: #fafafa;
 
-  --ds-status-verified-done-fg: #12b76a;
-  --ds-status-verified-done-mark: #12b76a;
-  --ds-status-verified-done-bg: color-mix(in srgb, #12b76a 14%, transparent);
-  --ds-status-verified-done-border: color-mix(in srgb, #12b76a 40%, transparent);
-  --ds-status-verified-done-solid-bg: #12b76a;
+  --ds-status-verified-done-fg: var(--ui-positive);
+  --ds-status-verified-done-mark: var(--ui-positive);
+  --ds-status-verified-done-bg: color-mix(in srgb, var(--ui-positive) 14%, transparent);
+  --ds-status-verified-done-border: color-mix(in srgb, var(--ui-positive) 40%, transparent);
+  --ds-status-verified-done-solid-bg: var(--ui-positive);
   --ds-status-verified-done-solid-fg: #052e1c;
 
-  --ds-info-fg: #4ea1f3;
-  --ds-info-mark: #4ea1f3;
-  --ds-info-bg: color-mix(in srgb, #4ea1f3 12%, transparent);
-  --ds-info-border: color-mix(in srgb, #4ea1f3 40%, transparent);
-  --ds-info-solid-bg: #4ea1f3;
+  --ds-info-fg: var(--ui-info);
+  --ds-info-mark: var(--ui-info);
+  --ds-info-bg: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  --ds-info-border: color-mix(in srgb, var(--ui-info) 40%, transparent);
+  --ds-info-solid-bg: var(--ui-info);
   --ds-info-solid-fg: #06182b;
-  --ds-info-solid-hover: #6eb4f5;
-  --ds-success-fg: #12b76a;
-  --ds-success-mark: #12b76a;
-  --ds-success-bg: color-mix(in srgb, #12b76a 12%, transparent);
-  --ds-success-border: color-mix(in srgb, #12b76a 38%, transparent);
+  --ds-info-solid-hover: color-mix(in srgb, var(--ui-info) 88%, #ffffff);
+  --ds-success-fg: var(--ui-positive);
+  --ds-success-mark: var(--ui-positive);
+  --ds-success-bg: color-mix(in srgb, var(--ui-positive) 12%, transparent);
+  --ds-success-border: color-mix(in srgb, var(--ui-positive) 38%, transparent);
 
   /* Rehearsal. #a78bfa measures 6.5:1 as text on this theme's card plane
    (#18181b), so the swatch and the text step are one value here — the same */
@@ -732,16 +732,16 @@ body[data-demo-theme="light"] {
   --secondary: #ffffff;
   --secondary-foreground: #555555;
   --muted: #f3f3f3;
-  --muted-foreground: #737373;
+  --muted-foreground: #666666;
   --accent: #efefef;
   --accent-foreground: #1b1b1b;
-  --destructive: #b42318;
+  --destructive: var(--ui-danger);
   --destructive-foreground: #ffffff;
-  --info: #0369a1; /* swatch #0ba5ec — 2.8:1 as text, so text steps down */
+  --info: var(--ui-info); /* swatch var(--ui-info) — 2.8:1 as text, so text steps down */
   --info-foreground: #ffffff;
-  --success: #065f46; /* swatch #059669 — 3.8:1 as text, so text steps down */
+  --success: var(--ui-positive); /* swatch var(--ui-positive) — 3.8:1 as text, so text steps down */
   --success-foreground: #ffffff;
-  --warning: #b54708;
+  --warning: var(--ui-warning);
   --warning-foreground: #ffffff;
   --border: #e6e6e6;
   --input: #d4d4d4;
@@ -765,12 +765,12 @@ body[data-demo-theme="light"] {
   --log-teal: #0b0f19; /* a WRITE */
   --log-cyan: #334155; /* a READ */
   --log-slate: #475569; /* navigation, search, inert chrome */
-  --log-parked: #b54708; /* unconfirmed / parked */
+  --log-parked: var(--ui-warning); /* unconfirmed / parked */
   --chart-1: #0b0f19;
   --chart-2: #475569;
-  --chart-3: #0369a1;
-  --chart-4: #065f46;
-  --chart-5: #b54708;
+  --chart-3: var(--ui-info);
+  --chart-4: var(--ui-positive);
+  --chart-5: var(--ui-warning);
 
   /* --- surface ---------------------------------------------------------- */
   --ds-surface-page: var(--ui-canvas);
@@ -795,7 +795,7 @@ body[data-demo-theme="light"] {
   --ds-fg: var(--foreground);
   --ds-fg-secondary: var(--secondary-foreground);
   --ds-fg-muted: var(--muted-foreground);
-  --ds-fg-faint: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  --ds-fg-faint: var(--muted-foreground);
   --ds-fg-inverse: var(--primary-foreground);
   --ds-fg-link: var(--info);
 
@@ -807,38 +807,38 @@ body[data-demo-theme="light"] {
 
   --ds-accent-mark: #4f46e5;
 
-  --ds-danger: #b42318;
-  --ds-danger-solid: #b42318;
+  --ds-danger: var(--ui-danger);
+  --ds-danger-solid: var(--ui-danger);
   --ds-danger-fg: #ffffff;
-  --ds-danger-quiet: color-mix(in srgb, #b42318 10%, transparent);
-  --ds-danger-border: color-mix(in srgb, #b42318 40%, transparent);
+  --ds-danger-quiet: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+  --ds-danger-border: color-mix(in srgb, var(--ui-danger) 40%, transparent);
 
   /* --- status ----------------------------------------------------------- */
   /* The amber family sits on an OPAQUE warm tint rather than an alpha wash:
    on paper a 14% amber over white reads as dirty grey, and the measured */
-  --ds-status-waiting-fg: #b54708;
-  --ds-status-waiting-mark: #f79009;
+  --ds-status-waiting-fg: var(--ui-warning);
+  --ds-status-waiting-mark: var(--ui-warning);
   --ds-status-waiting-bg: #fffaeb;
-  --ds-status-waiting-border: color-mix(in srgb, #b54708 40%, transparent);
-  --ds-status-waiting-solid-bg: #b54708;
+  --ds-status-waiting-border: color-mix(in srgb, var(--ui-warning) 40%, transparent);
+  --ds-status-waiting-solid-bg: var(--ui-warning);
   --ds-status-waiting-solid-fg: #ffffff;
 
-  --ds-status-failed-fg: #b42318;
-  --ds-status-failed-mark: #b42318;
-  --ds-status-failed-bg: color-mix(in srgb, #b42318 10%, transparent);
-  --ds-status-failed-border: color-mix(in srgb, #b42318 40%, transparent);
-  --ds-status-failed-solid-bg: #b42318;
+  --ds-status-failed-fg: var(--ui-danger);
+  --ds-status-failed-mark: var(--ui-danger);
+  --ds-status-failed-bg: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+  --ds-status-failed-border: color-mix(in srgb, var(--ui-danger) 40%, transparent);
+  --ds-status-failed-solid-bg: var(--ui-danger);
   --ds-status-failed-solid-fg: #ffffff;
 
-  --ds-status-parked-fg: #b54708;
-  --ds-status-parked-mark: #f79009;
+  --ds-status-parked-fg: var(--ui-warning);
+  --ds-status-parked-mark: var(--ui-warning);
   --ds-status-parked-bg: #fffaeb;
-  --ds-status-parked-border: color-mix(in srgb, #b54708 50%, transparent);
+  --ds-status-parked-border: color-mix(in srgb, var(--ui-warning) 50%, transparent);
 
-  --ds-status-done-warnings-fg: #b54708;
-  --ds-status-done-warnings-mark: #f79009;
+  --ds-status-done-warnings-fg: var(--ui-warning);
+  --ds-status-done-warnings-mark: var(--ui-warning);
   --ds-status-done-warnings-bg: #fffaeb;
-  --ds-status-done-warnings-border: color-mix(in srgb, #b54708 24%, transparent);
+  --ds-status-done-warnings-border: color-mix(in srgb, var(--ui-warning) 24%, transparent);
 
   --ds-status-running-fg: var(--ds-fg-muted);
   --ds-status-running-mark: var(--ds-fg-muted);
@@ -857,24 +857,24 @@ body[data-demo-theme="light"] {
   --ds-status-cancelled-solid-bg: #a3a3a3;
   --ds-status-cancelled-solid-fg: #171717;
 
-  --ds-status-verified-done-fg: #065f46;
-  --ds-status-verified-done-mark: #059669;
-  --ds-status-verified-done-bg: color-mix(in srgb, #059669 12%, transparent);
-  --ds-status-verified-done-border: color-mix(in srgb, #065f46 28%, transparent);
-  --ds-status-verified-done-solid-bg: #059669;
+  --ds-status-verified-done-fg: var(--ui-positive);
+  --ds-status-verified-done-mark: var(--ui-positive);
+  --ds-status-verified-done-bg: color-mix(in srgb, var(--ui-positive) 12%, transparent);
+  --ds-status-verified-done-border: color-mix(in srgb, var(--ui-positive) 28%, transparent);
+  --ds-status-verified-done-solid-bg: var(--ui-positive);
   --ds-status-verified-done-solid-fg: #ffffff;
 
-  --ds-info-fg: #0369a1;
-  --ds-info-mark: #0ba5ec;
-  --ds-info-bg: color-mix(in srgb, #0ba5ec 12%, transparent);
-  --ds-info-border: color-mix(in srgb, #0369a1 40%, transparent);
-  --ds-info-solid-bg: #0ba5ec;
+  --ds-info-fg: var(--ui-info);
+  --ds-info-mark: var(--ui-info);
+  --ds-info-bg: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  --ds-info-border: color-mix(in srgb, var(--ui-info) 40%, transparent);
+  --ds-info-solid-bg: var(--ui-info);
   --ds-info-solid-fg: #ffffff;
-  --ds-info-solid-hover: #0284c7;
-  --ds-success-fg: #065f46;
-  --ds-success-mark: #059669;
-  --ds-success-bg: color-mix(in srgb, #059669 12%, transparent);
-  --ds-success-border: color-mix(in srgb, #065f46 38%, transparent);
+  --ds-info-solid-hover: color-mix(in srgb, var(--ui-info) 88%, #000000);
+  --ds-success-fg: var(--ui-positive);
+  --ds-success-mark: var(--ui-positive);
+  --ds-success-bg: color-mix(in srgb, var(--ui-positive) 12%, transparent);
+  --ds-success-border: color-mix(in srgb, var(--ui-positive) 38%, transparent);
 
   /* Rehearsal. This is the theme the `-fg` / `-mark` split exists for:
    violet-600 (#7c3aed) is 5.5:1 on white as a mark but the chip's ink is read */
@@ -1053,7 +1053,7 @@ body[data-demo-theme="light"] {
   --ds-fg: var(--ds-body-fg);
   --ds-fg-secondary: var(--ds-body-fg-secondary);
   --ds-fg-muted: var(--ds-body-fg-muted);
-  --ds-fg-faint: color-mix(in srgb, var(--ds-body-fg-muted) 70%, transparent);
+  --ds-fg-faint: var(--ds-body-fg-muted);
   --ds-control-bg: var(--ds-body-surface-control);
   --ds-control-bg-hover: var(--ds-body-surface-hover);
   --ds-control-bg-active: var(--ds-body-surface-selected);
