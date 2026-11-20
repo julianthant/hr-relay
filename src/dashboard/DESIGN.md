@@ -361,7 +361,7 @@ status fill changes without changing the information's position.
 - Preserve complete accessible names, copy, search, and selection when clipping paint or deferring offscreen layout.
 - Do not duplicate a visible reason in a tooltip that makes assistive technology announce it twice.
 - Use live regions for changes, not every standing fact rendered on mount.
-- Keyboard focus fills the control with one light tint (`--hub-focus-fill`, one step stronger than hover) and ink (`--hub-focus-ink`) on every control, in both themes; pointer focus draws nothing, and programmatic takeover focus draws no extra default browser ring.
+- Keyboard focus is a 2px ring (`--ds-focus-ring`, the info blue) on every control, in both themes, with no fill and no change to the control's text; pointer focus draws nothing, and programmatic takeover focus draws no extra default browser ring.
 
 Compare against the approved mock before judging a visual difference, and read
 [the wiring contract](../../docs/reference/frontend-backend-integration.md) before replacing a producer.

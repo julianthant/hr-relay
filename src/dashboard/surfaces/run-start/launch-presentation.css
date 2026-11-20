@@ -6,9 +6,6 @@
   --ds-text-meta: var(--text-caption);
   --ds-text-body-value: var(--text-body);
   --ds-h-md: 28px;
-  --ds-accent: var(--ui-info);
-  --ds-accent-hover: var(--ui-info);
-  --ds-accent-fg: var(--ui-canvas);
   --ds-control-border: var(--ui-stroke-control);
   --ds-border-strong: var(--ui-stroke-control);
   --ds-radius-md: 8px;

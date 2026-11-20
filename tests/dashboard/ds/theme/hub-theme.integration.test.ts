@@ -33,3 +33,20 @@ describe("a key press never makes the Run dialog see-through", () => {
     assert.equal(paint.scrim, "rgba(0, 0, 0, 0.66)");
   });
 });
+
+describe("keyboard focus is a 2px ring that leaves the control's own paint alone", () => {
+  it("Tab onto a button draws the ring and keeps fill and text", async () => {
+    const browser = await chromium.launch({ headless: true });
+    browsers.push(browser);
+    const tab = await browser.newPage();
+    await tab.setContent(`<html data-hub data-demo-theme="dark"><style>${hubTheme}
+:root{--ds-focus-ring:rgb(157,196,255);--ds-focus-ring-w:2px;--ds-focus-ring-offset:1px}
+button{background:rgb(1,2,3);color:rgb(4,5,6)}</style><body><button>Go</button></body></html>`);
+    await tab.keyboard.press("Tab");
+    const paint = await tab.evaluate(() => {
+      const s = getComputedStyle(document.querySelector("button")!);
+      return { width: s.outlineWidth, style: s.outlineStyle, color: s.outlineColor, bg: s.backgroundColor, ink: s.color };
+    });
+    assert.deepEqual(paint, { width: "2px", style: "solid", color: "rgb(157, 196, 255)", bg: "rgb(1, 2, 3)", ink: "rgb(4, 5, 6)" });
+  });
+});
