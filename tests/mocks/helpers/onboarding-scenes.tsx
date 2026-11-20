@@ -23,10 +23,11 @@ function draft(key: MethodKind, touch: MethodKind, browser: ProfileOnboardingBro
 
 const never = <T,>() => new Promise<T>(() => undefined);
 const refused = async (): Promise<PublicProfileState> => ({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
-/** Every action stays pending, except a refused sign-in; scenes only render state. */
+const lost = async (): Promise<never> => { throw new Error("lost response"); };
+/** Every action stays pending, except a refused sign-in and a lost finish reply; scenes only render state. */
 function stubPort(scene: Scene): ServedOnboardingPort {
   return Object.freeze<ServedOnboardingPort>({ validate: validateOnboarding, onboarding: scene.draft, ...(scene.reenrol === true ? { reenrol: true } : {}),
-    complete: never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never,
+    complete: scene.noReply === true ? lost : never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never,
     submit: scene.refuse === true ? refused : never });
 }
 
@@ -36,7 +37,7 @@ function stubPort(scene: Scene): ServedOnboardingPort {
  */
 export interface Scene {
   step?: OnboardingStep; setup?: boolean; duo?: boolean; confirm?: boolean; problem?: string; draft?: ProfileOnboardingState; submit?: boolean;
-  reenrol?: boolean; resumable?: boolean; refuse?: boolean; fill?: boolean; press?: readonly string[]; wait?: number; shows?: string;
+  reenrol?: boolean; resumable?: boolean; refuse?: boolean; noReply?: boolean; fill?: boolean; press?: readonly string[]; wait?: number; shows?: string;
 }
 
 /** One state per scene, named for what the operator sees. */
@@ -52,17 +53,23 @@ export const ONBOARDING_SCENES = {
   "signup-creating-profile": { step: "signup", fill: true, press: ["Create profile"], shows: "Creating profile…" },
   "duo-not-started": { step: "duo", draft: draft("idle", "idle") },
   "duo-opening": { step: "duo", draft: draft("idle", "idle", { state: "opening", generation: 1 }), shows: "Opening setup window…" },
+  "duo-still-opening": { step: "duo", draft: draft("idle", "idle", { state: "opening", generation: 1 }), wait: 10_000, shows: "Still opening setup window…" },
   "duo-key-pending": { step: "duo", draft: draft("pending", "idle"), shows: "Waiting for Duo to add Security key" },
   "duo-still-waiting": { step: "duo", draft: draft("pending", "idle"), wait: 10_000, shows: "Still waiting for Duo to add Security key" },
-  "duo-timed-out": { step: "duo", draft: draft("pending", "idle"), wait: 120_000, shows: "Duo did not respond" },
+  "duo-timed-out": { step: "duo", draft: draft("pending", "idle"), wait: 600_000, shows: "Duo did not add Security key" },
   "duo-cancel-confirm": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up"], shows: "Cancel sign-up?" },
   "duo-cancelling": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "Cancelling…" },
+  "duo-both-complete": { step: "duo", draft: draft("complete", "complete") },
+  "duo-finishing": { step: "duo", draft: draft("complete", "complete"), press: ["Finish setup"], shows: "Finishing…" },
+  "duo-finish-no-reply": { step: "duo", noReply: true, draft: draft("complete", "complete"), press: ["Finish setup"], shows: "No reply from Relay. Reload the page to check." },
   "duo-key-complete": { step: "duo", draft: draft("complete", "idle") },
   "duo-browser-failed": { step: "duo", draft: draft("idle", "idle", { state: "failed", generation: 1, code: "DUO_SETUP_OPEN_FAILED" }) },
+  "duo-reopen-failed": { step: "duo", draft: draft("idle", "idle", { state: "failed", generation: 2, code: "DUO_SETUP_STOP_FAILED" }), shows: "Could not reopen setup window" },
   "ready": { step: "ready", draft: draft("complete", "complete") },
   "ready-opening-dashboard": { step: "ready", draft: draft("complete", "complete"), press: ["Go to dashboard"], shows: "Opening dashboard…" },
   "setup-not-started": { setup: true, draft: draft("idle", "idle") },
   "setup-key-pending": { setup: true, draft: draft("pending", "idle") },
+  "setup-still-waiting": { setup: true, draft: draft("pending", "idle"), wait: 10_000, shows: "Still waiting for Duo." },
   "setup-key-complete": { setup: true, draft: draft("complete", "idle") },
   "setup-both-complete": { setup: true, draft: draft("complete", "complete") },
   "setup-key-failed": { setup: true, draft: draft("unknown", "idle") },

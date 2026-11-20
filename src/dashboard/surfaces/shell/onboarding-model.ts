@@ -109,18 +109,22 @@ const SIGN_IN_SENTENCES: Readonly<Record<string, string>> = Object.freeze({
 export const signInSentence = (code: string): string => SIGN_IN_SENTENCES[code] ?? operatorFailureSentence(code);
 
 export const DUO_STILL_WAITING_MS = 10_000;
-export const DUO_TIMEOUT_MS = 120_000;
-/** How long Relay has waited on one Duo step; resets when `key` changes, idle when it is undefined. */
-export function useWaitStage(key: string | undefined): "waiting" | "still" | "timeout" {
-  const [stage, setStage] = useState<"waiting" | "still" | "timeout">("waiting");
+/**
+ * The setup owner gives each Duo attempt ten minutes (`expiresAt` in backend/profiles/profile-onboarding.ts) and
+ * refuses it afterwards. The wire does not carry `expiresAt`, so the wait counts from when this screen first saw
+ * the attempt and never ends before the owner's own expiry.
+ */
+export const DUO_ATTEMPT_MS = 600_000;
+/** How long Relay has waited on one thing; resets when `key` changes, idle when it is undefined, never times out without `timeoutMs`. */
+export function useWaitStage(key: string | undefined, timeoutMs?: number): "waiting" | "still" | "timeout" {
+  const [stage, setStage] = useState<{ key: string | undefined; value: "waiting" | "still" | "timeout" }>({ key, value: "waiting" });
   useEffect(() => {
-    setStage("waiting");
     if (key === undefined) return;
-    const still = setTimeout(() => setStage("still"), DUO_STILL_WAITING_MS);
-    const timeout = setTimeout(() => setStage("timeout"), DUO_TIMEOUT_MS);
+    const still = setTimeout(() => setStage({ key, value: "still" }), DUO_STILL_WAITING_MS);
+    const timeout = timeoutMs === undefined ? undefined : setTimeout(() => setStage({ key, value: "timeout" }), timeoutMs);
     return () => { clearTimeout(still); clearTimeout(timeout); };
-  }, [key]);
-  return key === undefined ? "waiting" : stage;
+  }, [key, timeoutMs]);
+  return key === undefined || stage.key !== key ? "waiting" : stage.value;
 }
 
 export type DuoBrowserStatus = "launching" | "waiting" | "error";
