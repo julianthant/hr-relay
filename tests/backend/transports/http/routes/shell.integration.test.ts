@@ -401,7 +401,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     try {
       const first = await reader.read();
       assert.equal(first.done, false);
-      assert.match(new TextDecoder().decode(first.value), /"type":"hello"/u);
+      const cursor = h.projection.cursor();
+      const descriptorHash = h.projection.descriptorSetHash();
+      const generation = h.projection.generation();
+      assert.equal(new TextDecoder().decode(first.value),
+        `id: ${cursor}\ndata: {"type":"hello","wireVersion":1,"descriptorHash":"${descriptorHash}","projectionGeneration":${generation},"cursor":"${cursor}"}\n\n`);
       assert.equal(h.hub.subscriberCount(), 1);
     } finally { await reader.cancel(); }
     assert.equal(h.hub.subscriberCount(), 0);
@@ -462,3 +466,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 import { OPERATOR_JSON_HEADERS, activityPeople, assertHttpFaultOnly, faultAuthoritySnapshot, currentSeparationsRun, disposeHttpRouteHarness, harness, json, persistCurrentSeparationsEvidence, projectCurrentSeparationsRuns, seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
+
+it("validates the whole event query before applying resume headers", async () => {
+  const h = await harness({ profileFixture: profileFixtures.create });
+  for (const suffix of ["&extra=unused", `&topics=dashboard-day:${DAY}`, "&cursor=pc:1&cursor=pc:2", "&cursor=malformed",
+    "&projectionGeneration=1e0", "&projectionGeneration=1&projectionGeneration=2"]) {
+    const response = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}${suffix}`, {
+      headers: { "Last-Event-ID": "pc:1", "Dashboard-Projection-Generation": "1" },
+    });
+    if (response.status === 200) await response.body?.cancel();
+    assert.equal(response.status, 400, suffix);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
+    assert.equal(h.hub.subscriberCount(), 0);
+  }
+});

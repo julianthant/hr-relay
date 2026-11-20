@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { CommandIdSchema } from "../../../../rules/identity/ids.js";
 import { CommandRefusal } from "../../../runs/commands/command-refusal.js";
 import { BulkRunCommandRequestSchema, DashboardCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { createOperatorCommandIngress } from "../../../runs/commands/operator-command-ingress.js";
@@ -7,6 +9,8 @@ import { MalformedCommandJsonError } from "./failure-status.js";
 import type { HonoRequest } from "hono";
 import type { DashboardApp } from "./api-types.js";
 import type { CommandsRouteDeps } from "./commands-types.js";
+
+const WorkerCommandPathSchema = z.strictObject({ commandId: CommandIdSchema });
 
 async function readCommandJson(request: HonoRequest): Promise<unknown> {
   const text = await request.text();
@@ -49,8 +53,9 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
 
   // Outside /api/v1/commands/: a read must not cross the mutation ingress guard.
   app.get("/api/v1/worker-commands/:commandId", c => {
+    const { commandId } = WorkerCommandPathSchema.parse(c.req.param());
     if (deps.workerCommandResult === undefined) throw new Error("worker-command-result-unavailable");
-    return c.json(deps.workerCommandResult(c.req.param("commandId")));
+    return c.json(deps.workerCommandResult(commandId));
   });
 
   app.post("/api/v1/commands/bulk", async (c) => {
