@@ -32,7 +32,7 @@ The `--ds-*` aliases serve the shell, body, Settings, and overlays. Theme state 
 | `dsIcon` | `sm` 12px, `md` 14px, and `lg` 16px glyphs |
 
 `dsText` provides `micro` 10px, `meta` 11px, `body` 12px, `ui` 13px, `title` 14px,
-`section` 16px, `display` 20px, and `pageTitle` 27px. `caps` is for short group labels,
+`section` 16px, `display` 20px, and `pageTitle` 20px. `caps` is for short group labels,
 `nums` uses tabular figures in the body face, and `flush` removes extra line-box height beside a taller control.
 `DsBodyScope` overrides type, spacing, row, control, and radius values for product content.
 Use the scoped primitives rather than copying shell measurements into a body page.
