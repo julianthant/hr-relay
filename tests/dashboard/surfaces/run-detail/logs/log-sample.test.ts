@@ -120,6 +120,22 @@ describe('compact run headers', () => {
     } finally { act(() => root.unmount()); host.remove(); }
   });
 
+  it('names the group a member opened from and goes back to it', () => {
+    const run: MockRun = { id: 'member-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const parent = queueParentFixture('00000000-0000-4000-8000-000000000a01', { title: 'Spring onboarding' });
+    const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), parent });
+    const onOpenLinked = vi.fn();
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Jordan' }, availableSections: ['logs'] }, logs: {}, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    try {
+      act(() => root.render(sample({ selection: { row, workflowLabel: 'Person lookup' }, onOpenLinked })));
+      const back = host.querySelector<HTMLButtonElement>('header button[aria-label="Back to Spring onboarding"]'); assert.ok(back);
+      act(() => back.click());
+      assert.deepEqual(onOpenLinked.mock.calls.map(call => call[0].runId), [parent.runId]);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+
   it.each([true, false])('renders one root batch Retry in its own header and uses its separate callback (%s)', available => {
     const run: MockRun = { id: 'batch-header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), status: 'failed', parent: null,
