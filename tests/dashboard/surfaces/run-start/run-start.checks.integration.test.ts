@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
@@ -271,3 +272,57 @@ async function reachChecksWith(client: Parameters<typeof h.openDialog>[0]) {
   await reachChecks(dialog);
   return dialog;
 }
+
+describe("a refused re-check through the real client", () => {
+  const ACTIVE = { state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready" };
+  async function served(rerunStatus: number) {
+    const reports: unknown[] = [];
+    const real = createDashboardClient({ baseUrl: "http://relay.test", surface: () => "app", fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname;
+      if (path === "/api/v1/profile/state") return Response.json(ACTIVE);
+      if (path === "/api/v1/debug/errors") { reports.push(JSON.parse(String(init?.body))); return Response.json({ state: "recorded" }); }
+      if (path === "/api/v1/preflight") return Response.json({ state: "unavailable", reason: "Not checked yet." });
+      if (path === "/api/v1/settings/editable") return Response.json(FIXTURE_EDITABLE_SETTINGS);
+      if (path === "/api/v1/bootstrap") return Response.json(FIXTURE_BOOTSTRAP);
+      if (path === "/api/v1/preflight/rerun") return Response.json({ state: "error", code: rerunStatus === 429 ? "PREFLIGHT_RATE_LIMITED" : "PREFLIGHT_RERUN_FAILED",
+        message: "refused", retryable: true }, { status: rerunStatus });
+      throw new Error(`unexpected request ${path}`);
+    } });
+    await real.readProfileSession();
+    const client = h.stubClient({ readPreflight: real.readPreflight, editableSettings: real.editableSettings,
+      preflightScopes: real.preflightScopes, rerunPreflight: real.rerunPreflight });
+    return { reports, client };
+  }
+  /** Opens the dialog and lets its evidence read settle, so the count after it is what reaching Checks adds. */
+  async function openSettled(client: Parameters<typeof h.openDialog>[0], reports: readonly unknown[]) {
+    const dialog = await h.openDialog(client);
+    await dialog.type(h.TYPED);
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    return { dialog, before: reports.length };
+  }
+  async function toChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
+    await dialog.press("Continue");
+    await dialog.press("Continue");
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(dialog.stage(), "Checks");
+  }
+
+  it("shows one notice and sends no error report when the server turns the re-check away (429)", async () => {
+    const { reports, client } = await served(429);
+    const { dialog, before } = await openSettled(client, reports);
+    await toChecks(dialog);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
+    assert.deepEqual(alerts, ["Relay could not check this run.Check again"]);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(reports.length, before, "the turned-away re-check sends no report");
+  });
+
+  it("still reports an unexpected re-check failure (500)", async () => {
+    const { reports, client } = await served(500);
+    const { dialog, before } = await openSettled(client, reports);
+    await toChecks(dialog);
+    await vi.waitFor(() => assert.equal(reports.length, before + 1));
+  });
+});

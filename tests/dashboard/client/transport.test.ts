@@ -166,3 +166,21 @@ it("classifies a pre-aborted Settings read without dispatching fetch", async () 
   await assert.rejects(transport.requestJson("/api/v1/settings/facts", { signal: controller.signal }), (error: unknown) => error instanceof DashboardClientError && error.kind === "network" && error.retryable && error.cause === reason);
   assert.equal(calls, 0);
 });
+
+describe("expected refusals", () => {
+  const respond = (status: number) => async () => Response.json({ state: "error", code: "PREFLIGHT_RATE_LIMITED", message: "refused", retryable: true }, { status });
+  it("does not report a preflight re-check the server turns away, and still rejects it", async () => {
+    const failures: unknown[] = [];
+    const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond(429) });
+    await assert.rejects(transport.requestJson("/api/v1/preflight/rerun", { method: "POST", body: "{}" }));
+    assert.deepEqual(failures, []);
+  });
+  it("reports every other failure of the same route or status", async () => {
+    for (const [path, method, status] of [["/api/v1/preflight/rerun", "POST", 500], ["/api/v1/settings/editable", "GET", 429]] as const) {
+      const failures: unknown[] = [];
+      const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); }, fetchImpl: respond(status) });
+      await assert.rejects(transport.requestJson(path, { method }));
+      assert.equal(failures.length, 1, `${method} ${path} ${String(status)}`);
+    }
+  });
+});
