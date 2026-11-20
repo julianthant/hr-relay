@@ -4,7 +4,7 @@ import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
-import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
+import { dashboardRouteRegistrations, publicProfileRouteRegistrations } from "./helpers/dashboard-route-source.js";
 // @vitest-environment jsdom
 
 import assert from "node:assert/strict";
@@ -49,7 +49,6 @@ projectedCommandKeys,
 readPendingWireBindings,
 routeConnectivityProblems,
 routeMatches,
-servedRoutes,
 type PendingWireBinding,
 } from "./helpers/wire-connectivity.js";
 
@@ -73,7 +72,10 @@ async function scannedAndSavedReferences() {
 }
 
 function servedDashboardRoutes() {
-  return servedRoutes(`${dashboardRouteSource()}\n${readFileSync(join(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"), "utf8")}`);
+  return [dashboardRouteRegistrations(), publicProfileRouteRegistrations()].flatMap(({ registrations, violations }) => {
+    assert.deepEqual(violations, []);
+    return registrations.filter(({ method }) => method !== "use").map(({ method, path }) => ({ method: method.toUpperCase(), path }));
+  });
 }
 
 function bindingsFor(prefix: string): readonly PendingWireBinding[] {

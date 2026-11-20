@@ -68,7 +68,7 @@ function checksHarness(workflowId: string, failingCheck: "config.valid" | "secre
   app.use("*", async (c, next) => { c.set("requestActorId", ActorIdSchema.parse("local-operator")); await next(); });
   app.get("/api/v1/bootstrap", () => Response.json(FIXTURE_START_PICKER_BOOTSTRAP));
   app.get("/api/v1/settings/editable", () => Response.json(FIXTURE_EDITABLE_SETTINGS));
-  registerSettingsPreflightRoutes(app, { clock, preflight: service });
+  registerSettingsPreflightRoutes(app, { preflight: service });
   const requests: string[] = [];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;

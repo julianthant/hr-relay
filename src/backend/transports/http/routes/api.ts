@@ -134,7 +134,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerTrustRoutes(app, deps);
   registerShellRoutes(app, { ...deps, debugEvents });
   registerNotificationRoutes(app, deps);
-  registerSettingsPreflightRoutes(app, { clock: deps.bootstrap.clock, preflight: deps.preflight });
+  registerSettingsPreflightRoutes(app, { preflight: deps.preflight });
   registerSettingsRoutes(app, deps);
   registerChatGptAccountRoutes(app, { ...deps, debugEvents, clock: deps.bootstrap.clock });
   registerAssistantRoutes(app, deps.assistant);

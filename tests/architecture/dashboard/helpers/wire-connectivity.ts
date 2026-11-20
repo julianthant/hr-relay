@@ -99,16 +99,8 @@ export interface ClientRouteReference {
   readonly path: string;
 }
 
-const ROUTE_REGISTRATION = /\bapp\.(get|post|put|delete|patch)\(\s*"([^"]+)"/g;
 /** A string OR template literal whose first character starts a served path. */
 const CLIENT_PATH = /["'`](\/(?:api|events|artifacts)\/[^"'`]*)["'`]/g;
-
-export function servedRoutes(source: string): readonly ServedRoute[] {
-  return [...source.matchAll(ROUTE_REGISTRATION)].map(([, method, path]) => ({
-    method: (method ?? "").toUpperCase(),
-    path: path ?? "",
-  }));
-}
 
 // Treat each interpolation as one opaque route segment; query and fragment do not affect matching.
 export function normalizeClientPath(raw: string): string {
