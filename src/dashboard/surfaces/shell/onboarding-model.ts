@@ -101,6 +101,43 @@ export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState):
   return "Security key and Touch ID not added";
 }
 
+const SIGN_IN_SENTENCES: Readonly<Record<string, string>> = Object.freeze({
+  PROFILE_SIGN_IN_REFUSED: "Wrong email or password",
+  COMMAND_OUTCOME_UNCERTAIN: "No reply from Relay. Reload the page to check.",
+});
+/** Plain lines for sign-in and Duo setup; every other code keeps its catalog sentence. */
+export const signInSentence = (code: string): string => SIGN_IN_SENTENCES[code] ?? operatorFailureSentence(code);
+
+/** Log out is still settling: sign-in waits for the session to change. */
+const awaitingLogout = (state: PublicProfileState | undefined): boolean => state?.state === "cancelling" || state?.state === "refused" && state.code === "PROFILE_LOGOUT_BLOCKED";
+/** The last browser was not proved closed: sign-in stays blocked until a session read settles it. */
+const closureUncertain = (state: PublicProfileState | undefined): boolean => (state?.state === "refused" || state?.state === "error") && state.code === "BROWSER_CLOSURE_UNPROVED";
+
+/**
+ * Splits what the session says into `problem`, which still applies until the session changes (authority, log out, browser closure),
+ * and `signInProblem`, the answer to the last sign-in, which the form clears on typing, resubmit and switching between Log in and Sign up.
+ */
+export function signInProblems(state: PublicProfileState | undefined, authorityUnavailable: boolean): { problem: string | undefined; signInProblem: string | undefined } {
+  if (authorityUnavailable) return { problem: operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"), signInProblem: undefined };
+  if (awaitingLogout(state)) return { problem: operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"), signInProblem: undefined };
+  if ((state?.state === "refused" || state?.state === "error") && closureUncertain(state)) return { problem: signInSentence(state.code), signInProblem: undefined };
+  if (state?.state === "signed-out" && state.logoutIncomplete) return { problem: operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE"), signInProblem: undefined };
+  if (state?.state === "refused" || state?.state === "error") return { problem: undefined, signInProblem: signInSentence(state.code) };
+  return { problem: undefined, signInProblem: undefined };
+}
+
+export const DUO_STILL_WAITING_MS = 10_000;
+/** "still" once Relay has waited ten seconds on the same `key`; resets when `key` changes, idle when it is undefined. */
+export function useWaitStage(key: string | undefined): "waiting" | "still" {
+  const [still, setStill] = useState<string>();
+  useEffect(() => {
+    if (key === undefined) return;
+    const timer = setTimeout(() => setStill(key), DUO_STILL_WAITING_MS);
+    return () => clearTimeout(timer);
+  }, [key]);
+  return key !== undefined && still === key ? "still" : "waiting";
+}
+
 export type DuoBrowserStatus = "launching" | "waiting" | "error";
 export function useDuoBrowser(operationId: string | undefined, served: ServedOnboardingPort) {
   const [status, setStatus] = useState<DuoBrowserStatus>("waiting");
@@ -200,10 +237,10 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     }, 1000);
     return () => window.clearInterval(timer);
   }, [client, enabled, onboarding, settle, settleRead]);
-  const awaitingLogout = state?.state === "cancelling" || state?.state === "refused" && state.code === "PROFILE_LOGOUT_BLOCKED";
-  const closureUncertain = (state?.state === "refused" || state?.state === "error") && state.code === "BROWSER_CLOSURE_UNPROVED";
-  const recovering = Boolean(failure) && state === undefined || closureUncertain;
-  const awaitingSession = recovering || awaitingLogout || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
+  const loggingOut = awaitingLogout(state);
+  const closureUnproved = closureUncertain(state);
+  const recovering = Boolean(failure) && state === undefined || closureUnproved;
+  const awaitingSession = recovering || loggingOut || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
   useEffect(() => {
     if (!enabled || !awaitingSession) return;
     let reading = false;
@@ -212,12 +249,12 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       reading = true;
       const request = generation.current;
       void client.readProfileSession().then(value => {
-        if (live.current && generation.current === request && (value.state === "active" || recovering && (value.state === PROFILE_ONBOARDING_STATE || value.state === "signed-out") || awaitingLogout && value.state !== "cancelling")) settle(value);
+        if (live.current && generation.current === request && (value.state === "active" || recovering && (value.state === PROFILE_ONBOARDING_STATE || value.state === "signed-out") || loggingOut && value.state !== "cancelling")) settle(value);
       }, () => {}).finally(() => { reading = false; });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [client, enabled, awaitingSession, awaitingLogout, recovering, settle]);
-  const unavailable = Boolean(failure) || closureUncertain;
+  }, [client, enabled, awaitingSession, loggingOut, recovering, settle]);
+  const unavailable = Boolean(failure) || closureUnproved;
   const scope = useMemo(() => ({ client, unavailable, operationId: onboarding?.operationId, profileId: onboarding?.profileId, failure }), [client, onboarding?.operationId, onboarding?.profileId, failure, unavailable]);
   const currentScope = useRef(scope); currentScope.current = scope;
   const port = useMemo<ServedOnboardingPort>(() => {

@@ -34,6 +34,7 @@
   .hub-onboarding .step-link:hover:not(:disabled):not([aria-disabled="true"]) { background:var(--ui-hover); }
   .hub-onboarding .text-link:hover { text-decoration-color:currentColor; }
 }
+.hub-onboarding .text-link[aria-disabled="true"] { opacity:.55; pointer-events:none; }
 .hub-onboarding .text-link:focus-visible { text-decoration-color:currentColor; }
 .hub-onboarding .switch-row { display:flex; align-items:center; gap:var(--ds-space-snug); color:var(--ui-secondary); }
 .hub-onboarding .form-error { color:var(--ui-danger); font-size:var(--ds-text-body); line-height:1.5; }

@@ -1,8 +1,8 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { useEffect, useState } from "react";
-import { Check, Fingerprint, KeyRound } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
-import { duoSummary, useServedDuoSetup, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
+import { duoSummary, useServedDuoSetup, useWaitStage, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
 import { AppLockup } from "./app-lockup.js";
 import "./onboarding-setup.css";
 
@@ -23,16 +23,18 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
     if (confirmation !== undefined) setup.dismissConfirmation(confirmation);
     setConfirmation(undefined);
   };
-  const [closing, setClosing] = useState(false);
+  const [closing, setClosing] = useState<"complete" | "cancel">();
+  /** Shared by both close actions and set at dispatch, so a second press before React re-renders sends nothing. */
+  const closeLatch = useRef(false);
   const [closeFailure, setCloseFailure] = useState<string>();
   const closeReenrol = async (action: "complete" | "cancel") => {
-    if (closing) return;
-    setClosing(true); setCloseFailure(undefined);
+    if (closeLatch.current) return;
+    closeLatch.current = true; setClosing(action); setCloseFailure(undefined);
     try { await port[action](); }
     catch (error) {
       const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "PROFILE_DUO_REENROL_UNCERTAIN";
       setCloseFailure(`${action === "complete" ? "Duo setup not switched" : "Duo setup not cancelled"}. ${operatorFailureSentence(code)}`);
-    } finally { setClosing(false); }
+    } finally { closeLatch.current = false; setClosing(undefined); }
   };
   const browser = draft?.browser;
   const reenrol = port.reenrol === true;
@@ -47,9 +49,11 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
       setReopenFailure(operatorFailureSentence(code));
     } finally { setReopening(false); }
   };
+  const preparing = browser?.state === "opening" || browser?.state === "reopening" || browser?.state === "checking";
+  const preparingStage = useWaitStage(preparing && browser !== undefined ? `${draft?.operationId}:${browser.state}:${browser.generation}` : undefined);
   const browserNotice = browser?.state === "failed" ? operatorFailureSentence(browser.code)
     : browser?.state === "closed" ? "The setup browser was closed. Select Reopen to continue."
-    : browser?.state === "opening" || browser?.state === "reopening" || browser?.state === "checking" ? "Relay is preparing the setup browser." : undefined;
+    : preparing ? preparingStage === "still" ? "Still preparing the setup browser…" : "Relay is preparing the setup browser." : undefined;
   const canReopen = browser?.state === "failed" || browser?.state === "closed";
   const statusReadFailed = port.unavailable === true && !failedMethod;
   const both = setup.methods.key && setup.methods.touch;
@@ -62,9 +66,12 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
     : both ? "Both devices are added. Go back to Relay to finish."
     : setup.listening ? "In Duo, add the matching device. Relay moves on once it sees it."
     : "In Duo, approve with your current method, then choose Other options and Manage devices.";
+  const waitingAttempt = methodState === "pending" ? draft?.methods[setup.method].attemptId ?? setup.method : setup.listening ? setup.method : undefined;
+  const waitStage = useWaitStage(waitingAttempt === undefined ? undefined : `${draft?.operationId}:${waitingAttempt}`);
   const status = statusReadFailed ? "Relay could not read the setup status. It keeps trying."
     : !setup.connected ? "Open this window from Relay to continue."
-    : setup.unavailable && !failedMethod ? "The Duo tab is closed. Reopen it to continue." : undefined;
+    : setup.unavailable && !failedMethod ? "The Duo tab is closed. Reopen it to continue."
+    : waitStage === "still" ? "Still waiting for Duo." : undefined;
   return <div className="hub-duo-setup">
     <a tabIndex={0} href="#setup-main" className="skip-link">Skip to setup</a>
     <header className="setup-brand"><AppLockup /><span>Duo setup</span></header>
@@ -95,7 +102,7 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
       {!statusReadFailed && status !== undefined && browserNotice === undefined && <p role="status" className="setup-notice" data-tone="info">{status}</p>}
     </main>
     <footer className="setup-footer">{closeFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{closeFailure}</p>}
-      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing} onClick={() => void closeReenrol("cancel")}>Cancel setup</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing} onClick={() => void closeReenrol("complete")}>Use new devices</Button></div>
+      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing !== undefined} aria-busy={closing === "cancel" || undefined} onClick={() => void closeReenrol("cancel")}>{closing === "cancel" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "cancel" ? "Cancelling…" : "Cancel setup"}</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing !== undefined} aria-busy={closing === "complete" || undefined} onClick={() => void closeReenrol("complete")}>{closing === "complete" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "complete" ? "Switching…" : "Use new devices"}</Button></div>
         : <div className="action-row"><Button variant="secondary" size="lg" onClick={() => window.close()}>Close</Button><Button variant={both ? "primary" : "secondary"} size="lg" onClick={() => setup.returnToParent()}>Back to Relay</Button></div>}
     </footer>
     <span className="sr-only" role="status">{summary}</span>

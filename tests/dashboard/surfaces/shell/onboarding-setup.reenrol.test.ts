@@ -44,3 +44,15 @@ it("switches through the served port when both methods are proven and shows a re
     assert.ok(f.button("Cancel setup"));
   } finally { await f.close(); }
 });
+
+it("sends one close command when both footer actions are pressed before React re-renders", async () => {
+  const calls: string[] = [];
+  const pending = (name: string) => () => { calls.push(name); return new Promise<never>(() => undefined); };
+  const f = await mount(draft({ key: done, touch: done }, "ready"), { complete: pending("complete"), cancel: pending("cancel") });
+  try {
+    const use = f.button("Use new devices"), cancel = f.button("Cancel setup"); assert.ok(use); assert.ok(cancel);
+    await act(async () => { use.click(); use.click(); cancel.click(); });
+    assert.deepEqual(calls, ["complete"]);
+    assert.equal(f.button("Switching…")?.getAttribute("aria-busy"), "true");
+  } finally { await f.close(); }
+});

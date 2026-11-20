@@ -8,7 +8,7 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
-import { createServedOnboardingPort, usePublicProfileSession, validateOnboarding, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, signInProblems, usePublicProfileSession, validateOnboarding, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("explains an existing profile on duplicate sign-up and offers Log in", async () => {
@@ -76,7 +76,7 @@ it("uses server authentication for Duo access and keeps a refused served login o
     assert.match(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "duo", authenticated: true })));
     assert.equal(host.querySelector("h1")?.textContent, "Set up Duo");
-    assert.match(host.textContent ?? "", /could not show the setup browser/);
+    assert.match(host.textContent ?? "", /Could not show the setup browser/);
     assert.doesNotMatch(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "login", authenticated: false })));
     for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]]) {
@@ -223,7 +223,7 @@ it("unknown enrollment copy directs checking Duo before starting that method ove
     assert.equal(host.querySelector("h1")?.textContent, "Set up Duo");
     assert.match(host.textContent ?? "", /Security keyNot confirmed/);
     assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
-    assert.match(host.textContent ?? "", /remove any device you do not recognize, then start it over in the setup browser/);
+    assert.match(host.textContent ?? "", /remove any device you do not recognize, then start over/);
     assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
     for (const state of ["pending", "unavailable"] as const) {
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
@@ -341,7 +341,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
     await act(async () => cancel.click());
     await act(async () => host.querySelector<HTMLButtonElement>("ol button")!.click());
     assert.equal(cancellations, 1);
-    assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /could not confirm|unknown|uncertain/i);
+    assert.equal(host.querySelector('[role="alert"]')?.textContent, "No reply from Relay. Reload the page to check.");
     const reopen = button(host.querySelector("footer")!, "Reopen"); assert.equal(reopen.disabled, true);
     for (const unproved of [{ ...port, readRevision: 2, unavailable: true }, { ...port, readRevision: 2, onboarding: { ...onboarding, profileId: "00000000-0000-4000-8000-000000000003" } }]) {
       await act(async () => root.render(createElement(Onboarding, { port: unproved, step: "duo", onStep() { assert.fail("cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
@@ -434,4 +434,185 @@ it("shows the catalog sentence and no password when the initial profile state is
     assert.equal(host.querySelector('input[name="password"]'), null);
     assert.equal(host.querySelector("form"), null);
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+const typeInto = async (host: HTMLElement, name: string, value: string) => act(async () => {
+  const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`); assert.ok(field);
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+});
+const loginPort = (submit: ServedOnboardingPort["submit"]): ServedOnboardingPort => ({ ...createServedOnboardingPort(createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("not called"); } }), () => {}), submit });
+
+it("a pending sign-in says so, locks the form and ignores a second submit dispatched before React re-renders", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  let calls = 0;
+  const port = loginPort(() => { calls++; return new Promise(() => undefined); });
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "login", onStep() {}, onDashboard() {}, port })));
+    await typeInto(host, "email", "fixture@ucsd.edu"); await typeInto(host, "password", "fixture-password");
+    const form = host.querySelector("form"); assert.ok(form);
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    assert.equal(calls, 1);
+    const button = host.querySelector<HTMLButtonElement>('button[type="submit"]'); assert.ok(button);
+    assert.equal(button.textContent, "Logging in…");
+    assert.equal(button.disabled, true);
+    assert.equal(button.getAttribute("aria-busy"), "true");
+    assert.ok([...host.querySelectorAll("input")].every(input => input.disabled));
+    assert.equal(host.querySelector(".text-link")?.getAttribute("aria-disabled"), "true");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+const submitForm = (host: HTMLElement) => act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+const formAlert = (host: HTMLElement) => host.querySelector("form p.form-error")?.textContent;
+
+it("a refused sign-in keeps the email, clears and focuses the password, and clears on typing and on an invalid resubmit", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const port = loginPort(async () => ({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }));
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "login", onStep() {}, onDashboard() {}, port })));
+    await typeInto(host, "email", "fixture@ucsd.edu"); await typeInto(host, "password", "wrong-password");
+    await submitForm(host);
+    assert.equal(formAlert(host), "Wrong email or password");
+    assert.equal(host.querySelector<HTMLInputElement>('input[name="email"]')?.value, "fixture@ucsd.edu");
+    assert.equal(host.querySelector<HTMLInputElement>('input[name="password"]')?.value, "");
+    assert.equal(document.activeElement, host.querySelector('input[name="password"]'));
+    await submitForm(host);
+    assert.equal(formAlert(host), "", "an invalid resubmit leaves only the field error");
+    await typeInto(host, "password", "wrong-again"); await submitForm(host);
+    assert.equal(formAlert(host), "Wrong email or password");
+    await typeInto(host, "password", "x");
+    assert.equal(formAlert(host), "");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+for (const [clearedBy, clear] of [
+  ["typing", async (host: HTMLElement) => typeInto(host, "email", "a")],
+  ["switching to Sign up", async (host: HTMLElement) => {
+    const signUp = [...host.querySelectorAll("a")].find(link => link.textContent === "Sign up"); assert.ok(signUp);
+    await act(async () => signUp.click());
+    assert.equal(host.querySelector("h1")?.textContent, "Create your profile");
+  }],
+] as const) it(`an error from the session clears on ${clearedBy}`, async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const port = loginPort(async () => { throw new Error("not called"); });
+  function Probe() {
+    const [step, onStep] = useState<OnboardingStep>("login");
+    return createElement(Onboarding, { step, onStep, onDashboard() {}, port, signInProblem: "Wrong email or password" });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.equal(formAlert(host), "Wrong email or password");
+    await clear(host);
+    assert.equal(formAlert(host), "");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("a failure that still applies stays visible while the operator types", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const unavailable = operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE");
+  const port = { ...loginPort(async () => { throw new Error("not called"); }), unavailable: true };
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "login", onStep() {}, onDashboard() {}, port, problem: unavailable, signInProblem: "Wrong email or password" })));
+    assert.equal(formAlert(host), unavailable);
+    await typeInto(host, "email", "fixture@ucsd.edu"); await typeInto(host, "password", "x");
+    assert.equal(formAlert(host), unavailable);
+    assert.equal(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled, true);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+for (const [code, shown, persists] of [
+  ["BROWSER_CLOSURE_UNPROVED", operatorFailureSentence("BROWSER_CLOSURE_UNPROVED"), true],
+  ["PROFILE_LOGOUT_BLOCKED", operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"), true],
+  ["PROFILE_SIGN_IN_REFUSED", "Wrong email or password", false],
+] as const) it(`a served ${code} refusal ${persists ? "stays while the operator types" : "clears when the operator types"}`, async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ state: "refused", code }) });
+  function Probe() {
+    const session = usePublicProfileSession(client, true);
+    return createElement(Onboarding, { step: "login", port: session.port, onStep() {}, onDashboard() {}, ...signInProblems(session.state, Boolean(session.failure)) });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await vi.waitFor(() => assert.equal(formAlert(host), shown));
+    await typeInto(host, "email", "fixture@ucsd.edu");
+    assert.equal(formAlert(host), persists ? shown : "");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("classifies served session states into failures that still apply and the answer to the last sign-in", () => {
+  assert.deepEqual(signInProblems({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }, true), { problem: operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"), signInProblem: undefined });
+  assert.deepEqual(signInProblems({ state: "cancelling", operationId: "00000000-0000-4000-8000-000000000001" }, false), { problem: operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"), signInProblem: undefined });
+  assert.deepEqual(signInProblems({ state: "signed-out", signUpRequired: false, logoutIncomplete: true }, false), { problem: operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE"), signInProblem: undefined });
+  assert.deepEqual(signInProblems({ state: "signed-out", signUpRequired: false }, false), { problem: undefined, signInProblem: undefined });
+});
+
+const idleMethod = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+const duoDraft = (key: typeof idleMethod | (Omit<typeof idleMethod, "state"> & { state: "pending" | "complete"; attemptId?: string }), touch: typeof key = idleMethod, browser: { state: "open" | "opening" | "reopening"; generation: number } = { state: "open", generation: 1 }) => ({
+  browser, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002",
+  step: key.state === "complete" && touch.state === "complete" ? "ready" as const : "duo" as const, methods: { key, touch } });
+const unusedCommand = async (): Promise<never> => { throw new Error("unexpected command"); };
+const duoPort = (onboarding: ReturnType<typeof duoDraft>, overrides: Partial<ServedOnboardingPort> = {}): ServedOnboardingPort => ({ onboarding, validate: validateOnboarding, submit: unusedCommand, complete: unusedCommand, cancel: unusedCommand,
+  cancelDuo: unusedCommand, start: unusedCommand, confirmDuo: unusedCommand, openPortal: unusedCommand, showBrowser: unusedCommand, reopenBrowser: unusedCommand, resume: unusedCommand, ...overrides });
+
+it("a Duo attempt says what it waits for and adds Still waiting after ten seconds, per attempt, without inventing a timeout", async () => {
+  vi.useFakeTimers();
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const pending = (attemptId: string) => ({ ...idleMethod, state: "pending" as const, attemptId });
+  const render = (attemptId: string) => act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(duoDraft(pending(attemptId))) })));
+  const line = () => host.querySelector(".window-state strong")?.textContent;
+  try {
+    await render("00000000-0000-4000-8000-000000000003");
+    assert.equal(line(), "Waiting for Duo to add Security key");
+    assert.equal(host.querySelector<HTMLButtonElement>(".actions button")?.disabled, false, "Cancel sign-up stays available");
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    assert.equal(line(), "Still waiting for Duo to add Security key");
+    await act(async () => { vi.advanceTimersByTime(3_600_000); });
+    assert.equal(line(), "Still waiting for Duo to add Security key", "only the setup owner ends an attempt");
+    assert.equal(host.querySelector(".actions button:last-child")?.textContent, "Show window");
+    await render("00000000-0000-4000-8000-000000000004");
+    assert.equal(line(), "Waiting for Duo to add Security key", "a new attempt starts its own wait");
+  } finally { vi.useRealTimers(); await act(async () => root.unmount()); host.remove(); }
+});
+
+it("opening the setup window says so and adds Still opening after ten seconds", async () => {
+  vi.useFakeTimers();
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(duoDraft(idleMethod, idleMethod, { state: "opening", generation: 1 })) })));
+    assert.equal(host.querySelector(".window-state strong")?.textContent, "Opening setup window…");
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    assert.equal(host.querySelector(".window-state strong")?.textContent, "Still opening setup window…");
+  } finally { vi.useRealTimers(); await act(async () => root.unmount()); host.remove(); }
+});
+
+it("Finish setup on the served Duo screen shows its own pending state, and a pending cancellation does not read as finishing", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const complete = { ...idleMethod, state: "complete" as const, attemptId: "00000000-0000-4000-8000-000000000003", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true };
+  const draft = duoDraft(complete, complete);
+  let completes = 0, cancels = 0;
+  const primary = () => host.querySelector<HTMLButtonElement>(".actions button:last-child");
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(draft, { complete: () => { completes++; return new Promise(() => undefined); } }) })));
+    assert.equal(primary()?.textContent, "Finish setup");
+    await act(async () => { primary()?.click(); primary()?.click(); });
+    assert.equal(completes, 1);
+    assert.equal(primary()?.textContent, "Finishing…");
+    assert.equal(primary()?.getAttribute("aria-busy"), "true");
+    await act(async () => root.unmount());
+    const second = createRoot(host);
+    await act(async () => second.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(draft, { cancel: () => { cancels++; return new Promise(() => undefined); } }) })));
+    const cancel = [...host.querySelectorAll<HTMLButtonElement>(".actions button")].find(button => button.textContent === "Cancel sign-up"); assert.ok(cancel);
+    await act(async () => cancel.click());
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent === "Cancel sign-up"); assert.ok(confirm);
+    await act(async () => confirm.click());
+    assert.equal(cancels, 1);
+    assert.equal(primary()?.textContent, "Finish setup");
+    assert.equal(primary()?.hasAttribute("aria-busy"), false);
+    assert.equal(cancel.textContent, "Cancelling…");
+    assert.equal(cancel.getAttribute("aria-busy"), "true");
+    await act(async () => second.unmount());
+  } finally { host.remove(); }
 });
