@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
 import type { StartupCleanup } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
@@ -71,6 +72,38 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
   } finally {
     for (const cleanup of startupCleanups.reverse()) await cleanup();
     vi.useRealTimers(); vi.restoreAllMocks();
+    await f.dispose();
+  }
+});
+
+it("degrades on a refused peer snapshot and rebuilds after the peer repairs it", async () => {
+  const f = await trustWorld();
+  const { database, world: { clock } } = f;
+  const projection = createOperatorProjection({ database, reader: f.service, clock, stateRoot: f.profile.stateRoot,
+    appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors: { resolve: () => personLookupDescriptor },
+    ledger: createTransactionHistory(database.authority) });
+  const loggingRepository = database.authority.timelineEvents;
+  const startupCleanups: StartupCleanup[] = [];
+  const peer = new DatabaseSync(f.profile.path);
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
+      lifecycle: f.service, loggingRepository, debugEvents: createDebugEventWriter({ repository: loggingRepository, clock, build: "test" }) });
+    const generation = projection.generation();
+    peer.exec("CREATE TABLE unexpected_peer_table (id INTEGER)");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      vi.advanceTimersByTime(250);
+      expect(projection.health()).toMatchObject({ state: "degraded", lastError: expect.stringContaining("run-search-index-rebuild-required") });
+    }
+    peer.exec("DROP TABLE unexpected_peer_table");
+    vi.advanceTimersByTime(250);
+    expect(projection.health().state).toBe("live");
+    expect(projection.generation()).toBeGreaterThan(generation);
+  } finally {
+    for (const cleanup of startupCleanups.reverse()) await cleanup();
+    peer.exec("DROP TABLE IF EXISTS unexpected_peer_table");
+    peer.close();
+    vi.useRealTimers();
     await f.dispose();
   }
 });

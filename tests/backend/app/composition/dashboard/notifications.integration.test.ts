@@ -23,6 +23,35 @@ describe("canonical notification producers", () => {
   });
 });
 
+it("resumes polling from the persisted storage-health sample when it is nearly due", async () => {
+  const f = await fixture();
+  const compose = () => createTrustNotifications({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock,
+    ids: sequentialIdFactory("health"), reader: f.reader, stateRoot: f.root }).observer;
+  try {
+    const first = compose();
+    try { await first.observe(); } finally { await first.stop(); }
+    const sampledAt = () => f.db.authority.notificationHealth.get("wal-growth")?.observedAt;
+    const original = f.clock.now().toISOString();
+    expect(sampledAt()).toBe(original);
+    f.clock.advanceWall(59_000);
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const resumed = compose();
+    const timer = startNotificationPolling(f.db, f.clock, resumed);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sampledAt()).toBe(original);
+      f.clock.advanceWall(1000);
+      f.clock.advanceMonotonic(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sampledAt()).toBe(f.clock.now().toISOString());
+    } finally {
+      clearInterval(timer);
+      await resumed.stop();
+      vi.useRealTimers();
+    }
+  } finally { await f.close(); }
+});
+
 it("publishes changed sources within one second while health is in flight and skips idle and unrelated ticks", async () => {
   const f = await fixture();
   const inspected = Promise.withResolvers<void>();

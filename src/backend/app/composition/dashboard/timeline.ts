@@ -108,8 +108,9 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       if (safety) safetyAt = elapsed + 60_000;
     } catch {
       key = undefined;
-      debugEvents.emit({ category: "boot", phase: "failed", correlationId: randomUUID(),
-        area: "timeline", reason: "projection-poll-failed" });
+      // An unreadable revision requires both passes; the projection owns degradation and rebuild.
+      projection.ingestFromTimeline();
+      projection.reconcileWorkerAuthority();
     }
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();

@@ -46,14 +46,24 @@ export function createTrustNotifications(input: { admission?: RuntimeAdmission; 
   const inbox = createNotificationInbox({ authority: database, clock, ids, runReader: input.reader, actorId: LOCAL_OPERATOR_ACTOR_ID });
   // A stop ends a backup inspection still running in the health pass instead of waiting for it.
   const healthStop = new AbortController(), signal = healthStop.signal;
+  const observeHealth = stateRoot === undefined ? undefined : createNotificationHealthObserver({ database, clock, inbox, signal,
+    read: () => readNotificationHealth({ admission: requireRuntimeAdmission(input.admission), database, clock, reader: input.reader, stateRoot, signal }) });
+  let healthDueAt = Infinity;
   const observation = createNotificationObserver({ inbox, read: () => readNotificationSources(database, input.reader),
-    health: stateRoot === undefined ? async () => {} : createNotificationHealthObserver({ database, clock, inbox, signal, read: () => readNotificationHealth({ admission: requireRuntimeAdmission(input.admission), database, clock, reader: input.reader, stateRoot, signal }) }),
+    health: async () => {
+      if (observeHealth === undefined) return;
+      await observeHealth();
+      if (signal.aborted) return;
+      const sample = database.authority.notificationHealth.get("wal-growth");
+      if (sample === undefined) throw new Error("missing wal-growth observation after storage health pass");
+      healthDueAt = Date.parse(sample.observedAt) + 60_000;
+    },
   });
-  const observer = Object.freeze({ ...observation, async stop() { healthStop.abort(); await observation.stop(); } });
+  const observer = Object.freeze({ ...observation, healthDueAt: () => healthDueAt, async stop() { healthStop.abort(); await observation.stop(); } });
   return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }
 
-export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createNotificationObserver>) {
+export function startNotificationPolling(database: AuthorityDatabase, clock: Clock, observation: ReturnType<typeof createTrustNotifications>["observer"]) {
   const revision = database.trackAuthorityTables(["runs", "deleted_runs", "run_failures", "run_receipts", "notifications"]);
   let observed = revision();
   const changed = () => {
@@ -66,7 +76,8 @@ export function startNotificationPolling(database: AuthorityDatabase, clock: Clo
   const safetyPass = () => {
     safetyAt = Infinity;
     void observation.observe().then(() => {
-      safetyAt = clock.monotonicMs() + (observation.status().state === "failed" ? GATE_PARK_WATCH_MS : 60_000);
+      const delay = observation.status().state === "failed" ? GATE_PARK_WATCH_MS : Math.min(60_000, observation.healthDueAt() - clock.nowMs());
+      safetyAt = clock.monotonicMs() + delay;
     });
   };
   safetyPass();
