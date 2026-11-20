@@ -33,6 +33,21 @@ import { CONFIG_SNAPSHOT, NOW, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../supp
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
+it("accepts the worker roster ceiling and refuses a count above it", () => {
+  const request = {
+    commandId: UUID_5,
+    requestedAt: NOW,
+    requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+    source: "dashboard",
+    family: "worker-browser",
+    type: "plan-worker-count",
+    target: { workflowId: "person-lookup", expectedVersion: 0 },
+  };
+
+  assert.equal(CommandRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 16 } }).success, true);
+  assert.equal(CommandRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 17 } }).success, false);
+});
+
 {
 const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];
 const opened: AuthorityDatabase[] = [];
