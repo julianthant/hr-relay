@@ -168,8 +168,7 @@ describe("failureStatus", () => {
       assert.equal(status, 500, marker);
       assert.equal(body.code, "INTERNAL_FAILURE", marker);
       assert.equal(body.retryable, false, marker);
-      // The message still reaches the operator verbatim — only the KIND moved.
-      assert.equal(body.message, `run 0f2c ${marker} on this host`, marker);
+      assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text, marker);
     }
   });
 
@@ -185,7 +184,7 @@ describe("failureStatus", () => {
     const { status, body } = failureStatus("the projection threw a string");
     assert.equal(status, 500);
     assert.equal(body.code, "INTERNAL_FAILURE");
-    assert.equal(body.message, "the projection threw a string");
+    assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
   });
 
   it("classifies a detector timeout ahead of the prepare refusal wrapper", async () => {

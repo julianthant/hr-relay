@@ -1,6 +1,7 @@
 import type { DashboardApp } from "./api-types.js";
 import { OcrSourceRefusedError, OCR_UPLOAD_MAX_BYTES, type OcrSourceService } from "../../../runs/commands/ocr-source-service.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { readBoundedUpload } from "./bounded-upload.js";
 import { wireError } from "./failure-status.js";
 import { verifiedByteResponse } from "./verified-byte-response.js";
 import { z } from "zod";
@@ -15,24 +16,6 @@ function uploadFileName(value: string | undefined): string {
   if (!parsed.success) throw new OcrSourceRefusedError();
   return parsed.data;
 }
-async function uploadBytes(request: Request): Promise<Uint8Array> {
-  if (request.body === null) throw new OcrSourceRefusedError();
-  const reader = request.body.getReader(), chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
-      if (size > OCR_UPLOAD_MAX_BYTES) { await reader.cancel(); throw new OcrSourceRefusedError(); }
-      chunks.push(chunk.value);
-    }
-  } finally { reader.releaseLock(); }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  return bytes;
-}
 export function registerOcrRoutes(app: DashboardApp, deps: OcrRouteDeps): void {
   app.get("/api/v1/runs/:runId/ocr/commands/:commandId", c => {
     if (deps.ocr === undefined) throw new OcrSourceRefusedError();
@@ -41,9 +24,13 @@ export function registerOcrRoutes(app: DashboardApp, deps: OcrRouteDeps): void {
   app.post("/api/v1/ocr/files", async c => {
     try {
       if (deps.ocr === undefined) throw new OcrSourceRefusedError();
+      const fileName = uploadFileName(c.req.header("x-relay-file-name"));
+      const body = c.req.raw.body;
+      if (body === null) throw new OcrSourceRefusedError();
+      const bytes = await readBoundedUpload(body, OCR_UPLOAD_MAX_BYTES);
+      if (bytes === undefined) throw new OcrSourceRefusedError();
       const source = await deps.ocr.upload({ actorId: c.get("requestActorId"),
-        fileName: uploadFileName(c.req.header("x-relay-file-name")), mediaType: c.req.header("content-type") ?? "",
-        bytes: await uploadBytes(c.req.raw) });
+        fileName, mediaType: c.req.header("content-type") ?? "", bytes });
       return c.json(source, 201);
     } catch (error) {
       if (error instanceof OcrSourceRefusedError) return c.json(wireError(error.code, ERROR_CATALOG.OCR_SOURCE_REFUSED.text, false), 422);

@@ -10,6 +10,7 @@ import readXlsxFile from "read-excel-file/node";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { CrossDateSearchPageSchema } from "../../../../../src/models/dashboard/search.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/record.js";
 import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/separations-run-fixtures.js";
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
@@ -102,7 +103,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const body = await json(response);
     assert.equal(response.status, 500);
     assert.equal(body.code, "INTERNAL_FAILURE");
-    assert.equal(body.message, "run-search-index-rebuild-required");
+    assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
     assert.equal("people" in body, false);
     assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(h.stateRoot, "state.db")), /invariant validation failed: run-completion-consequences/u);
     assert.equal(h.database.authority.runResults.get(missing.envelope.runId), undefined);
@@ -211,7 +212,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
       assert.equal(response.status, 500, corpusCase.dimension);
       assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
-      assert.equal(body.message, "run-search-index-rebuild-required", corpusCase.dimension);
+      assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text, corpusCase.dimension);
       assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
       restoreSearchRun(h, run);
     }
@@ -241,7 +242,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     assert.equal(response.status, 500);
     assert.equal(body.code, "INTERNAL_FAILURE");
-    assert.equal(body.message, "run-search-index-rebuild-required");
+    assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
     assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
     restoreSearchRun(h, run);
   });
