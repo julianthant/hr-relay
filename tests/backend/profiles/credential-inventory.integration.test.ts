@@ -42,3 +42,36 @@ it.each([2, 3])("requires a structurally valid version %d copy before certifying
     rmSync(profileRoot, { recursive: true, force: true });
   }
 });
+
+it("requires the historical request receipt on version 3 history entries", () => {
+  const profileRoot = mkdtempSync(join(tmpdir(), "inventory-legacy-receipt-"));
+  try {
+    const backup = join(profileRoot, "backup.json");
+    const input = { profileRoot, entriesAbsent: true, backupPaths: [backup], loginDataPaths: [], capturedSecretsComplete: true };
+    const lastApplied = {
+      commandId: "00000000-0000-4000-8000-000000000001",
+      writeId: "00000000-0000-4000-8000-000000000002",
+      commandFingerprint: "a".repeat(64),
+      expectedRevision: 1,
+      protectedSchemaHash: STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH,
+    };
+    const receipt = { ...lastApplied, updatedAt: "2026-01-01T00:00:00.000Z" };
+    const copy = {
+      schemaVersion: 3,
+      record: { schemaVersion: 1, revision: 2, protectedSchemaHash: STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH, entries: {}, lastApplied },
+    };
+    const writeCopy = (historyReceipt: typeof receipt & { requestReceipt?: string }) => writeFileSync(backup, JSON.stringify({
+      ...copy,
+      history: [{ receipt: historyReceipt, marked: { timekeeperName: { clear: true } }, setValueIds: {} }],
+    }), { mode: 0o600 });
+
+    writeCopy({ ...receipt, requestReceipt: "b".repeat(64) });
+    assert.equal(assessCredentialInventory(input).logoutComplete, true);
+    writeCopy(receipt);
+    const invalid = assessCredentialInventory(input);
+    assert.equal(invalid.logoutComplete, false);
+    assert.deepEqual(invalid.unknownFormats, [backup]);
+  } finally {
+    rmSync(profileRoot, { recursive: true, force: true });
+  }
+});

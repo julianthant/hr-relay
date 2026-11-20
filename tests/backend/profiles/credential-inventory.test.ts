@@ -25,7 +25,7 @@ function legacyCopy(timekeeperName: string): string {
       entries: { timekeeperName: { value: timekeeperName, valueId, updatedAt } },
       lastApplied,
     },
-    history: [{ receipt: { ...lastApplied, updatedAt }, marked: { timekeeperName: { set: "<set>" } }, setValueIds: { timekeeperName: valueId } }],
+    history: [{ receipt: { ...lastApplied, updatedAt, requestReceipt: "b".repeat(64) }, marked: { timekeeperName: { set: "<set>" } }, setValueIds: { timekeeperName: valueId } }],
   });
 }
 

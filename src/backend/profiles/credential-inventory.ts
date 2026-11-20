@@ -33,7 +33,7 @@ const LegacyCredentialCopySchema = z.discriminatedUnion("schemaVersion", [
     schemaVersion: z.literal(3),
     record: StoppedProtectedStoreRecordSchema,
     history: z.array(CredentialHistoryEntrySchema.extend({
-      receipt: CredentialHistoryEntrySchema.shape.receipt.extend({ requestReceipt: FingerprintSchema.optional() }),
+      receipt: CredentialHistoryEntrySchema.shape.receipt.extend({ requestReceipt: FingerprintSchema }),
     })),
   }),
 ]);
