@@ -30,6 +30,7 @@ import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-mo
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
 import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflows/workflow-catalog-model.js";
+import { PanelBoundary } from "../surfaces/shared/panel-boundary.js";
 import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
 import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
@@ -1212,6 +1213,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
+            <PanelBoundary resetKey={`${route.run ?? ""}:${logsAttempt}`} sentence="Couldn't show this run.">
             {route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               LogPreview !== undefined && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true)
               ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={runLogAction} />
@@ -1226,6 +1228,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 description={route.run === undefined ? "Select a run from the queue to open its logs." : dateError ?? (dayResource.state === "failed" ? "Select a run once the queue loads." : `Run ${route.run} is not in the loaded queue for ${day}. Select a run from this day.`)}
               /></PanelBody></Panel>
             )}
+            </PanelBoundary>
               </div>
             </div>
 
@@ -1239,10 +1242,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
+      <PanelBoundary resetKey={activeWorkflowId} sentence="Couldn't open the assistant." className="fixed bottom-2 right-2 z-50">
       <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} authority={authorityEpoch} onOpenSettings={openSettings} settingsOpen={settingsOpen} logoutOpen={logoutOpen} onLogoutOpenChange={setLogoutOpen} onLogout={() => leaveSettings(() => {
         if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
         else void onProfileLogout();
       })} />
+      </PanelBoundary>
       {/* The Sessions bar and its Ask control belong to the workflow workspace: every Settings page hides them. */}
       {!settingsOpen && (
         <SessionPanel
@@ -1256,6 +1261,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       )}
       {workflowComposition.harness?.Host && <workflowComposition.harness.Host />}
 
+      <PanelBoundary resetKey={activeWorkflowId} sentence="Couldn't open Start run." className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
       <RunLaunchHost
         controller={launch}
         hidden={route.settings !== undefined}
@@ -1276,6 +1282,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           setRoute({ ...route, intake: intakeSessionId });
         }}
       />
+      </PanelBoundary>
 
       {/* Destructive commands use their served blast-radius confirmation before dispatch. */}
       <ConfirmCommandDialog
