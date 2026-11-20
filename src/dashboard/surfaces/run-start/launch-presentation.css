@@ -12,7 +12,7 @@
   @apply text-body;
 }
 .launch-dialog {
-  @apply rounded-xl border-ui-stroke-control bg-ui-panel;
+  @apply bg-ui-panel;
   display: grid;
   overflow: clip;
   height: min(calc(100dvh - 2 * var(--ds-space-loose)), 40rem);
