@@ -22,6 +22,7 @@ import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
+import { recordDashboardFault } from "../../bootstrap/process-crash.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { createDashboardPreflight } from "../../preflight/dashboard-runners.js";
 import { composeRuntimePreflight } from "../../preflight/runtime-admission.js";
@@ -181,7 +182,12 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   context.attachSlowOperations(debugEvents);
   context.sessionBackups.start(ownedDiagnostics(database, debugEvents));
   startupCleanups.push(() => context.sessionBackups.requestCancellation());
-  const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents: ownedDiagnostics(database, debugEvents) });
+  const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, {
+    clock,
+    debugEvents: ownedDiagnostics(database, debugEvents),
+    onFault: error => recordDashboardFault({ stateRoot: machineAdmission.stateRoot, build: appVersion,
+      now: clock.now(), area: "event-loop", reason: "stall-diagnostic-failed", error }),
+  });
   startupCleanups.push(() => loopDelayMonitor.stop());
   chatGptAccount.setDebugEvents(debugEvents);
   const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });

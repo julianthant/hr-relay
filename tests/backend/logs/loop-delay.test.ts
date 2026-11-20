@@ -12,6 +12,11 @@ const histogram = vi.hoisted(() => ({
 }));
 vi.mock("node:perf_hooks", () => ({ monitorEventLoopDelay: () => histogram }));
 
+const monitorDeps = {
+  clock: systemClock,
+  onFault(error: unknown) { throw error; },
+};
+
 describe("dashboard event-loop stalls", () => {
   let monitor: ReturnType<typeof startLoopDelayMonitor> | undefined;
 
@@ -29,7 +34,7 @@ describe("dashboard event-loop stalls", () => {
   });
 
   it("starts the production monitor when the choice is unset", () => {
-    const deps = { clock: systemClock, debugEvents: { emit() { return undefined; } } };
+    const deps = { ...monitorDeps, debugEvents: { emit() { return undefined; } } };
     monitor = composeLoopDelayMonitor(undefined, deps);
     expect(histogram.enable).toHaveBeenCalledOnce();
     monitor.stop();
@@ -46,7 +51,7 @@ describe("dashboard event-loop stalls", () => {
   it("records the largest stall over 200 ms through the debug writer", () => {
     const { records, repository } = debugTimelineFixture();
     const debugEvents = createDebugEventWriter({ repository, clock: systemClock, build: "test" });
-    monitor = startLoopDelayMonitor({ clock: systemClock, debugEvents });
+    monitor = startLoopDelayMonitor({ ...monitorDeps, debugEvents });
     histogram.max = 201_000_000;
 
     vi.advanceTimersByTime(1000);
@@ -59,7 +64,7 @@ describe("dashboard event-loop stalls", () => {
 
   it("records at most one stall in ten seconds using monotonic time", () => {
     const { records, repository } = debugTimelineFixture();
-    monitor = startLoopDelayMonitor({ clock: systemClock,
+    monitor = startLoopDelayMonitor({ ...monitorDeps,
       debugEvents: createDebugEventWriter({ repository, clock: systemClock, build: "test" }) });
     histogram.max = 250_000_000;
     vi.advanceTimersByTime(1000);
@@ -76,7 +81,7 @@ describe("dashboard event-loop stalls", () => {
 
   it("keeps empty samples and delays up to 200 ms quiet", () => {
     const { records, repository } = debugTimelineFixture();
-    monitor = startLoopDelayMonitor({ clock: systemClock,
+    monitor = startLoopDelayMonitor({ ...monitorDeps,
       debugEvents: createDebugEventWriter({ repository, clock: systemClock, build: "test" }) });
     for (const nanoseconds of [0, 199_000_000, 200_000_000]) {
       histogram.max = nanoseconds;
@@ -87,7 +92,7 @@ describe("dashboard event-loop stalls", () => {
 
   it("discards each sampled window and stops sampling on shutdown", () => {
     const { records, repository } = debugTimelineFixture();
-    monitor = startLoopDelayMonitor({ clock: systemClock,
+    monitor = startLoopDelayMonitor({ ...monitorDeps,
       debugEvents: createDebugEventWriter({ repository, clock: systemClock, build: "test" }) });
     histogram.max = 300_000_000;
     vi.advanceTimersByTime(11_000);

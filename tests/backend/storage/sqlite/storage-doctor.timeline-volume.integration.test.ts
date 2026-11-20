@@ -170,7 +170,7 @@ describe("storage doctor on a long-lived timeline", () => {
       const beforeStall = timeline.highWaterMark();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
       const monitorClock = manualClock(new Date(NOW));
-      const monitor = startLoopDelayMonitor({ clock: monitorClock, debugEvents });
+      const monitor = startLoopDelayMonitor({ clock: monitorClock, debugEvents, onFault(error) { throw error; } });
       try {
         vi.advanceTimersByTime(1000);
         assert.equal(timeline.highWaterMark(), beforeStall);
