@@ -1,6 +1,6 @@
 import type { RefObject, ReactNode } from "react";
-import { Check, FlaskConical, X } from "lucide-react";
-import { useEffect } from "react";
+import { Check, CircleAlert, FlaskConical, X } from "lucide-react";
+import { useEffect, useId } from "react";
 import type { SurfaceField, InputRunSurface, TypedDateControl, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
@@ -358,6 +358,7 @@ export function TypedInput({
   /** the dialog's handle on the box, so an exit from a banner can focus it */
   inputRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
+  const errorBase = useId();
   const declaration = surface.typedInput;
   const values = declaration === undefined ? draft : { ...typedInputDefaults(declaration), ...draft };
   const mode = declaration === undefined ? undefined : typedInputMode(declaration, values);
@@ -399,8 +400,9 @@ export function TypedInput({
         {dates.map(control =>
           <RunListRow key={control.field} title={control.label} description={INPUT_NOTES[control.field]}>
             <div className="w-[var(--ds-w-body-control-standard)]"><DateInput className="w-full" hideLabel label={control.label} required={control.required} textEntry textDateFormat="MM/DD/YYYY"
-              value={typeof values[control.field] === "string" ? String(values[control.field]) : ""} onChange={next => onValue?.(control.field, next)} />
-              {preview.dateProblems?.[control.field] !== undefined && <p role="alert" className="m-0 mt-1 text-caption text-ui-danger">{preview.dateProblems[control.field]}</p>}</div>
+              value={typeof values[control.field] === "string" ? String(values[control.field]) : ""} onChange={next => onValue?.(control.field, next)}
+              {...(preview.dateProblems?.[control.field] === undefined ? {} : { errorId: `${errorBase}-${control.field}` })} />
+              {preview.dateProblems?.[control.field] !== undefined && <p id={`${errorBase}-${control.field}`} role="alert" className="m-0 mt-1 text-caption text-ui-danger">{preview.dateProblems[control.field]}</p>}</div>
           </RunListRow>)}
       </RunList>}
     </>}
@@ -408,6 +410,7 @@ export function TypedInput({
       : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
     {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
       {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className={cn("font-mono", preview.problem !== null && (preview.refusedIndexes === undefined || preview.refusedIndexes.includes(entry.index)) && "text-ui-danger")}>{entry.sourceText}</span>}>
+        {preview.problem !== null && preview.refusedIndexes?.includes(entry.index) === true && <span className="flex items-center gap-2 text-body text-ui-secondary"><CircleAlert aria-hidden className={`${dsIcon.md} text-ui-danger`} />Not valid</span>}
         {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
           onClick={() => {
             onText(entryText(preview.entries.filter(candidate => candidate.index !== entry.index)));
@@ -443,7 +446,7 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
     if (chosenSheetId === "" && worksheetsState === "ready" && worksheets.length > 0) onWorksheet(worksheets[0].sheetId);
   }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
   const title = "Reference spreadsheets";
-  const description = `Looks people up by ${requiredLabel}.`;
+  const description = `Spreadsheets this run looks people up in. Needs ${requiredLabel}.`;
   const options = sheets.map((sheet): PickerOption => {
     const uncoverable = sheet.worksheets.length === 0 && sheet.versions.length < 2;
     return { libraryId: sheet.libraryId, name: sheet.name, names: sheet.worksheets, pinned: sheet.pinned === true, disabled: uncoverable,
@@ -497,7 +500,7 @@ export function RunCheckRows({ sheets, busy, ...callbacks }: { sheets: readonly 
 /** The reference section of a workflow with no required spreadsheet: only the optional check. */
 export function RunCheckCard({ sheets, busy, catalogError, onRefresh, ...callbacks }: { sheets: readonly CheckSheet[]; busy: boolean; catalogError: string | null; onRefresh: () => void } & CheckCallbacks) {
   const title = "Reference spreadsheets";
-  const description = "Optional. Looks people up by Employee ID.";
+  const description = "Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.";
   return <div className="flex min-w-0 flex-col gap-3">
     {catalogError ? <RunSection title={title} description={description}><ReferenceFailure onRefresh={onRefresh} /></RunSection>
     : <SpreadsheetSection title={title} description={description} picker={<SpreadsheetPicker label="Add spreadsheet" options={checkOptions(sheets)} busy={busy} onPick={callbacks.onAdd} />}>

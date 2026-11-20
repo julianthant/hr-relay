@@ -1,4 +1,4 @@
-import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
+import { LAUNCH_CLEARED, useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StartCommandRequestSchema, CommandIdentityConflictError, type DashboardCommandRequest, type BulkRunCommandOutcome, type CommandResult } from "../../../rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
@@ -26,7 +26,13 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
   const [localOpen, setLocalOpen] = useState(initialOpen);
   const open = navigation?.start ?? localOpen;
   const routeSetStart = navigation?.setStart;
-  const setOpen = useCallback((next: boolean) => routeSetStart ? routeSetStart(next) : setLocalOpen(next), [routeSetStart]);
+  const routeUpdate = navigation?.update;
+  /** Closing also drops the dialog's coordinates, so the URL keeps nothing of it. */
+  const setOpen = useCallback((next: boolean) => {
+    if (routeSetStart === undefined || routeUpdate === undefined) { setLocalOpen(next); return; }
+    if (!next) routeUpdate(LAUNCH_CLEARED, "replace");
+    routeSetStart(next);
+  }, [routeSetStart, routeUpdate]);
   const [routedRerunSource, setRerunSource] = useViewState("launchRerun", undefined);
   const [rerunDraft, setRerunDraft] = useState<{ source: RerunLaunchSource; text: string; authority: object | undefined }>();
   // Route updates re-parse the whole view, so keep the source's identity while its value is unchanged.

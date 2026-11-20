@@ -9,7 +9,7 @@ import { projectStartSteps } from "../../../../src/backend/runs/start/step-selec
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { useRunLaunch } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
-import type { AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
+import { parseRoute, routeToSearch, type AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
@@ -57,10 +57,12 @@ describe("Start run without a reference-spreadsheet check", () => {
 });
 
 describe("closing Start run", () => {
-  for (const how of ["Escape", "Close", "Cancel"] as const) {
-    it(`leaves no launch coordinate in the route after ${how}`, async () => {
+  const cases = (["Escape", "Close", "Cancel"] as const).flatMap(how => (["Input", "Options"] as const).map(stage => [how, stage] as const));
+  for (const [how, stage] of cases) {
+    it(`leaves no launch coordinate in the URL after ${how} from ${stage}`, async () => {
       const descriptor = onboardingModule.descriptor;
       const workflows = [h.WORKFLOWS[0], workflowOf(descriptor)];
+      const opened = stage === "Input" ? descriptor.id : h.WORKFLOWS[0].workflowId;
       const client = noCompatibility().client;
       let seen: AppRouteState = { start: true };
       function Launcher() {
@@ -70,7 +72,7 @@ describe("closing Start run", () => {
           panelWorkflowId: h.WORKFLOWS[0].workflowId, actorId: h.ACTOR_ID, onOpenIntake() {} });
       }
       function Harness() {
-        const [route, setRoute] = useState<AppRouteState>({ start: true, view: { search: true, launchServed: descriptor.id, launchStage: "Input", launchCustomize: false } });
+        const [route, setRoute] = useState<AppRouteState>({ start: true, view: { search: true, launchServed: opened, launchStage: "Input", launchCustomize: false } });
         seen = route;
         return createElement(ViewNavigationProvider, { route, setRoute,
           children: createElement(DashboardClientProvider, { client,
@@ -82,6 +84,14 @@ describe("closing Start run", () => {
       const root = routedRoot;
       await act(async () => root.render(createElement(Harness)));
       await settleAll();
+      if (stage === "Options") {
+        const box = document.querySelector("textarea"); assert.ok(box);
+        await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(box, h.TYPED); box.dispatchEvent(new Event("input", { bubbles: true })); });
+        const next = h.buttons().find(candidate => h.buttonName(candidate) === "Continue"); assert.ok(next);
+        await act(async () => next.click());
+        await settleAll();
+        assert.equal(seen.view?.launchStage, "Options");
+      }
       if (how === "Escape") await act(async () => { document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
       else {
         const button = h.buttons().find(candidate => (how === "Close" ? h.buttonName(candidate) : (candidate.textContent ?? "").trim()) === how);
@@ -90,7 +100,13 @@ describe("closing Start run", () => {
       }
       await settleAll();
       assert.equal(seen.start, false, how);
-      assert.deepEqual(seen.view, { search: true }, how);
+      assert.deepEqual(Object.fromEntries(Object.entries(seen.view ?? {}).filter(([, value]) => value !== undefined)), { search: true }, how);
+      const search = routeToSearch(seen);
+      assert.doesNotMatch(search, /launch/u, search);
+      assert.deepEqual(parseRoute(search).view, { search: true });
+      const reloaded = parseRoute(search);
+      assert.equal(reloaded.start, false);
+      assert.equal(reloaded.view?.launchStage, undefined);
     });
   }
 });

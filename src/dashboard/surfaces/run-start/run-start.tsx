@@ -458,8 +458,9 @@ export function RunStartDialog({
     if (!next && rerunSource === undefined) {
       keptPending.current = JSON.stringify(draftRef.current) !== JSON.stringify(launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today));
     }
-    onOpenChange(next);
+    // The close event resets the routed stage, so it goes first and closing the route then drops every launch coordinate.
     if (!next) send({ type: "close" });
+    onOpenChange(next);
   }, [onOpenChange, send, rerunSource, workflows, workflowId, commandBinding?.authority.today]);
   useEffect(() => {
     if (!open) return;
@@ -471,7 +472,7 @@ export function RunStartDialog({
   }, [open]);
   useEffect(() => { if (!open) setDraftKept(false); }, [open]);
 
-  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Checks");
+  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Checks", open);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
   const fixCheck = (item: RunCheckRow) => {
@@ -619,9 +620,9 @@ export function RunStartDialog({
   const checkRows = <RunCheckRows sheets={checkSheets} busy={checkBusy} {...checkHandlers} />;
   const requiredLabelOf = (labels: readonly string[]) => labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels.join('');
   const referenceLoading = (description: string) => <div role="status" aria-label="Loading reference data"><RunList title="Reference spreadsheets" description={description}><RunListSkeleton rows={2} /></RunList></div>;
-  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? referenceLoading("Optional. Looks people up by Employee ID.")
+  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? referenceLoading("Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.")
     : <RunCheckCard sheets={checkSheets} busy={checkBusy} catalogError={library.catalogError} {...checkHandlers} onRefresh={() => void library.adapter.refreshCatalog()} />)
-    : <>{library.catalogLoading ? referenceLoading(`Looks people up by ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`) : types.map(typeId => {
+    : <>{library.catalogLoading ? referenceLoading(`Spreadsheets this run looks people up in. Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`) : types.map(typeId => {
     const draft = referenceDrafts[typeId];
     const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
     const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
@@ -750,7 +751,7 @@ export function RunStartDialog({
               <h3 className="text-control font-medium">Steps</h3>
               {workflow && <span className="text-control text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
               </div>
-              <p className="text-body text-ui-secondary">{isRerun ? "Choose steps. Status shows the earlier result." : "Reading steps can use typed values instead."}</p>
+              <p className="text-body text-ui-secondary">{isRerun ? "Choose steps. Status shows the earlier result." : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
 
             {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}

@@ -95,11 +95,3 @@ describe("notification composition and canonical navigation", () => {
     expect(client.runDetail).not.toHaveBeenCalled();
   });
 });
-
-describe("withoutLaunch", () => {
-  it("drops only the Start run coordinates", async () => {
-    const { withoutLaunch } = await import("../../../../src/dashboard/app/navigation/view-route-model.js");
-    assert.deepEqual(withoutLaunch({ launchServed: "x", launchStage: "Checks", launchCustomize: true, search: true }), { search: true });
-    assert.equal(withoutLaunch({ launchStage: "Input" }), undefined);
-  });
-});

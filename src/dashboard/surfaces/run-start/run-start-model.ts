@@ -46,14 +46,14 @@ function typedDates(surface: TypedInputSurface, mode: string, draft: TypedInputD
   }));
 }
 
-/** The date controls `typedDates` would refuse, with their declared wording. */
-function invalidDates(surface: TypedInputSurface, draft: TypedInputDraft): Record<string, string> {
+/** The date controls `typedDates` would refuse, with their declared wording; `entered` skips the ones still empty. */
+function invalidDates(surface: TypedInputSurface, draft: TypedInputDraft, entered = false): Record<string, string> {
   const mode = typedInputMode(surface, draft);
   if (mode === undefined) return {};
   return Object.fromEntries(typedDateControls(surface, mode.value).flatMap(control => {
     const value = draft[control.field];
     const text = typeof value === "string" ? value.trim() : "";
-    return (text === "" ? control.required : parseTypedDate(text) === undefined) ? [[control.field, control.refusal]] : [];
+    return (text === "" ? control.required && !entered : parseTypedDate(text) === undefined) ? [[control.field, control.refusal]] : [];
   }));
 }
 
@@ -190,7 +190,10 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
 }
 
 export function previewRunInput(surface: InputRunSurface, text: string, draft: TypedInputDraft = {}, sourceInput?: JsonValue): RunInputPreview {
-  if (text.trim().length === 0) return { entries: [], submissions: [], problem: null };
+  if (text.trim().length === 0) {
+    const dateProblems = surface.typedInput === undefined ? {} : invalidDates(surface.typedInput, draft, true);
+    return { entries: [], submissions: [], problem: null, ...(Object.keys(dateProblems).length === 0 ? {} : { dateProblems }) };
+  }
   try {
     if (surface.typedInput !== undefined) {
       const declaration = surface.typedInput;
@@ -527,7 +530,7 @@ export function toggleStepSelection(
 /** The footer's short reason while Continue is held; the sentence below stays as the refusal text. */
 export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
 /** The one sentence for a required reference spreadsheet that was never chosen. */
-export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet first.";
+export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
