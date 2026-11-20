@@ -253,7 +253,7 @@ function RenameDialogBody({
             <BulletList
               items={[
                 "It appears on the queue row and in the Run Panel.",
-                "The subject, the trace id and the run number are untouched, so everything in history still matches.",
+                "The subject and history are unchanged.",
                 "It is yours — nothing downstream reads it.",
               ]}
             />
