@@ -73,16 +73,19 @@ export function startNotificationPolling(database: AuthorityDatabase, clock: Clo
     return dirty;
   };
   let safetyAt = Infinity;
+  let healthDueAt = Infinity;
   const safetyPass = () => {
     safetyAt = Infinity;
+    healthDueAt = Infinity;
     void observation.observe().then(() => {
-      const delay = observation.status().state === "failed" ? GATE_PARK_WATCH_MS : Math.min(60_000, observation.healthDueAt() - clock.nowMs());
-      safetyAt = clock.monotonicMs() + delay;
+      const failed = observation.status().state === "failed";
+      safetyAt = clock.monotonicMs() + (failed ? GATE_PARK_WATCH_MS : 60_000);
+      if (!failed) healthDueAt = observation.healthDueAt();
     });
   };
   safetyPass();
   const timer = setInterval(() => {
-    if (clock.monotonicMs() >= safetyAt) safetyPass();
+    if (clock.monotonicMs() >= safetyAt || clock.nowMs() >= healthDueAt) safetyPass();
     else void observation.observeSources(changed);
   }, GATE_PARK_WATCH_MS);
   timer.unref();

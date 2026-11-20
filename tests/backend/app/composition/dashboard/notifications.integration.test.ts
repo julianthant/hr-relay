@@ -23,7 +23,10 @@ describe("canonical notification producers", () => {
   });
 });
 
-it("resumes polling from the persisted storage-health sample when it is nearly due", async () => {
+it.each([
+  { scenario: "when the sample is nearly due", ageAtResume: 59_000, wallAdvance: 1000 },
+  { scenario: "after a forward wall-clock correction", ageAtResume: 1000, wallAdvance: 60_000 },
+])("resumes polling from the persisted storage-health sample $scenario", async ({ ageAtResume, wallAdvance }) => {
   const f = await fixture();
   const compose = () => createTrustNotifications({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock,
     ids: sequentialIdFactory("health"), reader: f.reader, stateRoot: f.root }).observer;
@@ -33,14 +36,14 @@ it("resumes polling from the persisted storage-health sample when it is nearly d
     const sampledAt = () => f.db.authority.notificationHealth.get("wal-growth")?.observedAt;
     const original = f.clock.now().toISOString();
     expect(sampledAt()).toBe(original);
-    f.clock.advanceWall(59_000);
+    f.clock.advanceWall(ageAtResume);
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const resumed = compose();
     const timer = startNotificationPolling(f.db, f.clock, resumed);
     try {
       await vi.advanceTimersByTimeAsync(0);
       expect(sampledAt()).toBe(original);
-      f.clock.advanceWall(1000);
+      f.clock.advanceWall(wallAdvance);
       f.clock.advanceMonotonic(1000);
       await vi.advanceTimersByTimeAsync(1000);
       expect(sampledAt()).toBe(f.clock.now().toISOString());
