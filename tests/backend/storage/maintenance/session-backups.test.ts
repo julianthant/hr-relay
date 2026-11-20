@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSessionBackups, SESSION_BACKUP_INTERVAL_MS } from "../../../../src/backend/storage/maintenance/session-backups.js";
@@ -250,6 +250,36 @@ describe("hourly in-session backup", () => {
       undo();
       await expect(f.sessionBackups.check()).resolves.toBe("recent");
       expect(f.names(".session.sqlite.manifest.json")).toEqual(files.filter(name => name.endsWith(".session.sqlite.manifest.json") && name !== older));
+    });
+    it("keeps a future-dated session pair when the wall clock was set back between two valid pairs", async () => {
+      const f = await fixture();
+      const start = f.clock.now();
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      const files = allFiles(f);
+      f.clock.setWall(new Date(start.getTime() + 30 * MINUTE));
+      await expect(f.sessionBackups.check()).resolves.toBe("recent");
+      expect(allFiles(f)).toEqual(files);
+    });
+    it("holds retirement when a classified pair changed while the new backup was taken", async () => {
+      const f = await fixture();
+      await expect(f.sessionBackups.check()).resolves.toBe("taken");
+      const previous = f.names(".session.sqlite")[0];
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const request = AuthorityBackupService.prototype.request;
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
+        utimesSync(join(f.directory, previous), new Date(), new Date(Date.now() - MINUTE));
+        return request.apply(this, args);
+      });
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(f.names(".session.sqlite")).toHaveLength(2);
+      expect(f.names(".session.sqlite")).toContain(previous);
+      expect(f.names(".session.sqlite.manifest.json")).toHaveLength(2);
+      failedOnce(f);
+      await expect(f.sessionBackups.check()).resolves.toBe("recent");
+      expect(f.names(".session.sqlite")).toHaveLength(1);
+      expect(f.names(".session.sqlite")).not.toContain(previous);
     });
     it("retires no session pair when a newer backup of another kind cannot be read", async () => {
       const f = await fixture();

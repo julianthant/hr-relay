@@ -69,26 +69,32 @@ async function backupBytesMatch(path: string, manifest: AuthorityBackupManifest)
   return hash.digest("hex") === manifest.sha256;
 }
 
+/** A backup file and the sidecars SQLite may leave beside it. */
+function backupFiles(path: string): string[] { return [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]; }
+
 function removeBackupFiles(path: string): void {
-  for (const candidate of [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]) rmSync(candidate, { force: true });
+  for (const candidate of backupFiles(path)) rmSync(candidate, { force: true });
 }
 
-/** Removes every in-session backup but the kept one, manifest first so a backup never stands without its proof. */
-function retainOnlyNewestSessionBackup(admission: RuntimeAdmission, directory: string, keepFileName: string): void {
-  const names = readdirSync(directory), keepManifest = `${keepFileName}${ManifestSuffix}`;
-  const withManifest = new Set<string>();
-  for (const name of names.filter(entry => SessionManifest.test(entry))) {
-    const backupName = name.slice(0, -ManifestSuffix.length);
-    withManifest.add(backupName);
-    if (name === keepManifest) continue;
+/** A file as one pass classified it; its identity is "missing" when it was absent. */
+type FileProof = Readonly<{ path: string; identity: string }>;
+const proofs = (paths: readonly string[]): FileProof[] => paths.map(path => ({ path, identity: fileIdentity(path) }));
+
+/** What a pass over the session manifests established: the kept pair, and the files of pairs it proved older or invalid. */
+type SessionPlan = Readonly<{ keep: readonly FileProof[]; retire: readonly FileProof[] }>;
+
+function assertUnchanged(proof: FileProof): void {
+  if (fileIdentity(proof.path) !== proof.identity) throw new Error("session-backup-retirement-changed");
+}
+
+/** Removes exactly the classified files, manifest first so a backup never stands without its proof, while every file keeps the identity it was classified with. */
+function retire(admission: RuntimeAdmission, directory: string, plan: SessionPlan): void {
+  for (const proof of [...plan.keep, ...plan.retire]) assertUnchanged(proof);
+  for (const proof of plan.retire) {
+    if (proof.identity === "missing") continue;
+    assertUnchanged(proof);
     admission.assertAuthorityBackupWrite(directory);
-    rmSync(join(directory, name)); fsyncPath(directory);
-    removeBackupFiles(join(directory, backupName)); fsyncPath(directory);
-  }
-  for (const name of names.filter(entry => SessionBackupFile.test(entry))) {
-    if (name === keepFileName || withManifest.has(name)) continue;
-    admission.assertAuthorityBackupWrite(directory);
-    removeBackupFiles(join(directory, name)); fsyncPath(directory);
+    rmSync(proof.path); fsyncPath(directory);
   }
 }
 
@@ -103,32 +109,37 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
 
   /**
    * The newest manifest of this profile and authority database, named for its backup, whose bytes verify; only a copy proved invalid is passed over.
-   * everyCandidate verifies the older ones too, for a caller that deletes them. A passed verdict stands while both files keep their identity.
+   * forRetirement verifies the older ones too and lists, with the identities they were classified at, the files of every pair proved older or invalid
+   * and of every session backup without a manifest; a future-dated pair is neither. A passed verdict stands while both files keep their identity.
    */
-  const newestVerified = async (only?: RegExp, everyCandidate = false): Promise<VerifiedManifest | undefined> => {
-    if (!existsSync(directory)) return undefined;
-    const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
-    const binding = admission.profileBinding, nowMs = clock.nowMs(), candidates: Array<VerifiedManifest & { manifestPath: string; backup: AuthorityBackupManifest }> = [];
-    for (const name of readdirSync(directory).filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
-      const manifestPath = join(directory, name);
+  const classify = async (only?: RegExp, forRetirement = false): Promise<SessionPlan & { newest: VerifiedManifest | undefined }> => {
+    if (!existsSync(directory)) return { newest: undefined, keep: [], retire: [] };
+    const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource()), listed = readdirSync(directory);
+    const binding = admission.profileBinding, nowMs = clock.nowMs(), retired: FileProof[] = [];
+    const candidates: Array<VerifiedManifest & { pair: FileProof[]; backup: AuthorityBackupManifest }> = [];
+    for (const name of listed.filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
+      const manifestPath = join(directory, name), pair = proofs([manifestPath, ...backupFiles(manifestPath.slice(0, -ManifestSuffix.length))]);
       const manifest = readManifest(manifestPath);
       if (manifest === undefined || name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
-        || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== sourceIdentity || Date.parse(manifest.createdAt) > nowMs) continue;
-      candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, manifestPath, backup: manifest });
+        || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== sourceIdentity) { retired.push(...pair); continue; }
+      if (Date.parse(manifest.createdAt) > nowMs) continue;
+      candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, pair, backup: manifest });
     }
+    if (forRetirement) for (const name of listed.filter(entry => SessionBackupFile.test(entry) && !listed.includes(`${entry}${ManifestSuffix}`))) retired.push(...proofs(backupFiles(join(directory, name))));
     candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.name.localeCompare(left.name));
-    let newest: VerifiedManifest | undefined;
+    let newest: VerifiedManifest | undefined, keep: FileProof[] = [];
     for (const candidate of candidates) {
-      const backupPath = join(directory, candidate.backup.backupFileName), identity = `${fileIdentity(candidate.manifestPath)}|${fileIdentity(backupPath)}`;
-      if (passed.get(candidate.manifestPath) !== identity) {
-        passed.delete(candidate.manifestPath);
-        if (!await backupBytesMatch(backupPath, candidate.backup)) continue;
-        passed.set(candidate.manifestPath, identity);
+      const [manifest, backup] = candidate.pair, identity = `${manifest.identity}|${backup.identity}`;
+      if (passed.get(manifest.path) !== identity) {
+        passed.delete(manifest.path);
+        if (!await backupBytesMatch(backup.path, candidate.backup)) { retired.push(...candidate.pair); continue; }
+        passed.set(manifest.path, identity);
       }
-      newest ??= { name: candidate.name, createdAt: candidate.createdAt, authorityGeneration: candidate.authorityGeneration };
-      if (!everyCandidate) break;
+      if (newest === undefined) { newest = { name: candidate.name, createdAt: candidate.createdAt, authorityGeneration: candidate.authorityGeneration }; keep = candidate.pair; }
+      else retired.push(...candidate.pair);
+      if (!forRetirement) break;
     }
-    return newest;
+    return { newest, keep, retire: retired };
   };
 
   const stopScheduler = (): void => {
@@ -156,7 +167,8 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     catch { /* A failed diagnostic append must not turn a kept backup into a rejected check. */ }
   };
 
-  const take = async (): Promise<SessionBackupCheck> => {
+  /** previous is the session plan of this same pass; the fresh pair replaces its kept pair. */
+  const take = async (previous: SessionPlan): Promise<SessionBackupCheck> => {
     const copies: string[] = [];
     let closureUnproved = false;
     try {
@@ -164,7 +176,8 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       const result = await service.request({ trigger: "interval", requiredGeneration: database.getMeta().authorityGeneration });
       const fresh = result.manifests.at(-1);
       if (fresh === undefined) throw new Error("session-backup-result-missing");
-      retainOnlyNewestSessionBackup(admission, directory, fresh.backupFileName);
+      const freshPath = join(directory, fresh.backupFileName);
+      retire(admission, directory, { keep: proofs([`${freshPath}${ManifestSuffix}`, freshPath]), retire: [...previous.keep, ...previous.retire] });
       return "taken";
     } catch (error) {
       closureUnproved = hasUnprovedSourceClosure(error);
@@ -185,15 +198,16 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     if (closureFailure !== undefined) return "failed";
     if (stopped) return "stopped";
     // An interrupted replacement leaves two verified pairs; only the newest stays, once every lookup of this pass settled.
-    const session = await newestVerified(SessionManifest, true);
-    const newest = await newestVerified();
-    if (session !== undefined) retainOnlyNewestSessionBackup(admission, directory, session.name.slice(0, -ManifestSuffix.length));
+    const session = await classify(SessionManifest, true);
+    const { newest } = await classify();
+    let previous: SessionPlan = session;
+    if (session.newest !== undefined) { retire(admission, directory, session); previous = { keep: session.keep, retire: [] }; }
     if (newest !== undefined) {
       if (clock.nowMs() - Date.parse(newest.createdAt) <= SESSION_BACKUP_INTERVAL_MS) return "recent";
       if (newest.authorityGeneration === database.getMeta().authorityGeneration) return "unchanged";
     }
     if (lastFailureMonotonicMs !== undefined && clock.monotonicMs() - lastFailureMonotonicMs < RETRY_AFTER_FAILURE_MS) return "failed";
-    return take();
+    return take(previous);
   };
 
   const settleFailure = (error: unknown): SessionBackupCheck => {
