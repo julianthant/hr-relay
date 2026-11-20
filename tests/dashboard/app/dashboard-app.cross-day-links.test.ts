@@ -82,7 +82,7 @@ for (const failure of ['missing','wrong-parent','owner-trace','read-failed','wro
   await vi.waitFor(() => assert.ok(f.host.textContent?.includes('Workflow unavailable')));
   assert.equal(window.location.search,before);
   assert.equal(f.preferences.snapshot().value.selectedWorkflowId,preference);
-  assert.equal(f.host.textContent?.includes('Discard unsaved settings?'),false);
+  assert.equal(f.host.textContent?.includes('Discard changes?'),false);
 });
 
 it('drops an old owner revision while exact related-run reads are pending',async () => {
@@ -118,7 +118,7 @@ it.each(['ready','read-failed'] as const)('leaves a new dirty Settings draft unt
   assert.equal(window.location.search,before);
   assert.equal(f.preferences.snapshot().value.selectedWorkflowId,preference);
   assert.equal(date()?.value,edited);
-  assert.equal(f.host.textContent?.includes('Discard unsaved settings?'),false);
+  assert.equal(f.host.textContent?.includes('Discard changes?'),false);
   assert.equal(f.host.textContent?.includes('Workflow unavailable'),false);
 });
 

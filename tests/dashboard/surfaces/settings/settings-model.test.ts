@@ -126,10 +126,9 @@ describe("canonical Settings navigation", () => {
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
   });
 
-  it("names the retired Archive destination without hiding a stored-data failure or rendering Archive", async () => {
+  it("opens the first section for the retired Archive destination without hiding a load failure or rendering Archive", async () => {
     const page = await mountFailedRead("archive");
-    assert.match(page.textContent ?? "", /Archive page removed/u);
-    assert.match(page.textContent ?? "", /Existing stored run data has not been deleted/u);
+    assert.doesNotMatch(page.textContent ?? "", /Archive page removed/u);
     assert.match(page.textContent ?? "", /Couldn't load settings\./u);
     assert.equal(page.querySelector('a[href="?settings=archive"]'), null);
     assert.equal(page.querySelector('[aria-label="Archive"]'), null);

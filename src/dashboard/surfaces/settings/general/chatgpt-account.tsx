@@ -116,7 +116,7 @@ export function ChatGptAccountSettings({ port: override, grouped = false }: { po
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect"}</Button>}
           </div>} />;
   const dialog = confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
-      <DialogContent size="sm" title="Disconnect ChatGPT?" description="Relay forgets this account; the assistant and OCR stop until you connect again.">
+      <DialogContent size="sm" title="Disconnect ChatGPT?" description="The assistant and OCR stop until you sign in again.">
         <DialogFooter>
           <Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
           <Button variant="danger" onClick={() => { void disconnect(); }}>Disconnect</Button>

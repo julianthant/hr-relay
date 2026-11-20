@@ -13,15 +13,15 @@ export interface AccountValues {
   readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
 }
-export interface AccountPage { readonly values: AccountValues; readonly onSignOut: () => void; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
+export interface AccountPage { readonly values: AccountValues; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
 
 function Group({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return <BodySection title={label} description={description}><FormGroup label={label}>{children}</FormGroup></BodySection>;
 }
 
-/** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status with Sign out, and Delete account. */
+/** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status, and Delete account. */
 export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
-  const { onSignOut, onDuoSetup, login } = page;
+  const { onDuoSetup, login } = page;
   const [saved, setSaved] = useState<{ readonly base: string; readonly values: AccountValues } | undefined>();
   const base = JSON.stringify(page.values);
   // A saved result overrides the served values only until the served account itself changes.
@@ -57,7 +57,6 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     </Group>
     <Group label="Security">
       <ResultRow label="Duo" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">Ready</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />
-      <ResultRow label="Session" value={<Button variant="secondary" onClick={onSignOut}>Log out</Button>} />
     </Group>
     {deleteAccount}
   </section>;
@@ -67,8 +66,8 @@ export type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeReq
 export type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
 
 /** A value row whose pencil opens a dialog; Cancel and Escape close it and return focus to the pencil. */
-export function PencilRow({ label, description, shown, pencilLabel, title, disabled, dialog }: {
-  label: string; description?: string; shown: string; pencilLabel: string; title: string; disabled?: boolean;
+export function PencilRow({ label, description, shown, pencilLabel, title, editable = true, dialog }: {
+  label: string; description?: string; shown: string; pencilLabel: string; title: string; editable?: boolean;
   dialog: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -77,7 +76,7 @@ export function PencilRow({ label, description, shown, pencilLabel, title, disab
   return <>
     <ResultRow label={label} description={description} value={<span className="inline-flex items-center justify-end gap-3">
       <span className="text-ui-primary">{shown}</span>
-      <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" disabled={disabled === true} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
+      {editable ? <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} /> : <span aria-hidden className="size-6" />}
     </span>} />
     {open && <Dialog open onOpenChange={next => { if (!next) close(); }}>
       <DialogContent size="sm" title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
@@ -144,7 +143,7 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
     return undefined;
   };
   return <>
-    <PencilRow label="Username" description={username === undefined ? "Set under UCPath sign-in; workflows need it." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
+    <PencilRow label="Username" shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" editable={username !== undefined}
       dialog={close => <UsernameDialog close={close} onSave={(current, next) => apply("username", current, next)} />} />
     <PencilRow label="Password" shown="••••••••" pencilLabel="Change Relay password" title="Change password"
       dialog={close => <PasswordDialog close={close} onSave={(current, next) => apply("password", current, next)} />} />

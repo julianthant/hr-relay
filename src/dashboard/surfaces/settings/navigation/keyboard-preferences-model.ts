@@ -3,23 +3,31 @@ import { NEUTRAL_PERSON_PREFERENCES, ShortcutPreferencesSchema, type ShortcutPre
 import { PersonPreferencesContext, usePersonPreferences, type PersonPreferencesPort } from "../../../lib/person-preferences.js";
 
 export const SHORTCUT_ACTIONS = [
-  { id: 'search', title: 'Search runs', description: 'Find a run by name, subject, workflow or status.', defaults: ['/'] },
-  { id: 'start', title: 'Start a run', description: 'Start a new run from any available workflow.', defaults: ['r'] },
-  { id: 'next', title: 'Next run', description: 'Move down the visible queue.', defaults: ['j', 'ArrowDown'] },
-  { id: 'previous', title: 'Previous run', description: 'Move up the visible queue.', defaults: ['k', 'ArrowUp'] },
-  { id: 'attention', title: 'Next run needing you', description: 'Jump to the next run waiting for a decision.', defaults: ['n'] },
+  { id: 'search', title: 'Search runs', defaults: ['/'] },
+  { id: 'start', title: 'Start a run', defaults: ['r'] },
+  { id: 'next', title: 'Next run', defaults: ['j', 'ArrowDown'] },
+  { id: 'previous', title: 'Previous run', defaults: ['k', 'ArrowUp'] },
+  { id: 'attention', title: 'Next run needing you', defaults: ['n'] },
 ] as const;
 export type ShortcutAction = typeof SHORTCUT_ACTIONS[number]['id'];
 /** The assistant composer's send key; Command and Ctrl both count as the modifier. */
 export const SEND_SHORTCUT_OPTIONS = [{ value: 'enter', label: 'Enter' }, { value: 'mod-enter', label: '⌘Enter' }] as const;
-export const SEND_SHORTCUT_TERMS = 'send shortcut choose which keys send a message in the assistant';
+export const SEND_SHORTCUT_TERMS = 'send shortcut';
 export { type ShortcutPreferences } from "../../../../models/config/person-preferences.js";
 export const DEFAULT_SHORTCUT_PREFERENCES = NEUTRAL_PERSON_PREFERENCES.shortcuts;
-export function validateShortcutPreferences(value: unknown): ShortcutPreferences { return ShortcutPreferencesSchema.parse(value); }
+/** A refused shortcut change, carrying the one sentence the operator reads. */
+export class ShortcutRefusedError extends Error {
+  constructor(readonly sentence: string) { super(sentence); this.name = "ShortcutRefusedError"; }
+}
+export function validateShortcutPreferences(value: unknown): ShortcutPreferences {
+  const parsed = ShortcutPreferencesSchema.safeParse(value);
+  if (!parsed.success) throw new ShortcutRefusedError(parsed.error.issues[0]?.message ?? "That shortcut isn't allowed.");
+  return parsed.data;
+}
 export async function saveShortcutPreferences(value: ShortcutPreferences, port: PersonPreferencesPort): Promise<boolean> {
   const validated = validateShortcutPreferences(value);
   const patch = { "preferences.shortcuts.numberMode": { set: validated.numberMode },
-    ...Object.fromEntries(Object.entries(validated.bindings).map(([action, keys]) => [`preferences.shortcuts.bindings.${action}`, { set: keys }])) };
+    ...Object.fromEntries(Object.entries(validated.bindings).map(([action, keys]) => [`preferences.shortcuts.bindings.${action}`, { set: [...keys] }])) };
   return port.change(patch);
 }
 export function useShortcutPreferences(): ShortcutPreferences { return usePersonPreferences().value.shortcuts; }

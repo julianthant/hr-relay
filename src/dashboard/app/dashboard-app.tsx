@@ -243,12 +243,12 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onProfileLogout={publicProfile.logout}
           deleteAccount={session?.state === "active" && session.duoState === "ready"
             ? <DeleteAccountControl key={`${session.profileId}:${session.epoch}`} presentation={publicProfile.accountDeletion.state === "idle"
-              ? { state: "ready", personName: boot.actor.label, onConfirm: () => { void publicProfile.deleteAccount(); } }
-              : publicProfile.accountDeletion.state === "deleting" ? { state: "deleting", personName: boot.actor.label }
-                : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
+              ? { state: "ready", personName: session.account?.name ?? boot.actor.label, onConfirm: () => { void publicProfile.deleteAccount(); } }
+              : publicProfile.accountDeletion.state === "deleting" ? { state: "deleting", personName: session.account?.name ?? boot.actor.label }
+                : { state: publicProfile.accountDeletion.state, personName: session.account?.name ?? boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, onSignOut: () => { void publicProfile.logout(); }, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
+          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
