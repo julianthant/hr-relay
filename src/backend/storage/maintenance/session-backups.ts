@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fsyncPath } from "../private-path.js";
@@ -128,8 +129,8 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     }
     if (forRetirement) for (const name of listed.filter(entry => SessionBackupFile.test(entry) && !listed.includes(`${entry}${ManifestSuffix}`))) {
       // The manifest's confirmed absence is part of the proof: one published during the pass makes this a pair again.
-      const path = join(directory, name);
-      retired.push(...proofs([`${path}${ManifestSuffix}`, ...backupFiles(path)]));
+      const path = join(directory, name), orphan = proofs([`${path}${ManifestSuffix}`, ...backupFiles(path)]);
+      if (orphan[0].identity === "missing") retired.push(...orphan);
     }
     candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.name.localeCompare(left.name));
     let newest: VerifiedManifest | undefined, keep: FileProof[] = [];
@@ -184,8 +185,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       // The request verified the fresh pair; its files are observed and verified again so the proof binds these exact files.
       const freshPath = join(directory, fresh.backupFileName), keep = proofs([`${freshPath}${ManifestSuffix}`, ...backupFiles(freshPath)]);
       const written = readManifest(`${freshPath}${ManifestSuffix}`);
-      if (written === undefined || written.backupFileName !== fresh.backupFileName || written.sha256 !== fresh.sha256 || written.byteSize !== fresh.byteSize
-        || !await backupBytesMatch(freshPath, written)) throw new Error("session-backup-fresh-unproved");
+      if (written === undefined || canonicalJsonStringify(written) !== canonicalJsonStringify(fresh) || !await backupBytesMatch(freshPath, written)) throw new Error("session-backup-fresh-unproved");
       retire(admission, directory, { keep, retire: [...previous.keep, ...previous.retire] });
       return "taken";
     } catch (error) {
@@ -209,13 +209,14 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     // An interrupted replacement leaves two verified pairs; only the newest stays, once every lookup of this pass settled.
     const session = await classify(SessionManifest, true);
     const { newest } = await classify();
-    // A pass that takes a new copy carries its plan forward instead.
+    // A pass that needs a new copy carries its plan forward instead.
     const settled = (outcome: SessionBackupCheck): SessionBackupCheck => { if (session.newest !== undefined) retire(admission, directory, session); return outcome; };
     if (newest !== undefined) {
       if (clock.nowMs() - Date.parse(newest.createdAt) <= SESSION_BACKUP_INTERVAL_MS) return settled("recent");
       if (newest.authorityGeneration === database.getMeta().authorityGeneration) return settled("unchanged");
     }
-    if (lastFailureMonotonicMs !== undefined && clock.monotonicMs() - lastFailureMonotonicMs < RETRY_AFTER_FAILURE_MS) return settled("failed");
+    // A pass that needs a new copy but may not take one yet retires nothing.
+    if (lastFailureMonotonicMs !== undefined && clock.monotonicMs() - lastFailureMonotonicMs < RETRY_AFTER_FAILURE_MS) return "failed";
     return take(session);
   };
 
