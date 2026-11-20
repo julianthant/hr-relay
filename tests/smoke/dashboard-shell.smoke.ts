@@ -21,7 +21,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
   });
 }
 
-test("the collapsed sidebar still reaches every destination", async ({ dashboard, failures, page }) => {
+test("the collapsed sidebar still opens a workflow and a data page", async ({ dashboard, failures, page }) => {
   failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
   await dashboard.open();
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
@@ -32,7 +32,7 @@ test("the collapsed sidebar still reaches every destination", async ({ dashboard
   await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
 });
 
-test("search lists runs for a workflow name and opens the chosen run", async ({ dashboard, page, seeded }) => {
+test("search lists runs for a workflow name and opens the chosen run", async ({ dashboard, page }) => {
   await dashboard.open();
   await page.getByRole("button", { name: "Search", exact: true }).click();
   const query = page.getByRole("combobox", { name: "Search Relay" });
@@ -41,31 +41,40 @@ test("search lists runs for a workflow name and opens the chosen run", async ({ 
   const result = page.getByRole("listbox", { name: "Results" }).getByRole("option", { name: /Done/ });
   await expect(result).toHaveCount(1);
   await result.click();
-  await expect(page).toHaveURL(new RegExp(`[?&]run=${seeded.runIds.doneRun}(&|$)`));
-  await expect(dashboard.runPanel).toBeVisible();
+  await dashboard.expectRunOpen(dashboard.runId("doneRun"));
 });
 
-test("search with no match says so and closes on Escape", async ({ dashboard, page }) => {
+test("search shows the empty state for a query with no match", async ({ dashboard, page }) => {
   await dashboard.open();
   const opener = page.getByRole("button", { name: "Search", exact: true });
   await opener.click();
   const query = page.getByRole("combobox", { name: "Search Relay" });
   await query.fill("no such thing anywhere");
-  await expect(page.getByText("No matches")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(page.getByRole("status").filter({ hasText: "No matches" })).toBeVisible();
+});
+
+test("Escape closes search when the query is empty", async ({ dashboard, page }) => {
+  await dashboard.open();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const query = page.getByRole("combobox", { name: "Search Relay" });
+  await expect(query).toHaveValue("");
   await page.keyboard.press("Escape");
   await expect(query).toBeHidden();
 });
 
-test("the first Escape clears a search query and the second closes search", async ({ dashboard, page }) => {
-  test.fail(true, "One Escape closes search with a query typed; the documented behaviour clears the query first.");
+test("the first Escape clears a search query and the second closes search", async ({ dashboard, failures, page }) => {
   await dashboard.open();
   await page.getByRole("button", { name: "Search", exact: true }).click();
   const query = page.getByRole("combobox", { name: "Search Relay" });
   await query.fill("person");
+  await expect(query).toHaveValue("person");
+  failures.check();
+  test.fail(true, "One Escape closes search with a query typed. The documented behaviour clears the query first.");
   await page.keyboard.press("Escape");
   await expect(query).toBeVisible();
   await expect(query).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(query).toBeHidden();
 });
 
 test("the bell swaps the sidebar to notifications and back", async ({ dashboard, page }) => {

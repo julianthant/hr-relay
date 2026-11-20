@@ -23,27 +23,37 @@ test("the dashboard's scripts and styles stay inside their size budgets", () => 
 test("a cold load reaches the queue quickly", async ({ dashboard, page }) => {
   await dashboard.open();
   await expect(dashboard.queue).toBeVisible();
-  const timing = await page.evaluate(() => {
-    const [navigation] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
-    const paint = performance.getEntriesByName("first-contentful-paint")[0];
-    return { domContentLoaded: navigation?.domContentLoadedEventEnd ?? Number.NaN, firstContentfulPaint: paint?.startTime ?? Number.NaN };
-  });
   // Local runs measure about 0.1 s; the budget only catches an order-of-magnitude regression on a shared runner.
-  expect(timing.domContentLoaded, "DOMContentLoaded in ms").toBeLessThan(3_000);
-  expect(timing.firstContentfulPaint, "first contentful paint in ms").toBeLessThan(3_000);
+  await expect.poll(() => page.evaluate(() => {
+    const [navigation] = performance.getEntriesByType("navigation");
+    return navigation instanceof PerformanceNavigationTiming && navigation.domContentLoadedEventEnd > 0
+      ? navigation.domContentLoadedEventEnd : Infinity;
+  }), { message: "DOMContentLoaded in ms" }).toBeLessThan(3_000);
+  await expect.poll(() => page.evaluate(() => {
+    const [paint] = performance.getEntriesByName("first-contentful-paint", "paint");
+    return paint?.startTime ?? Infinity;
+  }), { message: "first contentful paint in ms" }).toBeLessThan(3_000);
 });
 
-test("an idle dashboard does not write styles every frame", async ({ dashboard, page }) => {
-  test.fail(true, "The Ask mark's idle orbit rewrites an inline transform on every animation frame.");
+test("an idle dashboard does not write styles every frame", async ({ dashboard, failures, page }) => {
   await dashboard.open();
   await expect(dashboard.queue).toBeVisible();
   const styleWrites = await page.evaluate(async () => {
     let writes = 0;
     const observer = new MutationObserver(records => { writes += records.length; });
     observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["style"] });
-    await new Promise(resolve => setTimeout(resolve, 2_000));
+    const end = performance.now() + 2_000;
+    await new Promise<void>(resolve => {
+      const sample = (frameTime: number): void => {
+        if (frameTime >= end) resolve();
+        else requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
     observer.disconnect();
     return writes;
   });
+  failures.check();
+  test.fail(true, "The Ask mark's idle orbit rewrites an inline transform on every animation frame.");
   expect(styleWrites, "inline style writes in two idle seconds").toBeLessThan(20);
 });

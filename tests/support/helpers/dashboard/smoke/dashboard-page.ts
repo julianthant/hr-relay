@@ -22,26 +22,20 @@ export class DashboardPage {
     this.runPanel = page.getByRole("region", { name: "Selected run logs" });
     // An empty queue offers a second Start run in its body; the toolbar's is always present.
     this.startRunButton = page.getByRole("group", { name: "Action panel controls" }).getByRole("button", { name: "Start run", exact: true });
-    this.dialog = page.getByRole("dialog");
+    this.dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
   }
 
-  url(params: Readonly<Record<string, string>> = {}): string {
+  async open(): Promise<void> {
     const url = new URL("/", this.server.baseUrl);
     url.searchParams.set("day", this.server.day);
-    for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
-    return url.toString();
-  }
-
-  /** Loads the dashboard on the seeded day and waits for the shell. */
-  async open(params: Readonly<Record<string, string>> = {}): Promise<void> {
-    await this.page.goto(this.url(params));
+    await this.page.goto(url.toString());
     await expect(this.sidebar).toBeVisible();
   }
 
   pageHeading(name: string | RegExp): Locator {
-    return this.page.getByRole("heading", { level: 1, name });
+    return this.page.getByRole("heading", { level: 1, name, exact: true });
   }
 
   async openWorkflow(label: string): Promise<void> {
@@ -54,13 +48,19 @@ export class DashboardPage {
     await expect(this.pageHeading(label)).toBeVisible();
   }
 
-  queueRow(runId: string): Locator {
-    return this.page.locator(`[data-demo-row-id="${runId}"]`).first();
+  runId(key: string): string {
+    const runId = this.server.runIds[key];
+    if (runId === undefined) throw new Error(`Missing seeded run: ${key}`);
+    return runId;
   }
 
   async openRun(runId: string): Promise<void> {
-    await this.queueRow(runId).click();
-    await expect(this.page).toHaveURL(new RegExp(`[?&]run=${runId}(&|$)`));
+    await this.queue.getByRole("button").and(this.page.locator(`[data-demo-row-id="${runId}"]`)).click();
+    await this.expectRunOpen(runId);
+  }
+
+  async expectRunOpen(runId: string): Promise<void> {
+    await expect(this.page).toHaveURL(url => url.searchParams.get("run") === runId);
     await expect(this.runPanel).toBeVisible();
   }
 
@@ -71,10 +71,9 @@ export class DashboardPage {
 
   /** The document must not scroll sideways at a supported desktop size. */
   async expectNoSidewaysScroll(): Promise<void> {
-    const overflow = await this.page.evaluate(() => {
+    await expect.poll(() => this.page.evaluate(() => {
       const root = document.scrollingElement ?? document.documentElement;
       return root.scrollWidth - root.clientWidth;
-    });
-    expect(overflow, "horizontal page overflow in CSS pixels").toBeLessThanOrEqual(0);
+    }), { message: "horizontal page overflow in CSS pixels" }).toBeLessThanOrEqual(0);
   }
 }

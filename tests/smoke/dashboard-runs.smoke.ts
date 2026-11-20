@@ -11,10 +11,10 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     test.use({ viewport });
 
     for (const key of OPENABLE_RUNS) {
-      test(`${key} opens its timeline and logs`, async ({ dashboard, page, seeded }) => {
+      test(`${key} opens its timeline and logs`, async ({ dashboard, page }) => {
         await dashboard.open();
         await expect(page.getByText("No run open")).toBeVisible();
-        await dashboard.openRun(seeded.runIds[key]!);
+        await dashboard.openRun(dashboard.runId(key));
         await expect(dashboard.runPanel.getByRole("heading", { level: 2 })).toBeVisible();
         await expect(dashboard.runPanel.getByRole("navigation", { name: "Run timeline" })).toBeVisible();
         await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
@@ -25,28 +25,39 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 }
 
 for (const key of REFUSED_RUNS) {
-  test(`${key} opens its timeline and logs`, async ({ dashboard, seeded }) => {
-    test.fail(true, "The seeded run's logs fail the dashboard's identity checks and the panel shows \"Couldn't load logs.\"");
+  test(`${key} opens its timeline and logs`, async ({ dashboard, failures }) => {
+    const runId = dashboard.runId(key);
+    if (key === "openGateRun") {
+      const conflict = new RegExp(String.raw`^(?:http 409: GET |console: Failed to load resource: the server responded with a status of 409 \(Conflict\) )http://127\.0\.0\.1:\d+/api/v1/runs/${runId}$`, "u");
+      failures.allow(conflict, "The seeded open-gate run refuses its detail read with a conflict.");
+    }
     await dashboard.open();
-    await dashboard.openRun(seeded.runIds[key]!);
-    await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
+    await dashboard.openRun(runId);
+    const logs = dashboard.runPanel.getByRole("region", { name: "Run logs" });
+    const refusal = dashboard.runPanel.getByText("Couldn't load logs.", { exact: true });
+    await expect(logs.or(refusal)).toBeVisible();
+    failures.check();
+    test.fail(true, "The seeded run's logs fail the dashboard's identity checks and the panel shows \"Couldn't load logs.\"");
+    await expect(logs).toBeVisible();
   });
 }
 
-test("an open run survives Reload and closes on Back", async ({ dashboard, page, seeded }) => {
+test("an open run survives Reload and closes on Back", async ({ dashboard, page }) => {
   await dashboard.open();
-  await dashboard.openRun(seeded.runIds.doneRun!);
+  const runId = dashboard.runId("doneRun");
+  await dashboard.openRun(runId);
   await page.reload();
+  await dashboard.expectRunOpen(runId);
   await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
   await page.goBack();
   await expect(page.getByText("No run open")).toBeVisible();
 });
 
-test("switching runs replaces the panel with the newly chosen run", async ({ dashboard, seeded }) => {
+test("switching runs replaces the panel with the newly chosen run", async ({ dashboard }) => {
   await dashboard.open();
-  await dashboard.openRun(seeded.runIds.doneRun!);
+  await dashboard.openRun(dashboard.runId("doneRun"));
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
-  await dashboard.openRun(seeded.runIds.cancelledRun!);
+  await dashboard.openRun(dashboard.runId("cancelledRun"));
   await expect(dashboard.runPanel.getByText("Cancelled", { exact: true }).first()).toBeVisible();
   await expect(dashboard.runPanel.getByText("Done", { exact: true })).toHaveCount(0);
 });
