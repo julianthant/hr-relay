@@ -12,11 +12,33 @@ export interface PreflightReportRuntime {
   currentScope(workflowId?: string, requestedInstance?: InstanceSelection): PreflightAdmissionScope;
 }
 
+const RERUN_WINDOW_MS = 60_000;
+const RERUN_WINDOW_LIMIT = 6;
+
+export class PreflightRerunRefusedError extends Error {
+  constructor(readonly reason: "active" | "rate-limited") {
+    super(reason === "active" ? "one preflight rerun is already active"
+      : `preflight reruns are limited to ${String(RERUN_WINDOW_LIMIT)} starts per minute`);
+    this.name = "PreflightRerunRefusedError";
+  }
+}
+
 /** One bounded read-only replay namespace across dashboard and workflow scopes. */
 export function createPreflightReportService(input: Readonly<{
   dashboard: ReturnType<typeof createPreflightAuthority>; runtime: PreflightReportRuntime; clock: Clock;
 }>) {
+  const starts: number[] = [];
+  let active = false;
   const replay = createPreflightCommandReplay<Result>({
+    admit() {
+      if (active) throw new PreflightRerunRefusedError("active");
+      const now = input.clock.monotonicMs();
+      while (starts[0] !== undefined && starts[0] <= now - RERUN_WINDOW_MS) starts.shift();
+      if (starts.length >= RERUN_WINDOW_LIMIT) throw new PreflightRerunRefusedError("rate-limited");
+      starts.push(now);
+      active = true;
+      return () => { active = false; };
+    },
     divergent: () => new PreflightAdmissionRefusal("scope-mismatch", "Preflight command was replayed with a divergent request."),
     busy: () => new PreflightAdmissionRefusal("unavailable", "Preflight command capacity is occupied by active reruns."),
   });

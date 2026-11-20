@@ -25,7 +25,7 @@ it("independent Setup consumer reads production readiness and reruns/replays the
   await preflight.refresh(new AbortController().signal);
   const app: DashboardApp = new Hono();
   app.use("*", async (c, next) => { c.set("requestActorId", ActorIdSchema.parse("local-operator")); await next(); });
-  registerSettingsPreflightRoutes(app, { clock, preflight });
+  registerSettingsPreflightRoutes(app, { preflight });
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap({ appVersion: "0.1.0", clock, modules: [], descriptorSetHash: fingerprint,
     settingsSchemaHash: fingerprint, projection: { generation: () => 1 }, actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 53, authorityGeneration: 1 }),
