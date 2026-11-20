@@ -8,7 +8,7 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
-import { createServedOnboardingPort, DUO_ATTEMPT_MS, usePublicProfileSession, validateOnboarding, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, usePublicProfileSession, validateOnboarding, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("explains an existing profile on duplicate sign-up and offers Log in", async () => {
@@ -500,13 +500,26 @@ for (const [clearedBy, clear] of [
   const port = loginPort(async () => { throw new Error("not called"); });
   function Probe() {
     const [step, onStep] = useState<OnboardingStep>("login");
-    return createElement(Onboarding, { step, onStep, onDashboard() {}, port, problem: "Wrong email or password" });
+    return createElement(Onboarding, { step, onStep, onDashboard() {}, port, signInProblem: "Wrong email or password" });
   }
   try {
     await act(async () => root.render(createElement(Probe)));
     assert.equal(formAlert(host), "Wrong email or password");
     await clear(host);
     assert.equal(formAlert(host), "");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("a failure that still applies stays visible while the operator types", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const unavailable = operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE");
+  const port = { ...loginPort(async () => { throw new Error("not called"); }), unavailable: true };
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "login", onStep() {}, onDashboard() {}, port, problem: unavailable, signInProblem: "Wrong email or password" })));
+    assert.equal(formAlert(host), unavailable);
+    await typeInto(host, "email", "fixture@ucsd.edu"); await typeInto(host, "password", "x");
+    assert.equal(formAlert(host), unavailable);
+    assert.equal(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled, true);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -518,30 +531,23 @@ const unusedCommand = async (): Promise<never> => { throw new Error("unexpected 
 const duoPort = (onboarding: ReturnType<typeof duoDraft>, overrides: Partial<ServedOnboardingPort> = {}): ServedOnboardingPort => ({ onboarding, validate: validateOnboarding, submit: unusedCommand, complete: unusedCommand, cancel: unusedCommand,
   cancelDuo: unusedCommand, start: unusedCommand, confirmDuo: unusedCommand, openPortal: unusedCommand, showBrowser: unusedCommand, reopenBrowser: unusedCommand, resume: unusedCommand, ...overrides });
 
-it("a Duo attempt says what it waits for, adds Still waiting after ten seconds, and offers Retry once the owner's ten-minute attempt is over", async () => {
+it("a Duo attempt says what it waits for and adds Still waiting after ten seconds, per attempt, without inventing a timeout", async () => {
   vi.useFakeTimers();
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const pending = (attemptId: string) => ({ ...idleMethod, state: "pending" as const, attemptId });
-  let shows = 0, reopens = 0;
-  const overrides = { showBrowser: async () => { shows++; return duoDraft(pending("00000000-0000-4000-8000-000000000003")); }, reopenBrowser: async () => { reopens++; throw new Error("Retry must not revoke the attempt"); } };
-  const render = (attemptId: string) => act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(duoDraft(pending(attemptId)), overrides) })));
+  const render = (attemptId: string) => act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: duoPort(duoDraft(pending(attemptId))) })));
   const line = () => host.querySelector(".window-state strong")?.textContent;
-  const primary = () => host.querySelector<HTMLButtonElement>(".actions button:last-child");
   try {
     await render("00000000-0000-4000-8000-000000000003");
     assert.equal(line(), "Waiting for Duo to add Security key");
     assert.equal(host.querySelector<HTMLButtonElement>(".actions button")?.disabled, false, "Cancel sign-up stays available");
     await act(async () => { vi.advanceTimersByTime(10_000); });
     assert.equal(line(), "Still waiting for Duo to add Security key");
-    await act(async () => { vi.advanceTimersByTime(DUO_ATTEMPT_MS - 10_001); });
-    assert.equal(line(), "Still waiting for Duo to add Security key", "no timeout before the owner's attempt expires");
+    await act(async () => { vi.advanceTimersByTime(3_600_000); });
+    assert.equal(line(), "Still waiting for Duo to add Security key", "only the setup owner ends an attempt");
+    assert.equal(host.querySelector(".actions button:last-child")?.textContent, "Show window");
     await render("00000000-0000-4000-8000-000000000004");
     assert.equal(line(), "Waiting for Duo to add Security key", "a new attempt starts its own wait");
-    await act(async () => { vi.advanceTimersByTime(DUO_ATTEMPT_MS); });
-    assert.equal(line(), "Duo did not add Security key");
-    assert.equal(primary()?.textContent, "Retry");
-    await act(async () => primary()?.click());
-    assert.equal(shows, 1); assert.equal(reopens, 0);
   } finally { vi.useRealTimers(); await act(async () => root.unmount()); host.remove(); }
 });
 

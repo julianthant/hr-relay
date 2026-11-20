@@ -1,5 +1,5 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
 import { duoSummary, useServedDuoSetup, useWaitStage, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
@@ -24,15 +24,17 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
     setConfirmation(undefined);
   };
   const [closing, setClosing] = useState<"complete" | "cancel">();
+  /** Shared by both close actions and set at dispatch, so a second press before React re-renders sends nothing. */
+  const closeLatch = useRef(false);
   const [closeFailure, setCloseFailure] = useState<string>();
   const closeReenrol = async (action: "complete" | "cancel") => {
-    if (closing !== undefined) return;
-    setClosing(action); setCloseFailure(undefined);
+    if (closeLatch.current) return;
+    closeLatch.current = true; setClosing(action); setCloseFailure(undefined);
     try { await port[action](); }
     catch (error) {
       const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "PROFILE_DUO_REENROL_UNCERTAIN";
       setCloseFailure(`${action === "complete" ? "Duo setup not switched" : "Duo setup not cancelled"}. ${operatorFailureSentence(code)}`);
-    } finally { setClosing(undefined); }
+    } finally { closeLatch.current = false; setClosing(undefined); }
   };
   const browser = draft?.browser;
   const reenrol = port.reenrol === true;

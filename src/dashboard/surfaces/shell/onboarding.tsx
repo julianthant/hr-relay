@@ -4,13 +4,17 @@ import type { PublicProfileState } from "../../../models/profiles/public-profile
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
 import { Check, CircleDashed, CircleHelp, PanelTop, PanelTopClose, TriangleAlert, Fingerprint, KeyRound, LoaderCircle, X } from "lucide-react";
-import { duoMethodLabels, duoSummary, signInSentence, useDuoBrowser, useWaitStage, DUO_ATTEMPT_MS, type OnboardingDetails, type OnboardingErrors, type OnboardingStep, type ServedOnboardingPort } from "./onboarding-model.js";
+import { duoMethodLabels, duoSummary, signInSentence, useDuoBrowser, useWaitStage, type OnboardingDetails, type OnboardingErrors, type OnboardingStep, type ServedOnboardingPort } from "./onboarding-model.js";
 import "./onboarding.css";
 import { Button, Dialog, DialogContent, DialogFooter, Field, Input, SecretField } from "../../ds/ui.js";
 import { AppLockup } from "./app-lockup.js";
 
-export function Onboarding({ step, onStep, onDashboard, port, authenticated = false, problem, resumable = false }: {
-  step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port: ServedOnboardingPort; authenticated?: boolean; problem?: string;
+/**
+ * `problem` is a failure that still applies (profile authority, a blocked or unfinished log out) and stays until the session changes;
+ * `signInProblem` is the session's answer to the last sign-in and clears on typing, on resubmit and on switching between Log in and Sign up.
+ */
+export function Onboarding({ step, onStep, onDashboard, port, authenticated = false, problem, signInProblem, resumable = false }: {
+  step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port: ServedOnboardingPort; authenticated?: boolean; problem?: string; signInProblem?: string;
   resumable?: boolean;
 }) {
   const [forms, setForms] = useState<Record<"login" | "signup", OnboardingDetails>>({ login: { firstName: "", lastName: "", email: "", password: "" }, signup: { firstName: "", lastName: "", email: "", password: "" } });
@@ -42,8 +46,8 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
   useEffect(() => { const lifetime = submitted; submitted.current++; setBusy(false); setCompletionUnknown(false); return () => { lifetime.current++; }; }, [draft?.operationId]);
   const [loginError, setLoginError] = useState("");
   const [dismissed, setDismissed] = useState<string>();
-  const error = loginError || (problem !== dismissed ? problem : undefined);
-  const clearError = () => { setLoginError(""); setDismissed(problem); };
+  const error = loginError || problem || (signInProblem !== dismissed ? signInProblem : undefined);
+  const clearError = () => { setLoginError(""); setDismissed(signInProblem); };
   const focusPassword = useRef(false);
   const [resuming, setResuming] = useState(resumable);
   const resumeStarted = useRef(false);
@@ -71,7 +75,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
     previousStep.current = step;
     submitted.current++; setBusy(false);
     if (previous === "login" || previous === "signup") setForms(current => ({ ...current, [previous]: { ...current[previous], password: "" } }));
-    setErrors({}); setLoginError(""); setDismissed(problem);
+    setErrors({}); setLoginError(""); setDismissed(signInProblem);
   }, [step]);
   const requestCancellation = (next: "login" | "signup", trigger: Element | null = document.activeElement) => {
     cancelTrigger.current = trigger instanceof HTMLElement ? trigger : null;
@@ -126,22 +130,21 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
   const opening = (launching || setupWindow?.state === "opening" || setupWindow?.state === "reopening");
   const waitingAttempt = draft?.methods.key.state === "pending" ? draft.methods.key.attemptId : draft?.methods.touch.state === "pending" ? draft.methods.touch.attemptId : undefined;
   const openingStage = useWaitStage(step === "duo" && opening ? `${draft?.operationId}:${setupWindow?.state}:${setupWindow?.generation}` : undefined);
-  const stage = useWaitStage(step === "duo" && !opening && waitingMethod !== undefined ? `${draft?.operationId}:${waitingAttempt}` : undefined, DUO_ATTEMPT_MS);
-  const timedOut = stage === "timeout";
+  const stage = useWaitStage(step === "duo" && !opening && waitingMethod !== undefined ? `${draft?.operationId}:${waitingAttempt}` : undefined);
   const reopen = setupWindow !== undefined && setupWindow.state !== "open";
   /** The pending press is Finish setup / Go to dashboard, not a cancellation. */
   const finishing = submitting && !cancelInFlight.current;
   const recoveryProvedCurrent = !port.unavailable && draft !== undefined && unknownCancellation.current?.operationId === draft.operationId
     && unknownCancellation.current.profileId === draft.profileId && (port.readRevision ?? 0) > unknownCancellation.current.readRevision;
   const recoveryBlocked = completionUnknown && !recoveryProvedCurrent;
-  const waitTitle = waitingMethod === undefined ? undefined : timedOut ? `Duo did not add ${waitingMethod}` : stage === "still" ? `Still waiting for Duo to add ${waitingMethod}` : `Waiting for Duo to add ${waitingMethod}`;
+  const waitTitle = waitingMethod === undefined ? undefined : stage === "still" ? `Still waiting for Duo to add ${waitingMethod}` : `Waiting for Duo to add ${waitingMethod}`;
   const windowTitle = setupWindow?.state === "failed" ? setupWindow.code === "DUO_SETUP_OPEN_FAILED" ? "Could not open setup window" : "Could not reopen setup window"
     : opening ? openingStage === "still" ? "Still opening setup window…" : setupWindow?.state === "reopening" ? "Reopening setup window…" : "Opening setup window…"
       : setupWindow?.state === "open" ? waitTitle ?? "Setup window is open" : setupWindow?.state === "closed" ? "Setup window closed" : "Checking setup window…";
-  const WindowIcon = opening ? LoaderCircle : setupWindow?.state === "failed" || setupWindow?.state === "open" && timedOut ? TriangleAlert : setupWindow?.state === "closed" ? PanelTopClose : setupWindow?.state === "open" ? PanelTop : CircleHelp;
+  const WindowIcon = opening ? LoaderCircle : setupWindow?.state === "failed" ? TriangleAlert : setupWindow?.state === "closed" ? PanelTopClose : setupWindow?.state === "open" ? PanelTop : CircleHelp;
   const windowDescription = setupWindow?.state === "failed" ? operatorFailureSentence(setupWindow.code)
     : opening ? setupWindow?.state === "reopening" ? "Closing the previous window first." : undefined
-      : setupWindow?.state === "open" ? timedOut ? `Retry, then add ${waitingMethod} again in the setup window.` : undefined
+      : setupWindow?.state === "open" ? undefined
         : setupWindow?.state === "closed" ? both ? "Both methods are confirmed. Reopen or finish." : "Reopen to continue. Added methods are saved."
           : "Relay cannot read the window. Reopen to check.";
   const description = step === "login" ? resuming ? "Opening your workspace…" : "Open your workspace" : signup ? "Add your details, then set up Duo" : step === "ready" ? "Your profile is ready" : both ? "Security key and Touch ID are confirmed"
@@ -194,7 +197,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
           <p className="form-error" role="alert">{error}</p><Button variant="primary" size="lg" className="self-start" type="submit" aria-busy={submitting || undefined} disabled={submitting || port.unavailable}>{submitting && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{submitting ? signup ? "Creating profile…" : "Logging in…" : signup ? "Create profile" : "Log in"}</Button>
         </form><div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" aria-disabled={submitting || undefined} href={`?onboarding=${signup ? "login" : "signup"}`} onClick={async event => { event.preventDefault(); await navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div></> : step === "duo" ? <>
           <ul className="method-list" aria-label="Duo methods">{(["key", "touch"] as const).map(method => <li key={method}><span className="method-name">{method === "key" ? <KeyRound className="icon" aria-hidden /> : <Fingerprint className="icon" aria-hidden />}{method === "key" ? "Security key" : "Touch ID"}</span><DuoMethodPill state={draft?.methods[method].state ?? (methods[method] ? "complete" : "idle")} /></li>)}</ul>
-          <p className="sr-only" role="status">{duoSummary(methods, draft)}</p>{error && setupWindow?.state !== "failed" && !port.unavailable && <p className="form-error" role="alert">{error}</p>}{setupWindow && <div className="window-state" role={setupWindow.state === "failed" ? "alert" : "status"}><WindowIcon className="icon" aria-hidden /><div><strong>{windowTitle}</strong>{windowDescription && <p>{windowDescription}</p>}</div></div>}<footer className="actions"><Button variant="ghost" size="lg" disabled={submitting || completionUnknown || (draft === undefined || port.unavailable)} aria-busy={cancelInFlight.current || undefined} onClick={event => requestCancellation("login", event.currentTarget)}>{cancelInFlight.current && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{cancelInFlight.current ? "Cancelling…" : "Cancel sign-up"}</Button>{both && reopen && <Button variant="secondary" size="lg" disabled={opening || submitting || recoveryBlocked} onClick={() => browser.open(true)}>Reopen</Button>}<Button variant="primary" size="lg" type="button" aria-busy={opening || both && finishing || undefined} disabled={submitting || (both ? completionUnknown : recoveryBlocked) || opening || both && port.unavailable} onClick={() => both ? finish() : browser.open(reopen)}>{(opening || both && finishing) && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{both ? finishing ? "Finishing…" : "Finish setup" : opening ? setupWindow?.state === "reopening" ? "Reopening…" : "Opening…" : reopen ? "Reopen" : timedOut ? "Retry" : "Show window"}</Button></footer>
+          <p className="sr-only" role="status">{duoSummary(methods, draft)}</p>{error && setupWindow?.state !== "failed" && !port.unavailable && <p className="form-error" role="alert">{error}</p>}{setupWindow && <div className="window-state" role={setupWindow.state === "failed" ? "alert" : "status"}><WindowIcon className="icon" aria-hidden /><div><strong>{windowTitle}</strong>{windowDescription && <p>{windowDescription}</p>}</div></div>}<footer className="actions"><Button variant="ghost" size="lg" disabled={submitting || completionUnknown || (draft === undefined || port.unavailable)} aria-busy={cancelInFlight.current || undefined} onClick={event => requestCancellation("login", event.currentTarget)}>{cancelInFlight.current && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{cancelInFlight.current ? "Cancelling…" : "Cancel sign-up"}</Button>{both && reopen && <Button variant="secondary" size="lg" disabled={opening || submitting || recoveryBlocked} onClick={() => browser.open(true)}>Reopen</Button>}<Button variant="primary" size="lg" type="button" aria-busy={opening || both && finishing || undefined} disabled={submitting || (both ? completionUnknown : recoveryBlocked) || opening || both && port.unavailable} onClick={() => both ? finish() : browser.open(reopen)}>{(opening || both && finishing) && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{both ? finishing ? "Finishing…" : "Finish setup" : opening ? setupWindow?.state === "reopening" ? "Reopening…" : "Opening…" : reopen ? "Reopen" : "Show window"}</Button></footer>
         </> : <>{error && <p className="form-error" role="alert">{error}</p>}<ul className="ready-list">{["Your details saved", "Security key confirmed", "Touch ID confirmed"].map(text => <li key={text}><Check className="icon" />{text}</li>)}</ul><Button variant="primary" size="lg" className="self-start" type="button" aria-busy={finishing || undefined} disabled={!detailsDone || !both || submitting || completionUnknown || port.unavailable} onClick={() => void finish()}>{finishing && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{finishing ? "Opening dashboard…" : "Go to dashboard"}</Button></>}
       </div></div></main>
     <Dialog open={cancelCurrent} onOpenChange={open => { if (!open) setCancelTarget(undefined); }}><DialogContent size="sm" title="Cancel sign-up?" description="Your unfinished profile and entered credentials are removed from this computer. Devices already added stay in Duo." onCloseAutoFocus={event => {

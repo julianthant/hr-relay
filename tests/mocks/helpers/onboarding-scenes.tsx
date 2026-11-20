@@ -24,10 +24,10 @@ function draft(key: MethodKind, touch: MethodKind, browser: ProfileOnboardingBro
 const never = <T,>() => new Promise<T>(() => undefined);
 const refused = async (): Promise<PublicProfileState> => ({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
 const lost = async (): Promise<never> => { throw new Error("lost response"); };
-/** Every action stays pending, except a refused sign-in and a lost finish reply; scenes only render state. */
+/** Every action stays pending, except a refused sign-in and lost finish and cancel replies; scenes only render state. */
 function stubPort(scene: Scene): ServedOnboardingPort {
   return Object.freeze<ServedOnboardingPort>({ validate: validateOnboarding, onboarding: scene.draft, ...(scene.reenrol === true ? { reenrol: true } : {}),
-    complete: scene.noReply === true ? lost : never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never,
+    complete: scene.noReply === true ? lost : never, cancel: scene.noReply === true ? lost : never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never,
     submit: scene.refuse === true ? refused : never });
 }
 
@@ -56,9 +56,10 @@ export const ONBOARDING_SCENES = {
   "duo-still-opening": { step: "duo", draft: draft("idle", "idle", { state: "opening", generation: 1 }), wait: 10_000, shows: "Still opening setup window…" },
   "duo-key-pending": { step: "duo", draft: draft("pending", "idle"), shows: "Waiting for Duo to add Security key" },
   "duo-still-waiting": { step: "duo", draft: draft("pending", "idle"), wait: 10_000, shows: "Still waiting for Duo to add Security key" },
-  "duo-timed-out": { step: "duo", draft: draft("pending", "idle"), wait: 600_000, shows: "Duo did not add Security key" },
+  "duo-attempt-unconfirmed": { step: "duo", draft: draft("unknown", "idle"), shows: "Relay could not confirm Security key. In Duo, remove any device you do not recognize, then start over." },
   "duo-cancel-confirm": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up"], shows: "Cancel sign-up?" },
   "duo-cancelling": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "Cancelling…" },
+  "duo-cancel-no-reply": { step: "duo", noReply: true, draft: draft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "No reply from Relay. Reload the page to check." },
   "duo-both-complete": { step: "duo", draft: draft("complete", "complete") },
   "duo-finishing": { step: "duo", draft: draft("complete", "complete"), press: ["Finish setup"], shows: "Finishing…" },
   "duo-finish-no-reply": { step: "duo", noReply: true, draft: draft("complete", "complete"), press: ["Finish setup"], shows: "No reply from Relay. Reload the page to check." },
