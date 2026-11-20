@@ -126,7 +126,7 @@ import type { NativeRouteHistory,PopstateRouteHandler } from "./navigation/route
 import { useRoute } from "./navigation/route-history-model.js";
 import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
-import { assistantNeeds } from "../surfaces/shell/assistant-launcher-model.js";
+import { assistantNeeds, useAssistantOpen } from "../surfaces/shell/assistant-launcher-model.js";
 import {
 activeTakeover,
 dataPageOf,
@@ -442,6 +442,7 @@ function LoadedApp({
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog, nowIso, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID, authorityEpoch);
+  const assistantIsOpen = useAssistantOpen();
   const servedOpenStart = launch.openStart;
   const openStart = useCallback(() => {
     setRoute(current => ({ ...current, view: { ...current.view, launchServed: activeWorkflowId, launchWorkflow: undefined, launchSource: undefined, launchStage: "Input", launchCustomize: false } }));
@@ -1242,7 +1243,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
-      <PanelBoundary resetKey={activeWorkflowId} sentence="Couldn't open the assistant." className="fixed bottom-2 right-2 z-50">
+      <PanelBoundary resetKey={`${activeWorkflowId}:${assistantIsOpen}`} sentence="Couldn't open the assistant." className="fixed bottom-2 right-2 z-50">
       <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} authority={authorityEpoch} onOpenSettings={openSettings} settingsOpen={settingsOpen} logoutOpen={logoutOpen} onLogoutOpenChange={setLogoutOpen} onLogout={() => leaveSettings(() => {
         if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
         else void onProfileLogout();
@@ -1261,7 +1262,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       )}
       {workflowComposition.harness?.Host && <workflowComposition.harness.Host />}
 
-      <PanelBoundary resetKey={activeWorkflowId} sentence="Couldn't open Start run." className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
+      <PanelBoundary resetKey={`${activeWorkflowId}:${launch.open}`} sentence="Couldn't open Start run." className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
       <RunLaunchHost
         controller={launch}
         hidden={route.settings !== undefined}

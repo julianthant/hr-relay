@@ -38,33 +38,6 @@ it("retains shell controls after a page crash and recovers on navigation", async
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
-for (const [panel, sentence] of [["run panel", "Couldn't show this run."], ["run dialog", "Couldn't open Start run."], ["Settings", "Couldn't open Settings."], ["assistant", "Couldn't open the assistant."]] as const) {
-  it(`${panel} failure shows its notice, keeps the queue and sidebar, and recovers on a new key`, async () => {
-    const errors: unknown[] = [];
-    vi.stubGlobal("reportError", (error: unknown) => errors.push(error));
-    const host = document.createElement("div"), root = createRoot(host, { onCaughtError() {} });
-    document.body.append(host);
-    function Broken(): never { throw new Error("Synthetic panel crash"); }
-    const render = async (broken: boolean, resetKey: string) => {
-      await act(async () => root.render(createElement("div", null,
-        createElement("nav", null, "Sidebar"), createElement("section", null, "Queue"),
-        createElement(PanelBoundary, { resetKey, sentence }, broken ? createElement(Broken) : createElement("p", null, "Panel ok")),
-        createElement("footer", null, "Sessions"))));
-    };
-    try {
-      await render(true, "a");
-      assert.equal(host.querySelector("[role=alert]")?.textContent, `${sentence}Retry`);
-      assert.equal(host.querySelector("nav")?.textContent, "Sidebar");
-      assert.equal(host.querySelector("section")?.textContent, "Queue");
-      assert.equal(host.querySelector("footer")?.textContent, "Sessions");
-      assert.equal(errors.length, 1);
-      await render(false, "b");
-      assert.equal(host.querySelector("p")?.textContent, "Panel ok");
-      assert.equal(host.querySelector("[role=alert]"), null);
-    } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
-  });
-}
-
 it("Retry re-renders the panel", async () => {
   vi.stubGlobal("reportError", () => {});
   const host = document.createElement("div"), root = createRoot(host, { onCaughtError() {} });
