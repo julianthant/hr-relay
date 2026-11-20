@@ -146,6 +146,6 @@ describe("served log decisions", () => {
     assert.deepEqual(answeredOutcome({ answered: answered("cancel-run") }), { outcome: "Run cancelled", kind: "cancelled" });
     assert.deepEqual(answeredOutcome({ answered: answered("retry-crm") }), { outcome: "Retried", kind: "retry" });
     assert.deepEqual(answeredOutcome({ answered: answered("saved"), answerNoun: "Transaction", answeredInput: "T0001" }), { outcome: "Transaction confirmed · T0001", kind: "done" });
-    assert.deepEqual(answeredOutcome({ answered: answered("resolve-write-absent") }), { outcome: "Resolved", kind: "done" });
+    assert.deepEqual(answeredOutcome({ answered: { ...answered("resolve-write-absent"), label: "Write is absent" } }), { outcome: "Write is absent", kind: "done" });
   });
 });
