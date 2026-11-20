@@ -731,18 +731,18 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   const dispatchCommand = useCallback((action: CommandAction, target: ActionTarget, answers: {
     renameAnswer?: string; source?: "queue" | "run-detail"; commandId?: string; requestedAt?: string;
-  } = {}): void => {
+  } = {}): Promise<void> => {
     const retained = executor.retainedAttempts().find(attempt => attempt.scope.actorId === commandScope.actorId && attemptUnresolved(attempt)
       && !("targets" in attempt.request) && (attempt.request.family === "run" || attempt.request.family === "gate")
       && attempt.request.target.runId === target.runId && attempt.request.type === action.command);
-    if (retained !== undefined) { setPendingRecovery(retained.request.commandId); return; }
+    if (retained !== undefined) { setPendingRecovery(retained.request.commandId); return Promise.resolve(); }
     const composed = composeCommandRequest(action, target, { actorId: commandScope.actorId, source: answers.source ?? "queue",
       commandId: answers.commandId ?? crypto.randomUUID(), requestedAt: answers.requestedAt ?? nowIso,
       ...(answers.renameAnswer === undefined ? {} : { renameAnswer: answers.renameAnswer }) });
-    if (composed.state === "refused") { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text }); return; }
+    if (composed.state === "refused") { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text }); return Promise.resolve(); }
     const request = CommandRequestSchema.safeParse(composed.request);
-    if (!request.success) { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})).text }); return; }
-    void executeShell(request.data, action.label);
+    if (!request.success) { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})).text }); return Promise.resolve(); }
+    return executeShell(request.data, action.label);
   }, [commandScope.actorId, nowIso, executor, executeShell, toast]);
 
   const dispatchBulk = useCallback((plan: BulkVerbPlan, retained?: { commandId?: string; requestedAt?: string }): void => {
@@ -754,7 +754,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [commandScope.actorId, nowIso, executeShell, toast]);
 
   const runAction = useCallback(
-    (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): void => {
+    (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): Promise<void> | void => {
       if (action.kind === "navigation") {
         if (action.navigate.kind === "rerun") {
           const row = dayWire?.queueSurfaces.find(entry => String(entry.runId) === target.runId);
@@ -812,7 +812,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         });
         return;
       }
-      dispatchCommand(action, target, { source });
+      return dispatchCommand(action, target, { source });
     },
     [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun, unresolvedRunAction, commandScope],
   );
@@ -820,9 +820,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const confirmLogDecision = useCallback<RunWiringConfirm>((pending, onConfirmed) => setPendingCommand({ ...pending, scope: commandScope, onConfirmed }), [commandScope]);
 
   const runQueueAction = useCallback(
-    (action: ActionDescriptorWire, target: ActionTarget): void => {
-      runAction(action, target, "queue");
-    },
+    (action: ActionDescriptorWire, target: ActionTarget): Promise<void> | void => runAction(action, target, "queue"),
     [runAction],
   );
   const runLogAction = useCallback((action: ActionDescriptorWire, target: ActionTarget) => runAction(action, target, "run-detail"), [runAction]);

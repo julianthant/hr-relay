@@ -45,11 +45,11 @@ export interface ActionTarget {
 }
 
 /** Every control calls this. */
-export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => void;
+export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => Promise<void> | void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
-/** A refused command leaves the row unchanged, so pending also ends after this long. */
+/** Pending ends when the command's reply arrives; this backstop ends it if no reply ever does. */
 const PENDING_LIMIT_MS = 15_000;
 
 
@@ -151,7 +151,12 @@ export function FooterActions({
             e.stopPropagation();
             const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
             if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
-            onAction(a, target);
+            const press = { key: a.key, version: target.expectedVersion };
+            const settled = onAction(a, target);
+            if (a.kind === "command" && !a.confirm) {
+              if (settled === undefined) setPressed(null);
+              else void Promise.resolve(settled).catch(() => undefined).finally(() => setPressed(now => now?.key === press.key && now.version === press.version ? null : now));
+            }
             if (a.kind === "command" && (a.command === "pause" || a.command === "resume")) row?.focus({ preventScroll: true });
           }}
         />

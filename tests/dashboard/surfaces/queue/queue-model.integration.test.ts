@@ -349,11 +349,12 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.ok(memberButton() === null);
   });
 
-  it_m1("shows a row action pending from press until the row changes and ignores a second press", async () => {
+  it_m1("shows a row action pending until the reply arrives, ignores a second press, and frees it on a refusal", async () => {
     const pause = { kind: "command", key: "pause", command: "pause", label: "Pause after this step", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" };
     const row = lookupRow(1, { rowRevision: 12, actions: [pause] });
     const sent: unknown[] = [];
-    const handlers: QueueHandlers_m1 = { onSelect: () => undefined, onAction: (action, target) => { sent.push([action, target]); } };
+    let reply: () => void = () => undefined;
+    const handlers: QueueHandlers_m1 = { onSelect: () => undefined, onAction: (action, target) => { sent.push([action, target]); return new Promise<void>(resolve => { reply = resolve; }); } };
     await render([row], handlers, row.runId);
     const button = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>('[data-queue-member-actions] button[aria-label="Pause after this step"]');
     const before = button(); assert_m1.ok(before);
@@ -364,7 +365,13 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.ok(pending.querySelector(".animate-spin"));
     await act_m1(async () => pending.click());
     assert_m1.equal(sent.length, 1);
+    await act_m1(async () => reply());
+    assert_m1.equal(button()?.disabled, false);
+    assert_m1.equal(button()?.querySelector(".animate-spin"), null);
+    await act_m1(async () => button()?.click());
+    assert_m1.equal(button()?.disabled, true);
     await render([lookupRow(1, { rowRevision: 13, actions: [{ ...pause, expectedVersion: 13 }] })], handlers, row.runId);
+    await act_m1(async () => reply());
     assert_m1.equal(button()?.disabled, false);
   });
 
