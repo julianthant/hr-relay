@@ -8,7 +8,7 @@ import { buildSettingsNav,resolveSettingsSection } from "../../../../src/dashboa
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 
 describe("curly quotes around a section name (unit F4b finding 3)", () => {
-  it("names the requested-but-unknown section without &quot;", () => {
+  it("opens the first section for an unknown section name, without a refusal or &quot;", () => {
     const resolution = resolveSettingsSection(buildSettingsNav(), "budgets");
     assert.equal(resolution.state, "unknown");
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
@@ -20,7 +20,8 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
         onSection: () => undefined,
       }),
     }));
-    assert.match(markup, /No such settings section.*budgets/u);
+    assert.doesNotMatch(markup, /No such settings section/u);
+    assert.ok(!markup.includes("budgets"), markup);
     assert.ok(!markup.includes("&quot;budgets&quot;"), markup);
   });
 });

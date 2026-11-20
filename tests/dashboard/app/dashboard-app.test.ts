@@ -587,7 +587,7 @@ describe_m1("the two remaining takeovers use the shared focus boundary (UF-FU-1)
 afterEach_m1(_afterEachFixture0);
 
 
-  it_m1("the retired UI catalog URL shows an explicit removal notice without mounting its reader", async () => {
+  it_m1("the retired UI catalog URL opens the first section without mounting its reader", async () => {
     await mountDashboard("?settings=ui-catalog");
 
     const frame = frameOf("Settings");
@@ -597,7 +597,8 @@ afterEach_m1(_afterEachFixture0);
       null,
       "the catalog must no longer mount a frame of its own",
     );
-    assert_m1.match(frame.textContent ?? "", /UI catalog removed/u);
+    assert_m1.doesNotMatch(frame.textContent ?? "", /UI catalog|No such settings section/u);
+    assert_m1.match(frame.textContent ?? "", /General/u);
     assert_m1.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
     assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Close settings");
     assert_m1.equal(
@@ -690,7 +691,7 @@ afterEach_m1(_afterEachFixture0);
 
     await press(buttonNamed("Close settings"));
     assert_m1.ok(frameOf("Settings"), "a dirty rail navigation must leave Settings mounted for confirmation");
-    assert_m1.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    assert_m1.match(document.body.textContent ?? "", /Discard changes\?/u);
     const discard = buttonNamed("Discard changes");
     await press(discard);
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
@@ -701,7 +702,7 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?settings=display");
     await press(buttonNamed("Close settings"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
-    assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+    assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
     assert_m1.ok(document.getElementById("dashboard-main-region"));
   });
 

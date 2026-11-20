@@ -49,7 +49,7 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
     {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" description="Reopen Settings to try again." />}
     <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
-      <BodySection title="UCPath sign-in" description={embedded ? "What workflows use to sign in to UCPath. Separate from your Relay account." : undefined}>
+      <BodySection title="UCPath sign-in" description={embedded ? "Workflows use this to sign in to UCPath." : undefined}>
         <FormGroup label="UCPath sign-in">
           {authority.rows.filter(row => row.name === "ucpathUserId" || row.name === "ucpathPassword").map(row => {
             const description = PROTECTED_DESCRIPTION[row.name] ?? row.purpose;
@@ -68,7 +68,7 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
     </Form>
     <Dialog open={removal !== null} onOpenChange={open => { if (!open) setRemoval(null); }}>
       <DialogContent size="sm" className="ds-body-overlay" title={`Remove ${removal?.label ?? "value"}?`}
-        description={removal?.hasSaved ? "The stored credential will be removed from the protected store." : "This unsent value will be removed from the editor. No write will be sent."}
+        description={removal?.hasSaved ? "The saved value will be removed." : "The unsaved value will be cleared."}
         onCloseAutoFocus={event => { if (removeTrigger.current?.isConnected) { event.preventDefault(); removeTrigger.current.focus(); } removeTrigger.current = null; }}>
         <DialogFooter><Button variant="secondary" onClick={() => setRemoval(null)}>Cancel</Button>
           <Button variant="danger" onClick={confirmRemove}>Remove credential</Button></DialogFooter>
