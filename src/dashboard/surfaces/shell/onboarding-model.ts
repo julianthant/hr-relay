@@ -101,6 +101,24 @@ export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState):
   return "Security key and Touch ID not added";
 }
 
+/** One plain line for a refused sign-in; every other code keeps its catalog sentence. */
+export const signInSentence = (code: Parameters<typeof operatorFailureSentence>[0]): string => code === "PROFILE_SIGN_IN_REFUSED" ? "Wrong email or password" : operatorFailureSentence(code);
+
+export const DUO_STILL_WAITING_MS = 10_000;
+export const DUO_TIMEOUT_MS = 120_000;
+/** How long Relay has waited on one Duo step; resets when `key` changes, idle when it is undefined. */
+export function useWaitStage(key: string | undefined): "waiting" | "still" | "timeout" {
+  const [stage, setStage] = useState<"waiting" | "still" | "timeout">("waiting");
+  useEffect(() => {
+    setStage("waiting");
+    if (key === undefined) return;
+    const still = setTimeout(() => setStage("still"), DUO_STILL_WAITING_MS);
+    const timeout = setTimeout(() => setStage("timeout"), DUO_TIMEOUT_MS);
+    return () => { clearTimeout(still); clearTimeout(timeout); };
+  }, [key]);
+  return key === undefined ? "waiting" : stage;
+}
+
 export type DuoBrowserStatus = "launching" | "waiting" | "error";
 export function useDuoBrowser(operationId: string | undefined, served: ServedOnboardingPort) {
   const [status, setStatus] = useState<DuoBrowserStatus>("waiting");

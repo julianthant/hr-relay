@@ -23,16 +23,16 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
     if (confirmation !== undefined) setup.dismissConfirmation(confirmation);
     setConfirmation(undefined);
   };
-  const [closing, setClosing] = useState(false);
+  const [closing, setClosing] = useState<"complete" | "cancel">();
   const [closeFailure, setCloseFailure] = useState<string>();
   const closeReenrol = async (action: "complete" | "cancel") => {
     if (closing) return;
-    setClosing(true); setCloseFailure(undefined);
+    setClosing(action); setCloseFailure(undefined);
     try { await port[action](); }
     catch (error) {
       const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "PROFILE_DUO_REENROL_UNCERTAIN";
       setCloseFailure(`${action === "complete" ? "Duo setup not switched" : "Duo setup not cancelled"}. ${operatorFailureSentence(code)}`);
-    } finally { setClosing(false); }
+    } finally { setClosing(undefined); }
   };
   const browser = draft?.browser;
   const reenrol = port.reenrol === true;
@@ -95,7 +95,7 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
       {!statusReadFailed && status !== undefined && browserNotice === undefined && <p role="status" className="setup-notice" data-tone="info">{status}</p>}
     </main>
     <footer className="setup-footer">{closeFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{closeFailure}</p>}
-      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing} onClick={() => void closeReenrol("cancel")}>Cancel setup</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing} onClick={() => void closeReenrol("complete")}>Use new devices</Button></div>
+      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing} onClick={() => void closeReenrol("cancel")}>{closing === "cancel" ? "Cancelling…" : "Cancel setup"}</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing} aria-busy={closing === "complete" || undefined} onClick={() => void closeReenrol("complete")}>{closing === "complete" ? "Switching…" : "Use new devices"}</Button></div>
         : <div className="action-row"><Button variant="secondary" size="lg" onClick={() => window.close()}>Close</Button><Button variant={both ? "primary" : "secondary"} size="lg" onClick={() => setup.returnToParent()}>Back to Relay</Button></div>}
     </footer>
     <span className="sr-only" role="status">{summary}</span>

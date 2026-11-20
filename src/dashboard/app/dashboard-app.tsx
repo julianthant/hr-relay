@@ -10,7 +10,7 @@ import { operatorFailureSentence } from "../../models/failures/error-catalog.js"
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import type { PaletteAction } from "../surfaces/shell/search/search-palette-model.js";
 import { useStartupGate } from "./startup/startup-gate.js";
-import { useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
+import { signInSentence, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
@@ -231,7 +231,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
         <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? "duo" : session?.state === "active" ? "duo" : session?.state === "signed-out" && session.resumable ? "login" : route.onboarding === "signup" && profileCreationChosen || route.onboarding !== "login" && session?.state === "signed-out" && session.signUpRequired ? "signup" : "login"}
           authenticated={session?.state === "active"} port={publicProfile.port}
           problem={publicProfile.failure || startup.unavailable ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
-            : session?.state === "refused" || session?.state === "error" ? operatorFailureSentence(session.code)
+            : session?.state === "refused" || session?.state === "error" ? signInSentence(session.code)
               : session?.state === "cancelling" ? operatorFailureSentence("PROFILE_LOGOUT_BLOCKED")
                 : session?.state === "signed-out" && session.logoutIncomplete ? operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE") : undefined}
           onStep={onboarding => { setProfileCreationChosen(onboarding === "signup"); setRoute({ start: false, onboarding }); }} onDashboard={() => setRoute({ start: false })} />
