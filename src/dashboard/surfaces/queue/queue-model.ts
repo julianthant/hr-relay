@@ -9,6 +9,7 @@ import {
   statusAccessibleName,
   statusText,
   type ProposedStatus,
+  NEEDS_YOU_STATUSES,
 } from "../shared/status/status-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import { elapsedSecondsBetween } from "../shared/status/format.js";
@@ -131,7 +132,7 @@ export function filterQueueSurfaces(
   const filters = typeof filter === "string" ? [filter] : filter;
   if (filters.length === 0 || filters.includes("all")) return surfaces;
   const matches = (surface: QueueSurfaceWire): boolean => filters.some(value => value === "needsYou"
-    ? surface.status === "awaiting-approval" || surface.status === "blocked"
+    ? NEEDS_YOU_STATUSES.includes(surface.status)
     : surface.status === value);
   const includedItems = new Set(
     groupQueueAttempts(surfaces.filter(matches)).map((group) => group.key),

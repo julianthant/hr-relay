@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   ChevronsUp,
@@ -48,6 +48,9 @@ export interface ActionTarget {
 export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
+
+/** A refused command leaves the row unchanged, so pending also ends after this long. */
+const PENDING_LIMIT_MS = 15_000;
 
 
 /** Persistent refusal context: sticky toasts that only notify; each has a Priority notification item that opens the run. */
@@ -111,6 +114,13 @@ export function FooterActions({
   groupCount?: number;
 }) {
   const footer = actionsAt(actions, "footer");
+  // Pending runs from press until the row's revision moves; a confirmed action has its own dialog.
+  const [pressed, setPressed] = useState<{ key: string; version: number } | null>(null);
+  useEffect(() => {
+    if (pressed === null) return undefined;
+    const timer = setTimeout(() => setPressed(null), PENDING_LIMIT_MS);
+    return () => clearTimeout(timer);
+  }, [pressed]);
   if (footer.length === 0 && !onPreviewAction) return null;
   // No `Cancel group` caption beside the ✕: an icon that already means cancel,
   // captioned "cancel", is the same word twice; the warning lives in the ✕'s own `title`.
@@ -126,6 +136,7 @@ export function FooterActions({
         return (
         <IconActionButton
           key={a.key}
+          pending={pressed?.key === a.key && pressed.version === target.expectedVersion}
           tone={INTENT_TONE[a.intent]}
           icon={KEY_ICONS[a.key] ?? ICONS[a.icon ?? "external"]}
           label={label}
@@ -138,7 +149,8 @@ export function FooterActions({
           }
           onClick={(e) => {
             e.stopPropagation();
-            const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id][role="button"]');
+            const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
+            if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
             onAction(a, target);
             if (a.kind === "command" && (a.command === "pause" || a.command === "resume")) row?.focus({ preventScroll: true });
           }}

@@ -289,7 +289,7 @@ const SUBLINE_TONE: Record<ProposedStatus, string> = {
 
 /** A parked write's outcome is unknown: the server withholds these until it is answered. */
 const PARKED_WITHHELD: ReadonlySet<string> = new Set(["rerun", "delete", "cancel", "cancel-tree"]);
-const PARKED_NOTE = "Rerun, Delete and Cancel are off until the parked write is answered. Open this run and answer it in the parked write panel.";
+const PARKED_NOTE = "Open the run to check the write.";
 
 /** One provenance line; unusually long aliases yield before the clock and controls. */
 function RowFooterLine({
@@ -783,26 +783,13 @@ export function QueueRow({
             if (state.selectMode === true) handlers.onToggleBulk?.(bulkKey);
             else if (batch === undefined) handlers.onSelect(surface.runId);
           }}
-          role={batch === undefined || state.selectMode === true ? "button" : "group"}
-          tabIndex={batch === undefined || state.selectMode === true ? 0 : undefined}
-          aria-pressed={batch === undefined || state.selectMode === true ? selected : undefined}
+          role="group"
           // Accessible row names include warning completion and gate age, never hue alone.
           aria-label={batch === undefined ? queueRowAccessibleName(surface, state.nowIso) : `${title} batch — ${statusText(status).toLowerCase()}`}
           data-demo-row-id={batch === undefined ? surface.runId : undefined}
           data-queue-batch-id={batch?.id}
-          onKeyDown={(event) => {
-            // Nested controls keep native Enter/Space activation. Only the
-            // focused row itself uses those keys to open its detail.
-            if (event.target !== event.currentTarget) return;
-            if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); return; }
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              if (state.selectMode === true) handlers.onToggleBulk?.(bulkKey);
-              else if (batch === undefined) handlers.onSelect(surface.runId);
-            }
-          }}
           className={cn(
-            "group relative flex min-w-0 flex-1 cursor-pointer flex-col overflow-hidden border",
+            "group relative flex min-w-0 flex-1 cursor-pointer flex-col overflow-hidden border has-[[data-queue-open]:focus-visible]:outline has-[[data-queue-open]:focus-visible]:outline-2",
             deferOffscreen && "[content-visibility:auto] [contain-intrinsic-size:auto_160px]",
             dsRadius.lg,
             dsMotion.base,
@@ -814,6 +801,18 @@ export function QueueRow({
             announcing && cn(dsMotion.move, "-translate-y-[var(--ds-travel-sm)]"),
           )}
         >
+          {(batch === undefined || state.selectMode === true) && <BareButton type="button" data-queue-open
+            aria-label={batch === undefined ? queueRowAccessibleName(surface, state.nowIso) : `Select ${title}`}
+            aria-pressed={selected}
+            onClick={event => {
+              event.stopPropagation();
+              if (state.selectMode === true) handlers.onToggleBulk?.(bulkKey);
+              else handlers.onSelect(surface.runId);
+            }}
+            onKeyDown={event => {
+              if (event.key === "Escape" && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); }
+            }}
+            className="pointer-events-none absolute inset-0 rounded-[inherit] outline-none" />}
           <div data-queue-body className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
             <RenameableTitle
               data-demo-row-title
@@ -936,7 +935,7 @@ export function QueueRow({
             "flex items-center gap-[var(--ds-space-base)] border-t bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
             <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]">
               <span className="shrink-0 whitespace-nowrap">{formatTime(batch.startedAt)}</span>
-              <span className="min-w-0 truncate" title={`Batch ${batch.id} · revision ${batch.version}${batch.origin === undefined ? " · origin unavailable" : ` · ${batch.origin.kind} ${batch.origin.kind === "start-plan" ? batch.origin.startPlanId : batch.origin.intakeManifestId}`}`}>Batch {batch.id.slice(0, 8)}</span>
+              <span className="min-w-0 truncate" title={`Batch ${batch.id}`}>Batch {batch.id.slice(0, 8)}</span>
               <span className="shrink-0 whitespace-nowrap" title={batchTiming?.title}>{batchTiming?.text}</span>
             </div>
             <div data-queue-member-actions role="group"

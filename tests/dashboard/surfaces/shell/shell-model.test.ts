@@ -307,14 +307,14 @@ describe_m1("totalCount — the `All` segment", () => {
     }
   });
 
-  it_m1("stays closed under addition with the composites beside it", () => {
-    const separations = workflowStatusCounts_m1(WORKFLOW_COUNTS, "separations-kuali-read");
-    // needsYou is the ONLY deliberate overlap, and it is a sum of two pills.
-    expect_m1(needsYouCount_m1(separations)).toBe(2);
-    expect_m1(activeCount_m1(separations)).toBe(0);
-    expect_m1(totalCount_m1(separations)).toBe(
-      statusCount_m1(separations, "failed") + needsYouCount_m1(separations),
-    );
+  it_m1("counts failed, review and parked runs under Needs you and the rest once", () => {
+    const counts = WorkflowCountWireSchema_m1.parse({ workflowId: "person-lookup", count: 9, statusCounts: [
+      { status: "failed", count: 1 }, { status: "awaiting-approval", count: 1 }, { status: "blocked", count: 1 },
+      { status: "running", count: 1 }, { status: "queued", count: 1 }, { status: "done", count: 2 }, { status: "cancelled", count: 2 },
+    ] }).statusCounts;
+    expect_m1(needsYouCount_m1(counts)).toBe(3);
+    expect_m1(activeCount_m1(counts)).toBe(2);
+    expect_m1(totalCount_m1(counts)).toBe(needsYouCount_m1(counts) + activeCount_m1(counts) + statusCount_m1(counts, "done") + statusCount_m1(counts, "cancelled"));
   });
 });
 }

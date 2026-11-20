@@ -21,6 +21,8 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
     onRefused: title => toast({ tone: "danger", title, duration: 6000 }) });
   useSessionAddFeedback(commands.operations.add);
   const data = commands.data;
+  // Add workers offers only workflows the server registered and can start.
+  const addable = useMemo(() => catalog.filter(entry => entry.served !== undefined && entry.launch.state === "served"), [catalog]);
   const display = useMemo((): SessionsViewState => {
     if (data.state !== "ready") return data;
     const workers = [];
@@ -31,7 +33,7 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
     }
     return { ...data, workers };
   }, [data, catalog]);
-  return <SessionsView data={display} open={open} onOpenChange={onOpenChange} workflows={catalog}
+  return <SessionsView data={display} open={open} onOpenChange={onOpenChange} workflows={addable}
     idleCountdowns={commands.idleCountdowns} onControl={commands.control} operations={commands.operations} onCheck={commands.check}
     onAdd={commands.add} account={account} />;
 }
