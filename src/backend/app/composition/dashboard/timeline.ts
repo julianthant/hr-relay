@@ -13,7 +13,7 @@ import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { inspectArtifactDeletionFile } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
 
 const TIMELINE_POLL_MS = 250;
-const DIAGNOSTIC_RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
+const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
 
 // Notification polling has its own cadence; leases can change without spans.
 export const GATE_PARK_WATCH_MS = 1_000;
@@ -26,10 +26,15 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
 
   // Ordinary timeline and notes retain their 30-day append-day window.
   // Confirmed operation events remain until explicit owner deletion.
-  database.authority.timelineEvents.pruneBefore(localDatePart(new Date(
+  const pruneTimeline = () => database.authority.timelineEvents.pruneBefore(localDatePart(new Date(
     clock.nowMs() - EVENT_STREAM_RETENTION_DAYS * 24 * 60 * 60 * 1000,
   )));
+  pruneTimeline();
 
+  const reportRetentionFailure = (area: string, error: unknown) => debugEvents.emit({
+    category: "boot", phase: "failed", correlationId: randomUUID(), area, reason: "purge-failed",
+    message: error instanceof Error ? error.message : String(error),
+  });
   const retention = createDiagnosticRetentionSweep({ authority: database.authority, clock, lifecycle });
   const sweepDiagnostics = () => {
     try {
@@ -52,13 +57,18 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       });
       retention.sweep(eligible);
     } catch (error) {
-      debugEvents.emit({ category: "boot", phase: "failed", correlationId: randomUUID(),
-        area: "diagnostic-retention", reason: "purge-failed",
-        message: error instanceof Error ? error.message : String(error) });
+      reportRetentionFailure("diagnostic-retention", error);
     }
   };
   sweepDiagnostics();
-  const diagnosticRetentionTimer = setInterval(sweepDiagnostics, DIAGNOSTIC_RETENTION_SWEEP_MS);
+  const diagnosticRetentionTimer = setInterval(() => {
+    try {
+      if (pruneTimeline() > 0) projection.rebuildFromTimeline();
+    } catch (error) {
+      reportRetentionFailure("timeline-retention", error);
+    }
+    sweepDiagnostics();
+  }, RETENTION_SWEEP_MS);
   diagnosticRetentionTimer.unref();
   startupCleanups.push(() => clearInterval(diagnosticRetentionTimer));
 

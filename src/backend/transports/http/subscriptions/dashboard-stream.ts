@@ -79,6 +79,7 @@ export class DashboardStreamHub {
   #retained: RetainedEntry[] = [];
   #disposeProjection: () => void;
   #disposePublications?: () => void;
+  #sourcesDisposed = false;
 
   constructor(deps: DashboardStreamHubDeps) {
     this.#projection = deps.projection;
@@ -103,8 +104,13 @@ export class DashboardStreamHub {
   close(): void {
     this.#disposeProjection();
     this.#disposePublications?.();
+    this.#sourcesDisposed = true;
     for (const subscriber of this.#subscribers) this.#closeSubscriber(subscriber);
     this.#subscribers.clear();
+  }
+
+  get subscriptionsClosed(): boolean {
+    return this.#sourcesDisposed && this.#subscribers.size === 0;
   }
 
   /** Live connections — a diagnostic for tests and the doctor, never a routing input. */

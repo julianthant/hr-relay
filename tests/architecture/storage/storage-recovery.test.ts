@@ -23,7 +23,7 @@ import { currentAtomicWriteFixture, atomicWriteCheckpoint, releaseSeededWriteOwn
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, StatementSync } from "node:sqlite";
 import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/scheduling/deadline-scheduler.js";
@@ -520,6 +520,43 @@ function spanAuthorityRoot(runInput: unknown = QUEUED_RUN) {
   });
 }
 
+function inspectNativeSpanAuthorityReads<Result>(inspect: () => Result): Result {
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const exec = vi.spyOn(DatabaseSync.prototype, "exec");
+  const readers = [vi.spyOn(StatementSync.prototype, "all"), vi.spyOn(StatementSync.prototype, "get"),
+    vi.spyOn(StatementSync.prototype, "iterate"), vi.spyOn(StatementSync.prototype, "run")];
+  try {
+    const snapshot = inspect();
+    const attemptedSql = [...prepare.mock.calls, ...exec.mock.calls].map(([sql]) => sql);
+    const retiredSql = attemptedSql.filter(sql => /\b(?:archived_runs|workflow_runs)\b/iu.test(sql)
+      || (/\bdeleted_runs\b/iu.test(sql) && /\brecord_(?:key|json)\b/iu.test(sql)));
+    assert.deepEqual(retiredSql, [], "retired archive SQL");
+
+    const sqlByStatement = new Map<StatementSync, string>();
+    for (const [index, result] of prepare.mock.results.entries()) {
+      const sql = prepare.mock.calls[index]?.[0];
+      if (result.type === "return" && sql !== undefined) sqlByStatement.set(result.value, sql);
+    }
+    const executedSql = [...readers.flatMap(reader => reader.mock.contexts.map(statement => {
+      assert.ok(statement instanceof StatementSync);
+      const sql = sqlByStatement.get(statement);
+      assert.ok(sql, "SQLite statement was prepared inside the inspection");
+      return sql;
+    })), ...exec.mock.calls.map(([sql]) => sql)];
+    assert.deepEqual(executedSql.filter(sql => /\bFROM\s+runs\b|\bFROM\s+deleted_runs\s+WHERE\b/iu.test(sql)), [
+      "SELECT * FROM runs ORDER BY id LIMIT 500",
+      "SELECT * FROM deleted_runs WHERE run_id=?",
+      "SELECT * FROM deleted_runs WHERE run_id=?",
+      "SELECT * FROM runs ORDER BY id",
+    ], "native span authority reads");
+    return snapshot;
+  } finally {
+    for (const reader of readers) reader.mockRestore();
+    exec.mockRestore();
+    prepare.mockRestore();
+  }
+}
+
 function manifestPaths(directory: string): string[] {
   return readdirSync(directory)
     .filter((name) => name.endsWith(".manifest.json"))
@@ -742,31 +779,10 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
     database.authority.runs.enqueue(QUEUED_RUN);
     database.authority.runs.enqueue(secondRun);
-    // Captured before the prototype probe and invoked below with its original connection.
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const nativePrepare = DatabaseSync.prototype.prepare;
-    let rootLookupPrepares = 0;
-    const probe = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function countRootLookups(
-      this: DatabaseSync,
-      sql: string,
-    ) {
-      if (sql.includes("SELECT * FROM runs ORDER BY id")
-        || sql.includes("SELECT * FROM deleted_runs WHERE run_id=?")) {
-        rootLookupPrepares += 1;
-      }
-      return nativePrepare.call(this, sql);
-    });
-    let snapshot: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>;
-    try {
-      snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
-        admissionFor(authorityPath), authorityPath,
-        [spanAuthorityRoot(QUEUED_RUN), spanAuthorityRoot(secondRun)],
-      );
-    } finally {
-      probe.mockRestore();
-    }
-
-    assert.equal(rootLookupPrepares, 4);
+    const snapshot = inspectNativeSpanAuthorityReads(() => AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+      admissionFor(authorityPath), authorityPath,
+      [spanAuthorityRoot(QUEUED_RUN), spanAuthorityRoot(secondRun)],
+    ));
     assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
   });
 

@@ -145,7 +145,7 @@ describe("workflow definition public equivalence characterization", () => {
           },
           {
             key: "identity-check", label: "Identity check", nodes: [
-              { id: "name-search", label: "Name Search" }, { id: "subject", label: "Separation Subject" },
+              { id: "name-search", label: "Employee ID Search" }, { id: "subject", label: "Separation Subject" },
               { id: "job-summary", label: "Job Summary" }, { id: "employment", label: "Employment" },
               { id: "department-option", label: "Department Option" },
             ]
@@ -253,8 +253,8 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "document", kind: "task", dependsOn: ["resolve-action"] },
         { id: "plan", kind: "task", dependsOn: ["document"] },
         { id: "termination-type", kind: "task", dependsOn: ["document"] },
-        { id: "name-search", kind: "task", dependsOn: ["plan"] },
-        { id: "subject", kind: "task", dependsOn: ["document", "plan", "name-search"] },
+        { id: "name-search", kind: "task", dependsOn: ["document"], when: { kind: "equals", of: { from: "node", nodeId: "document", path: "employee.eid.state" }, value: "present" } },
+        { id: "subject", kind: "task", dependsOn: ["document", "name-search"] },
         { id: "job-summary", kind: "task", dependsOn: ["document", "subject"] },
         { id: "employment", kind: "task", dependsOn: ["document", "job-summary"] },
         { id: "department-option", kind: "task", dependsOn: ["document", "employment"] },
@@ -271,7 +271,7 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "clear-pending", kind: "transaction", dependsOn: ["approval", "pending-set", "reference-check-review"], dryRun: "stop-after-prepare" },
         { id: "file-termination", kind: "transaction", dependsOn: ["approval", "termination-type", "employment", "dates", "clear-pending"], dryRun: "stop-after-prepare" },
         { id: "receipt", kind: "task", dependsOn: ["approval", "dates", "file-termination"] },
-        { id: "filing-presence", kind: "task", dependsOn: ["receipt"] },
+        { id: "filing-presence", kind: "task", dependsOn: ["receipt", "employment"] },
         { id: "finalize-kuali", kind: "transaction", dependsOn: ["approval", "resolve-action", "document", "plan", "employment", "department-option", "dates", "receipt", "filing-presence"], dryRun: "stop-after-prepare" },
       ],
       omissions: {
@@ -284,7 +284,7 @@ describe("workflow definition public equivalence characterization", () => {
         { key: "document", nodeId: "document", label: "Separation Document", kind: "task", taskId: "kuali/read-separation-document", conditional: false },
         { key: "plan", nodeId: "plan", label: "Separation Plan", kind: "task", taskId: "workflow:separations/read-separation-plan", conditional: false },
         { key: "termination-type", nodeId: "termination-type", label: "Termination Type", kind: "task", taskId: "workflow:separations/match-termination-type", conditional: false },
-        { key: "name-search", nodeId: "name-search", label: "Name Search", kind: "task", taskId: "ucpath/search-person-org", conditional: false },
+        { key: "name-search", nodeId: "name-search", label: "Employee ID Search", kind: "task", taskId: "ucpath/search-person-org", conditional: true },
         { key: "subject", nodeId: "subject", label: "Separation Subject", kind: "task", taskId: "workflow:separations/match-separation-subject", conditional: false },
         { key: "job-summary", nodeId: "job-summary", label: "Job Summary", kind: "task", taskId: "ucpath/read-job-summary", conditional: false },
         { key: "employment", nodeId: "employment", label: "Employment", kind: "task", taskId: "workflow:separations/match-active-employment", conditional: false },

@@ -29,7 +29,7 @@ export function createWorkerChildChannel(input: Readonly<{
   onStop(reason: WorkerStopReason): void;
 }>) {
   let turn: "free" | "run" | "control" = "free";
-  const seen = new Set<string>();
+  let lastRequestSequence = 0;
 
   const run = async (request: WorkerControlRequest): Promise<JsonValue> => {
     switch (request.type) {
@@ -49,8 +49,8 @@ export function createWorkerChildChannel(input: Readonly<{
       const message = parsed.data;
       if (message.kind === "worker-stop") { input.onStop(message.reason); return; }
       const reply = (outcome: WorkerReplyOutcome): void => { input.send({ kind: "worker-reply", requestId: message.requestId, outcome }); };
-      if (seen.has(message.requestId)) { reply(refused("WORKER_IPC_PROTOCOL_INVALID")); return; }
-      seen.add(message.requestId);
+      if (message.sequence <= lastRequestSequence) { reply(refused("WORKER_IPC_PROTOCOL_INVALID")); return; }
+      lastRequestSequence = message.sequence;
       if (message.kind === "worker-pause" || message.kind === "worker-resume") {
         let outcome: WorkerReplyOutcome;
         try { outcome = { state: "done", result: message.kind === "worker-pause" ? input.handlers.pause() : input.handlers.resume() }; }

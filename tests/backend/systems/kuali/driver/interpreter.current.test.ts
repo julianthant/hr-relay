@@ -15,6 +15,7 @@ describe("Kuali current session effects", () => {
       first: () => control,
       waitFor: async () => undefined,
       count: async () => 1,
+      inputValue: async () => "",
       fill: async () => { events.push("fill"); current = false; },
       click: async () => { events.push("click"); },
     };

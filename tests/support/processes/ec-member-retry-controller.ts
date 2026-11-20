@@ -2,7 +2,6 @@ import { unusedWorkerPool } from "../helpers/backend/unused-worker-pool.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createEmergencyContactRetryWorld } from "../helpers/backend/emergency-contact-retry-world.js";
 import { FakeKeyringEntry } from "../helpers/credential-keychain-fake.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
@@ -18,20 +17,23 @@ import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-
 import { workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 
-const [mode, serialized] = process.argv.slice(2);
-const boundary = mode?.replace(/-failed$/u, "");
+const [role, mode, serialized] = process.argv.slice(2);
+if ((role !== "owner" && role !== "successor") || mode === undefined || serialized === undefined) {
+  throw new Error("EC retry controller requires a role, crash mode, and fixture data");
+}
+const boundary = mode.replace(/-failed$/u, "");
 async function send(value: unknown) {
   await new Promise<void>((resolve, reject) => process.send?.(value, error => error ? reject(error) : resolve()));
 }
 
-if (serialized === undefined) {
+if (role === "owner") {
+  const { createEmergencyContactRetryWorld, MemberStageTemplateSchema } = await import("../helpers/backend/emergency-contact-retry-world.js");
   const world = createEmergencyContactRetryWorld();
   let armed = false;
-  const f = await world.fixture({ failures: boundary === "settlement" || boundary === "parent-requested" ? 2 : 1, onFencedSave: () => {
+  const f = await world.reopenTemplate(MemberStageTemplateSchema.parse(JSON.parse(serialized)), { onFencedSave: () => {
     if (armed && boundary === "fence") process.kill(process.pid, "SIGKILL");
   } });
-  await world.releaseSources();
-  f.control.failAccounting = mode?.endsWith("-failed") === true;
+  f.control.failAccounting = mode.endsWith("-failed");
   await f.canonical.execute(f.parentRun, new AbortController().signal);
   const parent = f.current(); assert.ok(parent.completion);
   const receipt = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] }).ensureReceipt(parent.envelope.runId);

@@ -28,10 +28,11 @@ export const UcpathPayPathReadSchema = z.strictObject({
 });
 export type UcpathPayPathRead = z.infer<typeof UcpathPayPathReadSchema>;
 
-/** The work-study transaction one run files: the plan's values and the PayPath name it was planned for. */
+/** The work-study transaction and its reviewed PayPath person and position. */
 export const UcpathPayPathWorkStudyTargetSchema = z.strictObject({
   emplId: EidSchema,
   expectedName: z.string().trim().min(1),
+  positionNumber: z.string().trim().min(1),
   effectiveDate: UcpathUsDateSchema,
   positionChangeReason: z.literal("JRL"),
   positionPool: z.literal("F"),
@@ -67,6 +68,7 @@ export const UCPATH_PAYPATH_REFUSAL_CODES = [
   "paypath-alert-shown",
   "paypath-identity-unreadable",
   "paypath-position-already-dated",
+  "paypath-position-mismatch",
   "unexpected-page-state",
   "staged-value-mismatch",
 ] as const;

@@ -7,15 +7,15 @@ import { formatErrorCatalogFailure } from "../../../models/failures/error-catalo
 import type { ExplorerWorkflowWire } from "../../../models/dashboard/explorer.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../shared/loading/loading.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
-import { explorerPickerEntries } from "./explorer-picker-model.js";
+import { explorerMainWorkflowId, explorerPickerEntries } from "./explorer-picker-model.js";
 import { ExplorerPage, ExplorerSpecView } from "./explorer-spec-view.js";
 
 export function WorkflowExplorer({ catalog, client }: { catalog: readonly WorkflowCatalogEntry[]; client?: DashboardClient }) {
   const [chosen, setWorkflowId] = useViewState("explorerWorkflow", catalog.find(entry => entry.source === "served")?.id ?? "");
   const [known, setKnown] = useState<readonly ExplorerWorkflowWire[] | undefined>();
-  const workflows = useMemo(() => explorerPickerEntries(catalog, known), [catalog, known]);
-  // A workflow that is not listed (a stale route) shows the first one instead; before the wire arrives the choice stands.
-  const workflowId = known === undefined && chosen !== "" ? chosen : workflows.some(entry => entry.id === chosen) ? chosen : workflows[0]?.id;
+  const workflows = useMemo(() => explorerPickerEntries(catalog), [catalog]);
+  // A choice that is not a main workflow (a saved view or link to a sub-workflow) shows the main workflow that starts it.
+  const workflowId = explorerMainWorkflowId(chosen, workflows, known);
   const registered = catalog.find(entry => entry.id === workflowId && entry.source === "served");
   const { state, retry, workflows: wire } = useExplorerWiring(client, workflowId, registered?.served?.version);
   if (wire !== undefined && wire !== known) setKnown(wire);

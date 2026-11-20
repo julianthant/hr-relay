@@ -8,7 +8,6 @@ import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backe
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { DESCRIPTORS, WORKFLOW_DEFINITIONS, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../../../src/backend/runs/queries/bootstrap.js";
-import { buildWorkflowExplorer } from "../../../../src/backend/runs/queries/explorer.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -24,7 +23,7 @@ import { workflowDefinitionRegistry } from "../../../../src/workflow-kit/validat
 import { workflowDefinitionOf } from "../../../../src/workflow-kit/workflow-definition.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
-import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../../support/fixtures/explorer-seams.js";
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
 import { AT, makeWorld, queuedEventOf, taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { foundationFixture, id as id_m1, NOW } from "../../../support/helpers/database-foundation/fixtures.js";
@@ -100,7 +99,7 @@ describe("workflow definition registry conformance", () => {
       });
       const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
       const starts = new Map(bootstrapWorkflows.map((workflow) => [String(workflow.id), workflow.start]));
-      const explorer = buildWorkflowExplorer(explorerQueryDeps(manualClock(AT), EXPLORER_HASH));
+      const explorer = readFixtureExplorer(explorerQueryDeps(manualClock(AT), EXPLORER_HASH));
       const explorerWorkflows = new Map(explorer.workflows.map((workflow) => [String(workflow.id), workflow]));
 
       for (const [index, { descriptor, definition }] of WORKFLOW_DEFINITIONS.entries()) {

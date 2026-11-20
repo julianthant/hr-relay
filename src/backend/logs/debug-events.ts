@@ -2,11 +2,20 @@ import { sanitizeDebugText } from "../../rules/redaction/redaction.js";
 import { deriveStableUuid } from "../../rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
-import { DebugEventSchema, type TimelineRepository, type TimelineAppend } from "../../models/events/timeline.js";
+import { DebugEventSchema, TimelineDiagnosticBudgetError, type TimelineRepository, type TimelineAppend } from "../../models/events/timeline.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { localDatePart } from "../../rules/time/clock.js";
 import { mirrorDebugEvent } from "../storage/events/local-debug-log.js";
 import { serializeErrorCauses } from "../../models/failures/error-origins.js";
+
+/** Optional producers can skip a full diagnostic budget. Required writers keep their durable receipt contract. */
+export function emitOptionalDiagnostic(emit: () => void): "emitted" | "budget-full" {
+  try { emit(); return "emitted"; }
+  catch (error) {
+    if (error instanceof TimelineDiagnosticBudgetError) return "budget-full";
+    throw error;
+  }
+}
 
 export function createDebugEventWriter(deps: { repository: TimelineRepository; clock: Clock; build: string;
   development?: boolean; writeStderr?: (line: string) => void }) {

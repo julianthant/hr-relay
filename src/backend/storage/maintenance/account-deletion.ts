@@ -1,6 +1,6 @@
 import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { readRestoreWriteFences } from "../sqlite/restore-write-fences.js";
+import { readUnresolvedRestoreWrites } from "../sqlite/restore-write-fences.js";
 import { withReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
@@ -99,7 +99,7 @@ export function captureAccountDeletion(location: Location, document: z.infer<typ
   const roots = [`profiles/${profileId}`, ...priorBrowsers.roots.filter(root => root.profileId === profileId && root.owner.kind === "signup")
     .map(root => root.directory).filter(path => lstatSync(join(location.stateRoot, path), { throwIfNoEntry: false }) !== undefined)];
   proveProfileRootsUnused(roots.map(path => join(location.stateRoot, path)));
-  if (withReadonlyAuthoritySnapshot(join(location.stateRoot, "profiles", profileId, "state.db"), database => readRestoreWriteFences(database).unresolved.length) !== 0) throw new Error("account-deletion-unresolved-write");
+  if (withReadonlyAuthoritySnapshot(join(location.stateRoot, "profiles", profileId, "state.db"), readUnresolvedRestoreWrites).length !== 0) throw new Error("account-deletion-unresolved-write");
   return AccountDeletionSchema.parse({ schemaVersion: 1, installationId: location.installationId, operationId: randomUUID(), profileId,
     priorDocument: document, document: advanceProfileRegistryDocument(document, { profiles: document.profiles.filter(row => row.profileId !== profileId), sessionGeneration: epoch + 1 }),
     priorVerifiers, verifiers: { ...priorVerifiers, profiles: priorVerifiers.profiles.filter(row => row.profileId !== profileId) },

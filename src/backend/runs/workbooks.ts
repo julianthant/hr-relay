@@ -396,8 +396,8 @@ export function authenticateOnboardingRosterExecution(repositories: AuthorityRep
   return { ...authenticateOnboardingRosterChoice(repositories, source, gate), gate };
 }
 
-function authenticateCrmReferenceChoice(repositories: AuthorityRepositories, run: RunRecord, gate: GateResultRecord) {
-  const data = crmReferenceRows(repositories, run);
+function authenticateCrmReferenceChoice(repositories: AuthorityRepositories, run: RunRecord, gate: GateResultRecord, retained = false) {
+  const data = crmReferenceRows(repositories, run, retained);
   if (data === undefined || data.rows.state !== "resolve-required" || !("commandId" in gate)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const complete = completeCrmReferenceChoice(data, crmReferenceSelections(repositories, run, data));
   const command = repositories.commands.get(gate.commandId), audit = repositories.commandAudits.findByCommand(gate.commandId);
@@ -425,7 +425,11 @@ export function authenticateWorkbookReferenceChoice(repositories: AuthorityRepos
 
 export function authenticateWorkbookReferenceExecution(repositories: AuthorityRepositories, run: RunRecord) {
   if (!crmReferenceWorkflows.has(run.envelope.workflow)) return authenticateOnboardingRosterExecution(repositories, run);
-  const data = crmReferenceRows(repositories, run);
+  const retained = run.lifecycle.state === "terminal";
+  return authenticateCrmReferenceExecution(repositories, run, crmReferenceRows(repositories, run, retained), retained);
+}
+
+function authenticateCrmReferenceExecution(repositories: AuthorityRepositories, run: RunRecord, data: CrmRows | undefined, retained: boolean) {
   validateRunContinuation(repositories, run.envelope);
   const gate = readContinuationGate(repositories, run.envelope, CRM_DOCUMENT_ROW_CHOICE_GATE_ID);
   if (gate === undefined) {
@@ -435,10 +439,10 @@ export function authenticateWorkbookReferenceExecution(repositories: AuthorityRe
   const source = repositories.runs.get(gate.runId);
   if (source === undefined || canonicalJsonStringify(source.input.parsed) !== canonicalJsonStringify(run.input.parsed)
     || canonicalJsonStringify(source.input.workbookReferences) !== canonicalJsonStringify(run.input.workbookReferences)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-  return { ...authenticateCrmReferenceChoice(repositories, source, gate), gate };
+  return { ...authenticateCrmReferenceChoice(repositories, source, gate, retained), gate };
 }
 
-function crmReferenceRows(repositories: AuthorityRepositories, run: RunRecord) {
+function crmReferenceRows(repositories: AuthorityRepositories, run: RunRecord, retained = false) {
   const checkpoint = readRunCheckpoint(repositories, run.envelope, "document-rows", true);
   if (checkpoint === undefined) return undefined;
   const owner = checkpoint.runId === run.envelope.runId ? run : repositories.runs.get(checkpoint.runId);
@@ -449,7 +453,7 @@ function crmReferenceRows(repositories: AuthorityRepositories, run: RunRecord) {
     || checkpoint.nodeId !== "document-rows" || checkpoint.attempt > run.envelope.attempt || Number(checkpoint.claimGeneration) > Number(owner.claimGeneration)
     || checkpoint.descriptorVersion !== run.envelope.descriptorVersion
     || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
-    || checkpoint.implFingerprint !== taskImplFingerprint(ReadCrmDocumentRows)
+    || !retained && checkpoint.implFingerprint !== taskImplFingerprint(ReadCrmDocumentRows)
     || checkpoint.output.schemaHash !== deriveSchemaHash(ReadCrmDocumentRows.output, "output")) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const rows = ReadCrmDocumentRows.output.parse(checkpoint.output.value);
   const sources = referencesFor(run, ONBOARDING_ROSTER_TYPE_ID).map(reference => ({
@@ -544,12 +548,13 @@ function crmCandidateWire(candidate: z.infer<typeof CrmDocumentRowCandidateSchem
 }
 
 function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunRecord, answer: DecisionAnswerer | undefined): RunWorkbookReferenceChoiceWire[] {
-  const data = crmReferenceRows(repositories, run);
+  const retained = run.lifecycle.state === "terminal";
+  const data = crmReferenceRows(repositories, run, retained);
   if (data === undefined || data.rows.state === "resolved") return [];
-  const execution = authenticateWorkbookReferenceExecution(repositories, run);
+  const execution = authenticateCrmReferenceExecution(repositories, run, data, retained);
   const owner = execution === undefined ? run : repositories.runs.get(execution.gate.runId);
   if (owner === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-  const source = owner.envelope.runId === run.envelope.runId ? data : crmReferenceRows(repositories, owner);
+  const source = owner.envelope.runId === run.envelope.runId ? data : crmReferenceRows(repositories, owner, retained);
   if (source === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const selections = crmReferenceSelections(repositories, owner, source);
   return data.rows.people.flatMap((person): z.input<typeof RunWorkbookReferenceChoiceWireSchema>[] => {
@@ -738,15 +743,15 @@ function claimedRun(repositories: AuthorityRepositories, captured: RunRecord): R
 
 /** Looks one Employee ID up in the sheet a check pick pinned; the row's name is compared here and never returned. */
 function checkReferencePerson(repository: AuthorityRepositories["workbooks"], reference: Reference, eid: string, name: string | null) {
-  const { selected } = verifyRetainedNamedWorkbookReference(repository, reference);
-  const worksheet = reference.snapshot.worksheets[0], keyFieldId = reference.snapshot.type.keyFieldId;
+  const { selected, matchesFor } = verifyRetainedNamedWorkbookReference(repository, reference, "retained");
+  const worksheet = reference.snapshot.worksheets[0];
   const sheet = selected.workbook.sheets.find(candidate => candidate.id === worksheet?.sheetId);
-  if (reference.snapshot.worksheets.length !== 1 || worksheet === undefined || sheet === undefined || keyFieldId === null) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  if (reference.snapshot.worksheets.length !== 1 || worksheet === undefined || sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const nameColumns = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === "fullName" && binding.basis !== "unmapped" ? [index] : []) ?? [];
   const nameColumn = nameColumns.length === 1 ? nameColumns[0] : undefined;
-  const rows = workbookMatches({ ...selected.workbook, sheets: [sheet] }, keyFieldId, eid).map(match => {
-    const cell = nameColumn === undefined ? undefined : match.row.cells[nameColumn]?.value;
-    return { row: sheet.rows.findIndex(row => row.id === match.rowId) + 1, name: typeof cell === "string" ? cell : null };
+  const rows = matchesFor(eid).map(({ row, rowNumber }) => {
+    const cell = nameColumn === undefined ? undefined : row.cells[nameColumn]?.value;
+    return { row: rowNumber, name: typeof cell === "string" ? cell : null };
   });
   const check = checkReferenceRows(name, rows, nameColumn !== undefined);
   return { spreadsheet: reference.snapshot.type.name, sheet: worksheet.name, ...check,

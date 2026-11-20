@@ -1,4 +1,5 @@
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 import { RunContinuationSchema } from "../../../models/run/continuation.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -66,9 +67,7 @@ export function captureRunContinuation(repositories: ContinuationRepositories, r
   sources.set(run.envelope.runId, { runId: run.envelope.runId, version: run.version, attempt: run.envelope.attempt,
     identityDigest: sourceIdentityDigest(run) });
   const checkpoints = new Map(run.envelope.continuation?.checkpoints.map(row => [row.nodeId, row]));
-  for (const row of repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId)
-    .filter(row => row.runId === run.envelope.runId && row.attempt === run.envelope.attempt)
-    .sort((a, b) => a.claimGeneration - b.claimGeneration)) {
+  for (const row of repositories.runCheckpoints.listByRunAttempt(run.envelope.workflow, run.envelope.itemId, run.envelope.runId, run.envelope.attempt)) {
     checkpoints.set(row.nodeId, { nodeId: row.nodeId, runId: row.runId, attempt: row.attempt,
       claimGeneration: row.claimGeneration, digest: continuationEvidenceDigest(row) });
   }
@@ -114,8 +113,8 @@ export function originalCheckpoint(repositories: Pick<AuthorityRepositories, "ru
   return reference === undefined ? undefined : retainedCheckpoint(repositories, source.envelope, reference);
 }
 
-/** A fresh read by a non-Retry run takes the item's latest row unless a cancelled run wrote it; Retry and transaction reads always take the latest row. */
-export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints"> & { readonly runs?: Pick<AuthorityRepositories["runs"], "get">; readonly lifecycleJournal?: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue">; readonly gateResults?: AuthorityRepositories["gateResults"] }, envelope: RunEnvelope, nodeId: string, freshTasks = false) {
+/** A fresh Start excludes cancelled work and binds reference-dependent tasks to their captured worksheets. */
+export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "runCheckpoints"> & { readonly runs?: Pick<AuthorityRepositories["runs"], "get">; readonly lifecycleJournal?: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue">; readonly gateResults?: AuthorityRepositories["gateResults"] }, envelope: RunEnvelope, nodeId: string, freshTasks = false, referenceTypeId?: string) {
   if (envelope.continuation !== undefined) {
     if (repositories.runs === undefined || repositories.gateResults === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
     validateRunContinuation({ ...repositories, runs: repositories.runs, gateResults: repositories.gateResults }, envelope);
@@ -129,8 +128,17 @@ export function readRunCheckpoint(repositories: Pick<AuthorityRepositories, "run
     .filter((checkpoint) => checkpoint.runId === envelope.runId).at(-1);
   if (envelope.sourceBound !== undefined || freshTasks && envelope.recovery === "restart-from-start") return own();
   const latest = repositories.runCheckpoints.latest(envelope.workflow, envelope.itemId, nodeId);
-  if (!freshTasks || envelope.retryOf !== undefined || latest === undefined || latest.runId === envelope.runId) return latest;
-  return writtenUnderCancel(repositories.runs, latest.runId) ? own() : latest;
+  if (!freshTasks || latest === undefined || latest.runId === envelope.runId) return latest;
+  if (envelope.retryOf === undefined && writtenUnderCancel(repositories.runs, latest.runId)) return own();
+  if (referenceTypeId !== undefined) {
+    const selection = (runId: string) => {
+      const run = repositories.runs?.get(runId);
+      if (run === undefined) throw new RunContinuationRefusedError("run-checkpoint-reference-owner-unavailable");
+      return canonicalJsonStringify((run.input.workbookReferences ?? []).filter(bound => parseRunWorkbookReference(bound).request.typeId === referenceTypeId));
+    };
+    if (selection(latest.runId) !== selection(envelope.runId)) return own();
+  }
+  return latest;
 }
 
 /** True when the row's run, or a run it was delegated from, was cancelled. */

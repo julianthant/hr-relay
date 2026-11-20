@@ -12,7 +12,7 @@ import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person
 import { EID_PATTERN, EidSchema } from "../../rules/identity/ids.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
-import { APPROVAL_NODE, DEPARTMENT_NODE, EMPLOYMENT_NODE, GATE_NODE, JOB_SUMMARY_NODE, SUBJECT_NODE, separationsIdentityCheckDefinition } from "./steps/identity-check/step.js";
+import { APPROVAL_NODE, DEPARTMENT_NODE, EMPLOYMENT_NODE, GATE_NODE, JOB_SUMMARY_NODE, separationsIdentityCheckDefinition } from "./steps/identity-check/step.js";
 import { DATES_NODE, separationsKronosTimecardDefinition } from "./steps/kronos-timecard/step.js";
 import { ACTION_NODE, TERMINATION_TYPE_NODE, separationsKualiReadDefinition } from "./steps/kuali-extraction/step.js";
 import { FINALIZE_NODE, KUALI_FINALIZATION_STEP, separationsKualiFinalizationDefinition } from "./steps/kuali-finalization/step.js";
@@ -91,9 +91,6 @@ export const separationsWorkflow = defineWorkflow({
     nodeId: JOB_SUMMARY_NODE, code: "employee-not-found", inputField: "operatorEmployeeId",
     label: "Employee ID", actionLabel: "Enter EID", placeholder: "8 digits", pattern: EID_PATTERN.source, displaySafe: true
   },
-  ...(["subject-not-resolvable", "subject-ambiguous"] as const).map(code => ({
-    nodeId: SUBJECT_NODE, code, inputField: "operatorEmployeeId", label: "Employee ID", actionLabel: "Enter EID", placeholder: "8 digits", pattern: EID_PATTERN.source,
-  })),
   {
     nodeId: ACTION_NODE, code: "document-not-in-action-list", inputField: "documentNumber",
     label: "Document number", actionLabel: "Enter document number", pattern: z.toJSONSchema(KualiDocumentNumberSchema).pattern

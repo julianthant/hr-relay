@@ -67,5 +67,9 @@ it("browser launch forwards retained display and mode through a headless custody
   const retained = f.database.authority.configSnapshots.get(old.envelope.configSnapshotId); assert.ok(retained);
   assert.equal(launch.mock.calls[0]?.[0], join(retained.config.paths.browserProfileRoot, `w${String(slot.ordinal)}`, "ucpath"));
   assert.equal(launch.mock.calls[0]?.[0], launch.mock.calls[1]?.[0], "the retained native worker slot owns one stable system profile across settings snapshots");
-  assert.equal(factory.forRun(old), first);
+  const restored = factory.forRun(old);
+  assert.equal(restored.taskDeadlineMs, first.taskDeadlineMs);
+  assert.equal(restored.defaultBrowserMode, first.defaultBrowserMode);
+  assert.notEqual(restored.sessionFactory, first.sessionFactory);
+  assert.equal(factory.forRun(old).sessionFactory, restored.sessionFactory);
 });

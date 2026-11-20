@@ -92,14 +92,17 @@ it("still exits when appending the crash event fails while the process has activ
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it.each(["cause", "stack"])("records a crash and exits when inspecting the error's %s would throw", property => {
+it.each([
+  ["uncaught-exception", "cause"], ["uncaught-exception", "stack"],
+  ["unhandled-rejection", "cause"], ["unhandled-rejection", "stack"],
+])("records a fatal %s and exits when inspecting its %s throws", (reason, property) => {
   const root = mkdtempSync(join(tmpdir(), "relay-crash-error-accessor-"));
   try {
     const child = crash(root, `
       setInterval(() => undefined, 1000);
       const error = new Error("synthetic crash");
       Object.defineProperty(error, ${JSON.stringify(property)}, { get() { throw new Error("synthetic error getter failed"); } });
-      setImmediate(() => { throw error; });
+      ${reason === "unhandled-rejection" ? "void Promise.reject(error);" : "setImmediate(() => { throw error; });"}
     `);
     assert.equal(child.error, undefined);
     assert.equal(child.signal, null);
@@ -110,7 +113,8 @@ it.each(["cause", "stack"])("records a crash and exits when inspecting the error
     const payload = local.records[0]?.payload;
     assert.ok(payload?.kind === "debug");
     assert.equal(payload.event.code, "INTERNAL_FAILURE");
-    assert.equal(payload.event.reason, "uncaught-exception");
+    assert.equal(payload.event.reason, reason);
+    assert.equal(payload.event.message, reason === "unhandled-rejection" ? "rejection-details-unavailable" : undefined);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -131,9 +135,36 @@ it("persists one unhandled worker rejection and exits non-zero", () => {
     assert.equal(payload.event.reason, "unhandled-rejection");
     assert.equal(payload.event.pid, child.pid);
     assert.equal(payload.event.code, "INTERNAL_FAILURE");
-    assert.equal(payload.event.message, undefined);
+    assert.equal(payload.event.message, "RangeError");
     assert.equal(payload.event.stack, undefined);
     assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes(CREDENTIAL), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("records a catalogued rejection and its Relay frames without arbitrary error text or foreign paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-process-origin-"));
+  try {
+    const workerPool = new URL("../../../../src/backend/runtime/workers/worker-pool.ts", import.meta.url);
+    const child = crash(root, `import { requireStoppedPool } from ${JSON.stringify(workerPool.href)};
+      void Promise.resolve().then(() => {
+        try { requireStoppedPool([{ state: "running", member: { workerId: "synthetic" } }]); }
+        catch (error) {
+          error.stack += "\\n    at /synthetic/worktree/src/synthetic/River-Example.ts:12:4";
+          error.message = ${JSON.stringify(CREDENTIAL)};
+          throw error;
+        }
+      });`);
+    assert.equal(child.error, undefined);
+    assert.equal(child.status, 1);
+    const local = readLocalDebugLog(root);
+    assert.ok(local.state === "present");
+    const payload = local.records[0]?.payload;
+    assert.ok(payload?.kind === "debug");
+    assert.equal(payload.event.reason, "unhandled-rejection");
+    assert.equal(payload.event.message, "WORKER_EXIT_UNOBSERVED <- UnknownCause");
+    assert.match(payload.event.stack ?? "", /src\/backend\/runtime\/workers\/worker-pool\.ts:\d+:\d+/u);
+    const spool = readFileSync(join(root, "logs", "boot.jsonl"), "utf8");
+    for (const privateText of [CREDENTIAL, "River-Example", process.cwd()]) assert.ok(!spool.includes(privateText));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

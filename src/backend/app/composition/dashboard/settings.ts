@@ -7,6 +7,7 @@ import { createNativePathPicker } from "../../../transports/http/native-path-pic
 import type { SettingsRouteDeps } from "../../../transports/http/routes/settings-types.js";
 import { resolveConfigWithProvenance } from "../../config/resolve.js";
 import { DESCRIPTORS } from "../../registries/workflow-registry.js";
+import { buildSettingsFacts } from "../../../runs/queries/settings.js";
 
 export function composeProfileSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
   readonly database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority">;
@@ -16,7 +17,7 @@ export function composeProfileSettings(input: Parameters<typeof createSettingsRu
 }
 
 export function composeSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
-  database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority">;
+  database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority" | "trackAuthorityTables">;
   environment: Readonly<Record<string, string | undefined>>; credentials: ReturnType<typeof createCredentialStore>;
   assertCurrent?: () => void;
   resolveSettings?: Parameters<typeof createSettingsApplicationExecutor>[0];
@@ -30,9 +31,12 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     input.assertCurrent?.();
     return result;
   });
+  const factsPosition = database.trackAuthorityTables(["settings", "settings_snapshots", "commands", "command_audits"]);
   const routes: SettingsRouteDeps = {
     nativePathPicker: createNativePathPicker(),
     settings: { readConfig: () => read(activeSettingsConfig), descriptors: DESCRIPTORS },
+    withSettingsFacts: respond => read(repositories => respond(factsPosition(),
+      () => buildSettingsFacts({ config: activeSettingsConfig(repositories), descriptors: DESCRIPTORS }))),
     settingsEditor: {
       settings: { read: () => read(repositories => {
         const snapshot = reader.read(repositories);
