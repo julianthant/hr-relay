@@ -24,12 +24,6 @@ export function workflowNavigationGroups<Entry extends WorkflowNavigationEntry>(
   return groupWorkflowsByCategory(ordered).sort((left, right) => rank(left.label) - rank(right.label));
 }
 
-/** The rail lists every workflow in one flat group, in the order given, with no category heading. */
-export function flatWorkflowGroup<Entry extends WorkflowNavigationEntry>(entries: readonly Entry[]): WorkflowCategoryGroup<Entry>[] {
-  const entriesInOrder = workflowNavigationGroups(entries).flatMap(group => group.entries);
-  return entriesInOrder.length > 0 ? [{ label: "", entries: entriesInOrder }] : [];
-}
-
 const NARROW_QUERY = "(max-width: 1199px)";
 
 function subscribeNarrow(notify: () => void): () => void {

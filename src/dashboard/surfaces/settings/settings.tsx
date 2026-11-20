@@ -1,12 +1,13 @@
 import { CURRENT_FISCAL_TARGET, runCheckForTarget } from "./preflight/preflight-remedy-model.js";
 import { CHECK_COPY } from "./preflight/preflight-check-copy.js";
-import { ArrowLeft,ArrowUp,Check,CircleAlert,Folder,Gauge,Keyboard,Monitor,SlidersHorizontal,Table2,User } from "lucide-react";
+import { ArrowUp,ChartNoAxesColumn,Check,CircleAlert,Folder,Gauge,Keyboard,ListTree,Monitor,SlidersHorizontal,Table2,User,X } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,NavRow,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
+import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
@@ -19,7 +20,7 @@ import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigati
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { relayUsername } from "./account/relay-username.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
-import { SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
 
 
@@ -45,6 +46,9 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Folder> = {
   capabilities: Table2,
   keyboard: Keyboard,
   unrendered: CircleAlert,
+  spreadsheets: Table2,
+  explorer: ListTree,
+  activity: ChartNoAxesColumn,
 };
 
 
@@ -74,6 +78,7 @@ function SectionButton({
   );
 }
 
+
 function SearchResultLink({ result, active, onSelect }: { result: SettingsSearchResult; active: boolean; onSelect: () => void }) {
   const Icon = NAV_ICON[result.entry.icon];
   const params = new URLSearchParams({ settings: result.entry.id });
@@ -92,9 +97,11 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
 export function SettingsPage({
   section,
   searchTarget: requestedTarget,
+  dataContent,
   appearance,
   deleteAccount,
   accountPage,
+  onOpenRun,
   actorId,
   profileName,
   descriptorFingerprint,
@@ -108,16 +115,18 @@ export function SettingsPage({
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
   searchTarget?: string;
+  dataContent?: ReactNode;
   appearance?: ReactNode;
   deleteAccount?: ReactNode;
   accountPage?: AccountPage;
+  onOpenRun?: (runId: string, partitionDay: string) => void;
   actorId: string;
   profileName: string;
   descriptorFingerprint: string;
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
-  /** Settings was opened by a Run dialog Fix button: the way out reads "Back to run" and focus moves in on open. */
+  /** Settings was opened by a Run dialog Fix button: focus moves in on open. */
   backToRun?: boolean;
   onSaved?: SettingsSaveListener;
   onSaveProblem?: SettingsSaveProblemListener;
@@ -130,6 +139,8 @@ export function SettingsPage({
   const groups = useMemo(() => buildSettingsNav(settingsDocument), [settingsDocument]);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
+  const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
+  if (isDataSection && dataContent === undefined) throw new Error("SETTINGS_DATA_CONTENT_UNAVAILABLE");
   const [navQuery, setNavQuery] = useViewState("settingsQuery", "", "replace");
   const [searchVisit, setSearchVisit] = useState(0);
   const navSearch = useRef<HTMLInputElement>(null);
@@ -207,7 +218,7 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><h2>Settings</h2><IconButton label={backToRun ? "Back to run" : "Back to dashboard"} size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <header className="settings-nav-header"><h2>Settings</h2><IconButton label="Close settings" size="sm" icon={<X className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
         <SearchInput ref={navSearch} variant="sidebar" aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {
@@ -232,9 +243,9 @@ export function SettingsPage({
 
       <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
-        {openedForCheckName !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then press Back to run.</Banner>}
+        {openedForCheckName !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then close Settings.</Banner>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
-        {editor.editor.state === "failed" && (
+        {editor.editor.state === "failed" && !isDataSection && activeId !== "spreadsheets" && (
           <FailureNotice sentence="Couldn't load settings."
             action={{ label: "Retry", onClick: editor.reload }} />
         )}
@@ -247,6 +258,8 @@ export function SettingsPage({
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
         )}
+        {isDataSection && dataContent}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
         {resolution.state === "open" && editor.editor.state !== "failed" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />

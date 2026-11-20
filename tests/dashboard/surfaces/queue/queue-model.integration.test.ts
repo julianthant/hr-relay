@@ -182,8 +182,8 @@ afterEach_m1(_afterEachFixture0);
     await act_m1(async () => second.click());
     assert_m1.deepEqual(selected, [String(row(2).runId)]);
     await render(rows, undefined, row(2).runId);
-    assert_m1.equal(document.querySelectorAll('[data-demo-row-id][aria-pressed="true"]').length, 1);
-    assert_m1.equal(second.getAttribute("aria-pressed"), "true");
+    assert_m1.equal(document.querySelectorAll('[data-demo-row-id] [data-queue-open][aria-pressed="true"]').length, 1);
+    assert_m1.equal(second.querySelector("[data-queue-open]")?.getAttribute("aria-pressed"), "true");
   });
   it_m1("does not invoke grouping commands for either served preference", async () => {
     for (const grouped of [true, false]) {
@@ -347,6 +347,41 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.ok(memberButton() === null);
     await render(rows.map(row => ({ ...row, actions: [] })), handlers, rows[1].runId);
     assert_m1.ok(memberButton() === null);
+  });
+
+  it_m1("shows a row action pending until the reply arrives, ignores a second press, and frees it on a refusal", async () => {
+    const pause = { kind: "command", key: "pause", command: "pause", label: "Pause after this step", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" };
+    const row = lookupRow(1, { rowRevision: 12, actions: [pause] });
+    const sent: unknown[] = [];
+    let reply: () => void = () => undefined;
+    const handlers: QueueHandlers_m1 = { onSelect: () => undefined, onAction: (action, target) => { sent.push([action, target]); return new Promise<void>(resolve => { reply = resolve; }); } };
+    await render([row], handlers, row.runId);
+    const button = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>('[data-queue-member-actions] button[aria-label="Pause after this step"]');
+    const before = button(); assert_m1.ok(before);
+    assert_m1.equal(before.disabled, false);
+    await act_m1(async () => before.click());
+    const pending = button(); assert_m1.ok(pending);
+    assert_m1.equal(pending.disabled, true);
+    assert_m1.ok(pending.querySelector(".animate-spin"));
+    await act_m1(async () => pending.click());
+    assert_m1.equal(sent.length, 1);
+    await act_m1(async () => reply());
+    assert_m1.equal(button()?.disabled, false);
+    assert_m1.equal(button()?.querySelector(".animate-spin"), null);
+    await act_m1(async () => button()?.click());
+    assert_m1.equal(button()?.disabled, true);
+    await render([lookupRow(1, { rowRevision: 13, actions: [{ ...pause, expectedVersion: 13 }] })], handlers, row.runId);
+    await act_m1(async () => reply());
+    assert_m1.equal(button()?.disabled, false);
+  });
+
+  it_m1("keeps every queue row control outside any other control", async () => {
+    const rows = [lookupRow(1), lookupRow(2)];
+    await render(rows, { onSelect: () => undefined }, rows[0].runId);
+    const interactive = 'button, a[href], input, select, textarea, [role="button"], [role="checkbox"], [tabindex]';
+    for (const control of document.querySelectorAll<HTMLElement>(interactive)) {
+      assert_m1.equal(control.parentElement?.closest(interactive) ?? null, null, control.outerHTML.slice(0, 120));
+    }
   });
 
   it_m1("keeps batch and individual selection local with partial-selection state", async () => {
