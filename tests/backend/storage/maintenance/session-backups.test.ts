@@ -281,6 +281,50 @@ describe("hourly in-session backup", () => {
       expect(f.names(".session.sqlite")).toHaveLength(1);
       expect(f.names(".session.sqlite")).not.toContain(previous);
     });
+    it.each(["removed", "altered"] as const)("keeps the previous pair when the fresh backup's files are %s after the request", async fault => {
+      const f = await fixture();
+      await expect(f.sessionBackups.check()).resolves.toBe("taken");
+      const previous = f.names(".session.sqlite")[0];
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const request = AuthorityBackupService.prototype.request;
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(async function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
+        const result = await request.apply(this, args), fresh = result.manifests.at(-1)!.backupFileName;
+        if (fault === "removed") { rmSync(join(f.directory, `${fresh}.manifest.json`)); rmSync(join(f.directory, fresh)); } else f.damage(fresh);
+        return result;
+      });
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(f.names(".session.sqlite")).toContain(previous);
+      expect(f.names(".session.sqlite.manifest.json")).toContain(`${previous}.manifest.json`);
+      failedOnce(f);
+    });
+    it("keeps a manifest-less session backup whose manifest appears during the pass", async () => {
+      const f = await fixture();
+      await expect(f.sessionBackups.check()).resolves.toBe("taken");
+      const previous = f.names(".session.sqlite")[0];
+      const orphan = previous.replace(/-[0-9a-f-]{36}\.session/u, "-00000000-0000-4000-8000-000000000000.session");
+      writeFileSync(join(f.directory, orphan), readFileSync(join(f.directory, previous)), { mode: 0o600 });
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const request = AuthorityBackupService.prototype.request;
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
+        writeFileSync(join(f.directory, `${orphan}.manifest.json`), "{}", { mode: 0o600 });
+        return request.apply(this, args);
+      });
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(f.names(".session.sqlite")).toContain(orphan);
+      failedOnce(f);
+    });
+    it("retires no stale session pair when the replacement backup fails verification", async () => {
+      const f = await fixture();
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const files = allFiles(f);
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockRejectedValueOnce(Object.assign(new Error("injected verification read failure"), { code: "EIO" }));
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(allFiles(f)).toEqual(files);
+      failedOnce(f);
+    });
     it("retires no session pair when a newer backup of another kind cannot be read", async () => {
       const f = await fixture();
       await f.sessionBackup();
