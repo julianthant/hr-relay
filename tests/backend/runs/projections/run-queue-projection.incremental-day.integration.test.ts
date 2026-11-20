@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
@@ -161,6 +161,23 @@ it("revalidates another attempt of the changed item across consecutive patches",
   assert.ok(warmSummaries.includes(target.runId));
   assert.ok(warmSummaries.includes(peer.envelope.runId));
   assert.ok(!warmSummaries.includes(independent.runId));
+});
+
+it("reads one workflow page for changed runs separated by an independent workflow", async () => {
+  const { w, target, warm, cold, rename } = await fixture();
+  const independent = queuedEventOf(w, { seed: 3, workflow: "separations" });
+  const second = queuedEventOf(w, { seed: 4 });
+  warm.buildDashboardDayWire(DAY);
+  assert.equal(rename().state, "applied");
+  assert.equal(w.database.authority.runs.updatePresentation({ runId: second.runId, expectedVersion: 1,
+    displayName: "Also renamed", now: target.ts }).state, "applied");
+  const queries = vi.spyOn(w.database, "queryRunSummaries");
+  const patched = warm.buildDashboardDayWire(DAY);
+  const workflows = queries.mock.calls.map(([query]) => query.workflow);
+  queries.mockRestore();
+  assert.equal(JSON.stringify(patched), JSON.stringify(cold.buildDashboardDayWire(DAY)));
+  assert.ok(patched.queueSurfaces.some(row => row.runId === independent.runId));
+  assert.deepEqual(workflows, [target.workflow]);
 });
 
 it("reuses independent rows and notices and derives the selected day count during a rename", async () => {

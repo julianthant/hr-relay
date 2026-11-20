@@ -125,7 +125,7 @@ interface WorkerFold {
 export interface ServedSummaryQueries {
   withSnapshot<T>(read: () => T): T;
   dayCounts(fromDay: string, toDay: string): ReadonlyMap<string, number>;
-  queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; after?: { localDay: string; runId: string } }): {
+  queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; workflow?: string; after?: { localDay: string; runId: string } }): {
     items: readonly { runId: string; localDay: string; shape: string; parent: QueueParent | null; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
     next: { localDay: string; runId: string } | null;
   };
@@ -1510,8 +1510,8 @@ export class RunQueueProjection {
 
   #selectedDaySurfaces(day: string, summaries: ServedSummaryQueries, context: QueueReadContext, patch?: QueueDayPatch): QueueSurfaceWire[] {
     const surfaces: QueueSurfaceWire[] = [];
-    const readPage = (afterId: string | undefined, limit: number) => {
-      const page = summaries.queue({ fromDay: day, toDay: day, topLevel: false, limit,
+    const readPage = (afterId: string | undefined, limit: number, workflow?: string) => {
+      const page = summaries.queue({ fromDay: day, toDay: day, topLevel: false, limit, workflow,
         ...(afterId === undefined ? {} : { after: { localDay: day, runId: afterId } }) });
       for (const summary of page.items) context.parents.set(summary.runId, summary.parent);
       for (const summary of page.items) {
@@ -1532,33 +1532,36 @@ export class RunQueueProjection {
     };
     if (patch === undefined || !patch.sameWorkers) return fullDay();
 
-    const selected = new Set(patch.dayRunIds);
+    const selected = patch.dayRunIds.map(runId => ({
+      runId, workflowId: this.#readRun(context, runId).envelope.workflow,
+    }));
     const reusable = new Map<string, QueueSurfaceWire>();
     for (const surface of patch.previous.wire.queueSurfaces) {
       if (patch.affected.has(surface.runId) || searchPartitionDay(new Date(surface.startedAt)) !== day) continue;
-      selected.add(surface.runId);
+      selected.push({ runId: surface.runId, workflowId: surface.workflowId });
       if (patch.previous.reusable.has(surface.runId)) reusable.set(surface.runId, surface);
     }
-    const ids = [...selected].sort();
     // The summary merger uses locale order and SQLite seeks in binary order.
-    if (ids.some((id, index) => index > 0 && ids[index - 1].localeCompare(id) > 0)) return fullDay();
-    // Rebuild contiguous ranges with the same keyset reader and status check as a full day.
-    for (let start = 0; start < ids.length;) {
-      const cached = reusable.get(ids[start]);
-      if (cached !== undefined) {
-        surfaces.push(cached);
-        start += 1;
-        continue;
+    selected.sort((a, b) => a.runId.localeCompare(b.runId));
+    if (selected.some((row, index) => index > 0 && selected[index - 1].runId > row.runId)) return fullDay();
+    for (const [workflow, rows] of Map.groupBy(selected, row => row.workflowId)) {
+      for (let start = 0; start < rows.length;) {
+        const cached = reusable.get(rows[start].runId);
+        if (cached !== undefined) {
+          surfaces.push(cached);
+          start += 1;
+          continue;
+        }
+        let end = start + 1;
+        while (end < rows.length && end - start < 500 && !reusable.has(rows[end].runId)) end += 1;
+        const page = readPage(rows[start - 1]?.runId, end - start, workflow);
+        if (page.items.length !== end - start || page.items.some((row, index) => row.runId !== rows[start + index].runId)) {
+          throw new ProjectionDegradedError("queue-summary-membership-mismatch");
+        }
+        start = end;
       }
-      let end = start + 1;
-      while (end < ids.length && end - start < 500 && !reusable.has(ids[end])) end += 1;
-      const page = readPage(ids[start - 1], end - start);
-      if (page.items.length !== end - start || page.items.some((row, index) => row.runId !== ids[start + index])) {
-        throw new ProjectionDegradedError("queue-summary-membership-mismatch");
-      }
-      start = end;
     }
-    return surfaces;
+    return surfaces.sort((a, b) => a.runId.localeCompare(b.runId));
   }
 
   #buildDashboardDayWire(parsedDay: string, notifications: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>, now: number,
