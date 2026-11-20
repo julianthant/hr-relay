@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { INTAKE_UPLOAD_MAX_BYTES, INTAKE_UPLOAD_SIZE_MESSAGE } from "../../../runs/commands/intake-service.js";
+import { readBoundedUpload } from "./bounded-upload.js";
 import { wireError } from "./failure-status.js";
 
 import type { DashboardApp } from "./api-types.js";
@@ -9,7 +11,8 @@ export function registerIntakeRoutes(app: DashboardApp, deps: IntakeRouteDeps): 
   app.post("/api/v1/intake/files", async (c) => {
     const workflow = z.string().min(1).parse(c.req.query("workflow"));
     const fileName = z.string().min(1).parse(c.req.query("filename"));
-    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const bytes = await readBoundedUpload(c.req.raw.body, INTAKE_UPLOAD_MAX_BYTES);
+    if (bytes === undefined) return c.json(wireError("SCHEMA_INVALID", INTAKE_UPLOAD_SIZE_MESSAGE, false), 400);
     const outcome = await deps.intake.upload({
       workflow,
       mediaType: c.req.header("content-type") ?? "",

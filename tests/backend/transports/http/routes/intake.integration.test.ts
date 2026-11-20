@@ -8,6 +8,7 @@ import { Workbook, writeXlsx } from "@shbernal/ts-xlsx";
 import JSZip from "jszip";
 import { composeIntake } from "../../../../../src/backend/app/composition/dashboard/intake.js";
 import { createIntakeParser } from "../../../../../src/backend/processing/spreadsheet/intake-parser.js";
+import { INTAKE_UPLOAD_MAX_BYTES } from "../../../../../src/backend/runs/commands/intake-service.js";
 import { INTAKE_FIXTURE_WORKFLOW_ID, intakeFixtureDescriptor, intakeFixtureProjection } from "../../../../support/fixtures/intake-workflow-fixture.js";
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { createHash } from "node:crypto";
@@ -72,6 +73,40 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(response)).code, "INTAKE_UNREADABLE_FILE");
     assert.deepEqual(seen, ["fixture-graph|roster.csv|text/csv|13"]);
   });
+  it("cancels an oversized Intake upload before reading the remaining bytes", async () => {
+    const upload = vi.fn((input: Parameters<typeof UNWIRED_INTAKE_SERVICE.upload>[0]) => actual.upload(input));
+    const h = await harness({ profileFixture: profileFixtures.create, intake: { ...UNWIRED_INTAKE_SERVICE, upload } });
+    const actual = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
+      projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
+      descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("c") });
+    const chunk = new Uint8Array(1024 * 1024);
+    const cancel = vi.fn();
+    let bytesRead = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+        bytesRead += chunk.byteLength;
+        if (bytesRead === INTAKE_UPLOAD_MAX_BYTES + 2 * chunk.byteLength) controller.close();
+      },
+      cancel,
+    }, { highWaterMark: 0 });
+    const streamRequestInit: RequestInit & { readonly duplex: "half" } = {
+      method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/csv" }, body, duplex: "half",
+    };
+    const request = new Request(`http://localhost/api/v1/intake/files?workflow=${INTAKE_FIXTURE_WORKFLOW_ID}&filename=roster.csv`, streamRequestInit);
+
+    const response = await h.app.request(request);
+
+    assert.equal(response.status, 400);
+    const error = await json(response);
+    assert.equal(error.code, "SCHEMA_INVALID");
+    assert.equal(error.retryable, false);
+    assert.match(String(error.message), /an intake upload may not exceed 26214400 bytes/u);
+    assert.equal(bytesRead, INTAKE_UPLOAD_MAX_BYTES + chunk.byteLength);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it.each(["archive", "truncated-pk", "directory", "xml", "rels", "workbook-empty", "relationships-empty"])("refuses malformed XLSX %s through the real upload/parser without creating a session", async corruption => {
     const h = await harness({ profileFixture: profileFixtures.create, intake: { ...UNWIRED_INTAKE_SERVICE, upload: input => actual.upload(input) } });
     const actual = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
