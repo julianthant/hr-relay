@@ -9,8 +9,6 @@
 .hub-onboarding h1 { font-size:var(--ds-text-display); line-height:1.3; font-weight:500; }
 .hub-onboarding h2 { font-size:var(--ds-text-section); line-height:1.3; font-weight:500; }
 .hub-onboarding button,.hub-onboarding a { outline:none; }
-.hub-onboarding :is(button,a,select,[tabindex]):focus-visible { background:var(--hub-focus-fill)!important; color:var(--hub-focus-ink)!important; box-shadow:none!important; outline:none!important; transition:none; }
-.hub-onboarding [tabindex="-1"]:focus-visible { background:transparent!important; color:inherit!important; }
 .hub-onboarding .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .hub-onboarding .skip { position:absolute; top:var(--ds-space-cozy); left:var(--ds-space-cozy); padding:var(--ds-space-base) var(--ds-space-loose); transform:translateY(-200%); z-index:90; }
 .hub-onboarding .skip:focus-visible { transform:none; }

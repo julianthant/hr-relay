@@ -1,8 +1,6 @@
 :root {
   --hub-fast-duo-brand: #176851;
   --hub-fast-duo-ink: #fff;
-  --hub-focus-fill: #d6d6d6;
-  --hub-focus-ink: #151515;
   --hub-primary-border: var(--ui-info);
   --hub-primary: var(--ui-info);
   --hub-primary-ink: var(--ds-accent-fg);
@@ -15,11 +13,10 @@
   --hub-dur-hover: 120ms;
   --hub-ease: cubic-bezier(0.23, 1, 0.32, 1);
 }
-[data-demo-theme="dark"] { --hub-focus-fill: #4a4a4a; --hub-focus-ink: #f2f2f2; --hub-shadow: 0 12px 40px #0006; }
+[data-demo-theme="dark"] { --hub-shadow: 0 12px 40px #0006; }
 html[data-hub]:not([data-hub-input="pointer"]) :is(button, a, select, [tabindex]):not(input):not(textarea):not([tabindex="-1"]):focus-visible {
-  background: var(--hub-focus-fill) !important;
-  color: var(--hub-focus-ink) !important;
-  outline: none !important;
+  outline: var(--ds-focus-ring-w) solid var(--ds-focus-ring) !important;
+  outline-offset: var(--ds-focus-ring-offset);
   box-shadow: none !important;
 }
 html[data-hub][data-hub-input="pointer"] :is(button, a, select, [tabindex]):focus-visible { outline:none!important;box-shadow:none!important; }
@@ -29,7 +26,6 @@ html[data-hub] :is(.ds-focus-within, .ds-secret-input, .ds-unit-field):focus-wit
   outline: none !important;
   box-shadow: none !important;
 }
-html[data-hub] [tabindex="-1"]:not([role="menu"]):focus-visible { color: inherit !important; }
 /* Text fields never take a ring: the edge steps up one neutral step. */
 html[data-hub] :is(.date-input-group, .ds-secret-input, .ds-unit-field):is(:focus-within, [data-focus-within="true"]),
 html[data-hub] :is(textarea, input.input):focus-visible { border-color: var(--ds-field-focus-edge); box-shadow: none; }

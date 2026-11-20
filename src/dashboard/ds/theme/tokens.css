@@ -79,17 +79,16 @@
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, var(--background));
   --ds-control-fg: var(--foreground);
 
-  --ds-accent: var(--primary); /* the product's "primary" */
+  --ds-accent: var(--ui-info); /* the one blue: main action and selection */
   --ds-accent-mark: var(--primary); /* the raw swatch — bars, dots, fills */
-  --ds-accent-fg: var(--primary-foreground);
-  --ds-accent-hover: color-mix(in srgb, var(--primary) 88%, hsl(0 0% 100%));
-  --ds-accent-quiet: color-mix(in srgb, var(--primary) 12%, transparent);
+  --ds-accent-fg: var(--ui-canvas);
+  --ds-accent-hover: color-mix(in srgb, var(--ui-info) 88%, var(--ui-primary));
+  --ds-accent-quiet: color-mix(in srgb, var(--ui-info) 12%, transparent);
 
-  /* BRAND — the product-level launch CTA (`Start a run`). Deliberately a
-   NEUTRAL solid, not a hue. It stays a filled control so it still ends the */
-  --ds-brand-solid-bg: var(--ds-surface-3);
-  --ds-brand-solid-fg: var(--ds-fg);
-  --ds-brand-solid-hover: color-mix(in srgb, var(--ds-fg) 12%, var(--ds-surface-3));
+  /* BRAND — the launch CTA (`Start run`) is a primary: the same blue and hover. */
+  --ds-brand-solid-bg: var(--ds-accent);
+  --ds-brand-solid-fg: var(--ds-accent-fg);
+  --ds-brand-solid-hover: var(--ds-accent-hover);
 
   --ds-danger: var(--destructive); /* danger as TEXT */
   --ds-danger-solid: var(--destructive); /* danger as a solid FILL */
@@ -465,7 +464,7 @@
   /* THE RING — one ink for "the system is pointing at this".
    Focus and selection are the same statement at two volumes, so they read */
   --ds-ring: color-mix(in srgb, var(--foreground) 46%, transparent);
-  --ds-focus-ring: var(--ds-ring);
+  --ds-focus-ring: var(--ui-info);
   --ds-focus-ring-w: 2px;
   --ds-focus-ring-offset: 1px;
 
@@ -614,17 +613,7 @@ body[data-demo-theme="dark"] {
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, var(--background));
   --ds-control-fg: var(--foreground);
 
-  --ds-accent: #fafafa; /* the primary action's fill */
   --ds-accent-mark: #f5a623; /* the identity note — a mark, never a verb */
-  --ds-accent-fg: #09090b;
-  --ds-accent-hover: #ffffff;
-  --ds-accent-quiet: color-mix(in srgb, #fafafa 12%, transparent);
-
-  /* Neutral launch CTA — see :root. Zinc 700, a full step above the toolbar's
-     transparent outline peers without borrowing a status hue. */
-  --ds-brand-solid-bg: #3f3f46;
-  --ds-brand-solid-fg: #fafafa;
-  --ds-brand-solid-hover: #52525b;
 
   --ds-danger: #f97066;
   --ds-danger-solid: #f04438;
@@ -715,7 +704,6 @@ body[data-demo-theme="dark"] {
   /* 4.6:1 on the card plane (#18181b), 3.9:1 on the raised one (#27272a) —
      both clear WCAG 2.2's 3:1 focus-appearance floor with headroom. */
   --ds-ring: rgba(255, 255, 255, 0.46);
-  --ds-focus-ring: var(--ds-ring);
   --ds-elev-1: 0 1px 2px hsl(0 0% 0% / 0.35);
   --ds-elev-2:
     0 4px 12px -2px hsl(0 0% 0% / 0.45), 0 1px 3px hsl(0 0% 0% / 0.32);
@@ -817,17 +805,7 @@ body[data-demo-theme="light"] {
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, #d5dbe4);
   --ds-control-fg: var(--foreground);
 
-  --ds-accent: #4338ca;
   --ds-accent-mark: #4f46e5;
-  --ds-accent-fg: #ffffff;
-  --ds-accent-hover: #3730a3; /* light hovers DARKEN; dark hovers lighten */
-  --ds-accent-quiet: color-mix(in srgb, #4f46e5 12%, transparent);
-
-  /* Neutral launch CTA — see :root. Zinc 600 on paper: dark ink-grey fill,
-     white type, no hue competing with the indigo primary. */
-  --ds-brand-solid-bg: #52525b;
-  --ds-brand-solid-fg: #ffffff;
-  --ds-brand-solid-hover: #3f3f46; /* light hovers DARKEN */
 
   --ds-danger: #b42318;
   --ds-danger-solid: #b42318;
@@ -920,7 +898,6 @@ body[data-demo-theme="light"] {
   /* 4.2:1 on white, 3.9:1 on the tinted page — the same statement as the dark
      theme's ring at the same volume, re-picked rather than inverted. */
   --ds-ring: #737d8f;
-  --ds-focus-ring: var(--ds-ring);
   /* White on white cannot be separated by a hairline alone, so this is the one
      theme where a resting card is allowed a shadow. */
   --ds-elev-1: 0 1px 3px rgba(16, 24, 40, 0.1);
@@ -1038,9 +1015,6 @@ body[data-demo-theme="light"] {
   --ds-switch-on: var(--ui-info);
   --ds-settings-section-gap: 48px;
   --ds-settings-card-gap: 40px;
-}
-[data-demo-theme="dark"] {
-  --ds-switch-on: #3b82f6;
 }
 .ds-segment {
   --ds-segment-track: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas));
