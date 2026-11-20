@@ -8,7 +8,7 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
-import { createServedOnboardingPort, usePublicProfileSession, validateOnboarding, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, signInProblems, usePublicProfileSession, validateOnboarding, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("explains an existing profile on duplicate sign-up and offers Log in", async () => {
@@ -521,6 +521,32 @@ it("a failure that still applies stays visible while the operator types", async 
     assert.equal(formAlert(host), unavailable);
     assert.equal(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled, true);
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+for (const [code, shown, persists] of [
+  ["BROWSER_CLOSURE_UNPROVED", operatorFailureSentence("BROWSER_CLOSURE_UNPROVED"), true],
+  ["PROFILE_LOGOUT_BLOCKED", operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"), true],
+  ["PROFILE_SIGN_IN_REFUSED", "Wrong email or password", false],
+] as const) it(`a served ${code} refusal ${persists ? "stays while the operator types" : "clears when the operator types"}`, async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ state: "refused", code }) });
+  function Probe() {
+    const session = usePublicProfileSession(client, true);
+    return createElement(Onboarding, { step: "login", port: session.port, onStep() {}, onDashboard() {}, ...signInProblems(session.state, Boolean(session.failure)) });
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await vi.waitFor(() => assert.equal(formAlert(host), shown));
+    await typeInto(host, "email", "fixture@ucsd.edu");
+    assert.equal(formAlert(host), persists ? shown : "");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("classifies served session states into failures that still apply and the answer to the last sign-in", () => {
+  assert.deepEqual(signInProblems({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }, true), { problem: operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"), signInProblem: undefined });
+  assert.deepEqual(signInProblems({ state: "cancelling", operationId: "00000000-0000-4000-8000-000000000001" }, false), { problem: operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"), signInProblem: undefined });
+  assert.deepEqual(signInProblems({ state: "signed-out", signUpRequired: false, logoutIncomplete: true }, false), { problem: operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE"), signInProblem: undefined });
+  assert.deepEqual(signInProblems({ state: "signed-out", signUpRequired: false }, false), { problem: undefined, signInProblem: undefined });
 });
 
 const idleMethod = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
