@@ -6,6 +6,7 @@ import {
   BareButton,
   Button,
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   StatusPill,
@@ -320,7 +321,7 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
     {summary !== undefined && <Notice sticky tone={summary.tone} title={summary.title} description={summary.detail} />}
     <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
       {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
-        <div className="px-[var(--ds-space-loose)] pt-[var(--ds-space-tight)]" aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
+        <DialogBody><div aria-live="polite" data-queue-bulk-result={reviewing.response.state}>
           {vector === undefined ? (
             /* Whole-request refusal reached no run; the served sentence is the complete answer. */
             <p className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
@@ -363,7 +364,7 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
               )}
             </p>
           )}
-        </div>
+        </div></DialogBody>
         <DialogFooter><Button variant="secondary" onClick={onReviewed}>Close</Button></DialogFooter>
       </DialogContent>}
     </Dialog>

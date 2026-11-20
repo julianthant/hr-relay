@@ -1075,7 +1075,7 @@ function FormsSection() {
           description="This key will no longer be available to use."
         >
           <DialogFooter>
-            <Button variant="muted" onClick={() => setPendingKey(null)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setPendingKey(null)}>Cancel</Button>
             <Button variant="danger" onClick={() => {
               setKeys((current) => current.filter((key) => key.id !== pendingKey));
               setPendingKey(null);

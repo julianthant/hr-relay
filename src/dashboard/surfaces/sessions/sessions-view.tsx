@@ -84,7 +84,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
                 <Button variant="secondary" aria-label="Add one worker" icon={<Plus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) >= Number.MAX_SAFE_INTEGER} onClick={() => setCount(String(Number(count) + 1))} />
               </div></Field>
             </div></DialogBody>
-            <DialogFooter><Button variant="muted" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" disabled={!validCount || !validWorkflow || data.state !== "ready" || addLocked} onClick={event => { addFocusOrigin.current = event.currentTarget.closest('[role="dialog"]'); onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" disabled={!validCount || !validWorkflow || data.state !== "ready" || addLocked} onClick={event => { addFocusOrigin.current = event.currentTarget.closest('[role="dialog"]'); onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
           </DialogContent>
         </Dialog>;
   const toggle = <BareButton ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} title="" className={cn("session-toggle", dsFocus)}>

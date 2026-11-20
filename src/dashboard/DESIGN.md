@@ -288,7 +288,7 @@ One formatter draws every time, in the body face with tabular figures; the data 
 
 ## Dialogs
 
-Dialogs use three widths: sm 400px, md 560px and lg 880px; Review records keeps its own size. Every dialog has a close X, a 16px medium title, fields through `Field` and one primary confirm on the right. A destructive confirmation is a question naming the thing ("Delete this run?"), one sentence saying what is lost, Cancel focused first and a red button naming the action ("Delete run"); it shows no ids or revisions.
+Dialogs use three widths: sm 400px, md 560px and lg 880px; Review records keeps its own size. Every dialog is one soft card: a 24px corner, no border, a 20px semibold title, 24px padding, a close X, fields through `Field` in a `DialogBody`, and Cancel (secondary) then one primary confirm on the right. A destructive confirmation is a question naming the thing ("Delete this run?"), one sentence saying what is lost, Cancel focused first and a red button naming the action ("Delete run"); it shows no ids or revisions.
 
 ## Sign-in
 

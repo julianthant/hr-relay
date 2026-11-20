@@ -67,10 +67,10 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
       </BodySection>}
     </Form>
     <Dialog open={removal !== null} onOpenChange={open => { if (!open) setRemoval(null); }}>
-      <DialogContent size="sm" hideClose className="ds-body-overlay" title={`Remove ${removal?.label ?? "value"}?`}
+      <DialogContent size="sm" className="ds-body-overlay" title={`Remove ${removal?.label ?? "value"}?`}
         description={removal?.hasSaved ? "The stored credential will be removed from the protected store." : "This unsent value will be removed from the editor. No write will be sent."}
         onCloseAutoFocus={event => { if (removeTrigger.current?.isConnected) { event.preventDefault(); removeTrigger.current.focus(); } removeTrigger.current = null; }}>
-        <DialogFooter><Button variant="muted" onClick={() => setRemoval(null)}>Cancel</Button>
+        <DialogFooter><Button variant="secondary" onClick={() => setRemoval(null)}>Cancel</Button>
           <Button variant="danger" onClick={confirmRemove}>Remove credential</Button></DialogFooter>
       </DialogContent>
     </Dialog>

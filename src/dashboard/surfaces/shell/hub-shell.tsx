@@ -2,7 +2,7 @@ import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Button, Dialog, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice } from "../../ds/ui.js";
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice } from "../../ds/ui.js";
 import { AssistantServedActivity } from "./assistant-thread.js";
 import { publishAssistantModelChoice } from "./assistant-approval-model.js";
 import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";
@@ -99,10 +99,10 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
         </div>
       </section>
     <span role="status" className="sr-only">{announcement}</span>
-    <Dialog open={logoutOpen} onOpenChange={onLogoutOpenChange}><DialogContent hideClose size="sm" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><Button variant="secondary" onClick={() => onLogoutOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={() => { onLogoutOpenChange(false); onLogout(); }}>Log out</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose size="sm" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
+    <Dialog open={logoutOpen} onOpenChange={onLogoutOpenChange}><DialogContent size="sm" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><Button variant="secondary" onClick={() => onLogoutOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={() => { onLogoutOpenChange(false); onLogout(); }}>Log out</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent size="sm" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
       onCloseAutoFocus={event => { event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : document.querySelector<HTMLElement>(".hub-chat-open") ?? document.querySelector<HTMLElement>("[data-assistant-launcher]"))?.focus({ preventScroll: true }); }}>
-      <form onSubmit={event => {
+      <form className="flex min-h-0 flex-col" onSubmit={event => {
         event.preventDefault(); if (!editing || saving) return;
         const { id, kind } = editing;
         setSaving(true);
@@ -113,7 +113,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
           else { served.forgetSession(id); assistant.forgetSession(id); setAnnouncement("Chat deleted."); }
         });
       }}>
-        {editing?.kind === "rename" && <Input aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} />}
+        {editing?.kind === "rename" && <DialogBody><Input aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} /></DialogBody>}
         <DialogFooter><Button variant="secondary" type="button" onClick={() => setEditing(undefined)}>Cancel</Button><Button variant={editing?.kind === "delete" ? "danger" : "primary"} type="submit" aria-busy={saving || undefined} disabled={saving || editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</Button></DialogFooter>
       </form></DialogContent></Dialog>
   </>;

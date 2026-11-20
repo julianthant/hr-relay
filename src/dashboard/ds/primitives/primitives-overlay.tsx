@@ -147,8 +147,6 @@ export function DialogContent({
   title: ReactNode;
   description?: ReactNode;
   size?: DsDialogSize;
-  /** Ignored: every dialog has a close X. Left for surfaces that still pass it. */
-  hideClose?: boolean;
   /** A divided header and a recessed footer band; `size="lg"` always has them. */
   band?: boolean;
   className?: string;
@@ -219,18 +217,17 @@ function DialogSurface({
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],
           dsLayer.modal,
-          "group/dialog flex max-h-[86vh] flex-col overflow-hidden border outline-none",
-          "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)]",
-          dsRadius.xl,
+          "group/dialog flex max-h-[86vh] flex-col overflow-hidden outline-none",
+          "bg-[var(--ds-surface-overlay)] rounded-[var(--ds-radius-dialog)]",
           dsElev.high,
           dsMotion.enter,
           entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
           className,
         )}
       >
-        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
+        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-space-cozy)] pt-[var(--ds-dialog-pad)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
           <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
-            <DialogPrimitive.Title className={cn(dsText.section, "font-medium text-[color:var(--ds-fg)]")}>
+            <DialogPrimitive.Title className="text-[length:var(--ds-dialog-title-size)] font-semibold leading-[var(--ds-dialog-title-lh)] text-[color:var(--ds-fg)]">
               {title}
             </DialogPrimitive.Title>
             {description && (
@@ -251,7 +248,7 @@ function DialogSurface({
 
 export function DialogBody({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]", className)}>
+    <div className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-dialog-pad)] py-[var(--ds-space-cozy)]", className)}>
       {children}
     </div>
   );
@@ -272,7 +269,7 @@ export function DialogFooter({
     <footer
       className={cn(
         // Compact: the buttons sit in the dialog's own padding. Only the Run and Rerun dialog (`band`) has the recessed plane.
-        "flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]",
+        "flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-dialog-pad)] pb-[var(--ds-dialog-pad)] pt-[var(--ds-space-cozy)]",
         "group-data-[size=lg]/dialog:h-[57px] group-data-[size=lg]/dialog:pb-0 group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
@@ -339,7 +336,7 @@ export function ConfirmDialog({
         )}
         <DialogFooter>
           <DialogClose asChild>
-            <Button data-confirm-cancel variant="muted" disabled={busy}>{cancelLabel}</Button>
+            <Button data-confirm-cancel variant="secondary" disabled={busy}>{cancelLabel}</Button>
           </DialogClose>
           <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm}>{confirmLabel}</Button>
         </DialogFooter>

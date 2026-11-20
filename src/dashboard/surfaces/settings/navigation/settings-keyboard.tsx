@@ -21,7 +21,7 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
     if (!editing || !captured) return;
     const next = [...preferences.bindings[editing.id]];
     next[editing.index] = captured;
-    try { if (!await saveShortcutPreferences({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } })) return; setEditing(null); }
+    try { if (!await saveShortcutPreferences({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } })) { setError('Not saved. Try again.'); return; } setEditing(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); return; }
     onSaved?.({ title: `Saved ${SHORTCUT_ACTIONS.find(action => action.id === editing.id)!.title} shortcut` });
   };
@@ -51,6 +51,6 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
       {actions.length === 0 && !sendShown && <p role="status" className="p-5 text-ui-muted">No shortcuts match your search.</p>}
     </FormGroup>
     <p className="m-0 text-caption text-ui-muted">Shortcuts pause in text fields and dialogs. Changes are saved in this browser.</p>
-    <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent title="Edit shortcut" description="Press a key or key combination, then save." size="sm"><DialogBody>{error && <Banner className="mb-[var(--ds-space-heading-content)]" tone="danger" title="Shortcut unavailable">{error}</Banner>}<Input name="shortcutKeys" autoComplete="off" autoFocus readOnly aria-label="Shortcut keys" value={captured ? shortcutLabel(captured) : ''} placeholder="Press shortcut…" onKeyDown={event => { if (event.key === 'Escape' || event.key === 'Tab') return; event.preventDefault(); const chord = shortcutChord(event.nativeEvent); if (chord) { setCaptured(chord); setError(''); } }} /></DialogBody><DialogFooter><Button variant="muted" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!captured} onClick={save}>Save shortcut</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent title="Edit shortcut" description="Press a key or key combination, then save." size="sm"><DialogBody>{error && <Banner className="mb-[var(--ds-space-heading-content)]" tone="danger" title="Shortcut unavailable">{error}</Banner>}<Input name="shortcutKeys" autoComplete="off" autoFocus readOnly aria-label="Shortcut keys" value={captured ? shortcutLabel(captured) : ''} placeholder="Press shortcut…" onKeyDown={event => { if (event.key === 'Escape' || event.key === 'Tab') return; event.preventDefault(); const chord = shortcutChord(event.nativeEvent); if (chord) { setCaptured(chord); setError(''); } }} /></DialogBody><DialogFooter><Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!captured} onClick={save}>Save shortcut</Button></DialogFooter></DialogContent></Dialog>
   </section>;
 }
