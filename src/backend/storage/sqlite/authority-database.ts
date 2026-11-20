@@ -3866,31 +3866,48 @@ export class AuthorityDatabase implements Disposable {
       if (run === undefined) throw new Error("diagnostic-retention-run-missing");
       return run.lifecycle.state === "terminal" && !this.authority.writeIntents.listByRun(runId).some(intent => intent.status !== "committed");
     };
+    const refOf = (attachment: DiagnosticBundle["attachments"][number]) => ArtifactRefSchema.parse({ id: attachment.artifactId,
+      sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
+    const stored = (attachment: DiagnosticBundle["attachments"][number]) => {
+      try { inspectArtifactDeletionFile(this.#admission, refOf(attachment)); return true; }
+      catch (error) { if (error instanceof Error && "code" in error && error.code === "ENOENT") return false; throw error; }
+    };
+    const readOwned = (bundleId: string) => {
+      const current = this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema);
+      if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
+      return current;
+    };
+    const write = (record: DiagnosticBundle) => sqliteChanges(this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?")
+      .run(canonicalJsonStringify(DiagnosticBundleSchema.parse(record)), record.bundleId).changes);
+    // A run that became active again gets its purged bundle back while every byte is still stored.
+    const restore = (bundleId: string) => {
+      const { availability, ...current } = readOwned(bundleId);
+      return availability === undefined || !current.attachments.every(stored) ? 0 : write(current);
+    };
     for (const raw of due) {
       const bundle = this.#parseNativeRow("diagnostic_snapshots", raw, DiagnosticBundleSchema);
       const marked = this.#authorityWrite("diagnostic_snapshots", () => {
-        if (!evidenceSettled(bundle.runId)) return { result: false, changes: 0 };
-        const current = this.#readRecord("diagnostic_snapshots", bundle.bundleId, DiagnosticBundleSchema);
-        if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
+        if (!evidenceSettled(bundle.runId)) return { result: false, changes: restore(bundle.bundleId) };
+        const current = readOwned(bundle.bundleId);
         if (current.availability !== undefined) return { result: true, changes: 0 };
-        const record = DiagnosticBundleSchema.parse({ ...current, availability: { state: "purged", at: instant, reason: "retention" } });
-        const result = this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?").run(canonicalJsonStringify(record), bundle.bundleId);
-        return { result: true, changes: sqliteChanges(result.changes) };
+        return { result: true, changes: write({ ...current, availability: { state: "purged", at: instant, reason: "retention" } }) };
       });
       if (!marked) continue;
+      let settled = true;
       for (const attachment of bundle.attachments) {
-        const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
-        this.#authorityWrite("diagnostic_snapshots", () => {
-          if (!evidenceSettled(bundle.runId)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
+        const ref = refOf(attachment);
+        settled = this.#authorityWrite("diagnostic_snapshots", () => {
+          if (!evidenceSettled(bundle.runId)) { retainedBytes += ref.bytes; return { result: false, changes: restore(bundle.bundleId) }; }
           const references = [...this.readManagedArtifactReferences(ref), ...pendingDiagnosticArtifacts(this.#admission, false)];
-          if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
+          if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256)) { retainedBytes += ref.bytes; return { result: true, changes: 0 }; }
           // An explicit unavailable association survives failed or interrupted byte removal.
           try { removeArtifactDeletionFile(this.#admission, inspectArtifactDeletionFile(this.#admission, ref)); }
           catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
-          return { result: undefined, changes: 0 };
+          return { result: true, changes: 0 };
         });
+        if (!settled) break;
       }
-      purged.push(bundle.bundleId);
+      if (settled) purged.push(bundle.bundleId);
     }
     return Object.freeze({ purged: Object.freeze(purged), retainedBytes });
   }

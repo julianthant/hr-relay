@@ -223,6 +223,26 @@ describe("run capture authority", () => {
     assert.deepEqual(section.payload.artifacts.map(capture => capture.artifact.artifactId), [kept.artifactId]);
   });
 
+  it("keeps verified captures when retention marks a later bundle after the run index is listed", async () => {
+    const h = await harness(); recordFailure(h.database);
+    const bytes = Buffer.from("{}");
+    const later = { ...ATTACHMENT, artifactId: uuidOf(32), byteLength: bytes.byteLength,
+      digest: createHash("sha256").update(bytes).digest("hex") };
+    h.writeArtifact(refOf(later), bytes);
+    h.database.authority.diagnosticBundles.insert(bundleOf(70, { kind: "operator-request", requestedBy: "local-operator" }));
+    const marked = bundleOf(71, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [later] });
+    h.database.authority.diagnosticBundles.insert(marked);
+    const authority = h.captures.authority;
+    let listed = false;
+    const captures = { ...h.captures, authority: { ...authority,
+      listByRun: (runId: string) => { const bundles = authority.listByRun(runId); listed = true; return bundles; },
+      get: (bundleId: string) => listed && bundleId === marked.bundleId
+        ? { ...marked, availability: { state: "purged" as const, at: NOW, reason: "retention" as const } } : authority.get(bundleId) } };
+    const section = await readRunSection({ ...h.deps, captures }, uuidOf(1), "captures");
+    if (section.section !== "captures") throw new Error("captures section missing");
+    assert.deepEqual(section.payload.artifacts.map(capture => capture.artifact.artifactId), [ATTACHMENT.artifactId]);
+  });
+
   it("serves captures, failure and receipt without a fold, then refuses foreign failure identity", async () => {
     const h = await harness(); recordFailure(h.database);
     const id = uuidOf(1);

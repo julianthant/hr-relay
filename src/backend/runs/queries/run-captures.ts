@@ -66,6 +66,16 @@ function captureArtifactRef(runId: string, attachment: DiagnosticBundle["attachm
   }
 }
 
+/** A retention marker committed after the run index was listed, for this same run and bundle. */
+function purgedSince(captures: NonNullable<RunCaptureQueryDeps["captures"]>, runId: string, listed: DiagnosticBundle): boolean {
+  let stored: unknown;
+  try { stored = captures.authority.get(listed.bundleId); } catch { return false; }
+  const current = DiagnosticBundleSchema.safeParse(stored);
+  if (!current.success || current.data.availability?.state !== "purged") return false;
+  const { availability: _marker, ...retained } = current.data;
+  return current.data.runId === runId && canonicalJsonStringify(retained) === canonicalJsonStringify(listed);
+}
+
 async function verifyRunCaptures(
   deps: RunCaptureQueryDeps,
   runId: string,
@@ -103,6 +113,7 @@ async function verifyRunCaptures(
       requireTrustRun(deps.runReader, runId);
       if (error instanceof VerifiedArtifactOperationalError) throw error;
       if (error instanceof DiagnosticBundleBytesMissingError) throw error;
+      if (error instanceof SectionUnavailableError && purgedSince(deps.captures, runId, bundle)) continue;
       captureCorrupt(runId, `bundle ${bundle.bundleId} failed exact verification`, error);
     }
     if (readback.wire.bundleId !== bundle.bundleId

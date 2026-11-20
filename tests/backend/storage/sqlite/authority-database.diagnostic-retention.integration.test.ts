@@ -76,7 +76,7 @@ it("keeps the bundle and bytes of a run requeued between the eligibility check a
   }
 });
 
-it("keeps the bytes of a run requeued between the purge mark and byte removal", async () => {
+it("keeps the bundle and bytes of a run requeued between the purge mark and byte removal", async () => {
   const { fixture, capture, path } = await setup();
   let peer: ReturnType<typeof peerRequeue> | undefined;
   try {
@@ -87,9 +87,38 @@ it("keeps the bytes of a run requeued between the purge mark and byte removal", 
     fixture.world.clock.advanceWall(31 * DAY_MS);
     peer.beforeLock(2);
 
-    fixture.database.sweepOrdinaryDiagnostics(fixture.world.clock.now().toISOString());
+    const swept = fixture.database.sweepOrdinaryDiagnostics(fixture.world.clock.now().toISOString());
 
+    assert.deepEqual(swept.purged, []);
+    assert.equal(fixture.database.authority.diagnosticBundles.get(bundle.bundleId)?.availability, undefined);
     assert.equal(existsSync(path(bundle)), true);
+  } finally {
+    vi.restoreAllMocks();
+    peer?.close();
+    await fixture.dispose();
+  }
+});
+
+it("keeps bytes a requeued run shares with a later due bundle of a finished run", async () => {
+  const { fixture, capture, path } = await setup();
+  let peer: ReturnType<typeof peerRequeue> | undefined;
+  try {
+    const requeued = fixture.create(834), finished = fixture.create(835);
+    const kept = await capture(requeued.envelope.runId);
+    fixture.world.clock.advanceWall(1000);
+    const shared = await capture(finished.envelope.runId);
+    assert.equal(path(shared), path(kept));
+    peer = peerRequeue(fixture, requeued.envelope.runId);
+    fixture.cancel(requeued, 836);
+    fixture.cancel(finished, 837);
+    fixture.world.clock.advanceWall(31 * DAY_MS);
+    peer.beforeLock(2);
+
+    const swept = fixture.database.sweepOrdinaryDiagnostics(fixture.world.clock.now().toISOString());
+
+    assert.deepEqual(swept.purged, [shared.bundleId]);
+    assert.equal(fixture.database.authority.diagnosticBundles.get(kept.bundleId)?.availability, undefined);
+    assert.equal(existsSync(path(kept)), true);
   } finally {
     vi.restoreAllMocks();
     peer?.close();
