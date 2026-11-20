@@ -239,6 +239,10 @@ export async function readDiagnosticBundle(
   requireTrustRun(deps.runReader, bundle.runId);
   const current = deps.authority.get(bundleId);
   if (current === undefined) throw new TargetNotFoundError(`diagnostic bundle ${bundleId} was removed during verification`);
+  const { availability: marker, ...retained } = current;
+  if (marker?.state === "purged" && canonicalJsonStringify(retained) === canonicalJsonStringify(bundle)) {
+    throw new SectionUnavailableError(`Diagnostic capture bytes were purged by retention at ${marker.at}.`);
+  }
   if (canonicalJsonStringify(current) !== canonicalJsonStringify(bundle)) corrupt(bundleId, "authority changed during verification");
   let byteSize = 0;
   for (const attachment of bundle.attachments) {

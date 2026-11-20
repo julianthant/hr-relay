@@ -112,8 +112,8 @@ async function verifyRunCaptures(
       if (signal?.aborted === true && error === signal.reason) throw error;
       requireTrustRun(deps.runReader, runId);
       if (error instanceof VerifiedArtifactOperationalError) throw error;
+      if (purgedSince(deps.captures, runId, bundle)) continue;
       if (error instanceof DiagnosticBundleBytesMissingError) throw error;
-      if (error instanceof SectionUnavailableError && purgedSince(deps.captures, runId, bundle)) continue;
       captureCorrupt(runId, `bundle ${bundle.bundleId} failed exact verification`, error);
     }
     if (readback.wire.bundleId !== bundle.bundleId

@@ -19,11 +19,11 @@ async function setup() {
   await artifacts.ready;
   const service = createDiagnosticCaptureService({ authority: fixture.database.authority,
     artifacts, clock: fixture.world.clock, ids: { uuid: randomUUID } });
-  const capture = (runId: string) => operatorRequestedCapture({ service, runId,
-    configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), fields: [],
-    attachments: [{ kind: "console-summary", mediaType: "application/json", sensitivity: "redacted", bytes: Buffer.from('{"race":true}') }] });
-  const path = (bundle: DiagnosticBundle) => {
-    const attachment = bundle.attachments[0];
+  const capture = (runId: string, texts = ['{"race":true}'], retention?: { kind: "pinned"; reason: "knowledge" }) => operatorRequestedCapture({ service, runId,
+    configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), fields: [], ...(retention === undefined ? {} : { retention }),
+    attachments: texts.map(text => ({ kind: "console-summary" as const, mediaType: "application/json", sensitivity: "redacted" as const, bytes: Buffer.from(text) })) });
+  const path = (bundle: DiagnosticBundle, index = 0) => {
+    const attachment = bundle.attachments[index];
     assert.ok(attachment);
     return join(fixture.profile.admission.artifactRoot, `${attachment.digest}.artifact`);
   };
@@ -38,14 +38,14 @@ function peerRequeue(fixture: Awaited<ReturnType<typeof trustWorld>>, runId: str
   assert.ok(row);
   const columns = Object.keys(row);
   const exec = DatabaseSync.prototype.exec;
+  const requeue = () => peer.prepare(`UPDATE runs SET ${columns.map(column => `${column}=?`).join(",")} WHERE id=?`)
+    .run(...columns.map(column => row[column] ?? null), runId);
   return {
+    now: requeue,
     beforeLock(lock: number) {
       let locks = 0;
       vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
-        if (this !== peer && sql === "BEGIN IMMEDIATE" && ++locks === lock) {
-          peer.prepare(`UPDATE runs SET ${columns.map(column => `${column}=?`).join(",")} WHERE id=?`)
-            .run(...columns.map(column => row[column] ?? null), runId);
-        }
+        if (this !== peer && sql === "BEGIN IMMEDIATE" && ++locks === lock) requeue();
         return exec.call(this, sql);
       });
     },
@@ -119,6 +119,57 @@ it("keeps bytes a requeued run shares with a later due bundle of a finished run"
     assert.deepEqual(swept.purged, [shared.bundleId]);
     assert.equal(fixture.database.authority.diagnosticBundles.get(kept.bundleId)?.availability, undefined);
     assert.equal(existsSync(path(kept)), true);
+  } finally {
+    vi.restoreAllMocks();
+    peer?.close();
+    await fixture.dispose();
+  }
+});
+
+it("keeps an earlier completed purge refused after its run is requeued", async () => {
+  const { fixture, capture, path } = await setup();
+  let peer: ReturnType<typeof peerRequeue> | undefined;
+  try {
+    const run = fixture.create(838), holder = fixture.create(839);
+    const purged = await capture(run.envelope.runId);
+    const pinned = await capture(holder.envelope.runId, undefined, { kind: "pinned", reason: "knowledge" });
+    assert.equal(path(pinned), path(purged));
+    peer = peerRequeue(fixture, run.envelope.runId);
+    fixture.cancel(run, 840);
+    fixture.world.clock.advanceWall(31 * DAY_MS);
+    assert.deepEqual(fixture.database.sweepOrdinaryDiagnostics(fixture.world.clock.now().toISOString()).purged, [purged.bundleId]);
+    peer.now();
+
+    fixture.database.sweepOrdinaryDiagnostics(fixture.world.clock.now().toISOString());
+
+    assert.equal(fixture.database.authority.diagnosticBundles.get(purged.bundleId)?.availability?.state, "purged");
+    assert.equal(existsSync(path(pinned)), true);
+  } finally {
+    vi.restoreAllMocks();
+    peer?.close();
+    await fixture.dispose();
+  }
+});
+
+it("keeps a requeued run's remaining shared bytes when a later due bundle is purged", async () => {
+  const { fixture, capture, path } = await setup();
+  let peer: ReturnType<typeof peerRequeue> | undefined;
+  try {
+    const requeued = fixture.create(841), finished = fixture.create(842);
+    const owner = await capture(requeued.envelope.runId, ['{"unique":true}', '{"shared":true}']);
+    fixture.world.clock.advanceWall(1000);
+    const later = await capture(finished.envelope.runId, ['{"shared":true}']);
+    assert.equal(path(later), path(owner, 1));
+    peer = peerRequeue(fixture, requeued.envelope.runId);
+    fixture.cancel(requeued, 843);
+    fixture.cancel(finished, 844);
+    fixture.world.clock.advanceWall(31 * DAY_MS);
+    // Lock 3 follows every byte removal of the owner on this code; on per-attachment removal it fell between them.
+    peer.beforeLock(3);
+
+    fixture.database.sweepOrdinaryDiagnostics(fixture.world.clock.now().toISOString());
+
+    assert.equal(existsSync(path(owner, 1)), true);
   } finally {
     vi.restoreAllMocks();
     peer?.close();
