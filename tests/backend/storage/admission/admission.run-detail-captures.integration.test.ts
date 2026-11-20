@@ -201,6 +201,28 @@ describe("run capture authority", () => {
     await h.artifactReader.verify(refOf(ATTACHMENT));
   });
 
+  it("refuses generic bytes whose only membership was purged by retention", async () => {
+    const h = await harness(); recordFailure(h.database);
+    h.database.authority.diagnosticBundles.insert({ ...bundleOf(70, { kind: "operator-request", requestedBy: "local-operator" }),
+      availability: { state: "purged", at: NOW, reason: "retention" } });
+    await assert.rejects(prepareLiveDiagnosticArtifactLease({ ...h.captures, runReader: h.deps.runReader }, ATTACHMENT.artifactId),
+      (error: unknown) => error instanceof SectionUnavailableError && /purged by retention/.test(error.message));
+  });
+
+  it("lists the remaining captures of a run with one purged bundle", async () => {
+    const h = await harness(); recordFailure(h.database);
+    const bytes = Buffer.from("{}");
+    const kept = { ...ATTACHMENT, artifactId: uuidOf(32), byteLength: bytes.byteLength,
+      digest: createHash("sha256").update(bytes).digest("hex") };
+    h.writeArtifact(refOf(kept), bytes);
+    h.database.authority.diagnosticBundles.insert({ ...bundleOf(70, { kind: "operator-request", requestedBy: "local-operator" }),
+      availability: { state: "purged", at: NOW, reason: "retention" } });
+    h.database.authority.diagnosticBundles.insert(bundleOf(71, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [kept] }));
+    const section = await readRunSection(h.deps, uuidOf(1), "captures");
+    if (section.section !== "captures") throw new Error("captures section missing");
+    assert.deepEqual(section.payload.artifacts.map(capture => capture.artifact.artifactId), [kept.artifactId]);
+  });
+
   it("serves captures, failure and receipt without a fold, then refuses foreign failure identity", async () => {
     const h = await harness(); recordFailure(h.database);
     const id = uuidOf(1);

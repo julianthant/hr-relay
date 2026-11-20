@@ -3860,23 +3860,28 @@ export class AuthorityDatabase implements Disposable {
     const due = this.#database.prepare("SELECT * FROM diagnostic_snapshots WHERE retention_kind='ordinary' AND purge_after<=? ORDER BY purge_after,id").all(instant);
     const purged: string[] = [];
     let retainedBytes = 0;
+    // Active executions and external-write recovery cannot lose evidence; read under each lock that acts on it.
+    const evidenceSettled = (runId: string) => {
+      const run = this.authority.runs.get(runId);
+      if (run === undefined) throw new Error("diagnostic-retention-run-missing");
+      return run.lifecycle.state === "terminal" && !this.authority.writeIntents.listByRun(runId).some(intent => intent.status !== "committed");
+    };
     for (const raw of due) {
       const bundle = this.#parseNativeRow("diagnostic_snapshots", raw, DiagnosticBundleSchema);
-      const run = this.authority.runs.get(bundle.runId);
-      if (run === undefined) throw new Error("diagnostic-retention-run-missing");
-      // Active executions and external-write recovery cannot lose evidence.
-      if (run.lifecycle.state !== "terminal" || this.authority.writeIntents.listByRun(bundle.runId).some(intent => intent.status !== "committed")) continue;
-      this.#authorityWrite("diagnostic_snapshots", () => {
+      const marked = this.#authorityWrite("diagnostic_snapshots", () => {
+        if (!evidenceSettled(bundle.runId)) return { result: false, changes: 0 };
         const current = this.#readRecord("diagnostic_snapshots", bundle.bundleId, DiagnosticBundleSchema);
         if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
-        if (current.availability !== undefined) return { result: undefined, changes: 0 };
+        if (current.availability !== undefined) return { result: true, changes: 0 };
         const record = DiagnosticBundleSchema.parse({ ...current, availability: { state: "purged", at: instant, reason: "retention" } });
         const result = this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?").run(canonicalJsonStringify(record), bundle.bundleId);
-        return { result: undefined, changes: sqliteChanges(result.changes) };
+        return { result: true, changes: sqliteChanges(result.changes) };
       });
+      if (!marked) continue;
       for (const attachment of bundle.attachments) {
         const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
         this.#authorityWrite("diagnostic_snapshots", () => {
+          if (!evidenceSettled(bundle.runId)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
           const references = [...this.readManagedArtifactReferences(ref), ...pendingDiagnosticArtifacts(this.#admission, false)];
           if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
           // An explicit unavailable association survives failed or interrupted byte removal.

@@ -94,6 +94,7 @@ async function verifyRunCaptures(
   const artifacts = new Map<string, RunCaptureAccumulator>();
   const verificationPass = createArtifactVerificationPass(deps.captures.artifactReader, signal);
   for (const bundle of listed) {
+    if (bundle.availability?.state === "purged") continue;
     let readback: Awaited<ReturnType<typeof readDiagnosticBundle>>;
     try {
       readback = await readDiagnosticBundle({ ...deps.captures, runReader: deps.runReader }, bundle.bundleId, verificationPass, signal);
