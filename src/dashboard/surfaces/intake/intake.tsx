@@ -1373,9 +1373,7 @@ function IntakeSessionWorkspace({
         subtitle="A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row."
         actions={
           <span className="flex items-center gap-[var(--ds-space-tight)]">
-            <Button size="sm" variant="ghost" onClick={onClose}>
-              Close
-            </Button>
+            <IconButton size="sm" label="Close" icon={<X aria-hidden className={dsIcon.md} />} onClick={onClose} />
           </span>
         }
       />
