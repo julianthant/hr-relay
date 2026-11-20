@@ -1,12 +1,14 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream, existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fsyncPath } from "../private-path.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { AuthorityBackupService, parseBackupManifestFile, verifyBackupBytesAtPath, type AuthorityBackupSource } from "../sqlite/backup-service.js";
+import { AuthorityBackupService, parseBackupManifestFile, type AuthorityBackupSource } from "../sqlite/backup-service.js";
 import { backupThreadIdle, copyAuthorityOffThread } from "../sqlite/backup-inspection-worker.js";
 import type { AuthorityBackupManifest } from "../sqlite/recovery-contracts.js";
 import { hasUnprovedSourceClosure } from "../source-closure.js";
@@ -48,9 +50,23 @@ function isCustodyUnavailable(error: unknown): boolean {
   return error instanceof AggregateError && error.errors.some(isCustodyUnavailable);
 }
 
-/** A refused read or an unproved closure says nothing about the copy, so it stops the pass instead of passing the copy over. */
-function isOperationalFailure(error: unknown): boolean {
-  return hasUnprovedSourceClosure(error) || (error instanceof Error && typeof (error as NodeJS.ErrnoException).code === "string");
+// Only these outcomes prove a copy invalid; any other failure, such as a refused read, says nothing about the copy and stops the pass.
+/** The parsed manifest, or undefined when its content is proved malformed or of an older version. */
+function readManifest(path: string): AuthorityBackupManifest | undefined {
+  try { return parseBackupManifestFile(path); }
+  catch (error) {
+    if (error instanceof SyntaxError || error instanceof z.ZodError || (error instanceof Error && error.message === "backup-profile-binding-required")) return undefined;
+    throw error;
+  }
+}
+
+/** Whether the bytes match the manifest; false only for a confirmed absence, a non-file or a size or checksum mismatch. */
+async function backupBytesMatch(path: string, manifest: AuthorityBackupManifest): Promise<boolean> {
+  const stats = statSync(path, { throwIfNoEntry: false });
+  if (stats === undefined || !stats.isFile() || stats.size !== manifest.byteSize) return false;
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(path), hash);
+  return hash.digest("hex") === manifest.sha256;
 }
 
 function removeBackupFiles(path: string): void {
@@ -85,30 +101,34 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
   let lastFailureMonotonicMs: number | undefined, closureFailure: { error: unknown } | undefined;
   const passed = new Map<string, string>();
 
-  /** Manifests of this profile and authority database, named for their backup, whose bytes verify, newest first; only a copy proved invalid is passed over; a passed verdict stands while both files keep their identity. */
-  const newestVerified = async (only?: RegExp): Promise<VerifiedManifest | undefined> => {
+  /**
+   * The newest manifest of this profile and authority database, named for its backup, whose bytes verify; only a copy proved invalid is passed over.
+   * everyCandidate verifies the older ones too, for a caller that deletes them. A passed verdict stands while both files keep their identity.
+   */
+  const newestVerified = async (only?: RegExp, everyCandidate = false): Promise<VerifiedManifest | undefined> => {
     if (!existsSync(directory)) return undefined;
     const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     const binding = admission.profileBinding, nowMs = clock.nowMs(), candidates: Array<VerifiedManifest & { manifestPath: string; backup: AuthorityBackupManifest }> = [];
     for (const name of readdirSync(directory).filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
       const manifestPath = join(directory, name);
-      let manifest: AuthorityBackupManifest;
-      try { manifest = parseBackupManifestFile(manifestPath); } catch (error) { if (isOperationalFailure(error)) throw error; continue; }
-      if (name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
+      const manifest = readManifest(manifestPath);
+      if (manifest === undefined || name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
         || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== sourceIdentity || Date.parse(manifest.createdAt) > nowMs) continue;
       candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, manifestPath, backup: manifest });
     }
     candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.name.localeCompare(left.name));
+    let newest: VerifiedManifest | undefined;
     for (const candidate of candidates) {
       const backupPath = join(directory, candidate.backup.backupFileName), identity = `${fileIdentity(candidate.manifestPath)}|${fileIdentity(backupPath)}`;
       if (passed.get(candidate.manifestPath) !== identity) {
-        try { await verifyBackupBytesAtPath(backupPath, candidate.backup); }
-        catch (error) { passed.delete(candidate.manifestPath); if (isOperationalFailure(error)) throw error; continue; }
+        passed.delete(candidate.manifestPath);
+        if (!await backupBytesMatch(backupPath, candidate.backup)) continue;
         passed.set(candidate.manifestPath, identity);
       }
-      return { name: candidate.name, createdAt: candidate.createdAt, authorityGeneration: candidate.authorityGeneration };
+      newest ??= { name: candidate.name, createdAt: candidate.createdAt, authorityGeneration: candidate.authorityGeneration };
+      if (!everyCandidate) break;
     }
-    return undefined;
+    return newest;
   };
 
   const stopScheduler = (): void => {
@@ -164,10 +184,10 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
   const decide = async (): Promise<SessionBackupCheck> => {
     if (closureFailure !== undefined) return "failed";
     if (stopped) return "stopped";
-    // An interrupted replacement leaves two verified pairs; only the newest stays.
-    const session = await newestVerified(SessionManifest);
-    if (session !== undefined) retainOnlyNewestSessionBackup(admission, directory, session.name.slice(0, -ManifestSuffix.length));
+    // An interrupted replacement leaves two verified pairs; only the newest stays, once every lookup of this pass settled.
+    const session = await newestVerified(SessionManifest, true);
     const newest = await newestVerified();
+    if (session !== undefined) retainOnlyNewestSessionBackup(admission, directory, session.name.slice(0, -ManifestSuffix.length));
     if (newest !== undefined) {
       if (clock.nowMs() - Date.parse(newest.createdAt) <= SESSION_BACKUP_INTERVAL_MS) return "recent";
       if (newest.authorityGeneration === database.getMeta().authorityGeneration) return "unchanged";

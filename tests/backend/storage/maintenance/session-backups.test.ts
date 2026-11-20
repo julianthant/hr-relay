@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSessionBackups, SESSION_BACKUP_INTERVAL_MS } from "../../../../src/backend/storage/maintenance/session-backups.js";
@@ -205,24 +205,64 @@ describe("hourly in-session backup", () => {
       expect(f.names(".session.sqlite.manifest.json")).toEqual([older]);
       expect(f.names(".session.sqlite")).toEqual([older.slice(0, -".manifest.json".length)]);
     });
-    it.each(["backup", "manifest"] as const)("retires nothing and reports failed when the newest pair's %s cannot be read", async part => {
+    // Makes a file unreadable in place, or moves it behind an unsearchable folder so even its existence cannot be probed; returns the undo.
+    const lock = (f: Awaited<ReturnType<typeof fixture>>, fileName: string, how: "mode" | "unsearchable folder") => {
+      const path = join(f.directory, fileName);
+      if (how === "mode") { chmodSync(path, 0o000); const undo = () => { if (existsSync(path)) chmodSync(path, 0o600); }; cleanups.push(undo); return undo; }
+      const folder = join(f.bound.stateRoot, "locked"), moved = join(folder, fileName);
+      mkdirSync(folder); renameSync(path, moved); symlinkSync(moved, path); chmodSync(folder, 0o000);
+      const undo = () => { if (!existsSync(folder)) return; chmodSync(folder, 0o700); if (existsSync(moved)) { rmSync(path, { force: true }); renameSync(moved, path); } rmSync(folder, { recursive: true, force: true }); };
+      cleanups.push(undo); return undo;
+    };
+    const failedOnce = (f: Awaited<ReturnType<typeof fixture>>) => {
+      expect(f.events).toHaveLength(1);
+      expect(f.events[0]).toMatchObject({ category: "worker", phase: "failed", area: "session-backup", reason: "session-backup-failed" });
+    };
+    const allFiles = (f: Awaited<ReturnType<typeof fixture>>) => readdirSync(f.directory).sort();
+    it.each([["backup", "mode"], ["manifest", "mode"], ["backup", "unsearchable folder"]] as const)(
+      "retires nothing and reports failed when the newest pair's %s cannot be read (%s)", async (part, how) => {
+        const f = await fixture();
+        await f.sessionBackup();
+        const older = f.names(".session.sqlite.manifest.json")[0];
+        f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+        await f.sessionBackup();
+        const files = allFiles(f);
+        const newest = f.names(".session.sqlite.manifest.json").find(name => name !== older)!;
+        const undo = lock(f, part === "manifest" ? newest : newest.slice(0, -".manifest.json".length), how);
+        await expect(f.sessionBackups.check()).resolves.toBe("failed");
+        expect(allFiles(f)).toEqual(files);
+        failedOnce(f);
+        undo();
+        await expect(f.sessionBackups.check()).resolves.toBe("recent");
+        expect(f.names(".session.sqlite.manifest.json")).toEqual([newest]);
+      });
+    it("retires nothing and reports failed when an older session pair's backup cannot be read", async () => {
       const f = await fixture();
       await f.sessionBackup();
       const older = f.names(".session.sqlite.manifest.json")[0];
       f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
       await f.sessionBackup();
-      const pairs = [...f.names(".session.sqlite"), ...f.names(".session.sqlite.manifest.json")];
-      const newest = f.names(".session.sqlite.manifest.json").find(name => name !== older)!;
-      const unreadable = join(f.directory, part === "manifest" ? newest : newest.slice(0, -".manifest.json".length));
-      chmodSync(unreadable, 0o000);
-      cleanups.push(() => { if (existsSync(unreadable)) chmodSync(unreadable, 0o600); });
+      const files = allFiles(f);
+      const undo = lock(f, older.slice(0, -".manifest.json".length), "mode");
       await expect(f.sessionBackups.check()).resolves.toBe("failed");
-      expect([...f.names(".session.sqlite"), ...f.names(".session.sqlite.manifest.json")]).toEqual(pairs);
-      expect(f.events).toHaveLength(1);
-      expect(f.events[0]).toMatchObject({ category: "worker", phase: "failed", area: "session-backup", reason: "session-backup-failed" });
-      chmodSync(unreadable, 0o600);
+      expect(allFiles(f)).toEqual(files);
+      failedOnce(f);
+      undo();
       await expect(f.sessionBackups.check()).resolves.toBe("recent");
-      expect(f.names(".session.sqlite.manifest.json")).toEqual([newest]);
+      expect(f.names(".session.sqlite.manifest.json")).toEqual(files.filter(name => name.endsWith(".session.sqlite.manifest.json") && name !== older));
+    });
+    it("retires no session pair when a newer backup of another kind cannot be read", async () => {
+      const f = await fixture();
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      f.clock.advanceWall(1);
+      await f.otherBackup("clean-shutdown");
+      const files = allFiles(f);
+      lock(f, f.names(".shutdown.sqlite")[0], "mode");
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(allFiles(f)).toEqual(files);
+      failedOnce(f);
     });
     it.each(["foreign source identity", "renamed manifest"] as const)("keeps the older usable pair when the newest manifest has a %s", async fault => {
       const f = await fixture();
