@@ -101,8 +101,12 @@ export function duoSummary(methods: DuoMethods, draft?: ProfileOnboardingState):
   return "Security key and Touch ID not added";
 }
 
-/** One plain line for a refused sign-in; every other code keeps its catalog sentence. */
-export const signInSentence = (code: Parameters<typeof operatorFailureSentence>[0]): string => code === "PROFILE_SIGN_IN_REFUSED" ? "Wrong email or password" : operatorFailureSentence(code);
+const SIGN_IN_SENTENCES: Readonly<Record<string, string>> = Object.freeze({
+  PROFILE_SIGN_IN_REFUSED: "Wrong email or password",
+  COMMAND_OUTCOME_UNCERTAIN: "No reply from Relay. Reload the page to check.",
+});
+/** Plain lines for sign-in and Duo setup; every other code keeps its catalog sentence. */
+export const signInSentence = (code: string): string => SIGN_IN_SENTENCES[code] ?? operatorFailureSentence(code);
 
 export const DUO_STILL_WAITING_MS = 10_000;
 export const DUO_TIMEOUT_MS = 120_000;

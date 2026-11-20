@@ -5,7 +5,7 @@ import { build, preview, type PreviewServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { test } from "./helpers/fixtures.js";
-import { ONBOARDING_SCENES, ONBOARDING_SCENE_IDS } from "./helpers/onboarding-scenes.js";
+import { ONBOARDING_SCENES, ONBOARDING_SCENE_IDS, type Scene } from "./helpers/onboarding-scenes.js";
 import { mockOutDir } from "./helpers/out-dir.js";
 
 // Log in, sign-up, the Duo step, ready and the Duo setup window; frames are evidence, never test references.
@@ -49,15 +49,24 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`onboarding frames 
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize({ width, height: 720 });
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.clock.install();
   for (const id of ONBOARDING_SCENE_IDS) {
+    const scene: Scene = ONBOARDING_SCENES[id];
     await page.goto(`${baseUrl}/?scene=${id}&theme=${theme}`);
     const looked = LOOKED_FOR(id);
     await expect(page.getByRole(looked.role, { name: looked.name }), `${id}: ${looked.role} "${looked.name}"`).toBeVisible({ timeout: 5_000 });
-    if ("submit" in ONBOARDING_SCENES[id] && ONBOARDING_SCENES[id].submit === true) {
+    if (scene.fill === true) for (const [label, value] of [["First name", "Ana"], ["Last name", "Lee"], ["Work email", "ana.lee@ucsd.edu"], ["Password", "fixture-password"]] as const) {
+      const input = page.getByLabel(label, { exact: true });
+      if (await input.count() > 0) await input.fill(value);
+    }
+    for (const name of scene.press ?? []) await page.getByRole("button", { name, exact: true }).last().click();
+    if (scene.wait !== undefined) await page.clock.runFor(scene.wait);
+    if (scene.shows !== undefined) await expect(page.getByText(scene.shows, { exact: true }).first(), `${id}: shows "${scene.shows}"`).toBeVisible({ timeout: 5_000 });
+    if (scene.submit === true) {
       await page.getByRole("button", { name: looked.name }).click();
       await expect(page.locator(".ds-field-error").filter({ hasText: /\S/ }).first(), `${id}: field error`).toBeVisible({ timeout: 5_000 });
     }
-    if ("confirm" in ONBOARDING_SCENES[id] && ONBOARDING_SCENES[id].confirm === true) {
+    if (scene.confirm === true) {
       await page.getByRole("button", { name: "Add this device" }).click();
       await expect(page.getByRole("dialog"), `${id}: confirmation dialog`).toBeVisible({ timeout: 5_000 });
       await page.screenshot({ path: join(OUT, `${id}-dialog-${theme}-${width}.png`) });

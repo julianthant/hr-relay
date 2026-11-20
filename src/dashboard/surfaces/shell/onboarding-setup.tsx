@@ -1,6 +1,6 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useState } from "react";
-import { Check, Fingerprint, KeyRound } from "lucide-react";
+import { Check, Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
 import { Badge, Button, Card, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
 import { duoSummary, useServedDuoSetup, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
 import { AppLockup } from "./app-lockup.js";
@@ -95,7 +95,7 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
       {!statusReadFailed && status !== undefined && browserNotice === undefined && <p role="status" className="setup-notice" data-tone="info">{status}</p>}
     </main>
     <footer className="setup-footer">{closeFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{closeFailure}</p>}
-      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing} onClick={() => void closeReenrol("cancel")}>{closing === "cancel" ? "Cancelling…" : "Cancel setup"}</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing} aria-busy={closing === "complete" || undefined} onClick={() => void closeReenrol("complete")}>{closing === "complete" ? "Switching…" : "Use new devices"}</Button></div>
+      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing} aria-busy={closing === "cancel" || undefined} onClick={() => void closeReenrol("cancel")}>{closing === "cancel" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "cancel" ? "Cancelling…" : "Cancel setup"}</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing} aria-busy={closing === "complete" || undefined} onClick={() => void closeReenrol("complete")}>{closing === "complete" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "complete" ? "Switching…" : "Use new devices"}</Button></div>
         : <div className="action-row"><Button variant="secondary" size="lg" onClick={() => window.close()}>Close</Button><Button variant={both ? "primary" : "secondary"} size="lg" onClick={() => setup.returnToParent()}>Back to Relay</Button></div>}
     </footer>
     <span className="sr-only" role="status">{summary}</span>

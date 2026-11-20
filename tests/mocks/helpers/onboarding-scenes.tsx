@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import "../../../src/dashboard/ds/theme/hub-theme.css";
-import type { ProfileOnboardingBrowser, ProfileOnboardingMethodState, ProfileOnboardingState } from "../../../src/models/profiles/public-profile.js";
+import type { ProfileOnboardingBrowser, ProfileOnboardingMethodState, ProfileOnboardingState, PublicProfileState } from "../../../src/models/profiles/public-profile.js";
 import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { Onboarding } from "../../../src/dashboard/surfaces/shell/onboarding.js";
 import { OnboardingSetup } from "../../../src/dashboard/surfaces/shell/onboarding-setup.js";
@@ -22,26 +22,45 @@ function draft(key: MethodKind, touch: MethodKind, browser: ProfileOnboardingBro
 }
 
 const never = <T,>() => new Promise<T>(() => undefined);
-/** Every action stays pending; scenes only render state. */
-function stubPort(onboarding?: ProfileOnboardingState): ServedOnboardingPort {
-  return Object.freeze<ServedOnboardingPort>({ validate: validateOnboarding, onboarding,
-    complete: never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never, submit: never });
+const refused = async (): Promise<PublicProfileState> => ({ state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+/** Every action stays pending, except a refused sign-in; scenes only render state. */
+function stubPort(scene: Scene): ServedOnboardingPort {
+  return Object.freeze<ServedOnboardingPort>({ validate: validateOnboarding, onboarding: scene.draft, ...(scene.reenrol === true ? { reenrol: true } : {}),
+    complete: never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never,
+    submit: scene.refuse === true ? refused : never });
 }
 
-interface Scene { step?: OnboardingStep; setup?: boolean; duo?: boolean; confirm?: boolean; problem?: string; draft?: ProfileOnboardingState; submit?: boolean }
+/**
+ * `fill` types valid details, `press` clicks those buttons in order (the last match, so a dialog's button wins),
+ * `wait` advances the page clock, and `shows` is the text the finished scene must show.
+ */
+export interface Scene {
+  step?: OnboardingStep; setup?: boolean; duo?: boolean; confirm?: boolean; problem?: string; draft?: ProfileOnboardingState; submit?: boolean;
+  reenrol?: boolean; resumable?: boolean; refuse?: boolean; fill?: boolean; press?: readonly string[]; wait?: number; shows?: string;
+}
 
 /** One state per scene, named for what the operator sees. */
 export const ONBOARDING_SCENES = {
   "login-empty": { step: "login" },
   "login-errors": { step: "login", submit: true },
   "login-profile-problem": { step: "login", problem: "Relay could not reach your profile. Try again." },
+  "login-logging-in": { step: "login", fill: true, press: ["Log in"], shows: "Logging in…" },
+  "login-wrong-password": { step: "login", refuse: true, fill: true, press: ["Log in"], shows: "Wrong email or password" },
+  "login-resuming": { step: "login", resumable: true, shows: "Opening your workspace…" },
   "signup-empty": { step: "signup" },
   "signup-errors": { step: "signup", submit: true },
+  "signup-creating-profile": { step: "signup", fill: true, press: ["Create profile"], shows: "Creating profile…" },
   "duo-not-started": { step: "duo", draft: draft("idle", "idle") },
-  "duo-key-pending": { step: "duo", draft: draft("pending", "idle") },
+  "duo-opening": { step: "duo", draft: draft("idle", "idle", { state: "opening", generation: 1 }), shows: "Opening setup window…" },
+  "duo-key-pending": { step: "duo", draft: draft("pending", "idle"), shows: "Waiting for Duo to add Security key" },
+  "duo-still-waiting": { step: "duo", draft: draft("pending", "idle"), wait: 10_000, shows: "Still waiting for Duo to add Security key" },
+  "duo-timed-out": { step: "duo", draft: draft("pending", "idle"), wait: 120_000, shows: "Duo did not respond" },
+  "duo-cancel-confirm": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up"], shows: "Cancel sign-up?" },
+  "duo-cancelling": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "Cancelling…" },
   "duo-key-complete": { step: "duo", draft: draft("complete", "idle") },
   "duo-browser-failed": { step: "duo", draft: draft("idle", "idle", { state: "failed", generation: 1, code: "DUO_SETUP_OPEN_FAILED" }) },
   "ready": { step: "ready", draft: draft("complete", "complete") },
+  "ready-opening-dashboard": { step: "ready", draft: draft("complete", "complete"), press: ["Go to dashboard"], shows: "Opening dashboard…" },
   "setup-not-started": { setup: true, draft: draft("idle", "idle") },
   "setup-key-pending": { setup: true, draft: draft("pending", "idle") },
   "setup-key-complete": { setup: true, draft: draft("complete", "idle") },
@@ -49,6 +68,8 @@ export const ONBOARDING_SCENES = {
   "setup-key-failed": { setup: true, draft: draft("unknown", "idle") },
   "setup-duo-waiting": { setup: true, duo: true, draft: draft("pending", "idle") },
   "setup-duo-confirm": { setup: true, duo: true, confirm: true, draft: draft("pending", "idle") },
+  "setup-reenrol-switching": { setup: true, reenrol: true, draft: draft("complete", "complete"), press: ["Use new devices"], shows: "Switching…" },
+  "setup-reenrol-cancelling": { setup: true, reenrol: true, draft: draft("complete", "complete"), press: ["Cancel setup"], shows: "Cancelling…" },
 } as const satisfies Record<string, Scene>;
 export type OnboardingSceneId = keyof typeof ONBOARDING_SCENES;
 export const ONBOARDING_SCENE_IDS = Object.keys(ONBOARDING_SCENES) as OnboardingSceneId[];
@@ -57,11 +78,11 @@ const noop = () => undefined;
 
 export function OnboardingScenePage({ id }: { id: OnboardingSceneId }) {
   const scene: Scene = ONBOARDING_SCENES[id];
-  const port = stubPort(scene.draft);
+  const port = stubPort(scene);
   return <div data-app-root="" className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]">
     <TooltipProvider>{scene.setup
       ? <OnboardingSetup page={scene.duo === true ? "duo" : "fast"} port={port} />
-      : <Onboarding step={scene.step ?? "login"} onStep={noop} onDashboard={noop} port={port} authenticated={false} {...(scene.problem === undefined ? {} : { problem: scene.problem })} />}</TooltipProvider>
+      : <Onboarding step={scene.step ?? "login"} onStep={noop} onDashboard={noop} port={port} authenticated={false} resumable={scene.resumable === true} {...(scene.problem === undefined ? {} : { problem: scene.problem })} />}</TooltipProvider>
   </div>;
 }
 
