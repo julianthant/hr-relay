@@ -7,7 +7,7 @@ import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
 import { createServedOnboardingPort } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
-import { flatWorkflowGroup, workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
+import { workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
 import { WorkflowNavigation } from "../../../../src/dashboard/surfaces/shell/workflow-navigation.js";
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { SessionWorker } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
@@ -33,7 +33,7 @@ it("names the lookup category Lookup, not Search", () => {
 });
 
 it("renders the collapsed rail as an icon per workflow with the full name as accessible name, no letters, keyboard-focusable", async () => {
-  const groups = flatWorkflowGroup(entries);
+  const groups = workflowNavigationGroups(entries);
   const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows", collapsed: true })));
   for (const entry of entries) {
     const tile = host.querySelector<HTMLButtonElement>(`button[aria-label="${entry.label}"]`); assert.ok(tile, entry.label);
@@ -42,10 +42,10 @@ it("renders the collapsed rail as an icon per workflow with the full name as acc
   assert.equal(host.querySelector<HTMLButtonElement>('button[aria-current="page"]')?.getAttribute("aria-label"), "OCR");
 });
 
-it("renders the expanded rail flat: one icon row per workflow, no category headings, selected row announced", async () => {
-  const groups = flatWorkflowGroup(entries);
+it("renders the expanded rail under category headings: one icon row per workflow, selected row announced", async () => {
+  const groups = workflowNavigationGroups(entries);
   const host = await mount(createElement(TooltipProvider, null, createElement(WorkflowNavigation, { groups, active: "ocr", onSelect: () => undefined, label: "Workflows" })));
-  assert.equal(host.querySelectorAll("h3").length, 0);
+  assert.deepEqual([...host.querySelectorAll("h3")].map(heading => heading.textContent), groups.map(group => group.label));
   const rows = [...host.querySelectorAll<HTMLButtonElement>("li > button")];
   assert.equal(rows.length, entries.length);
   for (const row of rows) assert.ok(row.querySelector("svg"));

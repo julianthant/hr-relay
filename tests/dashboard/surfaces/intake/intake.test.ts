@@ -79,7 +79,7 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
     const frame = frameOf("Spreadsheet intake");
     assert.equal(document.activeElement, frame);
     const first = takeFirstTab(frame);
-    assert.equal(first.textContent?.trim(), "Close");
+    assert.equal(first.getAttribute("aria-label"), "Close");
   });
 });
 

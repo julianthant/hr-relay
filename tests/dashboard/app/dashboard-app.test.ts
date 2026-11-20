@@ -599,7 +599,7 @@ afterEach_m1(_afterEachFixture0);
     );
     assert_m1.match(frame.textContent ?? "", /UI catalog removed/u);
     assert_m1.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
-    assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Back to dashboard");
+    assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Close settings");
     assert_m1.equal(
       document.querySelector('[aria-label="Close the UI catalog"]'),
       null,
@@ -661,7 +661,7 @@ afterEach_m1(_afterEachFixture0);
     await act_m1(async () => sectionLink("Keyboard").click());
     assert_m1.match(window.location.search, /settings=keyboard/u);
     assert_m1.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
-    const dashboard = buttonNamed("Back to dashboard");
+    const dashboard = buttonNamed("Close settings");
     await press(dashboard);
     await press(buttonNamed("Keep editing"));
     assert_m1.equal(document.activeElement === dashboard, true, "cancelling the shell exit restores focus to its persistent navigation control");
@@ -677,7 +677,7 @@ afterEach_m1(_afterEachFixture0);
     const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
     assert_m1.ok(restored instanceof HTMLButtonElement);
     assert_m1.equal(restored.dataset.value, value);
-    await press(buttonNamed("Back to dashboard"));
+    await press(buttonNamed("Close settings"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     assert_m1.equal(window.location.search.includes("catalog"), false);
@@ -688,7 +688,7 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?settings=display");
     await dirtyBrowserSettings();
 
-    await press(buttonNamed("Back to dashboard"));
+    await press(buttonNamed("Close settings"));
     assert_m1.ok(frameOf("Settings"), "a dirty rail navigation must leave Settings mounted for confirmation");
     assert_m1.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
     const discard = buttonNamed("Discard changes");
@@ -699,7 +699,7 @@ afterEach_m1(_afterEachFixture0);
 
   it_m1("allows persistent rail navigation immediately when the Settings draft is clean", async () => {
     await mountDashboard("?settings=display");
-    await press(buttonNamed("Back to dashboard"));
+    await press(buttonNamed("Close settings"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
     assert_m1.ok(document.getElementById("dashboard-main-region"));
