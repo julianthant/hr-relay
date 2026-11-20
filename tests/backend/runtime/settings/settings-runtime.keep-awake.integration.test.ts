@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ChildProcess } from "node:child_process";
+import { ChildProcess, execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
@@ -89,9 +89,21 @@ it("polls the current saved preference and stops polling before authority closes
     await vi.advanceTimersByTimeAsync(1000);
     assert.equal(starts, 1);
     const reads = snapshots.mock.calls.length;
+    f.database.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space",
+      active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
     await vi.advanceTimersByTimeAsync(2000);
     assert.equal(starts, 1);
     assert.equal(snapshots.mock.calls.length, reads);
+
+    execFileSync(process.execPath, ["--input-type=module", "-e", `
+      import { DatabaseSync } from "node:sqlite";
+      const db = new DatabaseSync(process.argv[1]);
+      const { changes } = db.prepare("UPDATE settings SET revision=revision WHERE id='current'").run();
+      db.close();
+      if (changes !== 1) throw new Error("expected one committed settings row");
+    `, f.path]);
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(snapshots.mock.calls.length, reads + 1);
     assert.equal(f.save({ "preferences.preventSleepWhileRunning": { set: false } }).state, "applied");
     await vi.advanceTimersByTimeAsync(1000);
     assert.equal(kills, 1);

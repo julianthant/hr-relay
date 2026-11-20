@@ -68,7 +68,8 @@ import { prepareDashboardEnvironment,prepareDashboardRuntime } from "./runtime-r
 import { composeShell } from "./shell.js";
 import { composeDashboardShutdown } from "./shutdown-custody.js";
 import { composeStorage } from "./storage.js";
-import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
+import { startNotificationPolling } from "./notifications.js";
+import { composeDashboardTimeline } from "./timeline.js";
 import { composeWorkerPool,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
 
@@ -429,9 +430,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
   }));
   dashboardPreflightRunners.markBackendOwned(server.port);
-  void notificationObserver.observe();
-  const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
-  gateParkTimer.unref();
+  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver);
   startupCleanups.push(() => clearInterval(gateParkTimer));
   const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",
