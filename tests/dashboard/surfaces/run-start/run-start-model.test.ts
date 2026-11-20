@@ -392,3 +392,19 @@ describe("explicit unchosen typed mode", () => {
     assert.throws(() => restoreTypedInput(declaration, { email: "hire@example.test", mode: "unknown" }), /Undeclared/u);
   });
 });
+
+describe("Separations launch input", () => {
+  const surface = DESCRIPTORS.find(workflow => workflow.id === "separations")?.surfaces.inputRun;
+  assert.ok(surface);
+  it("removes duplicate IDs", () => {
+    const preview = previewRunInput(surface, "1234567; 1234567; 7654321");
+    assert.equal(preview.problem, null);
+    assert.equal(preview.entries.length, 2);
+    assert.deepEqual(preview.entries.map(entry => entry.index), [0, 1]);
+  });
+  it("marks only the invalid entry", () => {
+    const preview = previewRunInput(surface, "1234567; nope; 7654321");
+    assert.notEqual(preview.problem, null);
+    assert.deepEqual(preview.refusedIndexes, [1]);
+  });
+});

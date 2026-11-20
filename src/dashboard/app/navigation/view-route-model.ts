@@ -32,6 +32,10 @@ export const ViewRouteSchema = z.object({
   activityPreview: z.enum(['normal', 'empty', 'incomplete', 'loading', 'unavailable']).optional(),
 }).strict();
 export type ViewRoute = z.infer<typeof ViewRouteSchema>;
+/** The patch that removes the Start run dialog's coordinates from the view when the dialog closes. */
+export const LAUNCH_CLEARED: Readonly<Partial<ViewRoute>> = Object.freeze({
+  launchRerun: undefined, launchServed: undefined, launchWorkflow: undefined, launchSource: undefined, launchStage: undefined, launchCustomize: undefined,
+});
 export type RouteSetter = (next: AppRouteState | ((current: AppRouteState) => AppRouteState), mode?: "push" | "replace") => void;
 export interface ViewNavigation { readonly view: ViewRoute; readonly start: boolean; setStart(this: void, open: boolean): void; update(this: void, patch: Partial<ViewRoute>, mode?: "push" | "replace"): void }
 export const ViewNavigationContext = createContext<ViewNavigation | undefined>(undefined);
