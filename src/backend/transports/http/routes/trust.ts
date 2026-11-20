@@ -1,3 +1,7 @@
+import { z } from "zod";
+import { ArtifactIdSchema, DiagnosticBundleIdSchema, RunIdSchema } from "../../../../rules/identity/ids.js";
+import { SectionNameSchema } from "../../../runs/queries/run-read.js";
+import { rawRouteQuery, RunSectionQuerySchema } from "./request-parameters.js";
 import type { TrustRouteDeps } from "./trust-types.js";
 
 import { readRunSection } from "../../../runs/queries/run-detail.js";
@@ -15,6 +19,11 @@ import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../.
 import { verifiedByteResponse } from "./verified-byte-response.js";
 import type { DashboardApp } from "./api-types.js";
 
+const BundlePathSchema = z.strictObject({ bundleId: DiagnosticBundleIdSchema });
+const BundleAttachmentPathSchema = BundlePathSchema.extend({ artifactId: ArtifactIdSchema });
+const ArtifactPathSchema = z.strictObject({ artifactId: ArtifactIdSchema });
+const SectionPathSchema = z.strictObject({ runId: RunIdSchema, section: SectionNameSchema });
+
 export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): void {
   // Failure responses are private evidence too. Install after the capture Host
   // gate so a phone request still receives the byte-identical unrouted refusal.
@@ -25,12 +34,13 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
   });
 
   app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
+    const { bundleId } = BundlePathSchema.parse(c.req.param());
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
     }
     const bundle = await readDiagnosticBundle(
       deps.diagnosticBundles,
-      c.req.param("bundleId"),
+      bundleId,
       undefined,
       c.req.raw.signal,
     );
@@ -38,12 +48,13 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
   });
 
   app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", async (c) => {
+    const { bundleId } = BundlePathSchema.parse(c.req.param());
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
     }
     const bundle = await readDiagnosticBundle(
       deps.diagnosticBundles,
-      c.req.param("bundleId"),
+      bundleId,
       undefined,
       c.req.raw.signal,
     );
@@ -59,6 +70,7 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
 
   /** A screenshot resource stays bound to the exact inspected bundle, not only its global artifact id. */
   app.get("/api/v1/diagnostic-bundles/:bundleId/attachments/:artifactId", async (c) => {
+    const { bundleId, artifactId } = BundleAttachmentPathSchema.parse(c.req.param());
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError(
         "diagnostic attachment readback is not available: no diagnostic attachment authority is composed",
@@ -66,8 +78,8 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
     }
     const attachment = await readDiagnosticBundleAttachment(
       deps.diagnosticBundles,
-      c.req.param("bundleId"),
-      c.req.param("artifactId"),
+      bundleId,
+      artifactId,
       c.req.raw.signal,
     );
     return verifiedByteResponse({
@@ -79,6 +91,7 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
   });
 
   app.get("/artifacts/v1/:artifactId", async (c) => {
+    const { artifactId } = ArtifactPathSchema.parse(c.req.param());
     if (deps.diagnosticBundles === undefined) {
       throw new SectionUnavailableError(
         "diagnostic artifact readback is not available: no diagnostic attachment authority is composed",
@@ -92,7 +105,7 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
           authority: deps.diagnosticBundles.authority,
           artifactReader: deps.diagnosticBundles.artifactReader,
         },
-        c.req.param("artifactId"),
+        artifactId,
         c.req.raw.signal,
       );
     } catch (error: unknown) {
@@ -110,11 +123,12 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
   });
 
   app.get("/api/v1/runs/:runId/:section", async (c) => {
-    const cursor = c.req.query("cursor");
+    const { runId, section } = SectionPathSchema.parse(c.req.param());
+    const { cursor } = RunSectionQuerySchema.parse(rawRouteQuery(c.req.url));
     return c.json(await readRunSection(
       deps.runDetail,
-      c.req.param("runId"),
-      c.req.param("section"),
+      runId,
+      section,
       cursor,
       c.req.raw.signal,
     ));

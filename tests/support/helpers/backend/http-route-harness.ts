@@ -1,3 +1,5 @@
+import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/queries/item-attempt-history.js";
+import { createWorkerCommandResultQuery } from "../../../../src/backend/runs/queries/worker-command-result.js";
 import { createPreflightReportService } from "../../../../src/backend/runtime/preflight/report-service.js";
 import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
@@ -429,6 +431,7 @@ export async function harness(options: {
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
     ...(options.ocr === undefined ? {} : { ocr: options.ocr }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
+    workerCommandResult: createWorkerCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
     bootstrap: {
       appVersion: "0.1.0",
@@ -477,7 +480,7 @@ export async function harness(options: {
             artifactReader,
           },
         }),
-    runDetail: runDetailDeps,
+    runDetail: { ...runDetailDeps, itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runDetailDeps.runReader }) },
     commands,
     startPlans,
     hub,

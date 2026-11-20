@@ -687,3 +687,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 import { OPERATOR_JSON_HEADERS,assertHttpFaultOnly,disposeHttpRouteHarness,faultAuthoritySnapshot,harness,json,rawSettingsPatchFingerprint,settingsAuthoritySnapshot } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
+
+it("validates the worker command ID and preserves the unavailable result", async () => {
+  const h = await harness();
+  const valid = await h.app.request(`/api/v1/worker-commands/${RUN_ID}`);
+  assert.equal(valid.status, 200);
+  assert.equal(await valid.text(), '{"state":"unavailable"}');
+  const malformed = await h.app.request("/api/v1/worker-commands/malformed");
+  assert.equal(malformed.status, 400);
+  assert.match(await malformed.text(), /"code":"SCHEMA_INVALID".*commandId/u);
+});
