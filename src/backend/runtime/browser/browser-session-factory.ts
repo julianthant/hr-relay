@@ -510,6 +510,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                 ...(sampleLabels === undefined ? {} : { sampleLabels }),
                 assertCurrent,
                 secretControls,
+                onBandRetry: detail => this.#options.onDebug?.(workerId, {
+                  phase: "reset", correlationId: sessionId, reason: "capture-band-retry", message: detail,
+                }),
                 afterCapture: async () => {
                   stage = "final-sign-in-check";
                   assertCurrent();
