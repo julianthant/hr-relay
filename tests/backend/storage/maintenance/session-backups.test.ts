@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSessionBackups, SESSION_BACKUP_INTERVAL_MS } from "../../../../src/backend/storage/maintenance/session-backups.js";
@@ -10,6 +10,8 @@ import { boundProfileCredentials, createBoundProfileFixture } from "../../../sup
 
 // Fails the close of the next descriptor opened on a temporary backup copy, after the descriptor really closed.
 const closeFault = vi.hoisted(() => ({ armed: undefined as (() => void) | undefined, descriptors: new Set<number>() }));
+// Runs once right after the next listing of the given directory returns.
+const afterListing = vi.hoisted(() => ({ directory: undefined as string | undefined, run: undefined as (() => void) | undefined }));
 vi.mock("node:fs", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs")>();
   const openSync = ((path: Parameters<typeof actual.openSync>[0], ...rest: unknown[]) => {
@@ -25,12 +27,18 @@ vi.mock("node:fs", async importOriginal => {
     onFault();
     throw Object.assign(new Error("injected close failure"), { code: "EIO" });
   }) as typeof actual.closeSync;
-  return { ...actual, default: { ...actual, openSync, closeSync }, openSync, closeSync };
+  const readdirSync = ((path: Parameters<typeof actual.readdirSync>[0], ...rest: unknown[]) => {
+    const listed = (actual.readdirSync as (...args: unknown[]) => unknown)(path, ...rest);
+    const run = afterListing.run;
+    if (run !== undefined && String(path) === afterListing.directory) { afterListing.run = undefined; run(); }
+    return listed;
+  }) as typeof actual.readdirSync;
+  return { ...actual, default: { ...actual, openSync, closeSync, readdirSync }, openSync, closeSync, readdirSync };
 });
 
 const MINUTE = 60_000;
 const cleanups: (() => void | Promise<void>)[] = [];
-afterEach(async () => { closeFault.armed = undefined; closeFault.descriptors.clear(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { closeFault.armed = undefined; afterListing.run = undefined; closeFault.descriptors.clear(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 async function fixture() {
   const bound = await createBoundProfileFixture();
@@ -41,9 +49,14 @@ async function fixture() {
   const sessionBackups = createSessionBackups({ admission: bound.admission, database, clock, directory });
   const events: unknown[] = [];
   sessionBackups.start({ emit: input => events.push(input) });
-  cleanups.push(async () => { vi.restoreAllMocks(); sessionBackups.requestCancellation(); await sessionBackups.awaitCancellation().catch(() => undefined); if (existsSync(directory)) chmodSync(directory, 0o700);
-    // A retained unproved closure legitimately makes the profile refuse release.
+  cleanups.push(async () => {
+    vi.restoreAllMocks(); sessionBackups.requestCancellation();
+    // A retained unproved closure legitimately fails the drain and makes the profile refuse release; anything else fails the test after closing.
+    let drainFailure: { error: unknown } | undefined;
+    await sessionBackups.awaitCancellation().catch((error: unknown) => { if (!hasUnprovedSourceClosure(error)) drainFailure = { error }; });
+    if (existsSync(directory)) chmodSync(directory, 0o700);
     try { database.close(); await bound.close(); } catch (error) { if (!hasUnprovedSourceClosure(error)) throw error; }
+    if (drainFailure !== undefined) throw drainFailure.error;
   });
   let occurrence = 0;
   const commitChange = () => {
@@ -156,8 +169,8 @@ describe("hourly in-session backup", () => {
       const f = await fixture();
       closeFault.armed = () => f.sessionBackups.requestCancellation();
       await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      // The drain settles on the same thread-idle promise after the take's disposal callback already ran.
       await expect(f.sessionBackups.awaitCancellation()).rejects.toBeInstanceOf(AuthoritySourceClosureUnprovedError);
-      await new Promise(resolve => setTimeout(resolve, 50));
       expect(readdirSync(f.directory).filter(name => name.endsWith(".sqlite.tmp"))).toHaveLength(1);
     });
   });
@@ -199,6 +212,159 @@ describe("hourly in-session backup", () => {
       await expect(f.sessionBackups.check()).resolves.toBe("unchanged");
       expect(f.names(".session.sqlite.manifest.json")).toEqual([older]);
       expect(f.names(".session.sqlite")).toEqual([older.slice(0, -".manifest.json".length)]);
+    });
+    // Makes a file unreadable in place, or moves it behind an unsearchable folder so even its existence cannot be probed; returns the undo.
+    const lock = (f: Awaited<ReturnType<typeof fixture>>, fileName: string, how: "mode" | "unsearchable folder") => {
+      const path = join(f.directory, fileName);
+      if (how === "mode") { chmodSync(path, 0o000); const undo = () => { if (existsSync(path)) chmodSync(path, 0o600); }; cleanups.push(undo); return undo; }
+      const folder = join(f.bound.stateRoot, "locked"), moved = join(folder, fileName);
+      mkdirSync(folder); renameSync(path, moved); symlinkSync(moved, path); chmodSync(folder, 0o000);
+      const undo = () => { if (!existsSync(folder)) return; chmodSync(folder, 0o700); if (existsSync(moved)) { rmSync(path, { force: true }); renameSync(moved, path); } rmSync(folder, { recursive: true, force: true }); };
+      cleanups.push(undo); return undo;
+    };
+    const failedOnce = (f: Awaited<ReturnType<typeof fixture>>) => {
+      expect(f.events).toHaveLength(1);
+      expect(f.events[0]).toMatchObject({ category: "worker", phase: "failed", area: "session-backup", reason: "session-backup-failed" });
+    };
+    const allFiles = (f: Awaited<ReturnType<typeof fixture>>) => readdirSync(f.directory).sort();
+    it.each([["backup", "mode"], ["manifest", "mode"], ["backup", "unsearchable folder"]] as const)(
+      "retires nothing and reports failed when the newest pair's %s cannot be read (%s)", async (part, how) => {
+        const f = await fixture();
+        await f.sessionBackup();
+        const older = f.names(".session.sqlite.manifest.json")[0];
+        f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+        await f.sessionBackup();
+        const files = allFiles(f);
+        const newest = f.names(".session.sqlite.manifest.json").find(name => name !== older)!;
+        const undo = lock(f, part === "manifest" ? newest : newest.slice(0, -".manifest.json".length), how);
+        await expect(f.sessionBackups.check()).resolves.toBe("failed");
+        expect(allFiles(f)).toEqual(files);
+        failedOnce(f);
+        undo();
+        await expect(f.sessionBackups.check()).resolves.toBe("recent");
+        expect(f.names(".session.sqlite.manifest.json")).toEqual([newest]);
+      });
+    it("retires nothing and reports failed when an older session pair's backup cannot be read", async () => {
+      const f = await fixture();
+      await f.sessionBackup();
+      const older = f.names(".session.sqlite.manifest.json")[0];
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      const files = allFiles(f);
+      const undo = lock(f, older.slice(0, -".manifest.json".length), "mode");
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(allFiles(f)).toEqual(files);
+      failedOnce(f);
+      undo();
+      await expect(f.sessionBackups.check()).resolves.toBe("recent");
+      expect(f.names(".session.sqlite.manifest.json")).toEqual(files.filter(name => name.endsWith(".session.sqlite.manifest.json") && name !== older));
+    });
+    it("keeps a future-dated session pair when the wall clock was set back between two valid pairs", async () => {
+      const f = await fixture();
+      const start = f.clock.now();
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      const files = allFiles(f);
+      f.clock.setWall(new Date(start.getTime() + 30 * MINUTE));
+      await expect(f.sessionBackups.check()).resolves.toBe("recent");
+      expect(allFiles(f)).toEqual(files);
+    });
+    it("holds retirement when a classified pair changed while the new backup was taken", async () => {
+      const f = await fixture();
+      await expect(f.sessionBackups.check()).resolves.toBe("taken");
+      const previous = f.names(".session.sqlite")[0];
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const request = AuthorityBackupService.prototype.request;
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
+        utimesSync(join(f.directory, previous), new Date(), new Date(Date.now() - MINUTE));
+        return request.apply(this, args);
+      });
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(f.names(".session.sqlite")).toHaveLength(2);
+      expect(f.names(".session.sqlite")).toContain(previous);
+      expect(f.names(".session.sqlite.manifest.json")).toHaveLength(2);
+      failedOnce(f);
+      await expect(f.sessionBackups.check()).resolves.toBe("recent");
+      expect(f.names(".session.sqlite")).toHaveLength(1);
+      expect(f.names(".session.sqlite")).not.toContain(previous);
+    });
+    it.each(["removed", "altered", "given a foreign source identity"] as const)("keeps the previous pair when the fresh backup's files are %s after the request", async fault => {
+      const f = await fixture();
+      await expect(f.sessionBackups.check()).resolves.toBe("taken");
+      const previous = f.names(".session.sqlite")[0];
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const request = AuthorityBackupService.prototype.request;
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(async function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
+        const result = await request.apply(this, args), fresh = result.manifests.at(-1)!.backupFileName;
+        const manifestPath = join(f.directory, `${fresh}.manifest.json`);
+        if (fault === "removed") { rmSync(manifestPath); rmSync(join(f.directory, fresh)); }
+        else if (fault === "altered") f.damage(fresh);
+        else {
+          const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { sourceDatabaseIdentity: string };
+          manifest.sourceDatabaseIdentity = `${manifest.sourceDatabaseIdentity.startsWith("0") ? "1" : "0"}${manifest.sourceDatabaseIdentity.slice(1)}`;
+          writeFileSync(manifestPath, JSON.stringify(manifest));
+        }
+        return result;
+      });
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(f.names(".session.sqlite")).toContain(previous);
+      expect(f.names(".session.sqlite.manifest.json")).toContain(`${previous}.manifest.json`);
+      failedOnce(f);
+    });
+    it("keeps a manifest-less session backup whose manifest appears during the pass", async () => {
+      const f = await fixture();
+      await expect(f.sessionBackups.check()).resolves.toBe("taken");
+      const previous = f.names(".session.sqlite")[0];
+      const orphan = previous.replace(/-[0-9a-f-]{36}\.session/u, "-00000000-0000-4000-8000-000000000000.session");
+      writeFileSync(join(f.directory, orphan), readFileSync(join(f.directory, previous)), { mode: 0o600 });
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const request = AuthorityBackupService.prototype.request;
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
+        writeFileSync(join(f.directory, `${orphan}.manifest.json`), "{}", { mode: 0o600 });
+        return request.apply(this, args);
+      });
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(f.names(".session.sqlite")).toContain(orphan);
+      failedOnce(f);
+    });
+    it("keeps a manifest-less session backup whose manifest is published right after the listing", async () => {
+      const f = await fixture();
+      await expect(f.sessionBackups.check()).resolves.toBe("taken");
+      const previous = f.names(".session.sqlite")[0];
+      const orphan = previous.replace(/-[0-9a-f-]{36}\.session/u, "-00000000-0000-4000-8000-000000000000.session");
+      writeFileSync(join(f.directory, orphan), readFileSync(join(f.directory, previous)), { mode: 0o600 });
+      Object.assign(afterListing, { directory: f.directory, run: () => writeFileSync(join(f.directory, `${orphan}.manifest.json`), "{}", { mode: 0o600 }) });
+      await expect(f.sessionBackups.check()).resolves.toBe("recent");
+      expect(f.names(".session.sqlite")).toContain(orphan);
+      expect(f.names(".session.sqlite.manifest.json")).toContain(`${orphan}.manifest.json`);
+    });
+    it("retires no stale session pair when the replacement backup fails verification", async () => {
+      const f = await fixture();
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
+      const files = allFiles(f);
+      vi.spyOn(AuthorityBackupService.prototype, "request").mockRejectedValueOnce(Object.assign(new Error("injected verification read failure"), { code: "EIO" }));
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(allFiles(f)).toEqual(files);
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(allFiles(f)).toEqual(files);
+      failedOnce(f);
+    });
+    it("retires no session pair when a newer backup of another kind cannot be read", async () => {
+      const f = await fixture();
+      await f.sessionBackup();
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      f.clock.advanceWall(1);
+      await f.otherBackup("clean-shutdown");
+      const files = allFiles(f);
+      lock(f, f.names(".shutdown.sqlite")[0], "mode");
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect(allFiles(f)).toEqual(files);
+      failedOnce(f);
     });
     it.each(["foreign source identity", "renamed manifest"] as const)("keeps the older usable pair when the newest manifest has a %s", async fault => {
       const f = await fixture();
