@@ -62,6 +62,25 @@ describe('compact run headers', () => {
     } finally { window.history.replaceState(null, '', locationBefore); }
   });
 
+  it('shows a refusal that retrying cannot fix as one sentence with no Retry', () => {
+    useRunWiring.mockReturnValue({ state: 'failed', retryable: false, error: "These logs don't match this run." });
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' }, onRetryLogs: () => undefined }));
+    assert.match(markup, /These logs don&#x27;t match this run\./);
+    assert.doesNotMatch(markup, /Couldn&#x27;t load logs/);
+    assert.doesNotMatch(markup, /Retry/);
+  });
+
+  it('keeps Retry for a failed read', () => {
+    useRunWiring.mockReturnValue({ state: 'failed', retryable: true, error: 'served logs unavailable' });
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' }, onRetryLogs: () => undefined }));
+    assert.match(markup, /Couldn&#x27;t load logs\./);
+    assert.match(markup, /Retry/);
+  });
+
   it.each([true, false])('renders the served child retry in the log header with current availability (%s)', available => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
@@ -98,6 +117,22 @@ describe('compact run headers', () => {
       act(() => refreshed.click());
       assert.deepEqual(effects, available ? ['retry', 'updated'] : ['updated']);
       assert.equal(onAction.mock.calls.length, 0);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+
+  it('names the group a member opened from and goes back to it', () => {
+    const run: MockRun = { id: 'member-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const parent = queueParentFixture('00000000-0000-4000-8000-000000000a01', { title: 'Spring onboarding' });
+    const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), parent });
+    const onOpenLinked = vi.fn();
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Jordan' }, availableSections: ['logs'] }, logs: {}, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    try {
+      act(() => root.render(sample({ selection: { row, workflowLabel: 'Person lookup' }, onOpenLinked })));
+      const back = host.querySelector<HTMLButtonElement>('header button[aria-label="Back to Spring onboarding"]'); assert.ok(back);
+      act(() => back.click());
+      assert.deepEqual(onOpenLinked.mock.calls.map(call => call[0].runId), [parent.runId]);
     } finally { act(() => root.unmount()); host.remove(); }
   });
 

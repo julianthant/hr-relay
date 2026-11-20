@@ -1,3 +1,4 @@
+import { RunDetailSectionSchema } from "../../../models/dashboard/primitives.js";
 import { PROFILE_ONBOARDING_ROUTE_KEY } from "../../../models/profiles/public-profile.js";
 import { parseViewRoute, ViewRouteSchema, type ViewRoute } from "./view-route-model.js";
 import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } from "./archive-route-model.js";
@@ -84,7 +85,7 @@ export function parseRoute(search: string): AppRouteState {
   }
   if (day !== null) route.day = day;
   if (run !== null && run.length > 0) route.run = run;
-  if (section !== null && section.length > 0) route.section = section;
+  if (section !== null && RunDetailSectionSchema.safeParse(section).success) route.section = section;
   if (intake !== null && intake.length > 0) route.intake = intake;
   if (explore !== null && explore.length > 0) route.explore = explore;
   // The catalog keys are subordinate to `settings`: an empty VALUE still reads as an open section.

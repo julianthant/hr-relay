@@ -335,6 +335,11 @@ describe_m5("Settings field search", () => {
 {
 
 
+it_m6("drops a run section the panel does not know", () => {
+  assert_m6.equal(parseRoute_m6("?run=exact-run&section=nonsense").section, undefined);
+  assert_m6.equal(parseRoute_m6("?run=exact-run&section=review").section, "review");
+});
+
 it_m6("preserves raw invalid identities, refuses future links and accepts leap/empty historical dates", () => {
   for (const requested of ["2026-02-30", "2025-02-29", "tomorrow", ""]) {
     const route = parseRoute_m6(`?day=${requested}&run=exact-run&section=receipt`);

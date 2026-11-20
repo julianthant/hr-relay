@@ -70,16 +70,23 @@ describe("the provenance bar uses the demo's identity wording", () => {
     status: "running",
   });
 
-  it("prints the bare shape tag with no invented noun in front of it", () => {
+  it("prints no fingerprint and marks only an older workflow version", () => {
     const html = renderToStaticMarkup(createElement(RunProvenanceBar, {
       surface,
       workflowLabel: "Person Lookup",
       currentAppVersion: "0.1.0",
       servedDescriptorHash: DESCRIPTOR_HASH,
     }));
-    assert.match(html, />9f9f9f9f</u);
-
-    assert.equal(/wf 9f9f9f9f/u.test(html), false);
+    assert.equal(/9f9f9f9f/u.test(html), false);
+    assert.equal(/Older version/u.test(html), false);
+    const moved = renderToStaticMarkup(createElement(RunProvenanceBar, {
+      surface,
+      workflowLabel: "Person Lookup",
+      currentAppVersion: "0.1.0",
+      servedDescriptorHash: "a".repeat(64),
+    }));
+    assert.match(moved, /Older version/u);
+    assert.equal(/9f9f9f9f/u.test(moved), false);
   });
 
   it("keeps Config and Attempt out of the mounted provenance popover", async () => {
