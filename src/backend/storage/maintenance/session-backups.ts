@@ -48,6 +48,11 @@ function isCustodyUnavailable(error: unknown): boolean {
   return error instanceof AggregateError && error.errors.some(isCustodyUnavailable);
 }
 
+/** A refused read or an unproved closure says nothing about the copy, so it stops the pass instead of passing the copy over. */
+function isOperationalFailure(error: unknown): boolean {
+  return hasUnprovedSourceClosure(error) || (error instanceof Error && typeof (error as NodeJS.ErrnoException).code === "string");
+}
+
 function removeBackupFiles(path: string): void {
   for (const candidate of [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]) rmSync(candidate, { force: true });
 }
@@ -80,7 +85,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
   let lastFailureMonotonicMs: number | undefined, closureFailure: { error: unknown } | undefined;
   const passed = new Map<string, string>();
 
-  /** Manifests of this profile and authority database, named for their backup, whose bytes verify, newest first; a passed verdict stands while both files keep their identity. */
+  /** Manifests of this profile and authority database, named for their backup, whose bytes verify, newest first; only a copy proved invalid is passed over; a passed verdict stands while both files keep their identity. */
   const newestVerified = async (only?: RegExp): Promise<VerifiedManifest | undefined> => {
     if (!existsSync(directory)) return undefined;
     const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
@@ -88,7 +93,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     for (const name of readdirSync(directory).filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
       const manifestPath = join(directory, name);
       let manifest: AuthorityBackupManifest;
-      try { manifest = parseBackupManifestFile(manifestPath); } catch { continue; }
+      try { manifest = parseBackupManifestFile(manifestPath); } catch (error) { if (isOperationalFailure(error)) throw error; continue; }
       if (name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
         || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== sourceIdentity || Date.parse(manifest.createdAt) > nowMs) continue;
       candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, manifestPath, backup: manifest });
@@ -97,7 +102,8 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     for (const candidate of candidates) {
       const backupPath = join(directory, candidate.backup.backupFileName), identity = `${fileIdentity(candidate.manifestPath)}|${fileIdentity(backupPath)}`;
       if (passed.get(candidate.manifestPath) !== identity) {
-        try { await verifyBackupBytesAtPath(backupPath, candidate.backup); } catch { passed.delete(candidate.manifestPath); continue; }
+        try { await verifyBackupBytesAtPath(backupPath, candidate.backup); }
+        catch (error) { passed.delete(candidate.manifestPath); if (isOperationalFailure(error)) throw error; continue; }
         passed.set(candidate.manifestPath, identity);
       }
       return { name: candidate.name, createdAt: candidate.createdAt, authorityGeneration: candidate.authorityGeneration };

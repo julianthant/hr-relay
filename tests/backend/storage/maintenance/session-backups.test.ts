@@ -41,9 +41,14 @@ async function fixture() {
   const sessionBackups = createSessionBackups({ admission: bound.admission, database, clock, directory });
   const events: unknown[] = [];
   sessionBackups.start({ emit: input => events.push(input) });
-  cleanups.push(async () => { vi.restoreAllMocks(); sessionBackups.requestCancellation(); await sessionBackups.awaitCancellation().catch(() => undefined); if (existsSync(directory)) chmodSync(directory, 0o700);
-    // A retained unproved closure legitimately makes the profile refuse release.
+  cleanups.push(async () => {
+    vi.restoreAllMocks(); sessionBackups.requestCancellation();
+    // A retained unproved closure legitimately fails the drain and makes the profile refuse release; anything else fails the test after closing.
+    let drainFailure: { error: unknown } | undefined;
+    await sessionBackups.awaitCancellation().catch((error: unknown) => { if (!hasUnprovedSourceClosure(error)) drainFailure = { error }; });
+    if (existsSync(directory)) chmodSync(directory, 0o700);
     try { database.close(); await bound.close(); } catch (error) { if (!hasUnprovedSourceClosure(error)) throw error; }
+    if (drainFailure !== undefined) throw drainFailure.error;
   });
   let occurrence = 0;
   const commitChange = () => {
@@ -156,8 +161,8 @@ describe("hourly in-session backup", () => {
       const f = await fixture();
       closeFault.armed = () => f.sessionBackups.requestCancellation();
       await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      // The drain settles on the same thread-idle promise after the take's disposal callback already ran.
       await expect(f.sessionBackups.awaitCancellation()).rejects.toBeInstanceOf(AuthoritySourceClosureUnprovedError);
-      await new Promise(resolve => setTimeout(resolve, 50));
       expect(readdirSync(f.directory).filter(name => name.endsWith(".sqlite.tmp"))).toHaveLength(1);
     });
   });
@@ -199,6 +204,25 @@ describe("hourly in-session backup", () => {
       await expect(f.sessionBackups.check()).resolves.toBe("unchanged");
       expect(f.names(".session.sqlite.manifest.json")).toEqual([older]);
       expect(f.names(".session.sqlite")).toEqual([older.slice(0, -".manifest.json".length)]);
+    });
+    it.each(["backup", "manifest"] as const)("retires nothing and reports failed when the newest pair's %s cannot be read", async part => {
+      const f = await fixture();
+      await f.sessionBackup();
+      const older = f.names(".session.sqlite.manifest.json")[0];
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      const pairs = [...f.names(".session.sqlite"), ...f.names(".session.sqlite.manifest.json")];
+      const newest = f.names(".session.sqlite.manifest.json").find(name => name !== older)!;
+      const unreadable = join(f.directory, part === "manifest" ? newest : newest.slice(0, -".manifest.json".length));
+      chmodSync(unreadable, 0o000);
+      cleanups.push(() => { if (existsSync(unreadable)) chmodSync(unreadable, 0o600); });
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      expect([...f.names(".session.sqlite"), ...f.names(".session.sqlite.manifest.json")]).toEqual(pairs);
+      expect(f.events).toHaveLength(1);
+      expect(f.events[0]).toMatchObject({ category: "worker", phase: "failed", area: "session-backup", reason: "session-backup-failed" });
+      chmodSync(unreadable, 0o600);
+      await expect(f.sessionBackups.check()).resolves.toBe("recent");
+      expect(f.names(".session.sqlite.manifest.json")).toEqual([newest]);
     });
     it.each(["foreign source identity", "renamed manifest"] as const)("keeps the older usable pair when the newest manifest has a %s", async fault => {
       const f = await fixture();
