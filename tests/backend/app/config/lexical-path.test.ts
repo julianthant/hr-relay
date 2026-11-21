@@ -23,5 +23,6 @@ describe("lexical containment", () => {
 
   it.skipIf(process.platform === "win32")("treats a backslash as a file-name character on POSIX", () => {
     assert.equal(lexicallyWithin(root, `${root}/..\\name/file`), true);
+    assert.equal(lexicallyWithin(root, `${root}/..\\name/file`, { refuseBackslashParent: true }), false);
   });
 });

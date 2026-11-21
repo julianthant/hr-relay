@@ -36,7 +36,7 @@ import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-sn
 import { registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
 import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,AuthorityRestoreInputSchema,fixedLayoutBindings,prepareFixedLayoutPublication,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FixedLayoutPublication,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 import { RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
-import { assertOfflineMaintenanceForProcessRoot } from "./process-root.js";
+import { assertOfflineMaintenanceForProcessRoot,fixedLockRoot } from "./process-root.js";
 
 
 
@@ -74,11 +74,13 @@ interface ProfileAccess {
 }
 
 const issuanceToken = Symbol("runtime-admission-issuance");
+/** Admission refuses both parent spellings on every platform. */
+const within = (parent: string, child: string): boolean => lexicallyWithin(parent, child, { refuseBackslashParent: true });
 const stoppedMaintenanceRestores = new WeakMap<InstallationLease, OfflineMaintenanceOperation>();
 
 function assertSyntheticDirectory(path: string): void {
   if (!isAbsolute(path) || resolve(path) !== path) throw new Error("runtime-admission: fixture path must be absolute");
-  const temp = [resolve(tmpdir()), realpathSync(tmpdir())].find((candidate) => lexicallyWithin(candidate, path) && path !== candidate);
+  const temp = [resolve(tmpdir()), realpathSync(tmpdir())].find((candidate) => within(candidate, path) && path !== candidate);
   if (temp === undefined) throw new Error("runtime-admission: fixture must be beneath system temp");
   let ancestor = path;
   while (ancestor !== temp) {
@@ -252,7 +254,7 @@ export class RuntimeAdmission {
     if (claim !== undefined && claim.phase !== "runtime") throw new Error("profile-stopped-upgrade-runtime-claim-required");
     claim?.verify("issue");
     const context = lease.readInstallationContext();
-    const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const processLockRoot = fixedLockRoot(context.workspace);
     lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
     lease.assertOfflineMaintenance(restore);
     assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
@@ -867,7 +869,7 @@ export class RuntimeAdmission {
     const lifetime = this.lifetime, context = this.readInstallationContext();
     if (!(lifetime instanceof RuntimeLifetimeLock) || context === undefined) throw new Error("profile-logout-settlement-controller-required");
     lifetime.assertOfflineMaintenance(restore, context.workspace);
-    assertOfflineMaintenanceForProcessRoot(restore, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
+    assertOfflineMaintenanceForProcessRoot(restore, fixedLockRoot(context.workspace));
     const operation = deepFreeze(LogoutOperationSchema.parse(input)), lease = this.#authority as InstallationLease;
     const state = { operation, restore, witness: lease.capturePendingProfileLogout(operation) };
     const held = (publication?: ProfilePublicationRead) => {
@@ -1285,14 +1287,14 @@ export class RuntimeAdmission {
       if (this.#readyUpgrade.copyPath !== undefined && path !== this.#readyUpgrade.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
     }
     if (this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
-    if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !lexicallyWithin(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
+    if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !within(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
     if (this.#scope === "profile-upgrade" && resolve(path) !== this.#stateRoot && resolve(path) !== join(this.#stateRoot, "state.db")
-      && !lexicallyWithin(join(this.#stateRoot, "backups", "authority"), resolve(path))) throw new Error("profile-stopped-upgrade-path-refused");
+      && !within(join(this.#stateRoot, "backups", "authority"), resolve(path))) throw new Error("profile-stopped-upgrade-path-refused");
     this.#assertPhysicalStorageRootsSafe();
     if (this.#scope === "adoption-initialization" && ![this.#stateRoot, join(this.#stateRoot, "state.db")].includes(resolve(path))) {
       throw new Error("runtime-admission: fresh initialization path is outside database authority");
     }
-    if (!lexicallyWithin(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
+    if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
   }
   assertCanonicalCredentialCreation(profile: RuntimeAdmission, input: SignUpOperation, publication?: ProfilePublicationRead) {
     this.#assertMachineRuntime();
@@ -1329,7 +1331,7 @@ export class RuntimeAdmission {
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");
     this.#assertPhysicalStorageRootsSafe();
-    if (!lexicallyWithin(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
+    if (!within(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
   }
   retainSourceClosure(error: unknown): void {
     if (!rememberUnprovedSourceClosure(this.#sourceFailures, error)) return;
@@ -1439,7 +1441,7 @@ export class RuntimeAdmission {
     if (context === undefined) throw new Error("profile-restore-projection-parent-required");
     const assertHeld = () => {
       this.assertLive();
-      assertOfflineMaintenanceForProcessRoot(restore, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
+      assertOfflineMaintenanceForProcessRoot(restore, fixedLockRoot(context.workspace));
       assertProfileRestoreDatabaseBinding(path, this.profileBinding);
     };
     assertHeld();
@@ -1521,11 +1523,11 @@ export class RuntimeAdmission {
       throw new Error("runtime-admission: invalid copy digest");
     }
     const checked = resolve(path);
-    if (this.#scope === "stopped-control-inventory" && !lexicallyWithin(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) throw new Error("profile-control-upgrade-copy-path-refused");
-    if (snapshot === undefined && !lexicallyWithin(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) this.assertExclusive();
+    if (this.#scope === "stopped-control-inventory" && !within(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) throw new Error("profile-control-upgrade-copy-path-refused");
+    if (snapshot === undefined && !within(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) this.assertExclusive();
     const canonical = realpathSync(checked);
     const temp = resolve(tmpdir());
-    if (canonical !== checked && !(lexicallyWithin(temp, checked)
+    if (canonical !== checked && !(within(temp, checked)
       && canonical === join(realpathSync(tmpdir()), relative(temp, checked)))) {
       throw new Error("runtime-admission: inspected copy path contains symlink");
     }
@@ -1694,7 +1696,7 @@ export class RuntimeAdmission {
       const backup = await this.#forStoppedFlatSource();
       const { prepareStoppedBackupClosure, assertStoppedBackupClosure, flatBackupBrowserCensus } = await import("../maintenance/profile-inventory.js");
       const closure = await prepareStoppedBackupClosure(browserClosure, backup, restore, systemClock,
-        join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot));
+        fixedLockRoot(lease.readInstallationContext().workspace));
       const current = () => { assertStoppedBackupClosure(closure, backup, restore); };
       if (!lease.flatStoreMigrationPending()) {
         const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
@@ -1717,7 +1719,7 @@ export class RuntimeAdmission {
   async #forStoppedFlatSource(): Promise<RuntimeAdmission> {
     const { lease, restore } = this.#stoppedMachineMaintenance(), context = lease.readInstallationContext();
     const root = join(context.workspace, rebuildRuntimeIsolation.stateRoot), path = join(root, "state.db");
-    const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+    const processLockRoot = fixedLockRoot(context.workspace);
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry); noSymlinkAncestry(join(root, "artifacts"), ancestry);
     const { assertFlatStartCleanFiles, readFlatStartCleanSource } = await import("../maintenance/flat-start-clean.js");
