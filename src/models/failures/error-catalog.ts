@@ -868,11 +868,11 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   STORAGE_BACKUP_CLOSURE_UNPROVED: catalogEntry(
-    "The browser may not have closed for this backup, so it was refused.",
+    "The browser may not have closed, so the backup was refused. Keep this installation.",
     EmptyParametersSchema,
   ),
   PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED: catalogEntry(
-    "The damaged profile’s browser may not have closed. Restore needs macOS.",
+    "The damaged profile’s browser may not have closed. Restore needs macOS and unchanged browser folders.",
     EmptyParametersSchema,
   ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(

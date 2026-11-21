@@ -12,7 +12,7 @@ import { AssistantRefusalCodeSchema } from "../../../src/models/profiles/assista
 describe("error catalog", () => {
   it("keeps stopped backup closure and changed-source refusals fixed and private", () => {
     const expected = {
-      STORAGE_BACKUP_CLOSURE_UNPROVED: "The browser may not have closed for this backup, so it was refused.",
+      STORAGE_BACKUP_CLOSURE_UNPROVED: "The browser may not have closed, so the backup was refused. Keep this installation.",
       STORAGE_BACKUP_SOURCE_CHANGED: "The source no longer matches the saved backup. Keep this installation.",
     };
     for (const code of ["STORAGE_BACKUP_CLOSURE_UNPROVED", "STORAGE_BACKUP_SOURCE_CHANGED"] as const) {
