@@ -1,7 +1,6 @@
 /** The data the state rules read: rule names, word limits and banned text. Change a limit or a word here only. */
 
 export const STATE_RULE_NAMES = [
-  "declared-diagnostics",
   "fits-viewport",
   "no-banned-text",
   "word-limits",
@@ -11,6 +10,7 @@ export const STATE_RULE_NAMES = [
   "primary-button-accent",
   "no-dead-disabled-control",
   "named-and-focusable",
+  "declared-diagnostics",
 ] as const;
 export type StateRuleName = typeof STATE_RULE_NAMES[number];
 

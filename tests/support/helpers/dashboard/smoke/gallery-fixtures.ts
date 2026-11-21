@@ -1,11 +1,12 @@
 /** Fixtures for the state gallery: builds and serves the gallery page once per worker and saves a frame per story. */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test as base, type Page, type Request } from "@playwright/test";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { build, preview } from "vite";
 import { watchPageDiagnostics } from "./smoke-fixtures.js";
+import type { StateRuleContext } from "./state-rules.js";
 import { framePath, type CatalogueEntry } from "./story-catalogue.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../../");
@@ -16,7 +17,12 @@ const GALLERY_DIST = join(SMOKE_OUTPUT, "gallery-page");
 export const STATE_FRAMES_DIR = join(SMOKE_OUTPUT, "states");
 
 interface GalleryWorkerFixtures { galleryUrl: string }
-interface GalleryTestFixtures { diagnostics: readonly string[] }
+interface GalleryTestFixtures { diagnostics: StateRuleContext["diagnostics"] }
+
+/** The gallery runs on staging pull requests and on local runs; every other pull request keeps the smoke files alone. */
+const pullRequestBase = process.env.GITHUB_BASE_REF;
+export const GALLERY_OFF_SCHEDULE = pullRequestBase !== undefined && pullRequestBase !== "" && pullRequestBase !== "staging";
+export const GALLERY_SCHEDULE = "The state gallery runs on staging pull requests and local runs.";
 
 export const test = base.extend<GalleryTestFixtures, GalleryWorkerFixtures>({
   // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
@@ -40,7 +46,21 @@ export const test = base.extend<GalleryTestFixtures, GalleryWorkerFixtures>({
     }
   }, { scope: "worker" }],
   baseURL: async ({ galleryUrl }, use) => { await use(galleryUrl); },
-  diagnostics: async ({ page }, use) => { await use(watchPageDiagnostics(page)); },
+  diagnostics: async ({ page }, use) => {
+    const seen = watchPageDiagnostics(page);
+    const inFlight = new Set<Request>();
+    page.on("request", request => { inFlight.add(request); });
+    page.on("requestfinished", request => { inFlight.delete(request); });
+    page.on("requestfailed", request => { inFlight.delete(request); });
+    await use({
+      seen,
+      settle: async () => {
+        await expect.poll(() => inFlight.size, { message: "requests the story started and never finished" }).toBe(0);
+        // One round trip to the page lets a finished request's console line arrive.
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+      },
+    });
+  },
 });
 
 export { expect };

@@ -7,6 +7,8 @@ export interface Story {
   /** What the operator is looking at, in a few words. */
   readonly title: string;
   readonly render: () => ReactNode;
+  /** A selector that is visible once the story shows the state it is for. Without one, the theme root is the ready point. */
+  readonly ready?: string;
   /** Set on a story that shows a slow fetch: the only place a skeleton may appear, and only inside this region. */
   readonly slowFetch?: { readonly region: string };
   /** Console errors, page errors, failed requests and HTTP errors this state produces on purpose. */

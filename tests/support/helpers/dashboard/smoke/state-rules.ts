@@ -1,6 +1,6 @@
 /** The operator's rules for every dashboard state. Each rule is one named function that returns what it found
  * wrong, with its own failure message; the check loop runs all of them on every story. */
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { BANNED_PATTERNS, BANNED_PHRASES, BANNED_TERMS, WORD_LIMITS, type StateRuleName } from "./state-rule-limits.js";
 import type { Story } from "./story-catalogue.js";
 
@@ -8,8 +8,8 @@ export interface StateRuleContext {
   readonly page: Page;
   readonly storyId: string;
   readonly story: Story;
-  /** Everything `watchPageDiagnostics` recorded while the story rendered. */
-  readonly diagnostics: readonly string[];
+  /** Everything the page has reported so far; `settle` waits for requests still in flight to finish and report. */
+  readonly diagnostics: { readonly seen: readonly string[]; readonly settle: () => Promise<void> };
   /** Dialog shapes seen so far in this run, by kind, so one kind is compared across stories. */
   readonly dialogShapes: Map<string, { readonly storyId: string; readonly shape: string }>;
 }
@@ -18,9 +18,10 @@ type StateRuleCheck = (context: StateRuleContext) => Promise<readonly string[]>;
 
 const escapePattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 
-export function declaredDiagnostics({ story, diagnostics }: StateRuleContext): Promise<readonly string[]> {
+export async function declaredDiagnostics({ story, diagnostics }: StateRuleContext): Promise<readonly string[]> {
+  await diagnostics.settle();
   const declared = story.expects ?? [];
-  return Promise.resolve(diagnostics.filter(entry => !declared.some(({ pattern }) => pattern.test(entry))));
+  return diagnostics.seen.filter(entry => !declared.some(({ pattern }) => pattern.test(entry)));
 }
 
 export function fitsViewport({ page }: StateRuleContext): Promise<readonly string[]> {
@@ -31,7 +32,7 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
     if (sideways > 0) found.push(`the page scrolls sideways by ${String(sideways)}px`);
     const clips = (value: string) => value === "hidden" || value === "clip";
     const scrolls = (value: string) => value === "auto" || value === "scroll";
-    for (const element of document.querySelectorAll<HTMLElement>("#root *")) {
+    for (const element of document.querySelectorAll<HTMLElement>("body *:not(script, style)")) {
       const text = [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent ?? "").join("").trim();
       if (text === "") continue;
       const style = getComputedStyle(element);
@@ -44,7 +45,7 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       if (clips(style.overflowY) && element.scrollHeight > element.clientHeight + 1) { found.push(`${label} is cut off at the bottom`); continue; }
       let checkX = true;
       let checkY = true;
-      for (let ancestor = element.parentElement; ancestor !== null && ancestor.id !== "root" && (checkX || checkY); ancestor = ancestor.parentElement) {
+      for (let ancestor = element.parentElement; ancestor !== null && ancestor !== document.body && (checkX || checkY); ancestor = ancestor.parentElement) {
         const ancestorStyle = getComputedStyle(ancestor);
         const frame = ancestor.getBoundingClientRect();
         if (checkX && clips(ancestorStyle.overflowX) && (box.right > frame.right + 1 || box.left < frame.left - 1)) { found.push(`${label} is cut off sideways by its container`); break; }
@@ -60,10 +61,9 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
 
 export async function noBannedText({ page }: StateRuleContext): Promise<readonly string[]> {
   const texts = await page.evaluate(() => {
-    const root = document.getElementById("root");
-    if (root === null) throw new Error("the gallery page has no #root");
-    const lines = root.innerText.split("\n");
-    for (const element of root.querySelectorAll("[aria-label], [title], [placeholder], [alt]")) {
+    // The whole document: dialogs, menus and toasts mount in portals beside the story root.
+    const lines = document.body.innerText.split("\n");
+    for (const element of document.body.querySelectorAll("[aria-label], [title], [placeholder], [alt]")) {
       for (const attribute of ["aria-label", "title", "placeholder", "alt"]) lines.push(element.getAttribute(attribute) ?? "");
     }
     return [...new Set(lines.map(line => line.trim()).filter(line => line !== ""))];
@@ -81,7 +81,17 @@ export function wordLimits({ page }: StateRuleContext): Promise<readonly string[
   return page.evaluate(limits => {
     const found: string[] = [];
     for (const [kind, { limit, selector }] of Object.entries(limits)) {
-      for (const element of document.querySelectorAll<HTMLElement>(`#root :is(${selector})`)) {
+      const elements = new Set(document.querySelectorAll<HTMLElement>(`body :is(${selector})`));
+      // A dialog names its description through aria-describedby, whatever element holds it.
+      if (kind === "description") {
+        for (const dialog of document.querySelectorAll('[role="dialog"], [role="alertdialog"]')) {
+          for (const id of (dialog.getAttribute("aria-describedby") ?? "").split(/\s+/u)) {
+            const described = id === "" ? null : document.getElementById(id);
+            if (described !== null) elements.add(described);
+          }
+        }
+      }
+      for (const element of elements) {
         const text = element.innerText.trim();
         const words = text === "" ? 0 : text.split(/\s+/u).length;
         if (words > limit) found.push(`the ${kind} "${text}" has ${String(words)} words; the limit is ${String(limit)}`);
@@ -95,7 +105,7 @@ export function toastTextOnly({ page }: StateRuleContext): Promise<readonly stri
   return page.evaluate(() => {
     const found: string[] = [];
     const drawn = (element: Element) => { const box = element.getBoundingClientRect(); return box.width > 1 && box.height > 1; };
-    const chrome = [...document.querySelectorAll('[role="toolbar"], h1, h2, h3, [data-slot$="title"]')]
+    const chrome = [...document.querySelectorAll('[role="toolbar"], [role="group"][aria-label], h1, h2, h3, [data-slot$="title"]')]
       .filter(element => drawn(element) && element.closest('[data-slot="toast"]') === null);
     for (const toast of document.querySelectorAll<HTMLElement>('[data-slot="toast"]')) {
       if (!drawn(toast)) continue;
@@ -106,7 +116,7 @@ export function toastTextOnly({ page }: StateRuleContext): Promise<readonly stri
       for (const element of chrome) {
         const other = element.getBoundingClientRect();
         if (box.left < other.right && other.left < box.right && box.top < other.bottom && other.top < box.bottom) {
-          found.push(`${label} covers ${element.matches('[role="toolbar"]') ? "a toolbar" : `the title "${(element.textContent ?? "").trim().slice(0, 40)}"`}`);
+          found.push(`${label} covers ${element.matches('[role="toolbar"], [role="group"]') ? `the toolbar "${element.getAttribute("aria-label") ?? ""}"` : `the title "${(element.textContent ?? "").trim().slice(0, 40)}"`}`);
         }
       }
     }
@@ -179,14 +189,18 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
     const accent = token("--ds-accent");
     const canvasSurface = token("--ds-surface-page");
     const found: string[] = [];
-    for (const button of document.querySelectorAll<HTMLElement>('#root :is(button, [role="button"], a[data-slot="button"])')) {
+    for (const button of document.querySelectorAll<HTMLElement>('body :is(button, [role="button"], a[data-slot="button"])')) {
       const box = button.getBoundingClientRect();
       if (box.width <= 1 || box.height <= 1) continue;
       const fill = rgba(getComputedStyle(button).backgroundColor);
-      // A primary button is the loud one: a solid fill that stands out from the page.
-      if (fill[3] < 250 || contrast(fill, canvasSurface) < 3) continue;
-      if (fill.some((channel, index) => Math.abs(channel - (accent[index] ?? 0)) > 2)) {
-        found.push(`the button "${(button.getAttribute("aria-label") ?? button.innerText).trim().slice(0, 40)}" is filled rgb(${fill.slice(0, 3).join(", ")}), `
+      // The Button primary variant declares the accent fill and its ink; a button that carries either is primary
+      // whatever it ends up painted with. Any other loud solid fill is a primary in all but name.
+      const declared = button.className.includes("bg-[var(--ds-accent)]") || button.className.includes("text-[color:var(--ds-accent-fg)]");
+      const loud = fill[3] >= 250 && contrast(fill, canvasSurface) >= 3;
+      if (!declared && !loud) continue;
+      if (fill[3] < 250 || fill.some((channel, index) => Math.abs(channel - (accent[index] ?? 0)) > 2)) {
+        const paint = fill[3] < 250 ? "has no solid fill" : `is filled rgb(${fill.slice(0, 3).join(", ")})`;
+        found.push(`the button "${(button.getAttribute("aria-label") ?? button.innerText).trim().slice(0, 40)}" ${paint}, `
           + `not the accent rgb(${accent.slice(0, 3).join(", ")})`);
       }
     }
@@ -199,12 +213,12 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
     const found: string[] = [];
     const disabled = (element: Element) => element.matches(':disabled, [aria-disabled="true"]');
     const name = (element: Element) => (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 40);
-    for (const control of document.querySelectorAll<HTMLElement>('#root :is(select, [role="combobox"], [aria-haspopup])')) {
+    for (const control of document.querySelectorAll<HTMLElement>('body :is(select, [role="combobox"], [aria-haspopup])')) {
       if (!disabled(control) || control.getBoundingClientRect().width <= 1) continue;
       if (control instanceof HTMLSelectElement && [...control.options].filter(option => !option.disabled).length > 1) continue;
       found.push(`the picker "${name(control)}" is shown switched off with nothing to choose`);
     }
-    for (const group of document.querySelectorAll('#root :is([role="radiogroup"], [role="group"], fieldset)')) {
+    for (const group of document.querySelectorAll('body :is([role="radiogroup"], [role="group"], fieldset)')) {
       const choices = [...group.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], [role="switch"]')];
       if (choices.length > 0 && choices.every(disabled)) found.push(`every choice in "${name(group)}" is switched off`);
     }
@@ -212,51 +226,97 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
   });
 }
 
-export async function namedAndFocusable({ page }: StateRuleContext): Promise<readonly string[]> {
-  // A key press puts the page in keyboard mode, where focus rings are drawn.
-  await page.keyboard.press("Shift");
-  return page.evaluate(() => {
-    const found: string[] = [];
-    // Focus styles ease in; measure where they settle.
-    const still = document.createElement("style");
-    still.textContent = "* { transition: none !important; }";
-    document.head.append(still);
-    const selector = 'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"], [role="link"], [role="checkbox"], '
-      + '[role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="combobox"], [tabindex]:not([tabindex="-1"])';
-    const textOf = (id: string) => document.getElementById(id)?.textContent ?? "";
-    const look = (element: HTMLElement) => {
-      const style = getComputedStyle(element);
-      return { outline: style.outlineStyle === "none" || Number.parseFloat(style.outlineWidth) === 0 ? "none" : `${style.outlineWidth} ${style.outlineColor}`,
-        shadow: style.boxShadow, border: style.borderColor, fill: style.backgroundColor };
-    };
-    for (const element of document.querySelectorAll<HTMLElement>(`#root :is(${selector})`)) {
-      const box = element.getBoundingClientRect();
-      if (box.width <= 1 || box.height <= 1 || element.matches(':disabled, [aria-disabled="true"]') || element.closest("[inert]") !== null) continue;
-      const labels = element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement
-        ? [...(element.labels ?? [])].map(label => label.textContent ?? "") : [];
-      const name = [element.getAttribute("aria-label"), (element.getAttribute("aria-labelledby") ?? "").split(/\s+/u).map(textOf).join(" "),
-        element.innerText, element.getAttribute("title"), element.getAttribute("placeholder"), ...labels,
-        ...[...element.querySelectorAll("img[alt], svg[aria-label]")].map(image => image.getAttribute("alt") ?? image.getAttribute("aria-label"))]
-        .map(part => (part ?? "").trim()).find(part => part !== "");
-      const label = name === undefined ? `<${element.tagName.toLowerCase()} class="${element.className.slice(0, 60)}">` : `"${name.slice(0, 40)}"`;
-      if (name === undefined) found.push(`${label} has no name`);
-      const before = look(element);
-      element.focus({ preventScroll: true });
-      if (document.activeElement !== element) { found.push(`${label} cannot take keyboard focus`); continue; }
-      const after = look(element);
-      element.blur();
-      // The dashboard marks keyboard focus with its focus fill (DESIGN.md); an outline, shadow or edge change also counts.
-      const ring = after.outline !== "none" || after.shadow !== before.shadow || after.border !== before.border || after.fill !== before.fill;
-      if (!ring) found.push(`${label} shows no focus ring`);
-    }
-    still.remove();
-    return found;
-  });
+const CONTROL_SELECTOR = 'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"], [role="link"], [role="checkbox"], '
+  + '[role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="combobox"], [tabindex]';
+
+type FocusProbeStep = { readonly step: "tag"; readonly selector: string } | { readonly step: "stop" } | { readonly step: "clean" };
+interface FocusProbeResult {
+  readonly controls: readonly { readonly index: string; readonly label: string; readonly roving: boolean }[];
+  /** Where keyboard focus is now: a tagged control, some other element, or nothing. */
+  readonly stop: { readonly index: string | null; readonly nowhere: boolean; readonly ring: boolean };
 }
 
-/** Every rule, in the order the check loop runs them. The focus rule runs last because it moves focus. */
+/** Runs in the page. Tags every control an operator can use, then reports each Tab stop and how it is drawn. */
+function focusProbe(input: FocusProbeStep): FocusProbeResult {
+  const look = (element: Element): string => {
+    const style = getComputedStyle(element);
+    const outline = style.outlineStyle === "none" || Number.parseFloat(style.outlineWidth) === 0 ? "none" : `${style.outlineWidth} ${style.outlineColor}`;
+    return JSON.stringify([outline, style.boxShadow, style.borderColor, style.backgroundColor]);
+  };
+  const controls: { index: string; label: string; roving: boolean }[] = [];
+  let stop: FocusProbeResult["stop"] = { index: null, nowhere: true, ring: false };
+  if (input.step === "tag") {
+    // Focus styles ease in; measure where they settle.
+    const still = document.createElement("style");
+    still.setAttribute("data-state-rule-still", "");
+    still.textContent = "* { transition: none !important; }";
+    document.head.append(still);
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    // Arrow keys, not Tab, move inside these; one member is the Tab stop.
+    const composite = '[role="radiogroup"], [role="tablist"], [role="menu"], [role="menubar"], [role="listbox"], [role="toolbar"], [role="grid"], [role="tree"]';
+    for (const element of document.querySelectorAll<HTMLElement>(`body :is(${input.selector})`)) {
+      const box = element.getBoundingClientRect();
+      if (box.width <= 1 || box.height <= 1 || getComputedStyle(element).visibility === "hidden") continue;
+      if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
+      // A bare tabindex="-1" region is a focus target for scripts, not a control.
+      if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]')) continue;
+      const index = String(controls.length);
+      element.setAttribute("data-state-rule-control", index);
+      element.setAttribute("data-state-rule-look", look(element));
+      const text = (element.getAttribute("aria-label") ?? element.innerText).trim().slice(0, 40);
+      controls.push({ index, label: text === "" ? `<${element.tagName.toLowerCase()} class="${element.className.slice(0, 60)}">` : `"${text}"`,
+        roving: element.closest(composite) !== null || element instanceof HTMLInputElement && element.type === "radio" });
+    }
+  } else if (input.step === "stop") {
+    const active = document.activeElement;
+    if (active !== null && active !== document.body) {
+      const index = active.getAttribute("data-state-rule-control");
+      stop = { index, nowhere: false, ring: index !== null && look(active) !== active.getAttribute("data-state-rule-look") };
+    }
+  } else {
+    document.querySelector("[data-state-rule-still]")?.remove();
+    for (const element of document.querySelectorAll("[data-state-rule-control]")) {
+      element.removeAttribute("data-state-rule-control");
+      element.removeAttribute("data-state-rule-look");
+    }
+  }
+  return { controls, stop };
+}
+
+export async function namedAndFocusable({ page }: StateRuleContext): Promise<readonly string[]> {
+  const found: string[] = [];
+  const { controls } = await page.evaluate(focusProbe, { step: "tag", selector: CONTROL_SELECTOR });
+  try {
+    for (const { index, label } of controls) {
+      // The browser's own accessible name: hidden text and decorative images do not count.
+      const named = await expect(page.locator(`[data-state-rule-control="${index}"]`)).toHaveAccessibleName(/\S/u, { timeout: 0 })
+        .then(() => true, () => false);
+      if (!named) found.push(`${label} has no name`);
+    }
+    // Walk the page as a keyboard user does. The walk ends when focus leaves the page or comes round again.
+    const rings = new Map<string, boolean>();
+    for (let presses = 0; presses < controls.length * 2 + 20; presses += 1) {
+      await page.keyboard.press("Tab");
+      const { stop } = await page.evaluate(focusProbe, { step: "stop" });
+      if (stop.nowhere) break;
+      if (stop.index === null) continue;
+      if (rings.has(stop.index)) break;
+      rings.set(stop.index, stop.ring);
+    }
+    for (const { index, label, roving } of controls) {
+      const ring = rings.get(index);
+      if (ring === undefined) { if (!roving) found.push(`${label} cannot be reached with Tab`); continue; }
+      // The dashboard marks keyboard focus with its focus fill (DESIGN.md); an outline, shadow or edge change also counts.
+      if (!ring) found.push(`${label} shows no focus ring`);
+    }
+  } finally {
+    await page.evaluate(focusProbe, { step: "clean" });
+  }
+  return found;
+}
+
+/** Every rule. The check loop runs them in `STATE_RULE_NAMES` order: focus near the end because it moves focus, diagnostics last so late failures count. */
 export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: StateRuleCheck; readonly failure: string }>> = Object.freeze({
-  "declared-diagnostics": { check: declaredDiagnostics, failure: "console errors, page errors, failed requests or HTTP errors the story does not declare" },
   "fits-viewport": { check: fitsViewport, failure: "sideways scroll or clipped text at this size" },
   "no-banned-text": { check: noBannedText, failure: "text an operator must never read" },
   "word-limits": { check: wordLimits, failure: "titles, descriptions or errors over their word limit" },
@@ -266,4 +326,5 @@ export const STATE_RULES: Readonly<Record<StateRuleName, { readonly check: State
   "primary-button-accent": { check: primaryButtonAccent, failure: "a primary button that is not the one accent" },
   "no-dead-disabled-control": { check: noDeadDisabledControl, failure: "a control shown switched off with nothing to choose" },
   "named-and-focusable": { check: namedAndFocusable, failure: "an interactive element with no name or no visible focus ring" },
+  "declared-diagnostics": { check: declaredDiagnostics, failure: "console errors, page errors, failed requests or HTTP errors the story does not declare" },
 });
