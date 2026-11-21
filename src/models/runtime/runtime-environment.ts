@@ -131,7 +131,7 @@ const TEST_ONLY_ENVIRONMENT_KEYS = [
   "RELAY_TEST_HOST",
   "NOTIFICATIONS_MOCK_OUT", "NOTIFICATIONS_MOCK_THEMES", "NOTIFICATIONS_MOCK_WIDTH", "NOTIFICATIONS_MOCK_SCALE", "ONBOARDING_MOCK_OUT", "SPREADSHEET_MOCK_OUT", "AX_MOCK_OUT", "AX_MOCK_THEMES", "AX_MOCK_WIDTH", "AX_MOCK_ONLY", "AX_MOCK_SCALE", "STATUS_MOCK_OUT", "STATUS_MOCK_THEMES", "STATUS_MOCK_WIDTH", "STATUS_MOCK_ONLY", "STATUS_MOCK_SCALE", "LOGS_CARDS_OUT", "LOGS_CARDS_ONLY", "LOGS_CARDS_HEIGHT",
   "CHECK_FIX_OUT", "FAILURE_NOTICE_MOCK_OUT", "NEEDS_DUO_MOCK_OUT", "REFERENCE_GATE_OUT", "SETTINGS_GENERAL_CHATGPT_MOCK_OUT", "SWEEP_FIXTURES_OUT",
-  "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
+  "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP", "GITHUB_BASE_REF",
 ] as const;
 
 const INERT_RETIRED_ENVIRONMENT_KEYS = [
@@ -211,6 +211,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
     "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
   ],
   KEEP_TEST_TMP: ["tests/support/private-temp-setup.ts"],
+  GITHUB_BASE_REF: ["tests/support/helpers/dashboard/smoke/gallery-fixtures.ts"],
   TZ: [
     "tests/rules/runs/summary-derivation.derivation.integration.test.ts",
     "tests/perf/dashboard-fixture.integration.test.ts",
