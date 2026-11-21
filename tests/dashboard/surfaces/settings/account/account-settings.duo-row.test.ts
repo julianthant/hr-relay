@@ -38,7 +38,7 @@ describe("Settings > Account Security group", () => {
   });
 
   it("shows a refusal as a failure with the backend's text and leaves the row as it was", async () => {
-    await mount({ onDuoSetup: async () => "Duo setup is still open for this profile. Finish or cancel it first." });
+    await mount({ onDuoSetup: async () => "Duo setup is still open for this profile. Finish or cancel it." });
     await act(async () => { button("Set up again")?.click(); });
     assert.match(document.body.textContent ?? "", /Duo setup not opened/u);
     assert.match(document.body.textContent ?? "", /Duo setup is still open for this profile/u);
