@@ -56,8 +56,6 @@ export const WHOLE_TABLE_READS: Readonly<Record<string, string>> = Object.freeze
   "SELECT * FROM write_intents ORDER BY id": "the maintenance inventory, the evidence upgrade and the application quit's activity proof "
     + "read every write intent",
   "SELECT * FROM run_checkpoints ORDER BY run_id,node_id": "the evidence upgrade converts every checkpoint",
-  "SELECT count(*) AS records, COALESCE(sum(length(CAST(payload_json AS BLOB))),0) AS bytes, COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest, count(DISTINCT run_id) AS runs FROM timeline_events":
-    "the doctor's timeline inspection totals every event",
   "SELECT payload_json FROM timeline_events WHERE kind='operation-confirmed' ORDER BY cursor": "the doctor's preserved-evidence inspection reads every confirmation",
   "SELECT json_extract(payload_json,'$.payload.event.runId') AS run_id FROM timeline_events WHERE kind='transaction.fenced'":
     "the doctor's preserved-evidence inspection reads every fence",
@@ -94,13 +92,13 @@ function addStatement(statements: Map<string, Set<string>>, sql: string, source:
 
 export interface LiteralStatements {
   readonly statements: Map<string, Set<string>>;
-  /** The `CREATE TEMP TABLE` statements the store runs through `.exec(...)`, so statements reading those tables can be planned. */
-  readonly tempTables: readonly string[];
+  /** Temporary tables and their indexes, in the order the store creates them. */
+  readonly tempDdl: readonly string[];
 }
 
 /** Every string-literal argument of a `.prepare(...)` call under `src/backend`, outside the maintenance modules. */
 export function literalStatements(): LiteralStatements {
-  const statements = new Map<string, Set<string>>(), tempTables = new Set<string>();
+  const statements = new Map<string, Set<string>>(), tempDdl = new Set<string>();
   for (const path of sourceFiles(join(REPOSITORY_ROOT, "src/backend")).sort()) {
     const file = relative(REPOSITORY_ROOT, path).replaceAll("\\", "/");
     if (file in MAINTENANCE_MODULES) continue;
@@ -111,7 +109,9 @@ export function literalStatements(): LiteralStatements {
         if (argument !== undefined && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))) {
           if (method === "prepare") addStatement(statements, argument.text, `${file}:${String(source.getLineAndCharacterOfPosition(argument.getStart()).line + 1)}`);
           if (method === "exec") for (const statement of argument.text.split(";")) {
-            if (/^\s*CREATE TEMP TABLE\b/iu.test(statement)) tempTables.add(normalizeSql(statement));
+            if (/^\s*CREATE (?:TEMP TABLE\b|(?:UNIQUE )?INDEX (?:IF NOT EXISTS )?temp\.)/iu.test(statement)) {
+              tempDdl.add(normalizeSql(statement));
+            }
           }
         }
       }
@@ -119,7 +119,7 @@ export function literalStatements(): LiteralStatements {
     };
     visit(source);
   }
-  return { statements, tempTables: [...tempTables].sort() };
+  return { statements, tempDdl: [...tempDdl] };
 }
 
 /** Fixture runs: enough that every read has rows to page and every worker step has a run to act on. */
@@ -226,7 +226,7 @@ export function auditPlans(database: DatabaseSync, collected: ReadonlyMap<string
 
 /** Collects the literal and traced statements and plans them on a freshly migrated, empty store. */
 export async function auditStoreQueryPlans(): Promise<PlanAudit> {
-  const { statements: collected, tempTables } = literalStatements();
+  const { statements: collected, tempDdl } = literalStatements();
   for (const [sql, sources] of await tracedStatements()) for (const source of sources) addStatement(collected, sql, source);
   const profile = await createBoundProfileFixture();
   try {
@@ -234,7 +234,7 @@ export async function auditStoreQueryPlans(): Promise<PlanAudit> {
       manualClock(new Date("2026-08-12T09:00:00.000Z"))).close();
     const database = new DatabaseSync(profile.path);
     try {
-      for (const statement of tempTables) database.exec(statement);
+      for (const statement of tempDdl) database.exec(statement);
       return auditPlans(database, collected);
     } finally {
       database.close();

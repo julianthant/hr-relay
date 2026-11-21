@@ -158,8 +158,8 @@ describe("stopped native upgrade admission",()=>{
      const resolved = stored.prepare(`SELECT ${columns},(SELECT payload_json FROM workbook_payloads WHERE digest=json_extract(${table}.payload_json,'$.workbookDigest')) AS workbook_json FROM ${table} ORDER BY rowid`).all()
       .map(raw => { const { payload_json, workbook_json, ...row } = z.looseObject({ payload_json: z.string(), workbook_json: z.string() }).parse(raw);
         const { workbookDigest: _digest, ...envelope } = z.looseObject({ workbookDigest: z.string() }).parse(JSON.parse(payload_json));
-        return { ...row, payload: { ...envelope, workbook: JSON.parse(workbook_json) } }; });
-     assert.deepEqual(resolved,rows.map(raw => { const { payload_json, ...row } = z.looseObject({ payload_json: z.string() }).parse(raw); return { ...row, payload: JSON.parse(payload_json) }; }));
+        return { ...row, payload: { ...envelope, workbook: z.json().parse(JSON.parse(workbook_json)) } }; });
+     assert.deepEqual(resolved,rows.map(raw => { const { payload_json, ...row } = z.looseObject({ payload_json: z.string() }).parse(raw); return { ...row, payload: z.json().parse(JSON.parse(payload_json)) }; }));
     }
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");

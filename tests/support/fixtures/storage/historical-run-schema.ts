@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, SCHEMA_37_QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -41,7 +41,8 @@ function embedWorkbookPayloads(database: DatabaseSync): void {
         const row = z.object({ row_id: z.number(), payload_json: z.string() }).parse(raw);
         const { workbookDigest, ...envelope } = z.looseObject({ workbookDigest: z.string() }).parse(JSON.parse(row.payload_json));
         const workbook = z.object({ payload_json: z.string() }).parse(database.prepare("SELECT payload_json FROM workbook_payloads WHERE digest=?").get(workbookDigest)).payload_json;
-        database.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`).run(JSON.stringify(schema.parse({ ...envelope, workbook: JSON.parse(workbook) })), row.row_id);
+        const payload = schema.parse({ ...envelope, workbook: z.json().parse(JSON.parse(workbook)) });
+        database.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`).run(JSON.stringify(payload), row.row_id);
       }
     }
   });
@@ -70,11 +71,16 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
-/** Steps a current authority back to schema 37: every workbook row embeds its workbook again and workbook_payloads did not exist. */
+/** Restores the embedded workbooks and run indexes of schema 37. */
 export function restoreSchema37WorkbookPayloads(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 38);
   embedWorkbookPayloads(database);
-  database.exec("UPDATE database_states SET schema_version=37; PRAGMA user_version=37");
+  database.exec(`DROP INDEX runs_workflow_day_idx;
+    DROP INDEX runs_nonterminal_idx;
+    DROP INDEX runs_queued_idx;
+    CREATE INDEX runs_queued_idx ON runs(created_at,id) WHERE state='queued';
+    UPDATE database_states SET schema_version=37;
+    PRAGMA user_version=37`);
 }
 
 /** Steps a current authority back to schema 36: none of the query indexes, and checkpoint replay keeps its own index. */
@@ -83,7 +89,7 @@ export function restoreSchema36QueryIndexes(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 37);
   const replay = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE INDEX checkpoints_replay_idx [^;]+/u)?.[0];
   assert.ok(replay);
-  for (const name of Object.keys(QUERY_INDEXES)) database.exec(`DROP INDEX ${name}`);
+  for (const name of Object.keys(SCHEMA_37_QUERY_INDEXES)) database.exec(`DROP INDEX ${name}`);
   database.exec(`${replay}; UPDATE database_states SET schema_version=36; PRAGMA user_version=36`);
 }
 

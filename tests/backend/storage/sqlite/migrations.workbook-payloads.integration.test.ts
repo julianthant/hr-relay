@@ -175,11 +175,12 @@ describe("workbook payload migration 38", () => {
         before = readback(database);
         restoreSchema37WorkbookPayloads(database);
       } finally { database.close(); }
-      const exec = DatabaseSync.prototype.exec;
+      const exec: unknown = Reflect.get(DatabaseSync.prototype, "exec");
+      assert.ok(typeof exec === "function");
       let refused = 0;
       const vacuum = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
         if (sql === "VACUUM") { refused++; throw new Error("database or disk is full"); }
-        exec.call(this, sql);
+        Reflect.apply(exec, this, [sql]);
       });
       try {
         const report = await f.run();
@@ -201,7 +202,7 @@ describe("workbook payload migration 38", () => {
       let vacuums = 0;
       const later = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
         if (sql === "VACUUM") vacuums++;
-        exec.call(this, sql);
+        Reflect.apply(exec, this, [sql]);
       });
       try {
         const again = await f.run();
@@ -236,7 +237,9 @@ describe("workbook payload migration 38", () => {
         assert.equal(inspectNativeAuthority(database, 37).schemaVersion, 37);
       } finally { database.close(); }
       const sizeBefore = statSync(f.path).size;
-      assert.equal((await f.run()).state, "upgraded");
+      const report = await f.run();
+      assert.equal(report.state, "upgraded");
+      assert.equal(report.fromSchemaVersion, 37);
       const sizeAfter = statSync(f.path).size;
       const upgraded = new DatabaseSync(f.path, { readOnly: true });
       try {
