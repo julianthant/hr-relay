@@ -7,6 +7,7 @@ import { DAY, runRecordOf } from "../../../support/helpers/backend/dashboard-har
 import { disposeHttpRouteHarness, harness } from "../../../support/helpers/backend/http-route-harness.js";
 import { STARTUP_READ_DEADLINE_MS } from "../../../../src/dashboard/app/startup/first-screen.js";
 import { ASSISTANT_FAILURES } from "../../../../src/models/dashboard/assistant.js";
+import { assistantOpen } from "../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
 
 const ASSISTANT_PROFILE_ID = "00000000-0000-4000-8000-000000000001";
 import { active, dashboardServer, delayed, never, READ_DELAY_MS, start } from "./startup-harness.js";
@@ -76,25 +77,40 @@ it(`shows the date recovery, not an endless loader, for a cold link to a future 
   } finally { await app.stop(); }
 }, 20_000);
 
-it("shows the dashboard while a startup chat history write is still unanswered, and the write still settles", async () => {
+const pressJ = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true, cancelable: true }));
+for (const [path, before, underLoader] of [["the assistant stays closed", () => {}, () => {}], ["Ctrl+J is pressed under the loader", () => {}, pressJ],
+  ["the assistant was open at an earlier sign-in", () => assistantOpen.set(true), () => {}]] as const)
+it(`shows the dashboard while a startup chat history write is still unanswered, and the write still settles (${path})`, async () => {
   const server = dashboardServer();
   let answer: (response: Response) => void = () => {};
-  const app = await start({}, (url, init) => {
+  let release: () => void = () => {};
+  const dayHeld = new Promise<void>(resolve => { release = resolve; });
+  before();
+  const app = await start({}, async (url, init) => {
     const path = new URL(url).pathname;
     if (path === "/api/v1/profile/state") return Response.json(active);
     if (path === "/api/v1/assistant/history" && init?.method === "POST") return new Promise<Response>(resolve => { answer = resolve; });
+    if (url.includes("/events/v1?")) await dayHeld;
     return server(url, init);
   });
+  const assistant = () => app.host.querySelector<HTMLElement>("#hub-shell-assistant");
   try {
+    await vi.waitFor(() => assert.ok(app.host.querySelector("[data-startup-loading]") && assistant(), "the hidden shell is mounted under the loader"), { timeout: 10_000, interval: 50 });
+    await act(async () => { underLoader(); });
+    assert.equal(assistant()?.hidden, true, "the assistant stays closed under the loader");
+    await act(async () => { release(); });
     await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
     assert.deepEqual(app.frames, ["loading", "dashboard"]);
     assert.ok(app.paths.filter(path => path === "/api/v1/assistant/history").length >= 2, "the history read and its create write were sent");
+    assert.equal(assistant()?.hidden, true);
     const panelText = () => app.host.querySelector('[aria-label="Assistant panel"]')?.textContent ?? "";
     assert.doesNotMatch(panelText(), /chat history/u, "the write is still pending, not expired as a read failure");
     await act(async () => { answer(new Response("refused", { status: 500 })); });
     await vi.waitFor(() => assert.match(panelText(), /Couldn't load chat history\./u), { timeout: 5_000, interval: 50 });
+    await act(async () => { pressJ(); });
+    assert.equal(assistant()?.hidden, false, "Ctrl+J opens the assistant once the dashboard shows");
     assert.deepEqual(app.frames, ["loading", "dashboard"]);
-  } finally { await app.stop(); }
+  } finally { await app.stop(); release(); act(() => assistantOpen.set(false)); }
 }, 20_000);
 
 it("opens Search from a cold link or its shortcut only once the dashboard shows", async () => {
@@ -103,8 +119,7 @@ it("opens Search from a cold link or its shortcut only once the dashboard shows"
   const watcher = new MutationObserver(() => { if (app.host.querySelector("[data-startup-loading]")) dialogs.push(document.querySelectorAll('[role="dialog"]').length); });
   watcher.observe(document.body, { childList: true, subtree: true });
   try {
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, READ_DELAY_MS + 100)); });
-    assert.ok(app.host.querySelector("[data-startup-loading]"), "the loader is still up");
+    await vi.waitFor(() => assert.ok(app.host.querySelector("[data-startup-loading]") && app.host.querySelector(".rail-search"), "the hidden shell is mounted under the loader"), { timeout: 20_000, interval: 50 });
     await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", bubbles: true, cancelable: true })); });
     assert.equal(document.querySelectorAll('[role="dialog"]').length, 0, "the shortcut opens nothing under the loader");
     await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 40_000, interval: 50 });

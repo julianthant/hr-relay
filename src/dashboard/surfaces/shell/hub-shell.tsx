@@ -1,6 +1,6 @@
 import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice } from "../../ds/ui.js";
 import { AssistantServedActivity } from "./assistant-thread.js";
@@ -11,6 +11,7 @@ import { AssistantPanel } from "./assistant-panel.js";
 import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 import { useDashboardClient } from '../../state/client-context.js';
+import { FirstScreenRevealedContext } from '../../app/startup/first-screen.js';
 import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
@@ -27,16 +28,19 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const client = useDashboardClient();
   const panelPosition = useHubPanelPosition(4);
   useState(() => { assistantOpen.init(false); });
+  // The assistant opens closed on every startup and Ctrl+J waits for the reveal, so its chat history never holds the first screen.
+  const revealed = useContext(FirstScreenRevealedContext);
+  useLayoutEffect(() => { if (!revealed && new URLSearchParams(window.location.search).get("assistantOpen") !== "1") assistantOpen.set(false); }, [revealed]);
   const opened = useAssistantOpen();
   useLogsTop(opened && !settingsOpen);
   useEffect(() => {
     const toggle = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j" || event.altKey || event.shiftKey || settingsOpen) return;
+      if (!revealed || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j" || event.altKey || event.shiftKey || settingsOpen) return;
       event.preventDefault(); panelPosition.reset(); assistantOpen.toggle();
     };
     document.addEventListener("keydown", toggle);
     return () => document.removeEventListener("keydown", toggle);
-  }, [settingsOpen, panelPosition]);
+  }, [settingsOpen, panelPosition, revealed]);
   const [list, setList] = useState(false);
   const [tab, setTab] = useState<"chats" | "activity">("chats");
   const [query, setQuery] = useState("");
