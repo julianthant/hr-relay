@@ -199,13 +199,15 @@ it.each([
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
-it("removes the card when a lost Remove reply is confirmed by its audit and served readback", async () => {
+for (const [name, stamp] of [["the browser's request", (command: CommandRequest) => command],
+  ["Relay's stamped provenance", (command: CommandRequest) => ({ ...command, source: "dashboard", requestedAt: "2026-08-26T09:00:07.000Z" })]] as const)
+it(`removes the card when a lost Remove reply is confirmed by its audit (${name}) and served readback`, async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness();
   const binding = h.binding();
   h.effect(command => {
     h.setDay(effectOf(h.day(), command));
-    h.audit({ state: "recorded", request: command, result: applied(command) });
+    h.audit({ state: "recorded", request: stamp(command), result: applied(command) });
     throw new Error("connection reset");
   });
   const host = document.createElement("div"); document.body.append(host);
@@ -365,6 +367,22 @@ it("a worker audit that never answers ends at its deadline, and the next click o
     h.effect(command => applied(command));
     await h.port.send({ id: uuidOf(8951), target: card.workerId, action: "pause" });
     assert.equal(h.sent.length, 2, "the stalled check no longer holds the worker's lock");
+  } finally { vi.useRealTimers(); }
+});
+
+it("an applied worker command whose Day read stalls ends at its deadline, and the next click on that worker reaches Relay", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const h = harness(); const card = h.day().workerCards[0];
+    const request: SessionPreviewRequest = { id: uuidOf(8960), target: card.workerId, action: "pause" };
+    h.setRead(() => new Promise(() => undefined));
+    const sent = h.port.send(request);
+    await vi.advanceTimersByTimeAsync(3000);
+    assert.equal((await sent).state, "uncertain");
+    await h.port.abandon?.(request);
+    h.setRead(snapshot => snapshot);
+    await h.port.send({ id: uuidOf(8961), target: card.workerId, action: "pause" });
+    assert.equal(h.sent.length, 2, "the stalled Day read no longer holds the worker's lock");
   } finally { vi.useRealTimers(); }
 });
 

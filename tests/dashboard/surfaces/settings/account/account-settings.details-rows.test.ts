@@ -4,7 +4,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { ToastProvider } from "../../../../../src/dashboard/ds/ui.js";
-import { AccountSettings, sameSessionAccount, type AccountPage, type ProfileDetailsChangeRequest, type ProfileDetailsChangeResult } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
+import { sameSessionAccount } from "../../../../../src/dashboard/surfaces/settings/account/account-session.js";
+import { AccountSettings, type AccountPage, type ProfileDetailsChangeRequest, type ProfileDetailsChangeResult } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
 import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
