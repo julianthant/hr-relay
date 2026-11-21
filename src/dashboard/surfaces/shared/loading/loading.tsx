@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
-import { Field, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsBorder, dsRadius, dsSurface, dsText } from "../../../ds/ui.js";
+import { Field, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsBorder, dsRadius, dsSurface, dsText, useSkeletonWait } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
+/** A placeholder region: mounted at once with the settled size, invisible until the read has been slow. */
 export function LoadingRegion({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
-  return <div role="status" aria-label={label} aria-busy="true" data-loading-layout className={className}>{children}</div>;
+  const waiting = useSkeletonWait();
+  return <div role="status" aria-label={label} aria-busy="true" data-loading-layout className={cn(className, waiting && "invisible")}>{children}</div>;
 }
 
 export function SkeletonText({ className }: { className?: string }) {

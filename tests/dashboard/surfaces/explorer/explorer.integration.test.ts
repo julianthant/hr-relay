@@ -94,3 +94,15 @@ it("a saved choice of a sub-workflow shows the main workflow that starts it; an 
     host.remove();
   }
 });
+
+it("while the definition is still being read, holds the page's shape: run options, the note line, numbered steps", async () => {
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  const pending = { workflowExplorer: () => new Promise<never>(() => {}) } as never;
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: pending }))));
+  const frame = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading workflow definition"]');
+  assert.ok(frame, "a labelled loading region");
+  assert.ok(host.querySelector('[aria-label="Explorer workflow"]'), "the picker stays usable above it");
+  assert.equal(frame.querySelectorAll(".grid-cols-4 > div").length, 8, "two rows of run options");
+  assert.equal(frame.querySelectorAll(".border-b.py-5").length, 3, "three numbered steps");
+});

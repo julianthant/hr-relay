@@ -1,5 +1,5 @@
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { SessionsView } from "./sessions-view.js";
 import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewCommands, type SessionCommandBinding, type SessionPreviewCommandPort } from "./session-preview-command-model.js";
 import { sessionsFromDay, sessionsUnavailable, type SessionsViewState } from "./sessions-view-model.js";
@@ -11,9 +11,14 @@ export type SessionsHarness = (catalog: readonly WorkflowCatalogEntry[]) => Read
 export function SessionPanel({ catalog, open, onOpenChange, harness, binding, account }: { catalog: readonly WorkflowCatalogEntry[]; open: boolean; onOpenChange: (open: boolean) => void; harness?: SessionsHarness; binding?: SessionCommandBinding; account?: { onSettings: () => void; onLogout: () => void } }) {
   const { toast } = useToasts();
   const harnessed = useMemo(() => harness?.(catalog), [harness, catalog]);
-  const initial = useMemo((): SessionsViewState => harnessed ? harnessed.initial : binding?.dayState.day.state === "loaded"
-    ? sessionsFromDay(binding.dayState.day.value, catalog, binding.nowIso) : binding === undefined ? sessionsUnavailable() : binding.dayState.day.state === "failed"
-      ? sessionsUnavailable(binding.dayState.day.error) : { state: "loading" }, [harnessed, binding, catalog]);
+  const day = binding?.dayState.day;
+  // Worker cards come with every day; while another day loads, the bar keeps the cards it last read instead of loading again.
+  const [heldDay, setHeldDay] = useState(day?.state === "loaded" ? day.value : undefined);
+  if (day?.state === "loaded" && day.value !== heldDay) setHeldDay(day.value);
+  const shownDay = day?.state === "loaded" ? day.value : day?.state === "loading" ? heldDay : undefined;
+  const initial = useMemo((): SessionsViewState => harnessed ? harnessed.initial : binding !== undefined && shownDay !== undefined
+    ? sessionsFromDay(shownDay, catalog, binding.nowIso) : binding === undefined ? sessionsUnavailable() : binding.dayState.day.state === "failed"
+      ? sessionsUnavailable(binding.dayState.day.error) : { state: "loading" }, [harnessed, binding, shownDay, catalog]);
   const current = useMemo(() => ({ binding, catalog }), [binding, catalog]);
   const currentRef = useRef(current); currentRef.current = current;
   const servedPort = useMemo(() => createSessionPreviewPort(() => currentRef.current), []);

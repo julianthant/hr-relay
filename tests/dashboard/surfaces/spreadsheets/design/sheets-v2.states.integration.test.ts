@@ -33,9 +33,14 @@ afterEach(async () => { await act(async () => root?.unmount()); root = undefined
 const render = () => act(async () => root?.render(createElement(ToastProvider, null, createElement(TooltipProvider, null, createElement(SheetsV2)))));
 const click = (element: Element | null | undefined) => { assert.ok(element); return act(async () => { (element as HTMLElement).click(); }); };
 
-it('shows a loading frame with the table header', async () => {
+it('shows a loading frame laid out like a one-table list: search toolbar, then the card with its header and no group heading', async () => {
   wiring.loading = true; await render();
-  assert.ok(host.querySelector('[role="status"][aria-label="Loading spreadsheets"] .sv2-head'));
+  const frame = host.querySelector('[role="status"][aria-label="Loading spreadsheets"] .ds-table-list');
+  assert.ok(frame);
+  assert.deepEqual([...frame.children].map(child => child.className), ['ds-table-toolbar', 'ds-body-section']);
+  assert.ok(frame.querySelector('.ds-table-toolbar-search [data-slot="skeleton"]'), 'the search field keeps its place');
+  assert.ok(frame.querySelector('.ds-body-section > .sv2-card > .sv2-head'));
+  assert.equal(frame.querySelector('h2, h3'), null);
 });
 
 it('shows a failure notice with one Retry button when the list cannot be read', async () => {

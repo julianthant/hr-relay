@@ -149,3 +149,16 @@ it('shows a dash for the time of a workflow with no run in the period, and ranks
   const ranked = [...document.querySelectorAll('ol[aria-label="Typical time per workflow"] li')];
   assert.equal(ranked.length, 2); assert.match(ranked[0]?.textContent ?? '', new RegExp(second.label)); assert.match(ranked[1]?.textContent ?? '', /Empty workflow.*—/);
 });
+
+it('while the report loads, the Runs card keeps the loaded card\'s period row, plot and three key figures', async () => {
+  await render({ state: 'loading' });
+  const frame = document.querySelector('[role="status"][aria-busy="true"][aria-label="Loading analytics report"]');
+  assert(frame);
+  await render(data);
+  const loaded = document.querySelector('figure.ds-chart');
+  assert(loaded);
+  const loadedFigures = loaded.querySelectorAll('[aria-label="Key figures"] > li').length;
+  assert.equal(frame.querySelectorAll('ul > li').length, loadedFigures);
+  assert.equal(frame.querySelector('.mb-4.flex')?.querySelectorAll('[data-slot="skeleton"].size-6').length, 2, 'previous and next period');
+  assert(frame.querySelector('.ml-9 [data-slot="skeleton"]'), 'the plot beside its axis labels');
+});

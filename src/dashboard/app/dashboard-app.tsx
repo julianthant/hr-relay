@@ -1023,7 +1023,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         target.focus({ preventScroll: true });
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to run logs</a> : null}
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} countsLoading={dayRequested !== undefined && dayWire === undefined && dayResource.state === "loading"} active={activeWorkflowId}
+      <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} active={activeWorkflowId}
         onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main

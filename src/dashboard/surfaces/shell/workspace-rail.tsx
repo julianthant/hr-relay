@@ -15,8 +15,8 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { WorkflowRail } from "./workflow-rail.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, countsLoading, active, onSelect, settingsOpen, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
-  workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; countsLoading?: boolean; active: string;
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, active, onSelect, settingsOpen, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
+  workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; active: string;
   onSelect: (id: string) => void;
   settingsOpen: boolean;
   inbox: InboxWiring;
@@ -52,7 +52,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, co
     </header>
     <div className="workspace-rail-body">
       {open && !collapsed ? <NotificationsPanel activeId={activeId} showPriority={showPriority} onShowPriority={setShowPriority} dismissed={dismissed} onDismiss={id => setDismissed(current => [...current, id])} onControl={notificationRail.onControl} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
-        : <WorkflowRail workflows={workflows} counts={counts} countsLoading={countsLoading} active={active} onSelect={onSelect} collapsed={collapsed} />}
+        : <WorkflowRail workflows={workflows} counts={counts} active={active} onSelect={onSelect} collapsed={collapsed} />}
     </div>
   </aside>;
 });

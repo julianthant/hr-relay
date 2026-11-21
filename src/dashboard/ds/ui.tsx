@@ -45,6 +45,7 @@ export {
   Separator,
   VisuallyHidden,
 } from "./primitives/primitives-core.js";
+export { SKELETON_WAIT_MS, useSkeletonWait } from "./primitives/skeleton-wait-model.js";
 export { NavRow } from "./primitives/nav-row.js";
 export type { DsNavRowProps } from "./primitives/nav-row.js";
 export type {
