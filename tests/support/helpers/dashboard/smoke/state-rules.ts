@@ -18,7 +18,9 @@ type StateRuleCheck = (context: StateRuleContext) => Promise<readonly string[]>;
 
 const escapePattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 
-export async function declaredDiagnostics({ story, diagnostics }: StateRuleContext): Promise<readonly string[]> {
+export async function declaredDiagnostics({ page, story, diagnostics }: StateRuleContext): Promise<readonly string[]> {
+  // A story whose requests start late names the point where they have answered.
+  if (story.settled !== undefined) await expect(page.locator(story.settled).first(), "the story's settled point").toBeVisible();
   await diagnostics.settle();
   const declared = story.expects ?? [];
   return diagnostics.seen.filter(entry => !declared.some(({ pattern }) => pattern.test(entry)));
@@ -106,8 +108,8 @@ export function toastTextOnly({ page }: StateRuleContext): Promise<readonly stri
     const found: string[] = [];
     const drawn = (element: Element) => { const box = element.getBoundingClientRect(); return box.width > 1 && box.height > 1; };
     const chrome = [...document.querySelectorAll('[role="toolbar"], [role="group"][aria-label], h1, h2, h3, [data-slot$="title"]')]
-      .filter(element => drawn(element) && element.closest('[data-slot="toast"]') === null);
-    for (const toast of document.querySelectorAll<HTMLElement>('[data-slot="toast"]')) {
+      .filter(element => drawn(element) && element.closest('[data-ds-toast-state]') === null);
+    for (const toast of document.querySelectorAll<HTMLElement>('[data-ds-toast-state]')) {
       if (!drawn(toast)) continue;
       const label = `the toast "${toast.innerText.trim().slice(0, 60)}"`;
       const extras = toast.querySelectorAll("button, a[href], input, select, textarea, img, video");
@@ -289,7 +291,7 @@ export async function namedAndFocusable({ page }: StateRuleContext): Promise<rea
   try {
     for (const { index, label } of controls) {
       // The browser's own accessible name: hidden text and decorative images do not count.
-      const named = await expect(page.locator(`[data-state-rule-control="${index}"]`)).toHaveAccessibleName(/\S/u, { timeout: 0 })
+      const named = await expect(page.locator(`[data-state-rule-control="${index}"]`)).toHaveAccessibleName(/\S/u, { timeout: 250 })
         .then(() => true, () => false);
       if (!named) found.push(`${label} has no name`);
     }

@@ -17,7 +17,11 @@ export interface RuleProbe {
 
 function ToastOverToolbar() {
   const { toast } = useToasts();
-  useEffect(() => { toast({ tone: "danger", title: "Run unavailable", description: "This run is no longer in the queue." }); }, [toast]);
+  // After the provider's own effects: it starts listening for toasts once it has mounted.
+  useEffect(() => {
+    const timer = window.setTimeout(() => { toast({ tone: "danger", sticky: true, title: "Run unavailable", description: "This run is no longer in the queue." }); }, 0);
+    return () => { window.clearTimeout(timer); };
+  }, [toast]);
   return <div className="fixed inset-x-0 top-0"><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
 }
 
@@ -80,13 +84,14 @@ export const RULE_PROBES = {
     finds: { "named-and-focusable": [/has no name/u, /"Skipped" cannot be reached with Tab/u, /^(?![\s\S]*"Reached")/u] },
   },
   "toast-over-toolbar": {
-    story: { title: "A toast over the queue toolbar", ready: '[data-slot="toast"]', render: () => <StoryFrame><ToastOverToolbar /></StoryFrame> },
+    story: { title: "A toast over the queue toolbar", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastOverToolbar /></StoryFrame> },
     finds: { "toast-text-only": [/covers the toolbar "Queue actions"/u] },
   },
   "slow-fetch": {
     story: {
       title: "A skeleton that goes when a failing request settles",
       ready: '#fetching [data-slot="skeleton"]',
+      settled: "#fetching p",
       slowFetch: { region: "#fetching" },
       render: () => <StoryFrame><SlowFetch /></StoryFrame>,
     },

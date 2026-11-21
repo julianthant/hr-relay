@@ -27,7 +27,8 @@ export const GALLERY_SCHEDULE = "The state gallery runs on staging pull requests
 export const test = base.extend<GalleryTestFixtures, GalleryWorkerFixtures>({
   // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
   galleryUrl: [async ({}, use) => {
-    const shared = { configFile: false, root: GALLERY_ROOT, logLevel: "warn",
+    // One page, no fallback: a path the gallery does not serve answers 404, as the dashboard's backend does.
+    const shared = { configFile: false, root: GALLERY_ROOT, logLevel: "warn", appType: "mpa",
       build: { outDir: GALLERY_DIST, emptyOutDir: true, chunkSizeWarningLimit: 10_000 } } as const;
     // A failed test restarts the worker; the page this run already built is still current.
     const stamp = join(GALLERY_DIST, "built-by-run");

@@ -84,6 +84,10 @@ judging a visual difference.
   rule on every story at both desktop sizes and saves a frame of each under `tests/smoke/.output/states/`;
   run one surface with `--grep @<surface>`. Word limits and banned text live in `state-rule-limits.ts`.
   Record a rule the dashboard breaks today in the story's `knownFailures` with its ticket id.
+  A story that is not ready at first paint names its `ready` selector, and one whose requests start
+  later names `settled`. A new or changed rule ships with a planted violation in
+  `stories/rule-probe-stories.tsx`, which `tests/smoke/state-rules.gallery.ts` proves it reports.
+  The gallery runs on staging pull requests and local named runs.
 - Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.
