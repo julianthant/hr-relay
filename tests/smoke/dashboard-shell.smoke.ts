@@ -62,7 +62,7 @@ test("Escape closes search when the query is empty", async ({ dashboard, page })
   await expect(query).toBeHidden();
 });
 
-test("Escape reproduces the known premature dismissal of a populated search", async ({ dashboard, page }) => {
+test("Escape clears a populated search, then closes it", async ({ dashboard, page }) => {
   await dashboard.open();
   await page.getByRole("button", { name: "Search", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Search Relay" });
@@ -70,7 +70,10 @@ test("Escape reproduces the known premature dismissal of a populated search", as
   await query.fill("person");
   await expect(query).toHaveValue("person");
   await page.keyboard.press("Escape");
-  await expect(dialog, "known dismissal; once fixed, assert that the first Escape clears and the second closes").toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(query).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 });
 
 test("the bell swaps the sidebar to notifications and back", async ({ dashboard, page }) => {
