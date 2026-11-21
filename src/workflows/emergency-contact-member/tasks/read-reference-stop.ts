@@ -2,8 +2,6 @@ import { referenceCheckStop } from "../../../models/processing/workbooks/referen
 import { EmergencyContactMemberReadReferenceStop } from "../../../models/workflows/emergency-contact-member/read-reference-stop.js";
 import { defineTask } from "../../../workflow-kit/task.js";
 
-export const REFERENCE_STOP_NODE = "reference-stop";
-
 export const readEmergencyContactMemberReferenceStopTask = defineTask(EmergencyContactMemberReadReferenceStop, {
   sessions: [],
   async run({ input, ctx }) {

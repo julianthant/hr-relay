@@ -168,6 +168,7 @@ it("rejects fabricated pending operations and modified persisted setup fields be
     const setup = f.machine.admitProfile(claim);
     assert.throws(() => AuthorityDatabase.open(setup, { path: join(setup.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     assert.throws(() => setup.assertAuthorityDatabase(":memory:"), /outside admission/u);
+    if (process.platform !== "win32") assert.throws(() => setup.assertStateRoot(join(setup.stateRoot, "..\\x", "state.db")), /state path is outside admission/u);
     AuthorityDatabase.initializeProfile(setup);
     setup.release();
     const path = join(f.machine.stateRoot, "machine", "operations", `${operation.operationId}.json`);

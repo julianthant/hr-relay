@@ -145,6 +145,15 @@ describe("graph scenario coverage", () => {
     assert.ok(!ids.some((id) => id.endsWith(":search/") || id.includes(":contact/")));
   });
 
+  it("refuses to silently omit coverage for an unhandled graph node kind", () => {
+    const futureNode = { ...graphNodes()[0], kind: "future-node" };
+    assert.throws(
+      // @ts-expect-error Exercise the reader with a node kind outside its current contract.
+      () => deriveGraphCoveragePoints([futureNode]),
+      /unhandled graph node kind: future-node/u,
+    );
+  });
+
   it("passes when every derived point is claimed", () => {
     assert.deepEqual(auditGraphScenarioCoverage(points, fullCoverage(points)), []);
     assert.doesNotThrow(() => {

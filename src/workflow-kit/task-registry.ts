@@ -158,6 +158,27 @@ export function defineWorkflowStore<
   return store;
 }
 
+/** Adds backend-owned implementations of workflow mini-store contracts to their workflow's store, so workflow modules never load them. */
+export function extendWorkflowStores(
+  stores: readonly HeadlessTaskStore<`workflow:${string}`, Readonly<Record<string, AnyTask>>>[],
+  tasks: Readonly<Record<string, AnyTask>>,
+): readonly RegisteredTaskStore[] {
+  const placed = new Set<string>();
+  const extended = stores.map((store) => {
+    const own = Object.entries(tasks).filter(([, task]) => task.contract.id.startsWith(`${store.namespace}/`));
+    if (own.length === 0) return store;
+    for (const [key, task] of own) {
+      if (key in store.tasks) throw new Error(`${task.contract.id} repeats ${store.namespace} store task key ${key}`);
+      placed.add(key);
+    }
+    return defineWorkflowStore(store.namespace.slice("workflow:".length), { ...store.tasks, ...Object.fromEntries(own) });
+  });
+  for (const [key, task] of Object.entries(tasks)) {
+    if (!placed.has(key)) throw new Error(`${task.contract.id} has no registered workflow store`);
+  }
+  return extended;
+}
+
 export interface TaskStoreRegistry {
   readonly stores: readonly RegisteredTaskStore[];
   readonly corpus: TaskContractResolutionCorpus;

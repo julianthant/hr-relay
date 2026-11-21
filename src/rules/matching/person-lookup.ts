@@ -64,11 +64,22 @@ export function derivePersonLookupOutcome({ input, identity: originalIdentity, v
   else if (selected === null) {
     state = crm === null ? "not-found" : "crm-only";
     if (state === "not-found") { const failure = new PersonLookupNotFoundError(); code = failure.code; reason = failure.message; }
-  } else if (selected.terminationDate !== "" || selected.employeeStatus === "inactive" || selected.employeeStatus === "terminated") {
-    state = "inactive"; reason = selected.terminationReason || `UCPath reports ${selected.hrStatus}`;
-  } else if (selected.employeeStatus === "unknown") {
-    state = "undetermined"; code = new PersonLookupEmploymentStatusError().code; reason = selected.hrStatus === "" ? "UCPath HR status is blank" : `UCPath HR status is unreadable: ${selected.hrStatus}`;
-  } else { state = "active"; }
+  } else {
+    const { employeeStatus } = selected;
+    switch (employeeStatus) {
+      case "inactive":
+      case "terminated": state = "inactive"; break;
+      case "unknown": state = "undetermined"; break;
+      case "active": state = "active"; break;
+      default: throw new Error(`unhandled UCPath employment status: ${String(employeeStatus satisfies never)}`);
+    }
+    if (selected.terminationDate !== "") state = "inactive";
+    if (state === "inactive") reason = selected.terminationReason || `UCPath reports ${selected.hrStatus}`;
+    else if (state === "undetermined") {
+      code = new PersonLookupEmploymentStatusError().code;
+      reason = selected.hrStatus === "" ? "UCPath HR status is blank" : `UCPath HR status is unreadable: ${selected.hrStatus}`;
+    }
+  }
   const ambiguous = state === "multiple-matches";
   const eid = ambiguous ? null : selected?.emplId ?? matched?.emplId ?? crm?.emplId ?? null;
   const name = ambiguous ? null : selected?.name ?? matched?.name ?? crm?.name ?? null;

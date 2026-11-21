@@ -810,7 +810,7 @@ export function commandEffectIsWeaker(stated: CommandEffectClass, actual: Comman
   return COMMAND_EFFECT_STRENGTH[stated] < COMMAND_EFFECT_STRENGTH[actual];
 }
 
-export const COMMAND_EFFECT_BY_ACTION = {
+export const COMMAND_EFFECT_BY_ACTION = Object.freeze({
   "add-ocr-record": "local-write", "correct-ocr-record": "local-write", "discard-ocr-record": "local-write", "restore-ocr-record": "local-write",
   "pause-all": "local-write",
   "pause-all-and-quit": "destructive",
@@ -854,9 +854,9 @@ export const COMMAND_EFFECT_BY_ACTION = {
   "notification-snooze": "local-write",
   "notification-unsnooze": "local-write",
   "notification-read-all": "local-write", "notification-unread-all": "local-write", "notification-snooze-all": "local-write", "notification-unsnooze-all": "local-write",
-} as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
+} as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>);
 
-export const COMMAND_ASSISTANT_METADATA = {
+export const COMMAND_ASSISTANT_METADATA = Object.freeze({
   "add-ocr-record": "Add an operator-authored OCR review record", "correct-ocr-record": "Correct a retained OCR review record", "discard-ocr-record": "Discard an OCR review record", "restore-ocr-record": "Restore a discarded OCR review record",
   "pause-all": "Pause current work",
   "pause-all-and-quit": "Pause current work and quit after explicit confirmation",
@@ -903,7 +903,7 @@ export const COMMAND_ASSISTANT_METADATA = {
   "notification-unread-all": "Mark current read notifications unread",
   "notification-snooze-all": "Snooze current notifications",
   "notification-unsnooze-all": "Unsnooze current notifications",
-} as const satisfies Record<z.infer<typeof CommandActionSchema>, string>;
+} as const satisfies Record<z.infer<typeof CommandActionSchema>, string>);
 
 export const CommandFamilySpecSchema = z.strictObject({
   family: CommandFamilySchema,
@@ -958,23 +958,11 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
   }
 });
 
-export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse([
-  { family: "ocr-review", actions: ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record", "add-ocr-record"] },
-  { family: "application", actions: ["pause-all", "pause-all-and-quit"] },
-  { family: "assistant-model-preference", actions: ["set-assistant-model-preference"] },
-  { family: "failure-resolution", actions: ["annotate-failure"] },
-  { family: "workflow-batch", actions: ["set-batch-grouping"] },
-  { family: "start", actions: ["start-run"] },
-  { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
-  { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
-  { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
-  { family: "run", actions: ["retry", "recover-run", "pause", "resume", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row"] },
-  { family: "gate", actions: ["resolve-gate"] },
-  { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
-].map((entry) => ({
-  ...entry,
-  effects: entry.actions.map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),
-}))));
+export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse(
+  Object.entries<readonly z.infer<typeof CommandActionSchema>[]>(COMMAND_ACTIONS_BY_FAMILY).map(([family, actions]) => ({
+    family, actions, effects: actions.map((action) => COMMAND_EFFECT_BY_ACTION[action]),
+  })),
+));
 
 /** Run actions the assistant proposes through its own confirmed card. */
 const assistantRunAction = (family: string, action: string) => family === "run" && (action === "pause" || action === "resume" || action === "cancel");

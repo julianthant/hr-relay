@@ -20,6 +20,7 @@ import {
   UCPATH_SS_SMART_HR_RETURN_TO_LIST, UcpathTransactionFindingsSchema,
 } from "../../../../models/ui/ucpath-transaction-findings.js";
 import type { UcpathTransactionFindings, UcpathTransactionFinding } from "../../../../models/ui/ucpath-transaction-findings.js";
+import { normalizedName } from "../../../../models/systems/ucpath/emergency-contacts.js";
 const SEARCH_URL = "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/UC_EXTENSIONS.UC_SS_TBH.GBL";
 const DRIVER_ANCHOR = Object.freeze({
   searchEmplIdOperator: '[id="UC_SS_TBH_DVW_EMPLID$op"]',
@@ -303,7 +304,6 @@ async function readFindingList(assertCurrent: () => void, page: Page, emplId: Ei
 const findingSet = (rows: readonly FindingBinding[]): string => JSON.stringify(
   rows.map(({ transactionId, emplId, displayedName }) => [transactionId, emplId, displayedName]).sort(),
 );
-const normalizedName = (name: string): string => name.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
 
 async function returnToFindingList(assertCurrent: () => void, page: Page): Promise<void> {
   const back = resolveUcpathFindingElement(page, UCPATH_SS_SMART_HR_RETURN_TO_LIST);

@@ -1,6 +1,7 @@
 import type { ActionCommandKeySchema } from "../../../models/dashboard/actions.js";
 import type { RunDecisionType } from "../../../models/dashboard/run-decision.js";
 import type { z } from "zod";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 type ActionCommand = z.infer<typeof ActionCommandKeySchema>;
 
@@ -39,7 +40,7 @@ const parkedWrite: readonly DeclaredOption[] = [
 export type ParkedWriteRecord = Readonly<{ record: string; system: string; act: "Submit" | "Save" | "Import"; check: string; again: string;
   /** The display-safe identifier in the write's natural key (an EID or document number, never a date) and where the operator checks it. */
   id?: Readonly<{ segment: number; prefix?: string; where: (id: string) => string }> }>;
-export const PARKED_WRITE_RECORDS: Readonly<Record<string, ParkedWriteRecord>> = Object.freeze({
+export const PARKED_WRITE_RECORDS = deepFreeze<Record<string, ParkedWriteRecord>>({
   "ucpath/create-termination": { record: "termination", system: "UCPath", act: "Submit", check: "Smart HR Transactions", again: "file it again",
     id: { segment: 1, where: id => `Smart HR Transactions for ${id}` } },
   "ucpath/delete-pending-terminations": { record: "pending termination removal", system: "UCPath", act: "Save", check: "Smart HR Transactions", again: "remove them again",
@@ -55,7 +56,7 @@ export const PARKED_WRITE_RECORDS: Readonly<Record<string, ParkedWriteRecord>> =
   "onbase/upload-import": { record: "document", system: "OnBase", act: "Import", check: "the employee's documents", again: "import it again" },
 });
 
-export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclaration>> = Object.freeze({
+export const DECISION_CATALOG = deepFreeze<Record<RunDecisionType, DecisionDeclaration>>({
   "identity-mismatch": { choiceLabel: "Next step", title: "Is this the right person?", recommended: ["approve"], options: [
     { id: "approve", label: "Approve match", send: { via: "action", command: "resolve-gate" } },
     { id: "reject", label: "Reject match", hint: "Stops the run.", send: { via: "action", command: "resolve-gate" } },
@@ -103,7 +104,7 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
 });
 
 /** The identity review's served text: why Relay asks, each comparison's label, and how each candidate was found. */
-export const IDENTITY_REVIEW_TEXT = Object.freeze({
+export const IDENTITY_REVIEW_TEXT = deepFreeze({
   reason: {
     "several-people": "Several UCPath people match this name.",
     name: "Form name differs from UCPath.",

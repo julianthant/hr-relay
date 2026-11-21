@@ -52,6 +52,15 @@ describe("Person Lookup identity evidence", () => {
  });
 });
 
+it("refuses to classify an unhandled employment status as active", () => {
+  const identity = resolve();
+  assert.throws(() => derivePersonLookupOutcome({ input, identity: {
+    ...identity,
+    // @ts-expect-error Exercise the reader with a status outside its current contract.
+    selected: { ...person, employeeStatus: "future-status" },
+  } }), /unhandled UCPath employment status: future-status/u);
+});
+
 it("declares empty and ambiguous CRM results explicitly while selected or unchecked results stay absent", () => {
   assert.deepEqual(resolve([person, other], []).unselectedCrmRecords, []);
   const ambiguous = [{ ...record, emplId: person.emplId }, { ...record, recordId: "ONB-2", emplId: other.emplId }];

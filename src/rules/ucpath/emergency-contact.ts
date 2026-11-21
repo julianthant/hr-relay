@@ -6,13 +6,10 @@ import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { sha256Hex } from "../validation/sha256.js";
 import { scoreNameMatch } from "../matching/name-match.js";
 import { UcpathContactEffectSchema, UcpathContactRefusedError, UcpathContactRelationshipSchema,
-  UcpathContactSetSchema, UcpathEmergencyContactInputSchema, UcpathContactPlanSchema, contactEffectIdentity } from "../../models/systems/ucpath/emergency-contacts.js";
+  UcpathContactSetSchema, UcpathEmergencyContactInputSchema, UcpathContactPlanSchema, contactEffectIdentity, normalizedName } from "../../models/systems/ucpath/emergency-contacts.js";
 import type { UcpathContactDecision, UcpathContactEffect, UcpathContactRefusalCode, UcpathContactSet,
   UcpathEmergencyContactInput, UcpathContactPlan } from "../../models/systems/ucpath/emergency-contacts.js";
 function refuse(code: UcpathContactRefusalCode): never { throw new UcpathContactRefusedError(code); }
-export function normalizedName(value: string): string {
-  return value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
-}
 
 export function sameEffect(a: UcpathContactEffect, b: UcpathContactEffect): boolean {
   return contactEffectIdentity(a) === contactEffectIdentity(b);

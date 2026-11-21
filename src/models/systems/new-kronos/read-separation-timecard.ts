@@ -1,7 +1,7 @@
 /** ONE visit to the WFD Timecard page: Go To, subject proof, range apply and grid read, with the page-displayed subject and whether the requested window actually applied as first-class outputs. */
 import { z } from "zod";
 import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
-import { TimecardDateSchema, TimecardPayCodeDaySchema } from "../../../rules/kronos/separation-timecard.js";
+import { NewKronosAppliedRangeSchema, NewKronosTimecardGridSchema } from "../../ui/new-kronos-timecard.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";
 
 /** `M/D/YYYY` or `MM/DD/YYYY` — the spelling WFD's range fields accept. */
@@ -20,31 +20,8 @@ export const ReadSeparationTimecardOutputSchema = z.strictObject({
     observedDisplayName: z.string().min(1),
     matches: z.literal(true),
   }),
-  range: z.strictObject({
-    requestedStart: TimecardDateSchema,
-    requestedEnd: TimecardDateSchema,
-    /** WFD's period label verbatim, e.g. `"6/01/2026 - 8/12/2026"`. */
-    observedLabel: z.string().min(1),
-    observedStart: TimecardDateSchema,
-    observedEnd: TimecardDateSchema,
-    applied: z.literal(true),
-  }),
-  grid: z.strictObject({
-    /** The header row the columns were bound against, BY NAME. */
-    columnHeaders: z.array(z.string().min(1)).min(1),
-    /** How many scroll steps the virtualized grid needed. */
-    scrollSteps: z.number().int().nonnegative(),
-    /** Calendar days the read covered — equal to the applied window by construction. */
-    daysCovered: z.number().int().positive(),
-    populatedRows: z.number().int().nonnegative(),
-    /** Absent means a correct read with no punches. */
-    lastPunchDate: TimecardDateSchema.nullable(),
-    punchDates: z.array(TimecardDateSchema),
-    sickDates: z.array(TimecardDateSchema),
-    holidayDates: z.array(TimecardDateSchema),
-    payCodeDays: z.array(TimecardPayCodeDaySchema),
-    unclassifiedPayCodes: z.array(z.string().min(1)),
-  }),
+  range: NewKronosAppliedRangeSchema,
+  grid: NewKronosTimecardGridSchema,
 });
 export type ReadSeparationTimecardOutput = z.infer<typeof ReadSeparationTimecardOutputSchema>;
 
