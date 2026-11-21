@@ -18,7 +18,7 @@ function inputNamed(host: HTMLElement, name: string): HTMLInputElement {
   assert(input, `Missing ${name} input`);
   return input;
 }
-const FAILURE = { tone: 'danger', title: "Settings weren't saved", description: 'The previous value is back.', key: 'settings-save' } as const;
+const FAILURE = { tone: 'danger', title: "Settings weren't saved. The previous value is back.", key: 'settings-save' } as const;
 describe('confirmed Settings feedback through the current editor', () => {
   it("toasts a failure and reverts when the ordinary envelope cannot be composed before dispatch", async () => {
     const h = await setup();
@@ -104,7 +104,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.equal(commands.length, 1); assert.deepEqual(notices, []);
     assert.equal(controller().protectedEditor.save.state, 'refused');
     assert.equal(controller().protectedEditor.dirtyCount, 1);
-    assert.deepEqual(problems, [{ tone: 'danger', title: "Credentials weren't saved", description: 'Your draft is retained. Review the save details before retrying.' }]);
+    assert.deepEqual(problems, [{ tone: 'danger', title: "Credentials weren't saved. Your draft is kept." }]);
     assert.doesNotMatch(JSON.stringify(problems), /private-blur-sentinel/);
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     assert.equal(commands.length, 1); assert.equal(problems.length, 1);
@@ -157,7 +157,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     };
     await act(async () => controller().update('display.screenWidth', '1980'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved settings', description: 'Restart required to use these changes.' }]);
+    assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved settings. Restart to use them.' }]);
     assert.match(host.textContent ?? '', /Restart required/);
     assert.doesNotMatch(host.textContent ?? '', /Saved(?! settings apply after Relay restarts)|Saving/, 'no inline saved row');
   });
@@ -254,7 +254,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     await act(async () => controller().protectedEditor.submit());
     assert.equal(controller().protectedEditor.save.state, 'conflict');
     assert.deepEqual(notices, []);
-    assert.equal(problems[0]?.title, 'Credentials changed');
+    assert.equal(problems[0]?.title, 'Credentials changed. Your draft is kept.');
     ports.read = () => { throw new Error('synthetic-readback-unavailable'); };
     await act(async () => controller().protectedEditor.submit());
     assert.equal(controller().protectedEditor.save.state, 'saving', 'an unknown save is read back, not shown');

@@ -27,7 +27,7 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description="Reopen Settings to try again." />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;
@@ -45,9 +45,9 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
   };
   return <Root {...embedded ? {} : { className: "settings-compact-page settings-credentials-page" }}>
     {!embedded && <PageHeading title="Account" description="Sign-in details and protected workflow configuration." />}
-    {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
+    {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description="Reopen Settings to refresh." />}
     {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" description="Reopen Settings to try again." />}
-    <SettingsSaveFeedback save={credentials.save} protectedStore retryConflict={credentials.submit} />
+    <SettingsSaveFeedback save={credentials.save} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
       <BodySection title="UCPath sign-in" description={embedded ? "Workflows use this to sign in to UCPath." : undefined}>
         <FormGroup label="UCPath sign-in">

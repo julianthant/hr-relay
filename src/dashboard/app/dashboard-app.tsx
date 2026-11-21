@@ -93,7 +93,7 @@ DASHBOARD_MAIN_REGION_ID, DASHBOARD_LOGS_REGION_ID, buildSettingsNav, resolveSet
 } from "../surfaces/settings/settings-model.js";
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import "../surfaces/shell/permanent-shell.css";
-import { PAUSE_ALL_EFFECT, PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
+import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
 import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -453,7 +453,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // the Settings models toast these
     toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
-      ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+      ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "conflict" ? "warning" : "danger", title: outcome.feedback.text });
   }, [executor, toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
   const currentPreferenceBinding = useRef(commandBinding);
@@ -657,8 +657,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           }
           return;
         }
-        const warning = appliedWorkerStartupToast(request, outcome.reply);
-        if (warning === undefined || "targets" in request) toast({ tone: "success", title: label, description: "Command confirmed." });
         if (!("targets" in request) && request.family === "run" && request.type === "delete" && outcome.reply !== undefined && "affectedTargets" in outcome.reply) {
           const removed = new Set<string>(outcome.reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []));
           if (routeRef.current.run !== undefined && removed.has(routeRef.current.run)) setRoute({ ...routeRef.current, run: undefined, section: undefined });
@@ -717,12 +715,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (action.command === "rename") {
         const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
         if (surface === undefined) {
-          toast({
-            tone: "danger",
-            title: "Nothing was sent",
-            description: `run ${target.runId} is not on the day this panel is showing, so there is no row to `
-              + "name. Open the day it ran on and rename it there.",
-          });
+          toast({ tone: "danger", title: "Open the day that run is on to rename it." });
           return;
         }
         const existingUncertain = unresolvedRunAction(target.runId, action.command);
@@ -789,12 +782,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const renameQueueTitle = useCallback((runId: string, name: string) => {
     const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === runId);
     if (surface === undefined) {
-      toast({
-        tone: "danger",
-        title: "Nothing was sent",
-        description: `run ${runId} is not on the day this panel is showing, so there is no row to `
-          + "name. Open the day it ran on and rename it there.",
-      });
+      toast({ tone: "danger", title: "Open the day that run is on to rename it." });
       return;
     }
     const next = queueRenameDraft(surface, name);
@@ -878,7 +866,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const key = `${wire.report.configFingerprint}:${wire.report.descriptorFingerprint ?? ""}:${wire.report.checkedAt}`;
       if (shownPreflight.current.has(key)) return;
       shownPreflight.current.add(key);
-      toast({ tone: attention.tone, title: attention.title, sticky: true });
+      toast({ tone: attention.tone, title: attention.title });
     })();
     return () => { active = false; };
   }, [client, toast]);
@@ -1062,11 +1050,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           key={JSON.stringify([activeTakeover(route), route.settings, route.run, route.intake, route.explore])}
           storage={boot.storage}
         />
-        {quitting && <Notice sticky tone="info" title="Relay quits after runs pause" description={PAUSE_ALL_EFFECT} />}
+        {quitting && <Notice sticky tone="info" title="Relay quits after runs pause" />}
         {dayResource.state !== "failed" && (streamDown || lifecycle.resource.state === "failed")
           ? <Notice sticky tone="warning" title="Can't reach Relay" description="Reconnecting…" /> : null}
         {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
-          .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
+          .map(warning => <Notice key={warning.title} sticky tone={warning.tone} title={warning.title} />)}
 
         <div className="flex min-h-0 flex-1">
 
@@ -1206,7 +1194,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         hidden={route.settings !== undefined}
         onFixCheck={(section, settingsTarget) => setRoute(current => ({ ...current, settings: section, settingsTarget, settingsFrom: "run" }))}
         catalog={workflowCatalog}
-        onOpenRun={runId => selectRun(runId)}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
         onApplied={(workflowId) => {

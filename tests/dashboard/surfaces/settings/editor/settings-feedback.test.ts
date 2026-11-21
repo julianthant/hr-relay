@@ -9,18 +9,15 @@ Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); return host; }
-const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert(found, name); return found; };
-const press = async (name: string) => act(async () => button(name).click());
 describe('mounted frontend reliability contracts', () => {
   it('shows nothing while a save is in flight', async () => {
     const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'saving' } }));
     assert.equal(host.textContent, '');
   });
-  it('shows a refused save with its Retry edit control', async () => {
-    let retried = 0;
-    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'refused', message: 'Check the draft values. No request was sent.' }, retryConflict: () => retried++ }));
-    assert.match(host.textContent ?? '', /Settings weren't saved.*Your draft is retained\. Review the save details before retrying\./u);
-    await press('Retry edit'); assert.equal(retried, 1);
+  it('shows nothing for a refused save: its model toasts it once, with no button', async () => {
+    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'refused', message: 'Check the draft values. No request was sent.' } }));
+    assert.equal(host.textContent, '');
+    assert.equal(host.querySelector('button'), null);
   });
   it('retains saved status, distinguishes restart-required and shows nothing for an unconfirmed save', async () => {
     vi.useFakeTimers();
@@ -31,5 +28,4 @@ describe('mounted frontend reliability contracts', () => {
     assert.equal(host.textContent, '', 'its model reads the save back; nothing is shown inline');
     assert.equal(host.querySelector('button'), null);
   });
-});
 });

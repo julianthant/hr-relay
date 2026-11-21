@@ -23,7 +23,6 @@ const disposers: (() => void | Promise<void>)[] = [];
 async function unmount() { await act(async () => root?.unmount()); root = undefined; }
 async function cleanup() { await unmount(); document.body.replaceChildren(); window.sessionStorage.clear();
   for (const dispose of disposers.splice(0)) await dispose(); }
-const openedRuns: string[] = [];
 async function setup(createPreflight?: Parameters<typeof launchHarness>[4]) { const h = await launchHarness(undefined, undefined, undefined, profileFixture, createPreflight); disposers.push(h.dispose); return h; }
 type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";
@@ -65,7 +64,7 @@ async function mount(h: Harness, source: RunRecord | undefined, client: Dashboar
     createElement("button", { onClick: () => sourceRef === undefined ? controller.openStart() : controller.openRerun(sourceRef) }, sourceRef === undefined ? "Run workflow" : "Rerun source"),
     bound ? createElement(FixtureCommandBinding, { actorId, requestKey, nowIso, feedback: outcome => {
       if (outcome.kind === "refused" || outcome.kind === "conflict") toast(runStartRefusalToast(outcome.feedback.text));
-    }, children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, onOpenRun: runId => { openedRuns.push(runId); }, onOpenIntake: () => { throw new Error("unexpected intake"); } }) }) : createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId, onOpenRun: runId => { openedRuns.push(runId); }, onOpenIntake: () => { throw new Error("unexpected intake"); } })); }
+    }, children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId,  onOpenIntake: () => { throw new Error("unexpected intake"); } }) }) : createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)), panelWorkflowId: h.descriptor.id, actorId,  onOpenIntake: () => { throw new Error("unexpected intake"); } })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   async function replaceBinding(nextClient: DashboardClient, { actorId = "local-operator", requestKey = 0, nowIso = h.clock.now().toISOString(), bound = true } = {}) {
     const launcher = createElement(Launcher, { actorId, requestKey, nowIso, bound });
@@ -76,5 +75,5 @@ async function mount(h: Harness, source: RunRecord | undefined, client: Dashboar
   button(source === undefined ? "Run workflow" : "Rerun source").focus(); await press(source === undefined ? "Run workflow" : "Rerun source");
   return replaceBinding;
 }
-return { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount, openedRuns };
+return { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount };
 }

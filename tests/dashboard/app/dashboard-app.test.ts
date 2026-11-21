@@ -1130,8 +1130,8 @@ describe_m3("shell and queue structural fidelity", () => {
     );
     assert_m3.match(
       OVERLAY,
-      /fixed top-3 left-1\/2/u,
-      "the fixed toast viewport is top-centred, so it sits clear of the Sessions bar floor",
+      /fixed bottom-\[var\(--ds-toast-inset-bottom,0\.75rem\)\] left-1\/2/u,
+      "the fixed toast viewport is bottom-centred on the Sessions bar floor, clear of the toolbar and page title",
     );
     assert_m3.match(
       LAUNCHER_MODEL,

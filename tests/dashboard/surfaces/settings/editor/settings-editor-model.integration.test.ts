@@ -13,7 +13,7 @@ async function setup(section?: string) {
   const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority, section); cleanups.push(mounted.close); return { ...mounted, authority };
 }
-const FAILURE = { tone: "danger", title: "Settings weren't saved", description: "The previous value is back.", key: "settings-save" } as const;
+const FAILURE = { tone: "danger", title: "Settings weren't saved. The previous value is back.", key: "settings-save" } as const;
 const labelValue = (h: Awaited<ReturnType<typeof setup>>): unknown => {
   const editor = h.controller().editor; assert.equal(editor.state, "loaded");
   if (editor.state !== "loaded") throw new Error("current settings unavailable");

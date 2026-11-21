@@ -73,7 +73,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     void closeDraft(adapter, id, warned.current).then(closed => {
       if (closed) { warned.current = false; setOpenId(undefined); return; }
       warned.current = true;
-      toast({ tone: 'danger', title: "Your column changes aren't saved", description: 'Change a column to try again, or choose Back again to discard them.' });
+      toast({ tone: 'danger', title: "Column changes aren't saved", description: 'Edit a column to retry, or choose Back again to discard.' });
     });
   };
   const saveMapping = (worksheet: string, patch: Record<string, string | null>) => {
@@ -96,7 +96,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       return true;
     }
     toast({ tone: 'danger', title: outcome.state === 'pending' ? `Still confirming ${pendingImportName(adapter)}` : "Couldn't add the spreadsheet",
-      description: outcome.state === 'pending' ? 'Choose Add to library again to check it. It is not added twice.' : outcome.reason });
+      description: outcome.state === 'pending' ? 'Choose Add to library again to check.' : outcome.reason });
     return false;
   };
   const addSharePoint = async (request: { url: string; name: string; tags: readonly string[] }) => {

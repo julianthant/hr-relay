@@ -46,7 +46,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="performance" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "performance");
   if (section === undefined) return <Notice tone="danger" title="Performance unavailable" />;
@@ -57,7 +57,7 @@ export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
     <PageHeading title="Performance" description="Time limits for navigation, work, and sign-in." />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
-      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description="Reopen Settings to refresh." />}
       <div className="ds-body-stack">
         {primary.map(group => <BodySection key={group.title} title={group.title}><FormGroup label={group.title}>
           {group.leaves.map(leaf => <PerformanceRow key={leaf.path} editor={editor} leaf={leaf} />)}
