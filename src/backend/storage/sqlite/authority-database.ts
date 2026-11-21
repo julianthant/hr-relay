@@ -3327,22 +3327,41 @@ export class AuthorityDatabase implements Disposable {
     const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
     if (before.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return before;
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
-    let result: ReturnType<typeof migrateStoppedAuthority> & { compacted: boolean } | undefined;
+    let result: ReturnType<typeof migrateStoppedAuthority> | undefined;
     let primary: { error: unknown } | undefined;
-    try {
-      const migrated = migrateStoppedAuthority(database, clock, admission, path, expectedFingerprint, backup, verifyBackup);
-      // The committed upgrade rewrote stored rows; compacting once returns the pages they freed to the file system.
-      // The upgrade is committed and inspected before this, so a failed compaction leaves a larger file, not an unproved store.
-      let compacted = true;
-      try { database.exec("VACUUM"); } catch { compacted = false; }
-      result = { ...migrated, compacted };
-    } catch (error) { primary = { error }; }
+    try { result = migrateStoppedAuthority(database, clock, admission, path, expectedFingerprint, backup, verifyBackup); }
+    catch (error) { primary = { error }; }
     const failures: unknown[] = [];
     try { database.close(); } catch (error) { failures.push(error); }
     if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { database });
     if (primary !== undefined) throw primary.error;
     if (result === undefined) throw new Error("profile-stopped-upgrade-result-unavailable");
     return result;
+  }
+
+  // Returns the pages a committed upgrade freed to the file system. A store with no free pages is left alone (undefined).
+  // A failed compaction leaves a larger file, not an unproved store, so it is reported and the next stopped upgrade retries it.
+  static compactStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
+    expected: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>): "compacted" | "failed" | undefined {
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
+    let outcome: "compacted" | "failed" | undefined;
+    let primary: { error: unknown } | undefined;
+    try {
+      if (readIntPragma(database, "user_version") !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-stopped-compaction-version-refused");
+      if (readIntPragma(database, "freelist_count") > 0) {
+        try { database.exec("VACUUM"); outcome = "compacted"; } catch { outcome = "failed"; }
+      }
+    } catch (error) { primary = { error }; }
+    const failures: unknown[] = [];
+    try { database.close(); } catch (error) { failures.push(error); }
+    if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { database });
+    if (primary !== undefined) throw primary.error;
+    if (outcome === undefined) return undefined;
+    const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
+    if (after.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || after.authorityGeneration !== expected.authorityGeneration
+      || after.authorityContentFingerprint !== expected.authorityContentFingerprint) throw new Error("profile-stopped-compaction-authority-changed");
+    return outcome;
   }
 
 

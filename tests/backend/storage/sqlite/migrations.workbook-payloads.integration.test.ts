@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
@@ -180,15 +181,36 @@ describe("workbook payload migration 38", () => {
         if (sql === "VACUUM") { refused++; throw new Error("database or disk is full"); }
         exec.call(this, sql);
       });
-      try { assert.equal((await f.run()).state, "upgraded"); } finally { vacuum.mockRestore(); }
+      try {
+        const report = await f.run();
+        assert.equal(report.state, "upgraded");
+        assert.equal(report.compaction, "failed");
+      } finally { vacuum.mockRestore(); }
       assert.equal(refused, 1);
+      const manifests = () => readdirSync(join(dirname(f.path), "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+      const backups = manifests();
+      assert.equal(backups.length, 1);
+      const sizeFailed = statSync(f.path).size;
       const upgraded = new DatabaseSync(f.path, { readOnly: true });
       try {
         assert.equal(inspectNativeAuthority(upgraded).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
         assert.equal(readback(upgraded), before);
         assert.deepEqual(upgraded.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
       } finally { upgraded.close(); }
-      assert.equal((await f.run()).state, "already-upgraded");
+      const retried = await f.run();
+      assert.equal(retried.state, "already-upgraded");
+      assert.equal(retried.compaction, "compacted");
+      assert.ok(statSync(f.path).size < sizeFailed);
+      const compacted = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.equal(compacted.prepare("PRAGMA freelist_count").get()?.freelist_count, 0);
+        assert.equal(readback(compacted), before);
+        assert.deepEqual(compacted.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
+      } finally { compacted.close(); }
+      assert.deepEqual(manifests(), backups);
+      const settled = await f.run();
+      assert.equal(settled.state, "already-upgraded");
+      assert.equal(settled.compaction, undefined);
     } finally { await f.dispose(); }
   });
 
