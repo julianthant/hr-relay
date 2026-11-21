@@ -12,6 +12,7 @@ import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 import { useDashboardClient } from '../../state/client-context.js';
 import { FirstScreenRevealedContext } from '../../app/startup/first-screen.js';
+import { mockParam } from '../../app/mock-surfaces.js';
 import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
@@ -30,7 +31,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   useState(() => { assistantOpen.init(false); });
   // The assistant opens closed on every startup and Ctrl+J waits for the reveal, so its chat history never holds the first screen.
   const revealed = useContext(FirstScreenRevealedContext);
-  useLayoutEffect(() => { if (!revealed && new URLSearchParams(window.location.search).get("assistantOpen") !== "1") assistantOpen.set(false); }, [revealed]);
+  useLayoutEffect(() => { if (!revealed && mockParam("assistantOpen") !== "1") assistantOpen.set(false); }, [revealed]);
   const opened = useAssistantOpen();
   useLogsTop(opened && !settingsOpen);
   useEffect(() => {

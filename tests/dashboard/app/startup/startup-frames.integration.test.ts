@@ -80,7 +80,8 @@ it(`shows the date recovery, not an endless loader, for a cold link to a future 
 const pressJ = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true, cancelable: true }));
 for (const [path, before, underLoader] of [["the assistant stays closed", () => {}, () => {}], ["Ctrl+J is pressed under the loader", () => {}, pressJ],
   ["the assistant was open at an earlier sign-in", () => assistantOpen.set(true), () => {}]] as const)
-it(`shows the dashboard while a startup chat history write is still unanswered, and the write still settles (${path})`, async () => {
+for (const at of ["/", "/?assistantOpen=1"] as const)
+it(`shows the dashboard while a startup chat history write is still unanswered, and the write still settles (${path}, ${at})`, async () => {
   const server = dashboardServer();
   let answer: (response: Response) => void = () => {};
   let release: () => void = () => {};
@@ -92,7 +93,7 @@ it(`shows the dashboard while a startup chat history write is still unanswered, 
     if (path === "/api/v1/assistant/history" && init?.method === "POST") return new Promise<Response>(resolve => { answer = resolve; });
     if (url.includes("/events/v1?")) await dayHeld;
     return server(url, init);
-  });
+  }, at);
   const assistant = () => app.host.querySelector<HTMLElement>("#hub-shell-assistant");
   try {
     await vi.waitFor(() => assert.ok(app.host.querySelector("[data-startup-loading]") && assistant(), "the hidden shell is mounted under the loader"), { timeout: 10_000, interval: 50 });
