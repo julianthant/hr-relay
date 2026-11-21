@@ -40,7 +40,7 @@ it("names inconsistent UCPath and CRM identities without recording output facts"
 
   assert.deepEqual(refusals, [new TaskRefusal(
     "INCONSISTENT_INPUTS",
-    "Person Lookup received inconsistent UCPath and CRM identities.",
+    "The UCPath and CRM records are for different people.",
   )]);
   assert.deepEqual(records, []);
 });

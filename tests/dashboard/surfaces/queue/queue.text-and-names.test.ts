@@ -11,7 +11,7 @@ import { QueueSurfaceWireSchema } from "../../../../src/models/dashboard/project
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 
 const base = mockQueueSurface({ id: "00000000-0000-4000-8000-000000000041", workflowId: "onboarding", title: "Morrow, Bea", subject: "Morrow, Bea", draft: initialMockDraft("onboarding"), approved: true, seeded: true }, "2026-08-03T10:57:54.000Z");
-const SENTENCE = "The system did not show the expected page. Review the current page before continuing.";
+const SENTENCE = "The expected page did not appear. Review the current page.";
 const failed = () => QueueSurfaceWireSchema.parse({ ...base, runId: RunIdSchema.parse("00000000-0000-4000-8000-000000000041"), status: "failed",
   endedAt: { state: "present", value: "2026-08-03T10:58:45.000Z" }, liveMessage: { state: "present", value: SENTENCE },
   warnings: { state: "present", count: 1, first: "[ucpath/read-paypath-position] UNEXPECTED_PAGE_STATE: raw detail — write state at failure: not-attempted" } });

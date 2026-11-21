@@ -30,6 +30,6 @@ describe("session acquisition timeout", () => {
     if (resolved.state !== "resolved") throw new Error("acquisition timeout was not resolved");
     assert.equal(resolved.code, "BROWSER_SESSION_ACQUISITION_TIMEOUT");
     assert.notEqual(resolved.code, "TASK_UNHANDLED_FAILURE");
-    assert.equal(resolved.text, "Sign-in took too long. Run it again; if it repeats, check the system's sign-in in Sessions.");
+    assert.equal(resolved.text, "Sign-in took too long. Run it again; if it repeats, check Sessions.");
   });
 });

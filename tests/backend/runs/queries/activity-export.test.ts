@@ -102,7 +102,7 @@ describe("the Activity report's CSV export", () => {
     assert.ok(csv.includes("Needs attention,Typical time: successful root mean (ms),Successful roots measured,Successful roots unmeasured"));
     assert.ok(csv.includes(",1,12000,1,0\r\n"));
     assert.ok(csv.includes("Code,Runs,Transient,Sample run ids,Workflow,Label,Reason"));
-    assert.ok(csv.includes("retired-workflow,workflow registration is unavailable,This failure code is not in the current catalog. Review the recorded local evidence."));
+    assert.ok(csv.includes("retired-workflow,workflow registration is unavailable,Relay did not recognize this failure. Open the run in Logs."));
     const absent = ActivityReportWireSchema.parse({ ...FILLED, workflows: FILLED.workflows.map(workflow => ({ ...workflow,
       typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 1,
         meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } } })) });

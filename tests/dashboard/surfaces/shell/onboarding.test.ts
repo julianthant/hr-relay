@@ -29,7 +29,7 @@ it("explains an existing profile on duplicate sign-up and offers Log in", async 
       });
     }
     await act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    assert.equal(host.querySelector('[role="alert"]')?.textContent, "This email already has a profile on this computer. Log in to continue.");
+    assert.equal(host.querySelector('[role="alert"]')?.textContent, "This email already has a profile here. Log in to continue.");
     const login = [...host.querySelectorAll("a")].find(link => link.textContent === "Log in"); assert.ok(login);
     await act(async () => login.click());
     assert.equal(host.querySelector("h1")?.textContent, "Log in to Relay");
