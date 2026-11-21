@@ -9,7 +9,6 @@ import {
   BareButton,
   Button,
   Chip,
-  Checkbox,
   EmptyState,
   dsBorder,
   dsClip,
@@ -83,9 +82,6 @@ export interface QueueViewState {
   selectedMember?: QueueMemberSelection;
   /** Which member WELLS are open to their tall shape. */
   openWells: ReadonlySet<string>;
-  /** bulk-selection mode: checkboxes on top-level rows */
-  selectMode?: boolean;
-  bulkIds?: ReadonlySet<string>;
   /** The workflow this queue is scoped to. A row of that workflow does not reprint its label —
  * the panel header already said it. */
   panelWorkflowId?: string;
@@ -105,10 +101,6 @@ export interface QueueHandlers {
   /** The dedicated roster route. Rendered ONLY when supplied: the full-list
  * surface is a served People section, and a disclosure */
   onOpenRoster?: (runId: string) => void;
-  /** add/remove a row from the bulk target set */
-  onToggleBulk?: (runId: string) => void;
-  onSelectBulk?: (runId: string) => void;
-  onExitSelection?: () => void;
   onPreviewAction?: (action: 'retry' | 'delete', ids: readonly string[]) => void;
   /** Mark a loaded member checked by you. This has no authority effect. */
   /** Jump to the run that delegated this one — the panel switch AND the selection */
@@ -395,12 +387,11 @@ function MemberWell({
   );
 }
 
-function MemberLine({ line, workflowLabel, selectedRunId, selected, bulkSelected, onSelect, onSelectRun }: {
+function MemberLine({ line, workflowLabel, selectedRunId, selected, onSelect, onSelectRun }: {
   line: QueueMemberLine;
   workflowLabel: string;
   selectedRunId?: string;
   selected: boolean;
-  bulkSelected?: boolean;
   onSelect?: () => void;
   onSelectRun: (runId: string) => void;
 }) {
@@ -416,9 +407,6 @@ function MemberLine({ line, workflowLabel, selectedRunId, selected, bulkSelected
   >
     <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
       <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-        {bulkSelected !== undefined && <Checkbox checked={bulkSelected}
-          label={<span className="sr-only">Select {view.title} for a bulk command</span>}
-          onClick={event => event.stopPropagation()} onCheckedChange={() => onSelect?.()} />}
         <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && !view.paused && "animate-spin motion-reduce:animate-none")} />
         <BareButton type="button" title={view.buttonTitle} disabled={onSelect === undefined}
           aria-label={view.accessibleName} aria-pressed={selected} onClick={event => { event.stopPropagation(); onSelect?.(); }}
@@ -548,13 +536,11 @@ function GroupMemberList({
                 onSelect={handlers.onOpenMember === undefined ? undefined : () => handlers.onOpenMember?.(line.member)} />;
             }
             const item = line.item;
-            const bulkMember = batch !== undefined && state.selectMode === true;
-            const visible = bulkMember ? item.representative : item.attempts.find(attempt => String(attempt.runId) === state.selectedRunId) ?? item.representative;
+            const visible = item.attempts.find(attempt => String(attempt.runId) === state.selectedRunId) ?? item.representative;
             const selected = item.attempts.some(attempt => String(attempt.runId) === state.selectedRunId);
             return <Fragment key={line.key}>
-              <MemberLine line={line} workflowLabel={workflowLabel} selectedRunId={bulkMember ? undefined : state.selectedRunId} selected={selected}
-                bulkSelected={bulkMember ? state.bulkIds?.has(item.representative.runId) === true : undefined}
-                onSelect={() => bulkMember ? handlers.onToggleBulk?.(item.representative.runId) : handlers.onSelect(String(visible.runId))}
+              <MemberLine line={line} workflowLabel={workflowLabel} selectedRunId={state.selectedRunId} selected={selected}
+                onSelect={() => handlers.onSelect(String(visible.runId))}
                 onSelectRun={handlers.onSelect} />
               {(visible.linkedRuns.length > 0 || visible.surfaceKind === "operation" && (visible.memberRunIds.length > 0 || (visible.recordMembers?.members.length ?? 0) > 0)) && <tr><td colSpan={2}>
                 {visible.linkedRuns.length > 0 && <div className="flex flex-wrap gap-2 px-3 py-2">
@@ -744,8 +730,7 @@ export function QueueRow({
   const parent = batch === undefined ? surface.parent ?? undefined : undefined;
   /** Redirects own spare width; neighboring facts retain readable natural widths. */
   const hasRedirect = parent !== undefined || batch === undefined && surface.linkedRuns.length > 0;
-  const { onToggleBulk, onAction } = handlers;
-  const bulkIds = state.bulkIds;
+  const { onAction } = handlers;
   const titleTooltip = batch === undefined ? queueRowTitleTooltip(surface) : undefined;
   const title = batch === undefined ? queueRowTitle(surface) : workflowLabel;
   const { onRenameTitle } = handlers;
@@ -761,27 +746,16 @@ export function QueueRow({
   const retryFailed = surface.surfaceKind === "operation" ? members.flatMap(member => actionsOf(member)
     .filter(action => action.kind === "command" && action.key === "retry-member")
     .map(action => () => onAction?.(action, { runId: member.runId, expectedVersion: member.rowRevision }))) : [];
-  const bulkKey = batch?.key ?? surface.runId;
   const batchTiming = batch === undefined ? undefined : runTiming(batch, state.nowIso, isTerminalQueueStatus);
   const batchWarnings = batch?.members.flatMap(member => member.warnings.state === "present" ? [member.warnings] : []) ?? [];
   const batchTestSystems = batch === undefined ? [] : [...new Set(batch.members.flatMap(member => testInstanceSystems(member.resolvedInstances)))];
-  const bulkChecked = batch === undefined ? bulkIds?.has(surface.runId) === true
-    : batch.members.every(member => bulkIds?.has(member.runId) === true) ? true
-      : batch.members.some(member => bulkIds?.has(member.runId) === true) ? "indeterminate" as const : false;
 
   return (
     <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
-      {state.selectMode === true && onToggleBulk !== undefined && <Checkbox
-        checked={bulkChecked}
-        label={<span className="sr-only">Select {title} for a bulk command</span>}
-        onCheckedChange={() => onToggleBulk(bulkKey)}
-        className="mt-[var(--ds-space-queue-top)] shrink-0"
-      />}
         <div
           onClick={event => {
             if (event.detail > 1) return;
-            if (state.selectMode === true) handlers.onToggleBulk?.(bulkKey);
-            else if (batch === undefined) handlers.onSelect(surface.runId);
+            if (batch === undefined) handlers.onSelect(surface.runId);
           }}
           role="group"
           // Accessible row names include warning completion and gate age, never hue alone.
@@ -801,16 +775,12 @@ export function QueueRow({
             announcing && cn(dsMotion.move, "-translate-y-[var(--ds-travel-sm)]"),
           )}
         >
-          {(batch === undefined || state.selectMode === true) && <BareButton type="button" data-queue-open
-            aria-label={batch === undefined ? queueRowAccessibleName(surface, state.nowIso) : `Select ${title}`}
+          {batch === undefined && <BareButton type="button" data-queue-open
+            aria-label={queueRowAccessibleName(surface, state.nowIso)}
             aria-pressed={selected}
             onClick={event => {
               event.stopPropagation();
-              if (state.selectMode === true) handlers.onToggleBulk?.(bulkKey);
-              else handlers.onSelect(surface.runId);
-            }}
-            onKeyDown={event => {
-              if (event.key === "Escape" && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); }
+              handlers.onSelect(surface.runId);
             }}
             className="pointer-events-none absolute inset-0 rounded-[inherit] outline-none" />}
           <div data-queue-body className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
@@ -1102,7 +1072,7 @@ export const QueuePanel = memo(function QueuePanel({
                   const item = itemByRunId.get(String(row.runId));
                   if (item === undefined) throw new Error(`queue row lost item ${String(row.itemId)}`);
                   const selectedAttempt = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId);
-                  const visible = state.selectMode === true ? item.representative : selectedAttempt ?? item.representative;
+                  const visible = selectedAttempt ?? item.representative;
                   return <MemoQueueRow
                     key={item.key}
                     surface={visible}
@@ -1124,7 +1094,7 @@ export const QueuePanel = memo(function QueuePanel({
         })}
       </div>
   );
-  return <section aria-label="Queue" onKeyDown={event => { if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); } }} className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}>
+  return <section aria-label="Queue" className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}>
     {renderBody ? renderBody(body) : <>{header ?? <div className={cn("flex shrink-0 items-center border-b px-3", dsSize.hBar, dsBorder.subtle)}><h2 className={cn(dsText.title, "truncate font-medium")}>{panelLabel}</h2></div>}{body}</>}
   </section>;
 });

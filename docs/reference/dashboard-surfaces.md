@@ -106,7 +106,7 @@ source, and sheet targets show explicit unavailable states.
 
 The Queue displays selected workflow/day rows with title, status, outcome/warnings, timing,
 identity disclosure, and available actions. The focus toolbar sorts and filters the same row
-population. Focus mode and expanded wells are view coordinates; bulk selection is transient state.
+population. Focus mode and expanded wells are view coordinates; the queue has no bulk selection.
 Confirmed person titles read `Last, First · EID #`, including operation members. The title resolver
 joins only a declared same-checkpoint identity or verified same-run result fields; unresolved searches
 keep their known input title. Operator names remain separate from the system subject.
@@ -158,8 +158,7 @@ Lookup status filters admit a batch when one of its attempts matches and retain 
 selected-day cohort. The well labels its population as people on this day: the wire does not claim
 complete cross-day session membership. Group status and end time derive from current member facts;
 a missing terminal end stays duration unknown. Selection and well expansion use stable session keys.
-Selection-mode inputs expand locally to current member run IDs for typed bulk planning; the mounted
-Focus toolbar adds no selection toggle. The batch footer keeps stable session identity and timing.
+The focus toolbar adds no selection toggle. The batch footer keeps stable session identity and timing.
 Its single footer also uses `FooterActions` for the explicitly selected person's exact attempt and
 served revision. An accessible person/attempt name and tooltip identify the action scope. With no
 person selected it exposes no run action; it never chooses a representative or claims a batch mutation. Cancel,
@@ -289,7 +288,7 @@ and current workflow. Served launches use canonical plan/client models. Workflow
 `WorkflowMockRun` and `MockDraft`, then create local mock runs. Pending locks prevent duplicate
 activation, and refusal/recovery stays visible inside the launcher.
 
-The shared layouts provide Input or Values, Options, optional Steps, and Confirm. The stage rail
+The shared layouts provide Input or Values, Options, and Checks. The stage rail
 contains only reachable stages. Rerun shows source outcomes and retains lineage while creating a
 new attempt. Input methods follow declared workflow capability: typed identifiers, saved workbook rows,
 PDF documents or parent-only delegation. Served spreadsheet intake uploads in the launcher before opening a
@@ -313,9 +312,9 @@ Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless
 declared, a required-screenshots notice, and workflow-specific fields. New/reset dashboard
 launches start with Dry run off and Headed browser mode. Workflow captures cannot be turned off. The operator explicitly
 chooses other values. Interactive work has priority over Bulk background batches; this is not a
-promise of immediate execution or preemption. Options omit the policy/version footer; Confirm retains the workflow version. A workflow with no flags has no empty flag group.
+promise of immediate execution or preemption. Options omit the policy/version footer. A workflow with no flags has no empty flag group.
 
-Steps keep required form-fill/save/submit actions and required sign-in included. Reading steps can
+Workflow steps keep required form-fill/save/submit actions and required sign-in included. Reading steps can
 accept typed manual values. PDF plans show Read document with OCR as system label; its checkbox
 controls `ocrMode` (`extract` or `manual`), not removal of delegation or approval. Parent document
 type fixes the predefined fields. Standalone OCR is directly runnable with a form-type choice.
@@ -325,7 +324,7 @@ Missing required values and invalid page/identity bindings refuse. Manual assert
 permission or a submit receipt. Existing served declarations remain their own authority; preview
 keys are not automatically backend DTOs.
 
-Confirm shows the exact accepted input/options/step plan and number of runs. Start requires the
+Checks show the exact accepted input/options/step plan and number of runs. Start requires the
 matching token and fingerprints. Raw-draft changes clear a settled plan; late settlements are
 ignored when their request identity moved. Omissions use the declaration's schema and parsed
 output, not copied validators. A server omission set mismatch disables Start and names both sets.
@@ -400,11 +399,10 @@ scrolling worker cards and an Add workers dialog.
 
 Cards show workflow/state, browser systems and availability, current action or idle message,
 timeline, and footer controls. Running offers Pause, paused offers Resume, failed offers Retry,
-non-idle offers Stop, and idle offers Remove worker. Pending/uncertain operations lock duplicate
-commands and offer a check of the original attempt. Removing a card returns focus to the strip toggle.
+non-idle offers Stop, and idle offers Remove worker. Pending operations lock duplicate
+commands; Relay reads an unsettled result back itself and no card shows a check control. Removing a card returns focus to the strip toggle.
 
-Add workers progress and confirmed success appear only as toast notifications. Refusals, uncertain
-outcomes and the original attempt’s Check outcome action remain in the panel. Pending progress
+Add workers progress and confirmed success appear only as toast notifications. A refusal is a short toast. Pending progress
 toasts stay until settlement or panel unmount.
 
 Add workers selects workflow and count with increment/decrement controls. The count is bounded
@@ -474,43 +472,26 @@ and body content. The rail remains available while served fields load/fail. Sear
 field/disclosure, supports keyboard traversal, and announces missing targets. Section scroll positions
 are retained within the mounted page. Unsaved and uncertain settings drafts participate in exit and unload guards.
 
-| Group | Section IDs and displayed pages |
+| Group | Pages |
 | --- | --- |
-| Personal | `general` General, `credentials` Credentials |
-| Advanced | `performance` Performance, `paths` Paths, `routes` Routes, plus any additional served editor section |
+| Personal | `general` General, `account` Account |
 | Data | `spreadsheets` Spreadsheets, `explorer` Explorer, `activity` Analytics |
-| Status | `preflight` Preflight and served status sections such as `storage` |
 | Help | `keyboard` Keyboard |
 
-`settings-model.ts` resolves aliases: `display`, `annual-dates`, `providers`, and `provider-env`
-resolve to General; `runtime-isolation` resolves to Paths; `protected-store` resolves to Credentials.
-The workflow-capabilities route resolves to Preflight. An empty section opens the first entry.
-An unknown section shows No such settings section. An unrendered served section names its missing
-renderer. Archive and UI catalog requests show removal notices, with a guarded return to dashboard.
+General holds the editable settings that earlier builds split into Display, Performance, Paths, Routes
+and Providers. `settings-model.ts` resolves aliases: `display`, `annual-dates`, `providers`,
+`provider-env`, `paths`, `routes`, `runtime-isolation`, `storage`, `preflight` and the workflow
+capabilities route open General; `credentials` and `protected-store` open Account. An empty
+section opens the first entry. An unknown section shows No such settings section. The
+Settings sidebar has no Advanced or Status group, and no Preflight, Storage or capabilities page.
 
 ### General and ChatGPT account
-
-Storage includes one confirmed Clear run history action. Its served status counts terminal and
-active runs across all workflows and dates; any active run refuses the whole command. The command
-removes the terminal run forest, Logs, diagnostic attachments and ordinary run-owned task artifacts
-through journaled tombstones and resumable exact-file cleanup. Retained authority, shared and library
-consumers keep their artifact files. Spreadsheets, settings, credentials, account data and write-safety
-records remain. An uncertain response retains its command ID; Check clear result authenticates only
-an existing command and resumes its committed cleanup. An absent journal returns Not recorded and
-requires a new destructive confirmation; checking cannot initiate deletion of later runs. The run picker omits delegated-only previews while Explorer retains their definitions.
-Ordinary writable authority opening resumes authenticated pending deletion manifests before exposing
-the runtime, so restarting or signing in again does not require the browser's old command ID.
-Storage status also resumes pending manifests in an open backend and rebuilds the projection after
-settlement, so a browser reload can recover without starting another deletion.
-Read-only inspection stays passive; pending-file inventory includes only files still present, while
-live consumers continue to require their evidence.
-`createRunHistoryService` requires composition wiring before the Storage action is available.
 
 Every assistant mutation requires an explicit Confirm. Settings grants enable proposals and never authorize automatic changes. Retired permission modes cannot be selected or granted; their terminal history stays inert. A grant alone does not verify
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit mock previews keep their local controls.
 
-General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. Preference feedback retains loading, saving, failure and uncertain states below the rows.
+General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. A preference shows its new value at once; a failed save is a short toast.
 Delete account uses the active ready profile's session owner and the typed delete client. Its confirmation
 is keyed to the profile and session epoch, and the request carries both as expected authority. The server
 atomically compares them with the authenticated selection before logout, detach or erasure, including
@@ -569,29 +550,19 @@ served values remain unavailable.
 
 ### Preflight and storage
 
-Preflight displays served checks with scope, fingerprint, checked time, and readiness/refusal.
-Rerun retains the completed report's nodes/geometry rather than blanking the page. Remedy mapping
-navigates to Credentials, Routes, Storage, Sessions, or Settings. A rendered remedy does not repair.
-Missing checks and unavailable/history state remain explicit.
+Settings has no Preflight or Storage page. Preflight appears only as the Checks stage of the run
+dialog, which has three served states. Checking shows a skeleton list and a Checking status; it does not keep the previous report visible. Unavailable shows one
+failure notice with Check again. Ready lists only checks that are not passing, failures first and then
+warnings, each with its title and a one-line description; when nothing needs attention it says Ready
+to start. The stage shows no fingerprint or checked time. A failed check with a known remedy has a
+Fix button named for the remedy that opens its Settings section; a warning has no button, and a
+failed check with no remedy shows Failed alone. Opening a Fix does not repair anything. Start stays
+off until every check was read and none failed.
 
-Settings Preflight's Status section places Test OCR beside Run preflight, using the existing Button
-and Banner. It reads the fixed synthetic page only on an explicit click for a freshly loaded,
-plan-enabled account. The preflight-owned model distinguishes idle, disabled, loading,
-completion with the backend model name, local failure, refusal and uncertain outcome; failure text
-comes from the error catalog. Duplicate clicks are suppressed, calls are bounded to 120 seconds,
-and account refresh, account actions and profile disposal abort and invalidate pending results.
-Uncertain outcomes stay locked across account refresh and Settings navigation for the current
-profile lifetime. Neither page load, scope refresh, sign-in nor Run preflight dispatches OCR.
-The result is a diagnostic only and never contributes to readiness reports or admission.
-
-Storage displays health, doctor reports and run-history counts through its typed client. Clear run
-history removes finished runs, logs, screenshots and disposable evidence through the existing
-deletion service; active runs and unresolved writes refuse the operation. The confirmation captures
-the displayed profile ID and session epoch; Clear and result lookup retain that target. Production
-admits both fields against the current selected authority before lifecycle or cleanup effects. Settings, credentials,
-spreadsheets and retained write evidence stay protected. Authority availability differs
-from backup age. Storage updates show their status without an update-history disclosure. Recovery actions require their exact
-served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. Automatic backup and repair records remain on disk without dashboard notices.
+Test OCR and Clear run history have no dashboard control. Storage repairs itself at startup before
+ordinary runtime admission; Settings rendering performs no repair or backup, and automatic backup
+and repair records stay on disk without dashboard notices. Settings, credentials, spreadsheets and
+retained write evidence stay protected.
 
 ### Keyboard
 
@@ -890,5 +861,5 @@ Unknown enrollment is labelled Unknown, not failed or completed. Method chips st
 The Duo footer confirms Cancel sign-up before calling the existing cancellation owner; returning to
 Details uses the same confirmation. Lost cancellation responses prevent another attempt for that
 draft. The virtual-platform subtitle names the built-in passkey while preserving the Touch ID chip.
-The `duo-signup` fixture remains synthetic; live enrollment, closure and account publication need
+Live enrollment, closure and account publication need
 their runtime acceptance checks.

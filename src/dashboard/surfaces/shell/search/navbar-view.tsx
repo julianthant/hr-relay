@@ -2,9 +2,8 @@ import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { shortcutActionForEvent, shortcutLabel, useShortcutPreferences } from "../../settings/navigation/keyboard-preferences-model.js";
 import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { Button, DatePicker, Tooltip, dsFocus } from "../../../ds/ui.js";
+import { Tooltip, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
-import type { NavControls } from "../navigation-controls.js";
 import type { NavbarData, NavbarSearchResult } from "./navbar-view-model.js";
 import { SearchPalette } from "./search-palette.js";
 import { type PaletteAction, type PaletteWorkflow } from "./search-palette-model.js";
@@ -38,10 +37,4 @@ export function RailSearch({ data, workflows, startKey, onAction, onWorkflow, on
       onRun={result => onResult(result, () => { setOpen(false); setNotice(""); }, setNotice)} notice={notice || data.unavailable || data.sheetsUnavailable || ""}
       onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} />
   </div>;
-}
-
-export function NavbarCalendar({ data }: { data: NavbarData; nav?: NavControls }) {
-  const [day, setDay] = useState(data.today);
-  return <DatePicker label="Dashboard date" triggerLabel="Choose date" hideLabel required value={day}
-    onChange={next => { if (next !== "" && next <= data.today) setDay(next); }} max={data.today} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(data.today)}>Today</Button>} />;
 }

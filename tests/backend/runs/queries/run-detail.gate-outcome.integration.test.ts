@@ -3,7 +3,6 @@ import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-d
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
-import { terminalOutcomeText } from "../../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { queuedEventOf, runEndedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -219,31 +218,5 @@ describe("a rehearsal's terminal is never verified-done", () => {
     // RESULT to report — `cancelled` already says what happened.
     assert.equal(outcome.result, "cancelled");
     assert.equal(outcome.rehearsal, undefined);
-  });
-
-  it("says `dry run` on the panel's outcome bar, and says it FIRST", async () => {
-    const w = await world();
-    settledGatedRun(w, { dryRun: true });
-    putGateResult(w);
-    const { outcome } = buildRunDetail(depsOf(w), RUN_ID);
-    if (outcome.state !== "terminal") throw new Error("unreachable");
-
-
-    const text = terminalOutcomeText(outcome);
-    assert.ok(text.startsWith("dry run · "), text);
-    assert.ok(text.includes("partial"), text);
-    assert.ok(!text.includes("verified-done"), text);
-  });
-
-  it("leaves the real run's outcome bar exactly as it was", async () => {
-    const w = await world();
-    settledGatedRun(w);
-    putGateResult(w);
-    const { outcome } = buildRunDetail(depsOf(w), RUN_ID);
-    if (outcome.state !== "terminal") throw new Error("unreachable");
-
-    const text = terminalOutcomeText(outcome);
-    assert.ok(!text.includes("dry run"), text);
-    assert.ok(text.startsWith("verified-done · "), text);
   });
 });

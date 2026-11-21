@@ -1,7 +1,7 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useRef, useState } from "react";
 import { Check, Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
-import { Badge, Button, Card, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
+import { Button, Card, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
 import { duoSummary, useServedDuoSetup, useWaitStage, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
 import { AppLockup } from "./app-lockup.js";
 import "./onboarding-setup.css";
@@ -111,22 +111,4 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
         dismissConfirmation();
       }}>Device added</Button></DialogFooter></DialogContent></Dialog>
   </div>;
-}
-
-export function DuoSignupSteps({ methods, platformAuthenticator, state, onEnroll, onFinish, onCancel, onShowSetup }: {
-  methods: Readonly<Record<"key" | "touch", "idle" | "pending" | "complete" | "unknown" | "unavailable">>;
-  platformAuthenticator: "hardware" | "virtual";
-  state: "enrolling" | "finishing" | "cancelling";
-  onEnroll?: (method: "key" | "touch") => void;
-  onFinish?: () => void;
-  onCancel?: () => void;
-  onShowSetup?: () => void;
-}) {
-  const busy = state !== "enrolling" || methods.key === "pending" || methods.touch === "pending";
-  const ready = methods.key === "complete" && methods.touch === "complete";
-  return <section aria-label="Required Duo methods" className="duo-signup-methods">
-    <div className="duo-signup-cards">{(["touch", "key"] as const).map(method => <section key={method} className="duo-signup-card"><div className="flex items-center justify-between gap-3"><span className="duo-signup-icon">{methods[method] === "complete" ? <Check aria-hidden /> : method === "touch" ? <Fingerprint aria-hidden /> : <KeyRound aria-hidden />}</span><Badge tone={methods[method] === "complete" ? "success" : "neutral"}>{methods[method] === "complete" ? "Added" : methods[method] === "pending" ? "Waiting for Duo" : methods[method] === "unknown" ? "Unknown" : methods[method] === "unavailable" ? "Unavailable" : "Not added"}</Badge></div><h2>{method === "touch" ? "Touch ID" : "Security key"}</h2><p>{methods[method] === "complete" ? method === "touch" && platformAuthenticator === "virtual" ? "Verified in Duo on this computer." : "Verified in Duo." : methods[method] === "pending" ? "Finish adding it in the setup browser." : methods[method] === "unknown" ? "Relay could not confirm it. Review your Duo devices." : methods[method] === "unavailable" ? "Relay cannot reach it. Reopen the setup browser." : method === "touch" ? platformAuthenticator === "virtual" ? "Touch ID on this computer, managed by Relay." : "Use Touch ID on this computer." : "Use a security key in Relay’s setup browser."}</p>{methods[method] === "idle" && <Button variant="secondary" disabled={busy || !onEnroll} onClick={() => onEnroll?.(method)}>Add {method === "touch" ? "Touch ID" : "Security key"}</Button>}{(methods[method] === "pending" || methods[method] === "unknown" || methods[method] === "unavailable") && <Button variant="secondary" disabled={state !== "enrolling" || !onShowSetup} onClick={onShowSetup}>Show setup browser</Button>}</section>)}</div>
-    {state !== "enrolling" && <p role="status">{state === "finishing" ? "Finishing sign-up; your account is not published yet." : "Cancelling sign-up; resource closure is not complete."}</p>}
-    <footer className="flex items-center justify-between border-t border-ui-stroke pt-[var(--ds-space-loose)]"><Button variant="ghost" disabled={state !== "enrolling" || !onCancel} onClick={onCancel}>Back to login</Button><Button disabled={!ready || busy || !onFinish} onClick={onFinish}>Finish</Button></footer>
-  </section>;
 }

@@ -6,15 +6,7 @@ import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-pr
 import { ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
-import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
-import { useDashboardCommandBinding } from "../../../src/dashboard/state/client-context.js";
-import { QueueToolbar, ConfirmBulkCommandDialog, type PendingBulkCommand } from "../../../src/dashboard/surfaces/queue/queue-toolbar.js";
-import { CommandRecovery } from "../../../src/dashboard/surfaces/shared/actions/command-recovery.js";
-import { composeBulkRunCommand, planBulkVerb } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
-import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
-import type { CommandOutcome, CommandExecutionOptions } from "../../../src/dashboard/app/commands/command-executor.js";
-import { CommandRequestSchema, BulkRunCommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
-import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
+import { CommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
 import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../mocks/helpers/fixture-settings.js";
@@ -40,7 +32,7 @@ import { DashboardDayWireSchema as DashboardDayWireSchema_m1 } from "../../../sr
 // @vitest-environment jsdom
 import { default as assert_m2,default as assert_m3 } from 'node:assert/strict';
 import { readFileSync as readFileSync_m3 } from "node:fs";
-import { act as act_m2,createElement as createElement_m2, useState, Fragment } from 'react';
+import { act as act_m2,createElement as createElement_m2 } from 'react';
 import { createRoot as createRoot_m2,type Root as Root_m2 } from 'react-dom/client';
 import { afterEach as afterEach_m2,describe as describe_m2,describe as describe_m3,it as it_m2,it as it_m3 } from 'vitest';
 import { DashboardApp as DashboardApp_m2 } from '../../../src/dashboard/app/dashboard-app.js';
@@ -853,76 +845,6 @@ it_m2("renders an authenticated child workflow without a public launch source", 
   assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${parent.runId}"]`));
   assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${member.runId}"]`));
 });
-describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () => {
-  it_m2("preserves uncertainty from a post-dispatch throw", async () => {
-    const bytes: string[] = [];
-    let day = FIXTURE_DAY_WIRE_m2;
-    const client = createDashboardClient_m2({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
-      if (url.includes("/dashboard?day=")) return Response.json(day);
-      if (typeof init?.body !== "string") throw new Error("missing bulk body");
-      const body = init.body; bytes.push(body);
-      const request = BulkRunCommandRequestSchema.parse(JSON.parse(body));
-      if (bytes.length === 1) throw new Error("private transport sentinel");
-      const ids = new Set(request.targets.map(target => target.runId));
-      day = DashboardDayWireSchema_m2.parse({ ...day, queueSurfaces: day.queueSurfaces.map(row => ids.has(row.runId)
-        ? { ...row, status: "cancelled", rowRevision: row.rowRevision + 1, actions: [], endedAt: { state: "present", value: row.updatedAt }, gateOpenedAt: { state: "absent", reason: "No open gate after cancellation" } } : row) });
-      return Response.json({ state: "vector", bulkCommandId: request.bulkCommandId, type: request.type, requestedCount: request.targets.length,
-        results: request.targets.map(target => ({ outcome: "applied", commandId: deriveBulkChildCommandId(request.bulkCommandId, target.runId), runId: target.runId, replayed: true, detail: "private server sentinel" })) });
-    } });
-    const published: CommandOutcome[] = [];
-    function BulkHarness() {
-      const binding = useDashboardCommandBinding();
-      if (binding === undefined) throw new Error("missing fixture binding");
-      const [selectMode, setSelectMode] = useState(false);
-      const [selected, setSelected] = useState(false);
-      const [pending, setPending] = useState<PendingBulkCommand | null>(null);
-      const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
-      const [, update] = useState(0);
-      const candidates = FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(row => row.parent === null).map(row => ({ runId: row.runId, title: row.title, actions: row.actions }));
-      const plan = planBulkVerb(candidates, "cancel", candidates.map(row => row.runId));
-      const options: CommandExecutionOptions = { scope: binding.scope, readback: (request, reply) => verifyShellCommandEffect(client, FIXTURE_DAY_WIRE_m2.day, request, reply),
-        publish: outcome => { published.push(outcome); binding.feedback(outcome); update(value => value + 1); } };
-      const entries = binding.executor.retainedAttempts().flatMap(attempt => attempt.outcome?.kind === "uncertain" && "targets" in attempt.request
-        ? [{ inFlightKey: attempt.request.commandId, label: "cancel", targets: plan.eligible }] : []);
-      return createElement_m2(Fragment, null,
-        createElement_m2(QueueToolbar, { sort: "attention", onSort: () => undefined, selectMode, onSelectMode: setSelectMode, selectedCount: selected ? candidates.length : 0,
-          visibleIds: candidates.map(row => row.runId), onSelectAll: () => setSelected(true), onClearSelection: () => setSelected(false), bulkPlans: selected ? [plan] : [], bulkUnavailable: [],
-          onBulk: next => setPending({ plan: next }), bulkOutcome: null, onDismissBulkOutcome: () => undefined, onSelectRun: () => undefined }),
-        createElement_m2(ConfirmBulkCommandDialog, { pending, onCancel: () => setPending(null), onConfirm: confirmed => {
-          setPending(null);
-          const composed = composeBulkRunCommand(confirmed.plan, { actorId: binding.scope.actorId, source: "queue", requestedAt: binding.authority.nowIso });
-          if (composed.state !== "ready") throw new Error("bulk fixture composition refused");
-          void binding.executor.execute(composed.request, options);
-        } }),
-        entries.map(entry => createElement_m2("button", { key: entry.inFlightKey, onClick: () => setRecoveryKey(entry.inFlightKey) }, `Review ${entry.label}`)), // stands in for the Priority notification's Review action
-        createElement_m2(CommandRecovery, { entries, pendingKey: recoveryKey, onReview: setRecoveryKey, onReplay: entry => { setRecoveryKey(null); void binding.executor.replay(entry.inFlightKey, options); } }),
-      );
-    }
-    const host = document.createElement("div"); document.body.append(host); root = createRoot_m2(host);
-    await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(FixtureCommandBinding, { actorId: "local-operator", children: createElement_m2(BulkHarness) }) })));
-    const click = async (name: string) => {
-      const button = [...document.querySelectorAll("button")].find(candidate => candidate.textContent?.trim() === name || candidate.textContent?.startsWith(name));
-      assert_m2.ok(button, `missing ${name} action`);
-      await act_m2(async () => button.click()); await settle();
-    };
-    await click("Select"); await click("Select all"); await click("Cancel");
-    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent?.startsWith("Cancel"));
-    assert_m2.equal(confirm instanceof HTMLButtonElement, true, "missing bulk confirmation action");
-    if (!(confirm instanceof HTMLButtonElement)) throw new Error("missing bulk confirmation action");
-    await act_m2(async () => confirm.click()); await settle();
-    assert_m2.equal(bytes.length, 1);
-    assert_m2.match(document.body.textContent ?? "", /cancel: outcome unknown/u);
-    assert_m2.doesNotMatch(document.body.textContent ?? "", /private transport sentinel|Command confirmed/u);
-    await settle(); assert_m2.equal(bytes.length, 1, "uncertainty never automatically retries");
-    await click("Review cancel"); await click("Resend original request");
-    assert_m2.deepEqual(bytes, [bytes[0], bytes[0]], "recovery preserves the full parent envelope bytes");
-    assert_m2.doesNotMatch(document.body.textContent ?? "", /cancel: outcome unknown/u, "confirmed replay clears recovery");
-    assert_m2.doesNotMatch(document.body.textContent ?? "", /private server sentinel/u);
-    assert_m2.equal(published[0]?.kind, "uncertain");
-    assert_m2.equal(published.at(-1)?.kind, "confirmed", "success requires matching authoritative readback");
-  });
-});
-
 function withTitle(title: string, cursor: string, revision: number): DashboardDayWire_m2 {
   return DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: cursor,
     queueSurfaces: FIXTURE_DAY_WIRE_m2.queueSurfaces.map(row => row.surfaceKind === 'single' ? { ...row, title, rowRevision: revision, actions: row.actions.map(action => action.kind === "command" ? { ...action, expectedVersion: revision } : action) } : row) });

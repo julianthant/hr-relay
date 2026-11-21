@@ -37,7 +37,6 @@ import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/
 import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./navigation/url-state.js";
-import { PreflightActionsProvider } from "../surfaces/settings/preflight/preflight-actions.js";
 import { resolveDateSelection, routeForStartedRun } from "./navigation/date-state-model.js";
 import { RunLaunchHost } from "../surfaces/run-start/run-launch.js";
 import { launchWorkflows, useRunLaunch } from "../surfaces/run-start/run-launch-model.js";
@@ -70,7 +69,6 @@ import { CommandRecovery } from "../surfaces/shared/actions/command-recovery.js"
 import { recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { formatTime } from "../lib/date-format.js";
-import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
 import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection, queueRenameDraft } from "../surfaces/queue/queue-model.js";
 import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
@@ -80,10 +78,8 @@ visibleQueueKeys,
 type QueueSortKey,
 } from "../surfaces/queue/queue-model.js";
 import {
-ConfirmBulkCommandDialog,
 BulkCommandFeedback,
 PauseAllQuitControls,
-type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
 import { bulkResultNotice } from "../surfaces/queue/queue-toolbar-model.js";
 import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
@@ -107,7 +103,6 @@ import { notificationTargetUnavailable, resolveRunNavigation } from "./navigatio
 import { withCommandNotices, type NotificationDestination, type NotificationItem } from "../surfaces/notifications/notifications-view-model.js";
 import {
 bulkSubjectsOf, BULK_VERB_LABEL,
-composeBulkRunCommand,
 type BulkBatchOutcome,
 type BulkVerbPlan,
 } from "./commands/bulk-dispatch.js";
@@ -127,7 +122,6 @@ import { useGlobalKeys } from "./navigation/global-keys.js";
 import { useDashboardNavigation } from "./navigation/navigation-model.js";
 import type { NativeRouteHistory,PopstateRouteHandler } from "./navigation/route-history-model.js";
 import { useRoute } from "./navigation/route-history-model.js";
-import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
 import { assistantNeeds, useAssistantOpen } from "../surfaces/shell/assistant-launcher-model.js";
 import {
@@ -137,7 +131,6 @@ type AppRouteState
 } from "./navigation/url-state.js";
 
 
-const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
 const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
@@ -196,13 +189,9 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const setFilter = useCallback((next: readonly StatusBucket[]) => setRoute(current => ({ ...current, view: { ...current.view, queueFilter: [...next] } })), [setRoute]);
   const openWells = useMemo(() => new Set(route.view?.queueOpen ?? []), [route.view?.queueOpen]);
   const setOpenWells = useCallback((next: ReadonlySet<string>) => setRoute(current => ({ ...current, view: { ...current.view, queueOpen: [...next] } })), [setRoute]);
-  const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
-  const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
   /** the toolbar's ordering control and its select mode — client UI state */
   const sort = route.view?.queueSort ?? "attention";
   const setSort = useCallback((next: QueueSortKey) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next } })), [setRoute]);
-  const [selectMode, setSelectMode] = useState(false);
-  const [bulkIds, setBulkIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
 
@@ -263,14 +252,8 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onFilter={setFilter}
           openWells={openWells}
           onWells={setOpenWells}
-          tab={tab}
-          onTab={setTab}
           sort={sort}
           onSort={setSort}
-          selectMode={selectMode}
-          onSelectMode={setSelectMode}
-          bulkIds={bulkIds}
-          onBulkIds={setBulkIds}
         /></DashboardPageBoundary></ViewNavigationProvider>
       )}
     </ToastProvider>
@@ -344,16 +327,8 @@ interface LoadedAppProps {
   onFilter: (bucket: readonly StatusBucket[]) => void;
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
-  tab: PanelTab | undefined;
-  /** The operator's EXPLICIT tab choice. `undefined` clears the override and
- * hands the panel back to the run's own default — which is what the history */
-  onTab: (tab: PanelTab | undefined) => void;
   sort: QueueSortKey;
   onSort: (sort: QueueSortKey) => void;
-  selectMode: boolean;
-  onSelectMode: (on: boolean) => void;
-  bulkIds: ReadonlySet<string>;
-  onBulkIds: (next: ReadonlySet<string>) => void;
 }
 
 
@@ -383,13 +358,8 @@ function LoadedApp({
   onFilter,
   openWells,
   onWells,
-  onTab,
   sort,
   onSort,
-  selectMode,
-  onSelectMode,
-  bulkIds,
-  onBulkIds,
 }: LoadedAppProps) {
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
@@ -451,7 +421,6 @@ function LoadedApp({
   const [pendingRename, setPendingRename] = useState<(PendingRename & { readonly scope: CommandExecutionScope }) | null>(null);
   /** Keep partial batch results until dismissed so every outcome can be read. */
 type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: RetainedCommandRequest };
-  const [pendingBulk, setPendingBulk] = useState<(PendingBulkCommand & { readonly scope: CommandExecutionScope }) | null>(null);
   const [bulkReview, setBulkReview] = useState(false);
   const [openedBulk, setOpenedBulk] = useState<BulkBatchOutcome | null>(null);
   const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
@@ -461,15 +430,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const commandLabels = useRef(new Map<string, string>());
   const routeRef = useRef(route);
   routeRef.current = route;
-  const bulkIdsRef = useRef(bulkIds);
-  bulkIdsRef.current = bulkIds;
   const { toast } = useToasts();
   const executor = useDashboardCommandExecutor();
   const commandScope = useMemo(() => Object.freeze({ actorId: boot.actor.id, client, authority: authorityEpoch, dayRequest: dayState.request }), [boot.actor.id, client, authorityEpoch, dayState.request]);
   const currentCommandScope = useRef<CommandExecutionScope | undefined>(commandScope);
   currentCommandScope.current = commandScope;
-  const pendingConfirmation = useRef({ command: pendingCommand, rename: pendingRename, bulk: pendingBulk });
-  pendingConfirmation.current = { command: pendingCommand, rename: pendingRename, bulk: pendingBulk };
+  const pendingConfirmation = useRef({ command: pendingCommand, rename: pendingRename });
+  pendingConfirmation.current = { command: pendingCommand, rename: pendingRename };
   useLayoutEffect(() => {
     currentCommandScope.current = commandScope;
     return () => { if (currentCommandScope.current === commandScope) currentCommandScope.current = undefined; };
@@ -695,15 +662,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         if (!("targets" in request) && request.family === "run" && request.type === "delete" && outcome.reply !== undefined && "affectedTargets" in outcome.reply) {
           const removed = new Set<string>(outcome.reply.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []));
           if (routeRef.current.run !== undefined && removed.has(routeRef.current.run)) setRoute({ ...routeRef.current, run: undefined, section: undefined });
-          const next = new Set([...bulkIdsRef.current].filter(id => !removed.has(id)));
-          if (next.size !== bulkIdsRef.current.size) onBulkIds(next);
         }
       },
     };
     const execution = replay ? executor.replay(request.commandId, options) : executor.execute(request, options);
     refreshCommandRecovery(value => value + 1);
     await execution;
-  }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, nowIso, toast, setRoute, onBulkIds]);
+  }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, nowIso, toast, setRoute]);
 
   const applicationAction = (action: "pause-all" | "pause-all-and-quit" | "resume") => {
     if (application === undefined || application.state !== "ready" || applicationBusy || quitting) return;
@@ -736,14 +701,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     if (!request.success) { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})).text }); return Promise.resolve(); }
     return executeShell(request.data, action.label);
   }, [commandScope.actorId, nowIso, executor, executeShell, toast]);
-
-  const dispatchBulk = useCallback((plan: BulkVerbPlan, retained?: { commandId?: string; requestedAt?: string }): void => {
-    const composed = composeBulkRunCommand(plan, { actorId: commandScope.actorId, source: "queue", commandId: retained?.commandId ?? crypto.randomUUID(), requestedAt: retained?.requestedAt ?? nowIso });
-    if (composed.state === "refused") { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text }); return; }
-    const request = BulkRunCommandRequestSchema.safeParse(composed.request);
-    if (!request.success) { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})).text }); return; }
-    void executeShell(request.data, plan.label, plan);
-  }, [commandScope.actorId, nowIso, executeShell, toast]);
 
   const runAction = useCallback(
     (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): Promise<void> | void => {
@@ -829,13 +786,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     await executeShell(request, "Queue grouping");
   }, [boot.actor.id, nowIso, executeShell, executor, commandScope.actorId]);
 
-  const exitQueueSelection = useCallback(() => {
-    onSelectMode(false);
-    onBulkIds(new Set());
-    queueMicrotask(() => {
-      document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
-    });
-  }, [onSelectMode, onBulkIds]);
   const renameQueueTitle = useCallback((runId: string, name: string) => {
     const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === runId);
     if (surface === undefined) {
@@ -858,8 +808,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
-    openWells, selectMode, bulkIds, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells, onBulkIds,
-    setBatchGrouping, exitQueueSelection, runQueueAction, renameTitle: renameQueueTitle,
+    openWells, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
+    setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
 
   const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, nowIso).map(entry => [entry.key, entry])), [surfaces, sort, nowIso]);
@@ -881,17 +831,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
     onStartRun: openStart,
-    onCyclePanelMode: () => {},
-    panelMode: "sidebar",
-    onMinimisePanel: () => {},
     // A preview queue is not the served queue; its rows must not move the hidden served selection.
     visibleQueueKeys: keyboardOrder,
     workflowIds: workflowCatalog.map(workflow => workflow.id), onWorkflow: selectWorkflow,
     attentionQueueKeys: keyboardAttention,
     selectedQueueKey,
     onSelectQueueKey: selectQueueKey,
-    panelTabs: NO_LOG_TABS,
-    onTab,
   });
 
   const ready = !hasServedWorkflows || dayResource.state === "loaded" || dayResource.state === "failed";
@@ -1042,7 +987,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (!current()) return;
       if (result.state === "refused") { refused(result.message); return; }
       setLaunchOpen(false);
-      exitQueueSelection();
       onFilter(["all"]);
       setRoute({ ...result.route, view: { ...result.route.view, queueFilter: ["all"] } });
       opened();
@@ -1061,7 +1005,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       });
     });
     return;
-  }, [client, commandScope, leaveSettings, setRoute, setLaunchOpen, exitQueueSelection, onFilter, commandResults, selectRun, workflowComposition]);
+  }, [client, commandScope, leaveSettings, setRoute, setLaunchOpen, onFilter, commandResults, selectRun, workflowComposition]);
 
   const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
     openNotification(destination, opened, refused);
@@ -1084,10 +1028,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   return (
     <DashboardCommandBindingProvider binding={commandBinding}>
-    <PreflightActionsProvider actions={{ actorId: authority.epoch.bootstrap.actor.id, descriptorFingerprint: authority.epoch.bootstrap.descriptorHash,
-      showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
-      showSessions: () => setSessionsOpen(true),
-    }}>
     <div
       data-mock-ready={ready ? "true" : "loading"}
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
@@ -1315,22 +1255,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           });
         }}
       />
-
-      {/* Every bulk press confirms the selection and each row’s independent version-bound transition. */}
-      <ConfirmBulkCommandDialog
-        pending={pendingBulk}
-        onCancel={() => setPendingBulk(null)}
-        onConfirm={(confirmed) => {
-          if (!currentCommandConfirmation(currentCommandScope.current, pendingConfirmation.current.bulk, confirmed)) return;
-          setPendingBulk(null);
-          dispatchBulk(confirmed.plan, {
-            commandId: confirmed.commandId,
-            requestedAt: confirmed.requestedAt,
-          });
-        }}
-      />
     </div>
-    </PreflightActionsProvider>
     </DashboardCommandBindingProvider>
   );
 }
