@@ -18,7 +18,7 @@ describe("dashboard readiness publication", () => {
       } },
       dashboardReady: () => { events.push("ready"); assert.ok(shutdown); shutdown(); },
     });
-    assert.deepEqual(events, ["listening", "subscribed", "ready", "stopped", "disposed"]);
+    assert.deepEqual(events, ["subscribed", "listening", "ready", "stopped", "disposed"]);
   });
 
   it("never announces readiness after failed composition", async () => {
@@ -666,12 +666,12 @@ it("retains both replacement-owner lifetime and stop failures with the original 
   assert.equal(disposed, true);
 });
 
-it("closes the accepted dashboard owner if real shutdown subscription fails", async () => {
+it("composes no dashboard owner if real shutdown subscription fails", async () => {
   const primary = new Error("signal subscription failed");
-  let stopped = false;
+  let composed = false;
   await assert.rejects(startRebuildRuntime_m0({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined,
-    dashboard: async () => ({ port: 3938, stop: async () => { stopped = true; } }),
+    dashboard: async () => { composed = true; return { port: 3938, stop: async () => undefined }; },
     signals: { subscribe: () => { throw primary; } },
   }), error => error === primary);
-  assert.equal(stopped, true);
+  assert.equal(composed, false);
 });

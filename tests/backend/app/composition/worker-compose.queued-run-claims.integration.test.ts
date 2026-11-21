@@ -316,6 +316,32 @@ describe("composed worker runtime", () => {
     assert.equal(stopped, 1, "composeWorkerRuntime must await source shutdown before returning");
   });
 
+  it("reports a gate source stop failure together with the worker failure", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const primary = new Error("claim admission refused"), stopFailure = new Error("gate source stop refused");
+    const port: GateSourcePort = {
+      kind: "external",
+      sourceId: "composition-stop-failure-fixture",
+      bindCorrelation: () => "synthetic-correlation",
+      subscribe: () => Promise.resolve(() => Promise.reject(stopFailure)),
+    };
+    const reported = await composeWorkerRuntime({
+      ...composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 }),
+      gateSourcePorts: [port],
+      afterClaimAdmissionCheck: () => { throw primary; },
+    }).then(() => assert.fail("the worker must report its failures"), (error: unknown) => error);
+    const seen = new Set<unknown>(), pending = [reported];
+    while (pending.length > 0) {
+      const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+      if (value instanceof AggregateError) pending.push(...(value.errors as unknown[]));
+      if (value instanceof Error) pending.push(value.cause);
+    }
+    assert.ok(seen.has(primary), "the worker failure must survive the gate source stop failure");
+    assert.ok(seen.has(stopFailure), "the gate source stop failure must be reported");
+  });
+
   it("ignores retired unjournaled file bytes and claims using SQLite settings", async () => {
     const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));

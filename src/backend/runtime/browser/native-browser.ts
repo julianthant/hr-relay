@@ -204,8 +204,11 @@ export async function closeContextWithProof(
   try {
     await Promise.race([
       (async (): Promise<void> => {
-        for (const page of pages) await page.close({ runBeforeUnload: false });
-        await context.close();
+        const failures: unknown[] = [];
+        for (const page of pages) await page.close({ runBeforeUnload: false }).catch((error: unknown) => { failures.push(error); });
+        await context.close().catch((error: unknown) => { failures.push(error); });
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) throw new AggregateError(failures, `${system} browser session close (${reason}) failed`);
       })(),
       timedOut,
     ]);

@@ -381,6 +381,9 @@ export function createProfileOnboarding(input: {
         browsers.delete(operationId);
       }
       assertCustody();
+      const receiptClosed = new Set(input.read(operationId).attempts.filter(entry => entry.providerClosedAt !== undefined).map(entry => entry.attemptId));
+      for (const [attemptId, lease] of leases) if (lease.attempt.operationId === operationId && lease.closed && receiptClosed.has(attemptId)) leases.delete(attemptId);
+      for (let index = retainedFailures.length - 1; index >= 0; index--) { const lease = retainedFailures[index]!.lease; if (lease !== undefined && !leases.has(lease.attempt.attemptId)) retainedFailures.splice(index, 1); }
     },
     recoverClosed(operationId: string): void {
       const draft = input.read(operationId);

@@ -181,30 +181,32 @@ function processShutdownSignals(): RuntimeShutdownSignals {
 
 
 async function ownDashboardUntilShutdown(
-  running: RunningDashboard,
+  compose: () => Promise<RunningDashboard>,
   signals: RuntimeShutdownSignals,
+  announce: (running: RunningDashboard) => void,
   ready?: () => void | Promise<void>,
 ): Promise<void> {
-  let requestShutdown: (() => void) | undefined;
-  const shutdownRequested = new Promise<void>((resolve) => {
-    requestShutdown = resolve;
-  });
-  let dispose: (() => void) | undefined;
+  let stopRequested = false;
+  let resolveShutdown!: () => void;
+  const shutdownRequested = new Promise<void>((resolve) => { resolveShutdown = resolve; });
+  // Owned before composition so a stop during startup is latched instead of killing open owners.
+  const dispose = signals.subscribe(() => { stopRequested = true; resolveShutdown(); });
   const failures: unknown[] = [];
+  let running: RunningDashboard | undefined;
   try {
-    dispose = signals.subscribe(() => {
-      if (requestShutdown === undefined) throw new Error("a shutdown signal arrived before the dashboard registered its handler");
-      requestShutdown();
-    });
-    await ready?.();
-    await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
+    running = await compose();
+    announce(running);
+    if (!stopRequested) await ready?.();
+    if (!stopRequested) await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
   } catch (error) { failures.push(error); }
-  try { await running.stop(); }
-  catch (error) {
-    if (error instanceof DashboardShutdownCompletedWithErrors) process.exitCode = 1;
-    else if (!failures.includes(error)) failures.push(error);
+  if (running !== undefined) {
+    try { await running.stop(); }
+    catch (error) {
+      if (error instanceof DashboardShutdownCompletedWithErrors) process.exitCode = 1;
+      else if (!failures.includes(error)) failures.push(error);
+    }
   }
-  try { dispose?.(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+  try { dispose(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, "dashboard lifetime and closure failed", { cause: failures[0] });
 }
@@ -240,9 +242,11 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     }
 
     const options = parseDashboardCommandOptions(args.slice(1));
-    const running = await compose(input.isolation, options);
-    write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
-    await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals(), input.dashboardReady
+    await ownDashboardUntilShutdown(
+      () => compose(input.isolation, options),
+      input.signals ?? processShutdownSignals(),
+      (running) => { write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`); },
+      input.dashboardReady
       ?? (() => new Promise<void>((resolve, reject) => {
         const send = process.send?.bind(process);
         if (send === undefined || !process.connected) { resolve(); return; }
