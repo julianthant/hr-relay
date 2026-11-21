@@ -135,16 +135,11 @@ export const COMMAND_ROW_STATE_MIGRATION = deepFreeze({ version: COMMAND_ROW_STA
 
 /** Migration 37 indexes the dashboard and worker statements that scanned a table growing with runs. */
 export const QUERY_INDEX_SCHEMA_VERSION = 37;
-/** Each index the migration adds, with the statements it serves; the store query plan test proves every one is used. */
-export const QUERY_INDEXES = deepFreeze({
+export const SCHEMA_37_QUERY_INDEXES = deepFreeze({
   checkpoints_run_idx: { on: "run_checkpoints(run_id,node_id,attempt,claim_generation)",
     serves: "a run's checkpoints in run deletion, the search index's latest node checkpoint and the stale-queue custody probe" },
   // The run state and pause indexes are partial, so reads of terminal or unpaused runs keep their own lookups.
-  runs_queued_idx: { on: "runs(workflow,CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id) WHERE state='queued' AND pause_state IS NULL",
-    serves: "the workflow-scoped worker claim" },
-  runs_workflow_day_idx: { on: "runs(workflow,local_day,id)", serves: "workflow-filtered queue pagination" },
-  runs_nonterminal_idx: { on: "runs(id) WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'",
-    serves: "the command kernel's active-run check, including state drift" },
+  runs_queued_idx: { on: "runs(created_at,id) WHERE state='queued'", serves: "the cross-workflow claim of queued runs" },
   runs_parked_gate_idx: { on: "runs(created_at,id) WHERE state='parked-gate'", serves: "runs.listParkedAtGate" },
   runs_pause_idx: { on: "runs(pause_state,created_at,id) WHERE pause_state IS NOT NULL", serves: "runs.listByPauseState" },
   runs_batch_idx: { on: "runs(batch_id,created_at,id)", serves: "runs.listBySession" },
@@ -170,8 +165,19 @@ export const QUERY_INDEXES = deepFreeze({
 /** The unique key UNIQUE(workflow,item_id,node_id,attempt,claim_generation) already serves checkpoint replay. */
 export const QUERY_INDEX_MIGRATION = deepFreeze({ version: QUERY_INDEX_SCHEMA_VERSION, statements: [
   "DROP INDEX checkpoints_replay_idx",
-  ...Object.entries(QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
+  ...Object.entries(SCHEMA_37_QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
 ] });
+
+const SCHEMA_38_QUERY_INDEXES = deepFreeze({
+  runs_queued_idx: { on: "runs(workflow,CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id) WHERE state='queued' AND pause_state IS NULL",
+    serves: "the workflow-scoped worker claim" },
+  runs_workflow_day_idx: { on: "runs(workflow,local_day,id)", serves: "workflow-filtered queue pagination" },
+  runs_nonterminal_idx: { on: "runs(id) WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'",
+    serves: "the command kernel's active-run check, including state drift" },
+});
+
+/** The current query indexes exercised by the store query plan test. */
+export const QUERY_INDEXES = deepFreeze({ ...SCHEMA_37_QUERY_INDEXES, ...SCHEMA_38_QUERY_INDEXES });
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   { version: 1, statements: [`CREATE TABLE database_states (
@@ -1137,7 +1143,11 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ] },
   WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION,
   QUERY_INDEX_MIGRATION,
-  WORKBOOK_PAYLOAD_MIGRATION,
+  { version: WORKBOOK_PAYLOAD_MIGRATION.version, statements: [
+    ...WORKBOOK_PAYLOAD_MIGRATION.statements,
+    "DROP INDEX runs_queued_idx",
+    ...Object.entries(SCHEMA_38_QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

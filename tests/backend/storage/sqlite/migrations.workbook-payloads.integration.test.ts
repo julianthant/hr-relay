@@ -237,7 +237,9 @@ describe("workbook payload migration 38", () => {
         assert.equal(inspectNativeAuthority(database, 37).schemaVersion, 37);
       } finally { database.close(); }
       const sizeBefore = statSync(f.path).size;
-      assert.equal((await f.run()).state, "upgraded");
+      const report = await f.run();
+      assert.equal(report.state, "upgraded");
+      assert.equal(report.fromSchemaVersion, 37);
       const sizeAfter = statSync(f.path).size;
       const upgraded = new DatabaseSync(f.path, { readOnly: true });
       try {

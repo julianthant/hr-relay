@@ -29,7 +29,7 @@ describe("store query plans", () => {
     expect(Object.keys(WHOLE_TABLE_READS).filter(sql => !planned.has(sql))).toEqual([]);
   });
 
-  it("uses every index the query index migration adds", () => {
+  it("uses every current index added for store queries", () => {
     const unused = Object.keys(QUERY_INDEXES).filter(name =>
       !audit.planned.some(statement => statement.plan.some(line => new RegExp(` USING (?:COVERING )?INDEX ${name}\\b`, "u").test(line))));
     expect(unused).toEqual([]);
