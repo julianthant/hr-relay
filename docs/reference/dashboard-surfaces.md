@@ -551,8 +551,7 @@ served values remain unavailable.
 ### Preflight and storage
 
 Settings has no Preflight or Storage page. Preflight appears only as the Checks stage of the run
-dialog, which has three served states. Checking shows a skeleton list of the same height as the
-loaded one and a Checking status; it does not keep the previous report visible. Unavailable shows one
+dialog, which has three served states. Checking shows a skeleton list and a Checking status; it does not keep the previous report visible. Unavailable shows one
 failure notice with Check again. Ready lists only checks that are not passing, failures first and then
 warnings, each with its title and a one-line description; when nothing needs attention it says Ready
 to start. The stage shows no fingerprint or checked time. A failed check with a known remedy has a
