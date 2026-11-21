@@ -19,6 +19,18 @@ afterEach(async () => {
 });
 
 describe("worker_pools — the CAS basis the spawn control needs (§11.5)", () => {
+  it("refuses to record a plan above the worker roster ceiling", async () => {
+    const database = await open();
+    const request = {
+      workflow: WORKFLOW_ID, expectedVersion: 0, requestedBy: "local-operator", now: NOW,
+    };
+
+    assert.throws(() => database.authority.workerPools.plan({ ...request, desiredWorkers: 17 }), /desiredWorkers/u);
+    assert.equal(database.authority.workerPools.get(WORKFLOW_ID), undefined);
+    assert.equal(database.authority.workerPools.plan({ ...request, desiredWorkers: 16 }).state, "applied");
+    assert.equal(database.authority.workerPools.get(WORKFLOW_ID)?.desiredWorkers, 16);
+  });
+
   it("reads a workflow with no row as version 0, and the first plan creates the row at version 1", async () => {
     const database = await open();
     assert.equal(database.authority.workerPools.get(WORKFLOW_ID), undefined);

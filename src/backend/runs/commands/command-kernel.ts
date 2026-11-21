@@ -54,7 +54,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { checkpointLookupKey,resolveFreshnessBound,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
-import { COMMAND_FAMILY_REGISTRY,commandAssistantAvailability,CommandIdentityConflictError,CommandRequestSchema,CommandResultSchema,StartCommandRequestSchema,deriveSettingsCommandFingerprint,markSettingsCommand,ParkedWriteCheckAcknowledgementSchema,RunCommandRequestSchema,type ParkedWriteCheckAcknowledgement,type ParkedWriteCheckTarget,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
+import { COMMAND_FAMILY_REGISTRY,commandAssistantAvailability,CommandAdmissionRequestSchema,CommandIdentityConflictError,CommandRequestSchema,CommandResultSchema,StartCommandRequestSchema,deriveSettingsCommandFingerprint,markSettingsCommand,ParkedWriteCheckAcknowledgementSchema,RunCommandRequestSchema,type ParkedWriteCheckAcknowledgement,type ParkedWriteCheckTarget,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deriveItemId,deriveStableUuid,type IdFactory } from "../../../rules/identity/identifiers.js";
 import { FingerprintSchema,IsoInstantSchema,ItemIdSchema } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -2171,14 +2171,9 @@ async function executeWorkerPoolCommand(
       const member = transact(repositories => requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId));
       requireMemberFence(pool, request);
       return await settle(() => pool.remove(member), repositories => {
-        const current = repositories.workerPools.get(member.workflowId);
-        if (current === undefined) throw new Error("worker-pool-missing-for-active-slot");
-        const planned = repositories.workerPools.plan({ workflow: member.workflowId, expectedVersion: current.version,
-          desiredWorkers: Math.max(0, current.desiredWorkers - 1), requestedBy: request.requestedBy, now });
-        if (planned.state !== "applied") throw new Error("worker-pool-plan-conflict-in-transaction");
-        repositories.workerSlots.retire({ workerId: member.workerId, now });
+        const retiredPool = repositories.workerPools.retireMember({ workerId: member.workerId, requestedBy: request.requestedBy, now });
         const target = { family: "worker-pool" as const, workflowId: member.workflowId };
-        return applied(request, [target, workerTarget(member.workerId)], [{ target, before: current.version, after: planned.pool.version }]);
+        return applied(request, [target, workerTarget(member.workerId)], [{ target, before: retiredPool.version - 1, after: retiredPool.version }]);
       });
     }
     case "stop-worker": {
@@ -2854,7 +2849,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       return AssistantActionManifestSchema.parse({ revision, entries });
     },
     execute(input: unknown, parentCommandId?: string): CommandResult {
-      const request = CommandRequestSchema.parse(input);
+      const request = CommandAdmissionRequestSchema.parse(input);
       if (request.family === "assistant-model-preference") {
         if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("Command request exceeds 256 KiB");
         return executeSync(request, parentCommandId);
@@ -2919,7 +2914,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       return result;
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
-      const request = CommandRequestSchema.parse(input);
+      const request = CommandAdmissionRequestSchema.parse(input);
   if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
       if (request.family !== "worker-browser") {
         throw new Error(

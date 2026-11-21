@@ -571,6 +571,7 @@ type StartPlanRepository = Readonly<{
 
 type WorkerPoolRepository = Readonly<{
   plan(input: unknown): WorkerPoolPlanOutcome;
+  retireMember(input: unknown): WorkerPoolRecord;
   get(workflow: string): WorkerPoolRecord | undefined;
   list(): readonly WorkerPoolRecord[];
 }>;
@@ -7649,6 +7650,7 @@ export class AuthorityDatabase implements Disposable {
   #buildWorkerPoolRepository(): WorkerPoolRepository {
     const read = (workflow: string): WorkerPoolRecord | undefined =>
       this.#readRecord("worker_pools", WorkflowIdSchema.parse(workflow), WorkerPoolRecordSchema);
+    const retirementSchema = z.strictObject({ workerId: WorkerIdSchema, requestedBy: ActorIdSchema, now: IsoInstantSchema });
     return Object.freeze({
       plan: (input: unknown): WorkerPoolPlanOutcome => {
         const request = WorkerPoolPlanRequestSchema.parse(input);
@@ -7675,6 +7677,24 @@ export class AuthorityDatabase implements Disposable {
           });
           this.#writeWorkerPool(pool, existing === undefined ? "insert" : "update");
           return WorkerPoolPlanOutcomeSchema.parse({ state: "applied", pool });
+        });
+      },
+      retireMember: (input: unknown): WorkerPoolRecord => {
+        const request = retirementSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const slot = this.authority.workerSlots.retire({ workerId: request.workerId, now: request.now });
+          const current = read(slot.workflow);
+          if (current === undefined) throw new Error("worker-pool-missing-for-active-slot");
+          const pool = WorkerPoolRecordSchema.parse({
+            ...current,
+            desiredWorkers: current.desiredWorkers - 1,
+            plannedBy: request.requestedBy,
+            plannedAt: request.now,
+            version: current.version + 1,
+            updatedAt: request.now,
+          });
+          this.#writeWorkerPool(pool, "update");
+          return pool;
         });
       },
       get: read,
