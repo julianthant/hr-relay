@@ -180,6 +180,22 @@ it("reads one workflow page for changed runs separated by an independent workflo
   assert.deepEqual(workflows, [target.workflow]);
 });
 
+it("shares the parent's review lookup with its member links within each rebuilt day", async () => {
+  const { w, target, warm, cold, warmReads, rename } = await fixture();
+  const member = queuedEventOf(w, { seed: 3, parentSeed: 2, shape: "operation-member" });
+  warm.buildDashboardDayWire(DAY);
+  assert.equal(rename().state, "applied");
+  warmReads.length = 0;
+  const patched = warm.buildDashboardDayWire(DAY);
+  assert.equal(JSON.stringify(patched), JSON.stringify(cold.buildDashboardDayWire(DAY)));
+  const parentRow = patched.queueSurfaces.find(row => row.runId === target.runId);
+  const memberRow = patched.queueSurfaces.find(row => row.runId === member.runId);
+  assert.ok(parentRow && memberRow?.parent);
+  assert.equal(memberRow.parent.panelKind, parentRow.panelKind);
+  // One read supplies the row and one admits the current review evidence.
+  assert.equal(warmReads.filter(id => id === target.runId).length, 2);
+});
+
 it("reuses independent rows and notices and derives the selected day count during a rename", async () => {
   const { w, warm, cold, warmCounts, independent, warmReads, warmSummaries, rename } = await fixture({ withWorkerAndNotices: true });
   queuedEventOf(w, { seed: 5, shape: "operation", descriptor: personLookupDescriptor });

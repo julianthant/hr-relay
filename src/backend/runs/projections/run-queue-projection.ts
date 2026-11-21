@@ -257,6 +257,7 @@ interface CanonicalProjectionSnapshot {
 
 interface QueueReadContext {
   runs: Map<string, RunRecord>;
+  reviewAvailability?: Map<string, boolean>;
   parents: Map<string, QueueParent | null>;
   links: Map<string, LinkedRunView>;
   receipts: Map<string, ReceiptView | undefined>;
@@ -1150,12 +1151,20 @@ export class RunQueueProjection {
     return parent;
   }
 
+  #reviewAvailable(context: QueueReadContext, runId: string): boolean {
+    const cached = context.reviewAvailability?.get(runId);
+    if (cached !== undefined) return cached;
+    const available = this.#deps.authority.reviewAvailable?.(runId) === true;
+    context.reviewAvailability?.set(runId, available);
+    return available;
+  }
+
   #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
     const known = context.links.get(run.envelope.runId);
     if (known !== undefined) return known;
     const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
-      panelKind: panelKindOf(run.envelope.shape, this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true), status: this.#status(run) };
+      panelKind: panelKindOf(run.envelope.shape, this.#reviewAvailable(context, run.envelope.runId)), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
     return link;
   }
@@ -1304,7 +1313,7 @@ export class RunQueueProjection {
     const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
-    const reviewAvailable = this.#deps.authority.reviewAvailable?.(queued.runId) === true;
+    const reviewAvailable = this.#reviewAvailable(context, queued.runId);
     const recordMembers = this.#deps.authority.recordMembers?.(authority, children);
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
@@ -1579,7 +1588,7 @@ export class RunQueueProjection {
     const summaries = this.#deps.reader.summaries;
     let context: QueueReadContext;
     if (summaries !== undefined) {
-      context = this.#readContext();
+      context = { ...this.#readContext(), reviewAvailability: new Map() };
       for (const surface of this.#selectedDaySurfaces(parsedDay, summaries, context, patch)) surfaces.push(surface);
       if (patch === undefined) {
         for (const [day, count] of summaries.dayCounts(monthFrom, monthTo)) monthCounts.set(day, count);
