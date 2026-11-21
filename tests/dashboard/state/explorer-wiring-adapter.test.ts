@@ -63,7 +63,7 @@ it("maps a failed read to the shared dashboard read catalog text and reads again
     assert.ok(failed?.state === "refused");
     assert.equal(failed.failure.code, "DASHBOARD_READ_FAILED");
     assert.equal(failed.evidence, evidence);
-    assert.equal(formatErrorCatalogFailure(failed.failure).text, "The dashboard could not load this from the local service. Try again.");
+    assert.equal(formatErrorCatalogFailure(failed.failure).text, "This could not load. Try again.");
     await act(async () => result?.retry());
     assert.equal(calls, 2);
     assert.equal(result?.state.state, "ready");

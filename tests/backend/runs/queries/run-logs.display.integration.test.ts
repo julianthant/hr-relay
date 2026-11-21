@@ -31,7 +31,7 @@ it("projects a declaration's typed scalar text without changing raw values, miss
   assert.deepEqual(runDataObservationsForRun(deps, run, run.envelope.runId)[0].points.find(point => point.field === "absent")?.values[0], { key: "absent", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: null });
   const refused = { ...deps, descriptors: { resolve: () => ({ dataOrigins: origins.map(origin => ({ ...origin, operatorFields: origin.operatorFields.map(field => ({ ...field, display: { cases: [{ value: false, text: "No" }] } })) })) }) } };
   assert.throws(() => buildRunLogsSection(refused, run.envelope.runId, undefined, run), error => {
-    assert.deepEqual(failureStatus(error), { status: 409, body: { state: "error", code: "RUN_LOG_DISPLAY_VALUE_UNMAPPED", message: "A retained value has no declared display text. Update the workflow declaration before reading these Logs.", retryable: false } }); return true;
+    assert.deepEqual(failureStatus(error), { status: 409, body: { state: "error", code: "RUN_LOG_DISPLAY_VALUE_UNMAPPED", message: "A saved value has no display text. Update the workflow to read these Logs.", retryable: false } }); return true;
   });
 });
 
