@@ -6,7 +6,7 @@ import { ActivityBreadcrumbs, ActivityDrilldown } from './activity-drilldown.js'
 import type { ActivityDrilldownData, ActivityBrowse, ActivitySelectionHandler } from './activity-drilldown-model.js';
 import { ActivitySkeleton } from "./activity-loading.js";
 import type { ActivityDateRange } from "./activity-model.js";
-import { finished, type AnalyticsData } from "./analytics-model.js";
+import { analyticsPeriodLabel, finished, type AnalyticsData } from "./analytics-model.js";
 import { AnalyticsSections, AnalyticsToolbar } from "./analytics-view.js";
 import type { ActivityViewState } from "./activity-view-model.js";
 
@@ -50,7 +50,7 @@ export function ActivityView({ data, range, today, onRange, onExport, onRetry, n
     {exportError?.report === data && <p role="alert" className="m-0 text-body text-ui-danger">{exportError.reason}</p>}
     {notice && data.state === "loaded" && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}
     <div className="min-w-0" aria-busy={data.state === "loading" || pending || held || undefined}>
-      {data.state === "loaded" ? selection && onSelection ? <ActivityDrilldown report={data.report} selection={selection} onSelection={onSelection} browse={browse} pending={pending} blocked={blocked} /> : noRuns(data.report.analytics) ? <EmptyState icon={<BarChart3 aria-hidden className="size-6 text-ui-muted" />} title="No runs in this period" description="Pick another period to see how your workflows are going." /> : <AnalyticsSections data={data.report.analytics} range={held ? data.report.range : range} workflow={workflow} onRange={onRange} onOpenRuns={onSelection && data.report.runs && !held ? id => onSelection({ metric: data.report.analytics.workflows.find(row => row.id === id)?.failed ? "failed" : "completed", workflow: id, page: 0 }) : undefined} />
+      {data.state === "loaded" ? selection && onSelection ? <ActivityDrilldown report={data.report} selection={selection} onSelection={onSelection} browse={browse} pending={pending} blocked={blocked} /> : noRuns(data.report.analytics) ? <EmptyState icon={<BarChart3 aria-hidden className="size-6 text-ui-muted" />} title="No runs in this period" description={held ? analyticsPeriodLabel(data.report.range) : "Pick another period to see how your workflows are going."} /> : <AnalyticsSections data={data.report.analytics} range={held ? data.report.range : range} workflow={workflow} onRange={onRange} onOpenRuns={onSelection && data.report.runs && !held ? id => onSelection({ metric: data.report.analytics.workflows.find(row => row.id === id)?.failed ? "failed" : "completed", workflow: id, page: 0 }) : undefined} />
         : data.state === "loading" ? <ActivitySkeleton />
         : onRetry ? <FailureNotice sentence="Couldn't load Analytics." action={{ label: "Retry", onClick: onRetry }} />
         : <p role="alert" className="m-0 text-body text-ui-danger">{data.reason}</p>}

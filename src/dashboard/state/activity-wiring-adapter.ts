@@ -107,7 +107,7 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const settledReport = useRef<{ authority: object | undefined; selection: ActivityPopulationSelection } | undefined>(undefined);
   if (selection !== undefined) settledReport.current = { authority, selection };
   /** The last settled report, shown while another range loads; a cold read, a refusal or new authority shows none. */
-  const held = enabled && selection === undefined && base.state !== "failed" && settledReport.current?.authority === authority ? settledReport.current.selection : undefined;
+  const held = enabled && client !== undefined && selection === undefined && base.state !== "failed" && settledReport.current !== undefined && settledReport.current.authority === authority ? settledReport.current.selection : undefined;
   const browseKey = canonicalJsonStringify(browse === null ? null : JSON.parse(JSON.stringify(browse)));
   const browseInput = useMemo(() => enabled && browseKey !== "null" ? ActivityPopulationBrowseSchema.safeParse(JSON.parse(browseKey)) : undefined, [enabled, browseKey]);
   const browseRequest = useMemo(() => ({ request, selection, browse: browseKey, sources }), [request, selection, browseKey, sources]);

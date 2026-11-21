@@ -178,7 +178,10 @@ it("keeps initial loading, read refusal, empty success and client replacement se
 
 it("holds the settled report, with export refused, while another range loads, and blanks only on a cold read", async () => {
   const first = selection();
-  const second = selection([{ status: "done", durationMs: 0 }]);
+  const requested = { from: "2026-08-02", to: "2026-08-07" };
+  const one = selection([{ status: "done", durationMs: 0 }]);
+  const second: ActivityPopulationSelection = { ...one, report: { ...one.report, ...requested } };
+  const range = () => { const data = current().data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.range; };
   const client = clientOf(first);
   const resolvers: ((value: ActivityPopulationSelection) => void)[] = [];
   client.activityPopulation = vi.fn(() => new Promise<ActivityPopulationSelection>(resolve => resolvers.push(resolve)));
@@ -193,14 +196,27 @@ it("holds the settled report, with export refused, while another range loads, an
     await act(async () => resolvers[0](first));
     assert.equal(total(), 3);
     assert.equal(current().exportReady, true);
-    await act(async () => root.render(createElement(Scene, { range: { from: "2026-05-06", to: "2026-08-03" } })));
+    await act(async () => root.render(createElement(Scene, { range: requested })));
     assert.equal(total(), 3);
+    assert.deepEqual(range(), { from: first.report.from, to: first.report.to });
     assert.equal(current().exportReady, false);
     await assert.rejects(current().exportCsv(), /no longer matches/u);
     assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
     await act(async () => resolvers[1](second));
     assert.equal(total(), 1);
+    assert.deepEqual(range(), requested);
     assert.equal(current().exportReady, true);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("a cold view with no client and no command binding is unavailable and holds nothing", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Scene() { state = useActivityWiring(undefined, { from: "2026-08-01", to: "2026-08-07" }, null, sources, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Scene)));
+    assert.deepEqual(state!.data, { state: "unavailable", reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text });
+    assert.equal(state!.exportReady, false);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
