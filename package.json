@@ -38,7 +38,7 @@
     "precli": "npm run build:observer-policy",
     "predashboard": "npm run build:observer-policy",
     "prebackend": "npm run build:observer-policy",
-    "predashboard:prod": "npm run build:observer-policy",
+    "predashboard:prod": "npm run web:build",
     "presmoke:test-target-document-number": "npm run build:observer-policy",
     "preperf:dashboard": "npm run build:observer-policy"
   },
