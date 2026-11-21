@@ -68,7 +68,6 @@ import { CommandRecovery } from "../surfaces/shared/actions/command-recovery.js"
 import { recoveryDetail, recoveryTitle, type CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
 import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { formatTime } from "../lib/date-format.js";
-import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
 import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection, queueRenameDraft } from "../surfaces/queue/queue-model.js";
 import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
@@ -124,7 +123,6 @@ import { useGlobalKeys } from "./navigation/global-keys.js";
 import { useDashboardNavigation } from "./navigation/navigation-model.js";
 import type { NativeRouteHistory,PopstateRouteHandler } from "./navigation/route-history-model.js";
 import { useRoute } from "./navigation/route-history-model.js";
-import { SHELL_PANEL_TABS } from "./navigation/shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./navigation/takeover-focus-model.js";
 import { assistantNeeds, useAssistantOpen } from "../surfaces/shell/assistant-launcher-model.js";
 import {
@@ -134,7 +132,6 @@ type AppRouteState
 } from "./navigation/url-state.js";
 
 
-const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
 const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
@@ -193,8 +190,6 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const setFilter = useCallback((next: readonly StatusBucket[]) => setRoute(current => ({ ...current, view: { ...current.view, queueFilter: [...next] } })), [setRoute]);
   const openWells = useMemo(() => new Set(route.view?.queueOpen ?? []), [route.view?.queueOpen]);
   const setOpenWells = useCallback((next: ReadonlySet<string>) => setRoute(current => ({ ...current, view: { ...current.view, queueOpen: [...next] } })), [setRoute]);
-  const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
-  const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
   /** the toolbar's ordering control and its select mode — client UI state */
   const sort = route.view?.queueSort ?? "attention";
   const setSort = useCallback((next: QueueSortKey) => setRoute(current => ({ ...current, view: { ...current.view, queueSort: next } })), [setRoute]);
@@ -260,8 +255,6 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onFilter={setFilter}
           openWells={openWells}
           onWells={setOpenWells}
-          tab={tab}
-          onTab={setTab}
           sort={sort}
           onSort={setSort}
           selectMode={selectMode}
@@ -341,10 +334,6 @@ interface LoadedAppProps {
   onFilter: (bucket: readonly StatusBucket[]) => void;
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
-  tab: PanelTab | undefined;
-  /** The operator's EXPLICIT tab choice. `undefined` clears the override and
- * hands the panel back to the run's own default — which is what the history */
-  onTab: (tab: PanelTab | undefined) => void;
   sort: QueueSortKey;
   onSort: (sort: QueueSortKey) => void;
   selectMode: boolean;
@@ -380,7 +369,6 @@ function LoadedApp({
   onFilter,
   openWells,
   onWells,
-  onTab,
   sort,
   onSort,
   selectMode,
@@ -883,17 +871,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
     onStartRun: openStart,
-    onCyclePanelMode: () => {},
-    panelMode: "sidebar",
-    onMinimisePanel: () => {},
     // A preview queue is not the served queue; its rows must not move the hidden served selection.
     visibleQueueKeys: keyboardOrder,
     workflowIds: workflowCatalog.map(workflow => workflow.id), onWorkflow: selectWorkflow,
     attentionQueueKeys: keyboardAttention,
     selectedQueueKey,
     onSelectQueueKey: selectQueueKey,
-    panelTabs: NO_LOG_TABS,
-    onTab,
   });
 
   const ready = !hasServedWorkflows || dayResource.state === "loaded" || dayResource.state === "failed";

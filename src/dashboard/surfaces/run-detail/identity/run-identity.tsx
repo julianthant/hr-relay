@@ -1,8 +1,6 @@
-import { Info, TriangleAlert } from "lucide-react";
+import { Info } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
-import { cn } from "../../../lib/utils.js";
-import { classifyRunShape } from "./run-identity-model.js";
 import {
   BulletList,
   Button,
@@ -13,14 +11,9 @@ import {
   Field,
   IconButton,
   Input,
-  KeyValueList,
   MetaLine,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   Well,
   dsIcon,
-  dsText,
 } from "../../../ds/ui.js";
 import type { ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import {
@@ -28,122 +21,10 @@ import {
   type QueueSurfaceWireSchema,
 } from "../../../../models/dashboard/projection.js";
 import { renameDraftProblem } from "./rename-draft.js";
-import { DryRunMark } from "../run-state-chips.js";
 import type { ActionTarget } from "../../shared/actions/actions.js";
 import { runTiming } from "../../shared/status/format.js";
-import { testInstanceHazardTitle, testInstanceSystems } from "../../shared/status/test-instance-hazard.js";
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
-
-/** the fingerprint cut for the eye lives in `run-identity-model.ts` — see the note there */
-
-/** The run's provenance, in the Log Panel's bottom bar. The two hazards stay VISIBLE */
-export function RunProvenanceBar({
-  surface,
-  workflowLabel,
-  currentAppVersion,
-  servedDescriptorHash,
-}: {
-  surface: QueueSurfaceWire;
-  workflowLabel: string;
-  currentAppVersion: string;
-  /** The fingerprint THIS RUN'S OWN WORKFLOW is served under today, or
- * `undefined` when this build registers no such workflow (§9.22 item 3). */
-  servedDescriptorHash: string | undefined;
-}) {
-  const testSystems = testInstanceSystems(surface.resolvedInstances);
-  const shape = classifyRunShape(surface.descriptorHash, servedDescriptorHash);
-  const shapeMoved = shape.state !== "current";
-  /** the build the RUN was enqueued */
-  const ranAppVersion = surface.appVersion.state === "present"
-    ? surface.appVersion.value
-    : undefined;
-  const staleApp = ranAppVersion !== undefined && ranAppVersion !== currentAppVersion;
-
-  return (
-    <span className="flex min-w-0 shrink-0 items-center gap-[var(--ds-space-snug)]">
-      <span
-        title={
-          shape.state === "moved" ? "This run used an older version of the workflow."
-            : shape.state === "unserved" ? "This workflow is no longer available to run."
-              : undefined
-        }
-        className={cn(
-          dsText.meta,
-          dsText.nums,
-          "shrink-0",
-          shapeMoved ? "text-[color:var(--ds-status-waiting-fg)]" : "text-[color:var(--ds-fg-muted)]",
-        )}
-      >
-        {shapeMoved ? "Older version" : null}
-      </span>
-
-      {/* Hazards, never disclosed. */}
-      {/* Rehearsal meaning keeps the same distinct hue in the identity bar and queue. */}
-      {surface.dryRun && <DryRunMark />}
-      {testSystems.length > 0 && (
-        <span
-          title={testInstanceHazardTitle(testSystems)}
-          className={cn(
-            dsText.meta,
-            "inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-status-waiting-fg)]",
-          )}
-        >
-          <TriangleAlert aria-hidden className={dsIcon.sm} />
-          test
-        </span>
-      )}
-
-      <Popover>
-        <PopoverTrigger asChild>
-          <IconButton size="xs" label="Run provenance" icon={<Info aria-hidden className={dsIcon.sm} />} />
-        </PopoverTrigger>
-        <PopoverContent title="Provenance" description={surface.traceId} width="lg" side="top" align="end">
-          <div className="flex flex-col gap-[var(--ds-space-base)]">
-            <KeyValueList
-              items={[
-
-                { key: "Workflow", value: shapeMoved ? `${workflowLabel} (older version)` : workflowLabel, tone: shapeMoved ? "warning" : "default" },
-                {
-                  key: "App build",
-                  value: ranAppVersion ?? "unstamped",
-                  tone: staleApp || ranAppVersion === undefined ? "warning" : "default",
-                },
-                { key: "Requested by", value: surface.actorId ?? "Not recorded" },
-                /* Repeated priority and actor facts belong in disclosure, not identical chips on every row. */
-                { key: "Priority", value: surface.priority === "interactive" ? "On" : "Off" },
-                /* Keep the operator name beside run identity so renaming never obscures the subject. */
-                ...(surface.displayName.state === "present"
-                  ? [{ key: "Named", value: surface.displayName.value }]
-                  : []),
-
-                ...surface.resolvedInstances.map(({ system, instance }) => ({
-                  key: system,
-                  value: instance,
-                  tone: instance === "test" ? ("warning" as const) : ("default" as const),
-                })),
-              ]}
-            />
-            <BulletList
-              items={[
-                surface.priority === "bulk"
-                  ? "Priority is off: this run waits for runs with Priority on."
-                  : "Priority is on: this run goes ahead of runs without it.",
-                ...(shape.state === "moved" ? ["This run used an older version of the workflow, so it cannot be retried."]
-                  : shape.state === "unserved" ? [`${workflowLabel} is no longer available, so this run cannot be retried.`] : []),
-                ...(staleApp ? [`Ran on app ${ranAppVersion}; this dashboard is ${currentAppVersion}.`] : []),
-                /* Rename changes no identity facts; explain it only on named runs. */
-                ...(surface.displayName.state === "present"
-                  ? [`Named by you. The subject is still ${surface.title}.`]
-                  : []),
-              ]}
-            />
-          </div>
-        </PopoverContent>
-      </Popover>
-    </span>
-  );
-}
 
 /* ── rename ──────────────────────────────────────────────────────────────── */
 
