@@ -7,7 +7,7 @@ import { once } from "node:events";
 import { join } from "node:path";
 import { afterEach,it,vi } from "vitest";
 import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-paths.js";
-import { createNominatimGeocodeAdapter } from "../../../../src/backend/processing/providers/geocode-adapters.js";
+import { createCensusGeocodeAdapter, createNominatimGeocodeAdapter } from "../../../../src/backend/processing/providers/geocode-adapters.js";
 import { createIpcRouter } from "../../../../src/backend/runtime/workers/worker-ipc-router.js";
 import { createProviderClient } from "../../../../src/backend/processing/providers/provider-client.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
@@ -23,7 +23,46 @@ import { scaledMs } from "../../../support/time-scale.js";
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const request = ProviderRequestEnvelopeSchema.parse({ capability: "geocode.nominatim", payload: { schemaHash: "a".repeat(64), value: { street: "1 Test Road", country: "US" } } });
+const censusRequest = ProviderRequestEnvelopeSchema.parse({ ...request, capability: "geocode.census" });
 function options(milliseconds = 10_000, controller = new AbortController()) { return { requestId: randomUUID(), signal: controller.signal, deadlineMonotonicMs: systemClock.monotonicMs() + milliseconds }; }
+
+it("refuses incomplete Census responses and accepts an explicit empty match array", async () => {
+  for (const body of [{}, { result: {} }]) {
+    const adapter = createCensusGeocodeAdapter({ clock: systemClock, fetchFn: async () => Response.json(body) });
+    assert.equal((await adapter.invoke(censusRequest, options())).response.state, "invalid-response");
+  }
+  const adapter = createCensusGeocodeAdapter({
+    clock: systemClock,
+    fetchFn: async () => Response.json({ result: { addressMatches: [] } }),
+  });
+  const { response } = await adapter.invoke(censusRequest, options());
+  assert.ok(response.state === "produced");
+  assert.deepEqual(response.value.value, { state: "no-match" });
+});
+
+it.each([429, 503])("cancels the geocoder response body on HTTP %i", async status => {
+  let cancelled = false;
+  const body = new ReadableStream({ cancel() { cancelled = true; } });
+  const adapter = createCensusGeocodeAdapter({
+    clock: systemClock,
+    fetchFn: async () => new Response(body, { status }),
+  });
+  const { response } = await adapter.invoke(censusRequest, options());
+  assert.ok(response.state === "unavailable");
+  assert.equal(response.reason.code, "adapter-unavailable");
+  assert.equal(cancelled, true);
+});
+
+it("propagates failure to close a geocoder error response", async () => {
+  const failure = new Error("synthetic cancellation failure");
+  const body = new ReadableStream({ cancel() { throw failure; } });
+  const adapter = createCensusGeocodeAdapter({
+    clock: systemClock,
+    fetchFn: async () => new Response(body, { status: 503 }),
+  });
+  await assert.rejects(adapter.invoke(censusRequest, options()), failure);
+});
+
 function child(owner: ReturnType<typeof createNominatimGeocodeAdapter>) {
   const process = fork(join(import.meta.dirname, "../../../support/helpers/geocode/nominatim-client.ts"), [], { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "pipe", "pipe", "ipc"] });
   const router = createIpcRouter({ on: (event, listener) => process.on(event, listener), off: (event, listener) => process.off(event, listener),

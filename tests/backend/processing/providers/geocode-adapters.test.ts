@@ -17,7 +17,7 @@ it("preserves Census locality/oneline URLs and street components rather than blo
   assert.equal(urls[0]?.pathname.endsWith("onelineaddress"), true); assert.equal(urls[1]?.searchParams.get("street"), "1 Test Road"); assert.equal(urls[1]?.searchParams.get("benchmark"), "4");
 });
 it("keeps no-match, HTTP error/429, malformed JSON and invalid provider shape explicit", async () => {
-  for (const [response, state] of [[Response.json({ result: { addressMatches: [] } }), "produced"], [new Response("secret text", { status: 503 }), "unavailable"], [new Response("secret text", { status: 429 }), "unavailable"], [new Response("secret text"), "invalid-response"], [Response.json({ result: [] }), "unavailable"]] as const) {
+  for (const [response, state] of [[Response.json({ result: { addressMatches: [] } }), "produced"], [new Response("secret text", { status: 503 }), "unavailable"], [new Response("secret text", { status: 429 }), "unavailable"], [new Response("secret text"), "invalid-response"], [Response.json({ result: [] }), "invalid-response"]] as const) {
     const adapter = createCensusGeocodeAdapter({ clock: systemClock, fetchFn: async () => response });
     const result = await adapter.invoke(request(), options()); assert.equal(result.response.state, state); assert.equal(JSON.stringify(result).includes("secret text"), false);
   }
