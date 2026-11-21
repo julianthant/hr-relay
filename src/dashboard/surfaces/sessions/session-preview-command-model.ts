@@ -316,8 +316,9 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
   idle.current = keepAlive.confirmed;
   return { data, operations, idleCountdowns: keepAlive.countdowns,
-    control: (target: string, action: SessionControl) => { const worker = data.state === 'ready' ? data.workers.find(item => item.id === target) : undefined; void perform({ id: crypto.randomUUID(), target, action, ...(worker?.authority === undefined ? {} : { authorityKey: sessionWorkerAuthorityKey(worker.authority) }) }); },
+    control: (target: string, action: SessionControl) => { if (data.state === 'ready' && data.stale) return; const worker = data.state === 'ready' ? data.workers.find(item => item.id === target) : undefined; void perform({ id: crypto.randomUUID(), target, action, ...(worker?.authority === undefined ? {} : { authorityKey: sessionWorkerAuthorityKey(worker.authority) }) }); },
     add: (workflow: string, count: number) => {
+      if (data.state === 'ready' && data.stale) return;
       if (!Number.isSafeInteger(count) || count < 1 || !catalog.some(item => item.id === workflow)) throw new Error('SESSION_ADD_INVALID');
       const current = operationsRef.current.add;
       if (current?.state === 'pending') return;

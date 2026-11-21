@@ -27,17 +27,40 @@ const binding = (day: SessionCommandBinding["dayState"]["day"]): SessionCommandB
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); });
 
-it("keeps the worker cards it last read while another day loads, with no loading state in the bar", async () => {
+const mount = () => {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   const render = (day: SessionCommandBinding["dayState"]["day"]) => act(async () => root?.render(createElement(TooltipProvider, null,
     createElement(ToastProvider, null, createElement(SessionPanel, { catalog, binding: binding(day), open: true, onOpenChange() {} })))));
+  return { host, render };
+};
+const workerButtons = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('[role="region"][aria-label="Sessions"] button')];
+const addWorkers = (host: HTMLElement) => host.querySelector<HTMLButtonElement>('button[aria-label="Add workers"]');
+
+it("keeps the worker cards it last read while another day loads, marked as updating, with every command disabled", async () => {
+  const { host, render } = mount();
   await render({ state: "loaded", value: FIXTURE_DAY_WIRE });
   const cards = host.querySelectorAll("article").length;
   assert.ok(cards > 0, "the fixture day serves worker cards");
-  const summary = host.textContent;
+  assert.ok(workerButtons(host).some(button => !button.disabled), "a loaded day offers worker commands");
+  assert.equal(addWorkers(host)?.disabled, false);
+  assert.equal(host.querySelector("[data-sessions-stale]"), null);
   await render({ state: "loading" });
   assert.equal(host.querySelectorAll("article").length, cards);
   assert.equal(host.querySelector('[aria-busy="true"]'), null, "no skeleton for a day that is still loading");
-  assert.equal(host.textContent, summary);
+  assert.equal(host.querySelector("[data-sessions-stale]")?.textContent, "Updating");
+  assert.deepEqual(workerButtons(host).filter(button => !button.disabled).map(button => button.getAttribute("aria-label")), []);
+  assert.equal(addWorkers(host)?.disabled, true);
+  await render({ state: "loaded", value: FIXTURE_DAY_WIRE });
+  assert.equal(host.querySelector("[data-sessions-stale]"), null);
+  assert.equal(addWorkers(host)?.disabled, false);
+});
+
+it("shows the loading placeholder, with Add workers disabled, when a day loads and none was read before", async () => {
+  const { host, render } = mount();
+  await render({ state: "loading" });
+  assert.equal(host.querySelectorAll("article").length, 0);
+  assert.equal(host.querySelector('[role="status"][aria-label="Loading sessions"]')?.getAttribute("aria-busy"), "true");
+  assert.equal(host.querySelector("[data-sessions-stale]"), null);
+  assert.equal(addWorkers(host)?.disabled, true);
 });

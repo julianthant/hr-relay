@@ -12,13 +12,14 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
   const { toast } = useToasts();
   const harnessed = useMemo(() => harness?.(catalog), [harness, catalog]);
   const day = binding?.dayState.day;
-  // Worker cards come with every day; while another day loads, the bar keeps the cards it last read instead of loading again.
+  // Worker cards come with every day; while another day loads, the bar keeps the cards it last read, marked stale, instead of loading again.
   const [heldDay, setHeldDay] = useState(day?.state === "loaded" ? day.value : undefined);
   if (day?.state === "loaded" && day.value !== heldDay) setHeldDay(day.value);
   const shownDay = day?.state === "loaded" ? day.value : day?.state === "loading" ? heldDay : undefined;
+  const stale = day?.state !== "loaded";
   const initial = useMemo((): SessionsViewState => harnessed ? harnessed.initial : binding !== undefined && shownDay !== undefined
-    ? sessionsFromDay(shownDay, catalog, binding.nowIso) : binding === undefined ? sessionsUnavailable() : binding.dayState.day.state === "failed"
-      ? sessionsUnavailable(binding.dayState.day.error) : { state: "loading" }, [harnessed, binding, shownDay, catalog]);
+    ? stale ? { ...sessionsFromDay(shownDay, catalog, binding.nowIso), stale: true } : sessionsFromDay(shownDay, catalog, binding.nowIso) : binding === undefined ? sessionsUnavailable() : binding.dayState.day.state === "failed"
+      ? sessionsUnavailable(binding.dayState.day.error) : { state: "loading" }, [harnessed, binding, shownDay, stale, catalog]);
   const current = useMemo(() => ({ binding, catalog }), [binding, catalog]);
   const currentRef = useRef(current); currentRef.current = current;
   const servedPort = useMemo(() => createSessionPreviewPort(() => currentRef.current), []);

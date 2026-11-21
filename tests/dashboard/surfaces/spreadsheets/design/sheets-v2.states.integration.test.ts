@@ -17,6 +17,7 @@ vi.mock('../../../../../src/dashboard/state/spreadsheet-wiring-adapter.js', () =
   useSpreadsheetWiringAdapter: () => ({ adapter: wiring.adapter, catalog: wiring.catalog, compatibility: undefined, catalogLoading: wiring.loading,
     catalogError: wiring.error, openError: undefined, draft: undefined, pendingLibraries: wiring.pending }),
 }));
+vi.mock('../../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ importSpreadsheetInWorker: () => new Promise<never>(() => {}) }));
 const { SheetsV2 } = await import('../../../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2.js');
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -41,6 +42,34 @@ it('shows a loading frame laid out like a one-table list: search toolbar, then t
   assert.ok(frame.querySelector('.ds-table-toolbar-search [data-slot="skeleton"]'), 'the search field keeps its place');
   assert.ok(frame.querySelector('.ds-body-section > .sv2-card > .sv2-head'));
   assert.equal(frame.querySelector('h2, h3'), null);
+});
+
+it('shows an opening sheet\'s heading at once and a loading frame only where its grid will be', async () => {
+  await render();
+  await click(host.querySelector('li[aria-label="Roster.xlsx"]'));
+  const frame = host.querySelector('[role="status"][aria-busy="true"][aria-label="Opening Roster.xlsx"]');
+  assert.ok(frame);
+  const heading = [...host.querySelectorAll('h1')].find(node => node.textContent === 'Roster.xlsx');
+  assert.ok(heading, 'the name is already known from the list');
+  assert.equal(frame.contains(heading), false);
+  assert.ok(host.querySelector('button[aria-label="Versions, now v2"]'), 'the heading actions are the opened sheet\'s');
+  assert.ok(frame.querySelector('.ds-toolbar-row [data-slot="skeleton"]'), 'the grid toolbar keeps its place');
+  assert.ok(frame.querySelector('.sv2-card [data-slot="skeleton"]'));
+});
+
+it('holds the picked file\'s row as a loading frame while the file is read, with Next disabled', async () => {
+  await render();
+  await click([...host.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Import'));
+  const input = document.body.querySelector<HTMLInputElement>('input[type="file"]');
+  assert.ok(input);
+  Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'Large roster.csv', size: 9_000_000, arrayBuffer: async () => new ArrayBuffer(1) }] });
+  await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+  const frame = document.body.querySelector('[role="status"][aria-busy="true"][aria-label="Reading the file"]');
+  assert.ok(frame);
+  assert.equal(frame.querySelectorAll('.rounded-md.border').length, 1, 'one row, where the file will show');
+  const buttons = [...document.body.querySelectorAll('button')];
+  assert.equal(buttons.some(node => node.textContent?.trim() === 'Choose file'), false);
+  assert.equal(buttons.find(node => node.textContent?.trim() === 'Next')?.disabled, true);
 });
 
 it('shows a failure notice with one Retry button when the list cannot be read', async () => {

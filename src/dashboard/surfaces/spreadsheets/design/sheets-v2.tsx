@@ -1,8 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { closeDraft, editMapping, importWorkbook, pendingImportName } from './sheets-v2-writes.js';
-import { EmptyState, FailureNotice, PageHeading, SearchInput, Skeleton, TableToolbar, dsIcon, useToasts } from '../../../ds/ui.js';
-import { LoadingRegion, SkeletonText } from '../../shared/loading/loading.js';
+import { EmptyState, FailureNotice, PageHeading, SearchInput, TableToolbar, dsIcon, useToasts } from '../../../ds/ui.js';
 import { useSpreadsheetWiringAdapter, type LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.js';
 import type { WorkbookLibraryAction } from '../../../../models/dashboard/workbook-library.js';
@@ -11,7 +10,7 @@ import { saveSpreadsheetDownload, spreadsheetDownload } from '../spreadsheet-cha
 import { TagFilter } from './sheets-v2-tagfilter.js';
 import { fieldsOf, newestFirst, operatorTags, sheetOf, tableOf, tagsOf, workflowTags } from './sheets-v2-model.js';
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
-import { SheetDetail } from './sheets-v2-detail.js';
+import { SheetDetail, SheetDetailSkeleton } from './sheets-v2-detail.js';
 import { ImportDialog } from './sheets-v2-import.js';
 import { SheetTable, SheetsSkeleton, type RowActions } from './sheets-v2-list.js';
 import { useNarrow } from './sheets-v2-narrow.js';
@@ -121,7 +120,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {openId && open ? (draft ? <SheetDetail key={openId} sheet={open} document={draft.document} fields={fields} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} />
       : openError ? <Grey className="ds-text-ui">This spreadsheet couldn't be opened. <V2Button look="plain" onClick={back}>Back</V2Button></Grey>
-      : <LoadingRegion label={`Opening ${open.name}`}><div aria-hidden><SkeletonText className="mb-2 w-48 ds-text-page-title" /><SkeletonText className="mb-5 w-72 ds-text-ui" />{[0, 1, 2, 3].map(index => <Skeleton key={index} className="mb-2 h-9 w-full" />)}</div></LoadingRegion>) : <>
+      : <SheetDetailSkeleton sheet={open} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })} />) : <>
       <PageHeading title="Spreadsheets" description={pending.length ? <span className="inline-flex min-h-6 items-center gap-2"><Loader2 aria-hidden className={`${dsIcon.md} animate-spin motion-reduce:animate-none`} />{pending.map(entry => <span key={entry!.libraryId} className="inline-flex items-center gap-1">{syncing.current.has(entry!.libraryId) ? `Syncing ${entry!.name} isn't confirmed yet.` : `The change to ${entry!.name} isn't confirmed yet.`}<V2Button look="line" onClick={() => void checkPending(entry!.libraryId)}>Check result</V2Button></span>)}</span> : "Reference lists your runs look people up in."} actions={<V2Button disabled={catalogLoading || !!catalogError} onClick={() => setImporting(true)}>Import</V2Button>} />
       <div ref={listRef}>{catalogError ? <FailureNotice sentence="Couldn't load spreadsheets." action={{ label: 'Retry', onClick: () => void adapter.refreshCatalog() }} />
         : catalogLoading ? <SheetsSkeleton narrow={narrow} />

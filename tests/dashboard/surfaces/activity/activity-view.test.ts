@@ -161,4 +161,6 @@ it('while the report loads, the Runs card keeps the loaded card\'s period row, p
   assert.equal(frame.querySelectorAll('ul > li').length, loadedFigures);
   assert.equal(frame.querySelector('.mb-4.flex')?.querySelectorAll('[data-slot="skeleton"].size-6').length, 2, 'previous and next period');
   assert(frame.querySelector('.ml-9 [data-slot="skeleton"]'), 'the plot beside its axis labels');
+  assert.equal(frame.querySelectorAll('.ds-usage-table tbody tr').length, 3, 'Workflows is the loaded table with placeholder rows');
+  assert.deepEqual([...frame.querySelectorAll('.ds-usage-table th')].map(head => head.textContent), ['', 'Workflow', 'Runs', 'Done', 'Failed', 'Typical time']);
 });
