@@ -201,20 +201,21 @@ export async function closeContextWithProof(
     expire = (): void => handle.cancel();
   });
   const pages = context.pages();
+  // Pages and the context close together so one stalled or refused page cannot keep the context open past the deadline.
+  const failures: unknown[] = [];
+  const attempt = (closing: Promise<void>): Promise<void> => closing.catch((error: unknown) => { failures.push(error); });
   try {
     await Promise.race([
-      (async (): Promise<void> => {
-        const failures: unknown[] = [];
-        for (const page of pages) await page.close({ runBeforeUnload: false }).catch((error: unknown) => { failures.push(error); });
-        await context.close().catch((error: unknown) => { failures.push(error); });
-        if (failures.length === 1) throw failures[0];
-        if (failures.length > 1) throw new AggregateError(failures, `${system} browser session close (${reason}) failed`);
-      })(),
+      Promise.all([...pages.map((page) => attempt(page.close({ runBeforeUnload: false }))), attempt(context.close())]),
       timedOut,
     ]);
+  } catch (timeout) {
+    failures.push(timeout);
   } finally {
     expire();
   }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, `${system} browser session close (${reason}) failed`);
   const openPages = pages.filter((page) => !page.isClosed());
   if (openPages.length > 0) {
     throw new Error(

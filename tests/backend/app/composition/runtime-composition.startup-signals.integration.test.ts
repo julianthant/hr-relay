@@ -39,4 +39,27 @@ describe("dashboard startup shutdown ownership", () => {
     }), (error: unknown) => error === refusal);
     assert.equal(disposed, true);
   });
+
+  it("starts the drain while readiness publication is still pending", async () => {
+    const events: string[] = [];
+    let signal: (() => void) | undefined;
+    await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => { events.push("listening"); },
+      signals: { subscribe: handler => { signal = () => handler("SIGTERM"); return () => { events.push("disposed"); }; } },
+      dashboard: async () => ({ port: 3938, stop: async () => { events.push("stopped"); } }),
+      dashboardReady: () => { setImmediate(() => signal?.()); return new Promise<void>(() => undefined); },
+    });
+    assert.deepEqual(events, ["listening", "stopped", "disposed"]);
+  });
+
+  it("composes nothing and releases its process listeners when the boot stop was already latched", async () => {
+    const before = process.listenerCount("SIGINT") + process.listenerCount("SIGTERM");
+    let composed = false;
+    await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["dashboard"], write: () => undefined,
+      stopSignal: AbortSignal.abort(new Error("dashboard-stop-requested")),
+      dashboard: async () => { composed = true; return { port: 3938, stop: async () => undefined }; },
+      dashboardReady: () => undefined,
+    });
+    assert.equal(composed, false);
+    assert.equal(process.listenerCount("SIGINT") + process.listenerCount("SIGTERM"), before);
+  });
 });
