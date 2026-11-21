@@ -74,7 +74,8 @@ describe("the plan audit", () => {
 
   it("fails when the statement has no finite limit clause", () => {
     for (const sql of ["SELECT * FROM runs LIMIT -1", "SELECT * FROM runs WHERE batch_id='LIMIT 1'", "SELECT * FROM runs WHERE batch_id=? LIMIT -1 OFFSET 2",
-      "SELECT * FROM runs WHERE batch_id=') LIMIT 1 --' AND created_at IN ('a', 'b')"]) {
+      "SELECT * FROM runs WHERE batch_id=') LIMIT 1 --' AND created_at IN ('a', 'b')",
+      "SELECT * FROM runs LIMIT 1 - 2", "SELECT * FROM runs LIMIT 0, -1", "SELECT * FROM runs LIMIT 5, 1", "SELECT * FROM runs /* LIMIT 1 */", "SELECT * FROM runs -- LIMIT 1"]) {
       expect(auditPlans(database, probe([sql])).scans.map(scan => scan.sql)).toEqual([sql]);
     }
   });

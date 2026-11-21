@@ -181,12 +181,12 @@ export function scannedTable(plan: string, sql: string): string | undefined {
  * and no aggregate, grouping, DISTINCT or sort that reads every row before the limit applies.
  */
 export function limitBoundsScan(sql: string, plan: readonly string[]): boolean {
-  // String literals go first so a quoted LIMIT or parenthesis is never read as SQL.
-  const bare = sql.replace(/'(?:[^']|'')*'/gu, "''");
+  // String literals and comments go first so a quoted or commented LIMIT or parenthesis is never read as SQL.
+  const bare = sql.replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//gu, match => match.startsWith("'") ? "''" : " ");
   let outer = bare;
   for (let inner = outer.replace(/\([^()]*\)/gu, "()"); inner !== outer; inner = outer.replace(/\([^()]*\)/gu, "()")) outer = inner;
-  // Only a bound parameter or a non-negative integer is a finite bound; LIMIT -1 means no limit.
-  return /\bLIMIT\s+(?:\d+|\?\d*|[:@$]\w+)(?![\w.])/iu.test(outer) && (bare.match(/\bSELECT\b/giu) ?? []).length === 1
+  // Only a whole trailing clause of bound parameters or non-negative integers is a finite bound: LIMIT -1, LIMIT 1 - 2 and LIMIT 0, -1 mean no limit.
+  return /\bLIMIT\s+(?:\d+|\?\d*|[:@$]\w+)(?:\s+OFFSET\s+(?:\d+|\?\d*|[:@$]\w+))?\s*;?\s*$/iu.test(outer) && (bare.match(/\bSELECT\b/giu) ?? []).length === 1
     && !/\b(?:GROUP\s+BY|DISTINCT)\b|\b(?:count|sum|total|avg|min|max|group_concat|json_group_array|json_group_object)\s*\(/iu.test(outer)
     && !plan.some(line => line.startsWith("USE TEMP B-TREE"));
 }
