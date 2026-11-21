@@ -34,7 +34,8 @@ it("writes a monotonic PC run duration when the wall clock moves backward", () =
     const receipts = join(root, ".work/test-pc");
     const [run] = readdirSync(receipts);
     const receipt: unknown = JSON.parse(readFileSync(join(receipts, run, "result.json"), "utf8"));
-    expect(receipt).toMatchObject({ exitCode: 0, files: [], durationMs: expect.any(Number) });
+    const numericDuration: unknown = expect.any(Number);
+    expect(receipt).toMatchObject({ exitCode: 0, files: [], durationMs: numericDuration });
     if (!receipt || typeof receipt !== "object" || !("durationMs" in receipt)) throw new Error("Missing PC receipt duration");
     expect(receipt.durationMs).toBeGreaterThanOrEqual(0);
   } finally {
