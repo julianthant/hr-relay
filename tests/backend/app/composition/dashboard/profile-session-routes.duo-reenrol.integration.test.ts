@@ -131,14 +131,33 @@ it("closes an open Duo re-enrolment on logout and before a non-macOS account del
 
 it("leaves the session signed in when closing a re-enrolment for logout cannot prove the browser shut", async () => {
   let uncertain = false;
+  let generation = 0;
+  let settleBrowser: (() => Promise<void>) | undefined;
   const synthetic = syntheticOnboardingDuo();
-  const started = await boot({ ...synthetic, async closeBrowser(...args) {
-    return uncertain ? { state: "uncertain" } : synthetic.closeBrowser(...args);
-  } });
+  const started = await boot({ ...synthetic,
+    browserState() { return { state: "closed", generation }; },
+    async recoverBrowser(owner) {
+      owner.assertCurrent();
+      uncertain = false;
+      generation += 1;
+    },
+    async closeBrowser(...args) {
+      return uncertain ? { state: "uncertain" } : synthetic.closeBrowser(...args);
+    },
+  });
   try {
     const { post, credential } = await signedIn(started.runtime);
     const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
     assert.equal((await post("/api/v1/profile/duo/reenrol/browser", { operationId: opened.operationId }, credential)).status, 200);
+    settleBrowser = async () => {
+      const reopened = await post("/api/v1/profile/duo/reenrol/reopen", { operationId: opened.operationId, generation: opened.browser.generation }, credential);
+      assert.equal(reopened.status, 200);
+      assert.equal(DuoReenrolStateSchema.parse(await reopened.json()).browser.generation, opened.browser.generation + 1);
+      const cancelled = await post("/api/v1/profile/duo/reenrol/cancel", { operationId: opened.operationId }, credential);
+      assert.equal(cancelled.status, 200);
+      assert.equal(PublicProfileStateSchema.parse(await cancelled.json()).state, "active");
+      assert.equal(existsSync(join(started.f.machine.stateRoot, "machine", "operations", `${opened.operationId}.json`)), false);
+    };
     uncertain = true;
     const logout = await post("/api/v1/profile/logout", {}, credential);
     assert.deepEqual([logout.status, await logout.json()], [409, { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" }]);
@@ -150,9 +169,7 @@ it("leaves the session signed in when closing a re-enrolment for logout cannot p
     const kept = PublicProfileStateSchema.parse(await (await fetch(`${started.base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json());
     assert.equal(kept.state, "active");
   } finally {
-    // An unproved setup-browser close is retained custody, so shutdown refuses after the HTTP refusal.
-    try { await started.runtime.stop(); } catch { /* retained closure */ }
-    try { started.f.machine.release(); } catch { /* stop may already hold the admission */ }
-    rmSync(started.f.root, { recursive: true, force: true });
+    await settleBrowser?.();
+    await started.stop();
   }
 });

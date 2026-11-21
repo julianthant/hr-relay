@@ -78,7 +78,7 @@ describe("authority check closure regressions", () => {
     edited(logged => {
       const outcome = RowSchema.parse(JSON.parse(text(command.outcome_json)));
       raw.prepare("UPDATE commands SET outcome_json=? WHERE id=?").run(JSON.stringify({ ...outcome, auditId: otherAuditId }), text(command.id));
-      expect(refusal(() => validateAuthorityStore(raw))).toBeDefined();
+      expect(refusal(() => validateAuthorityStore(raw))).toContain("command-audit-settlement-mismatch");
       expect(refusal(() => validateAuthorityChanges(raw, logged(), []))).toContain("command-audit-settlement-mismatch");
     });
   });
@@ -117,13 +117,14 @@ describe("authority check closure regressions", () => {
     edited(logged => {
       raw.prepare("UPDATE run_results SET run_id=? WHERE run_id=?").run(newOwner, oldOwner);
       const composite = "current composite authority is invalid";
-      expect(refusal(() => validateAuthorityStore(raw, "none"))).toBeDefined();
+      const ownerMismatch = "run_results-row-run_id-mismatch";
+      expect(refusal(() => validateAuthorityStore(raw, "none"))).toContain(ownerMismatch);
       const [moved, ...others] = logged();
       expect(others).toEqual([]);
       expect(moved?.keys).toEqual(expect.arrayContaining([`run:${oldOwner}`, `run:${newOwner}`]));
       assert.ok(moved);
-      expect(refusal(() => validateAuthorityChanges(raw, logged(), [], "none"))).toBeDefined();
-      expect(refusal(() => validateAuthorityChanges(raw, [{ ...moved, keys: [`run:${newOwner}`] }], [], "none"))).toBeDefined();
+      expect(refusal(() => validateAuthorityChanges(raw, logged(), [], "none"))).toContain(ownerMismatch);
+      expect(refusal(() => validateAuthorityChanges(raw, [{ ...moved, keys: [`run:${newOwner}`] }], [], "none"))).toContain(ownerMismatch);
       // The vacated side alone, without the row's new image: the old owner's invariants refuse.
       expect(refusal(() => validateAuthorityChanges(raw, [{ ...moved, op: "delete", keys: [`run:${oldOwner}`] }], [], "none"))).toBe(composite);
     });
@@ -133,7 +134,7 @@ describe("authority check closure regressions", () => {
     const published = one("SELECT run_id FROM run_search WHERE run_id=(SELECT id FROM runs WHERE state='queued' ORDER BY id LIMIT 1)");
     edited(logged => {
       raw.prepare("DELETE FROM run_search WHERE run_id=?").run(text(published.run_id));
-      expect(refusal(() => validateAuthorityStore(raw))).toBeDefined();
+      expect(refusal(() => validateAuthorityStore(raw))).toContain("run-search-source-coverage-invalid");
       expect(refusal(() => validateAuthorityChanges(raw, logged(), []))).toContain("run-search-source-coverage-invalid");
     });
 
