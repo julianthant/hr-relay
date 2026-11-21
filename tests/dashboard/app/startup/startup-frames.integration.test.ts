@@ -6,6 +6,9 @@ import { MOCK_WORKFLOW_COMPOSITION } from "../../../mocks/helpers/workflow-compo
 import { DAY, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { disposeHttpRouteHarness, harness } from "../../../support/helpers/backend/http-route-harness.js";
 import { STARTUP_READ_DEADLINE_MS } from "../../../../src/dashboard/app/startup/first-screen.js";
+import { ASSISTANT_FAILURES } from "../../../../src/models/dashboard/assistant.js";
+
+const ASSISTANT_PROFILE_ID = "00000000-0000-4000-8000-000000000001";
 import { active, dashboardServer, delayed, never, READ_DELAY_MS, start } from "./startup-harness.js";
 
 afterEach(disposeHttpRouteHarness);
@@ -56,6 +59,69 @@ it("fails reads still pending at the startup deadline into their notices, then s
     assert.ok(notices.length >= 2, `the queue shows its notice too: ${notices.join(" | ")}`);
   } finally { await app.stop(); }
 }, STARTUP_READ_DEADLINE_MS + 20_000);
+
+const servedSessions: typeof MOCK_WORKFLOW_COMPOSITION = workflows => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), sessionsHarness: undefined });
+for (const [sessions, composition] of [["sample", MOCK_WORKFLOW_COMPOSITION], ["served", servedSessions]] as const)
+it(`shows the date recovery, not an endless loader, for a cold link to a future day (${sessions} Sessions)`, async () => {
+  const server = dashboardServer();
+  const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active) : server(url, init), "/?day=2099-01-01", composition);
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    assert.deepEqual(app.frames, ["loading", "dashboard"]);
+    assert.match(app.firstDashboard(), /Choose a valid date/u);
+  } finally { await app.stop(); }
+}, 20_000);
+
+it("ends a bootstrap read that never answers in the Reload notice", async () => {
+  const server = dashboardServer();
+  const app = await start({}, (url, init) => {
+    const path = new URL(url).pathname;
+    return path === "/api/v1/profile/state" ? Response.json(active) : path === "/api/v1/bootstrap" ? never() : server(url, init);
+  });
+  try {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS - 1_000)); });
+    assert.deepEqual(app.frames, ["loading"], "the loader holds while bootstrap is pending");
+    await vi.waitFor(() => assert.match(app.host.textContent ?? "", /Couldn't start Relay\./u), { timeout: 5_000, interval: 50 });
+    assert.equal(app.host.querySelector("[data-startup-loading]"), null);
+    assert.ok(app.host.querySelector('button')?.textContent?.includes("Reload"));
+  } finally { await app.stop(); }
+}, STARTUP_READ_DEADLINE_MS + 20_000);
+
+it("shows the unsaved chat history notice, not a skeleton, when an old history import is refused", async () => {
+  const chat = "00000000-0000-4000-8000-0000000000c1";
+  sessionStorage.setItem(`relay-assistant-history:${ASSISTANT_PROFILE_ID}`, JSON.stringify({ format: 1, profileId: ASSISTANT_PROFILE_ID,
+    chats: [{ id: chat, title: "Old chat", minutes: 0, group: "Today" }], transcripts: {} }));
+  const server = dashboardServer();
+  const app = await start({}, (url, init) => {
+    const path = new URL(url).pathname;
+    return path === "/api/v1/profile/state" ? Response.json(active)
+      : path === "/api/v1/assistant/history" && init?.method === "POST" ? new Response("refused", { status: 500 }) : server(url, init);
+  });
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    assert.deepEqual(app.frames, ["loading", "dashboard"]);
+    const panel = app.host.querySelector('[aria-label="Relay assistant"]');
+    assert.ok(panel?.textContent?.includes(ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED), panel?.textContent ?? "no panel");
+    assert.equal(panel?.querySelector<HTMLButtonElement>('button[title="Rename chat"]')?.disabled, true);
+  } finally { await app.stop(); sessionStorage.clear(); }
+}, 20_000);
+
+it("opens Add workers from a cold link only once the dashboard shows, with focus inside it", async () => {
+  const app = await delayedStart(`/?view=${encodeURIComponent(JSON.stringify({ addWorkers: true }))}`);
+  const dialogs: number[] = [];
+  const watcher = new MutationObserver(() => { if (app.host.querySelector("[data-startup-loading]")) dialogs.push(document.querySelectorAll('[role="dialog"]').length); });
+  watcher.observe(document.body, { childList: true, subtree: true });
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 40_000, interval: 50 });
+    watcher.disconnect();
+    assert.ok(dialogs.length > 0 && dialogs.every(count => count === 0), "no dialog while the loader is up");
+    await vi.waitFor(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      assert.match(dialog?.textContent ?? "", /Add workers/u);
+      assert.ok(dialog?.contains(document.activeElement), "focus is inside Add workers");
+    }, { timeout: 10_000, interval: 50 });
+  } finally { watcher.disconnect(); await app.stop(); }
+}, 60_000);
 
 it("opens Start run from a cold link only once the dashboard shows, with focus inside it", async () => {
   const app = await delayedStart("/?start=1");

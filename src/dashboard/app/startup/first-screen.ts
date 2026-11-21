@@ -3,9 +3,15 @@ import { flushSync } from "react-dom";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { DashboardClient } from "../../client/index.js";
 import { DashboardClientError } from "../../client/errors.js";
+import { STARTUP_READ_DEADLINE_MS } from "../../state/use-bootstrap.js";
 
 export const SLOW_STARTUP_MS = 5_000;
-export const STARTUP_READ_DEADLINE_MS = 20_000;
+export { STARTUP_READ_DEADLINE_MS };
+// Reads a first screen can make. Writes are never expired: one may still land after its answer is dropped.
+const FIRST_SCREEN_READS = new Set(["activityPopulation", "activityReport", "applicationLifecycle", "assistantActivity", "assistantConversation", "assistantHistory",
+  "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
+  "notificationSnapshot", "notificationStatus", "preflightScopes", "readActivityPopulation", "readPreflight", "readiness", "runDetail", "runHistoryStatus", "runSection",
+  "settingsFacts", "workbookCatalog", "workbookCompatibility", "workbookHistory", "workbookList", "workbookRevision", "workbookTypes", "workflowExplorer"]);
 const STILL_LOADING = '[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)';
 
 /** False while the first screen is still hidden under the startup loader; surfaces that open on their own wait for it. */
@@ -39,7 +45,7 @@ export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: b
   return { revealed: mounted && revealed, slow, client: deadline.client };
 }
 
-/** The dashboard client for the first screen: until `end`, a call still pending at `expire` fails as a read failure and its late answer is dropped. */
+/** The dashboard client for the first screen: until `end`, a first-screen read still pending at `expire` fails as a read failure and its late answer is dropped. */
 export function startupDeadlineClient(client: DashboardClient) {
   let open = true;
   const expiries = new Set<() => void>();
@@ -47,6 +53,7 @@ export function startupDeadlineClient(client: DashboardClient) {
   const wrap = (key: PropertyKey, value: unknown): unknown => {
     if (typeof value !== "function") return value;
     const call = value as (...args: unknown[]) => unknown;
+    if (key !== "subscribeDay" && !FIRST_SCREEN_READS.has(String(key))) return (...args: unknown[]) => call.apply(client, args);
     return key === "subscribeDay" ? (input: Parameters<DashboardClient["subscribeDay"]>[0]) => {
       if (!open) return call.call(client, input);
       let settled = false;
