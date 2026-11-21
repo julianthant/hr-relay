@@ -41,6 +41,7 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null
     && (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > maxBytes)) {
+    await cancelUnreadBody(response);
     return { state: "unavailable", reason: "probe-response-too-large" };
   }
   if (response.body === null) return { state: "unavailable", reason: "probe-response-invalid" };
@@ -48,13 +49,13 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytesRead = 0;
   let body = "";
+  let ended = false;
   try {
     for (;;) {
       const chunk = await reader.read();
-      if (chunk.done) break;
+      if (chunk.done) { ended = true; break; }
       bytesRead += chunk.value.byteLength;
       if (bytesRead > maxBytes) {
-        await reader.cancel("Vite identity response exceeded its byte limit");
         return { state: "unavailable", reason: "probe-response-too-large" };
       }
       body += decoder.decode(chunk.value, { stream: true });
@@ -67,8 +68,14 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
       reason: error instanceof TypeError ? "probe-response-invalid" : "probe-request-failed",
     };
   } finally {
+    // A cancel on an already-errored stream rejects; the refusal above already classifies it.
+    if (!ended) await reader.cancel("Vite identity probe stopped reading").catch(() => undefined);
     reader.releaseLock();
   }
+}
+
+async function cancelUnreadBody(response: Response): Promise<void> {
+  await response.body?.cancel("Vite identity probe refused the response").catch(() => undefined);
 }
 
 async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number): Promise<ProbeTextResult> {
@@ -78,7 +85,10 @@ async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number
   } catch {
     return { state: "unavailable", reason: requestFailureReason(signal) };
   }
-  if (!response.ok) return { state: "unavailable", reason: "owner-endpoint-refused" };
+  if (!response.ok) {
+    await cancelUnreadBody(response);
+    return { state: "unavailable", reason: "owner-endpoint-refused" };
+  }
   return readBoundedResponseText(response, maxBytes);
 }
 
