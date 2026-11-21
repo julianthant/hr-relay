@@ -10,6 +10,7 @@ import { operatorFailureSentence } from "../../models/failures/error-catalog.js"
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import type { PaletteAction } from "../surfaces/shell/search/search-palette-model.js";
 import { useStartupGate } from "./startup/startup-gate.js";
+import { FirstScreenRevealedContext } from "./startup/first-screen.js";
 import { signInProblems, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { sameSessionAccount } from "../surfaces/settings/account/account-session.js";
@@ -33,8 +34,7 @@ import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
 import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflows/workflow-catalog-model.js";
 import { PanelBoundary } from "../surfaces/shared/panel-boundary.js";
-import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
-import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
+import { QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
 import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./navigation/url-state.js";
 import { resolveDateSelection, routeForStartedRun } from "./navigation/date-state-model.js";
@@ -223,12 +223,12 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onStep={onboarding => { setProfileCreationChosen(onboarding === "signup"); setRoute({ start: false, onboarding }); }} onDashboard={() => setRoute({ start: false })} />
       ) : route.onboarding !== undefined ? (
         <Onboarding step={route.onboarding} port={publicProfile.port} authenticated={session?.state === "active"} onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
-      ) : account === undefined && session?.state === "active" ? (
-        <DashboardSkeleton />
+      ) : account === undefined && session?.state === "active" || boot === undefined && bootstrap.state !== "failed" ? (
+        <StartupLoading />
       ) : boot === undefined ? (
-        <BootGate bootstrap={bootstrap} />
+        <BootFailure />
       ) : (
-        <ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
+        <StartupLoading><ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
           preferences={preferences}
           profileTarget={profileTarget}
           boot={boot}
@@ -254,7 +254,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onWells={setOpenWells}
           sort={sort}
           onSort={setSort}
-        /></DashboardPageBoundary></ViewNavigationProvider>
+        /></DashboardPageBoundary></ViewNavigationProvider></StartupLoading>
       )}
     </ToastProvider>
     </TooltipProvider>
@@ -281,29 +281,16 @@ export class DashboardPageBoundary extends Component<{ resetKey: string; onRecov
 
 /** Boot is the one place a hard failure has nowhere else to go: without the boot
  * document the shell has no vocabulary to render. */
-function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> }) {
-  if (bootstrap.state === "failed") {
-    return (
-      <main
-        data-mock-ready="failed"
-        className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
-      >
-        <div className="w-full max-w-[560px]">
-          <FailureNotice sentence="Couldn't start Relay."
-            action={{ label: "Reload", onClick: () => window.location.reload() }} />
-        </div>
-      </main>
-    );
-  }
+function BootFailure() {
   return (
     <main
-      data-mock-ready="loading"
-      className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
+      data-mock-ready="failed"
+      className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
     >
-      <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
-        ["general", "paths", "performance", "providers", "routes", "credentials", "account"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
-          ? <SettingsSectionSkeleton section={new URLSearchParams(window.location.search).get("settings")!} /> : undefined
-      } />
+      <div className="w-full max-w-[560px]">
+        <FailureNotice sentence="Couldn't start Relay."
+          action={{ label: "Reload", onClick: () => window.location.reload() }} />
+      </div>
     </main>
   );
 }
@@ -364,6 +351,7 @@ function LoadedApp({
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
   const client = useDashboardClient();
+  const firstScreenRevealed = useContext(FirstScreenRevealedContext);
   const authorityEpoch = useMemo(() => Object.freeze({ client, bootstrap: boot, profileTarget }), [client, boot, profileTarget]);
   const lifecycle = useApplicationLifecycle(client, authorityEpoch);
   const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
@@ -379,7 +367,8 @@ function LoadedApp({
   const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows, boot.workbookCompatibility), workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability, boot.workbookCompatibility]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
-  const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch, boot.actor.id);
+  const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
+  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id);
   const dayResource = dayState.day;
   const [logsAttempt, setLogsAttempt] = useState(0);
   const streamDown = dayState.connection.state === "stopped" || dayState.connection.state === "reconnecting";
@@ -1034,7 +1023,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         target.focus({ preventScroll: true });
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to run logs</a> : null}
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} countsLoading={dayWire === undefined && dayResource.state === "loading"} active={activeWorkflowId} 
+      <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} countsLoading={dayRequested !== undefined && dayWire === undefined && dayResource.state === "loading"} active={activeWorkflowId}
         onSelect={onRailSelect} settingsOpen={settingsOpen} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
 
       <main
@@ -1179,7 +1168,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       {!settingsOpen && (
         <SessionPanel
           harness={workflowComposition.sessionsHarness}
-          binding={{ client, executor, scope: commandScope, dayState, day, nowIso, workflowId: activeWorkflowId }}
+          binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, nowIso, workflowId: activeWorkflowId }}
           catalog={workflowCatalog}
           open={sessionsOpen}
           onOpenChange={setSessionsOpen}
@@ -1191,7 +1180,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       <PanelBoundary resetKey={`${activeWorkflowId}:${launch.open}`} sentence="Couldn't open Start run." className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
       <RunLaunchHost
         controller={launch}
-        hidden={route.settings !== undefined}
+        hidden={route.settings !== undefined || !firstScreenRevealed}
         onFixCheck={(section, settingsTarget) => setRoute(current => ({ ...current, settings: section, settingsTarget, settingsFrom: "run" }))}
         catalog={workflowCatalog}
         panelWorkflowId={activeWorkflowId}

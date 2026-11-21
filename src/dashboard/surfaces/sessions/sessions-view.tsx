@@ -1,7 +1,8 @@
 import { type IdleSessionCountdown } from './session-idle-model.js';
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { AssistantLauncher } from "../shell/assistant-launcher.js";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useContext, useId, useLayoutEffect, useRef, useState } from "react";
+import { FirstScreenRevealedContext } from "../../app/startup/first-screen.js";
 import { ChevronDown, ChevronUp, LogOut, Minus, Plus, Settings, UsersRound } from "lucide-react";
 import { BareButton, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, dsFocus, Field, IconButton, Input, Select, Skeleton, Tooltip } from "../../ds/ui.js";
 import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
@@ -57,6 +58,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const addTriggerRef = useRef<HTMLButtonElement>(null);
   const addFocusOrigin = useRef<Element | null>(null);
   const [addOpen, setAddOpen] = useViewState("addWorkers", false);
+  const firstScreenRevealed = useContext(FirstScreenRevealedContext);
   const [workflow, setWorkflow] = useViewState("workerWorkflow", workflows[0]?.id ?? "");
   const [count, setCount] = useState("1");
   const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
@@ -73,7 +75,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     if (active !== null && active !== document.body && active.isConnected && active !== trigger && !origin.contains(active)) return;
     trigger.focus({ preventScroll: true });
   }, [addOpen, addLocked, data.state, validWorkflow]);
-  const addControl = <Dialog open={addOpen} onOpenChange={setAddOpen}>
+  const addControl = <Dialog open={addOpen && firstScreenRevealed} onOpenChange={setAddOpen}>
           <Tooltip side="top" content="Add workers"><DialogTrigger asChild><IconButton ref={addTriggerRef} variant="ghost" size="sm" label="Add workers" title="" disabled={data.state !== "ready" || !workflows.length || addLocked} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger></Tooltip>
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">

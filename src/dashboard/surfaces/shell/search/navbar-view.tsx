@@ -1,6 +1,7 @@
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { shortcutActionForEvent, shortcutLabel, useShortcutPreferences } from "../../settings/navigation/keyboard-preferences-model.js";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { FirstScreenRevealedContext } from "../../../app/startup/first-screen.js";
 import { Search } from "lucide-react";
 import { Tooltip, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
@@ -20,19 +21,20 @@ export function RailSearch({ data, workflows, startKey, onAction, onWorkflow, on
   const [query, setQuery] = useViewState("searchQuery", "", "replace");
   const [notice, setNotice] = useState("");
   const trigger = useRef<HTMLButtonElement>(null);
+  const revealed = useContext(FirstScreenRevealedContext);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target;
       if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable=true], [role=dialog], [role=menu]")) return;
-      if (event.defaultPrevented || event.isComposing || shortcutActionForEvent(event, preferences) !== "search") return;
+      if (!revealed || event.defaultPrevented || event.isComposing || shortcutActionForEvent(event, preferences) !== "search") return;
       event.preventDefault(); setQuery(""); setOpen(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [preferences, setOpen, setQuery]);
+  }, [preferences, setOpen, setQuery, revealed]);
   return <div className="rail-search">
     <Tooltip side="bottom" content="Search" shortcut={preferences.bindings.search[0] && shortcutLabel(preferences.bindings.search[0])}><button ref={trigger} type="button" aria-label="Search" aria-haspopup="dialog" aria-expanded={open} className={iconButton} onClick={() => { setQuery(""); setOpen(true); }}><Search aria-hidden className="size-4" /></button></Tooltip>
-    <SearchPalette open={open} onOpenChange={next => { setOpen(next); setQuery(""); if (!next) setNotice(""); }} query={query} onQuery={value => { setQuery(value); setNotice(""); }}
+    <SearchPalette open={open && revealed} onOpenChange={next => { setOpen(next); setQuery(""); if (!next) setNotice(""); }} query={query} onQuery={value => { setQuery(value); setNotice(""); }}
       runs={data.unavailable ? [] : data.results} loading={data.loading === true} runsMatched={data.totalMatches !== undefined} workflows={workflows} sheets={data.sheets ?? []} startKey={startKey} onAction={onAction} onWorkflow={onWorkflow}
       onRun={result => onResult(result, () => { setOpen(false); setNotice(""); }, setNotice)} notice={notice || data.unavailable || data.sheetsUnavailable || ""}
       onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} />
