@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_PAYLOAD_TABLE, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService, type WorkbookLibraryRepository, type WorkbookSyncDownload } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { encodeEditableWorkbook } from '../../../src/models/dashboard/workbooks.js';
 import { WorkbookLibraryError } from '../../../src/backend/workbooks/workbook-library-error.js';
@@ -19,7 +19,7 @@ const workbook = () => ({ name: 'Roster.xlsx', themes: ['original theme'], hasFo
 
 function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, wrap = (repository: WorkbookLibraryRepository) => repository) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
-  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(sql);
+  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
   let depth = 0;
   // Nested work runs in a savepoint, as authority writes do.
   const transaction = <T>(work: () => T) => {

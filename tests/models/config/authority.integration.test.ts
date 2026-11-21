@@ -119,6 +119,11 @@ afterAll(() => profiles.close());
       assert.deepEqual(database.authority.workbooks.revision(saved.libraryId, 1), saved);
       assert.deepEqual(database.authority.workbooks.history(saved.libraryId), []);
     } },
+    { table: "workbook_payloads", prepare: database => { accountingLibrary(database); }, mutate: database => {
+      const saved = createAccountingWorkbook(database);
+      assert.deepEqual(database.authority.workbooks.read(saved.libraryId), saved);
+      assert.deepEqual(database.authority.workbooks.libraryVersion(saved.libraryId).workbook, encodeEditableWorkbook(saved.workbook));
+    } },
     { table: "workbook_types", mutate: database => {
       const type = { id: 'accounting', name: 'Accounting type', keyFieldId: null, fields: ['roster.accounting'], defaultWorkbookId: null };
       assert.deepEqual(database.authority.workbooks.putType(type), type);

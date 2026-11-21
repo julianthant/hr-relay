@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
-import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_TABLE } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createWorkbookLibraryService, readRetainedWorkbookReference, verifyRetainedNamedWorkbookReference } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { bindRunWorkbookReference, encodeSavedWorkbook, parseRunWorkbookReference, WorkbookOperationReceiptSchema, WorkbookOperationSchema } from "../../../../src/models/dashboard/workbooks.js";
@@ -22,12 +22,13 @@ import { CONFIG_SNAPSHOT, HASH_B, NOW } from "../../../support/fixtures/phase1c-
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { testAdmittedWorker, testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { moveWorkbookPayloads } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { randomUUID } from "node:crypto";
 
 const savedAt = "2026-10-12T00:00:00.000Z";
 
 function workbookFixture(database: DatabaseSync, cache = false) {
-  for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+  for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_TABLE]) {
     for (const statement of migration.statements) database.exec(statement);
   }
   const repository = createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work(),
@@ -55,7 +56,7 @@ function workbookFixture(database: DatabaseSync, cache = false) {
 
 it("keeps decoded rows and snapshots across change keys only within their stored-size budget", () => {
   using database = new DatabaseSync(":memory:");
-  for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+  for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_TABLE]) {
     for (const statement of migration.statements) database.exec(statement);
   }
   let generation = 1;
@@ -64,7 +65,9 @@ it("keeps decoded rows and snapshots across change keys only within their stored
   const service = createWorkbookLibraryService({ repository: open(), clock: manualClock(new Date(savedAt)), sync: unexpectedWorkbookSync });
   const [first, second] = ["First.xlsx", "Other.xlsx"].map(name => service.create({ name, themes: [], hasFormulas: false,
     sheets: [{ id: "people", name: "People", width: 1, hidden: [], headerRow: 1, rows: [{ id: "header", cells: [{ value: "x".repeat(16 * 1024) }] }] }] }).libraryId);
-  const largest = Number(database.prepare("SELECT max(length(payload_json)) AS size FROM (SELECT payload_json FROM workbook_library UNION ALL SELECT payload_json FROM workbook_library_snapshots)").get()?.size);
+  // A row's stored size counts the workbook it names.
+  const largest = Number(database.prepare(`SELECT max(length(r.payload_json)+length(p.payload_json)) AS size FROM (SELECT payload_json FROM workbook_library UNION ALL SELECT payload_json FROM workbook_library_snapshots) r
+    JOIN workbook_payloads p ON p.digest=json_extract(r.payload_json,'$.workbookDigest')`).get()?.size);
   const rereadFirst = (repository: ReturnType<typeof open>) => {
     const before = [repository.read(first), repository.libraryVersion(first).workbook];
     generation++;
@@ -140,6 +143,7 @@ function preCatalogueWorkbook(database: DatabaseSync) {
     for (const migration of [WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
       for (const statement of migration.statements) database.exec(statement);
     }
+    moveWorkbookPayloads(database);
     const repository = createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work() });
     const service = createWorkbookLibraryService({ repository, clock: manualClock(new Date(savedAt)), sync: unexpectedWorkbookSync });
     const live = service.read(id);
@@ -422,7 +426,7 @@ it("adds workbook storage to the baseline without changing existing schema or re
     const existingSchema = database.prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all();
     const state = database.prepare("SELECT * FROM database_states").get();
     database.exec("BEGIN IMMEDIATE");
-    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(statement);
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(statement);
     database.exec("COMMIT");
     const after = database.prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all();
     expect(after.filter(row => existingSchema.some(before => before.name === row.name))).toEqual(existingSchema);
@@ -459,7 +463,7 @@ it("does not initialize schema implicitly when constructing the repository", () 
 it('recognizes only the exact single seeded type without hiding its raw inventory count', () => {
   const database = new DatabaseSync(':memory:');
   try {
-    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(statement);
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(statement);
     const original = { id: 'general', name: 'General workbook', keyFieldId: null, fields: [], defaultWorkbookId: null };
     expect(hasOnlyInitialWorkbookType(database)).toBe(true);
     expect(database.prepare('SELECT COUNT(*) AS count FROM workbook_types').get()?.count).toBe(1);
