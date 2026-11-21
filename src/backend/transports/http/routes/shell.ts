@@ -3,13 +3,24 @@ import { OperatorXlsxExportRequestSchema } from "../../../../models/dashboard/xl
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { CalendarQuerySchema } from "../../../../models/dashboard/calendar.js";
 import { z } from "zod";
-import { PositiveIntSchema, ProjectionCursorSchema } from "../../../../rules/identity/ids.js";
+import { DateOnlySchema, PositiveIntSchema, ProjectionCursorSchema } from "../../../../rules/identity/ids.js";
 import { buildBootstrap } from "../../../runs/queries/bootstrap.js";
 import { emitOptionalDiagnostic } from "../../../logs/debug-events.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
 import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
-const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
+import { PositiveIntegerTextSchema, rawRouteQuery } from "./request-parameters.js";
+
+import type { DashboardApp } from "./api-types.js";
+import type { ShellRouteDeps } from "./shell-types.js";
+
+const StreamQuerySchema = z.strictObject({
+  topics: z.string().regex(/^dashboard-day:\d{4}-\d{2}-\d{2}$/u, "events-topics-invalid")
+    .transform(topic => topic.slice("dashboard-day:".length)).pipe(DateOnlySchema),
+  cursor: ProjectionCursorSchema.optional(),
+  projectionGeneration: PositiveIntegerTextSchema.pipe(PositiveIntSchema).optional(),
+});
+
 const StreamResumeSchema = z.strictObject({
   lastEventId: ProjectionCursorSchema.optional(),
   lastProjectionGeneration: PositiveIntSchema.optional(),
@@ -22,9 +33,6 @@ const StreamResumeSchema = z.strictObject({
     });
   }
 });
-
-import type { DashboardApp } from "./api-types.js";
-import type { ShellRouteDeps } from "./shell-types.js";
 
 export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): void {
   app.get("/api/v1/application-lifecycle", c => {
@@ -71,26 +79,17 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
   });
 
   app.get("/events/v1", async (c) => {
+    const query = StreamQuerySchema.parse(rawRouteQuery(c.req.url));
     const connectionId = randomUUID();
     const lifecycle = (phase: "started" | "settled" | "failed" | "reset", durationMs: number) =>
       emitOptionalDiagnostic(() => deps.debugEvents?.emit({ category: "sse", phase, correlationId: connectionId, durationMs },
         { kind: "transport", connectionId }));
-    const topics = z.string().max(150).refine(value => TOPICS_PATTERN.test(value), "events-topics-invalid").parse(c.req.query("topics"));
-    const match = TOPICS_PATTERN.exec(topics);
-    if (match === null) throw new Error("events-topics-invalid");
-    const rawLastEventId = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
-    const rawLastProjectionGeneration = c.req.header("Dashboard-Projection-Generation")
-      ?? c.req.query("projectionGeneration");
+    const rawGeneration = c.req.header("Dashboard-Projection-Generation");
     const resume = StreamResumeSchema.parse({
-      ...(rawLastEventId === undefined ? {} : { lastEventId: rawLastEventId }),
-      ...(rawLastProjectionGeneration === undefined
-        ? {}
-        : { lastProjectionGeneration: Number(rawLastProjectionGeneration) }),
+      lastEventId: c.req.header("Last-Event-ID") ?? query.cursor,
+      lastProjectionGeneration: rawGeneration === undefined ? query.projectionGeneration : Number(rawGeneration),
     });
-    const connection = await deps.hub.connect({
-      day: match[1],
-      ...resume,
-    });
+    const connection = await deps.hub.connect({ day: query.topics, ...resume });
     const stream = dashboardEventStreamBody(connection, lifecycle);
     return new Response(stream, {
       status: 200,

@@ -1,3 +1,4 @@
+import { IntakeSessionWireSchema } from "../../../../../src/models/intake/wire.js";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { foreignOriginCases, assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
@@ -136,3 +137,41 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 });
 
 afterEach(disposeHttpRouteHarness);
+
+it("admits the complete intake query before reading upload bytes and validates both result IDs", async () => {
+  const h = await harness({ profileFixture: profileFixtures.create, intake: {
+    ...UNWIRED_INTAKE_SERVICE,
+    upload: input => intake.upload(input),
+    read: sessionId => intake.read(sessionId),
+  } });
+  const intake = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
+    projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
+    descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("c") });
+  const uploadUrl = `http://localhost/api/v1/intake/files?workflow=${INTAKE_FIXTURE_WORKFLOW_ID}&filename=roster.csv`;
+  const headers = { host: "localhost", origin: "http://localhost", "content-type": "text/csv" };
+  const upload = await h.app.request(uploadUrl, { method: "POST", headers, body: "Employee ID#,Effective Date,Dept\n10000001,2026-01-03,Fixture\n" });
+  assert.equal(upload.status, 201);
+  const createdBody = await upload.text();
+  const { intakeSessionId } = IntakeSessionWireSchema.parse(JSON.parse(createdBody));
+  const session = await h.app.request(`/api/v1/intake/${intakeSessionId}`);
+  assert.equal(session.status, 200);
+  assert.equal(await session.text(), createdBody);
+  for (const suffix of ["&extra=unused", "&filename=second.csv"]) {
+    const request = new Request(uploadUrl + suffix, {
+      method: "POST", headers, body: "example",
+    });
+    const response = await h.app.request(request);
+    assert.equal(response.status, 400);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
+    assert.equal(request.bodyUsed, false);
+  }
+  const id = "00000000-0000-4000-8000-000000000001";
+  const result = await h.app.request(`/api/v1/intake/${id}/commands/${id}`);
+  assert.equal(result.status, 200);
+  assert.equal(await result.text(), '{"state":"unavailable"}');
+  for (const path of ["/api/v1/intake/malformed", `/api/v1/intake/malformed/commands/${id}`, `/api/v1/intake/${id}/commands/malformed`]) {
+    const response = await h.app.request(path);
+    assert.equal(response.status, 400, path);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
+  }
+});
