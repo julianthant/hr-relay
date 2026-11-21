@@ -23,12 +23,13 @@ export const ProfileLoginChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
 /** The signed-in person's account values; the timekeeper name and timekeeper initials are stored and changed independently. */
-export const ProfileAccountSchema = z.strictObject({ name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
+export const ProfileAccountSchema = z.strictObject({ username: ProfileRegistryRowSchema.shape.relayEmail, name: z.string(), initials: ProfileRegistryRowSchema.shape.initials,
   timekeeper: ProfileRegistryRowSchema.shape.timekeeperName, timekeeperInitials: ProfileRegistryRowSchema.shape.timekeeperInitials,
   lastSignedInAt: ProfileRegistryRowSchema.shape.lastSignedInAt });
 export type ProfileAccount = z.infer<typeof ProfileAccountSchema>;
-export function profileAccount(row: ProfileRegistryRow): ProfileAccount {
-  return ProfileAccountSchema.parse({ name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
+export function profileAccount(row: ProfileRegistryRow, identify: (email: string) => "unknown" | { readonly profileId: string }): ProfileAccount {
+  const owner = row.relayEmail === undefined ? "unknown" : identify(row.relayEmail);
+  return ProfileAccountSchema.parse({ ...(owner !== "unknown" && owner.profileId === row.profileId && { username: row.relayEmail }), name: `${row.firstName} ${row.lastName}`, initials: row.initials, timekeeper: row.timekeeperName,
     timekeeperInitials: row.timekeeperInitials, lastSignedInAt: row.lastSignedInAt });
 }
 /** A details change names at least one value; each value is checked by `profileDetailsPatch`, whose refusal states the reason. */

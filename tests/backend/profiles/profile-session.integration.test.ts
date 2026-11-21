@@ -243,75 +243,22 @@ describe("profile session", () => {
   it.each([
     ["a different username", { ucpathUserId: { set: "sam@ucsd.edu" } }],
     ["a different password", { ucpathPassword: { set: "secret-two" } }],
-  ] as const)("refuses to resume with %s saved in Settings and keeps the signed-in profile", async (_name, entries) => {
+    ["both UCPath entries cleared", { ucpathUserId: { clear: true }, ucpathPassword: { clear: true } }],
+  ] as const)("resumes and signs in with %s after Finish upgraded the profile", async (_name, entries) => {
     const root = await temp();
     const session = createProfileSession({ machineRoot: root });
-    const alex = await finishProfileOnboarding(session, session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    }));
-    assert.equal(alex.state, "active");
-    if (alex.state !== "active") return;
-    const original = { ucpathUserId: { set: "alex@ucsd.edu" }, ucpathPassword: { set: "secret-one" } };
+    const login = { email: "alex@ucsd.edu", password: "secret-one" }, at = "2026-09-06T12:05:00.000Z";
+    const alex = await finishProfileOnboarding(session, session.signUp({ ...login, firstName: "Alex", lastName: "Rivera", createdAt: at }));
+    assert.ok(alex.state === "active");
+    assert.equal(machineAdmissions.get(root)?.readProfileRegistry().profiles[0]?.relayEmail, login.email);
     saveCredentialsFixture(root, alex.profileId, entries);
-    const refused = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" });
-    assert.equal(refused.state, "refused");
-    assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
-    saveCredentialsFixture(root, alex.profileId, original);
-    const corrected = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" });
-    assert.equal(corrected.state, "active");
-    if (corrected.state === "active") assert.equal(corrected.profileId, alex.profileId);
-  });
-
-  it("keeps the signed-in profile resumable after a resume that found its saved credentials missing", async () => {
-    const root = await temp();
-    const session = createProfileSession({ machineRoot: root });
-    const alex = await finishProfileOnboarding(session, session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    }));
-    assert.equal(alex.state, "active");
-    if (alex.state !== "active") return;
-    saveCredentialsFixture(root, alex.profileId, { ucpathPassword: { clear: true } });
-    const refused = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" });
-    assert.equal(refused.state, "refused");
-    assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
-    saveCredentialsFixture(root, alex.profileId, { ucpathPassword: { set: "secret-one" } });
-    assert.equal(createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" }).state, "active");
-  });
-
-  it("surfaces a credential read failure during resume and keeps the signed-in profile resumable", async () => {
-    const root = await temp();
-    const session = createProfileSession({ machineRoot: root });
-    const alex = await finishProfileOnboarding(session, session.signUp({
-      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
-    }));
-    assert.equal(alex.state, "active");
-    if (alex.state !== "active") return;
-    const path = join(root, "profiles", alex.profileId, "credentials", "protected.json"), before = readFileSync(path);
+    const path = join(root, "profiles", alex.profileId, "credentials", "protected.json");
+    const before = readFileSync(path);
+    assert.equal(session.signIn({ ...login, at }, alex.token).state, "active");
     const restarted = createProfileSession({ machineRoot: root });
-    const machine = machineAdmissions.get(root); assert.ok(machine);
-    const generationBefore = machine.readProfileRegistry().sessionGeneration;
-    const realOpen = fs.openSync, realRead = fs.readFileSync;
-    let descriptor: number | undefined, faultedAfterActivation = false;
-    vi.spyOn(fs, "openSync").mockImplementation((target, flags, mode) => {
-      const opened = realOpen(target, flags, mode);
-      if (target === path) descriptor = opened;
-      return opened;
-    });
-    vi.spyOn(fs, "readFileSync").mockImplementation((target, options) => {
-      if (target === descriptor && !faultedAfterActivation) {
-        faultedAfterActivation = machine.readProfileRegistry().sessionGeneration > generationBefore;
-        throw new Error("injected credential read failure");
-      }
-      return realRead(target, options);
-    });
-    syncBuiltinESMExports();
-    const injected = (error: unknown): boolean => error instanceof Error && (error.message === "injected credential read failure" || injected(error.cause));
-    try { assert.throws(() => restarted.resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" }), injected); }
-    finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
-    assert.equal(faultedAfterActivation, true);
+    assert.equal(restarted.resumeSignedInProfile({ at }).state, "active");
+    assert.equal(restarted.signIn({ ...login, at }).state, "active");
     assert.deepEqual(readFileSync(path), before);
-    assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
-    assert.equal(restarted.resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" }).state, "active");
   });
 
   it("refuses non-letter initials before creating a profile", async () => {

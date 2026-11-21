@@ -58,7 +58,7 @@ it("serves password and username changes to the signed-in session only, and the 
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-it("keeps the session after an unsettled change and settles it on the same application's next change, without logging out", async () => {
+it("hides a stale username after a committed change and repairs the display at the next sign-in", async () => {
   const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
@@ -69,31 +69,29 @@ it("keeps the session after an unsettled change and settles it on the same appli
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
 
-    // The verifier swap fails, then the one write-back that follows fails before it starts.
-    const rename = fs.renameSync, open = fs.openSync;
-    let failNextCredentialOpen = false;
+    const rename = fs.renameSync;
     vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-      if (String(to).endsWith("profile-verifiers.json")) { failNextCredentialOpen = true; throw new Error("injected replacement failure"); }
+      if (String(to).endsWith("/profile-publication.json")) throw new Error("injected registry write failure");
       rename(from, to);
     });
-    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
-      if (failNextCredentialOpen && String(path).includes("/credentials/")) { failNextCredentialOpen = false; throw new Error("injected write-back failure"); }
-      return open(path, flags, mode);
-    });
     syncBuiltinESMExports();
-    const unsettled = await post("/api/v1/profile/account/username", { currentPassword: "disposable-fixture-password", newUsername: "fixture.changed@ucsd.edu" }, credential);
+    const changed = await post("/api/v1/profile/account/username", { currentPassword: "disposable-fixture-password", newUsername: "fixture.changed@ucsd.edu" }, credential);
     vi.restoreAllMocks(); syncBuiltinESMExports();
-    assert.deepEqual([unsettled.status, await unsettled.json()], [200, { state: "refused", code: "PROFILE_LOGIN_CHANGE_UNSETTLED" }]);
-    assert.equal(unsettled.headers.get("x-relay-session"), null);
-    assert.equal(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json()).state, "active");
+    assert.deepEqual([changed.status, await changed.json()], [200, { state: "changed" }]);
+    assert.equal(changed.headers.get("x-relay-session"), null);
+    const state = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json());
+    assert.ok(state.state === "active");
+    assert.equal(state.account?.username, undefined);
 
     const retried = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, credential);
     assert.deepEqual(await retried.json(), { state: "changed" });
     assert.equal(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, credential)).json()).state, "signed-out");
-    assert.deepEqual(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture.changed@ucsd.edu", password: "changed-fixture-password" })).json()),
+    assert.deepEqual(PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" })).json()),
       { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
-    const signedIn = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "changed-fixture-password" });
-    assert.equal(PublicProfileStateSchema.parse(await signedIn.json()).state, "active");
+    const signedIn = await post("/api/v1/profile/sign-in", { email: "fixture.changed@ucsd.edu", password: "changed-fixture-password" });
+    const repaired = PublicProfileStateSchema.parse(await signedIn.json());
+    assert.ok(repaired.state === "active");
+    assert.equal(repaired.account?.username, "fixture.changed@ucsd.edu");
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
@@ -108,17 +106,17 @@ it("answers an unknown outcome when a landed swap's flush and read-back both fai
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
 
-    const rename = fs.renameSync, flush = fs.fsyncSync, read = fs.readFileSync;
+    const rename = fs.renameSync, flush = fs.fsyncSync, open = fs.openSync;
     let failFlush = false, failRead = false;
     vi.spyOn(fs, "renameSync").mockImplementation((from, to) => { rename(from, to); if (String(to).endsWith("profile-verifiers.json")) failFlush = true; });
     vi.spyOn(fs, "fsyncSync").mockImplementation(descriptor => {
       if (failFlush) { failFlush = false; failRead = true; throw new Error("injected flush failure"); }
       flush(descriptor);
     });
-    vi.spyOn(fs, "readFileSync").mockImplementation(((path: fs.PathOrFileDescriptor, options?: unknown) => {
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
       if (failRead && String(path).endsWith("profile-verifiers.json")) { failRead = false; throw new Error("injected readback failure"); }
-      return Reflect.apply(read, fs, options === undefined ? [path] : [path, options]) as unknown;
-    }) as typeof fs.readFileSync);
+      return open(path, flags, mode);
+    });
     syncBuiltinESMExports();
     const unknown = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, credential);
     vi.restoreAllMocks(); syncBuiltinESMExports();

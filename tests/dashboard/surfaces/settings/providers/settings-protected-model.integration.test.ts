@@ -113,8 +113,7 @@ it("retains marked-only pseudonym recovery without a render throw or a metadata 
   assert.equal(h.controller().locked, true);
 });
 
-it("refuses a literal marker login credential in Settings and writes nothing", async () => {
-  // 9f5ac865dd: the Relay login changes only in Account, so a Settings write of either UCPath entry is refused, "<set>" included.
+it("settles a literal marker UCPath password after a lost reply with a single revision", async () => {
   const h = await mountRecovery();
   const before = h.authority.credentials.read();
   await act(async () => h.controller().update("ucpathPassword", "<set>"));
@@ -122,9 +121,9 @@ it("refuses a literal marker login credential in Settings and writes nothing", a
   assert.equal(h.controller().save.state, "unconfirmed");
   h.restoreReply();
   await h.action(() => h.controller().retry());
-  assert.equal(h.controller().save.state, "refused");
-  assert.equal(h.authority.credentials.read().revision, before.revision);
-  assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, before.entries.ucpathPassword?.value);
+  assert.equal(h.controller().save.state, "applied");
+  assert.equal(h.authority.credentials.read().revision, before.revision + 1);
+  assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, "<set>");
 });
 
 it("keeps the unknown original ID and draft while authority is absent, then replays exact bytes", async () => {
