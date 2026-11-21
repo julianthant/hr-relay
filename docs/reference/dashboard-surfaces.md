@@ -403,7 +403,7 @@ non-idle offers Stop, and idle offers Remove worker. Pending/uncertain operation
 commands and offer a check of the original attempt. Removing a card returns focus to the strip toggle.
 
 Add workers progress and confirmed success appear only as toast notifications. Refusals and
-uncertain outcomes remain in the panel as plain text with no action button. Pending progress
+uncertain outcomes remain in the panel. Pending progress
 toasts stay until settlement or panel unmount.
 
 Add workers selects workflow and count with increment/decrement controls. The count is bounded

@@ -27,5 +27,3 @@
 .hub-duo-setup .skip-link { position:absolute; top:-80px; left:var(--ds-space-section); padding:var(--ds-space-base) var(--ds-space-loose); z-index:90; }
 .hub-duo-setup .skip-link:focus-visible { top:var(--ds-space-cozy); }
 .hub-duo-setup .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-
-
