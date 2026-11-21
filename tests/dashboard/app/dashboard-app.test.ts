@@ -953,9 +953,10 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     });
     await act_m2(async () => input.blur()); await settle();
     assert_m2.equal(liveToasts().length, 0, "nothing is shown while the save is read back");
-    await settledToast(stored ? /Saved Task/u : /Settings weren't saved/u);
+    if (stored) await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 3000)); });
+    else await settledToast(/Settings weren't saved/u);
     const toasts = liveToasts();
-    assert_m2.equal(toasts.length, 1);
+    assert_m2.equal(toasts.length, stored ? 0 : 1, stored ? "a save found by reading back shows no message" : "one failure toast");
     if (!stored) assert_m2.match(toasts[0]?.textContent ?? "", /The previous value is back\./u);
     assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|outcome is uncertain|Command result|private-transport-sentinel/u);
     assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
@@ -1005,13 +1006,14 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     await settle(); assert_m2.equal(commands.length, 1, "a settled save is never retried");
   });
 
-  for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replays a lost credentials save by itself and settles on ${replacement}`, async () => {
+  for (const landed of [true, false]) it_m2(`reads a lost credentials save back without resending it (${landed ? "landed" : "not landed"}) and the next save reaches Relay`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ accountless: true, search: "settings=credentials", settingsRead: authority.read, command: body => {
       commands.push(body);
       const command = ProtectedSettingsCommandRequestSchema.parse(body);
-      if (replacement === "confirmed" && commands.length === 1) {
+      if (commands.length > 1) return Promise.resolve(Response.json(authority.execute(command)));
+      if (landed) {
         const applied = authority.credentials.apply(ProtectedSettingsApplyInputSchema.parse({
           ...command.payload,
           commandId: command.commandId,
@@ -1021,30 +1023,33 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
         }));
         assert_m2.equal(applied.state, "applied");
       }
-      if (commands.length <= 2) return Promise.reject(new Error("private-transport-sentinel"));
-      return Promise.resolve(replacement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(replacement === "conflict"
-        ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
-        : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
+      return Promise.reject(new Error("private-transport-sentinel"));
     } });
-    const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "UCPath username");
-    assert_m2.ok(label, "missing UCPath username label");
-    const input = document.getElementById(label.htmlFor);
-    assert_m2.ok(input instanceof HTMLInputElement);
-    await act_m2(async () => {
-      input.focus();
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-      if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
-      descriptor.set.call(input, "private-credential-sentinel");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act_m2(async () => input.blur()); await settle();
-    assert_m2.equal(liveToasts().length, 0, "a lost reply shows nothing while it is replayed");
-    await settledToast(replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
-    assert_m2.equal(commands.length, 3);
-    assert_m2.deepEqual(commands, [commands[0], commands[0], commands[0]], "every replay keeps the original command identity and bytes");
-    assert_m2.equal(liveToasts().length, 1);
+    const type = async (value: string) => {
+      const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "UCPath username");
+      assert_m2.ok(label, "missing UCPath username label");
+      const input = document.getElementById(label.htmlFor);
+      assert_m2.ok(input instanceof HTMLInputElement);
+      await act_m2(async () => {
+        input.focus();
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+        if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
+        descriptor.set.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act_m2(async () => input.blur()); await settle();
+    };
+    await type("private-credential-sentinel");
+    assert_m2.equal(liveToasts().length, 0, "nothing is shown while the save is read back");
+    if (landed) await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 3000)); });
+    else await settledToast(/Credentials weren't saved/u);
+    assert_m2.equal(liveToasts().length, landed ? 0 : 1, landed ? "a save found by reading back shows no message" : "one failure toast");
+    assert_m2.equal(commands.length, 1, "a lost reply is read back, never resent");
     assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|outcome is uncertain|Command result|private-credential-sentinel|private-transport-sentinel/u);
     assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
+    await type("Synthetic credential");
+    await settledToast(/Saved UCPath username/u);
+    assert_m2.equal(commands.length, 2, "the read-back freed the lock: the next save reaches Relay");
   });
   it_m2("settles a lost ordinary save and a lost credentials save independently, each with its own result", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
@@ -1074,10 +1079,9 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Account");
     assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
     await edit("UCPath username", "Synthetic credential");
-    await settledToast(/Saved UCPath username/u);
-    assert_m2.equal(commands.length, 3);
+    await settledToast(/Credentials weren't saved/u);
+    assert_m2.equal(commands.length, 2, "each lost save is read back, never resent");
     assert_m2.notEqual(commands[0]?.commandId, commands[1]?.commandId);
-    assert_m2.deepEqual(commands[2], commands[1], "the lost credentials save is replayed exactly");
     assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|Retry exact attempt|outcome is uncertain/u);
   });
   it_m2("retains the served Delete run label when its original row disappears", async () => {

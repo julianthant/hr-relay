@@ -10,7 +10,7 @@ import { createDashboardClient } from "../../../../../src/dashboard/client/index
 import { useProtectedSettings } from "../../../../../src/dashboard/surfaces/settings/providers/settings-protected-model.js";
 import { checkedSettingsResult, protectedReadbackConfirms } from "../../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { MarkedProtectedSettingsCommandRequestSchema, ProtectedSettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
+import { attemptUnresolved } from "../../../../../src/dashboard/app/commands/command-outcome.js";
 import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
@@ -19,6 +19,11 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.restoreAllMocks();
 });
+
+/** Waits for the hook's own read-back of an unknown save to finish (at most about 2.5 s). */
+async function unlocked(h: Awaited<ReturnType<typeof mountRecovery>>) {
+  await vi.waitFor(async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); assert.equal(h.controller().locked, false); }, { timeout: 5000, interval: 50 });
+}
 
 async function mountRecovery() {
   const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
@@ -98,19 +103,17 @@ it("retains marked-only pseudonym recovery without a render throw or a metadata 
     return { state: protectedReadbackConfirms(full, result, readback) ? "matched" : "mismatch", evidence: readback };
   } }); });
   await h.render();
-  assert.equal(h.controller().save.state, "unconfirmed"); assert.equal(h.controller().locked, true);
-  const originalBody = binding.executor.retainedAttempts()[0].body;
+  assert.equal(h.controller().locked, true, "the adopted unknown attempt holds the control while it is read back");
   const before = h.sent.length;
-  await h.action(() => h.controller().retry());
-  await h.action(() => h.controller().retry());
-  assert.equal(h.sent.length, before, "explicit metadata recovery never posts another envelope");
-  const state = h.controller().save;
-  assert.equal(state.state, "unconfirmed");
-  assert.ok(state.state === "unconfirmed");
-  assert.equal(state.message, formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text);
-  assert.equal(binding.executor.retainedAttempts()[0].request.commandId, request.commandId);
-  assert.equal(binding.executor.retainedAttempts()[0].body, originalBody);
-  assert.equal(h.controller().locked, true);
+  await unlocked(h);
+  assert.equal(h.sent.length, before, "a marked-only recovery is read back, never posted again");
+  assert.equal(h.controller().save.state, "idle");
+  assert.equal(binding.executor.retainedAttempts().some(attemptUnresolved), false, "the read-back settled the attempt");
+  await h.render();
+  assert.equal(h.controller().locked, false, "a later render does not adopt the settled attempt again");
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/after-recovery"));
+  await h.action(() => h.controller().submit());
+  assert.equal(h.sent.length, before + 1, "the next save reaches Relay");
 });
 
 it("refuses a literal marker login credential in Settings and writes nothing", async () => {
@@ -119,33 +122,34 @@ it("refuses a literal marker login credential in Settings and writes nothing", a
   const before = h.authority.credentials.read();
   await act(async () => h.controller().update("ucpathPassword", "<set>"));
   await h.action(() => h.controller().submit());
-  assert.equal(h.controller().save.state, "unconfirmed");
+  await unlocked(h);
+  assert.equal(h.controller().save.state, "idle", "the lost refusal is read back as not saved");
+  assert.equal(h.authority.credentials.read().revision, before.revision);
   h.restoreReply();
-  await h.action(() => h.controller().retry());
+  await act(async () => h.controller().update("ucpathPassword", "<set>"));
+  await h.action(() => h.controller().submit());
   assert.equal(h.controller().save.state, "refused");
+  assert.equal(h.sent.length, 2);
   assert.equal(h.authority.credentials.read().revision, before.revision);
   assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, before.entries.ucpathPassword?.value);
 });
 
-it("keeps the unknown original ID and draft while authority is absent, then replays exact bytes", async () => {
+it("reads a stored write with a lost reply back once, across losing and regaining authority, and never resends it", async () => {
   const h = await mountRecovery();
+  const before = h.authority.credentials.read().revision;
   await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/retained-operator"));
   await h.action(() => h.controller().submit());
-  assert.equal(h.controller().save.state, "unconfirmed");
-  const draft = structuredClone(h.controller().draft);
-  const firstBody = h.sent[0];
-  const commandId = h.binding().executor.retainedAttempts()[0].request.commandId;
   h.setAvailable(false); await h.render();
-  await h.action(() => h.controller().retry());
-  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/divergent-operator"));
+  h.setAvailable(true); await h.render();
+  await unlocked(h);
+  assert.equal(h.sent.length, 1, "the lost reply is read back, never resent");
+  assert.equal(h.authority.credentials.read().revision, before + 1);
+  assert.equal(h.controller().save.state, "idle"); assert.equal(h.controller().dirtyCount, 0);
+  assert.equal(h.binding().executor.retainedAttempts().some(attemptUnresolved), false);
+  h.restoreReply();
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/next-operator"));
   await h.action(() => h.controller().submit());
-  assert.equal(h.sent.length, 1); assert.equal(h.controller().save.state, "unconfirmed");
-  assert.equal(h.controller().locked, true); assert.deepEqual(h.controller().draft, draft);
-  h.restoreReply(); h.setAvailable(true); await h.render();
-  assert.equal(h.binding().executor.retainedAttempts()[0].request.commandId, commandId);
-  await h.action(() => h.controller().retry());
-  assert.equal(h.sent.length, 2); assert.equal(h.sent[1], firstBody);
-  assert.equal(h.controller().save.state, "applied"); assert.equal(h.controller().dirtyCount, 0);
+  assert.equal(h.sent.length, 2); assert.equal(h.controller().save.state, "applied");
 });
 
 it("writes a dialog-held credential only on explicit submit, never on the autosave timer or after reset", async () => {

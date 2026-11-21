@@ -169,7 +169,7 @@ it.each([
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "audit" },
   { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "later audit" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "PRIVATE_SERVER_DETAIL" }, code: "COMMAND_REFUSED", via: "direct" },
-] as const)("shows the $code and summary on the retained Remove card via $via", async ({ status, result, code, via }) => {
+] as const)("shows the $code summary in staff words via $via: on the card when the send returned it, as one toast when read back", async ({ status, result, code, via }) => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness();
   const recorded = (command: CommandRequest) => ({ state: "recorded", request: command, result: { ...result, commandId: command.commandId } });
@@ -186,9 +186,14 @@ it.each([
     await act(async () => button.click());
     if (via === "later audit") h.audit(recorded(h.sent[0]));
     const card = document.querySelector(WORKER_ENTRY); assert(card);
-    await settled(() => assert.ok(card.textContent?.includes(code), card.textContent ?? ""));
-    assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? "");
-    assert.doesNotMatch(card.textContent ?? "", /PRIVATE_SERVER_DETAIL|Check outcome/u);
+    const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent ?? "");
+    if (via === "direct") await settled(() => assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? ""));
+    else {
+      await settled(() => assert.equal(toasts().filter(toast => toast.includes(ERROR_CATALOG[code].text)).length, 1));
+      assert.ok(!card.textContent?.includes(ERROR_CATALOG[code].text), "a refusal found by reading back leaves no note on the card");
+    }
+    assert.ok(!card.textContent?.includes(code), "the card shows staff words, never the code");
+    assert.doesNotMatch(`${card.textContent ?? ""}${toasts().join("")}`, /PRIVATE_SERVER_DETAIL|Check outcome/u);
     assert.equal(h.sent.length, 1);
     assert.equal(h.gets.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
@@ -356,7 +361,7 @@ it("hydrates no retained control for another scope", async () => {
   release({ state: "pending", commandId: request.id }); await sent;
 });
 
-it("hydrates mounted Remove after remount, locks a newer failed phase, and removes only on readback", async () => {
+it("hydrates mounted Remove after remount, retains it through outage and a failed phase, and removes only on readback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let original: CommandRequest | undefined;
   h.effect(command => { original = command; return applied(command); });
@@ -373,6 +378,8 @@ it("hydrates mounted Remove after remount, locks a newer failed phase, and remov
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
     assert.match(document.body.textContent ?? "", /Remove requested/); assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
+    h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing member", members: pendingDay.workerAuthority.members }, workerCards: [] }));
+    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
     await act(async () => render());
     const retry = document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert(retry?.disabled, "same Remove still locks newest failed card");

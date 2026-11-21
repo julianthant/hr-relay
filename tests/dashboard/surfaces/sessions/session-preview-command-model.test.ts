@@ -85,12 +85,13 @@ describe("worker controls", () => {
 
   it("ends an unconfirmed control with the old state, one short toast and the control enabled", async () => {
     vi.useFakeTimers();
-    const sent: SessionPreviewRequest[] = [], problems: string[] = [];
+    const sent: SessionPreviewRequest[] = [], problems: string[] = [], abandoned: SessionPreviewRequest[] = [];
     const host = await mount(paused({ send: async request => { sent.push(request); return { id: request.id, state: "uncertain", message: "Lost response" }; },
-      check: async request => ({ id: request.id, state: "uncertain", message: "No served effect yet" }) }, problems));
+      check: async request => ({ id: request.id, state: "uncertain", message: "No served effect yet" }), abandon: request => { abandoned.push(request); } }, problems));
     await act(async () => firstPause(host)?.click());
     await advance(READBACK_MS);
     assert.deepEqual(problems, ["Couldn't pause this worker."]);
+    assert.deepEqual(abandoned, sent, "the unproved command's lock is freed");
     assert.equal(host.querySelectorAll('button[aria-label="Resume"]').length, 0);
     assert.equal(firstPause(host)?.disabled, false, "the control works again without a reload");
     assert.doesNotMatch(host.textContent ?? "", /Lost response|No served effect|Check outcome/u);
@@ -116,9 +117,24 @@ describe("worker controls", () => {
     await act(async () => commands!.control(target, "pause"));
     assert.equal(commands!.operations[target]?.state, "pending");
     scope = {}; await act(async () => root?.render(createElement(Harness)));
+    assert.equal(commands!.operations[target], undefined, "the scope change clears the control at once, before its read-back ends");
     await advance(READBACK_MS);
     assert.equal(commands!.operations[target], undefined, "nothing pending survives a scope change");
     assert.deepEqual(commands!.data, initial);
+  });
+
+  it("clears a control whose reply is still outstanding when the day, sign-in or workflow changes", async () => {
+    const initial = sessionsSample("active"); assert(initial.state === "ready");
+    const target = initial.workers[0].id;
+    let scope = {}; let commands: ReturnType<typeof useSessionPreviewCommands> | undefined; const problems: string[] = [];
+    const port: SessionPreviewCommandPort = { send: () => new Promise<SessionPreviewResult>(() => undefined), check: async request => confirmedPause(request) };
+    function Harness() { commands = useSessionPreviewCommands(initial, SERVED_CATALOG, port, { snapshot: initial, scope, actorId: "local-operator", onRefused: problem => { problems.push(problem); } }); return null; }
+    await mount(createElement(Harness));
+    await act(async () => commands!.control(target, "pause"));
+    assert.equal(commands!.operations[target]?.state, "pending");
+    scope = {}; await act(async () => root?.render(createElement(Harness)));
+    assert.equal(commands!.operations[target], undefined);
+    assert.deepEqual(problems, []);
   });
 
   it("the fixture port separates the lost response from the original command's read-back", async () => {

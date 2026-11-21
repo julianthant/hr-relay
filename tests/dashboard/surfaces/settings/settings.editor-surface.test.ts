@@ -119,7 +119,7 @@ describe("editable Settings surface", () => {
     assert.match(document.body.textContent ?? "", /Discard changes\?/u);
     await act(async () => overlayButton("Keep editing").click());
     assert.equal(input.value, "synthetic-local");
-    // The lost reply is replayed and read back by itself; the stored write ends as saved with no inline warning.
+    // The lost reply is read back by itself, never resent; the stored write ends as saved with no message.
     await vi.waitFor(async () => { await act(async () => undefined); assert.equal(input.value, "", "the served value replaces the draft"); }, { timeout: 8000, interval: 100 });
     assert.doesNotMatch(host.textContent ?? "", /unconfirmed|Retry exact attempt|outcome is uncertain/u);
     assert.equal(transport.authority.credentials.read().revision, 2, "the lost response retains an actually stored protected write");

@@ -16,16 +16,16 @@ afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; 
 
 const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", timekeeperInitials: "CMP", lastSignedInAt: IsoInstantSchema.parse("2026-11-01T10:00:00.000Z") };
 const account = (over: Partial<typeof values> = {}) => ({ ...values, ...over });
-function page(details: AccountPage["details"], shown: typeof values = values): AccountPage {
-  return { values: shown, details,
+function page(details: AccountPage["details"], shown: typeof values = values, readAccount?: AccountPage["readAccount"]): AccountPage {
+  return { values: shown, details, ...(readAccount === undefined ? {} : { readAccount }),
     login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) } };
 }
 const render = (value: AccountPage) => act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page: value, username: "jordan.lee@ucsd.edu", ucpath: null, deleteAccount: null }) })));
-async function mount(details: AccountPage["details"]): Promise<void> {
+async function mount(details: AccountPage["details"], readAccount?: AccountPage["readAccount"]): Promise<void> {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await render(page(details));
+  await render(page(details, values, readAccount));
 }
 const pencil = (label: string): HTMLButtonElement | null => document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 const dialog = (): HTMLElement | null => document.body.querySelector<HTMLElement>('[role="dialog"]');
@@ -136,15 +136,28 @@ describe("Settings > Account details rows", () => {
     assert.match(text(), /InitialsAB/u);
   });
 
-  it("reports a failed request as an unconfirmed change with the details sentence and keeps the old value", async () => {
-    await mount(async () => { throw new Error("offline"); });
+  it("reads a lost reply back and shows the saved name with no message", async () => {
+    const reads: string[] = [];
+    await mount(async () => { throw new Error("offline"); }, async () => { reads.push("read"); return account({ name: "Sam Rivera" }); });
     await click("Edit name");
     await typeInto("Name", "Sam Rivera");
     await press("Save");
-    await settle();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    assert.equal(reads.length, 1);
+    assert.equal(dialog(), null);
+    assert.match(text(), /NameSam Rivera/u);
+    assert.doesNotMatch(text(), /not saved|not confirmed/u);
+  });
+
+  it("reads a lost reply back and keeps the old name with one failure toast when the change did not land", async () => {
+    await mount(async () => { throw new Error("offline"); }, async () => account());
+    await click("Edit name");
+    await typeInto("Name", "Sam Rivera");
+    await press("Save");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 2700)); });
     assert.match(text(), /NameJordan Lee/u);
-    assert.match(text(), /Name not confirmed/u);
-    assert.match(text(), new RegExp(ERROR_CATALOG.PROFILE_DETAILS_CHANGE_UNKNOWN.text.slice(0, 30), "u"));
+    assert.equal(text().match(/Name not saved/gu)?.length, 1);
+    assert.doesNotMatch(text(), new RegExp(ERROR_CATALOG.COMMAND_OUTCOME_UNCERTAIN.text.slice(0, 30), "u"));
   });
 
   for (const how of ["Cancel", "Escape"] as const) it(`${how} sends no write and returns focus to the pencil`, async () => {

@@ -35,7 +35,7 @@ it("restarts the idle countdown when the read-back proves a refresh whose reply 
     await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS));
     for (let step = 0; step < 12; step += 1) await act(async () => vi.advanceTimersByTimeAsync(250));
     assert.equal(requests.length, 1);
-    assert.equal(commands?.operations["sample-worker-4"].state, "confirmed");
+    assert.equal(commands?.operations["sample-worker-4"], undefined, "a refresh found by reading back leaves no note");
     const countdown = commands?.idleCountdowns["sample-worker-4"];
     assert.equal(countdown?.waiting, false);
     assert.ok((countdown?.remainingMs ?? 0) > IDLE_REFRESH_MS - 3000, "the countdown restarts from the read-back");

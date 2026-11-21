@@ -83,7 +83,7 @@ describe("independent protected Settings surface", () => {
     assert.equal(h.controller().protectedEditor.save.state, "applied");
   });
   for (const failure of ["lost-response", "failed-readback", "pending-reply", "intervening-writer", "foreign-result", "legacy-readback"] as const) {
-    it(`replays the exact protected attempt by itself and settles after ${failure}`, async () => {
+    it(`reads the protected attempt back by itself, never resending it, and settles after ${failure}`, async () => {
       const h = await setup();
       h.ports.execute = input => {
         const result = h.authority.execute(input); const request = ProtectedSettingsCommandRequestSchema.parse(input);
@@ -97,12 +97,17 @@ describe("independent protected Settings surface", () => {
       };
       await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/draft-secret-sentinel"));
       await settingsAction(() => h.controller().protectedEditor.submit());
-      // The transport recovers; the model replays the exact attempt by itself and settles on its result.
+      // The transport recovers; the model reads the stored write back and settles it with no message.
       h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
-      await vi.waitFor(async () => { await settingsAction(() => undefined); assert.ok(["applied", "conflict"].includes(h.controller().protectedEditor.save.state), h.controller().protectedEditor.save.state); }, { timeout: 5000, interval: 50 });
-      assert.equal(h.controller().protectedEditor.save.state, failure === "intervening-writer" ? "conflict" : "applied");
-      assert.ok(h.commands.length >= 2); for (const command of h.commands) assert.deepEqual(command, h.commands[0], "every replay keeps the original command identity and bytes");
+      await vi.waitFor(async () => { await settingsAction(() => undefined); assert.equal(h.controller().protectedEditor.locked, false); }, { timeout: 5000, interval: 50 });
+      assert.equal(h.controller().protectedEditor.save.state, "idle");
+      assert.equal(h.controller().protectedEditor.dirtyCount, 0);
+      assert.equal(h.commands.length, 1, "an unknown outcome is read back, never resent");
+      assert.deepEqual(h.problems, [], "the stored write is found by the read-back"); assert.deepEqual(h.notices, [], "a save found by reading back shows no message");
       assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel|unconfirmed|Retry exact attempt/u);
+      await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/next-secret-sentinel"));
+      await settingsAction(() => h.controller().protectedEditor.submit());
+      assert.equal(h.commands.length, 2, "the read-back freed the lock: the next save reaches Relay");
     });
   }
   it("recovers definitive write-id reuse with new identity and the unchanged draft", async () => {
