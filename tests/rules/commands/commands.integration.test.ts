@@ -10,7 +10,7 @@ import { inspectOpenDatabase } from "../../../src/backend/storage/sqlite/backup-
 import { CanonicalClaimNextRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { deriveBulkChildCommand } from "../../../src/rules/commands/command-groups.js";
-import { BulkRunCommandRequestSchema, CommandRequestSchema, deriveBulkRunCommandFingerprint, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandResultSchema, markSettingsCommand } from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, CommandAdmissionRequestSchema, CommandRequestSchema, deriveBulkRunCommandFingerprint, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandResultSchema, markSettingsCommand } from "../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
@@ -44,8 +44,8 @@ it("accepts the worker roster ceiling and refuses a count above it", () => {
     target: { workflowId: "person-lookup", expectedVersion: 0 },
   };
 
-  assert.equal(CommandRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 16 } }).success, true);
-  assert.equal(CommandRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 17 } }).success, false);
+  assert.equal(CommandAdmissionRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 16 } }).success, true);
+  assert.equal(CommandAdmissionRequestSchema.safeParse({ ...request, payload: { desiredWorkers: 17 } }).success, false);
 });
 
 {

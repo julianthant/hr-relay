@@ -3,12 +3,14 @@ import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixture
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
 const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, nextCommandId, applyCurrentSettings, createPlan, startCommand } = createCommandKernelTestWorld();
 
@@ -41,6 +43,48 @@ describe("worker-browser arms", () => {
     assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.desiredWorkers, 2);
     const slots = harness.database.authority.workerSlots.active("kernel-reject");
     assert.deepEqual(harness.workerCalls, slots.map(slot => `ensure:${slot.workerId}`));
+  });
+
+  it("refuses 17 workers before process effects or slot allocation and accepts 16", async () => {
+    const harness = await createHarness();
+    applyCurrentSettings(harness);
+    const workflowId = rejectActiveDescriptor.id;
+    const target = { workflowId, expectedVersion: 0 };
+    const oversized = workerCommand("plan-worker-count", target, { desiredWorkers: 17 });
+
+    await assert.rejects(harness.kernel.executeWorkerPool(oversized), /desiredWorkers/u);
+    assert.deepEqual(harness.workerCalls, []);
+    assert.equal(harness.database.authority.commands.get(oversized.commandId), undefined);
+    assert.equal(harness.database.authority.workerPools.get(workflowId), undefined);
+    assert.deepEqual(harness.database.authority.workerSlots.active(workflowId), []);
+
+    const atCeiling = workerCommand("plan-worker-count", target, { desiredWorkers: 16 });
+    assert.equal((await harness.kernel.executeWorkerPool(atCeiling)).state, "applied");
+    assert.equal(harness.database.authority.workerSlots.active(workflowId).length, 16);
+  });
+
+  it("retires one member of a historical oversized roster even if the reduced count is still above the ceiling", async () => {
+    const harness = await createHarness();
+    const { workerPools, workerSlots } = harness.database.authority;
+    const workflow = rejectActiveDescriptor.id;
+    const pool = { workflow, desiredWorkers: 18, version: 1, plannedBy: "local-operator", plannedAt: NOW, createdAt: NOW, updatedAt: NOW };
+    const raw = new DatabaseSync(join(harness.stateRoot, "state.db"));
+    try {
+      raw.prepare(`INSERT INTO worker_pools (workflow, desired_workers, version, payload_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(workflow, pool.desiredWorkers, pool.version, canonicalJsonStringify(pool), NOW, NOW);
+    } finally { raw.close(); }
+    const slots = Array.from({ length: 18 }, (_, index) => workerSlots.allocate({ workflow, poolIndex: index + 1, now: NOW }));
+    const workerId = slots[17].workerId;
+    harness.workerMembers.set(workerId, { lifetimeId: UUID_4, version: 3, state: "running" });
+    const request = workerCommand("remove-worker", { workflowId: workflow, workerId, lifetimeId: UUID_4, expectedVersion: 3 });
+
+    assert.equal((await harness.kernel.executeWorkerPool(request)).state, "applied");
+    assert.deepEqual(harness.workerCalls, [`remove:${workerId}`]);
+    assert.equal(workerPools.get(workflow)?.desiredWorkers, 17);
+    assert.equal(workerPools.get(workflow)?.version, 2);
+    assert.deepEqual(workerSlots.active(workflow), slots.slice(0, 17));
+    assert.equal(workerSlots.get(workerId)?.retiredAt, NOW);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(request.commandId)?.result.state, "applied");
   });
   it("refuses an unavailable parked-read owner without journaling or calling the pool", async () => {
     const h = await createHarness();
