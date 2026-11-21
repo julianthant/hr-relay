@@ -20,7 +20,8 @@ it("serves password and username changes to the signed-in session only, and the 
       backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
     const finished = await finish();
-    assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
+    const original = PublicProfileStateSchema.parse(await finished.json());
+    assert.ok(original.state === "active" && original.firstRunCheck);
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     const change = async (path: string, body: unknown, session?: string) => {
       const response = await post(`/api/v1/profile/account/${path}`, body, session);
@@ -46,6 +47,10 @@ it("serves password and username changes to the signed-in session only, and the 
       { status: 200, body: { state: "refused", code: "PROFILE_USERNAME_REFUSED" } });
     const username = await change("username", { currentPassword: "changed-fixture-password", newUsername: "fixture.changed@ucsd.edu" }, credential);
     assert.deepEqual(username, { status: 200, body: { state: "changed" } });
+    const replay = await finish();
+    assert.equal(replay.status, finished.status);
+    assert.equal(replay.headers.get("x-relay-session"), credential);
+    assert.deepEqual(await replay.json(), { ...original, account: { ...original.account, username: "fixture.changed@ucsd.edu" } });
     assert.equal(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { "x-relay-session": credential } })).json()).state, "active");
 
     const longest = "p".repeat(160);

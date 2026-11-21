@@ -1171,7 +1171,11 @@ export function createProfileSession(input: {
       return withProfileLock(machineRoot, () => {
         const session = requireSession(token);
         if ("state" in session) return session;
-        return { state: "changed", account: profileAccount(registry.update(session.profileId, checked.patch), verifiers.identify) };
+        const row = registry.read().profiles.find(entry => entry.profileId === session.profileId);
+        if (row === undefined) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
+        const account = profileAccount({ ...row, ...checked.patch }, verifiers.identify);
+        registry.update(session.profileId, checked.patch);
+        return { state: "changed", account };
       });
     },
     logOut(token: string, inputFields: { readonly at: string }): { readonly state: "signed-out" } | ProfileLogoutResult | ProfileCancelling {
