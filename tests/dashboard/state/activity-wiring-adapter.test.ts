@@ -18,8 +18,11 @@ import { createActivityReportFixtures } from "../../support/helpers/dashboard/ac
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => vi.unstubAllGlobals());
 const sources = Object.freeze({ fixture: "hidden" as const });
-function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ status: "done", durationMs: 0 }, { status: "failed", durationMs: 42000 }, { status: "queued" }]): ActivityPopulationSelection {
-  const empty = createActivityReportFixtures().EMPTY;
+function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ status: "done", durationMs: 0 }, { status: "failed", durationMs: 42000 }, { status: "queued" }], from?: string): ActivityPopulationSelection {
+  const fixture = createActivityReportFixtures().EMPTY;
+  const empty = from === undefined ? fixture : { ...fixture, from,
+    assistantMessages: { ...fixture.assistantMessages, days: fixture.assistantMessages.days.filter(row => row.day >= from) },
+    assistantActions: { ...fixture.assistantActions, days: fixture.assistantActions.days.filter(row => row.day >= from) } };
   const population = rowsInput.map((row, index) => ({ runId: RunIdSchema.parse(`00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`), workflowId: "fixture", title: `Person ${index + 1}`, attempt: 1, parentRunId: null, shape: "single" as const, day: "2026-08-03", status: "queued" as const, terminal: ["done", "failed", "cancelled", "partial"].includes(row.status ?? "queued"), durationMs: null, readback: null, receiptResult: null, warningCount: null, ...row }));
   const count = (status: string) => population.filter(row => row.status === status).length;
   const terminal = population.filter(row => row.terminal);
@@ -179,8 +182,7 @@ it("keeps initial loading, read refusal, empty success and client replacement se
 it("holds the settled report, with export refused, while another range loads, and blanks only on a cold read", async () => {
   const first = selection();
   const requested = { from: "2026-08-02", to: "2026-08-07" };
-  const one = selection([{ status: "done", durationMs: 0 }]);
-  const second: ActivityPopulationSelection = { ...one, report: { ...one.report, ...requested } };
+  const second = selection([{ status: "done", durationMs: 0 }], requested.from);
   const range = () => { const data = current().data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.range; };
   const client = clientOf(first);
   const resolvers: ((value: ActivityPopulationSelection) => void)[] = [];
@@ -206,6 +208,8 @@ it("holds the settled report, with export refused, while another range loads, an
     assert.equal(total(), 1);
     assert.deepEqual(range(), requested);
     assert.equal(current().exportReady, true);
+    await current().exportCsv();
+    assert.deepEqual(vi.mocked(client.exportActivityPopulationCsv).mock.calls.map(([exported]) => [exported.snapshot.from, exported.snapshot.to]), [[requested.from, requested.to]]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 

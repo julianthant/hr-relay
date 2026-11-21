@@ -164,16 +164,24 @@ const openRuns = () => [...document.querySelectorAll('a')].filter(link => link.t
 it('while another range loads, keeps the last report under its own period with Export and Open runs locked', async () => {
   if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
   const next = { from: '2026-01-01', to: '2026-01-07' };
-  const props = { data, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onExport() {}, selection: null, onSelection() {} };
+  const opened: unknown[] = [];
+  const props = { data, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onExport() {}, selection: null, onSelection(browse: unknown) { opened.push(browse); } };
   await act(async () => root?.render(createElement(ActivityView, { ...props, range: ACTIVITY_SAMPLE_RANGE })));
   const expand = document.querySelector<HTMLButtonElement>('table[aria-label="Workflows"] button[aria-expanded="false"]'); assert(expand);
   await act(async () => expand.click());
-  assert.equal(openRuns().length, 1);
+  const [link] = openRuns(); assert(link);
+  assert.equal(link.getAttribute('aria-disabled'), null);
+  await act(async () => link.click());
+  assert.equal(opened.length, 1);
   assert.equal(document.querySelector('[data-analytics-stale]'), null);
   assert.equal(button().disabled, false);
   await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true })));
   assert(document.querySelector('table[aria-label="Workflows"] button[aria-expanded="true"]'));
-  assert.equal(openRuns().length, 0);
+  assert.deepEqual(openRuns(), [link]);
+  assert.equal(link.getAttribute('aria-disabled'), 'true');
+  assert.equal(link.tabIndex, -1);
+  await act(async () => link.click());
+  assert.equal(opened.length, 1);
   assert.equal(button().disabled, true);
   const mark = document.querySelector('[data-analytics-stale]'); assert(mark);
   assert.equal(mark.textContent, 'Updating');
@@ -183,6 +191,11 @@ it('while another range loads, keeps the last report under its own period with E
   assert.match(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(next)));
   assert.equal(document.querySelector('[aria-label="Loading analytics report"]'), null);
+  await act(async () => root?.render(createElement(ActivityView, { ...props, range: ACTIVITY_SAMPLE_RANGE })));
+  assert.deepEqual(openRuns(), [link]);
+  assert.equal(link.getAttribute('aria-disabled'), null);
+  await act(async () => link.click());
+  assert.equal(opened.length, 2);
 });
 
 it('a held empty report names its own period until the chosen period arrives', async () => {
