@@ -20,6 +20,4 @@ export const CONFIG_FINGERPRINT = "b".repeat(64);
 
 export const INGRESS_SCHEMA_HASH = "a".repeat(64);
 
-export const FAILURE_FINGERPRINT = "c".repeat(64);
-
 export const CONFIG_SNAPSHOT_ID = "44444444-4444-4444-8444-444444444444";
