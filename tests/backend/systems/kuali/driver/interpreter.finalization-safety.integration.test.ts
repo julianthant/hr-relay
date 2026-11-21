@@ -488,6 +488,61 @@ describe("Kuali finalization safety", () => {
     });
   });
 
+  it("keeps Kuali's text out of a Save answered with unreadable JSON and leaves the outcome unknown", async () => {
+    const fixture = await stageSave(saveVariables());
+    await context.route(GRAPHQL_URL, async route => {
+      const received: unknown = route.request().postDataJSON();
+      if (typeof received === "object" && received !== null && "operationName" in received
+        && received.operationName === "submitDocumentV2") {
+        await route.fulfill({ contentType: "application/json", body: "PRIVATE_KUALI_CANARY" });
+      } else await route.fallback();
+    });
+    await assert.rejects(fixture.commit(), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /not readable JSON; the outcome is unknown/u);
+      assert.doesNotMatch(JSON.stringify(failureDebugDetails(error)), /PRIVATE_KUALI_CANARY/u);
+      return true;
+    });
+  });
+
+  it("keeps Kuali's text out of an Action List answered with unreadable JSON", async () => {
+    const { driver } = await setupActionList();
+    await context.route(GRAPHQL_URL, route => route.fulfill({ contentType: "application/json", body: "PRIVATE_KUALI_CANARY" }));
+    await assert.rejects(driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER }), (error: unknown) => {
+      assert.ok(error instanceof Error && error.cause instanceof Error);
+      assert.match(error.cause.message, /not readable JSON/u);
+      assert.doesNotMatch(JSON.stringify(failureDebugDetails(error)), /PRIVATE_KUALI_CANARY/u);
+      return true;
+    });
+  });
+
+  it("reads the internal selects' chosen text and full trimmed options, and refuses an invalid selection", async () => {
+    const internalSelects = `
+      <title>Form - RRSS Separation Request Form - Kuali</title>
+      <label>Employee Last Name, First Name*<input value="Fixture, Person"></label>
+      <label>Location*<input value="Fixture Location"></label>
+      <label>Type of Termination*<select><option>- - -</option><option selected>Voluntary</option></select></label>
+      <label>Division*<select><option>- - -</option><option selected>&nbsp;Fixture Division&nbsp;</option><option>Other Division</option></select></label>
+      <label>Employee Type*<select id="employee-type"><option>- - -</option><option selected>Student</option></select></label>
+      <label>Student Title Code*<select><option selected>- - -</option><option>4923&nbsp;</option></select></label>
+      <label>Additional Separation Comments (Optional)<textarea></textarea></label>`;
+    await context.route(DOCUMENT_URL, route => route.fulfill({ contentType: "text/html", body: internalSelects + documentForm() }));
+    const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
+    const read = await driver.readSeparationDocument({ actionId: TARGET.actionId, documentNumber: DOCUMENT_NUMBER });
+    assert.ok(read.state === "read");
+    assert.deepEqual(read.document.employee.division, { state: "present", value: "Fixture Division" });
+    assert.deepEqual(read.document.employee.employeeType, { state: "present", value: "Student" });
+    assert.equal(read.document.employee.studentTitleCode.state, "absent");
+    assert.deepEqual(read.document.options.division, ["- - -", "Fixture Division", "Other Division"]);
+    assert.deepEqual(read.document.options.employeeType, ["- - -", "Student"]);
+    assert.deepEqual(read.document.options.studentTitleCode, ["- - -", "4923"]);
+
+    await context.route(DOCUMENT_URL, route => route.fulfill({ contentType: "text/html",
+      body: `${internalSelects}${documentForm()}<script>document.querySelector("#employee-type").selectedIndex = -1;</script>` }));
+    await assert.rejects(driver.readSeparationDocument({ actionId: TARGET.actionId, documentNumber: DOCUMENT_NUMBER }),
+      /Kuali driver-internal select "Employee Type\*" has no option text at its selected index/u);
+  });
+
   it("forwards one valid Save and still requires persisted values after reload", async () => {
     const variables = saveVariables();
     const fixture = await stageSave(variables);
@@ -545,7 +600,6 @@ describe("Kuali response deadline", () => {
       return true;
     });
     assert.ok(headersSent);
-    assert.ok(page.isClosed());
   });
 
   it("ends a forwarded Save whose body never finishes at the deadline as unknown", async () => {
@@ -558,6 +612,5 @@ describe("Kuali response deadline", () => {
     });
     await assert.rejects(fixture.commit(), /deadline.*outcome is unknown/u);
     assert.ok(headersSent);
-    assert.ok(page.isClosed());
   });
 });

@@ -550,9 +550,22 @@ function validatedStagedSave(request: Request, expected: StagedExpectation): str
   return JSON.stringify(submit.data);
 }
 
-// The response event fires on headers; the body shares the operation deadline. Closing the page ends the stalled read.
-async function responseJsonBefore(page: Page, clock: Clock, deadline: number, response: Response, what: string): Promise<unknown> {
-  const body = response.json();
+// The response event fires on headers; the body shares the operation deadline. On expiry control returns to the
+// session owner, whose bounded poison-close ends the abandoned read and proves closure.
+async function responseJsonBefore(clock: Clock, deadline: number, response: Response, what: string): Promise<unknown> {
+  // Parse here, not with response.json(): JSON.parse's SyntaxError quotes the body, so only the category leaves.
+  const body = response.text().then(
+    (text) => {
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        throw new Error(`${what} was not readable JSON; the outcome is unknown`);
+      }
+    },
+    (error: unknown) => {
+      throw new Error(`${what} body could not be read; the outcome is unknown`, { cause: error });
+    },
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<"expired">(resolve => {
     timer = setTimeout(() => resolve("expired"), Math.max(0, deadline - clock.monotonicMs()));
@@ -563,14 +576,13 @@ async function responseJsonBefore(page: Page, clock: Clock, deadline: number, re
   } finally {
     clearTimeout(timer);
   }
-  void body.catch(() => { /* The page close below rejects the abandoned read. */ });
-  await page.close();
-  throw new Error(`${what} did not finish its body by the deadline; the page was closed and the outcome is unknown`);
+  void body.catch(() => { /* The owner's close rejects the abandoned read. */ });
+  throw new Error(`${what} did not finish its body by the deadline; the outcome is unknown`);
 }
 
 // GraphQL refusals can return HTTP 200; inspect refusal fields, then verify persisted values separately.
 async function assertSubmitNotRefused(
-  assertCurrent: () => void, page: Page, clock: Clock, deadline: number, response: Response, documentNumber: string,
+  assertCurrent: () => void, clock: Clock, deadline: number, response: Response, documentNumber: string,
 ): Promise<void> {
   if (!response.ok()) {
     throw new Error(
@@ -579,19 +591,13 @@ async function assertSubmitNotRefused(
     );
   }
   assertCurrent();
-  const read = responseJsonBefore(page, clock, deadline, response, `Kuali's answer to the save on document ${documentNumber}`);
   let body: unknown;
   try {
-    body = await read;
+    // An unreadable or late answer cannot tell a refusal from an acceptance: both stay unknown.
+    body = await responseJsonBefore(clock, deadline, response, `Kuali's answer to the save on document ${documentNumber}`);
   } catch (error) {
-    if (page.isClosed()) throw error;
     assertCurrent();
-    // Not a swallow: an unreadable answer means we cannot tell a refusal from
-    // an acceptance, which is precisely the uncertainty this driver must raise.
-    throw new Error(
-      `Kuali's answer to the save on document ${documentNumber} was not readable JSON; the outcome is unknown`,
-      { cause: error },
-    );
+    throw error;
   }
   const parsed = SubmitResponseSchema.safeParse(body);
   if (!parsed.success) {
@@ -737,7 +743,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       if (!response.ok()) {
         throw new Error(`OldActions returned HTTP ${String(response.status())}`);
       }
-      const body = await responseJsonBefore(page, clock, deadline, response, "The OldActions answer");
+      const body = await responseJsonBefore(clock, deadline, response, "The OldActions answer");
       assertCurrent();
       return ActionListResultSchema.parse(body).data.actions;
     } finally {
@@ -1657,7 +1663,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
       const response = await settled;
       assertCurrent();
-      await assertSubmitNotRefused(assertCurrent, page, clock, deadline, response, expectation.documentNumber);
+      await assertSubmitNotRefused(assertCurrent, clock, deadline, response, expectation.documentNumber);
       assertCurrent();
       return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
     } finally {
