@@ -9,7 +9,6 @@ import type { CommandExecutionOptions } from "../../../app/commands/command-exec
 import { readWithDeadline } from "../../../client/read-deadline.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { SettingsReadSuperseded,useSettingsRead } from "../../../state/settings-read-model.js";
-import { useSettingsPreflight } from "../preflight/settings-preflight-model.js";
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
 import { routePresentation } from "../routes/settings-routes-model.js";
 import { settingTitle } from "../settings-presentation.js";
@@ -19,7 +18,6 @@ import { useSettingsClient } from "./settings-client.js";
 import { coupledSettingsLeaves,draftError,patchFromSettingsDraft,settingInput,settingsLeaves,type SettingsDraft,type SettingsDraftInput } from "./settings-draft-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
-export type { PreflightRerunState } from "../preflight/settings-preflight-model.js";
 export type { SettingsSaveState } from "./settings-attempt-model.js";
 
 /** Ordinary Settings never lock or show a save row: the control keeps the new value while the save runs. */
@@ -53,7 +51,6 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const saveAtOnce = useRef(false);
   const readReady = acceptedRequest.current === request && observation.state === "loaded";
   const readProblem = reportedReadProblem;
-  const { preflight, rerunPreflight } = useSettingsPreflight(editor, input);
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
       const read = async (): Promise<EditableSettingsWire> => {
@@ -186,7 +183,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     } else if (!busy.current && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
-  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, preflight, protectedEditor, leaves, readProblem,
+  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, protectedEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined,
-    update, reset, clear, discard, submit, reload, rerunPreflight, onFieldBlur });
+    update, reset, clear, discard, submit, reload, onFieldBlur });
 }

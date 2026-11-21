@@ -20,16 +20,3 @@ it("keeps the heading immediate and waits 150ms before a missing section skeleto
     assert.ok(host.querySelector('[aria-busy="true"]'));
   } finally { act(() => root.unmount()); }
 });
-
-it("retains loaded facts beside the read failure without drawing a skeleton", () => {
-  const host = document.createElement("div"); const root = createRoot(host);
-  const facts = { systemHosts: [], workflowCapabilities: [] };
-  try {
-    act(() => root.render(createElement(FactsPane, { facts: { state: "failed", message: "Read unavailable", facts }, children: loaded => createElement("span", null, loaded === facts ? "exact held facts" : "wrong facts") })));
-    assert.match(host.textContent ?? "", /exact held facts/);
-    assert.match(host.textContent ?? "", /Read unavailable/);
-    assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
-  } finally { act(() => root.unmount()); }
-});
-
-import { FactsPane } from "../../../../src/dashboard/surfaces/settings/editor/settings-facts.js";

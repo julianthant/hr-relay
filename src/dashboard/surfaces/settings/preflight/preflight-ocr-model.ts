@@ -2,7 +2,7 @@ import { readWithDeadline } from "../../../client/read-deadline.js";
 import type { ChatGptAccountQueries } from "../../../client/queries/chatgpt-account-queries.js";
 import type { ChatGptAccountPort } from "../general/chatgpt-account-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import { createContext, useContext, useSyncExternalStore } from "react";
+import { createContext } from "react";
 import type { ChatGptOcrTestResultSchema } from "../../../../models/dashboard/chatgpt-account.js";
 import type { ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import type { z } from "zod";
@@ -33,12 +33,6 @@ export function createPreviewPreflightOcrPort(initial: PreflightOcrSnapshot = { 
   };
 }
 export const PreflightOcrContext = createContext<PreflightOcrPort>(createPreviewPreflightOcrPort());
-export function usePreflightOcr() {
-  const port = useContext(PreflightOcrContext);
-  const snapshot = useSyncExternalStore(port.subscribe, port.getSnapshot, port.getSnapshot);
-  return { snapshot, testOcr: port.testOcr };
-}
-
 export function createServedPreflightOcrPort(client: Pick<ChatGptAccountQueries, "testChatGptOcr">, account: ChatGptAccountPort): PreflightOcrPort & { dispose(): void } {
   let disposed = false, epoch = 0;
   let controller: AbortController | undefined;

@@ -35,7 +35,6 @@ import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/
 import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./navigation/url-state.js";
-import { PreflightActionsProvider } from "../surfaces/settings/preflight/preflight-actions.js";
 import { resolveDateSelection, routeForStartedRun } from "./navigation/date-state-model.js";
 import { RunLaunchHost } from "../surfaces/run-start/run-launch.js";
 import { launchWorkflows, useRunLaunch } from "../surfaces/run-start/run-launch-model.js";
@@ -1031,10 +1030,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   return (
     <DashboardCommandBindingProvider binding={commandBinding}>
-    <PreflightActionsProvider actions={{ actorId: authority.epoch.bootstrap.actor.id, descriptorFingerprint: authority.epoch.bootstrap.descriptorHash,
-      showSettings: section => leaveSettings(() => setRoute({ ...routeWithoutTakeovers(route), settings: section ?? "" })),
-      showSessions: () => setSessionsOpen(true),
-    }}>
     <div
       data-mock-ready={ready ? "true" : "loading"}
       className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
@@ -1263,7 +1258,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         }}
       />
     </div>
-    </PreflightActionsProvider>
     </DashboardCommandBindingProvider>
   );
 }
