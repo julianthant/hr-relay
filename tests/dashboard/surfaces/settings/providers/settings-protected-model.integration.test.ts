@@ -124,22 +124,17 @@ it("retains marked-only pseudonym recovery without a render throw or a metadata 
   assert.equal(h.sent.length, before + 1, "the next save reaches Relay");
 });
 
-it("refuses a literal marker login credential in Settings and writes nothing", async () => {
-  // 9f5ac865dd: the Relay login changes only in Account, so a Settings write of either UCPath entry is refused, "<set>" included.
+it("settles a literal marker UCPath password after a lost reply with a single revision", async () => {
   const h = await mountRecovery();
   const before = h.authority.credentials.read();
   await act(async () => h.controller().update("ucpathPassword", "<set>"));
   await h.action(() => h.controller().submit());
   await unlocked(h);
-  assert.equal(h.controller().save.state, "idle", "the lost refusal is read back as not saved");
-  assert.equal(h.authority.credentials.read().revision, before.revision);
-  h.restoreReply();
-  await act(async () => h.controller().update("ucpathPassword", "<set>"));
-  await h.action(() => h.controller().submit());
-  assert.equal(h.controller().save.state, "refused");
-  assert.equal(h.sent.length, 2);
-  assert.equal(h.authority.credentials.read().revision, before.revision);
-  assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, before.entries.ucpathPassword?.value);
+  assert.equal(h.controller().save.state, "idle");
+  assert.equal(h.sent.length, 1, "the lost reply is read back without resending the password");
+  assert.equal(h.authority.credentials.read().revision, before.revision + 1);
+  assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, "<set>");
+  assert.deepEqual(h.problems, []);
 });
 
 it("reads a stored write with a lost reply back once, across losing and regaining authority, and never resends it", async () => {

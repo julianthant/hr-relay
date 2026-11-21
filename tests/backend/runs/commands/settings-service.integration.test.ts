@@ -6,7 +6,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema,type ProtectedSettingsPatch } from "../../../../src/models/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsNameSchema,ProtectedSettingsApplyInputSchema,type ProtectedSettingsPatch } from "../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -41,7 +41,7 @@ function protectedCommand(expectedRevision: number, entries: ProtectedSettingsPa
 }
 
 describe("native settings domain invariants", () => {
-  it("refuses writes to the saved Relay login through protected Settings", async () => {
+  it("applies UCPath edits through protected Settings and journals each revision", async () => {
     const service = await fixture();
     const before = service.store.read();
     assert.ok(before.entries.ucpathUserId);
@@ -54,13 +54,18 @@ describe("native settings domain invariants", () => {
       { ucpathPassword: { clear: true }, sharepointOnboardingRosterUrl: { set: "https://roster.example.test/onboarding" } },
     ];
     for (const entries of loginEdits) {
-      const command = protectedCommand(before.revision, entries);
+      const revision = service.store.read().revision;
+      const command = protectedCommand(revision, entries);
       const result = service.execute(command);
-      assert.equal(result.state, "rejected");
-      assert.equal(result.code, "not-editable");
-      assert.deepEqual(service.store.read(), before);
-      assert.equal(service.database.authority.commands.get(command.commandId), undefined);
-      assert.equal(service.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+      assert.equal(result.state, "applied");
+      const saved = service.store.read();
+      assert.equal(saved.revision, revision + 1);
+      for (const name of ProtectedSettingsNameSchema.options) {
+        const edit = entries[name];
+        if (edit !== undefined) assert.equal(saved.entries[name]?.value, "set" in edit ? edit.set : undefined);
+      }
+      assert.ok(service.database.authority.commands.get(command.commandId));
+      assert.ok(service.database.authority.commandAudits.findByCommand(command.commandId));
     }
   });
 

@@ -74,7 +74,7 @@ const StoppedCurrentProfileContinuitySchema = PriorProfileContinuitySchema.exten
   completedRestores: z.array(CompletedRestoreCustodySchema).max(10_000).refine(rows => new Set(rows.map(row => row.operationId)).size === rows.length) })
   .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
 const StoppedProfileRegistryDocumentV3Schema = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(3),
-  profiles: z.array(ProfileRegistryRowSchema.omit({ timekeeperInitials: true })) });
+  profiles: z.array(ProfileRegistryRowSchema.omit({ timekeeperInitials: true, relayEmail: true })) });
 type StoppedProfileRegistryDocumentV3 = z.infer<typeof StoppedProfileRegistryDocumentV3Schema>;
 const StoppedProfileRegistryDocumentSchema = z.union([StoppedProfileRegistryDocumentV3Schema.omit({ installationId: true, revision: true }).extend({ schemaVersion: z.literal(2) }), StoppedProfileRegistryDocumentV3Schema]);
 /** The version 4 registry for a version 3 one: each row's timekeeper initials are seeded from its timekeeper name and nothing else changes. */
@@ -1770,9 +1770,13 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const next = ProfileRegistryDocumentSchema.parse(document);
       if (next.profiles.length !== before.profiles.length || next.profiles.some(row => {
         const original = before.profiles.find(prior => prior.profileId === row.profileId);
-        return original === undefined || canonicalJsonStringify({ ...row, lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt,
-          firstName: original.firstName, lastName: original.lastName, initials: original.initials, timekeeperName: original.timekeeperName,
-          timekeeperInitials: original.timekeeperInitials }) !== canonicalJsonStringify(original);
+        if (original === undefined) return true;
+        const { relayEmail: priorEmail, ...prior } = original;
+        const { relayEmail: nextEmail, ...next } = row;
+        return priorEmail !== nextEmail && nextEmail === undefined
+          || canonicalJsonStringify({ ...next, lifecycle: prior.lifecycle, lastSignedInAt: prior.lastSignedInAt,
+            firstName: prior.firstName, lastName: prior.lastName, initials: prior.initials, timekeeperName: prior.timekeeperName,
+            timekeeperInitials: prior.timekeeperInitials }) !== canonicalJsonStringify(prior);
       })) fail("profile-registry-registration-required");
       if (expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected)
         || next.installationId !== before.installationId || next.revision !== before.revision + 1 || next.sessionGeneration < before.sessionGeneration) fail("profile-registry-publication-conflict");

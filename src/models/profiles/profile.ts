@@ -25,6 +25,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
   profileId: ProfileIdSchema,
   registration: z.strictObject({ operationId: z.uuid(), commandId: z.uuid(), writeId: z.uuid(), credentialRevision: z.number().int().positive(),
     onboardingCompletion: ProfileOnboardingCompletionSchema.optional() }),
+  relayEmail: z.string().min(1).max(254).optional(),
   firstName: NameSchema,
   lastName: NameSchema,
   initials: ProfileIdentitySchema.shape.initials,
