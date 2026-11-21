@@ -889,29 +889,32 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
 
   /* ── The separation-document read (2i chunk 2) ─────────────────────────── */
 
-  /** A `<select>`: its selected option text and its COMPLETE option list (§3.2). */
-  async function readSelect(id: ElementId): Promise<{
+  /** A `<select>`: its selected option text and its COMPLETE option list (§3.2); `control` names it in a refusal. */
+  async function readSelect(locator: Locator, control: string): Promise<{
     readonly selected: string;
     readonly options: readonly string[];
   }> {
     assertCurrent();
-    const locator = await exactlyOne(assertCurrent, page, id);
-    assertCurrent();
     const read = await locator.evaluate((node) => {
       const select = node as HTMLSelectElement;
-      const options = Array.from(select.options).map((option) => option.text);
-      const selected = select.options[select.selectedIndex]?.text;
-      return { selected, options };
+      return {
+        selected: select.options[select.selectedIndex]?.text,
+        options: Array.from(select.options).map((option) => option.text),
+      };
     });
     if (read.selected === undefined) {
       // An invalid selectedIndex is unreadable; never guess the first dropdown option.
       throw new Error(
-        `Kuali ${id} has no option text at its selected index; refusing to guess which option is chosen`,
+        `Kuali ${control} has no option text at its selected index; refusing to guess which option is chosen`,
       );
     }
     assertCurrent();
     return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
   }
+
+  const readRegistrySelect = async (id: ElementId) => readSelect(await exactlyOne(assertCurrent, page, id), id);
+  const readInternalSelect = async (name: string) =>
+    readSelect(await exactlyOneInternal("combobox", name), `driver-internal select "${name}"`);
 
   async function readCheckbox(id: ElementId): Promise<boolean> {
     assertCurrent();
@@ -958,30 +961,6 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     const result = (await locator.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
     assertCurrent();
     return result;
-  }
-
-  async function readInternalSelect(name: string): Promise<{
-    readonly selected: string;
-    readonly options: readonly string[];
-  }> {
-    assertCurrent();
-    const locator = await exactlyOneInternal("combobox", name);
-    assertCurrent();
-    const read = await locator.evaluate((node) => {
-      const select = node as HTMLSelectElement;
-      return {
-        selected: select.options[select.selectedIndex]?.text,
-        options: Array.from(select.options).map((option) => option.text),
-      };
-    });
-    if (read.selected === undefined) {
-      throw new Error(
-        `Kuali driver-internal select "${name}" has no option text at its selected index; `
-        + "refusing to guess which option is chosen",
-      );
-    }
-    assertCurrent();
-    return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
   }
 
   const textField = (value: string): KualiTextField => (value.length === 0
@@ -1119,9 +1098,9 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     };
 
     assertCurrent();
-    const terminationType = await readSelect(KUALI_RRSS_TERMINATION_TYPE_FIELD);
+    const terminationType = await readRegistrySelect(KUALI_RRSS_TERMINATION_TYPE_FIELD);
     assertCurrent();
-    const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    const department = await readRegistrySelect(KUALI_RRSS_DEPARTMENT_FIELD);
     assertCurrent();
     const division = await readInternalSelect(INTERNAL_DIVISION_FIELD);
     assertCurrent();
@@ -1242,7 +1221,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     readonly departmentOptions: readonly string[];
   }> {
     assertCurrent();
-    const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    const department = await readRegistrySelect(KUALI_RRSS_DEPARTMENT_FIELD);
     assertCurrent();
     const finalPay = await readFinalPayChoice(documentNumber);
     assertCurrent();
