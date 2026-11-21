@@ -73,7 +73,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     void closeDraft(adapter, id, warned.current).then(closed => {
       if (closed) { warned.current = false; setOpenId(undefined); return; }
       warned.current = true;
-      toast({ tone: 'danger', title: "Column changes aren't saved", description: 'Choose Back again to discard them.' });
+      toast({ tone: 'danger', title: "Column changes aren't saved", description: 'Edit a column to retry, or choose Back again to discard.' });
     });
   };
   const saveMapping = (worksheet: string, patch: Record<string, string | null>) => {
