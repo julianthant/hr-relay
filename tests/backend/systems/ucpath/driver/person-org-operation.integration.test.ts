@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { it } from "vitest";
 import { createUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/interpreter.js";
+import {
+  deriveAssignmentDetailsFromCells,
+  searchPersonOrgWithPagePort,
+  selectPreferredAssignmentDetails,
+} from "../../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { SearchPersonOrgInputSchema } from "../../../../../src/models/systems/ucpath/search-person-org.js";
+import { EidSchema } from "../../../../../src/rules/identity/ids.js";
 import { descriptorRuntimeNodes } from "../../../../../src/workflow-kit/workflow.js";
 import { separationsDescriptor } from "../../../../support/helpers/registered-workflows.js";
 
@@ -47,4 +53,45 @@ it("submits only the Kuali Employee ID through the Person Org interpreter", asyn
   } finally {
     await browser.close();
   }
+});
+
+function assignmentCells(hrStatus: string, record: string, department: string): readonly string[] {
+  return [record, "08/01/2026", hrStatus, "SDCMP", "40000000", "000412", department,
+    "004921", "Dining Assistant", "", "0.50", "Student"];
+}
+
+it.each(["Active", "Inactive", "Terminated"])("prefers %s over a blank assignment status", hrStatus => {
+  const known = deriveAssignmentDetailsFromCells(assignmentCells(hrStatus, "0", "CHEMISTRY"));
+  const blank = { ...known, hrStatus: "", emplRecord: "9", department: "HOUSING" };
+  assert.equal(selectPreferredAssignmentDetails([blank, known]), known);
+});
+
+it.each([
+  { known: "Active", expected: "active" },
+  { known: "Inactive", expected: "inactive" },
+  { known: "Terminated", expected: "terminated" },
+  { known: null, expected: "unknown" },
+])("returns $expected from the preferred Person Org assignment", async ({ known, expected }) => {
+  const emplId = EidSchema.parse("10800000");
+  const unfamiliar = "Active status unavailable";
+  const cells = [assignmentCells(unfamiliar, "9", "HOUSING")];
+  if (known !== null) cells.push(assignmentCells(known, "0", "CHEMISTRY"));
+
+  const result = await searchPersonOrgWithPagePort(() => undefined, {
+    search: async () => ({
+      kind: "detail",
+      detail: {
+        observedEid: emplId,
+        displayedName: "Deterministic Person",
+        cells,
+        employmentInstances: "already-complete",
+        startDate: "", terminationDate: "", terminationReason: "",
+      },
+    }),
+    drill: () => Promise.reject(new Error("fixture returned detail directly")),
+    returnToResults: () => Promise.reject(new Error("fixture has no results grid")),
+  }, { kind: "by-eid", emplId });
+
+  assert.equal(result.selection.selected?.hrStatus, known ?? unfamiliar);
+  assert.equal(result.selection.selected?.employeeStatus, expected);
 });
