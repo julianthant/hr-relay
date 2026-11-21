@@ -57,6 +57,21 @@ describe("the plan audit", () => {
     expect(auditPlans(database, probe(["SELECT * FROM runs WHERE batch_id=? ORDER BY created_at LIMIT 1"])).scans).toHaveLength(1);
   });
 
+  it("fails when an aggregate, grouping or DISTINCT reads every row before the limit", () => {
+    for (const sql of ["SELECT sum(created_at) FROM runs LIMIT 1", "SELECT count(*) FROM runs WHERE batch_id=? LIMIT 1",
+      "SELECT batch_id FROM runs GROUP BY batch_id LIMIT 1", "SELECT DISTINCT batch_id FROM runs LIMIT 1"]) {
+      expect(auditPlans(database, probe([sql])).scans.map(scan => scan.sql)).toEqual([sql]);
+    }
+  });
+
+  it("fails an outer scan when only a subquery or one arm of a compound has the limit", () => {
+    for (const sql of ["SELECT * FROM runs WHERE batch_id IN (SELECT id FROM run_batches LIMIT 1)",
+      "SELECT * FROM runs WHERE created_at > (SELECT created_at FROM runs LIMIT 1)",
+      "SELECT id FROM run_batches UNION ALL SELECT id FROM runs WHERE batch_id=? LIMIT 1"]) {
+      expect(auditPlans(database, probe([sql])).scans.map(scan => scan.table)).toContain("runs");
+    }
+  });
+
   it("passes a scan the limit stops and a scan inside a trigger body", () => {
     expect(auditPlans(database, probe(["SELECT * FROM runs WHERE batch_id=? LIMIT 1", "INSERT INTO run_batches(id) VALUES(?)"])).scans).toEqual([]);
   });

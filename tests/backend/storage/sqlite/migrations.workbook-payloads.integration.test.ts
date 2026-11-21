@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -10,7 +10,7 @@ import { encodeSavedWorkbook, type SavedWorkbook } from "../../../../src/models/
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { restoreSchema37WorkbookPayloads } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema36QueryIndexes, restoreSchema37WorkbookPayloads } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const CAPTURE = { now: "2026-11-17T00:00:00.000Z", captureFile: () => { throw new Error("no capture expected"); } };
@@ -132,6 +132,64 @@ describe("workbook payload migration 38", () => {
     assert.throws(() => applyAuthorityMigrationsAfter(database, 37, CAPTURE));
     database.exec("ROLLBACK");
     assert.deepEqual(embedded(database), rows);
+  });
+
+  it("validates a stopped schema-36 store's library in its own layout through read-only inspection", async () => {
+    const f = await storageRecoveryFixture(7);
+    try {
+      const database = new DatabaseSync(f.path);
+      try {
+        database.exec("PRAGMA foreign_keys=ON");
+        for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
+        database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+        database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+        seed(database);
+        restoreSchema36QueryIndexes(database);
+      } finally { database.close(); }
+      const inspect = () => {
+        const copy = new DatabaseSync(f.path, { readOnly: true });
+        try { return inspectNativeAuthority(copy, 36).schemaVersion; } finally { copy.close(); }
+      };
+      assert.equal(inspect(), 36);
+      const writer = new DatabaseSync(f.path);
+      try {
+        writer.prepare("UPDATE workbook_library_state SET sync_json=? WHERE id='roster'")
+          .run(JSON.stringify({ url: "https://example.sharepoint.com/sites/hr/Roster.csv", finishedAt: USED, result: "failed", code: "download timed out" }));
+      } finally { writer.close(); }
+      assert.throws(inspect);
+    } finally { await f.dispose(); }
+  });
+
+  it("keeps a committed upgrade and reports it upgraded when compaction fails", async () => {
+    const f = await storageRecoveryFixture(7);
+    try {
+      let before: string;
+      const database = new DatabaseSync(f.path);
+      try {
+        database.exec("PRAGMA foreign_keys=ON");
+        for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
+        database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+        database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+        seed(database);
+        before = readback(database);
+        restoreSchema37WorkbookPayloads(database);
+      } finally { database.close(); }
+      const exec = DatabaseSync.prototype.exec;
+      let refused = 0;
+      const vacuum = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
+        if (sql === "VACUUM") { refused++; throw new Error("database or disk is full"); }
+        exec.call(this, sql);
+      });
+      try { assert.equal((await f.run()).state, "upgraded"); } finally { vacuum.mockRestore(); }
+      assert.equal(refused, 1);
+      const upgraded = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.equal(inspectNativeAuthority(upgraded).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+        assert.equal(readback(upgraded), before);
+        assert.deepEqual(upgraded.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
+      } finally { upgraded.close(); }
+      assert.equal((await f.run()).state, "already-upgraded");
+    } finally { await f.dispose(); }
   });
 
   it("upgrades a schema-37 store through the store upgrade and compacts the file", async () => {

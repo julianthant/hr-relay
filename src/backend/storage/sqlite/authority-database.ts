@@ -106,7 +106,7 @@ import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } fro
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { assertPreMasterWorkbookHistory,createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,migrateWorkbookPayloads,validateWorkbookLibrary,WORKBOOK_MASTER_MIGRATION,WORKBOOK_PAYLOAD_CONVERSION_ID,WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
+import { assertPreMasterWorkbookHistory,createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,migrateWorkbookPayloads,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION,WORKBOOK_MASTER_MIGRATION,WORKBOOK_PAYLOAD_CONVERSION_ID,WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -1428,8 +1428,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
 function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads = true, families: ReadonlySet<AuthorityFamily> = ALL_AUTHORITY_FAMILIES): number {
   const { database, expectedSchemaVersion, convertPreferences } = context;
   let validated = 0;
-  // Below schema 38 each stored workbook is parsed strictly by the upgrade's conversion; the upgraded copy is inspected again at the current version.
-  if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= WORKBOOK_PAYLOAD_MIGRATION.version) validated += validateWorkbookLibrary(database);
+  if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_PAYLOAD_MIGRATION.version);
   // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
@@ -3327,12 +3327,15 @@ export class AuthorityDatabase implements Disposable {
     const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
     if (before.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return before;
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
-    let result: ReturnType<typeof migrateStoppedAuthority> | undefined;
+    let result: ReturnType<typeof migrateStoppedAuthority> & { compacted: boolean } | undefined;
     let primary: { error: unknown } | undefined;
     try {
-      result = migrateStoppedAuthority(database, clock, admission, path, expectedFingerprint, backup, verifyBackup);
+      const migrated = migrateStoppedAuthority(database, clock, admission, path, expectedFingerprint, backup, verifyBackup);
       // The committed upgrade rewrote stored rows; compacting once returns the pages they freed to the file system.
-      database.exec("VACUUM");
+      // The upgrade is committed and inspected before this, so a failed compaction leaves a larger file, not an unproved store.
+      let compacted = true;
+      try { database.exec("VACUUM"); } catch { compacted = false; }
+      result = { ...migrated, compacted };
     } catch (error) { primary = { error }; }
     const failures: unknown[] = [];
     try { database.close(); } catch (error) { failures.push(error); }

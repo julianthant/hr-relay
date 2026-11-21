@@ -35,7 +35,7 @@ it('is schema version 36, under the workbook payloads\' current 38, and adds no 
 
 it('validates a schema-35 library as a predecessor and refuses it as current', () => {
   const database = schema35Store();
-  expect(withCurrentWorkbookLayout(database, () => validateWorkbookLibrary(database))).toBeGreaterThan(0);
+  expect(validateWorkbookLibrary(database, true, true, true, false, false)).toBeGreaterThan(0);
   expect(() => validateWorkbookLibrary(database)).toThrow();
 });
 
@@ -67,5 +67,5 @@ it('steps an upgraded store back to schema 35 with the rewind helper', () => {
   removeSchema36WorkbookSyncStatus(database);
   expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(35);
   expect(rows(database)).toEqual(before);
-  expect(withCurrentWorkbookLayout(database, () => validateWorkbookLibrary(database))).toBeGreaterThan(0);
+  expect(validateWorkbookLibrary(database, true, true, true, false, false)).toBeGreaterThan(0);
 });
