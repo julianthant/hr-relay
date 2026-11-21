@@ -37,7 +37,8 @@ function peerRequeue(fixture: Awaited<ReturnType<typeof trustWorld>>, runId: str
   const row = peer.prepare("SELECT * FROM runs WHERE id = ?").get(runId);
   assert.ok(row);
   const columns = Object.keys(row);
-  const exec = DatabaseSync.prototype.exec;
+  const { value: exec } = Object.getOwnPropertyDescriptors(DatabaseSync.prototype).exec;
+  assert.ok(exec);
   const requeue = () => peer.prepare(`UPDATE runs SET ${columns.map(column => `${column}=?`).join(",")} WHERE id=?`)
     .run(...columns.map(column => row[column] ?? null), runId);
   return {

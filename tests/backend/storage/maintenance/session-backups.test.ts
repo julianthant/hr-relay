@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -187,6 +188,8 @@ describe("hourly in-session backup", () => {
   });
 
   describe("interrupted replacement", () => {
+    const { value: request } = Object.getOwnPropertyDescriptors(AuthorityBackupService.prototype).request;
+    assert.ok(request);
     it("keeps only the newest verified pair on the next check, even when the answer is recent", async () => {
       const f = await fixture();
       await f.otherBackup(undefined); await f.otherBackup("clean-shutdown");
@@ -275,7 +278,6 @@ describe("hourly in-session backup", () => {
       await expect(f.sessionBackups.check()).resolves.toBe("taken");
       const previous = f.names(".session.sqlite")[0];
       f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
-      const request = AuthorityBackupService.prototype.request;
       vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
         utimesSync(join(f.directory, previous), new Date(), new Date(Date.now() - MINUTE));
         return request.apply(this, args);
@@ -294,7 +296,6 @@ describe("hourly in-session backup", () => {
       await expect(f.sessionBackups.check()).resolves.toBe("taken");
       const previous = f.names(".session.sqlite")[0];
       f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
-      const request = AuthorityBackupService.prototype.request;
       vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(async function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
         const result = await request.apply(this, args), fresh = result.manifests.at(-1)!.backupFileName;
         const manifestPath = join(f.directory, `${fresh}.manifest.json`);
@@ -319,7 +320,6 @@ describe("hourly in-session backup", () => {
       const orphan = previous.replace(/-[0-9a-f-]{36}\.session/u, "-00000000-0000-4000-8000-000000000000.session");
       writeFileSync(join(f.directory, orphan), readFileSync(join(f.directory, previous)), { mode: 0o600 });
       f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1); f.commitChange();
-      const request = AuthorityBackupService.prototype.request;
       vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(function (this: AuthorityBackupService, ...args: Parameters<typeof request>) {
         writeFileSync(join(f.directory, `${orphan}.manifest.json`), "{}", { mode: 0o600 });
         return request.apply(this, args);

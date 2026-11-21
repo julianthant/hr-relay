@@ -67,13 +67,18 @@ function captureArtifactRef(runId: string, attachment: DiagnosticBundle["attachm
 }
 
 /** A retention marker committed after the run index was listed, for this same run and bundle. */
-function purgedSince(captures: NonNullable<RunCaptureQueryDeps["captures"]>, runId: string, listed: DiagnosticBundle): boolean {
+function checkRetentionMarker(
+  captures: NonNullable<RunCaptureQueryDeps["captures"]>,
+  runId: string,
+  listed: DiagnosticBundle,
+): "purged" | "unconfirmed" | "unreadable" {
   let stored: unknown;
-  try { stored = captures.authority.get(listed.bundleId); } catch { return false; }
+  try { stored = captures.authority.get(listed.bundleId); } catch { return "unreadable"; }
   const current = DiagnosticBundleSchema.safeParse(stored);
-  if (!current.success || current.data.availability?.state !== "purged") return false;
+  if (!current.success || current.data.availability?.state !== "purged") return "unconfirmed";
   const { availability: _marker, ...retained } = current.data;
-  return current.data.runId === runId && canonicalJsonStringify(retained) === canonicalJsonStringify(listed);
+  return current.data.runId === runId && canonicalJsonStringify(retained) === canonicalJsonStringify(listed)
+    ? "purged" : "unconfirmed";
 }
 
 async function verifyRunCaptures(
@@ -112,7 +117,7 @@ async function verifyRunCaptures(
       if (signal?.aborted === true && error === signal.reason) throw error;
       requireTrustRun(deps.runReader, runId);
       if (error instanceof VerifiedArtifactOperationalError) throw error;
-      if (purgedSince(deps.captures, runId, bundle)) continue;
+      if (checkRetentionMarker(deps.captures, runId, bundle) === "purged") continue;
       if (error instanceof DiagnosticBundleBytesMissingError) throw error;
       captureCorrupt(runId, `bundle ${bundle.bundleId} failed exact verification`, error);
     }

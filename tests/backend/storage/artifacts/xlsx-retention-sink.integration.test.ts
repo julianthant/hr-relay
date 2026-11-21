@@ -10,6 +10,7 @@ import { ArtifactSinkConflictError, type ArtifactSinkProjectionRequest } from ".
 import { createXlsxRetentionSink } from "../../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../../src/models/dashboard/xlsx-export.js";
+import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { id, NOW, update } from "../../../support/helpers/database-foundation/fixtures.js";
 
 const header = ["stableKey", "keyValues", "record", "projectedAt"];
@@ -47,7 +48,7 @@ async function withWorkbook(
     });
     const request: ArtifactSinkProjectionRequest = {
       row,
-      head: { sinkId: row.sinkId, contentSha256: previousArtifact.sha256, generation: 1, lastOutboxId: update(1).outboxId, projectedAt: row.createdAt },
+      head: { sinkId: row.sinkId, contentSha256: previousArtifact.sha256, generation: PositiveIntSchema.parse(1), lastOutboxId: update(1).outboxId, projectedAt: row.createdAt },
       previousArtifact,
       lockPath: await sink.writerLockPath(row),
       prepare: artifact => { prepared.push(artifact); },
