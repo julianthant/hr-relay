@@ -550,28 +550,15 @@ served values remain unavailable.
 
 ### Preflight and storage
 
-Preflight displays served checks with scope, fingerprint, checked time, and readiness/refusal.
-Rerun retains the completed report's nodes/geometry rather than blanking the page. Remedy mapping
-navigates to Credentials, Routes, Storage, Sessions, or Settings. A rendered remedy does not repair.
-Missing checks and unavailable/history state remain explicit.
+Settings has no Preflight or Storage page. Preflight appears only as the Checks stage of the run
+dialog, which shows the served checks with scope, fingerprint, checked time, and readiness or refusal.
+Rerun keeps the completed report's nodes and geometry rather than blanking the stage. A rendered
+remedy does not repair. Missing checks and unavailable history stay explicit.
 
-Settings Preflight's Status section places Test OCR beside Run preflight, using the existing Button
-and Banner. It reads the fixed synthetic page only on an explicit click for a freshly loaded,
-plan-enabled account. The preflight-owned model distinguishes idle, disabled, loading,
-completion with the backend model name, local failure, refusal and uncertain outcome; failure text
-comes from the error catalog. Duplicate clicks are suppressed, calls are bounded to 120 seconds,
-and account refresh, account actions and profile disposal abort and invalidate pending results.
-Neither page load, scope refresh, sign-in nor Run preflight dispatches OCR.
-The result is a diagnostic only and never contributes to readiness reports or admission.
-
-Storage displays health, doctor reports and run-history counts through its typed client. Clear run
-history removes finished runs, logs, screenshots and disposable evidence through the existing
-deletion service; active runs and unresolved writes refuse the operation. The confirmation captures
-the displayed profile ID and session epoch; Clear and result lookup retain that target. Production
-admits both fields against the current selected authority before lifecycle or cleanup effects. Settings, credentials,
-spreadsheets and retained write evidence stay protected. Authority availability differs
-from backup age. Storage updates show their status without an update-history disclosure. Recovery actions require their exact
-served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. Automatic backup and repair records remain on disk without dashboard notices.
+Test OCR and Clear run history have no dashboard control. Storage repairs itself at startup before
+ordinary runtime admission; Settings rendering performs no repair or backup, and automatic backup
+and repair records stay on disk without dashboard notices. Settings, credentials, spreadsheets and
+retained write evidence stay protected.
 
 ### Keyboard
 
