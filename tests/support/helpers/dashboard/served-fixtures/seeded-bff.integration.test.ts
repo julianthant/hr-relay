@@ -15,7 +15,10 @@ import { AssistantActivityWireSchema } from "../../../../../src/models/dashboard
 import { WorkbookCompatibilitySchema } from "../../../../../src/models/dashboard/workbook-library.js";
 import { PreflightReadinessWireSchema } from "../../../../../src/models/preflight/preflight-contract.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
-import { startSeededServer,type SeededScenarios,type SeededServer } from "./seeded-bff.js";
+import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { readRunLogs } from "../../../../../src/dashboard/state/run-wiring-adapter.js";
+import { SEEDED_COVERAGE_GAPS,startSeededServer,type SeededScenarios,type SeededServer } from "./seeded-bff.js";
+import { SEEDED_PAST_DAYS } from "./seeded-lifecycle.js";
 
 const servers: SeededServer[] = [];
 const roots: string[] = [];
@@ -54,7 +57,7 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
       await (await fetch(`${server.baseUrl}/api/v1/bootstrap`)).json(),
     );
     expect(bootstrap.appVersion).toBe("0.1.0");
-    expect(bootstrap.workflows.length).toBe(1);
+    expect(bootstrap.workflows.map(workflow => workflow.id)).toEqual(["person-lookup", "work-study"]);
   });
 
   it.each(["seeded", "empty"] as const)("serves %s workbook sources and scoped readiness for the workflow catalog", async workbookCompatibility => {
@@ -123,6 +126,12 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
       ["openGateRun", "awaiting-approval"],
       ["parkedRun", "blocked"],
       ["cancelledRun", "cancelled"],
+      // An interrupted run waits on the operator to recover it.
+      ["interruptedRun", "blocked"],
+      ["writtenRun", "done"],
+      // The queue shows a discarded or superseded run as cancelled.
+      ["discardedRun", "cancelled"],
+      ["supersededRun", "cancelled"],
     ];
     for (const [role, status] of expected) {
       const surface = byId.get(server.runIds[role]);
@@ -163,7 +172,7 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     expect(dayCount?.count).toBe(countable.length);
   });
 
-  it("serves the failed run's detail, failure section, and note-backed logs", async () => {
+  it("serves the failed run's detail, failure section, and the logs its read recorded", async () => {
     const server = await boot();
     const runId = server.runIds.failedRun;
 
@@ -177,24 +186,22 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     const failure = RunDetailSectionResponseSchema.parse(
       await (await fetch(`${server.baseUrl}/api/v1/runs/${runId}/failure`)).json(),
     );
-    expect(failure.section).toBe("failure");
-    if (failure.section === "failure") {
-      expect(failure.payload.state).toBe("available");
-      if (failure.payload.state === "available") {
-        expect(failure.payload.value.failureId).toBe(server.runIds.failureId);
-      }
-    }
+    if (failure.section !== "failure" || failure.payload.state !== "available") throw new Error(`expected an available failure section: ${JSON.stringify(failure)}`);
+    expect(failure.payload.value.failureId).toBe(server.runIds.failureId);
+    // The run's own terminal event, which the Logs feed orders the failure by.
+    expect(failure.payload.value.native).toMatchObject({ runId, nodeId: "save-transaction" });
 
     const logs = RunDetailSectionResponseSchema.parse(
       await (await fetch(`${server.baseUrl}/api/v1/runs/${runId}/logs`)).json(),
     );
     if (logs.section !== "logs") throw new Error("expected the logs section");
-    expect(logs.payload.notes.length).toBeGreaterThan(0);
-    expect(logs.payload.notes.some(({ level }) => level === "error")).toBe(true);
+    // What the run observed before it failed: the PayPath read and the plan made from it. The error itself is the failure section's.
+    const observed = (logs.payload.rows ?? []).flatMap(row => row.kind === "observed" ? [row.producer.nodeId] : []);
+    expect(new Set(observed)).toEqual(new Set(["paypath-position", "transaction-plan"]));
   });
 
 
-  it("serves the parked run's section from a real fenced-and-parked write intent", async () => {
+  it("serves the parked run's section from the write the executor fenced and parked", async () => {
     const server = await boot();
     const runId = server.runIds.parkedRun;
 
@@ -209,6 +216,7 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     expect(response.status, "a parked run with no intent answers 500, not an empty panel").toBe(200);
     const section = RunDetailSectionResponseSchema.parse(await response.json());
     if (section.section !== "parked-write") throw new Error("expected the parked-write section");
+    expect(section.payload.native).toMatchObject({ runId, nodeId: "save-transaction" });
     expect(section.payload.acceptsTransactionId).toBe(false);
     expect(section.payload.generation).toBe(1);
     expect(section.payload.system).toBe("ucpath");
@@ -222,6 +230,54 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
       expect(action.confirm).toBeDefined();
       expect(action.writeTarget?.intentGeneration).toBe(1);
     }
+  });
+
+  it("serves every seeded run with logs the dashboard's identity checks accept", async () => {
+    const server = await boot();
+    const client = createDashboardClient({ baseUrl: server.baseUrl });
+    const day = DashboardDayWireSchema.parse(await dashboardDay(server.baseUrl, server.day));
+    const roles = Object.entries(server.runIds).filter(([role]) => role !== "failureId");
+    expect(roles.map(([role]) => role)).toEqual(expect.arrayContaining(["failedRun", "openGateRun", "parkedRun"]));
+    for (const [role, runId] of roles) {
+      const row = day.queueSurfaces.find(surface => String(surface.runId) === runId);
+      if (row === undefined) throw new Error(`${role} is absent from the projection`);
+      const snapshot = await readRunLogs(client, { row, workflowLabel: role }, new AbortController().signal);
+      expect(snapshot.detail.runId, role).toBe(runId);
+    }
+  });
+
+  it("seeds more than 25 runs across several days", async () => {
+    const server = await boot();
+    const days = Array.from({ length: SEEDED_PAST_DAYS + 1 }, (_, back) =>
+      new Date(Date.parse(`${server.day}T12:00:00.000Z`) - back * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+    const counts = await Promise.all(days.map(async day =>
+      DashboardDayWireSchema.parse(await dashboardDay(server.baseUrl, day)).queueSurfaces.length));
+    expect(counts.every(count => count > 0), JSON.stringify(counts)).toBe(true);
+    expect(counts.reduce((sum, count) => sum + count, 0)).toBeGreaterThan(25);
+  });
+
+  it("seeds the worker states the projection derives", async () => {
+    const server = await boot();
+    const day = DashboardDayWireSchema.parse(await dashboardDay(server.baseUrl, server.day));
+    expect(new Set(day.workerCards.map(card => card.state))).toEqual(new Set(["idle", "running", "waiting", "paused", "failed"]));
+  });
+
+  it("lists as coverage gaps exactly the states its day does not serve", async () => {
+    const server = await boot();
+    const day = DashboardDayWireSchema.parse(await dashboardDay(server.baseUrl, server.day));
+    const rows = day.queueSurfaces;
+    const unreachable = [
+      ["status 'partial'", rows.some(row => row.status === "partial")],
+      ["surfaceKind 'preview'", rows.some(row => row.surfaceKind === "preview")],
+      ["worker-card state 'starting'", day.workerCards.some(card => card.state === "starting")],
+      ["liveMessage 'present' on a NON-failed row", rows.some(row => row.status !== "failed" && row.liveMessage.state === "present")],
+      ["warnings 'present'", rows.some(row => row.warnings.state === "present")],
+    ] as const;
+    expect(unreachable.filter(([, served]) => served).map(([gap]) => gap)).toEqual([]);
+    expect(SEEDED_COVERAGE_GAPS.map(gap => unreachable.findIndex(([name]) => gap.startsWith(`${name}:`)))).toEqual([0, 1, 2, 3, 4]);
+    // Reachable, so no longer listed: a failed row's sentence and a done row's subtitle.
+    expect(rows.some(row => row.liveMessage.state === "present")).toBe(true);
+    expect(rows.some(row => row.subtitle.state === "present")).toBe(true);
   });
 
   it("opens a resumable stream whose first envelope parses", async () => {

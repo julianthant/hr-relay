@@ -11,7 +11,8 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
-import { seed } from "../served-fixtures/seeded-lifecycle.js";
+import { seed, seedScriptedRuns } from "../served-fixtures/seeded-lifecycle.js";
+import { SCRIPTED_WORKFLOW, type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
 
 import { registerSeededProfileRoutes } from "../served-fixtures/seeded-profile-routes.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -19,7 +20,6 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { join } from "node:path";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
-import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import type { DashboardAppDeps } from "../../../../../src/backend/transports/http/routes/api-types.js";
@@ -38,6 +38,8 @@ export interface SeededServer {
   readonly baseUrl: string;
   readonly day: string;
   readonly runIds: Readonly<Record<string, string>>;
+  /** Drives runs of the scripted workflow through the real executor; see seeded-scripted-executor.ts. */
+  readonly scripted: ScriptedExecutor;
   close(): Promise<void>;
 }
 
@@ -50,7 +52,7 @@ const retainedSeededFixtureOwners = new Set<object>();
 
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
-composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub">;
+composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub"> & Partial<Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "scripted">>;
 assertServedBundle: typeof BundleTypes.assertServedBundle;
 dateNavigationReader: typeof DateNavigationServerTypes.dateNavigationReader;
 seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
@@ -59,13 +61,13 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     "status 'partial': the projection's RUN_OUTCOME_STATUS maps no run outcome to it "
     + "(done|failed|cancelled|discarded|superseded|interrupted only), so no real transition produces it",
     "surfaceKind 'preview': the shape is legal but nothing in the 1i slice enqueues a preview run",
-    "worker-card states waiting|paused|failed: the projection derives only stopped|working|idle",
+    "worker-card state 'starting': it is a pool member still spawning its process, which only a live pool reports; "
+    + "the seed shows idle|running|waiting|paused and one member that never started (failed)",
     "liveMessage 'present' on a NON-failed row: the projection serves the terminal FailureRecord's "
     + "summary for a failed run (D13) and nothing else authors a live progress sentence, so every other "
     + "status carries a reasoned absence",
     "warnings 'present': the count comes off the run's ALREADY-DERIVED evidence receipt, and this seed "
     + "derives none — D141 makes derivation an on-demand act and the projection never writes authority",
-    "subtitle 'present': the start-plan path this seed uses proposes no subtitle",
   ]);
 
   const serveStatic = createStaticAssetFixture();
@@ -141,7 +143,8 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     try {
     seedRuntimeConfig(database, clock);
     const descriptors = {
-      resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
+      resolve: (workflowId: string) => workflowId === WORKFLOW_ID ? personLookupDescriptor
+        : workflowId === SCRIPTED_WORKFLOW.id ? SCRIPTED_WORKFLOW : undefined,
     };
     const projection = createRunQueueProjection({
       timeline: database.authority.timelineEvents,
@@ -183,9 +186,8 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         database.afterAuthorityCommit(() => projection.ingestFromTimeline());
       },
     });
-    const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
-    const runIds = seed({ database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
+    const runIds = seed({ database, spans, clock, authorityPath: join(stateRoot, "state.db"),
       workers });
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
@@ -194,12 +196,13 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
+    const services = composeFixtureServices({database,clock,stateRoot,root,profilePath:profile.path,reportWorker:(workerId,activity)=>{workers.set(workerId,activity);},projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
       credentials: boundProfileCredentials(profile.admission), preflightScenario: input.preflightScenario,
       workbookCompatibility: input.workbookCompatibility});
     held.services = services;
-    const { app, hub } = services;
+    const { app, hub, scripted } = services;
     registerSeededProfileRoutes(app);
+    if (scripted !== undefined) Object.assign(runIds, await seedScriptedRuns({ app, scripted, clock }));
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
@@ -239,6 +242,10 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       baseUrl: `http://127.0.0.1:${address.port}`,
       day: SEEDED_DAY,
       runIds: Object.freeze(runIds),
+      get scripted(): ScriptedExecutor {
+        if (scripted === undefined) throw new Error("this seeded composition serves no scripted executor");
+        return scripted;
+      },
       close: (): Promise<void> => {
         if (closePromise !== undefined) return closePromise;
         closePromise = (async () => {
@@ -248,6 +255,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
             server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
           });
           hub.close();
+          await scripted?.close();
         } catch (error) {
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workers } });

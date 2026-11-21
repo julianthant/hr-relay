@@ -10,11 +10,9 @@ import { sequentialIdFactory } from "../../../fixtures/phase1f-run-fixtures.js";
 import { sqliteRunReader } from "../../canonical-run-reader.js";
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { syntheticStateRoot } from "../../synthetic-storage-admission.js";
-import { CONFIG_FINGERPRINT } from "../served-fixtures/seeded-identity.js";
-import { CONFIG_SNAPSHOT_ID } from "../served-fixtures/seeded-identity.js";
 import { CONTRACT_FINGERPRINT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
-import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
+import { createScriptedExecutor, SCRIPTED_MODULE, SCRIPTED_WORKFLOW } from "../served-fixtures/seeded-scripted-executor.js";
 import { createSeededPreflight } from "../served-fixtures/seeded-preflight.js";
 import { seedReferenceWorkbooks } from "../served-fixtures/seeded-workbooks.js";
 import type { SeededScenarios } from "./seeded-bff-setup.js";
@@ -33,6 +31,7 @@ import { AssistantHistoryOperationSchema } from "../../../../../src/models/dashb
 
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
 import { DASHBOARD_CATALOG_MODULES, descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createCommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../../src/backend/runs/commands/command-service.js";
@@ -56,23 +55,28 @@ import { createDashboardStreamHub } from "../../../../../src/backend/transports/
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/settings.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/rules/identity/ids.js";
-import type { Clock } from "../../../../../src/rules/time/clock.js";
+import type { TestClock } from "../../../../../src/rules/time/clock.js";
+import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
+import { dataOriginViewsOf, gateNodeViewsOf, writeContractViewsOf } from "../../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
 createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
-  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows, credentials, preflightScenario, workbookCompatibility }: {
+  function composeSeededServices({ database, clock, stateRoot, root, profilePath, reportWorker, projection, spans, descriptors, runIds, selectionServices, productWorkflows, credentials, preflightScenario, workbookCompatibility }: {
    /** Serve the production catalog (same filter as composeShell) instead of person-lookup alone. */
    productWorkflows?: boolean;
    selectionServices?: Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">;
-   database: AuthorityDatabase; clock: Clock; stateRoot: string; root: string;
+   database: AuthorityDatabase; clock: TestClock; stateRoot: string; root: string;
+   /** The authority database path the scripted worker slot binds to. */
+   profilePath: string;
+   reportWorker: Parameters<typeof createScriptedExecutor>[0]["reportWorker"];
    credentials: Parameters<typeof composeSettings>[0]["credentials"];
    projection: ReturnType<typeof createRunQueueProjection>; spans: ReturnType<typeof createTimelineEmitter>;
-   descriptors: {resolve: (workflowId: string) => typeof personLookupDescriptor | undefined}; runIds: Record<string,string>;
+   descriptors: {resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined}; runIds: Record<string,string>;
   } & SeededScenarios) {
     const runReader = sqliteRunReader(database, clock);
-    const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor] });
+    const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor, SCRIPTED_WORKFLOW] });
 
 
     const doneReceipt = trust.ensureReceipt(runIds.doneRun);
@@ -83,6 +87,14 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       );
     }
 
+    const lifecycle = new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), resolveDescriptor: descriptors.resolve, publishQueued: (run, publication) => {
+        if (publication === undefined) throw new Error("command-created run lacks queue presentation");
+        spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
+      } });
+    const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
+      sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
+    const scripted = createScriptedExecutor({ database, clock, lifecycle, emitter: spans, library, profilePath, reportWorker,
+      publish: () => { projection.ingestFromTimeline(); } });
     const runDetailDeps = { runReader, timeline: database.authority.timelineEvents,
       itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }),
       stateRoot,
@@ -96,24 +108,16 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         listGateResults: (runId: string) => database.authority.gateResults.listByRun(runId),
       },
       descriptors: {
-        resolve: (workflowId: string) =>
-          (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+        resolve: (workflowId: string) => workflowId === personLookupDescriptor.id ? personLookupDescriptor
+          : workflowId === SCRIPTED_WORKFLOW.id ? { ...SCRIPTED_WORKFLOW, gateNodes: gateNodeViewsOf(SCRIPTED_WORKFLOW),
+            writeContracts: writeContractViewsOf(SCRIPTED_WORKFLOW),
+            dataOrigins: dataOriginViewsOf({ descriptor: SCRIPTED_WORKFLOW, stores: taskStoreRegistry.stores }) }
+          : undefined,
       },
-      canonical: {
-        reader: runReader,
-        database,
-        descriptors: {
-          resolve: (workflowId: string) =>
-            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
-        },
-      },
+      canonical: { reader: runReader, database, descriptors },
       trust,
     };
 
-    const lifecycle = new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
-        if (publication === undefined) throw new Error("command-created run lacks queue presentation");
-        spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
-      } });
     const settings = composeSettings({ database, clock, credentials, hostFacts: hostConfigFacts({}),
       environment: {}, active: activeSettingsRuntimeIdentity });
     const kernel = createCommandKernel({
@@ -139,22 +143,26 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       workerRuntime: { pool: unusedWorkerPool() },
     });
     const commands = createDashboardCommandService({ kernel, projection });
+    // A plan binds the settings a started run executes under: the active runtime config, as production plans do.
+    const activeConfig = database.authority.runtimeConfig.get();
+    if (activeConfig === undefined) throw new Error("the seeded authority holds no runtime config");
     const startPlans = createStartPlanService({
       authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
       authorityRead: database,
       descriptors,
+      workbooks: library,
       clock,
-      ids: { uuid: () => uuidOf(8000) },
+      ids: sequentialIdFactory("8"),
       planTtlMs: 10 * 60 * 1000,
-      configFingerprint: CONFIG_FINGERPRINT,
-      configSnapshotId: CONFIG_SNAPSHOT_ID,
+      configFingerprint: activeConfig.configFingerprint,
+      configSnapshotId: activeConfig.configSnapshotId,
       plannedBy: "local-operator",
     });
     // Product-app services: real notification and workbook-library composition; the live-only ones (SharePoint download,
     // ChatGPT assistant) are the minimum the dashboard's start-up reads need.
     const modules = productWorkflows === true
       ? DASHBOARD_CATALOG_MODULES
-      : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
+      : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }, SCRIPTED_MODULE];
     const workflows = modules.map(module => module.descriptor);
     const setHash = descriptorSetHash([CONTRACT_FINGERPRINT]);
     const preflight = createSeededPreflight({ database, clock, workflows, scenario: preflightScenario, descriptorSetHash: setHash });
@@ -164,8 +172,6 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
         command: commandId => database.authority.commands.readForNotice(commandId),
         bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
-      const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
-        sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
       if (workbookCompatibility !== "empty") seedReferenceWorkbooks(library, workflows);
       const profileId = "00000000-0000-4000-8000-000000000001";
       const assistant: AssistantService = {
@@ -264,7 +270,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     });
 
 
-  return { app, hub };
+  return { app, hub, scripted };
   }
 
   return { composeSeededServices };
