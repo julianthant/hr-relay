@@ -585,6 +585,10 @@ controls, and every consumer of changed shared data. Wiring tests exercise both 
 arms (`rejected` and `conflict`), late settlements, request identity, and focus/remount behavior
 where relevant. A visible assertion pairs with an independent wire or authority fact.
 
+A storage statement over a table that grows with runs uses an index or a bound, which the store
+query plan guard checks. A new index lands in a forward migration that names the statement it
+serves. A whole-table read kept by design records its reason in the guard's audit.
+
 Focused tests establish the changed behavior, then lint and affected generated checks establish
 the candidate. Full acceptance uses the assigned final gate. Actual commands, exits, failures,
 reused evidence, and unrun obligations appear in the brief receipt. Workarounds remain findings,
