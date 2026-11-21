@@ -226,7 +226,7 @@ export const AuthorityRestoreJournalSchema = z.strictObject({ schemaVersion: z.l
 export type AuthorityRestoreJournal = z.infer<typeof AuthorityRestoreJournalSchema>;
 /** Where a pending restore stands: the journal says whether settlement began, the staged file whether the rename ran. */
 export type AuthorityRestoreStage = "staged" | "renamed" | "settling";
-export const AUTHORITY_RESTORE_EVENTS = ["begin", "rename", "record-invalidation", "unlink", "resume"] as const;
+export const AUTHORITY_RESTORE_EVENTS = Object.freeze(["begin", "rename", "record-invalidation", "unlink", "resume"] as const);
 export type AuthorityRestoreEvent = (typeof AUTHORITY_RESTORE_EVENTS)[number];
 export type AuthorityRestoreTransition =
   | Readonly<{ state: AuthorityRestoreStage | "absent" }>

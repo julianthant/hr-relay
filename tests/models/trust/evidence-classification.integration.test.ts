@@ -15,6 +15,12 @@ import { redactValue } from "../../../src/rules/redaction/redaction.js";
 import { SeparationsMatchIdentity } from "../../../src/models/workflows/separations/match-identity.js";
 import { createSeparationIdentityPacketFixture } from "../../support/helpers/separation-identity-packet-fixture.js";
 
+it("refuses writes to an indexed evidence classification's scope", () => {
+  const scope = { kind: "task-output", taskId: TaskIdSchema.parse("ucpath/match-existing-termination") } as const;
+  const entry = classifyEvidenceLeaf(scope, "state");
+  assert.throws(() => Object.assign(entry.scope, scope), TypeError);
+});
+
 it("classifies the admitted profile binding in the Separations approval evidence", () => {
   const packet = createSeparationIdentityPacketFixture().packetWithPlan();
   assert.equal(packet.plan.state, "planned");

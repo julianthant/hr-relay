@@ -1,5 +1,6 @@
 /** The OCR form registry — what a form HAS, declared once, which is the reason three different producers can be trusted to return the same thing. */
 import { z } from "zod";
+import { deepFreeze } from "../../rules/validation/immutability.js";
 import { CANONICAL_FIELDS, CanonicalFieldIdSchema, type CanonicalFieldId } from "../fields/registry.js";
 
 export const OcrFormTypeSchema = z.enum(["oath", "emergency-contact", "i9"]);
@@ -228,9 +229,7 @@ function sealForm(input: z.input<typeof OcrFormSpecSchema>): OcrFormSpec {
       }
     }
   }
-  for (const entry of spec.fields) Object.freeze(entry);
-  Object.freeze(spec.fields);
-  return Object.freeze(spec);
+  return deepFreeze(spec);
 }
 
 export const OCR_FORMS: Readonly<Record<OcrFormType, OcrFormSpec>> = Object.freeze({
