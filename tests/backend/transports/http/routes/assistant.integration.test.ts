@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { ASSISTANT_PAUSE_PROPOSAL } from "../../../../support/fixtures/dashboard/assistant-start.js";
 import { Hono } from "hono";
 import { it } from "vitest";
+import { AssistantAttachmentRefusal } from "../../../../../src/backend/assistant/attachments.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerAssistantRoutes } from "../../../../../src/backend/transports/http/routes/assistant.js";
 
@@ -146,7 +147,11 @@ it("stages raw attachment bytes behind the opaque door with a counted reader and
     async stage(input, signal) {
       const entry: (typeof seen)[number] = { name: input.name, contentType: input.contentType }; seen.push(entry);
       try { entry.bytes = await input.read(8, signal); }
-      catch (error) { entry.refused = error instanceof Error ? error.message : "?"; return { state: "refused", code: "ASSISTANT_ATTACHMENT_TOO_LARGE" }; }
+      catch (error) {
+        if (!(error instanceof AssistantAttachmentRefusal) || error.code !== "ASSISTANT_ATTACHMENT_TOO_LARGE") throw error;
+        entry.refused = error.message;
+        return { state: "refused", code: error.code };
+      }
       return { state: "staged", attachment: { id: "33333333-3333-4333-8333-333333333333", mediaType: "text/plain", name: input.name, byteLength: entry.bytes.byteLength,
         expiresAt: "2026-11-06T00:15:00.000Z" } };
     } });
@@ -162,4 +167,11 @@ it("stages raw attachment bytes behind the opaque door with a counted reader and
   const over = await app.request(path, { method: "POST", headers, body: "123456789" });
   assert.equal(over.status, 422); assert.deepEqual(await over.json(), { state: "refused", code: "ASSISTANT_ATTACHMENT_TOO_LARGE" });
   assert.equal(seen[1]?.refused, "ASSISTANT_ATTACHMENT_TOO_LARGE");
+  const broken = new ReadableStream<Uint8Array>({
+    start(controller) { controller.error(new Error("ASSISTANT_ATTACHMENT_TOO_LARGE")); },
+  });
+  const request: RequestInit & { duplex: "half" } = { method: "POST", headers, body: broken, duplex: "half" };
+  const failed = await app.request(new Request(path, request));
+  assert.equal(failed.status, 503);
+  assert.equal((await failed.json()).code, "ASSISTANT_UNAVAILABLE");
 });
