@@ -51,12 +51,13 @@ function isCustodyUnavailable(error: unknown): boolean {
   return error instanceof AggregateError && error.errors.some(isCustodyUnavailable);
 }
 
-// Only these outcomes prove a copy invalid; any other failure, such as a refused read, says nothing about the copy and stops the pass.
-/** The parsed manifest, or undefined when its content is proved malformed or of an older version. */
-function readManifest(path: string): AuthorityBackupManifest | undefined {
-  try { return parseBackupManifestFile(path); }
+/** Classify manifest content. Operational read failures stop the pass. */
+function readManifest(path: string): { state: "valid"; manifest: AuthorityBackupManifest } | { state: "invalid" } {
+  try { return { state: "valid", manifest: parseBackupManifestFile(path) }; }
   catch (error) {
-    if (error instanceof SyntaxError || error instanceof z.ZodError || (error instanceof Error && error.message === "backup-profile-binding-required")) return undefined;
+    if (error instanceof SyntaxError || error instanceof z.ZodError || (error instanceof Error && error.message === "backup-profile-binding-required")) {
+      return { state: "invalid" };
+    }
     throw error;
   }
 }
@@ -121,8 +122,10 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     const candidates: Array<VerifiedManifest & { pair: FileProof[]; backup: AuthorityBackupManifest }> = [];
     for (const name of listed.filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
       const manifestPath = join(directory, name), pair = proofs([manifestPath, ...backupFiles(manifestPath.slice(0, -ManifestSuffix.length))]);
-      const manifest = readManifest(manifestPath);
-      if (manifest === undefined || name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
+      const parsed = readManifest(manifestPath);
+      if (parsed.state === "invalid") { retired.push(...pair); continue; }
+      const { manifest } = parsed;
+      if (name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
         || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== sourceIdentity) { retired.push(...pair); continue; }
       if (Date.parse(manifest.createdAt) > nowMs) continue;
       candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, pair, backup: manifest });
@@ -185,7 +188,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       // The request verified the fresh pair; its files are observed and verified again so the proof binds these exact files.
       const freshPath = join(directory, fresh.backupFileName), keep = proofs([`${freshPath}${ManifestSuffix}`, ...backupFiles(freshPath)]);
       const written = readManifest(`${freshPath}${ManifestSuffix}`);
-      if (written === undefined || canonicalJsonStringify(written) !== canonicalJsonStringify(fresh) || !await backupBytesMatch(freshPath, written)) throw new Error("session-backup-fresh-unproved");
+      if (written.state === "invalid" || canonicalJsonStringify(written.manifest) !== canonicalJsonStringify(fresh) || !await backupBytesMatch(freshPath, written.manifest)) throw new Error("session-backup-fresh-unproved");
       retire(admission, directory, { keep, retire: [...previous.keep, ...previous.retire] });
       return "taken";
     } catch (error) {
