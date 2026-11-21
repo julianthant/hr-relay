@@ -246,6 +246,72 @@ function writeFixture(root: string, path: string, content: string): void {
   writeFileSync(target, content);
 }
 
+const COVERAGE_METRICS = ["lines", "statements", "functions"] as const;
+const SAFETY_CRITICAL_COVERAGE: readonly string[] = [
+  "src/backend/logs/observed-data.ts",
+  "src/backend/logs/span-emitter.ts",
+  "src/backend/runs/commands/command-application.ts",
+  "src/backend/runs/commands/command-kernel.ts",
+  "src/backend/runs/commands/command-refusal.ts",
+  "src/backend/runs/provenance/evidence-receipt.ts",
+  "src/backend/runs/lifecycle/failure-resolution.ts",
+  "src/backend/processing/providers/provider-client.ts",
+  "src/backend/runs/lifecycle/run-claim-admission.ts",
+  "src/backend/runs/lifecycle/run-fan-out.ts",
+  "src/backend/runs/lifecycle/run-record-service.ts",
+  "src/backend/runs/lifecycle/run-result.ts",
+  "src/backend/runs/settings/run-settings.ts",
+  "src/rules/runs/summary-derivation.ts",
+  "src/backend/runs/provenance/task-provenance.ts",
+  "src/backend/runs/lifecycle/terminal-authorization.ts",
+  "src/backend/runs/provenance/test-data-usage.ts",
+  "src/backend/app/composition/runtime-composition.ts",
+  "src/backend/runtime/checkpoints/checkpoint-patch.ts",
+  "src/backend/runtime/scheduling/deadline-scheduler.ts",
+  "src/backend/runtime/gates/duo-ceremony-gate.ts",
+  "src/backend/runtime/gates/gate-source-runtime.ts",
+  "src/backend/runtime/writes/receipt-derivation-binding.ts",
+  "src/backend/runtime/gates/repeat-proof.ts",
+  "src/backend/storage/sqlite/run-continuation.ts",
+  "src/backend/runtime/execution/run-executor.ts",
+  "src/backend/runtime/policies/durable-intent.ts",
+  "src/backend/runtime/policies/idle-claim.ts",
+  "src/backend/runtime/policies/task-retry.ts",
+  "src/backend/runtime/execution/run-failure.ts",
+  "src/backend/runtime/workers/worker-loop.ts",
+  "src/backend/runtime/workers/worker-sessions.ts",
+  "src/backend/runtime/writes/write-resolution-binding.ts",
+  "src/backend/runtime/writes/write-sequencer.ts",
+  "src/workflow-kit/mutation-capability.ts",
+  "src/backend/storage/sqlite/authority-database.ts",
+  "src/**/*recovery*.ts",
+  "src/**/*projection*.ts",
+];
+
+/** Checks the coverage thresholds Vitest will actually enforce against the ratified policy. */
+function coverageThresholdViolations(thresholds: Readonly<Record<string, unknown>>, root: string): readonly string[] {
+  const { global, safetyCritical } = inventory.coveragePolicy.minimumFloors;
+  const issues: string[] = [];
+  for (const metric of COVERAGE_METRICS) {
+    const value = thresholds[metric];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < global) issues.push(`global ${metric} threshold ${String(value)} is below ${String(global)}`);
+  }
+  const configured = Object.keys(thresholds).filter((key) => !(COVERAGE_METRICS as readonly string[]).includes(key));
+  for (const path of SAFETY_CRITICAL_COVERAGE) if (!configured.includes(path)) issues.push(`safety-critical coverage entry ${path} lost`);
+  for (const path of configured) {
+    if (!SAFETY_CRITICAL_COVERAGE.includes(path)) issues.push(`unratified coverage entry ${path}`);
+    const floor = thresholds[path] as Partial<Record<(typeof COVERAGE_METRICS)[number], unknown>> | undefined;
+    if (COVERAGE_METRICS.some((metric) => {
+      const value = floor?.[metric];
+      return typeof value !== "number" || !Number.isFinite(value) || value < safetyCritical;
+    })) {
+      issues.push(`${path} is below the safety-critical floor ${String(safetyCritical)}`);
+    }
+    if (globSync(path, { cwd: root }).length === 0) issues.push(`${path} matches no source file`);
+  }
+  return issues;
+}
+
 describe("reviewed architecture guard manifest", () => {
 
   it("recursively registers every guard file exactly once and every active entry exists", () => {
@@ -390,51 +456,36 @@ describe("reviewed architecture guard manifest", () => {
       rmSync(root, { recursive: true, force: true });
     }
 
-    assert.ok(REBUILD_COVERAGE_FLOORS.global.lines >= inventory.coveragePolicy.minimumFloors.global);
-    assert.ok(REBUILD_COVERAGE_FLOORS.global.statements >= inventory.coveragePolicy.minimumFloors.global);
-    assert.ok(REBUILD_COVERAGE_FLOORS.global.functions >= inventory.coveragePolicy.minimumFloors.global);
-    assert.ok(REBUILD_COVERAGE_FLOORS.safetyCritical.lines >= inventory.coveragePolicy.minimumFloors.safetyCritical);
     assert.equal(REBUILD_COVERAGE_FLOORS.branches.phase1ReportOnly, true);
     assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2Global >= 50);
     assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2SafetyCritical >= 70);
+    assert.ok(inventory.coveragePolicy.branchPolicy.phase2Global >= 50);
+    assert.ok(inventory.coveragePolicy.branchPolicy.phase2SafetyCritical >= 70);
+    assert.ok(inventory.coveragePolicy.minimumFloors.global >= 60, "the ratified global floor cannot be lowered with its config");
+    assert.ok(inventory.coveragePolicy.minimumFloors.safetyCritical >= 80, "the ratified safety floor cannot be lowered with its config");
 
-    const movedCoreFiles = [
-      "src/backend/runs/commands/command-application.ts",
-      "src/backend/runs/commands/command-kernel.ts",
-      "src/backend/runs/commands/command-refusal.ts",
-      "src/backend/runs/provenance/evidence-receipt.ts",
-      "src/backend/runs/lifecycle/failure-resolution.ts",
-      "src/backend/processing/providers/provider-client.ts",
-      "src/backend/runs/lifecycle/run-claim-admission.ts",
-      "src/backend/runs/lifecycle/run-fan-out.ts",
-      "src/backend/runs/lifecycle/run-record-service.ts",
-      "src/backend/runs/lifecycle/run-result.ts",
-      "src/backend/runs/settings/run-settings.ts",
-      "src/rules/runs/summary-derivation.ts",
-      "src/backend/runs/provenance/task-provenance.ts",
-      "src/backend/runs/lifecycle/terminal-authorization.ts",
-      "src/backend/runs/provenance/test-data-usage.ts",
-      "src/backend/runtime/checkpoints/checkpoint-patch.ts",
-      "src/backend/runtime/scheduling/deadline-scheduler.ts",
-      "src/backend/runtime/gates/duo-ceremony-gate.ts",
-      "src/backend/runtime/gates/gate-source-runtime.ts",
-      "src/backend/runtime/writes/receipt-derivation-binding.ts",
-      "src/backend/runtime/gates/repeat-proof.ts",
-      "src/backend/storage/sqlite/run-continuation.ts",
-      "src/backend/runtime/execution/run-executor.ts",
-      "src/backend/runtime/execution/run-failure.ts",
-      "src/backend/runtime/workers/worker-loop.ts",
-      "src/backend/runtime/workers/worker-sessions.ts",
-      "src/**/*recovery*.ts",
-      "src/backend/runtime/writes/write-resolution-binding.ts",
-      "src/backend/runtime/writes/write-sequencer.ts",
-    ];
     const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
     assert.ok(thresholds);
-    const missingFloors = (candidate: Record<string, unknown>): string[] => movedCoreFiles.filter((path) =>
-      candidate[path] !== REBUILD_COVERAGE_FLOORS.safetyCritical);
-    assert.deepEqual(missingFloors(thresholds), []);
-    assert.deepEqual(missingFloors({ ...thresholds, [movedCoreFiles[0] ?? ""]: undefined }), [movedCoreFiles[0]]);
+    assert.deepEqual(coverageThresholdViolations(thresholds, REPO_ROOT), []);
+    const without = (key: string) => Object.fromEntries(Object.entries(thresholds).filter(([entry]) => entry !== key));
+    for (const metric of COVERAGE_METRICS) {
+      assert.match(coverageThresholdViolations(without(metric), REPO_ROOT).join("\n"), new RegExp(`global ${metric} threshold`, "u"));
+      assert.match(coverageThresholdViolations({ ...thresholds, [metric]: inventory.coveragePolicy.minimumFloors.global - 1 }, REPO_ROOT)
+        .join("\n"), new RegExp(`global ${metric} threshold`, "u"));
+    }
+    for (const path of SAFETY_CRITICAL_COVERAGE) {
+      assert.match(coverageThresholdViolations(without(path), REPO_ROOT).join("\n"), new RegExp(`${path.replaceAll("*", "\\*")} lost`, "u"));
+    }
+    for (const malformed of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.match(coverageThresholdViolations({ ...thresholds, lines: malformed }, REPO_ROOT).join("\n"), /global lines threshold/u);
+    }
+    const lastSafety = SAFETY_CRITICAL_COVERAGE.at(-1) ?? "";
+    assert.match(coverageThresholdViolations({ ...thresholds, [lastSafety]: { ...REBUILD_COVERAGE_FLOORS.safetyCritical, lines: Number.NaN } }, REPO_ROOT)
+      .join("\n"), /below the safety-critical floor/u);
+    assert.match(coverageThresholdViolations({ ...thresholds, [lastSafety]: { ...REBUILD_COVERAGE_FLOORS.safetyCritical, functions: 0 } }, REPO_ROOT)
+      .join("\n"), /below the safety-critical floor/u);
+    assert.match(coverageThresholdViolations({ ...thresholds, "src/backend/runtime/writes/missing-file.ts": REBUILD_COVERAGE_FLOORS.safetyCritical }, REPO_ROOT)
+      .join("\n"), /missing-file\.ts matches no source file/u);
   });
 
   it("executes every required rebuild ratchet arm and proves its violating fixture is caught", () => {
