@@ -133,6 +133,35 @@ it('leaves no spreadsheet when a write after the workbook row fails, so the same
     metadata: { sharePoint: { url } }, state: { tags: ['Fall'] }, sync: { lastResult: 'ok' } });
 });
 
+it('commits nothing when the provider rejects after the import callback returns, so the same name imports on retry', async () => {
+  let failAfterUse = true;
+  const service = fixture({ async withDownload(command, use) {
+    const value = await use({ name: 'Roster.csv', bytes: new TextEncoder().encode('Label\nRemote\n').buffer },
+      { signal: command.signal, assertCurrent: () => command.signal.throwIfAborted() });
+    if (failAfterUse) { failAfterUse = false; throw new WorkbookLibraryError('WORKBOOK_SYNC_CONTEXT_CHANGED'); }
+    return value;
+  } });
+  await expect(service.importSharePoint({ source: 'sharepoint', url, name: 'Remote' }, signal()))
+    .rejects.toMatchObject({ code: 'WORKBOOK_SYNC_CONTEXT_CHANGED' });
+  expect(service.catalog()).toEqual([]);
+  expect(service.list()).toEqual([]);
+  await service.importSharePoint({ source: 'sharepoint', url, name: 'Remote' }, signal());
+  expect(service.catalog().map(entry => entry.name)).toEqual(['Remote']);
+});
+
+it('refuses the import write when the provider context changes after the download settles', async () => {
+  let current = true;
+  const service = fixture({ async withDownload(command, use) {
+    const value = await use({ name: 'Roster.csv', bytes: new TextEncoder().encode('Label\nRemote\n').buffer },
+      { signal: command.signal, assertCurrent() { if (!current) throw new WorkbookLibraryError('WORKBOOK_SYNC_CONTEXT_CHANGED'); } });
+    current = false;
+    return value;
+  } });
+  await expect(service.importSharePoint({ source: 'sharepoint', url, name: 'Remote' }, signal()))
+    .rejects.toMatchObject({ code: 'WORKBOOK_SYNC_CONTEXT_CHANGED' });
+  expect(service.catalog()).toEqual([]);
+});
+
 it('rechecks the import name after downloading so a concurrent create cannot duplicate it', async () => {
   const service = fixture({ async withDownload(command, use) {
     service.create({ ...workbook(), name: 'Remote' });

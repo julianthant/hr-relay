@@ -146,17 +146,16 @@ it('syncs operator-owned fields of a large keyed workbook with a bounded number 
 });
 
 it('refuses a keyed sync when an owned key repeats in either workbook', () => {
-  const workbook = largeWorkbook(3), incoming = structuredClone(workbook);
-  delete incoming.sheets[0].columnBindings;
-  incoming.sheets[0].rows[3].cells[0].value = 'synthetic-0';
   const ownership = WorkbookOwnershipSchema.parse({ [JSON.stringify(['people', 'row-0', 'roster.notes'])]: { owner: 'operator' } });
-  const operation = WorkbookOperationSchema.parse({ operationId: 'synthetic-sync', source: { kind: 'sync', syncId: 'synthetic-sync' },
-    at: '2026-11-02T00:00:00.000Z', change: { kind: 'sync', expectedVersion: 1, workbook: incoming } });
-  const sync = (base: typeof workbook) => applyMasterChange({ workbook: base, version: 1, ownership,
-    type: { keyFieldId: 'eid', fields: ['eid', 'roster.notes'] }, operation, libraryId: 'synthetic-library', sequence: 1 }).receipt;
-  expect(sync(workbook)).toMatchObject({ state: 'resolve-required', reason: 'sync-ambiguous' });
-  const repeated = structuredClone(workbook);
-  repeated.sheets[0].rows[2].cells[0].value = 'synthetic-0';
-  incoming.sheets[0].rows[3].cells[0].value = 'synthetic-2';
-  expect(sync(repeated)).toMatchObject({ state: 'resolve-required', reason: 'sync-ambiguous' });
+  const sync = (currentDuplicate: boolean) => {
+    const workbook = largeWorkbook(3), incoming = structuredClone(workbook);
+    delete incoming.sheets[0].columnBindings;
+    (currentDuplicate ? workbook : incoming).sheets[0].rows[3].cells[0].value = 'synthetic-0';
+    const operation = WorkbookOperationSchema.parse({ operationId: 'synthetic-sync', source: { kind: 'sync', syncId: 'synthetic-sync' },
+      at: '2026-11-02T00:00:00.000Z', change: { kind: 'sync', expectedVersion: 1, workbook: incoming } });
+    return applyMasterChange({ workbook, version: 1, ownership, type: { keyFieldId: 'eid', fields: ['eid', 'roster.notes'] },
+      operation, libraryId: 'synthetic-library', sequence: 1 }).receipt;
+  };
+  expect(sync(false)).toMatchObject({ state: 'resolve-required', reason: 'sync-ambiguous' });
+  expect(sync(true)).toMatchObject({ state: 'resolve-required', reason: 'sync-ambiguous' });
 });

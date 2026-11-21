@@ -339,7 +339,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       change: { kind: 'set-tags', tags } }, now);
     return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(record) });
   };
-  const withImportedDownload = <T>(command: WorkbookSyncCommand, use: (workbook: z.infer<typeof EditableWorkbookSchema>) => T): Promise<T> => {
+  const withImportedDownload = <T>(command: WorkbookSyncCommand, use: (workbook: z.infer<typeof EditableWorkbookSchema>, assertCurrent: () => void) => T): Promise<T> => {
     command.signal.throwIfAborted();
     return deps.sync.withDownload(command, async (downloaded, scope) => {
       scope.assertCurrent();
@@ -352,7 +352,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       if (workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
       command.signal.throwIfAborted();
       scope.signal.throwIfAborted();
-      return use(input(EditableWorkbookSchema, workbook));
+      return use(input(EditableWorkbookSchema, workbook), scope.assertCurrent);
     });
   };
   const withDownloadedWorkbook = <T>(libraryId: string, operationId: string, signal: AbortSignal, use: (workbook: EditableWorkbookWire) => T): Promise<T> => {
@@ -375,7 +375,12 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       assertNameAvailable(request.name);
       const libraryId = randomUUID(), operationId = randomUUID();
       const link = { url: request.url, verifiedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()) };
-      return withImportedDownload({ libraryId, operationId, expectedVersion: 1, link, signal }, workbook => deps.repository.atomically(() => {
+      // The provider still checks its context after this callback returns, so nothing is written until it settles.
+      const { workbook, assertCurrent } = await withImportedDownload({ libraryId, operationId, expectedVersion: 1, link, signal },
+        (workbook, assertCurrent) => ({ workbook, assertCurrent }));
+      return deps.repository.atomically(() => {
+        assertCurrent();
+        signal.throwIfAborted();
         assertNameAvailable(request.name);
         importLocalWorkbook({ ...workbook, name: request.name }, request.tags, libraryId);
         const apply = (change: z.infer<typeof WorkbookLibraryActionSchema>['change']) => deps.repository.libraryAction(libraryId,
@@ -385,7 +390,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
         apply({ kind: 'sync' });
         deps.repository.recordSync(libraryId, { url: request.url, finishedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), result: 'ok' });
         return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(read(libraryId)) });
-      }));
+      });
     },
     cloneWorkbook(libraryId: string, value: unknown) {
       const request = input(WorkbookCloneRequestSchema, value);
