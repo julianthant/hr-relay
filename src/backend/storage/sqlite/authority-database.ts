@@ -4050,36 +4050,48 @@ export class AuthorityDatabase implements Disposable {
     };
   }
 
-  checkQueueDaySources(day: string, previous?: Readonly<{
+  checkQueueDaySources(day: string, previous?: number | Readonly<{
     through: number;
     runIds: readonly string[];
     timelineRunIds: readonly string[];
     lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
     commandIds: readonly string[];
-    items: readonly { workflowId: string; itemId: string }[];
+    relationships: readonly { runId: string; parentId: string | null; workflowId: string; itemId: string; day: string }[];
     month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
-  }>): { through: number; changed: boolean } | undefined {
+  }>): { through: number; kind: "full" | "unchanged" } | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[]; countDays: readonly string[] } | undefined {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
     return this.#withReadSnapshot(() => {
       this.#validateExternalQuerySources();
       const through = changeLogHighWater(this.#database);
-      if (previous === undefined) return { through, changed: true };
-      if (through === previous.through) return { through, changed: false };
-      const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(
-        this.#database.prepare(`SELECT min(seq) AS seq FROM ${CHANGE_LOG_TABLE}`).get()).seq;
-      if (through < previous.through || (first ?? through + 1) > previous.through + 1) return { through, changed: true };
+      if (previous === undefined) return { through, kind: "full" };
+      if (typeof previous === "number") return { through, kind: through === previous ? "unchanged" : "full" };
+      if (through === previous.through) return { through, kind: "unchanged" };
+      const retained = z.object({ count: z.number().int().nonnegative() }).parse(
+        this.#database.prepare(`SELECT count(*) AS count FROM ${CHANGE_LOG_TABLE} WHERE seq > ?`).get(previous.through));
+      if (retained.count !== through - previous.through) return { through, kind: "full" };
 
-      const sharedChange = this.#database.prepare(`WITH observed_commands(key) AS (SELECT 'command:' || value FROM json_each(?)),
+      const sharedChange = this.#database.prepare(`WITH changed_runs(id) AS (
+          SELECT DISTINCT json_extract(row_key,'$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
+        ), new_journal_rows(table_name,row_key) AS (
+          SELECT table_name,row_key FROM ${CHANGE_LOG_TABLE}
+          WHERE seq > ? AND op='insert' AND table_name IN ('commands','command_audits')
+        ), observed_commands(key) AS (SELECT 'command:' || value FROM json_each(?)),
         observed_runs(id) AS (SELECT value FROM json_each(?)),
         observed_timelines(key) AS (SELECT 'run:' || value FROM json_each(?)),
         observed_claims(worker_id, cursor) AS (
           SELECT json_extract(value, '$.workerId'), json_extract(value, '$.cursor') FROM json_each(?)
         )
         SELECT 1 FROM ${CHANGE_LOG_TABLE} change WHERE seq > ? AND (
-        table_name IN ('run_batches','deleted_runs','run_delegations','delegation_dependencies','run_checkpoints',
-          'gate_results','run_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
+        table_name IN ('run_batches','run_delegations','delegation_dependencies','run_checkpoints',
+          'gate_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
           'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
           'notifications','settings','settings_snapshots')
+        OR (table_name = 'run_results' AND (
+          NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%')
+          OR EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%' AND substr(value,5) NOT IN (SELECT id FROM changed_runs))
+        ))
+        OR (table_name = 'deleted_runs' AND (json_extract(row_key,'$[0]') NOT IN (SELECT id FROM changed_runs)
+          OR json_extract(row_key,'$[0]') NOT IN (SELECT id FROM observed_runs)))
         OR (table_name IN ('commands','command_audits') AND (
           op = 'delete'
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) key
@@ -4093,7 +4105,17 @@ export class AuthorityDatabase implements Disposable {
           OR EXISTS (SELECT 1 FROM ${RUN_REFERENCES_TABLE} reference
             WHERE reference.table_name = change.table_name AND reference.row_key = change.row_key
               AND reference.run_id IN (SELECT id FROM observed_runs))
-        ))
+        ) AND NOT (op <> 'delete' AND (table_name,row_key) IN (SELECT table_name,row_key FROM new_journal_rows)
+          AND (SELECT count(DISTINCT value) FROM json_each(change.keys_json) WHERE value LIKE 'command:%') = 1
+          AND NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value IN (SELECT key FROM observed_commands))
+          AND NOT EXISTS (SELECT 1 FROM ${RUN_REFERENCES_TABLE} ref WHERE ref.table_name = change.table_name
+            AND ref.row_key = change.row_key AND ref.run_id NOT IN (SELECT id FROM changed_runs))
+          AND EXISTS (SELECT 1 FROM json_each(change.keys_json) key JOIN commands c ON key.value = 'command:' || c.id
+            WHERE (c.family = 'run' AND json_extract(c.request_json,'$.type') = 'rename'
+                AND json_extract(c.request_json,'$.target.runId') IN (SELECT id FROM changed_runs))
+              OR (c.family = 'run-lifecycle' AND json_extract(c.request_json,'$.operation') IN ('transition','delete')
+                AND json_extract(c.request_json,'$.request.runId') IN (SELECT id FROM changed_runs))
+        )))
         OR (table_name = 'timeline_events' AND (
           EXISTS (SELECT 1 FROM json_each(change.keys_json) key WHERE key.value IN (SELECT key FROM observed_timelines))
           OR CAST(json_extract(change.row_key, '$[0]') AS INTEGER) IN (SELECT cursor FROM observed_claims)
@@ -4104,15 +4126,16 @@ export class AuthorityDatabase implements Disposable {
               AND event.kind = 'run.claimed' AND event.cursor > COALESCE(claim.cursor, 0)
           )
         ))
-      ) LIMIT 1`).get(JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
+      ) LIMIT 1`).get(previous.through, previous.through, JSON.stringify(previous.commandIds), JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
         JSON.stringify(previous.lastWorkerClaims), previous.through);
-      if (sharedChange !== undefined) return { through, changed: true };
+      if (sharedChange !== undefined) return { through, kind: "full" };
 
       const changedRuns = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
         WHERE seq > ? AND table_name = 'runs' LIMIT 1`).get(previous.through);
-      if (changedRuns === undefined) return { through, changed: false };
+      if (changedRuns === undefined) return { through, kind: "unchanged" };
       // Old observations catch deletions. Current rows also catch arrivals on the day, new descendants,
       // and other attempts whose eligibility is visible on a cached row.
+      const relationships = JSON.stringify(previous.relationships);
       const relatedChange = this.#database.prepare(`WITH RECURSIVE changed(id) AS (
           SELECT DISTINCT json_extract(row_key, '$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
         ), ancestry(id) AS (
@@ -4125,12 +4148,45 @@ export class AuthorityDatabase implements Disposable {
         SELECT 1 FROM changed JOIN runs ON runs.id = changed.id WHERE runs.local_day = ? OR EXISTS (
           SELECT 1 FROM json_each(?) item WHERE runs.workflow = json_extract(item.value, '$.workflowId')
             AND runs.item_id = json_extract(item.value, '$.itemId')
-        ) LIMIT 1`).get(previous.through, JSON.stringify(previous.runIds), day, JSON.stringify(previous.items));
-      if (relatedChange !== undefined) return { through, changed: true };
+        ) LIMIT 1`).get(previous.through, JSON.stringify(previous.runIds), day, relationships);
+      if (relatedChange === undefined) {
+        const { from, to, counts } = previous.month;
+        const current = this.readQueueDayCounts(from, to);
+        if (current.size === counts.length && counts.every(entry => current.get(entry.day) === entry.count)) return { through, kind: "unchanged" };
+      }
 
-      const { from, to, counts } = previous.month;
-      const current = this.readQueueDayCounts(from, to);
-      return { through, changed: current.size !== counts.length || counts.some(entry => current.get(entry.day) !== entry.count) };
+      // A removed or moved row can still affect its former parent or other attempts of its item.
+      // Without the old relationship or an insertion in this interval, only a full read is proven.
+      const unknown = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
+        WHERE seq > ? AND table_name = 'runs' GROUP BY row_key
+        HAVING min(CASE op WHEN 'insert' THEN seq END) IS NOT min(seq)
+          AND json_extract(row_key,'$[0]') NOT IN (SELECT json_extract(value,'$.runId') FROM json_each(?))
+        LIMIT 1`).get(previous.through, relationships);
+      if (unknown !== undefined) return { through, kind: "full" };
+
+      const rows = this.#database.prepare(`WITH RECURSIVE facts(id,parent,workflow,item) AS (
+          SELECT id,parent_id,workflow,item_id FROM runs
+          UNION SELECT json_extract(value,'$.runId'),json_extract(value,'$.parentId'),
+            json_extract(value,'$.workflowId'),json_extract(value,'$.itemId') FROM json_each(?)
+        ), changed(id) AS (
+          SELECT DISTINCT json_extract(row_key,'$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
+        ), family(id) AS (
+          SELECT id FROM changed
+          UNION SELECT f.parent FROM family a JOIN facts f ON f.id=a.id WHERE f.parent IS NOT NULL
+          UNION SELECT f.id FROM family a JOIN facts f ON f.parent=a.id
+        ), affected(id) AS (
+          SELECT id FROM family
+          UNION SELECT f.parent FROM affected a JOIN facts f ON f.id=a.id WHERE f.parent IS NOT NULL
+          UNION SELECT f.id FROM affected a JOIN facts f ON f.parent=a.id
+          UNION SELECT peer.id FROM affected a JOIN facts f ON f.id=a.id JOIN facts peer ON peer.workflow=f.workflow AND peer.item=f.item
+        ) SELECT affected.id, runs.local_day, affected.id IN (SELECT id FROM family) AS count_family
+          FROM affected LEFT JOIN runs ON runs.id=affected.id`).all(relationships, previous.through);
+      const affected = z.array(z.strictObject({ id: RunIdSchema, local_day: z.iso.date().nullable(), count_family: z.union([z.literal(0), z.literal(1)]) })).parse(rows);
+      // Only changed physical families can change the calendar. Item peers affect row actions.
+      const family = new Set<string>(affected.filter(row => row.count_family === 1).map(row => row.id));
+      const countDays = new Set(previous.relationships.filter(row => family.has(row.runId)).map(row => row.day));
+      for (const row of affected) if (row.local_day !== null && family.has(row.id)) countDays.add(row.local_day);
+      return { through, kind: "runs", countDays: [...countDays], runIds: affected.map(row => row.id), dayRunIds: affected.filter(row => row.local_day === day).map(row => row.id) };
     });
   }
 

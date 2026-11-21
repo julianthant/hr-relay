@@ -162,13 +162,18 @@ it.each(["data.observed", "transaction.fenced"] as const)("refreshes a warm noti
   assert.deepEqual(noticeContext(projection), visible);
   assert.equal(queueReads, 1, "a standalone note for an unread timeline reuses the warm day");
 
+  assert.equal(w.database.authority.runs.updatePresentation({ runId: unrelated.runId, expectedVersion: unrelatedRun.version,
+    displayName: "Renamed other run", now: unrelated.ts }).state, "applied");
+  assert.deepEqual(noticeContext(projection), visible);
+  assert.equal(queueReads, 2, "a row patch retains the notice's timeline observation");
+
   append(relevant);
   projection.ingestFromTimeline();
   assert.equal(projection.cursor(), cursor);
   const hidden = { state: "workflow-only", workflow: descriptor.label };
   assert.deepEqual(noticeContext(makeProjection()), hidden, "fresh reads withhold the incompatible subject");
   assert.deepEqual(noticeContext(projection), hidden, "warm reads also withhold the incompatible subject");
-  assert.equal(queueReads, 3);
+  assert.equal(queueReads, 4);
 });
 
 it.each(["empty", "previous claim"] as const)("refreshes a worker's %s lookup before polling an off-month claim", async previous => {
@@ -233,6 +238,7 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
   const unrelated = queuedEventOf(w, { seed: 3, enqueuedAt: "2026-07-31T17:00:00.000Z" });
   const summaries = composeQueueSummaries(w.database);
   let queueReads = 0;
+  let daySnapshots = 0;
   let runLists = 0;
   const unexpected = (): never => { throw new Error("unexpected write or Activity read"); };
   const runReader = new RunRecordService({ database: w.database, clock: w.clock, ids: { uuid: unexpected }, publishQueued: unexpected });
@@ -256,7 +262,10 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
         runLists += 1;
         return runReader.list(input);
       },
-      summaries: { ...summaries, activity: unexpected, queue(input) {
+      summaries: { ...summaries, activity: unexpected, withSnapshot(read) {
+        daySnapshots += 1;
+        return summaries.withSnapshot(read);
+      }, queue(input) {
         assert.equal(input.fromDay, DAY);
         assert.equal(input.toDay, DAY);
         queueReads += 1;
@@ -307,11 +316,13 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.equal(repeated.status, 200);
     assert.deepEqual(await repeated.json(), wire);
     assert.equal(repeated.headers.get("ETag"), tag);
+    const beforeValidation = daySnapshots;
     const validated = await readDay(`"older", W/${tag}`);
     assert.equal(validated.status, 304);
     assert.equal(validated.headers.get("ETag"), tag);
     assert.equal(validated.headers.get("Cache-Control"), "private, no-cache");
     assert.equal(await validated.text(), "");
+    assert.equal(daySnapshots, beforeValidation, "the SQLite source check already owns the snapshot for a cache hit");
     assert.equal(queueReads, 1, "every unchanged request reuses the day build");
 
     const preferenceId = uuidOf(97);
@@ -358,13 +369,13 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.equal(afterMonthInsertion.status, 200);
     assert.deepEqual(DashboardDayWireSchema.parse(await afterMonthInsertion.json()).monthCounts,
       [{ day: DAY, count: 2 }, { day: "2026-08-04", count: 1 }]);
-    assert.equal(queueReads, 4, "a different day's insertion invalidates the shared month counts");
+    assert.equal(queueReads, 3, "new month counts reuse the untouched selected-day summaries");
 
     w.database.authority.runs.holdAdmission({ commandId: uuidOf(96), runtimeGeneration: configIdentity.generation, reason: "shutdown" });
     assert.equal(w.database.authority.runs.admission().state, "draining");
     assert.equal(projection.cursor(), cursorBeforeDiagnostics);
     assert.equal((await readDay()).status, 200);
-    assert.equal(queueReads, 5, "a journaled application admission hold invalidates the day before polling");
+    assert.equal(queueReads, 4, "a journaled application admission hold invalidates the day before polling");
   } finally {
     hub.close();
   }
