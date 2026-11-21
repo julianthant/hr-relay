@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { ChildProcess } from "node:child_process";
+import { ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { it, vi } from "vitest";
 import { composeProfileActivity } from "../../../../src/backend/app/composition/storage-compose.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createKeepAwake } from "../../../../src/backend/runtime/settings/keep-awake.js";
 import { startSettingsKeepAwake } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { boundProfileAdmission } from "../../../support/helpers/synthetic-database-admission.js";
@@ -121,5 +123,60 @@ it("records a holder start failure without failing an active dry run or a settin
   } finally {
     await observer.awaitCancellation();
     await f.close();
+  }
+});
+
+it.skipIf(process.platform === "win32")("escalates a stalled inhibitor and reaps the owned child", async () => {
+  const child = spawn(process.execPath, ["-e", `
+    process.on("SIGTERM", () => {});
+    process.stdout.write("ready");
+    setTimeout(() => {}, 10_000);
+  `], { stdio: ["ignore", "pipe", "ignore"] });
+  const closed = once(child, "close");
+  const kill = vi.spyOn(child, "kill");
+  const owner = createKeepAwake({ platform: "darwin", startProcess: () => child,
+    debugEvents: { emit: () => { throw new Error("unexpected-debug-event"); } } });
+  try {
+    await once(child.stdout, "data");
+    vi.useFakeTimers();
+    await owner.update(true);
+    const stopping = owner.stop();
+    try {
+      await Promise.resolve();
+      await vi.advanceTimersToNextTimerAsync();
+      assert.deepEqual(kill.mock.calls, [["SIGTERM"], ["SIGKILL"]]);
+      await stopping;
+      assert.deepEqual(await closed, [null, "SIGKILL"]);
+      assert.equal(child.signalCode, "SIGKILL");
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await stopping;
+    }
+  } finally {
+    vi.useRealTimers();
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await closed;
+  }
+});
+
+it("escalates a stalled inhibitor and refuses to settle without close evidence", async () => {
+  vi.useFakeTimers();
+  const child = new ChildProcess();
+  Object.defineProperty(child, "pid", { value: 456 });
+  const kill = vi.spyOn(child, "kill").mockReturnValue(true);
+  const owner = createKeepAwake({ platform: "darwin", startProcess: () => child,
+    debugEvents: { emit: () => { throw new Error("unexpected-debug-event"); } } });
+  await owner.update(true);
+  const stopping = assert.rejects(owner.stop(), /keep-awake-closure-unproved/u);
+  try {
+    await vi.runAllTimersAsync();
+    assert.deepEqual(kill.mock.calls, [["SIGTERM"], ["SIGKILL"]]);
+    await stopping;
+    await assert.rejects(owner.stop(), /keep-awake-closure-unproved/u);
+    assert.equal(kill.mock.calls.length, 2);
+  } finally {
+    child.emit("close", null, "SIGKILL");
+    await stopping.catch(() => undefined);
+    vi.useRealTimers();
   }
 });

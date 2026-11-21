@@ -42,6 +42,7 @@ function inspect(path: string): BigIntStats | undefined {
   }
 }
 
+const SNAPSHOT_COPY_TIMEOUT_MS = 30_000;
 // Closing a source descriptor in the SQLite process releases that process's inode locks.
 const copySnapshotScript = `
 const { closeSync, constants, fstatSync, lstatSync, openSync, readSync, writeSync } = require("node:fs");
@@ -264,7 +265,10 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImag
     }
     const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("snapshot") + copySnapshotScript : copySnapshotScript, path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
-        expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
+        expected: source.stats === undefined ? null : identity(source.stats) })))], {
+      encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment(),
+      timeout: SNAPSHOT_COPY_TIMEOUT_MS, killSignal: "SIGKILL",
+    });
     const copyFailed = () => new Error("authority-readonly-snapshot-copy-failed", {
       cause: copy.error ?? { status: copy.status, signal: copy.signal },
     });

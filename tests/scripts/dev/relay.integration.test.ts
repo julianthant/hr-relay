@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac, randomBytes } from "node:crypto";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createConnection, createServer } from "node:net";
+import { createConnection, createServer, type Socket } from "node:net";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -83,6 +83,84 @@ it("authenticates a separate stop command, waits through a write, and absorbs re
     assert.equal(run.signals.listenerCount("SIGINT"), 0);
     assert.equal(run.signals.listenerCount("SIGTERM"), 0);
   } finally { await run.close(); }
+});
+
+it("expires the broker response while the owned backend still drains", async () => {
+  const run = await fixture();
+  const broker: unknown = JSON.parse(readFileSync(join(run.directory, "broker.json"), "utf8"));
+  assert.ok(typeof broker === "object" && broker !== null && "port" in broker && typeof broker.port === "number"
+    && "token" in broker && typeof broker.token === "string");
+  const socket = createConnection({ host: "127.0.0.1", port: broker.port });
+  let closed = false;
+  socket.once("close", () => { closed = true; });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    await once(socket, "connect");
+    const nonce = randomBytes(32).toString("hex");
+    const proof = createHmac("sha256", Buffer.from(broker.token, "hex"))
+      .update(JSON.stringify(["relay-control", "stop", nonce])).digest("hex");
+    socket.write(`${JSON.stringify({ action: "stop", nonce, proof })}\n`);
+    await vi.waitFor(() => { assert.ok(existsSync(join(run.root, "draining"))); });
+    await vi.runAllTimersAsync();
+    await vi.waitFor(() => { assert.equal(closed, true); });
+    assert.equal(existsSync(join(run.root, "committed")), false);
+    assert.equal(existsSync(join(run.directory, "broker.json")), true);
+    run.release();
+    assert.equal(await run.running, 0);
+  } finally {
+    socket.destroy();
+    vi.useRealTimers();
+    await run.close();
+  }
+});
+
+it.each(["stop", "open"] as const)("expires a silent broker for %s and preserves its capability", async action => {
+  const root = mkdtempSync(join(tmpdir(), "relay-silent-broker-"));
+  const directory = join(root, "launcher");
+  createPrivateDirectory(directory, { mode: 0o700 });
+  const server = createServer(socket => { socket.resume(); });
+  let peerClosed = false;
+  let peer: Socket | undefined;
+  const requested = new Promise<void>(resolve => {
+    server.once("connection", socket => {
+      peer = socket;
+      socket.once("close", () => { peerClosed = true; });
+      socket.once("data", () => { resolve(); });
+    });
+  });
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address(), self = observeProcessIdentity(process.pid);
+    assert.ok(address !== null && typeof address !== "string" && self.state === "alive");
+    const control = join(directory, "broker.json");
+    const bytes = Buffer.from(JSON.stringify({
+      port: address.port, token: randomBytes(32).toString("hex"), pid: process.pid, identity: self.identity,
+    }));
+    writePrivateStage(control, bytes);
+    let failure: unknown;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const response = (action === "stop" ? stopRelay(directory) : startRelay({ directory }))
+      .catch(error => { failure = error; });
+    try {
+      await requested;
+      await vi.runAllTimersAsync();
+      await vi.waitFor(() => {
+        assert.ok(failure instanceof Error);
+        assert.equal(failure.message, action === "stop" ? "relay-stop-closure-unproved" : "relay-window-not-ready");
+        assert.equal(peerClosed, true);
+      });
+      assert.deepEqual(readFileSync(control), bytes);
+    } finally {
+      // Release the synthetic peer on the failing baseline as well.
+      peer?.destroy();
+      await response;
+    }
+  } finally {
+    vi.useRealTimers();
+    await new Promise<void>(resolve => { server.close(() => { resolve(); }); });
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 it.each(["failed", "silent"])("refuses success when backend stop is %s", async mode => {

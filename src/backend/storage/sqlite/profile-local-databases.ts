@@ -166,6 +166,7 @@ export function assertProfileRestoreDatabaseBinding(path: string, expected: Prof
   assertCanonicalProfileBinding(path, expected);
 }
 
+const LIVE_BINDING_TIMEOUT_MS = 5_000;
 // Source SQLite descriptors belong to the observer process, never a live writer process.
 const liveBindingScript = `
 const { DatabaseSync } = require("node:sqlite");
@@ -258,7 +259,8 @@ export function assertLiveProfileDatabaseBinding(path: string, expected: Profile
   if (proof?.slots.get(proofKey) === proofWitness) return;
   const observed = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("binding") + liveBindingScript : liveBindingScript, path, witness,
     String(CURRENT_AUTHORITY_SCHEMA_VERSION), String(AUTHORITY_APPLICATION_ID)],
-  { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
+  { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment(),
+    timeout: LIVE_BINDING_TIMEOUT_MS, killSignal: "SIGKILL" });
   if (observed.error !== undefined || observed.signal !== null) throw new Error("profile-database-observation-failed", {
     cause: observed.error ?? { status: observed.status, signal: observed.signal },
   });
