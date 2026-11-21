@@ -136,6 +136,15 @@ describe("seeded drive helpers", () => {
     await expect(server.drive.parkAtDeclaredGate()).rejects.toThrow("no declared-gate run is held");
   });
 
+  it("reports a held run that fails once the stopping server lets it go, after closing", async () => {
+    const server = await boot();
+    await server.drive.startDeclaredGateRun({ readFails: true });
+
+    await expect(server.close()).rejects.toThrow("the run did not park at reference-check-review: terminal");
+    servers.splice(servers.indexOf(server), 1);
+    await expect(fetch(`${server.baseUrl}/api/v1/dashboard?day=${server.day}`)).rejects.toThrow();
+  });
+
   it("parks the running Person Lookup run at its task node with a healthy detail read", async () => {
     const server = await boot();
     const stream = await openStream(server);

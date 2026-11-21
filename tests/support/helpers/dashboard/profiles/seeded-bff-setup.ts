@@ -11,7 +11,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
-import { createDeclaredGateDrive, DECLARED_GATE_DESCRIPTOR, finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
+import { createDeclaredGateDrive, DECLARED_GATE_DESCRIPTOR, type DeclaredGateStart, finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
 import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
 
 import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
@@ -55,7 +55,7 @@ export interface SeededDrive {
   /** The running Person Lookup run takes the parked-gate lifecycle at its task node `cross-verify`; answers its run id. */
   parkRunningRunAtGate(): string;
   /** A Work-Study run is started through the start plan and the executor and held at its first UCPath read; answers its run id. */
-  startDeclaredGateRun(): Promise<string>;
+  startDeclaredGateRun(options?: DeclaredGateStart): Promise<string>;
   /** The held Work-Study run goes on and its executor parks it at the gate the workflow declares; answers its run id. */
   parkAtDeclaredGate(): Promise<string>;
   /** A notification is published through the inbox and reaches every open stream. Product app only. */
@@ -226,7 +226,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       startQueuedRunAheadOfItsRow: () => startQueuedRun(world),
       finishRunningStep: () => settle(finishRunningStep(world)),
       parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
-      startDeclaredGateRun: async () => settle(await declaredGate.start()),
+      startDeclaredGateRun: async options => settle(await declaredGate.start(options)),
       parkAtDeclaredGate: async () => settle(await declaredGate.park()),
       publishNotification: async () => {
         if (notificationInbox === undefined) throw new Error("the seeded server publishes notifications only as the product app");

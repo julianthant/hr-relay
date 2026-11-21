@@ -650,35 +650,70 @@ const GATE_RUN_EMPL_ID = "10000001";
 const GATE_RUN_POOL_INDEX = 1;
 
 export interface DeclaredGateDrive {
-  /** Starts a Work-Study run through the start plan and the executor, held at its first UCPath read; answers its run id. */
-  start(): Promise<string>;
+  /** Starts a Work-Study run through the start plan and the executor, held at its first UCPath read; answers its run id.
+   * With `readFails` the held read throws once it is let go, so the run fails instead of parking. */
+  start(options?: DeclaredGateStart): Promise<string>;
   /** Lets the held run go on: the executor finishes the read and the reference check and parks at the declared gate. */
   park(): Promise<string>;
-  /** Lets a held read go, waits for the run and closes its sessions. Answers the run's own failure when no caller has seen it;
-   * throws only when the sessions could not be closed. */
+  /** Lets a held read go, waits for the run and closes its sessions. Answers how the run failed (rejected, or ended anywhere
+   * but parked at its gate) when no caller has seen it; throws only when the sessions could not be closed. */
   close(): Promise<Error | undefined>;
+}
+
+export interface DeclaredGateStart { readonly readFails?: boolean }
+
+/** Everything one start owns, recorded as it is acquired so teardown reaches it wherever the start stopped. */
+interface DeclaredGateRun {
+  release: () => void;
+  closeSessions?: () => Promise<void>;
+  runId?: string;
+  settled?: Promise<RunRecord | undefined>;
+  /** A caller of start or park has been told how the run ended, or will be. */
+  outcomeSeen: boolean;
+  held?: Readonly<{ runId: string; workerId: string }>;
 }
 
 export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, profilePath: string): DeclaredGateDrive {
   const { database } = world;
   const descriptor = DECLARED_GATE_DESCRIPTOR;
   const resolve = (workflowId: string): AnyWorkflowDescriptor | undefined => workflowId === String(descriptor.id) ? descriptor : undefined;
-  /** Everything one start owns, recorded as it is acquired so teardown reaches it wherever the start stopped. */
-  let owned: { release: () => void; closeSessions?: () => Promise<void>; settled?: Promise<RunRecord | undefined>; failureSeen: boolean;
-    held?: Readonly<{ runId: string; workerId: string }> } | undefined;
+  let owned: DeclaredGateRun | undefined;
 
-  async function start(): Promise<string> {
+  /** Why a settled run is not parked at the declared gate, with the failures it recorded. */
+  function notParked(run: RunRecord | undefined, runId: string): Error | undefined {
+    if (run?.lifecycle.state === "parked-gate" && String(run.lifecycle.gateId) === DECLARED_GATE_ID) return undefined;
+    const failures = database.authority.failures.listByRun(runId).map(failure => `${failure.code}: ${failure.summary}`);
+    return new Error(`the run did not park at ${DECLARED_GATE_ID}: ${run?.lifecycle.state ?? "absent"} ${JSON.stringify(failures)}`);
+  }
+
+  async function start(options: DeclaredGateStart = {}): Promise<string> {
     if (owned !== undefined) throw new Error("the seeded server already drives one declared-gate run");
-    let entered = (): void => undefined, release = (): void => undefined;
-    const atRead = new Promise<void>(done => { entered = done; }), released = new Promise<void>(done => { release = done; });
-    const current: NonNullable<typeof owned> = { release, failureSeen: false };
+    let release = (): void => undefined;
+    const released = new Promise<void>(done => { release = done; });
+    const current: DeclaredGateRun = { release, outcomeSeen: false };
     owned = current;
+    try {
+      return await startOwned(current, released, options.readFails === true);
+    } catch (error) {
+      current.outcomeSeen = true;
+      throw error;
+    }
+  }
+
+  async function startOwned(current: DeclaredGateRun, released: Promise<void>, readFails: boolean): Promise<string> {
+    let entered = (): void => undefined;
+    const atRead = new Promise<void>(done => { entered = done; });
     const paypath = deterministicPayPathOperations({ read: UcpathPayPathReadSchema.parse({
       pageStateId: "ucpath.paypath.position-data-ready", observedAt: SEEDED_NOW, emplId: GATE_RUN_EMPL_ID, displayedName: "Lee, Jordan",
       position: { effectiveDate: "07/01/2026", positionChangeReason: "", positionPool: "", positionNumber: "40012345" },
     }) });
     const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath,
-      readPayPathPosition: async (input: Parameters<typeof paypath.readPayPathPosition>[0]) => { entered(); await released; return paypath.readPayPathPosition(input); } }) });
+      readPayPathPosition: async (input: Parameters<typeof paypath.readPayPathPosition>[0]) => {
+        entered();
+        await released;
+        if (readFails) throw new Error("the seeded PayPath read failed");
+        return paypath.readPayPathPosition(input);
+      } }) });
     const manager = await sessionManagerFor(sessions, clock, undefined, undefined, duoCeremonyGatesOver(database, clock));
     current.closeSessions = () => manager.closeAll("worker-stop");
     const scheduler = new ManualScheduler(clock, 0);
@@ -706,14 +741,10 @@ export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, prof
       entry: 1, typeId: REFERENCE_CHECK.id, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
       sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version }] });
     const runId = queued.envelope.runId;
+    current.runId = runId;
     const settled = execution.execute(queued, new AbortController().signal).then(({ run }) => run);
     current.settled = settled;
-    try {
-      await Promise.race([atRead, settled.then(run => { throw new Error(`the declared-gate run ended before its UCPath read: ${run?.lifecycle.state ?? "absent"}`); })]);
-    } catch (error) {
-      current.failureSeen = true;
-      throw error;
-    }
+    await Promise.race([atRead, settled.then(run => { throw new Error(`the declared-gate run ended before its UCPath read: ${run?.lifecycle.state ?? "absent"}`); })]);
     const lifecycle = database.authority.runs.get(runId)?.lifecycle;
     if (lifecycle?.state !== "running") throw new Error(`the declared-gate run is ${lifecycle?.state ?? "absent"} at its UCPath read, not running`);
     world.workers.set(lifecycle.workerId, WorkerActivitySchema.parse({ state: "busy", runId }));
@@ -725,13 +756,10 @@ export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, prof
     const current = owned;
     if (current?.held === undefined || current.settled === undefined) throw new Error("no declared-gate run is held at its UCPath read");
     current.release();
-    current.failureSeen = true;
-    const run = await current.settled;
+    current.outcomeSeen = true;
     const { runId, workerId } = current.held;
-    if (run?.lifecycle.state !== "parked-gate" || String(run.lifecycle.gateId) !== DECLARED_GATE_ID) {
-      const failures = database.authority.failures.listByRun(runId).map(failure => `${failure.code}: ${failure.summary}`);
-      throw new Error(`the run did not park at ${DECLARED_GATE_ID}: ${run?.lifecycle.state ?? "absent"} ${JSON.stringify(failures)}`);
-    }
+    const failure = notParked(await current.settled, runId);
+    if (failure !== undefined) throw failure;
     world.workers.set(workerId, WorkerActivitySchema.parse({ state: "idle" }));
     return runId;
   }
@@ -741,8 +769,12 @@ export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, prof
     if (current === undefined) return undefined;
     current.release();
     let runFailure: Error | undefined;
-    try { await current.settled; } catch (error) {
-      if (!current.failureSeen) runFailure = error instanceof Error ? error : new Error("the declared-gate run failed", { cause: error });
+    try {
+      const run = await current.settled;
+      // Released here and not through park: the run still has to reach its gate, and a failed outcome resolves, it does not reject.
+      if (!current.outcomeSeen && current.runId !== undefined) runFailure = notParked(run, current.runId);
+    } catch (error) {
+      if (!current.outcomeSeen) runFailure = error instanceof Error ? error : new Error("the declared-gate run failed", { cause: error });
     }
     // `owned` is cleared only once the sessions are closed, so a failed close can be tried again.
     await current.closeSessions?.();
