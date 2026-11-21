@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import { ChildProcess, type SendHandle } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { afterEach, it } from "vitest";
 import { createDebugEventWriter, emitFaultWithCauses } from "../../../../src/backend/logs/debug-events.js";
 import { createNominatimService } from "../../../../src/backend/processing/providers/nominatim-owner.js";
@@ -24,6 +25,29 @@ function connectedChild(send: ChildProcess["send"]): ChildProcess {
   child.disconnect = () => { connected = false; child.emit("disconnect"); };
   return child;
 }
+
+it("closes the worker channel and reports a rejected invocation without an unhandled rejection", async () => {
+  const failure = new Error("synthetic clock failure");
+  const service = createNominatimService({
+    clock: { ...systemClock, now: () => { throw failure; } },
+    adapter: () => { throw new Error("synthetic adapter failure"); },
+  });
+  cleanups.push(() => service.stop());
+
+  const sent: unknown[] = [];
+  const child = connectedChild((message: unknown) => { sent.push(message); return true; });
+  const fault = once(child, "error", { signal: AbortSignal.timeout(scaledMs(5_000)) });
+  service.attach(child, {
+    register: (_family, handler) => {
+      const message = { kind: "nominatim-request", requestId: randomUUID(), deadlineMs: machineMonotonicMs() + scaledMs(10_000), request };
+      queueMicrotask(() => handler(message, undefined));
+    },
+  });
+  const [error] = await fault;
+  assert.equal(error, failure);
+  assert.equal(child.connected, false);
+  assert.deepEqual(sent, []);
+}, scaledMs(10_000));
 
 it("does not replay a failed adapter construction and permits a new invocation", async () => {
   let calls = 0;
