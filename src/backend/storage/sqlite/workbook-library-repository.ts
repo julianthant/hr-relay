@@ -871,6 +871,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       return cached.catalog;
     })),
     libraryState: id => storage(() => deps.read(() => libraryState(id))),
+    atomically: work => storage(() => deps.mutate(() => ({ result: work(), changes: 0 }))),
     recordSync: (id, value) => storage(() => deps.mutate(() => {
       const record = WorkbookLibrarySyncRecordSchema.parse(value);
       const changes = Number(database.prepare('UPDATE workbook_library_state SET sync_json=? WHERE id=?').run(canonicalJsonStringify(record), id).changes);

@@ -47,6 +47,8 @@ export interface WorkbookLibraryRepository {
   libraryVersion(libraryId: string, versionId?: string): z.infer<typeof WorkbookLibraryVersionViewSchema>;
   libraryActionRecord(libraryId: string, operationId: string): WorkbookLibraryActionRecord | undefined;
   libraryAction(libraryId: string, value: unknown, at: string, sharePointWorkbook?: EditableWorkbookWire): WorkbookLibraryActionResult;
+  /** Runs `work`'s repository writes as one write: all of them commit or none do. */
+  atomically<T>(work: () => T): T;
 }
 function input<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
@@ -373,7 +375,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       assertNameAvailable(request.name);
       const libraryId = randomUUID(), operationId = randomUUID();
       const link = { url: request.url, verifiedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()) };
-      return withImportedDownload({ libraryId, operationId, expectedVersion: 1, link, signal }, workbook => {
+      return withImportedDownload({ libraryId, operationId, expectedVersion: 1, link, signal }, workbook => deps.repository.atomically(() => {
         assertNameAvailable(request.name);
         importLocalWorkbook({ ...workbook, name: request.name }, request.tags, libraryId);
         const apply = (change: z.infer<typeof WorkbookLibraryActionSchema>['change']) => deps.repository.libraryAction(libraryId,
@@ -383,7 +385,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
         apply({ kind: 'sync' });
         deps.repository.recordSync(libraryId, { url: request.url, finishedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), result: 'ok' });
         return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(read(libraryId)) });
-      });
+      }));
     },
     cloneWorkbook(libraryId: string, value: unknown) {
       const request = input(WorkbookCloneRequestSchema, value);
