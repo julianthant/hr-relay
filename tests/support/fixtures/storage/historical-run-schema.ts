@@ -41,7 +41,8 @@ function embedWorkbookPayloads(database: DatabaseSync): void {
         const row = z.object({ row_id: z.number(), payload_json: z.string() }).parse(raw);
         const { workbookDigest, ...envelope } = z.looseObject({ workbookDigest: z.string() }).parse(JSON.parse(row.payload_json));
         const workbook = z.object({ payload_json: z.string() }).parse(database.prepare("SELECT payload_json FROM workbook_payloads WHERE digest=?").get(workbookDigest)).payload_json;
-        database.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`).run(JSON.stringify(schema.parse({ ...envelope, workbook: JSON.parse(workbook) })), row.row_id);
+        const payload = schema.parse({ ...envelope, workbook: z.json().parse(JSON.parse(workbook)) });
+        database.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`).run(JSON.stringify(payload), row.row_id);
       }
     }
   });

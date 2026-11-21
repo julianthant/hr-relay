@@ -143,7 +143,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       for (;;) {
         const cursorClause = after === undefined ? "" : " AND (local_day>? OR (local_day=? AND id>?))";
         const cursorValues = after === undefined ? [] : [after.localDay, after.localDay, after.runId];
-        const candidates = database.prepare(`SELECT * FROM runs INDEXED BY runs_day_idx WHERE ${clauses.join(" AND ")}${cursorClause}
+        const candidates = database.prepare(`SELECT * FROM runs INDEXED BY runs_workflow_day_idx WHERE ${clauses.join(" AND ")}${cursorClause}
           ORDER BY local_day,id LIMIT ?`).all(...values, ...cursorValues, query.limit + 1).map(runRecordFromRow);
         if (query.topLevel === true) {
           const missing = candidates.filter(run => !parents.has(run.envelope.runId));

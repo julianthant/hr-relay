@@ -175,11 +175,12 @@ describe("workbook payload migration 38", () => {
         before = readback(database);
         restoreSchema37WorkbookPayloads(database);
       } finally { database.close(); }
-      const exec = DatabaseSync.prototype.exec;
+      const exec: unknown = Reflect.get(DatabaseSync.prototype, "exec");
+      assert.ok(typeof exec === "function");
       let refused = 0;
       const vacuum = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
         if (sql === "VACUUM") { refused++; throw new Error("database or disk is full"); }
-        exec.call(this, sql);
+        Reflect.apply(exec, this, [sql]);
       });
       try {
         const report = await f.run();
@@ -201,7 +202,7 @@ describe("workbook payload migration 38", () => {
       let vacuums = 0;
       const later = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
         if (sql === "VACUUM") vacuums++;
-        exec.call(this, sql);
+        Reflect.apply(exec, this, [sql]);
       });
       try {
         const again = await f.run();
