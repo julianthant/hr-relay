@@ -35,6 +35,10 @@ function withWorkbook(database: DatabaseSync, json: string): Record<string, unkn
   return { ...envelope, workbook: JSON.parse(z.strictObject({ payload_json: z.string() }).parse(row).payload_json) };
 }
 const savedPayloadJson = (database: DatabaseSync, record: SavedWorkbook) => payloadJson(database, encodeSavedWorkbook(record));
+/** Reads a stored row's payload into the record it was written from. */
+type PayloadReader = (json: string) => Record<string, unknown>;
+/** Before schema 38 each row embeds its workbook. */
+const embeddedPayload: PayloadReader = json => z.record(z.string(), z.unknown()).parse(JSON.parse(json));
 
 type KeyedWorkbookChange = Extract<WorkbookOperation['change'], { kind: 'patch' | 'add' }>;
 type SettledWorkbookOperation = { operation: WorkbookOperation; settled: WorkbookOperationReceipt };
@@ -387,9 +391,9 @@ function selectionFromRow(value: unknown) {
   for (const [column, expected] of Object.entries(columns)) if (row[column as keyof typeof columns] !== expected) throw new Error(`workflow_workbook_selections-row-${column}-mismatch`);
   return record;
 }
-function fromRow(database: DatabaseSync, value: unknown): SavedWorkbook {
+function fromRow(read: PayloadReader, value: unknown): SavedWorkbook {
   try {
-    const row = RowSchema.parse(value), record = decodeSavedWorkbook(withWorkbook(database, row.payload_json));
+    const row = RowSchema.parse(value), record = decodeSavedWorkbook(read(row.payload_json));
     if (record.libraryId !== row.id || record.version !== row.version || record.createdAt !== row.created_at || record.savedAt !== row.saved_at) throw new Error('workbook-column-conflict');
     return record;
   } catch (cause) { throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT', { cause }); }
@@ -426,15 +430,60 @@ for (const phase of ['absent', 'queued', 'applied', 'resolve-required', 'refused
   if (WORKBOOK_OPERATION_TRANSITIONS[phase] === undefined) throw new Error(`workbook-operation-table-incomplete:${phase}`);
 }
 
+/** A stored row's JSON characters, counting the workbook payload its digest names. */
+function storedCharacters(database: DatabaseSync, json: string): number {
+  const { workbookDigest } = z.looseObject({ workbookDigest: WorkbookDigestSchema }).parse(JSON.parse(json));
+  const row = z.strictObject({ size: z.number().int() }).parse(database.prepare('SELECT length(payload_json) AS size FROM workbook_payloads WHERE digest=?').get(workbookDigest));
+  return json.length + row.size;
+}
+/** Least recently used entries, kept while their stored JSON totals at most `limit` characters. */
+function storedSizeCache<Value extends Readonly<{ characters: number }>>(limit: number) {
+  const entries = new Map<string, Value>();
+  let size = 0;
+  const drop = (key: string) => {
+    const value = entries.get(key);
+    if (value === undefined) return;
+    entries.delete(key);
+    size -= value.characters;
+  };
+  return {
+    get(key: string) {
+      const value = entries.get(key);
+      if (value !== undefined) { entries.delete(key); entries.set(key, value); }
+      return value;
+    },
+    set(key: string, value: Value) {
+      drop(key);
+      entries.set(key, value);
+      size += value.characters;
+      for (const oldest of entries.keys()) { if (size <= limit) break; drop(oldest); }
+    },
+  };
+}
+
 export function createWorkbookLibraryRepository(deps: Readonly<{
   database: DatabaseSync;
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
   read<T>(work: () => T): T;
   changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> | undefined;
+  /** Stored JSON characters each decode cache keeps across change keys; 32 MiB by default. */
+  decodedCacheCharacters?: number;
+  /** Reads a store from before schema 30, whose states carry no pin or tags yet. */
+  beforePinTags?: boolean;
+  /** Reads a store from before schema 38, whose rows embed their workbooks. */
+  embeddedWorkbooks?: boolean;
 }>): WorkbookLibraryRepository {
   const { database } = deps;
-  const decodedRecords = new Map<string, { row: z.infer<typeof RowSchema>; record: SavedWorkbook }>();
-  const decodedSnapshots = new Map<string, { row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema> }>();
+  const payload: PayloadReader = deps.embeddedWorkbooks === true ? embeddedPayload : json => withWorkbook(database, json);
+  const withPinTags = (state: unknown) => {
+    if (deps.beforePinTags !== true) return state;
+    // A predecessor state is strict: a pin or tags already present is not schema-29 data.
+    if (typeof state !== 'object' || state === null || 'pinned' in state || 'tags' in state) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return { ...state, pinned: false, tags: [] };
+  };
+  const decodedCacheCharacters = deps.decodedCacheCharacters ?? 32 * 1024 * 1024;
+  const decodedRecords = storedSizeCache<{ row: z.infer<typeof RowSchema>; record: SavedWorkbook; characters: number }>(decodedCacheCharacters);
+  const decodedSnapshots = storedSizeCache<{ row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema>; characters: number }>(decodedCacheCharacters);
   let cache: {
     key: string;
     records: Map<string, SavedWorkbook>;
@@ -459,7 +508,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       entry.records.set(row.id, previous.record);
       return previous.record;
     }
-    const record = fromRow(database, row);
+    const record = fromRow(payload, row);
     if (entry === undefined) return record;
     // Frozen Dates still have setters; each cell read gets its own Date.
     const frozen = deepFreeze({ ...record, workbook: { ...record.workbook,
@@ -473,7 +522,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       })) })),
     } });
     entry.records.set(row.id, frozen);
-    decodedRecords.set(row.id, { row, record: frozen });
+    decodedRecords.set(row.id, { row, record: frozen, characters: storedCharacters(database, row.payload_json) });
     return frozen;
   });
   const lastUsed = (workflowId: string) => stored(() => {
@@ -495,7 +544,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   const metadata = (id: string) => stored(() => WorkbookMetadataSchema.parse(JSON.parse(z.object({ metadata_json: z.string() }).parse(database.prepare('SELECT metadata_json FROM workbook_library WHERE id=?').get(id)).metadata_json)));
   const libraryState = (id: string): WorkbookLibraryState => stored(() => {
     const row = z.strictObject({ payload_json: z.string() }).parse(database.prepare('SELECT payload_json FROM workbook_library_state WHERE id=?').get(id));
-    const state = WorkbookLibraryStateSchema.parse(JSON.parse(row.payload_json));
+    const state = WorkbookLibraryStateSchema.parse(withPinTags(JSON.parse(row.payload_json)));
     if (state.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return state;
   });
@@ -524,12 +573,12 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     const row = SnapshotRowSchema.parse(database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE id=?').get(snapshotId));
     const previous = entry === undefined ? undefined : decodedSnapshots.get(id);
     const snapshot = previous !== undefined && row.id === previous.row.id && row.workbook_id === previous.row.workbook_id && row.payload_json === previous.row.payload_json
-      ? previous.snapshot : WorkbookLibrarySnapshotSchema.parse(withWorkbook(database, row.payload_json));
+      ? previous.snapshot : WorkbookLibrarySnapshotSchema.parse(payload(row.payload_json));
     if (row.id !== snapshot.id || row.workbook_id !== id || snapshot.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     if (entry === undefined) return snapshot;
     const frozen = deepFreeze(snapshot);
     entry.snapshots.set(snapshotId, frozen);
-    decodedSnapshots.set(id, { row, snapshot: frozen });
+    decodedSnapshots.set(id, { row, snapshot: frozen, characters: storedCharacters(database, row.payload_json) });
     return frozen;
   });
   const putLibrarySnapshot = (id: string, versionId: string, workbook: z.infer<typeof WorkbookLibrarySnapshotSchema>["workbook"]) => {
@@ -673,10 +722,10 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   };
   const revisionBaseline = (id: string, version: number, live: SavedWorkbook) => {
     const creationRow = database.prepare('SELECT payload_json FROM workbook_creations WHERE id=?').get(id);
-    const creation = decodeSavedWorkbook(withWorkbook(database, z.object({ payload_json: z.string() }).parse(creationRow).payload_json));
+    const creation = decodeSavedWorkbook(payload(z.object({ payload_json: z.string() }).parse(creationRow).payload_json));
     if (creation.libraryId !== id || creation.version !== 1 || creation.createdAt !== live.createdAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     const migration = database.prepare("SELECT * FROM workbook_library_history WHERE workbook_id=? AND provenance='migration' AND version<=? ORDER BY version DESC LIMIT 1").get(id, version);
-    const baseline = migration === undefined ? creation : fromRow(database, { ...migration, id });
+    const baseline = migration === undefined ? creation : fromRow(payload, { ...migration, id });
     if (baseline.createdAt !== live.createdAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return baseline;
   };
@@ -740,7 +789,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     }
     const named = database.prepare('SELECT * FROM workbook_library_history WHERE workbook_id=? AND version=? ORDER BY name LIMIT 1').get(id, version);
     if (named === undefined) return undefined;
-    const proof = fromRow(database, { ...named, id });
+    const proof = fromRow(payload, { ...named, id });
     if (proof.createdAt !== createdAt || proof.savedAt !== savedAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return encodeSavedWorkbook(proof).workbook;
   };
@@ -893,7 +942,8 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     if (raw === undefined) return undefined;
     return stored(() => {
       const row = z.strictObject({ id: z.string(), workbook_id: z.string(), operation_id: z.string(), digest: z.string(), payload_json: z.string() }).parse(raw);
-      const record = WorkbookLibraryActionRecordSchema.parse(JSON.parse(row.payload_json));
+      const parsed = z.looseObject({ result: z.looseObject({}) }).parse(JSON.parse(row.payload_json));
+      const record = WorkbookLibraryActionRecordSchema.parse({ ...parsed, result: withPinTags(parsed.result) });
       if (record.libraryId !== row.workbook_id || record.action.operationId !== row.operation_id
         || row.id !== JSON.stringify([record.libraryId, record.action.operationId])
         || sha256Hex(canonicalJsonStringify(record.action)) !== row.digest) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
@@ -954,6 +1004,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       return cached.catalog;
     })),
     libraryState: id => storage(() => deps.read(() => libraryState(id))),
+    atomically: work => storage(() => deps.mutate(() => ({ result: work(), changes: 0 }))),
     recordSync: (id, value) => storage(() => deps.mutate(() => {
       const record = WorkbookLibrarySyncRecordSchema.parse(value);
       const changes = Number(database.prepare('UPDATE workbook_library_state SET sync_json=? WHERE id=?').run(canonicalJsonStringify(record), id).changes);
@@ -1090,7 +1141,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     revision,
     creation: id => storage(() => deps.read(() => {
       const row = database.prepare('SELECT payload_json FROM workbook_creations WHERE id=?').get(id);
-      return row === undefined ? undefined : stored(() => decodeSavedWorkbook(withWorkbook(database, z.object({ payload_json: z.string() }).parse(row).payload_json)));
+      return row === undefined ? undefined : stored(() => decodeSavedWorkbook(payload(z.object({ payload_json: z.string() }).parse(row).payload_json)));
     })),
     list: () => storage(() => deps.read(listCurrent)),
     listWithType: () => storage(() => deps.read(() =>
@@ -1106,7 +1157,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       required(id);
       return database.prepare('SELECT * FROM workbook_library_history WHERE workbook_id=? ORDER BY version,name').all(id).map(raw => {
         const row = z.object({ name: z.string(), provenance: z.string() }).parse(raw);
-        return stored(() => WorkbookNamedVersionSchema.parse({ ...row, snapshot: encodeSavedWorkbook(fromRow(database, { ...raw, id })) }));
+        return stored(() => WorkbookNamedVersionSchema.parse({ ...row, snapshot: encodeSavedWorkbook(fromRow(payload, { ...raw, id })) }));
       });
     })),
     types: () => storage(() => deps.read(() => database.prepare('SELECT payload_json FROM workbook_types ORDER BY id').all().map(row => WorkbookTypeSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json))))),
@@ -1160,15 +1211,25 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   return repository;
 }
 
-export function validateWorkbookLibrary(database: DatabaseSync): number {
-  const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('workbook-validation-read-only'); } });
+/** Validates the whole library in the layout of its schema: master (13), catalog (18), pin and tags (30), sync status (36), payloads (38). */
+export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true, syncStatus = pinTags, payloads = syncStatus): number {
+  const read: PayloadReader = payloads ? json => withWorkbook(database, json) : embeddedPayload;
+  if (!master) {
+    const records = database.prepare('SELECT * FROM workbook_library').all().map(raw => fromRow(read, raw));
+    return records.reduce((total, record) => {
+      const history = database.prepare('SELECT workbook_id AS id,version,created_at,saved_at,payload_json FROM workbook_library_history WHERE workbook_id=? ORDER BY version').all(record.libraryId).map(raw => fromRow(read, raw));
+      if (history.length !== record.version || history.some((entry, index) => entry.version !== index + 1) || canonicalJsonStringify(encodeSavedWorkbook(history[history.length - 1])) !== canonicalJsonStringify(encodeSavedWorkbook(record))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      return total + 1 + history.length;
+    }, 0);
+  }
+  const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('workbook-validation-read-only'); }, beforePinTags: !pinTags, embeddedWorkbooks: !payloads });
   let count = repository.types().length;
-  for (const raw of database.prepare('SELECT digest,payload_json FROM workbook_payloads ORDER BY digest').iterate()) {
+  if (payloads) for (const raw of database.prepare('SELECT digest,payload_json FROM workbook_payloads ORDER BY digest').iterate()) {
     const row = z.strictObject({ digest: WorkbookDigestSchema, payload_json: z.string() }).parse(raw);
     if (sha256Hex(row.payload_json) !== row.digest || canonicalJsonStringify(EditableWorkbookWireSchema.parse(JSON.parse(row.payload_json))) !== row.payload_json) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     count++;
   }
-  const records = database.prepare('SELECT * FROM workbook_library ORDER BY id').all().map(raw => fromRow(database, raw));
+  const records = database.prepare('SELECT * FROM workbook_library ORDER BY id').all().map(raw => fromRow(read, raw));
   for (const record of records) {
     const creation = repository.creation(record.libraryId), metadata = repository.metadata(record.libraryId);
     if (!creation || creation.version !== 1 || creation.createdAt !== record.createdAt || (!repository.types().some(type => type.id === metadata.typeId))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
@@ -1183,18 +1244,21 @@ export function validateWorkbookLibrary(database: DatabaseSync): number {
         if (receipt.sequence !== row.sequence || receipt.libraryId !== record.libraryId || receipt.operationId !== row.operation_id || receipt.version > record.version) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       }
     }
+    if (!catalog) continue;
     const state = repository.libraryState(record.libraryId);
     const snapshots = database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE workbook_id=? ORDER BY id').all(record.libraryId);
     const ids = new Set<string>();
     for (const raw of snapshots) {
       const row = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() }).parse(raw);
-      const snapshot = stored(() => WorkbookLibrarySnapshotSchema.parse(withWorkbook(database, row.payload_json)));
+      const snapshot = stored(() => WorkbookLibrarySnapshotSchema.parse(read(row.payload_json)));
       if (snapshot.id !== row.id || snapshot.libraryId !== row.workbook_id || snapshot.libraryId !== record.libraryId) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       ids.add(snapshot.id);
     }
     if (state.versions.some(version => !ids.has(version.snapshotId))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-    const sync = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(record.libraryId)).sync_json;
-    if (sync !== null) WorkbookLibrarySyncRecordSchema.parse(JSON.parse(sync));
+    if (syncStatus) {
+      const sync = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(record.libraryId)).sync_json;
+      if (sync !== null) WorkbookLibrarySyncRecordSchema.parse(JSON.parse(sync));
+    }
     count += snapshots.length;
     const actions = database.prepare('SELECT operation_id FROM workbook_library_actions WHERE workbook_id=? ORDER BY id').all(record.libraryId);
     for (const raw of actions) {

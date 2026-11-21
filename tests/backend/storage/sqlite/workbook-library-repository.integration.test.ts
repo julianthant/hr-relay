@@ -54,6 +54,33 @@ function workbookFixture(database: DatabaseSync, cache = false) {
   return { repository, service, id: first.libraryId };
 }
 
+it("keeps decoded rows and snapshots across change keys only within their stored-size budget", () => {
+  using database = new DatabaseSync(":memory:");
+  for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_TABLE]) {
+    for (const statement of migration.statements) database.exec(statement);
+  }
+  let generation = 1;
+  const open = (decodedCacheCharacters?: number) => createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work(),
+    changeKey: () => ({ authorityGeneration: generation, dataVersion: 1, totalChanges: 0 }), decodedCacheCharacters });
+  const service = createWorkbookLibraryService({ repository: open(), clock: manualClock(new Date(savedAt)), sync: unexpectedWorkbookSync });
+  const [first, second] = ["First.xlsx", "Other.xlsx"].map(name => service.create({ name, themes: [], hasFormulas: false,
+    sheets: [{ id: "people", name: "People", width: 1, hidden: [], headerRow: 1, rows: [{ id: "header", cells: [{ value: "x".repeat(16 * 1024) }] }] }] }).libraryId);
+  // A row's stored size counts the workbook it names.
+  const largest = Number(database.prepare(`SELECT max(length(r.payload_json)+length(p.payload_json)) AS size FROM (SELECT payload_json FROM workbook_library UNION ALL SELECT payload_json FROM workbook_library_snapshots) r
+    JOIN workbook_payloads p ON p.digest=json_extract(r.payload_json,'$.workbookDigest')`).get()?.size);
+  const rereadFirst = (repository: ReturnType<typeof open>) => {
+    const before = [repository.read(first), repository.libraryVersion(first).workbook];
+    generation++;
+    repository.read(second); repository.libraryVersion(second);
+    generation++;
+    return { before, after: [repository.read(first), repository.libraryVersion(first).workbook] };
+  };
+  const roomy = rereadFirst(open(4 * largest));
+  roomy.after.forEach((value, index) => expect(value).toBe(roomy.before[index]));
+  const tight = rereadFirst(open(Math.floor(1.5 * largest)));
+  tight.after.forEach((value, index) => { expect(value).not.toBe(tight.before[index]); expect(value).toEqual(tight.before[index]); });
+});
+
 it("reads a saved revision and a following metadata revision with a retained key annotation", () => {
   using database = new DatabaseSync(":memory:");
   const { id, repository, service } = workbookFixture(database);
