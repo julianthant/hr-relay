@@ -11,7 +11,11 @@ RunDetailSectionResponseSchema,
 RunDetailWireSchema,
 } from "../../../../../src/models/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../../src/models/dashboard/subscription.js";
-import { startSeededServer,type SeededServer } from "./seeded-bff.js";
+import { AssistantActivityWireSchema } from "../../../../../src/models/dashboard/assistant.js";
+import { WorkbookCompatibilitySchema } from "../../../../../src/models/dashboard/workbook-library.js";
+import { PreflightReadinessWireSchema } from "../../../../../src/models/preflight/preflight-contract.js";
+import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
+import { startSeededServer,type SeededScenarios,type SeededServer } from "./seeded-bff.js";
 
 const servers: SeededServer[] = [];
 const roots: string[] = [];
@@ -21,13 +25,14 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-async function boot(): Promise<SeededServer> {
+async function boot(options?: SeededScenarios & { productApp: true }): Promise<SeededServer> {
   const distDir = mkdtempSync(join(tmpdir(), "hrauto-mock-dist-"));
   roots.push(distDir);
   writeFileSync(join(distDir, "index.html"), "<!doctype html><title>mock</title>");
   // API-only probe: nothing renders the app here, so the bundle is declared
   // unverified instead of demanding a working-tree build.
   const server = await startSeededServer({
+    ...options,
     distDir,
     bundle: { proof: "unverified", reason: "API/SSE route probe; the served dist is a one-file stub, never rendered" },
   });
@@ -50,6 +55,55 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     );
     expect(bootstrap.appVersion).toBe("0.1.0");
     expect(bootstrap.workflows.length).toBe(1);
+  });
+
+  it.each(["seeded", "empty"] as const)("serves %s workbook sources and scoped readiness for the workflow catalog", async workbookCompatibility => {
+    const server = await boot({ productApp: true, workbookCompatibility });
+    const response = await fetch(`${server.baseUrl}/api/v1/workbooks/compatibility`);
+    expect(response.ok).toBe(true);
+    const compatibility = WorkbookCompatibilitySchema.parse(await response.json());
+    const servedIds = ["person-lookup", "separations", "i9-check-start", "onboarding", "work-study", "emergency-contact"];
+    expect(compatibility.workflows.map(workflow => workflow.workflowId)).toEqual(expect.arrayContaining(servedIds));
+    for (const workflow of compatibility.workflows.filter(workflow => workflow.workbookReference !== undefined)) {
+      if (workbookCompatibility === "empty") expect(workflow.sources).toEqual([]);
+      else expect(workflow.sources.length, workflow.workflowId).toBeGreaterThan(0);
+    }
+    for (const workflowId of servedIds) {
+      const url = new URL("/api/v1/preflight", server.baseUrl);
+      url.searchParams.set("selection", JSON.stringify({ workflowId }));
+      const readiness = PreflightReadinessWireSchema.parse(await (await fetch(url)).json());
+      expect(readiness.state, workflowId).toBe("present");
+      if (readiness.state === "present") {
+        expect(readiness.report.requestedCapabilities).toContain("executor.run");
+        expect(readiness.report.results.map(result => result.status)).toEqual(readiness.report.results.map(() => "pass"));
+      }
+    }
+  });
+
+  it.each(["logout", "delete-account"] as const)("serves account edits and %s against the seeded profile", async route => {
+    const { baseUrl } = await boot({ productApp: true });
+    const post = (path: string, body: unknown) => fetch(`${baseUrl}/api/v1/profile/${path}`, {
+      method: "POST", headers: { origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const response = await post("account/details", { initials: "QA" });
+    expect(response.ok).toBe(true);
+    expect(await response.json()).toMatchObject({ state: "changed", account: { initials: "QA" } });
+    const stateUrl = `${baseUrl}/api/v1/profile/state`;
+    const active = PublicProfileStateSchema.parse(await (await fetch(stateUrl)).json());
+    expect(active).toMatchObject({ state: "active", account: { initials: "QA" } });
+    if (active.state !== "active") throw new Error("seeded profile is not active");
+    const ended = await post(route, route === "logout" ? {} : { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch });
+    const signedOut = { state: "signed-out", signUpRequired: route === "delete-account" };
+    expect(ended.ok).toBe(true);
+    expect(await ended.json()).toEqual(signedOut);
+    expect(await (await fetch(stateUrl)).json()).toEqual(signedOut);
+  });
+
+  it("serves assistant activity from the seeded history", async () => {
+    const { baseUrl, day } = await boot({ productApp: true });
+    const response = await fetch(`${baseUrl}/api/v1/assistant/activity`);
+    expect(response.ok).toBe(true);
+    expect(AssistantActivityWireSchema.parse(await response.json())).toEqual({ day, rows: [] });
   });
 
   it("projects one queue surface per seeded role with the expected status", async () => {

@@ -7,8 +7,6 @@ import { UNSTORED_CONFIG_IDENTITY } from "../../../fixtures/intake-kernel-seams.
 import { UNWIRED_INTAKE_PARSER } from "../../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_INTAKE_SERVICE } from "../../../fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../../fixtures/phase1f-run-fixtures.js";
-import { healthyDashboardPreflightExecutor } from "../../../fixtures/preflight-seams.js";
-import { healthyDashboardPreflightReport } from "../../../fixtures/preflight-seams.js";
 import { sqliteRunReader } from "../../canonical-run-reader.js";
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { syntheticStateRoot } from "../../synthetic-storage-admission.js";
@@ -17,21 +15,25 @@ import { CONFIG_SNAPSHOT_ID } from "../served-fixtures/seeded-identity.js";
 import { CONTRACT_FINGERPRINT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
+import { createSeededPreflight } from "../served-fixtures/seeded-preflight.js";
+import { seedReferenceWorkbooks } from "../served-fixtures/seeded-workbooks.js";
+import type { SeededScenarios } from "./seeded-bff-setup.js";
 import { join } from "node:path";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
+import { composeSettings } from "../../../../../src/backend/app/composition/dashboard/settings.js";
 import { ocrHostRun } from "../../../../../src/backend/runs/queries/ocr-record-members.js";
 import { createNotificationTargetQuery } from "../../../../../src/backend/runs/queries/notifications.js";
 import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-error.js";
 import type { AssistantService } from "../../../../../src/backend/assistant/service.js";
+import { createAssistantActivityQuery } from "../../../../../src/backend/assistant/activity.js";
 import { AssistantHistoryOperationSchema } from "../../../../../src/models/dashboard/assistant.js";
 
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../../src/backend/workbooks/workbook-library-service.js";
-import { descriptorSetHash, READABLE_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
+import { DASHBOARD_CATALOG_MODULES, descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createCommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../../src/backend/runs/commands/command-service.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
@@ -43,7 +45,7 @@ import { createCalendarQuery } from "../../../../../src/backend/runs/queries/cal
 import { createItemAttemptHistoryQuery } from "../../../../../src/backend/runs/queries/item-attempt-history.js";
 import { createCrossDateSearchService } from "../../../../../src/backend/runs/queries/search.js";
 import { createReceiptService } from "../../../../../src/backend/runs/trust/receipt-service.js";
-import { createProtectedSettingsRuntimeReader } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/index.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -52,8 +54,7 @@ import type { DashboardAppDeps } from "../../../../../src/backend/transports/htt
 import { createDashboardApp } from "../../../../../src/backend/transports/http/routes/api.js";
 import { createDashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
-import { initialProtectedStoreRecord } from "../../../../../src/models/config/protected-settings.js";
-import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../../src/models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/settings.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
@@ -61,14 +62,15 @@ import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/m
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
 createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
-  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows }: {
+  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows, credentials, preflightScenario, workbookCompatibility }: {
    /** Serve the production catalog (same filter as composeShell) instead of person-lookup alone. */
    productWorkflows?: boolean;
    selectionServices?: Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">;
    database: AuthorityDatabase; clock: Clock; stateRoot: string; root: string;
+   credentials: Parameters<typeof composeSettings>[0]["credentials"];
    projection: ReturnType<typeof createRunQueueProjection>; spans: ReturnType<typeof createTimelineEmitter>;
    descriptors: {resolve: (workflowId: string) => typeof personLookupDescriptor | undefined}; runIds: Record<string,string>;
-  }) {
+  } & SeededScenarios) {
     const runReader = sqliteRunReader(database, clock);
     const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor] });
 
@@ -112,6 +114,8 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         if (publication === undefined) throw new Error("command-created run lacks queue presentation");
         spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
       } });
+    const settings = composeSettings({ database, clock, credentials, hostFacts: hostConfigFacts({}),
+      environment: {}, active: activeSettingsRuntimeIdentity });
     const kernel = createCommandKernel({
       lifecycle: lifecycle,
       appVersion: SEEDED_APP_VERSION,
@@ -123,6 +127,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       // A shared server accepts multiple commands; each audit needs its own ID.
       ids: sequentialIdFactory("d"),
       descriptors,
+      settings: settings.executor,
       writeResolution: {
         recheck: () => {
           throw new Error("write resolution is not wired in the mock seed");
@@ -148,8 +153,11 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     // Product-app services: real notification and workbook-library composition; the live-only ones (SharePoint download,
     // ChatGPT assistant) are the minimum the dashboard's start-up reads need.
     const modules = productWorkflows === true
-      ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
+      ? DASHBOARD_CATALOG_MODULES
       : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
+    const workflows = modules.map(module => module.descriptor);
+    const setHash = descriptorSetHash([CONTRACT_FINGERPRINT]);
+    const preflight = createSeededPreflight({ database, clock, workflows, scenario: preflightScenario, descriptorSetHash: setHash });
     const productAppDeps = (): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
       const { observer } = createTrustNotifications({ database, clock, ids: sequentialIdFactory("n"), reader: lifecycle });
       const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
@@ -158,6 +166,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
       const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
         sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
+      if (workbookCompatibility !== "empty") seedReferenceWorkbooks(library, workflows);
       const profileId = "00000000-0000-4000-8000-000000000001";
       const assistant: AssistantService = {
         respond: () => Promise.resolve({ kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." } }),
@@ -165,10 +174,15 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         historyView: () => database.authority.assistantHistory.list(clock.now().toISOString()),
         conversation: id => database.authority.assistantHistory.conversation(id, clock.now().toISOString()),
         history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
+        activity: createAssistantActivityQuery({ database, clock, assertCurrent: () => undefined, workflowLabel: id => {
+          const workflow = workflows.find(candidate => candidate.id === id);
+          if (workflow === undefined) throw new Error(`seeded-descriptor-missing:${id}`);
+          return workflow.label;
+        } }).read,
       };
       return {
         notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
-        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: modules.map(module => module.descriptor) },
+        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows },
         assistant,
       };
     };
@@ -183,12 +197,12 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       intake: UNWIRED_INTAKE_SERVICE,
       resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
       commandJournal: database.authority.commands,
-      protectedCommandAcceptedAt: () => { throw new Error("seeded BFF has no credential command authority"); },
+      protectedCommandAcceptedAt: commandId => credentials.acceptedAt(commandId),
       bulkCommandAcceptances: {
         withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
           work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
       },
-      preflight: healthyDashboardPreflightExecutor(clock),
+      preflight,
       applicationLifecycle: createApplicationLifecycle({ database,
         requestQuit: () => { throw new Error("seeded fixture cannot quit the process"); },
         onFailure: error => { throw error; },
@@ -198,14 +212,14 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         clock,
 
         modules,
-        descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
-        settingsSchemaHash: descriptorSetHash(["settings-schema"]),
+        descriptorSetHash: setHash,
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
         projection,
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => database.getMeta(),
         // The seeded adapter runs no backup lane; "missing" is its true state.
         workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(database.authority.workbooks, workflows),
-        preflightReport: () => healthyDashboardPreflightReport(clock),
+        preflightReport: preflight.report,
       },
       projection,
       calendar: createCalendarQuery(database, clock),
@@ -229,18 +243,8 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       hub,
     }, {
 
-      settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
-      settingsEditor: {
-        protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }),
-        settings: {
-          read: () => {
-            const record = initialSettingsFileRecord();
-            return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, resolveConfigWithProvenance({}, hostConfigFacts({}), clock).fingerprint) } };
-          },
-        },
-        environment: {},
-        clock,
-      },
+      settings: settings.routes.settings,
+      settingsEditor: settings.routes.settingsEditor,
       storage: {
         admission: syntheticStateRoot(stateRoot),
         doctorOptions: {
