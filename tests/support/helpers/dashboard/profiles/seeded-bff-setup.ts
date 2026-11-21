@@ -60,14 +60,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   const SEEDED_COVERAGE_GAPS: readonly string[] = Object.freeze([
     "status 'partial': the projection's RUN_OUTCOME_STATUS maps no run outcome to it "
     + "(done|failed|cancelled|discarded|superseded|interrupted only), so no real transition produces it",
-    "surfaceKind 'preview': the shape is legal but nothing in the 1i slice enqueues a preview run",
-    "worker-card state 'starting': it is a pool member still spawning its process, which only a live pool reports; "
-    + "the seed shows idle|running|waiting|paused and one member that never started (failed)",
     "liveMessage 'present' on a NON-failed row: the projection serves the terminal FailureRecord's "
     + "summary for a failed run (D13) and nothing else authors a live progress sentence, so every other "
     + "status carries a reasoned absence",
-    "warnings 'present': the count comes off the run's ALREADY-DERIVED evidence receipt, and this seed "
-    + "derives none — D141 makes derivation an on-demand act and the projection never writes authority",
   ]);
 
   const serveStatic = createStaticAssetFixture();
@@ -125,6 +120,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     held.database = database;
 
     const workers = new Map<string, WorkerActivity>();
+    const starting = new Set<string>();
     held.workers = workers;
     let cleanupAttempted = false, cleanupFailure: Error | undefined;
     const cleanupAuthority = async (): Promise<void> => {
@@ -162,7 +158,11 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         listGateResults: runId => database.authority.gateResults.listByRun(runId),
         listWorkerSlots: () => database.authority.workerSlots.list(),
         listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
-        workerMembers: () => database.authority.workerSlots.list().flatMap(slot => { const activity = workers.get(slot.workerId); return activity === undefined ? [] : [runningWorkerView(slot, { activity })]; }),
+        workerMembers: () => database.authority.workerSlots.list().flatMap(slot => {
+          if (starting.has(slot.workerId)) return [runningWorkerView(slot, { state: "starting", pid: undefined, activity: undefined })];
+          const activity = workers.get(slot.workerId);
+          return activity === undefined ? [] : [runningWorkerView(slot, { activity })];
+        }),
         listWorkerPools: () => database.authority.workerPools.list(),
         listRunBatches: () => database.authority.runSessions.list(),
         getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -188,7 +188,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     });
 
     const runIds = seed({ database, spans, clock, authorityPath: join(stateRoot, "state.db"),
-      workers });
+      workers, starting });
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
       if (source === undefined) throw new Error("date-proof-source-run-missing");

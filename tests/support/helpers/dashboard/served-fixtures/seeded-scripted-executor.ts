@@ -200,10 +200,13 @@ export function createScriptedExecutor(deps: Readonly<{
       if (config === undefined) throw new Error("the seeded authority holds no runtime config");
       const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: ids.uuid(), workflow: descriptor.id, workerId: slot.workerId,
         runtimeConfig: { generation: config.generation, settingsRevision: config.settingsRevision,
-          settingsFingerprint: config.settingsFingerprint, configFingerprint: config.configFingerprint } }));
-      if (claimed.envelope.runId !== runId) {
-        throw new Error(`the scripted worker claimed ${claimed.envelope.runId}; ${runId} is not the oldest queued scripted run`);
-      }
+          settingsFingerprint: config.settingsFingerprint, configFingerprint: config.configFingerprint } },
+        // Refused inside the claim's transaction, before the claim is written: the queue head stays queued for its own drive.
+        (candidate) => {
+          if (candidate.envelope.runId !== runId) {
+            throw new Error(`the scripted worker would claim ${candidate.envelope.runId}; ${runId} is not the oldest queued scripted run`);
+          }
+        }));
       const providers = { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId, clock,
           references: { runId, write: () => { throw new Error("the scripted workflow writes no reference"); },
@@ -236,10 +239,13 @@ export function createScriptedExecutor(deps: Readonly<{
     const outcome = Promise.resolve().then(() => execute(runId)).finally(() => { driven = undefined; });
     current.ended = outcome.then(() => undefined, () => undefined);
     outcome.then((settled) => current.arrive({ at: "settled", outcome: settled }), (error: unknown) => current.abort(error));
-    const answer = async (verdict: Verdict): Promise<ScriptedPosition> => {
+    /** Answers the live hold. `decide` runs only once the hold is proven, so a refused answer changes nothing about the run. */
+    const answer = async (verdict: Verdict, heldAt?: string, decide?: () => void): Promise<ScriptedPosition> => {
       const release = current.release;
       if (position?.at !== "step" || release === undefined) throw new Error(`scripted run ${runId} holds no step to answer`);
+      if (heldAt !== undefined && position.nodeId !== heldAt) throw new Error(`scripted run ${runId} is held at ${position.nodeId}, not ${heldAt}`);
       delete current.release;
+      decide?.();
       const reached = next();
       release(verdict);
       return reached;
@@ -253,11 +259,7 @@ export function createScriptedExecutor(deps: Readonly<{
       },
       advance: () => answer("pass"),
       fail: () => answer("fail"),
-      parkWrite: () => {
-        if (position?.at !== "step" || position.nodeId !== WRITE_NODE) throw new Error("only the held transaction can park its write");
-        current.loseAnswer = true;
-        return answer("pass");
-      },
+      parkWrite: () => answer("pass", WRITE_NODE, () => { current.loseAnswer = true; }),
       finish: async () => {
         current.releaseAll = true;
         current.release?.("pass");

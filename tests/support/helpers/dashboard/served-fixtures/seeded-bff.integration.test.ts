@@ -200,6 +200,33 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     expect(new Set(observed)).toEqual(new Set(["paypath-position", "transaction-plan"]));
   });
 
+  it("serves the note a seeded run's step wrote, in its Logs", async () => {
+    const server = await boot();
+    const runId = server.runIds.openGateRun;
+    const logs = RunDetailSectionResponseSchema.parse(
+      await (await fetch(`${server.baseUrl}/api/v1/runs/${runId}/logs`)).json(),
+    );
+    if (logs.section !== "logs") throw new Error("expected the logs section");
+    // The reference check's own note, written through the executor's note writer when it asked the spreadsheet library.
+    expect(logs.payload.notes.map(({ level, message, native }) => ({ level, message, runId: native.runId })))
+      .toEqual([{ level: "info", message: "provider request", runId }]);
+    expect(logs.payload.notes[0]?.native.spanPath).toContain("/reference-check#");
+    expect((logs.payload.rows ?? []).filter(row => row.kind === "note")).toHaveLength(1);
+  });
+
+  it("serves the done run with every step it ran completed and none upcoming", async () => {
+    const server = await boot();
+    const detail = RunDetailWireSchema.parse(
+      await (await fetch(`${server.baseUrl}/api/v1/runs/${server.runIds.doneRun}`)).json(),
+    );
+    expect(detail.timeline.steps.map(step => [step.key, step.state])).toEqual([
+      ["searching", "done"], ["cross-verify", "done"], ["active-status", "done"],
+    ]);
+    expect(detail.timeline.steps.flatMap(step => step.members.map(member => [member.nodeId, member.state]))).toEqual([
+      ["searching", "done"], ["search-identity", "done"], ["cross-verify", "done"], ["crm-identity", "done"], ["active-status", "done"],
+    ]);
+  });
+
 
   it("serves the parked run's section from the write the executor fenced and parked", async () => {
     const server = await boot();
@@ -259,7 +286,7 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
   it("seeds the worker states the projection derives", async () => {
     const server = await boot();
     const day = DashboardDayWireSchema.parse(await dashboardDay(server.baseUrl, server.day));
-    expect(new Set(day.workerCards.map(card => card.state))).toEqual(new Set(["idle", "running", "waiting", "paused", "failed"]));
+    expect(new Set(day.workerCards.map(card => card.state))).toEqual(new Set(["idle", "running", "waiting", "paused", "failed", "starting"]));
   });
 
   it("lists as coverage gaps exactly the states its day does not serve", async () => {
@@ -268,14 +295,13 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     const rows = day.queueSurfaces;
     const unreachable = [
       ["status 'partial'", rows.some(row => row.status === "partial")],
-      ["surfaceKind 'preview'", rows.some(row => row.surfaceKind === "preview")],
-      ["worker-card state 'starting'", day.workerCards.some(card => card.state === "starting")],
       ["liveMessage 'present' on a NON-failed row", rows.some(row => row.status !== "failed" && row.liveMessage.state === "present")],
-      ["warnings 'present'", rows.some(row => row.warnings.state === "present")],
     ] as const;
     expect(unreachable.filter(([, served]) => served).map(([gap]) => gap)).toEqual([]);
-    expect(SEEDED_COVERAGE_GAPS.map(gap => unreachable.findIndex(([name]) => gap.startsWith(`${name}:`)))).toEqual([0, 1, 2, 3, 4]);
-    // Reachable, so no longer listed: a failed row's sentence and a done row's subtitle.
+    expect(SEEDED_COVERAGE_GAPS.map(gap => unreachable.findIndex(([name]) => gap.startsWith(`${name}:`)))).toEqual([0, 1]);
+    // Reachable, so not listed: a failed row's sentence, a done row's subtitle, a preview row and the failed run's receipt warning.
+    expect(rows.find(row => String(row.runId) === server.runIds.previewRun)?.surfaceKind).toBe("preview");
+    expect(rows.find(row => String(row.runId) === server.runIds.failedRun)?.warnings.state).toBe("present");
     expect(rows.some(row => row.liveMessage.state === "present")).toBe(true);
     expect(rows.some(row => row.subtitle.state === "present")).toBe(true);
   });

@@ -57,6 +57,35 @@ describe("seeded scripted executor", () => {
     expect(server.scripted.writes().slice(written)).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
   });
 
+  it("refuses to drive a run that is not the queue head and leaves the head claimable", async () => {
+    const server = await boot();
+    const request = seededRequestOver(server.baseUrl);
+    const status = async (runId: string) => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status;
+    const head = await startScriptedRun(request, SEEDED_NOW, "10812345");
+    const later = await startScriptedRun(request, SEEDED_NOW, "10812346");
+
+    await expect(server.scripted.drive(later)).rejects.toThrow(`${later} is not the oldest queued scripted run`);
+    expect([await status(head), await status(later)]).toEqual(["queued", "queued"]);
+
+    expect(await (await server.scripted.drive(head)).finish()).toMatchObject({ state: "done" });
+    expect(await (await server.scripted.drive(later)).finish()).toMatchObject({ state: "done" });
+  });
+
+  it("refuses to park a write whose step was already released, and the released Save completes", async () => {
+    const server = await boot();
+    const request = seededRequestOver(server.baseUrl);
+    const written = server.scripted.writes().length;
+    const runId = await startScriptedRun(request, SEEDED_NOW, "10812345");
+    const run = await server.scripted.drive(runId);
+    expect(await run.advance()).toEqual({ at: "step", nodeId: "save-transaction" });
+
+    const released = run.advance();
+    await expect(run.parkWrite()).rejects.toThrow("holds no step to answer");
+    expect(await released).toMatchObject({ at: "settled", outcome: { state: "done" } });
+    expect(RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status).toBe("done");
+    expect(server.scripted.writes().slice(written)).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
+  });
+
   it("records each seeded write once: the written and the parked run, never the failed or the gated one", async () => {
     const server = await boot();
     const writesOf = (role: string) => server.scripted.writes().filter(write => write.runId === server.runIds[role]).length;

@@ -28,6 +28,16 @@ for (const viewport of DESKTOP_VIEWPORTS) {
   });
 }
 
+test("the done run shows the steps it completed, none upcoming", async ({ dashboard }) => {
+  await dashboard.open();
+  await dashboard.openRun(dashboard.runId("doneRun"));
+  const timeline = dashboard.runPanel.getByRole("navigation", { name: "Run timeline" });
+  for (const step of ["Search for person", "Cross-check identity", "Read employment status"]) {
+    await expect(timeline.getByText(step, { exact: true }).first()).toBeVisible();
+  }
+  await expect(timeline.getByText("Upcoming")).toHaveCount(0);
+});
+
 test("an open run survives Reload and closes on Back", async ({ dashboard, page }) => {
   await dashboard.open();
   const runId = dashboard.runId("doneRun");

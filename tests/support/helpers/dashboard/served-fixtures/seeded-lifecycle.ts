@@ -59,6 +59,8 @@ interface SeedWorld {
   readonly clock: TestClock;
   /** Seeded pool members by worker id, with the activity each last reported. */
   readonly workers: Map<string, WorkerActivity>;
+  /** Members whose process is still spawning: no activity yet, which the worker card shows as starting. */
+  readonly starting: Set<string>;
   readonly spans: ReturnType<typeof createTimelineEmitter>;
 }
 
@@ -202,7 +204,7 @@ function reportWorker(world: SeedWorld, workerId: string, runId?: string): void 
 }
 
 
-function taskSpan(world: SeedWorld, run: RunRecord, node: string, outcome?: "done" | "failed" | "skipped"): void {
+function taskSpan(world: SeedWorld, run: RunRecord, node: string, outcome?: "done" | "failed" | "not-run"): void {
   const traceId = run.envelope.traceId;
   const base = {
     ts: nowOf(world),
@@ -220,7 +222,8 @@ function taskSpan(world: SeedWorld, run: RunRecord, node: string, outcome?: "don
     name: node,
   });
   if (outcome !== undefined) {
-    world.spans.emit({ ...base, t: "span.ended", kind: "task", spanPath: `${traceId}/${node}#1`, outcome });
+    world.spans.emit({ ...base, t: "span.ended", kind: "task", spanPath: `${traceId}/${node}#1`,
+      ...(outcome === "not-run" ? { outcome: "skipped", notRunReason: "condition-false" } : { outcome }) });
   }
 }
 
@@ -290,9 +293,10 @@ function terminalizeDone(world: SeedWorld, run: RunRecord): void {
 /** done — real atomic success terminalization with a factory-sealed result. */
 function finishDone(world: SeedWorld, spec: SeedSpec, poolIndex: number): RunRecord {
   const done = startRunning(world, spec, poolIndex, "active-status");
-  taskSpan(world, done, "searching", "done");
-  taskSpan(world, done, "cross-verify", "done");
-  taskSpan(world, done, "active-status", "done");
+  // One settled span per declared node, as the executor writes: the nodes the sealed result resolves are done,
+  // the rest are branches this input never takes. A node with no span would leave its step reading Upcoming.
+  for (const node of ["searching", "search-identity", "cross-verify", "crm-identity", "active-status"]) taskSpan(world, done, node, "done");
+  for (const node of ["matching", "crm-selected-record", "crm-results", "crm-only-recovery", "crm-dates", "reference-check"]) taskSpan(world, done, node, "not-run");
   terminalizeDone(world, done);
   reportWorker(world, claimOf(done).workerId);
   return done;
@@ -380,6 +384,12 @@ export function seed(world: SeedWorld): Record<string, string> {
   world.workers.set(admitWorker(world, 5), WorkerActivitySchema.parse({ state: "paused" }));
   // A member whose process never started: admitted to the pool and never heard from, which the worker card shows as failed.
   world.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, 6, nowOf(world)));
+  // A member whose process is still spawning.
+  const startingWorker = admitWorker(world, 7);
+  world.workers.delete(startingWorker);
+  world.starting.add(startingWorker);
+  // A finished preview: the queue shape a start plan gives a run that previews instead of saving.
+  const preview = finishDone(world, { seed: 11, title: "EID 10666777 — preview", shape: "preview" }, 2);
 
   // The group and its members, then the row that must stay queued — enqueued
   // last so no claimNext above could have taken them.
@@ -403,6 +413,7 @@ export function seed(world: SeedWorld): Record<string, string> {
     interruptedRun: interrupted.envelope.runId,
     discardedRun: discarded.envelope.runId,
     supersededRun: superseded.envelope.runId,
+    previewRun: preview.envelope.runId,
     groupRun: uuidOf(30),
     memberRun: uuidOf(31),
   };
@@ -436,6 +447,8 @@ export async function seedScriptedRuns(world: Readonly<{ app: DashboardApp; scri
   await failing.advance();
   const failed = await failing.fail();
   const failedRun = await settle(failing, "failed", failed);
+  // The operator opens the failed run's receipt, which derives it; the queue row then counts the receipt's failure warning.
+  await request(`/api/v1/runs/${failedRun}/receipt`);
   const writing = await started("10444001");
   const writtenRun = await settle(writing, "done", await writing.finish());
   const parking = await started("10555121");
