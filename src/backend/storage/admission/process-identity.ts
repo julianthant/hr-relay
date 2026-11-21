@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 
+const startIdentityQueryOptions = { encoding: "utf8", timeout: 5_000, killSignal: "SIGKILL" } as const;
+
 export const ProcessStartIdentitySchema = z.strictObject({
   platform: z.enum(["linux", "darwin", "win32"]),
   startToken: z.string().min(1),
@@ -80,34 +82,43 @@ function observeUncachedProcessIdentity(parsedPid: number): ProcessIdentityObser
   }
   if (process.platform === "darwin") {
     const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(parsedPid)], {
-      encoding: "utf8",
+      ...startIdentityQueryOptions,
       env: { LANG: "C", LC_ALL: "C", TZ: "UTC" },
     });
-    const rawStart = result.stdout.trim();
-    const startTimeMs = Date.parse(`${rawStart} UTC`);
-    if (result.status === 0 && rawStart.length > 0 && Number.isFinite(startTimeMs)) {
-      return {
-        state: "alive",
-        identity: ProcessStartIdentitySchema.parse({
-          platform: "darwin",
-          startToken: String(Math.floor(startTimeMs / 1000)),
-        }),
-      };
+    if (result.error !== undefined || result.status === null) {
+      throw new Error(`could not observe Darwin start identity for pid ${String(parsedPid)}`, {
+        cause: result.error ?? { status: result.status, signal: result.signal },
+      });
+    }
+    if (result.status === 0) {
+      const rawStart = result.stdout.trim();
+      const startTimeMs = Date.parse(`${rawStart} UTC`);
+      if (rawStart.length > 0 && Number.isFinite(startTimeMs)) {
+        return {
+          state: "alive",
+          identity: ProcessStartIdentitySchema.parse({
+            platform: "darwin",
+            startToken: String(Math.floor(startTimeMs / 1000)),
+          }),
+        };
+      }
     }
     if (observePid(parsedPid).state === "gone") return { state: "gone" };
     throw new Error(
       `could not observe Darwin start identity for pid ${String(parsedPid)}: `
       + `${result.stderr.trim() || `ps exited ${String(result.status)}`}`,
-      { cause: result.error },
     );
   }
   if (process.platform === "win32") {
     const script = `(Get-Process -Id ${String(parsedPid)} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`;
-    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-      encoding: "utf8",
-    });
-    const token = result.stdout.trim();
-    if (result.status === 0 && /^\d+$/u.test(token)) {
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], startIdentityQueryOptions);
+    if (result.error !== undefined || result.status === null) {
+      throw new Error(`could not observe Windows start identity for pid ${String(parsedPid)}`, {
+        cause: result.error ?? { status: result.status, signal: result.signal },
+      });
+    }
+    const token = result.status === 0 ? result.stdout.trim() : "";
+    if (/^\d+$/u.test(token)) {
       return {
         state: "alive",
         identity: ProcessStartIdentitySchema.parse({ platform: "win32", startToken: token }),
@@ -117,7 +128,6 @@ function observeUncachedProcessIdentity(parsedPid: number): ProcessIdentityObser
     throw new Error(
       `could not observe Windows start identity for pid ${String(parsedPid)}: `
       + `${result.stderr.trim() || `PowerShell exited ${String(result.status)}`}`,
-      { cause: result.error },
     );
   }
   throw new Error(`runtime process identity is unsupported on platform ${process.platform}`);

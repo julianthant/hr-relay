@@ -17,6 +17,8 @@ import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closu
 import { RelayPublicFailure, relayFailureReason } from "./relay-backend.js";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+const CONTROL_REQUEST_TIMEOUT_MS = 5_000;
+const controlResponseTimeoutMs = { open: 30_000, stop: 120_000 };
 const TokenSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 const BrokerSchema = z.strictObject({ port: z.number().int().positive().max(65535), token: TokenSchema,
   pid: z.number().int().positive(), identity: ProcessStartIdentitySchema });
@@ -148,7 +150,7 @@ export async function startRelay(options: RelayLauncherOptions = {}): Promise<nu
     sockets.add(socket);
     socket.on("close", () => { sockets.delete(socket); });
     socket.on("error", () => { socket.destroy(); });
-    socket.setTimeout(5000, () => { socket.destroy(new Error("relay-control-request-timeout")); });
+    socket.setTimeout(CONTROL_REQUEST_TIMEOUT_MS, () => { socket.destroy(new Error("relay-control-request-timeout")); });
     readFrame(socket, value => {
       const request = RequestSchema.safeParse(value);
       if (!request.success || !equalProof(request.data.proof, proof(token, ["relay-control", request.data.action, request.data.nonce]))) {
@@ -156,11 +158,15 @@ export async function startRelay(options: RelayLauncherOptions = {}): Promise<nu
       }
       socket.setTimeout(0);
       const { action, nonce } = request.data;
+      const deadline = setTimeout(() => { socket.destroy(); }, controlResponseTimeoutMs[action]);
+      socket.once("close", () => { clearTimeout(deadline); });
       if (action === "stop") stop();
       const response: Promise<StopResult> = action === "stop" ? outcome : reopen().then(() => ({ type: "relay-window-opened" as const }), error => {
         const reason = relayFailureReason(error); writeError(reason); return { type: "relay-launcher-failed" as const, reason };
       });
-      void response.then(result => { socket.end(`${JSON.stringify({ nonce, result, proof: proof(token, ["relay-result", action, nonce, result]) })}\n`, () => { socket.destroy(); }); });
+      void response.then(result => {
+        if (!socket.destroyed) socket.end(`${JSON.stringify({ nonce, result, proof: proof(token, ["relay-result", action, nonce, result]) })}\n`, () => { socket.destroy(); });
+      });
     });
   });
   server.maxConnections = 16;
@@ -275,9 +281,14 @@ async function requestBroker(directory: string, action: "stop" | "open"): Promis
   const nonce = randomBytes(32).toString("hex");
   return new Promise((resolve, reject) => {
     const socket = createConnection({ host: "127.0.0.1", port: broker.value.port });
+    const unproved = action === "stop" ? "relay-stop-closure-unproved" : "relay-window-not-ready";
+    const deadline = setTimeout(() => { socket.destroy(new Error(unproved)); }, controlResponseTimeoutMs[action]);
     let received = false;
     socket.once("error", reject);
-    socket.once("close", () => { if (!received) reject(new Error("relay-stop-closure-unproved")); });
+    socket.once("close", () => {
+      clearTimeout(deadline);
+      if (!received) reject(new Error(unproved));
+    });
     socket.once("connect", () => { socket.write(`${JSON.stringify({ action, nonce, proof: proof(broker.value.token, ["relay-control", action, nonce]) })}\n`); });
     readFrame(socket, value => {
       const reply = ReplySchema.parse(value);
@@ -286,7 +297,7 @@ async function requestBroker(directory: string, action: "stop" | "open"): Promis
       const response = reply.result;
       if (response.type === "relay-launcher-failed") reject(new RelayPublicFailure(response.reason));
       else resolve(response);
-      socket.end();
+      socket.destroy();
     });
   });
 }
