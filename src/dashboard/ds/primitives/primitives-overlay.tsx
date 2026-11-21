@@ -774,6 +774,7 @@ export interface DsToast {
   id: string;
   tone: DsToastTone;
   title: string;
+  /** a toast is one line: a description is joined to the title as "Title: description" */
   description?: string;
   /** ms before auto-dismiss; default 3000, `danger` 12000. */
   duration?: number;
@@ -809,7 +810,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const earlier = byKey.current.get(key);
       if (earlier !== undefined) manager.close(earlier);
       byKey.current.set(key, id);
-      manager.add({ id, title: input.title, description: input.description,
+      manager.add({ id, title: input.description === undefined ? input.title : `${input.title}: ${input.description}`,
         type: input.tone === "danger" ? "error" : input.tone,
         timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 12000 : 3000),
       });

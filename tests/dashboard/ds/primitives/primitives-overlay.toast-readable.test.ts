@@ -28,10 +28,10 @@ it("shows the whole sentence, dismisses a plain failure after reading time, and 
     await act(async () => root.render(createElement(ToastProvider, { children: createElement(Producer) })));
 
     await press("Fail");
-    const description = document.querySelector('[data-slot="toast-description"]');
-    assert.equal(description?.textContent, SENTENCE);
-    assert.equal(description?.classList.contains("truncate"), false);
-    assert.equal(document.querySelector('[data-slot="toast-title"]')?.classList.contains("truncate"), false);
+    const title = document.querySelector('[data-slot="toast-title"]');
+    assert.equal(title?.textContent, `Write parked: ${SENTENCE}`, "a description joins the title in one line");
+    assert.equal(document.querySelector('[data-slot="toast-description"]'), null);
+    assert.equal(title?.classList.contains("truncate"), false);
 
     await press("Fail"); await press("Fail");
     assert.equal(cards().length, 1);

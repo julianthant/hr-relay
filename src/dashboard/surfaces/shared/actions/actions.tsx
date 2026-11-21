@@ -16,7 +16,6 @@ import {
 import { cn } from "../../../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
-  commandResultDetail,
   commandResultTitle,
   type CommandResultFeedEntry,
   intentPill,
@@ -53,10 +52,10 @@ const NOOP_ACTION: DashboardActionHandler = () => {};
 const PENDING_LIMIT_MS = 15_000;
 
 
-/** Persistent refusal context: sticky toasts that only notify; each has a Priority notification item that opens the run. */
+/** A refused command toasts one line; its Priority notification item opens the run. */
 export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {
   return <>{results.map(entry => <Notice key={entry.id} tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
-    title={commandResultTitle(entry)} description={commandResultDetail(entry)} />)}</>;
+    title={commandResultTitle(entry)} />)}</>;
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
