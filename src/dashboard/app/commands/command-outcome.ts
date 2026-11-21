@@ -33,8 +33,10 @@ export class CommandOutcomeInvalidError extends Error {
   }
 }
 
+/** Staff see an unknown outcome as these words; the catalogue sentences ask them to investigate Relay's bookkeeping. */
+export const UNKNOWN_OUTCOME_TEXT = "Not confirmed yet.";
 function feedback(code: "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_RESULT_IDENTITY_MISMATCH"): ErrorCatalogMessage {
-  return formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+  return { ...formatErrorCatalogFailure(createErrorCatalogFailure(code, {})), text: UNKNOWN_OUTCOME_TEXT };
 }
 
 /** The one builder for an outcome whose effect is unknown. */

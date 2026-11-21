@@ -8,7 +8,7 @@ import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptio
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from '../../../models/failures/error-catalog.js';
 import { sessionsFromDay } from './sessions-view-model.js';
 import { useIdleSessionRefresh } from './session-idle-model.js';
-import { readBack } from '../../app/commands/command-readback.js';
+import { readBack, withDeadline } from '../../app/commands/command-readback.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToasts } from '../../ds/ui.js';
 import type { WorkflowCatalogEntry } from '../workflows/workflow-catalog-model.js';
@@ -41,6 +41,9 @@ export interface SessionCommandBinding {
 type NativeAttempt = { readonly body: string; readonly actor: string; readonly client: DashboardClient; readonly authority: object;
   readonly commands: CommandRequest[]; readonly expected: number; snapshot?: DashboardDayWire; cause?: unknown };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+// Relay stamps its own requestedAt, requestedBy and source on admission; the audit still proves this command when everything else matches.
+const intent = ({ requestedAt: _at, requestedBy: _by, source: _source, ...rest }: CommandRequest) => canonicalJsonStringify(rest);
+const sameIntent = (recorded: CommandRequest, sent: CommandRequest) => intent(recorded) === intent(sent);
 const commandFeedback = (code: "COMMAND_REFUSED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 /** A worker command is confirmed once the served day shows its effect; the member fence makes each effect observable. */
@@ -93,7 +96,8 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       && next.scope === binding.scope && next.client === binding.client;
   };
   const read = async (attempt: NativeAttempt, binding: SessionCommandBinding) => {
-    const day = await binding.client.dashboardDay(binding.day);
+    // Every Sessions read ends at a deadline, so a stalled Day or audit read leaves an unknown the panel can settle.
+    const day = await withDeadline(binding.client.dashboardDay(binding.day));
     if (!valid(attempt, binding)) throw new Error("SESSION_AUTHORITY_REPLACED");
     attempt.snapshot = day;
     return day;
@@ -203,8 +207,8 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
           const settled = !checked ? retained.outcome : await binding.executor.check(command.commandId, { ...options(attempt, binding), observe: async sent => {
             // The command's own applied reply still proves it; a lost or unapplied reply falls back to the audit.
             if (reply?.success && (reply.data.state === "applied" || reply.data.state === "already-applied")) return reply.data;
-            const record = await binding.client.workerCommandResult(sent.commandId);
-            return record.state === "recorded" && canonicalJsonStringify(record.request) === canonicalJsonStringify(sent) ? record.result : undefined;
+            const record = await withDeadline(binding.client.workerCommandResult(sent.commandId));
+            return record.state === "recorded" && sameIntent(record.request, sent) ? record.result : undefined;
           } });
           if (settled?.kind === "refused" && settled.reason === undefined) return { id: request.id, state: "refused", message: settled.feedback.text, code: settled.feedback.code };
           if (settled?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: FAILED[request.action] };
