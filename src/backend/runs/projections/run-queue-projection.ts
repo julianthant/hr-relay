@@ -202,10 +202,12 @@ export interface RunQueueProjectionDeps {
   readonly scheduleRebuild?: (rebuild: () => void) => void;
 }
 
+type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
+
 export type RunQueueProjectionChange =
-  | { readonly kind: "patch"; readonly cursor: string; readonly position: number; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
-  | { readonly kind: "snapshot"; readonly cursor: string; readonly position: number }
-  | { readonly kind: "generation"; readonly cursor: string };
+  | { readonly kind: "patch"; readonly cursor: ProjectionCursor; readonly position: number; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
+  | { readonly kind: "snapshot"; readonly cursor: ProjectionCursor; readonly position: number }
+  | { readonly kind: "generation"; readonly cursor: ProjectionCursor };
 
 export interface RunQueueProjectionHealth {
   readonly state: "live" | "degraded";
@@ -353,12 +355,12 @@ export class RunQueueProjection {
     return this.#deps.descriptorSetHash;
   }
 
-  cursor(): string {
+  cursor(): ProjectionCursor {
     return ProjectionCursorSchema.parse(`pc:${String(this.#cursorValue)}`);
   }
 
   /** Advance the sequence for one envelope and name its cursor. */
-  takeCursor(): string {
+  takeCursor(): ProjectionCursor {
     this.#cursorValue += 1;
     return this.cursor();
   }

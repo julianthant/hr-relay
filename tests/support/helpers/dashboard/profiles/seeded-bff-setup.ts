@@ -226,7 +226,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       startQueuedRunAheadOfItsRow: () => startQueuedRun(world),
       finishRunningStep: () => settle(finishRunningStep(world)),
       parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
-      startDeclaredGateRun: async options => settle(await declaredGate.start(options)),
+      startDeclaredGateRun: async (options?: DeclaredGateStart) => settle(await declaredGate.start(options)),
       parkAtDeclaredGate: async () => settle(await declaredGate.park()),
       publishNotification: async () => {
         if (notificationInbox === undefined) throw new Error("the seeded server publishes notifications only as the product app");

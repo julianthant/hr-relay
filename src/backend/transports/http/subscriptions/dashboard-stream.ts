@@ -28,9 +28,9 @@ interface DashboardStreamProjection {
   health(): { readonly state: "live" | "degraded" };
   buildDashboardDayWire(day: string): ReturnType<RunQueueProjection["buildDashboardDayWire"]>;
   generation(): number;
-  cursor(): string;
+  cursor(): ChangeEnvelope["cursor"];
   /** Advances the projection's sequence for one envelope the hub mints. */
-  takeCursor(): string;
+  takeCursor(): ChangeEnvelope["cursor"];
   position(): number;
   descriptorSetHash(): string;
 }
