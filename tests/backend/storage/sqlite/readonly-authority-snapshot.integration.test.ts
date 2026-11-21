@@ -6,6 +6,7 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { withOperationProof, readPrivateFile } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import { retainAuthoritySourceClosure, AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
+import childProcesses from "node:child_process";
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join } from "node:path";
@@ -41,6 +42,45 @@ it("uses a physical owned snapshot under an aliased temp root without admitting 
   const sourceAlias = join(workspace, "source-alias.db");
   fs.symlinkSync(f.path, sourceAlias);
   assert.throws(() => readProfileDatabaseBinding(sourceAlias), /source-integrity/u);
+});
+
+it("reaps a stalled copier and removes its partial snapshot", async () => {
+  const f = await createBoundProfileFixture();
+  const spawn = childProcesses.spawnSync;
+  let childPid: number | undefined, snapshotPath: string | undefined, signal: string | null = null;
+  let wrotePartialCopy = false;
+  const copier = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
+    if (!Array.isArray(args) || typeof args[2] !== "string" || !args[2].includes("const destinationPath = process.argv[1]") || typeof args[3] !== "string") {
+      return spawn(command, args, options);
+    }
+    snapshotPath = args[3];
+    const result = spawn(process.execPath, ["-e", `
+      process.on("SIGTERM", () => {});
+      require("node:fs").writeFileSync(process.argv[1], "partial", { mode: 0o600 });
+      setTimeout(() => {}, 1500);
+    `, snapshotPath], {
+      ...options, timeout: typeof options?.timeout === "number" && options.timeout > 0 ? Math.min(options.timeout, 500) : undefined,
+    });
+    childPid = result.pid;
+    signal = result.signal;
+    wrotePartialCopy = fs.existsSync(snapshotPath);
+    return result;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => createReadonlyAuthoritySnapshot(f.path), error => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "authority-readonly-snapshot-copy-failed");
+      assert.match(String(error.cause), /ETIMEDOUT/u);
+      return true;
+    });
+    if (process.platform !== "win32") assert.equal(signal, "SIGKILL");
+    assert.ok(childPid);
+    assert.throws(() => process.kill(childPid, 0), { code: "ESRCH" });
+    assert.equal(wrotePartialCopy, true);
+    assert.ok(snapshotPath);
+    assert.equal(fs.existsSync(dirname(snapshotPath)), false);
+  } finally { copier.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
 it("snapshot disposal keeps the same uncertainty and never retries physical removal", async () => {

@@ -137,6 +137,35 @@ it("admits the same genuine profile across a real peer's committed WAL change", 
   }
 });
 
+it("refuses a stalled live observer after reaping its process", async () => {
+  const f = await createBoundProfileFixture();
+  let childPid: number | undefined;
+  let signal: string | null = null;
+  const observer = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
+    if (!Array.isArray(args) || typeof args[2] !== "string" || !args[2].includes("const [path, expected, schema, application]")) {
+      return actualSpawn(command, args, options);
+    }
+    const result = actualSpawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setTimeout(() => {}, 1500);"], {
+      ...options, timeout: typeof options?.timeout === "number" && options.timeout > 0 ? Math.min(options.timeout, 300) : undefined,
+    });
+    childPid = result.pid;
+    signal = result.signal;
+    return result;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => assertLiveProfileDatabaseBinding(f.path, f.admission.profileBinding), error => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "profile-database-observation-failed");
+      assert.match(String(error.cause), /ETIMEDOUT/u);
+      return true;
+    });
+    if (process.platform !== "win32") assert.equal(signal, "SIGKILL");
+    assert.ok(childPid);
+    assert.throws(() => process.kill(childPid, 0), { code: "ESRCH" });
+  } finally { observer.mockRestore(); syncBuiltinESMExports(); await f.close(); }
+});
+
 it("keeps a caller's actual SQLite writer lock held across live binding observation", async () => {
   const f = await createBoundProfileFixture(), db = new DatabaseSync(f.path);
   try {

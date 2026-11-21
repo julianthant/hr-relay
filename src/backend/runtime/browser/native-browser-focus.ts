@@ -23,7 +23,7 @@ export class DuoBrowserFocusError extends Error {
 const execFileAsync = promisify(execFile);
 const runFocusCommand: FocusCommandRunner = async (file, args, timeoutMs) => {
   try {
-    const { stdout } = await execFileAsync(file, [...args], { encoding: "utf8", timeout: timeoutMs, windowsHide: true });
+    const { stdout } = await execFileAsync(file, [...args], { encoding: "utf8", timeout: timeoutMs, killSignal: "SIGKILL", windowsHide: true });
     return stdout;
   } catch (cause) { throw new DuoBrowserFocusError({ cause }); }
 };
@@ -48,18 +48,22 @@ const CAPTURE_APP = `function run() {
   var visible = selected.visibleFrame;
   return JSON.stringify({processId: pid, workArea: {left: Math.round(visible.origin.x), top: Math.round(primaryHeight - visible.origin.y - visible.size.height), width: Math.round(visible.size.width), height: Math.round(visible.size.height)}});
 }`;
+const FOCUS_POLL_SECONDS = 0.05;
 const ACTIVATE_APP = `function run(args) {
   ObjC.import('AppKit');
+  var processInfo = $.NSProcessInfo.processInfo;
+  var deadline = Number(processInfo.systemUptime) + Number(args[1]) / 1000;
   var pid = Number(args[0]);
   var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
   app.unhide;
   app.activateWithOptions(1);
-  var deadline = Date.now() + Number(args[1]);
-  while (Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier) !== pid) {
-    if (Date.now() >= deadline) throw new Error('duo-browser-focus-refused');
-    $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.05));
+  for (;;) {
+    var focused = Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier) === pid;
+    var remaining = deadline - Number(processInfo.systemUptime);
+    if (remaining <= 0) throw new Error('duo-browser-focus-refused');
+    if (focused) return 'focused';
+    $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(Math.min(${FOCUS_POLL_SECONDS}, remaining)));
   }
-  return 'focused';
 }`;
 
 const WINDOWS_API = `Add-Type -TypeDefinition @'

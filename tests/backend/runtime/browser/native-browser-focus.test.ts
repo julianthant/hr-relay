@@ -70,6 +70,7 @@ it("uses the JXA property bridge for unhide before activating and verifying the 
     const invoke: unknown = runInNewContext(`${args[3]}; run`, {
       ObjC: { import: () => undefined },
       $: {
+        NSProcessInfo: { processInfo: { systemUptime: 1 } },
         NSRunningApplication: { runningApplicationWithProcessIdentifier(pid: number) {
           assert.equal(pid, 421321);
           return {
