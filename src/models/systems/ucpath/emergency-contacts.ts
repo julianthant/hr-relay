@@ -47,8 +47,12 @@ export const UcpathContactEffectSchema = z.strictObject({
   address: UcpathContactAddressSchema,
 });
 export type UcpathContactEffect = z.infer<typeof UcpathContactEffectSchema>;
+/** The one UCPath name comparison form: trimmed, single-spaced, en-US lowercase. Contact effect identity bytes depend on it. */
+export function normalizedName(value: string): string {
+  return value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
+}
 export function contactEffectIdentity(effect: UcpathContactEffect): string {
-  return canonicalJsonStringify({ ...effect, name: effect.name.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US") });
+  return canonicalJsonStringify({ ...effect, name: normalizedName(effect.name) });
 }
 
 export const UcpathContactRowSchema = z.discriminatedUnion("kind", [

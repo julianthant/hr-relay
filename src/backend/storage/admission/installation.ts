@@ -33,13 +33,14 @@ import { OPENABLE_AUTHORITY_SCHEMA_VERSIONS, isOpenableAuthoritySchemaVersion, t
 import { requireRuntimeAdmission } from "./admission-identity.js";
 import type { RuntimeAdmission, StartupRegistrationProof } from "./admission.js";
 import { OfflineMaintenanceOperationUnavailableError,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,assertOfflineMaintenanceOperation,isOfflineMaintenanceOperationActive,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
-import { assertNoOldBuildRuntimeArtifacts,assertNoSymlinkComponents,lstatMaybe } from "./process-root.js";
+import { assertNoOldBuildRuntimeArtifacts,assertNoSymlinkComponents,fixedLockRoot,lstatMaybe } from "./process-root.js";
 
 import { systemClock } from "../../../rules/time/clock.js";
 import { credentialHeadStateOf } from "../../../rules/storage/credential-head.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
+import { lexicallyWithin } from "../../app/config/lexical-path.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { BrowserRootsSchema,StoppedBrowserRootsV1Schema,parseStoppedBrowserRootUpgradeSource,type BrowserRootsDocument,type StoppedBrowserRootsDocument } from "../browser-root-contract.js";
 import type { BrowserProfileProbeFactory } from "../browser-roots.js";
@@ -467,24 +468,19 @@ function epochsOf(_locator: RuntimeLocator): { state: number; artifact: number }
 function equalPair(left: RuntimePair, right: RuntimePair): boolean {
   return left.stateRoot === right.stateRoot && left.artifactRoot === right.artifactRoot;
 }
-function fixedLockRoot(workspace: string): string { return resolve(workspace, rebuildRuntimeIsolation.processLockRoot); }
 function assertRestoreHeld(workspace: string, operation: OfflineMaintenanceOperation | undefined): void {
   if (operation === undefined) fail("offline-maintenance-unissued");
   assertOfflineMaintenanceOperation(operation, workspace);
   assertNoOldBuildRuntimeArtifacts(workspace);
 }
 
-function inside(parent: string, child: string): boolean {
-  const part = relative(parent, child);
-  return part === "" || (part !== ".." && !part.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) && !isAbsolute(part));
-}
 function validatePair(workspace: string, pair: RuntimePair): RuntimePair {
   PairSchema.parse({ stateRoot: pair.stateRoot, artifactRoot: pair.artifactRoot });
   for (const path of [pair.stateRoot, pair.artifactRoot]) {
     if (!isAbsolute(path) || resolve(path) !== path) fail("root must be canonical absolute path");
-    if (inside(path, workspace) || inside(path, join(workspace, CONTROL)) || inside(join(workspace, CONTROL), path)) fail("control overlaps a movable root");
+    if (lexicallyWithin(path, workspace) || lexicallyWithin(path, join(workspace, CONTROL)) || lexicallyWithin(join(workspace, CONTROL), path)) fail("control overlaps a movable root");
   }
-  if (pair.stateRoot === pair.artifactRoot || (inside(pair.artifactRoot, pair.stateRoot))) fail("invalid root overlap");
+  if (pair.stateRoot === pair.artifactRoot || (lexicallyWithin(pair.artifactRoot, pair.stateRoot))) fail("invalid root overlap");
   return pair;
 }
 function assertKnownDefaults(workspace: string, pair: RuntimePair): void {
@@ -752,7 +748,7 @@ function rawLocator(control: string, workspace: string): RuntimeLocator {
   return RuntimeLocatorSchema.parse({ schemaVersion: 3, installationId: persisted.installationId, generation: 0, ...pair });
 }
 function defaultEmpty(pair: RuntimePair): boolean {
-  const permittedStateEntry = inside(pair.stateRoot, pair.artifactRoot) ? relative(pair.stateRoot, pair.artifactRoot).split(/[\\/]/u)[0] : undefined;
+  const permittedStateEntry = lexicallyWithin(pair.stateRoot, pair.artifactRoot) ? relative(pair.stateRoot, pair.artifactRoot).split(/[\\/]/u)[0] : undefined;
   for (const [root, allowed] of [[pair.stateRoot, permittedStateEntry], [pair.artifactRoot, undefined]] as const) {
     if (!lstatMaybe(root)) continue;
     dataDirectory(root);

@@ -2,6 +2,7 @@
 import { formatTimecardDate, resolveTimecardDate } from "../time/timecard-period.js";
 import type { TimecardDateRange } from "../time/timecard-period.js";
 import { z } from "zod";
+import { normalizeHeader } from "../../models/fields/registry.js";
 
 /** One rendered grid row, exactly as the page carried it; every cell is the raw trimmed string, and nothing is parsed at the boundary. */
 export const TimecardGridRowSchema = z.strictObject({
@@ -73,15 +74,15 @@ export const TIMECARD_DATA_COLUMNS: readonly TimecardDataColumn[] = Object.freez
 );
 
 /** Header text carries a sort-order suffix (`"In 1"`); strip it before matching. */
-function normalizeHeader(raw: string): string {
-  return raw.replace(/\s+\d+$/u, "").replace(/\s+/gu, " ").trim().toLowerCase();
+function normalizeTimecardHeader(raw: string): string {
+  return normalizeHeader(raw.replace(/\s+\d+$/u, ""));
 }
 
 /** Map every required data column to its live index, or throw naming the exact headers that are missing and the whole header row that was observed. */
 export function resolveTimecardColumns(
   headers: readonly string[],
 ): Readonly<Record<TimecardDataColumn, number>> {
-  const normalized = headers.map(normalizeHeader);
+  const normalized = headers.map(normalizeTimecardHeader);
   const resolved = new Map<TimecardDataColumn, number>();
   const missing: string[] = [];
   const ambiguous: string[] = [];

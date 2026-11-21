@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isAbsolute,join,relative,resolve } from "node:path";
+import { isAbsolute,join,resolve } from "node:path";
 import { z } from "zod";
 import { HostConfigFactsSchema,type HostConfigFacts } from "../../../models/config/host-display.js";
 import {
@@ -20,6 +20,7 @@ import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { lexicallyWithin } from "./lexical-path.js";
 import { defaultRuntimePaths } from "./runtime-paths.js";
 
 export { ConfigLeafPathSchema,ConfigProvenanceSchema,configLeafPaths } from "../../../models/config/provenance.js";
@@ -45,10 +46,7 @@ const RuntimeStoragePairSchema = z.strictObject({
     }
   }
   if (!isAbsolute(pair.stateRoot) || !isAbsolute(pair.artifactRoot)) return;
-  const stateWithinArtifact = relative(pair.artifactRoot, pair.stateRoot);
-  if (stateWithinArtifact === "" || (stateWithinArtifact !== ".."
-    && !stateWithinArtifact.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)
-    && !isAbsolute(stateWithinArtifact))) {
+  if (lexicallyWithin(pair.artifactRoot, pair.stateRoot)) {
     context.addIssue({ code: "custom", path: ["artifactRoot"], message: "artifact root cannot contain state root" });
   }
 }).readonly();

@@ -7,7 +7,7 @@ import { outermostOperationProof } from "../configuration/credential-safe-file.j
 import { assertOfflineMaintenanceOperation, offlineMaintenanceWorkspace, type OfflineMaintenanceOperation } from "./lifetime-lock.js";
 
 function fail(reason: string): never { throw new Error(`runtime-control: ${reason}`); }
-function fixedLockRoot(workspace: string): string { return resolve(workspace, rebuildRuntimeIsolation.processLockRoot); }
+export function fixedLockRoot(workspace: string): string { return resolve(workspace, rebuildRuntimeIsolation.processLockRoot); }
 function privateDirectory(path: string): void {
   const stat = lstatSync(path, { bigint: true });
   if (!stat.isDirectory() || privatePathRejects(path, stat, "directory-0700")) fail(`unsafe directory ${path}`);

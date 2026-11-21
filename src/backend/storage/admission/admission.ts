@@ -15,6 +15,7 @@ import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileOperationS
 import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { lexicallyWithin } from "../../app/config/lexical-path.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { captureCanonicalCredentialPublication,captureStoppedStartupCredentialPublication,captureStoppedCanonicalCredentialHead,captureStoppedIncompleteCredentials } from "../configuration/canonical-credential-store.js";
 import { sameDirectory,fileIdentityObservation,privateFileNumber,ensureChildDirectory,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
@@ -75,14 +76,9 @@ interface ProfileAccess {
 const issuanceToken = Symbol("runtime-admission-issuance");
 const stoppedMaintenanceRestores = new WeakMap<InstallationLease, OfflineMaintenanceOperation>();
 
-function within(parent: string, child: string): boolean {
-  const part = relative(parent, child);
-  return part === "" || (part !== ".." && !part.startsWith("../") && !part.startsWith("..\\") && !isAbsolute(part));
-}
-
 function assertSyntheticDirectory(path: string): void {
   if (!isAbsolute(path) || resolve(path) !== path) throw new Error("runtime-admission: fixture path must be absolute");
-  const temp = [resolve(tmpdir()), realpathSync(tmpdir())].find((candidate) => within(candidate, path) && path !== candidate);
+  const temp = [resolve(tmpdir()), realpathSync(tmpdir())].find((candidate) => lexicallyWithin(candidate, path) && path !== candidate);
   if (temp === undefined) throw new Error("runtime-admission: fixture must be beneath system temp");
   let ancestor = path;
   while (ancestor !== temp) {
@@ -1289,14 +1285,14 @@ export class RuntimeAdmission {
       if (this.#readyUpgrade.copyPath !== undefined && path !== this.#readyUpgrade.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
     }
     if (this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
-    if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !within(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
+    if (this.#scope === "profile-settlement" && resolve(path) !== this.#stateRoot && !lexicallyWithin(join(this.#stateRoot, "credentials"), resolve(path))) throw new Error("profile-settlement-path-refused");
     if (this.#scope === "profile-upgrade" && resolve(path) !== this.#stateRoot && resolve(path) !== join(this.#stateRoot, "state.db")
-      && !within(join(this.#stateRoot, "backups", "authority"), resolve(path))) throw new Error("profile-stopped-upgrade-path-refused");
+      && !lexicallyWithin(join(this.#stateRoot, "backups", "authority"), resolve(path))) throw new Error("profile-stopped-upgrade-path-refused");
     this.#assertPhysicalStorageRootsSafe();
     if (this.#scope === "adoption-initialization" && ![this.#stateRoot, join(this.#stateRoot, "state.db")].includes(resolve(path))) {
       throw new Error("runtime-admission: fresh initialization path is outside database authority");
     }
-    if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
+    if (!lexicallyWithin(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
   }
   assertCanonicalCredentialCreation(profile: RuntimeAdmission, input: SignUpOperation, publication?: ProfilePublicationRead) {
     this.#assertMachineRuntime();
@@ -1333,7 +1329,7 @@ export class RuntimeAdmission {
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");
     this.#assertPhysicalStorageRootsSafe();
-    if (!within(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
+    if (!lexicallyWithin(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
   }
   retainSourceClosure(error: unknown): void {
     if (!rememberUnprovedSourceClosure(this.#sourceFailures, error)) return;
@@ -1525,11 +1521,11 @@ export class RuntimeAdmission {
       throw new Error("runtime-admission: invalid copy digest");
     }
     const checked = resolve(path);
-    if (this.#scope === "stopped-control-inventory" && !within(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) throw new Error("profile-control-upgrade-copy-path-refused");
-    if (snapshot === undefined && !within(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) this.assertExclusive();
+    if (this.#scope === "stopped-control-inventory" && !lexicallyWithin(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) throw new Error("profile-control-upgrade-copy-path-refused");
+    if (snapshot === undefined && !lexicallyWithin(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) this.assertExclusive();
     const canonical = realpathSync(checked);
     const temp = resolve(tmpdir());
-    if (canonical !== checked && !(within(temp, checked)
+    if (canonical !== checked && !(lexicallyWithin(temp, checked)
       && canonical === join(realpathSync(tmpdir()), relative(temp, checked)))) {
       throw new Error("runtime-admission: inspected copy path contains symlink");
     }

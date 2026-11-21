@@ -74,6 +74,11 @@ describe("separation timecard column binding", () => {
     assert.throws(() => resolveTimecardColumns(withoutPayCode), /missing Pay code/);
   });
 
+  it("ignores case and spacing around the sort suffix", () => {
+    const spaced = LIVE_HEADERS.map((header) => header === "Pay code 1" ? "  PAY \t CODE  12" : header.toUpperCase());
+    assert.equal(resolveTimecardColumns(spaced)["Pay code"], 4);
+  });
+
   it("refuses an ambiguous header row", () => {
     assert.throws(() => resolveTimecardColumns([...LIVE_HEADERS, "In 2"]), /ambiguous In \(2x\)/);
   });
