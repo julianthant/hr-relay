@@ -399,11 +399,10 @@ scrolling worker cards and an Add workers dialog.
 
 Cards show workflow/state, browser systems and availability, current action or idle message,
 timeline, and footer controls. Running offers Pause, paused offers Resume, failed offers Retry,
-non-idle offers Stop, and idle offers Remove worker. Pending/uncertain operations lock duplicate
-commands and offer a check of the original attempt. Removing a card returns focus to the strip toggle.
+non-idle offers Stop, and idle offers Remove worker. Pending operations lock duplicate
+commands; Relay reads an unsettled result back itself and no card shows a check control. Removing a card returns focus to the strip toggle.
 
-Add workers progress and confirmed success appear only as toast notifications. Refusals and
-uncertain outcomes remain in the panel. Pending progress
+Add workers progress and confirmed success appear only as toast notifications. A refusal is a short toast. Pending progress
 toasts stay until settlement or panel unmount.
 
 Add workers selects workflow and count with increment/decrement controls. The count is bounded
@@ -492,7 +491,7 @@ Every assistant mutation requires an explicit Confirm. Settings grants enable pr
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit mock previews keep their local controls.
 
-General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. Preference feedback retains loading, saving, failure and uncertain states below the rows.
+General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. A preference shows its new value at once; a failed save is a short toast.
 Delete account uses the active ready profile's session owner and the typed delete client. Its confirmation
 is keyed to the profile and session epoch, and the request carries both as expected authority. The server
 atomically compares them with the authenticated selection before logout, detach or erasure, including
@@ -562,8 +561,7 @@ plan-enabled account. The preflight-owned model distinguishes idle, disabled, lo
 completion with the backend model name, local failure, refusal and uncertain outcome; failure text
 comes from the error catalog. Duplicate clicks are suppressed, calls are bounded to 120 seconds,
 and account refresh, account actions and profile disposal abort and invalidate pending results.
-Uncertain outcomes stay locked across account refresh and Settings navigation for the current
-profile lifetime. Neither page load, scope refresh, sign-in nor Run preflight dispatches OCR.
+Neither page load, scope refresh, sign-in nor Run preflight dispatches OCR.
 The result is a diagnostic only and never contributes to readiness reports or admission.
 
 Storage displays health, doctor reports and run-history counts through its typed client. Clear run
