@@ -8,11 +8,16 @@ const repository = "https://github.com/julianthant/hr-relay.git";
 type Entry = { path: string; mode: string; oid: string };
 export type PcSource = { baseCommit: string; tree: string; identity: string; deltaBytes: number };
 
+// This module also runs before dependencies are installed on the test host.
+export function isCredentialPath(path: string): boolean {
+  return /(?:^|\/)\.?(?:credentials?|secrets?|auth|tokens?)(?:\.(?:json|ya?ml|toml|txt|ini|conf|cfg|properties|env|csv|xml|db|sqlite3?))?$|(?:^|\/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|\.npmrc|\.pypirc|\.netrc|\.git-credentials|test-data\.local\.json)$|\.(?:pem|key|p12|pfx|jks)$/iu.test(path)
+    || /(?:^|\/)(?:credentials|\.ssh|\.aws|\.kube)\//iu.test(path);
+}
+
 export function pcSyncFiles(files: readonly string[]): string[] {
-  return files.filter(file => !file.split("/").some(part =>
-    [".git", "node_modules", "dist", ".work", ".worktrees", ".tracker", "credentials", ".local-private"].includes(part)
-    || part === ".env" || part.startsWith(".env."))
-    && file !== "config/test-data.local.json");
+  return files.filter(file => !isCredentialPath(file) && !file.split("/").some(part =>
+    [".git", "node_modules", "dist", ".work", ".worktrees", ".tracker", ".local-private"].includes(part)
+    || part === ".env" || part.startsWith(".env.")));
 }
 
 function git(root: string, args: string[], input?: Buffer | string): string {

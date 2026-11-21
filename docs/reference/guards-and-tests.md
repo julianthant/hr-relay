@@ -55,7 +55,7 @@ helpers that hide test registrations behind a helper-style name.
 
 | Layer | Owner and selection | Evidence |
 | --- | --- | --- |
-| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. |
+| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. A unit test may use an isolated temporary store or folder it creates and removes. |
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
