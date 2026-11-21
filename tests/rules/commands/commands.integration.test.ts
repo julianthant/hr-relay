@@ -10,7 +10,7 @@ import { inspectOpenDatabase } from "../../../src/backend/storage/sqlite/backup-
 import { CanonicalClaimNextRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { deriveBulkChildCommand } from "../../../src/rules/commands/command-groups.js";
-import { BulkRunCommandRequestSchema, CommandRequestSchema, deriveBulkRunCommandFingerprint, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandResultSchema, markSettingsCommand } from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, CommandRequestSchema, deriveBulkRunCommandFingerprint, COMMAND_ASSISTANT_METADATA, COMMAND_EFFECT_BY_ACTION, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandResultSchema, markSettingsCommand } from "../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
@@ -32,6 +32,13 @@ import { CONFIG_SNAPSHOT, NOW, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../supp
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
+
+it.each([
+  ["command effect table", COMMAND_EFFECT_BY_ACTION],
+  ["assistant metadata table", COMMAND_ASSISTANT_METADATA],
+] as const)("refuses writes to the %s", (_name, table) => {
+  assert.throws(() => Object.assign(table, { "start-run": table["start-run"] }), TypeError);
+});
 
 {
 const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];

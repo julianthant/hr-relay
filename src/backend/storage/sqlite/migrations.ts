@@ -48,7 +48,7 @@ export const PRE_BUILD_RUN_DELETION_ID = "pre-build-run-deletion:v1";
 /** Migration 24 drops durable worker custody; the pool holds it in memory. */
 export const WORKER_CUSTODY_SCHEMA_VERSION = 24;
 /** Tables migration 24 drops; only stopped inspection of an older source still names them. */
-export const WORKER_CUSTODY_DROPPED_TABLES = ["worker_leases", "worker_controls", "browser_sessions"] as const;
+export const WORKER_CUSTODY_DROPPED_TABLES = Object.freeze(["worker_leases", "worker_controls", "browser_sessions"] as const);
 export const isWorkerCustodyDroppedTable = (table: string): table is typeof WORKER_CUSTODY_DROPPED_TABLES[number] => (WORKER_CUSTODY_DROPPED_TABLES as readonly string[]).includes(table);
 export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
 export const WORKER_CUSTODY_SCAN_ID = "worker-custody-grammar-scan:v1";

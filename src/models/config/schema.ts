@@ -46,7 +46,7 @@ export const OldKronosRoutesSchema = z.strictObject({ entry: UrlSchema });
 export const ServiceNowRoutesSchema = z.strictObject({ entry: UrlSchema });
 export const SharePointRoutesSchema = z.strictObject({ entry: UrlSchema });
 
-export const CONFIG_ROUTE_SCHEMAS = {
+export const CONFIG_ROUTE_SCHEMAS = Object.freeze({
   kuali: KualiRoutesSchema,
   newKronos: NewKronosRoutesSchema,
   crm: CrmRoutesSchema,
@@ -56,9 +56,9 @@ export const CONFIG_ROUTE_SCHEMAS = {
   oldKronos: OldKronosRoutesSchema,
   servicenow: ServiceNowRoutesSchema,
   sharepoint: SharePointRoutesSchema,
-} as const;
+} as const);
 
-export const CONFIG_ROUTE_KEYS = {
+export const CONFIG_ROUTE_KEYS = deepFreeze({
   kuali: KualiRoutesSchema.keyof().options,
   newKronos: NewKronosRoutesSchema.keyof().options,
   crm: CrmRoutesSchema.keyof().options,
@@ -68,7 +68,7 @@ export const CONFIG_ROUTE_KEYS = {
   oldKronos: OldKronosRoutesSchema.keyof().options,
   servicenow: ServiceNowRoutesSchema.keyof().options,
   sharepoint: SharePointRoutesSchema.keyof().options,
-} as const satisfies { readonly [Key in keyof typeof CONFIG_ROUTE_SCHEMAS]: readonly string[] };
+} as const satisfies { readonly [Key in keyof typeof CONFIG_ROUTE_SCHEMAS]: readonly string[] });
 
 function endpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
   return z.strictObject({ prod: routes });

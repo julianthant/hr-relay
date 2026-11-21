@@ -810,7 +810,7 @@ export function commandEffectIsWeaker(stated: CommandEffectClass, actual: Comman
   return COMMAND_EFFECT_STRENGTH[stated] < COMMAND_EFFECT_STRENGTH[actual];
 }
 
-export const COMMAND_EFFECT_BY_ACTION = {
+export const COMMAND_EFFECT_BY_ACTION = Object.freeze({
   "add-ocr-record": "local-write", "correct-ocr-record": "local-write", "discard-ocr-record": "local-write", "restore-ocr-record": "local-write",
   "pause-all": "local-write",
   "pause-all-and-quit": "destructive",
@@ -854,9 +854,9 @@ export const COMMAND_EFFECT_BY_ACTION = {
   "notification-snooze": "local-write",
   "notification-unsnooze": "local-write",
   "notification-read-all": "local-write", "notification-unread-all": "local-write", "notification-snooze-all": "local-write", "notification-unsnooze-all": "local-write",
-} as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
+} as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>);
 
-export const COMMAND_ASSISTANT_METADATA = {
+export const COMMAND_ASSISTANT_METADATA = Object.freeze({
   "add-ocr-record": "Add an operator-authored OCR review record", "correct-ocr-record": "Correct a retained OCR review record", "discard-ocr-record": "Discard an OCR review record", "restore-ocr-record": "Restore a discarded OCR review record",
   "pause-all": "Pause current work",
   "pause-all-and-quit": "Pause current work and quit after explicit confirmation",
@@ -903,7 +903,7 @@ export const COMMAND_ASSISTANT_METADATA = {
   "notification-unread-all": "Mark current read notifications unread",
   "notification-snooze-all": "Snooze current notifications",
   "notification-unsnooze-all": "Unsnooze current notifications",
-} as const satisfies Record<z.infer<typeof CommandActionSchema>, string>;
+} as const satisfies Record<z.infer<typeof CommandActionSchema>, string>);
 
 export const CommandFamilySpecSchema = z.strictObject({
   family: CommandFamilySchema,

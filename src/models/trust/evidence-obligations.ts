@@ -1,5 +1,6 @@
 /** Declared cross-source verification obligations: the receipt carries the SERVER's verdict on a declared obligation, so the operator never has to open UCPath to compare two numbers. */
 import { z } from "zod";
+import { deepFreeze } from "../../rules/validation/immutability.js";
 import { NodeIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
 
@@ -115,7 +116,7 @@ export const EVIDENCE_OBLIGATIONS: readonly EvidenceObligation[] = Object.freeze
     literal: "reload-read-back",
     summary: "the finalization was proved by reloading the document and reading it back, not by a click",
   },
-].map((entry) => Object.freeze(EvidenceObligationSchema.parse(entry))));
+].map((entry) => deepFreeze(EvidenceObligationSchema.parse(entry))));
 
 const BY_WORKFLOW = new Map<string, EvidenceObligation[]>();
 for (const obligation of EVIDENCE_OBLIGATIONS) {

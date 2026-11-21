@@ -15,7 +15,7 @@ const PredecessorWorkerLifetimeSchema = z.strictObject({ membershipRevision: Pos
 const PredecessorResetSourceSchema = z.strictObject({ kind: z.literal("worker-reset"), commandId: CommandIdSchema, rootRunId: RunIdSchema });
 const PREDECESSOR_PHASES = ["starting", "running", "idle", "waiting", "paused", "failed"] as const;
 /** Lifecycle operations of the removed worker leases; with the worker-browser family they are the stopped store's worker history. */
-export const PREDECESSOR_WORKER_OPERATIONS: ReadonlySet<string> = new Set(["worker-admission", "worker-standing-recovery", "worker-verification-admission", "worker-verification-retirement"]);
+const PREDECESSOR_WORKER_OPERATIONS: readonly string[] = Object.freeze(["worker-admission", "worker-standing-recovery", "worker-verification-admission", "worker-verification-retirement"]);
 
 function withoutWorkerLifetime(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withoutWorkerLifetime);
@@ -103,7 +103,7 @@ const HistoryRowSchema = z.object({ id: CommandIdSchema, family: z.string(), req
 export function isPredecessorWorkerHistory(input: unknown): boolean {
   const row = HistoryRowSchema.parse(input);
   return row.family === "worker-browser"
-    || row.family === "run-lifecycle" && PREDECESSOR_WORKER_OPERATIONS.has(z.object({ operation: z.string() }).parse(JSON.parse(row.request_json)).operation);
+    || row.family === "run-lifecycle" && PREDECESSOR_WORKER_OPERATIONS.includes(z.object({ operation: z.string() }).parse(JSON.parse(row.request_json)).operation);
 }
 
 function canonicalStored(json: string): unknown {

@@ -8,6 +8,7 @@ import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/
 import { deriveEvidenceReceiptId } from "../../../../src/models/trust/evidence-identity.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { WORKER_CUSTODY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import * as predecessor from "../../../../src/backend/storage/sqlite/worker-custody-predecessor.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { restoreSchema20CompletionFixture, restoreSchema22WorkerCustodyFixture, restoreSchema23WorkerCustodyFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -18,6 +19,16 @@ import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-cu
 
 const world = createRunRecordServiceTestWorld();
 afterEach(() => world.cleanup());
+
+it("keeps worker-history operations private and preserves history membership", () => {
+  assert.equal(Object.hasOwn(predecessor, "PREDECESSOR_WORKER_OPERATIONS"), false);
+  const row = { id: randomUUID(), family: "run-lifecycle", request_digest: "digest", outcome_json: null };
+  for (const operation of ["worker-admission", "worker-standing-recovery", "worker-verification-admission", "worker-verification-retirement"]) {
+    assert.equal(predecessor.isPredecessorWorkerHistory({ ...row, request_json: JSON.stringify({ operation }) }), true, operation);
+  }
+  assert.equal(predecessor.isPredecessorWorkerHistory({ ...row, request_json: '{"operation":"claim-next"}' }), false);
+  assert.equal(predecessor.isPredecessorWorkerHistory({ ...row, family: "worker-browser", request_json: "{}" }), true);
+});
 
 type SourceVersion = 20 | 21 | 22 | 23;
 

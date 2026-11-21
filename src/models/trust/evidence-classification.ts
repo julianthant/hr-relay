@@ -1,6 +1,7 @@
 /** Declared evidence classification: redaction is schema-owned, and a receipt's facts are classified where they are declared rather than at the UI. */
 import { z } from "zod";
 import { JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../rules/validation/immutability.js";
 import { AdmittedAnswerSchema } from "../ocr/extraction.js";
 import { OCR_FORMS } from "../ocr/form-registry.js";
 import { GateIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
@@ -1155,7 +1156,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(writeProof("ucpath/save-write-fixture"), "transactionId"),
   ...person(taskOutput("ucpath/read-write-fixture-verify"), "eid"),
   ...open(taskOutput("ucpath/read-write-fixture-verify"), "state"),
-].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
+].map((entry) => deepFreeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();
 for (const entry of EVIDENCE_FIELD_CLASSIFICATIONS) {
