@@ -125,7 +125,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     </SheetDetail>) : <>
       <PageHeading title="Spreadsheets" description={pending.length ? <span className="inline-flex min-h-6 items-center gap-2"><Loader2 aria-hidden className={`${dsIcon.md} animate-spin motion-reduce:animate-none`} />{pending.map(entry => <span key={entry!.libraryId} className="inline-flex items-center gap-1">{syncing.current.has(entry!.libraryId) ? `Syncing ${entry!.name} isn't confirmed yet.` : `The change to ${entry!.name} isn't confirmed yet.`}<V2Button look="line" onClick={() => void checkPending(entry!.libraryId)}>Check result</V2Button></span>)}</span> : "Reference lists your runs look people up in."} actions={<V2Button disabled={catalogLoading || !!catalogError} onClick={() => setImporting(true)}>Import</V2Button>} />
       <div ref={listRef}>{catalogError ? <FailureNotice sentence="Couldn't load spreadsheets." action={{ label: 'Retry', onClick: () => void adapter.refreshCatalog() }} />
-        : catalogLoading ? <SheetsSkeleton narrow={narrow} />
+        : catalogLoading ? <SheetsSkeleton />
         : sheets.length === 0 ? <EmptyState title="No spreadsheets yet" action={<V2Button onClick={() => setImporting(true)}>Import</V2Button>} />
         : <div className="ds-table-list"><TableToolbar search={<SearchInput variant="field" aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />}
             controls={groups.workflows.length > 0 || groups.tags.length > 0 ? <TagFilter groups={groups} value={filter} onChange={setFilter} /> : undefined} />
