@@ -6,7 +6,7 @@ import { afterEach, beforeEach, it, vi } from 'vitest';
 import { WorkbookLibraryEntrySchema } from '../../../../../src/models/dashboard/workbook-library.js';
 import { ToastProvider, TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
 
-const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[], loading: false, error: undefined as string | undefined, pending: [] as string[] }));
+const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[], loading: false, error: undefined as string | undefined, pending: [] as string[], draft: undefined as unknown }));
 const LINK = 'https://contoso.sharepoint.com/sites/hr/roster.xlsx';
 const version = (id: string, n: number) => ({ id, name: `v${n}`, snapshotId: id, version: n, savedAt: `2026-11-0${n}T00:00:00Z`, source: 'operator' });
 const make = (libraryId: string, name: string, options: { pinned?: boolean; linked?: boolean } = {}) => WorkbookLibraryEntrySchema.parse({ libraryId, version: 2, name, updatedAt: '2026-11-02T00:00:00Z', rowCount: 1,
@@ -15,7 +15,7 @@ const make = (libraryId: string, name: string, options: { pinned?: boolean; link
   state: { libraryId, revision: 1, selectedVersionId: 'v2', removed: false, origin: { kind: 'local' }, pinned: options.pinned ?? false, tags: [], versions: [version('v1', 1), version('v2', 2)] } });
 vi.mock('../../../../../src/dashboard/state/spreadsheet-wiring-adapter.js', () => ({
   useSpreadsheetWiringAdapter: () => ({ adapter: wiring.adapter, catalog: wiring.catalog, compatibility: undefined, catalogLoading: wiring.loading,
-    catalogError: wiring.error, openError: undefined, draft: undefined, pendingLibraries: wiring.pending }),
+    catalogError: wiring.error, openError: undefined, draft: wiring.draft, pendingLibraries: wiring.pending }),
 }));
 vi.mock('../../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ importSpreadsheetInWorker: () => new Promise<never>(() => {}) }));
 const { SheetsV2 } = await import('../../../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2.js');
@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   wiring.adapter = { changeLibrary: vi.fn(async () => ({ state: 'refused', message: 'No.' })), refreshCatalog: vi.fn(async () => undefined), snapshot: vi.fn(() => ({ pendingLibraries: [] })) };
   wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, linked: true })];
-  wiring.loading = false; wiring.error = undefined; wiring.pending = [];
+  wiring.loading = false; wiring.error = undefined; wiring.pending = []; wiring.draft = undefined;
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; host.remove(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
@@ -55,6 +55,22 @@ it('shows an opening sheet\'s heading at once and a loading frame only where its
   assert.ok(host.querySelector('button[aria-label="Versions, now v2"]'), 'the heading actions are the opened sheet\'s');
   assert.ok(frame.querySelector('.ds-toolbar-row [data-slot="skeleton"]'), 'the grid toolbar keeps its place');
   assert.ok(frame.querySelector('.sv2-card [data-slot="skeleton"]'));
+});
+
+it('keeps the opened sheet\'s heading mounted, focus included, when its workbook arrives', async () => {
+  await render();
+  await click(host.querySelector('li[aria-label="Roster.xlsx"]'));
+  const versions = host.querySelector<HTMLButtonElement>('button[aria-label="Versions, now v2"]');
+  assert.ok(versions);
+  versions.focus();
+  wiring.draft = { document: { name: 'Roster.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'people', name: 'People', width: 2, hidden: [], headerRow: 1,
+    columnBindings: [{ id: 'email', sourceColumn: 0, sourceHeader: 'Email', fieldId: 'email', basis: 'manual' }],
+    rows: [{ id: 'header', cells: [{ value: 'Email' }, { value: 'Name' }] }, { id: 'sample', cells: [{ value: 'avery@example.test' }, { value: 'Example, Avery' }] }] }] } };
+  await render();
+  assert.equal(host.querySelector('[aria-label="Opening Roster.xlsx"]'), null);
+  assert.ok(host.querySelector('section[aria-label="Preview"]'), 'the grid replaced the loading frame');
+  assert.equal(host.querySelector('button[aria-label="Versions, now v2"]'), versions, 'the same heading node');
+  assert.equal(document.activeElement, versions);
 });
 
 it('holds the picked file\'s row as a loading frame while the file is read, with Next disabled', async () => {
