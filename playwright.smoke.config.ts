@@ -2,9 +2,6 @@
 import "./tests/support/helpers/credential-keychain-process-preload.mjs";
 import { defineConfig } from "@playwright/test";
 
-const keychainPreload = new URL("./tests/support/helpers/credential-keychain-process-preload.mjs", import.meta.url).href;
-process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import=${keychainPreload}`;
-
 export default defineConfig({
   testDir: "tests/smoke",
   testMatch: "**/*.smoke.ts",
