@@ -7,7 +7,6 @@ export function createWorkflowWorker(api) {
   let installed = false;
   let stopped = false;
   let waiter;
-  const requests = [];
   const pending = new Map();
   const current = () => { if (!installed || stopped) throw new Error('DUO_SESSION_UNAVAILABLE'); };
   function requireSender(sender) {
@@ -16,7 +15,7 @@ export function createWorkflowWorker(api) {
       || !Number.isInteger(sender.tab?.id) || sender.tab.id < 0 || !Number.isInteger(sender.frameId) || sender.frameId < 0
       || sender.documentLifecycle !== 'active' || typeof sender.documentId !== 'string' || !/^[a-f0-9]{32}$/i.test(sender.documentId)) throw new Error('DUO_REQUEST_REFUSED');
   }
-  async function observe(sender) {
+  async function observe(sender, requestId) {
     requireSender(sender);
     const tab = await api.tabs.get(sender.tab.id);
     current();
@@ -24,7 +23,7 @@ export function createWorkflowWorker(api) {
     current();
     if (tab.id !== sender.tab.id || typeof tab.url !== 'string' || frame?.url !== sender.url
       || frame.documentId !== sender.documentId || frame.documentLifecycle !== 'active') throw new Error('DUO_REQUEST_REFUSED');
-    const observed = await api.tabs.sendMessage(tab.id, { type: 'RELAY_OBSERVE' }, { documentId: sender.documentId });
+    const observed = await api.tabs.sendMessage(tab.id, { type: 'RELAY_OBSERVE', requestId }, { documentId: sender.documentId });
     current();
     if (observed?.url !== sender.url || observed.origin !== sender.origin || observed.documentActive !== true
       || !Number.isSafeInteger(observed.accountRevision) || observed.accountRevision < 0
@@ -36,7 +35,7 @@ export function createWorkflowWorker(api) {
   async function assertContext(id) {
     const entry = pending.get(id);
     if (!entry) throw new Error('DUO_REQUEST_REVOKED');
-    const actual = await observe(entry.sender);
+    const actual = await observe(entry.sender, entry.requestId);
     current();
     if (pending.get(id) !== entry || canonicalJson(actual) !== canonicalJson(entry.scope)) throw new Error('DUO_REQUEST_REVOKED');
   }
@@ -54,8 +53,9 @@ export function createWorkflowWorker(api) {
         return { aborted: true };
       }
       if (!['DUO_AUTOPILOT_SIGN', 'DUO_SETTINGS'].includes(message.type)) throw new Error('DUO_REQUEST_REFUSED');
-      const scope = await observe(sender);
-      if (canonicalJson(await observe(sender)) !== canonicalJson(scope)) throw new Error('DUO_REQUEST_REFUSED');
+      const requestId = message.type === 'DUO_AUTOPILOT_SIGN' ? message.request?.requestId : undefined;
+      const scope = await observe(sender, requestId);
+      if (canonicalJson(await observe(sender, requestId)) !== canonicalJson(scope)) throw new Error('DUO_REQUEST_REFUSED');
       if (message.type === 'DUO_SETTINGS') return { enabled: true, trustClick: true, toast: true };
       const data = message.request;
       if (!data || data.origin !== sender.origin || data.rpId !== 'duosecurity.com' || typeof data.requestId !== 'string'
@@ -63,15 +63,21 @@ export function createWorkflowWorker(api) {
         || pending.size >= 100 || [...pending.values()].some(entry => entry.requestId === data.requestId)) throw new Error('DUO_REQUEST_REFUSED');
       return new Promise((resolve, rejectReply) => {
         const id = crypto.randomUUID();
-        pending.set(id, { sender: { ...sender, tab: { id: sender.tab.id } }, scope, requestId: data.requestId, resolve, reject: rejectReply });
         const request = { id, request: { requestId: data.requestId, rpId: data.rpId, origin: data.origin,
           challenge: data.challenge, allowCredentials: data.allowCredentials, accountNames: scope.accountNames } };
-        if (waiter) { const receive = waiter; waiter = undefined; receive(request); } else requests.push(request);
+        pending.set(id, { sender: { ...sender, tab: { id: sender.tab.id } }, scope, requestId: data.requestId,
+          resolve, reject: rejectReply, queued: waiter ? undefined : request });
+        if (waiter) { const receive = waiter; waiter = undefined; receive(request); }
       });
     },
     next() {
       current();
-      while (requests.length) { const request = requests.shift(); if (pending.has(request.id)) return Promise.resolve(request); }
+      for (const entry of pending.values()) {
+        if (!entry.queued) continue;
+        const request = entry.queued;
+        entry.queued = undefined;
+        return Promise.resolve(request);
+      }
       if (waiter) throw new Error('DUO_BROKER_BUSY');
       return new Promise(resolve => { waiter = resolve; });
     },
@@ -89,7 +95,6 @@ export function createWorkflowWorker(api) {
     stop() {
       stopped = true;
       for (const id of pending.keys()) reject(id);
-      requests.length = 0;
       if (waiter) { waiter(null); waiter = undefined; }
     },
   });
