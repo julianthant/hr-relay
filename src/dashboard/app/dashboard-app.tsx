@@ -758,12 +758,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (action.command === "rename") {
         const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
         if (surface === undefined) {
-          toast({
-            tone: "danger",
-            title: "Nothing was sent",
-            description: `run ${target.runId} is not on the day this panel is showing, so there is no row to `
-              + "name. Open the day it ran on and rename it there.",
-          });
+          toast({ tone: "danger", title: "Open the day that run is on to rename it." });
           return;
         }
         const existingUncertain = unresolvedRunAction(target.runId, action.command);
@@ -837,12 +832,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const renameQueueTitle = useCallback((runId: string, name: string) => {
     const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === runId);
     if (surface === undefined) {
-      toast({
-        tone: "danger",
-        title: "Nothing was sent",
-        description: `run ${runId} is not on the day this panel is showing, so there is no row to `
-          + "name. Open the day it ran on and rename it there.",
-      });
+      toast({ tone: "danger", title: "Open the day that run is on to rename it." });
       return;
     }
     const next = queueRenameDraft(surface, name);
