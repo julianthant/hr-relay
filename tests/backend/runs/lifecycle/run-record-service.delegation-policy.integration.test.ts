@@ -63,10 +63,7 @@ function recordDecodedRows() {
     } as unknown as StatementSync["iterate"]),
   ];
   return {
-    mentioning: (ids: readonly string[]) => rows.filter(row => {
-      const text = JSON.stringify(row, (_key, value: unknown) => typeof value === "bigint" ? String(value) : value);
-      return ids.some(id => text.includes(id));
-    }).length,
+    total: () => rows.length,
     clear: () => { rows.length = 0; },
     restore: () => { for (const spy of spies) spy.mockRestore(); },
   };
@@ -859,10 +856,10 @@ it("returns a typed refusal and rolls back parent recovery when a failed child i
 });
 
 
-it("claims a delegated child through the worker home and refuses changed physical parent evidence", async () => {
+async function delegatedClaimDecodedRows(unrelatedQueued: number) {
   const f = await fixture("cascade");
   const foreign = f.modules.find(module => module.descriptor.id !== f.root.envelope.workflow); assert.ok(foreign);
-  const unrelatedQueue = insertRunCopies(f.path, f.root, 24, { workflow: foreign.descriptor.id });
+  insertRunCopies(f.path, f.root, unrelatedQueued, { workflow: foreign.descriptor.id });
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
   const child = f.child(), owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
@@ -882,12 +879,19 @@ it("claims a delegated child through the worker home and refuses changed physica
     const claimed = claim();
     assert.ok(claimed.state === "applied" && "run" in claimed);
     assert.equal(claimed.run.envelope.runId, child.envelope.runId);
-    assert.equal(decoded.mentioning(unrelatedQueue), 0, "delegated claims must not load the global queue");
+    const claimRows = decoded.total();
     decoded.clear();
     const audit = new DatabaseSync(f.path);
-    try { audit.prepare("select q.id from runs as q where q.state = 'queued'").all(); } finally { audit.close(); }
-    assert.equal(decoded.mentioning(unrelatedQueue), unrelatedQueue.length, "a differently spelled queue scan must still be seen");
+    try { audit.prepare("select q.state from runs q where q.state = 'queued'").all(); } finally { audit.close(); }
+    return { claimRows, projectedScanRows: decoded.total() };
   } finally { decoded.restore(); }
+}
+
+it("claims a delegated child through the worker home and refuses changed physical parent evidence", async () => {
+  const small = await delegatedClaimDecodedRows(0);
+  const grown = await delegatedClaimDecodedRows(24);
+  assert.equal(grown.claimRows, small.claimRows, "delegated claims must not load the global queue");
+  assert.equal(grown.projectedScanRows - small.projectedScanRows, 24, "an ID-free queue scan must still be seen");
 });
 
 it("refuses a foreign-home queued run whose ancestry exceeds the claim depth", async () => {
@@ -936,21 +940,31 @@ it("keeps idle claims off same-home terminal history after warming and a journal
   const idle = () => assert.deepEqual(f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow, workerId,
     runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
       settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }), { state: "refused", refusal: { reason: "none-eligible" } });
-  const history = insertRunCopies(f.path, f.currentRoot(), 24);
-  idle();
   const raw = new DatabaseSync(f.path);
-  const decoded = recordDecodedRows();
+  const measure = (grow: number) => {
+    insertRunCopies(f.path, f.currentRoot(), grow);
+    idle();
+    const spy = recordDecodedRows();
+    try {
+      idle();
+      const warm = spy.total();
+      raw.prepare("UPDATE runs SET updated_at=updated_at WHERE id=?").run(f.root.envelope.runId);
+      raw.exec("DELETE FROM authority_changes WHERE seq=(SELECT max(seq) FROM authority_changes)");
+      spy.clear();
+      idle();
+      const gap = spy.total();
+      spy.clear();
+      raw.prepare("select h.updated_at from runs h order by h.created_at").all();
+      return { warm, gap, projectedScan: spy.total() };
+    } finally { spy.restore(); }
+  };
   try {
-    idle();
-    assert.equal(decoded.mentioning(history), 0, "warm idle claims must not walk or decode retained history");
-    raw.prepare("UPDATE runs SET updated_at=updated_at WHERE id=?").run(f.root.envelope.runId);
-    raw.exec("DELETE FROM authority_changes WHERE seq=(SELECT max(seq) FROM authority_changes)");
-    decoded.clear();
-    idle();
-    assert.equal(decoded.mentioning(history), 0, "idle claims after a journal gap must not walk or decode retained history");
-    raw.prepare("select h.id, h.envelope_json from runs h order by h.created_at").all();
-    assert.equal(decoded.mentioning(history), history.length, "a differently spelled history scan must still be seen");
-  } finally { decoded.restore(); raw.close(); }
+    const small = measure(4);
+    const grown = measure(24);
+    assert.equal(grown.warm, small.warm, "warm idle claims must not walk or decode retained history");
+    assert.equal(grown.gap, small.gap, "idle claims after a journal gap must not walk or decode retained history");
+    assert.equal(grown.projectedScan - small.projectedScan, 24, "an ID-free history scan must still be seen");
+  } finally { raw.close(); }
 });
 
 it("reuses native group authentication only within a current execution observation and refuses fresh mutation or tampering", async () => {

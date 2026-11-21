@@ -1,18 +1,53 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import ts from "typescript";
 import { ArtifactRefSchema } from "../../../src/models/artifacts/artifacts.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import {
-  createContentAddressedArtifactWriter,
-  type ArtifactWriteFaultStep,
-} from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { gitVisibleFiles, REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
+
+/** Real filesystem effects of the writer, recorded at node:fs/promises; `skipSync` drops one real fsync. */
+const effects = vi.hoisted(() => ({
+  trace: [] as { op: string; path: string; to?: string }[],
+  skipSync: undefined as ((path: string) => boolean) | undefined,
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    async open(...args: Parameters<typeof actual.open>) {
+      const handle = await actual.open(...args);
+      const path = String(args[0]);
+      effects.trace.push({ op: `open:${String(args[1])}`, path });
+      const writeFile = handle.writeFile.bind(handle), sync = handle.sync.bind(handle);
+      return Object.assign(handle, {
+        async writeFile(...rest: Parameters<typeof handle.writeFile>) {
+          await writeFile(...rest);
+          effects.trace.push({ op: "write", path });
+        },
+        async sync() {
+          if (effects.skipSync?.(path) === true) return;
+          await sync();
+          effects.trace.push({ op: "sync", path });
+        },
+      });
+    },
+    async link(from: string, to: string) {
+      await actual.link(from, to);
+      effects.trace.push({ op: "link", path: from, to });
+    },
+    async unlink(path: string) {
+      await actual.unlink(path);
+      effects.trace.push({ op: "unlink", path });
+    },
+  };
+});
 
 const MUTABLE_FILE_MODULES = new Set(["node:fs", "node:fs/promises", "fs", "fs/promises"]);
 const MUTABLE_FILE_CALLS = new Set([
@@ -68,27 +103,45 @@ export function auditArtifactEffectBoundary(root: string): readonly string[] {
   return [...new Set(issues)];
 }
 
-interface PublicationStep {
-  readonly step: ArtifactWriteFaultStep;
-  readonly final: boolean;
-  readonly temps: number;
+type Effect = (typeof effects.trace)[number];
+
+/** Checks the writer's durable order: temp write, temp fsync, atomic link, temp removal, then directory fsync. */
+function publicationOrderViolations(trace: readonly Effect[], root: string, finalPath: string): readonly string[] {
+  const temp = trace.find(({ op, path }) => op === "open:wx" && path.endsWith(".tmp"))?.path;
+  if (temp === undefined) return ["no temp file was opened for exclusive write"];
+  const at = (match: (effect: Effect) => boolean) => trace.findIndex(match);
+  const write = at(({ op, path }) => op === "write" && path === temp);
+  const tempSync = at(({ op, path }) => op === "sync" && path === temp);
+  const linked = at(({ op, path, to }) => op === "link" && path === temp && to === finalPath);
+  const removed = at(({ op, path }) => op === "unlink" && path === temp);
+  const directorySync = trace.findLastIndex(({ op, path }) => op === "sync" && path === root);
+  const issues: string[] = [];
+  if (write < 0) issues.push("temp file was never written");
+  if (tempSync < 0 || tempSync < write) issues.push("temp file was not fsynced after its write");
+  if (linked < 0 || linked < tempSync) issues.push("artifact was linked before its temp file was fsynced");
+  if (removed < 0 || removed < linked) issues.push("temp file was not removed after publication");
+  if (directorySync < 0 || directorySync < Math.max(linked, removed)) issues.push("artifact directory was not fsynced after publication");
+  return issues;
 }
 
-const PUBLICATION_ORDER: readonly ArtifactWriteFaultStep[] = ["temp-written", "temp-synced", "published", "directory-synced"];
-
-/** Checks an observed write trace: bytes stay invisible until the synced temp file is published, and no temp survives. */
-function publicationOrderViolations(trace: readonly PublicationStep[]): readonly string[] {
-  const issues: string[] = [];
-  if (trace.map(({ step }) => step).join(",") !== PUBLICATION_ORDER.join(",")) {
-    issues.push(`write steps ran in order ${trace.map(({ step }) => step).join(",")}`);
+async function writeOrdered(skipSync?: (path: string, root: string) => boolean) {
+  const workspace = realpathSync(await mkdtemp(join(tmpdir(), "hrauto-artifact-order-")));
+  try {
+    const root = join(workspace, ".tracker/data/artifacts");
+    const bytes = new TextEncoder().encode("ordered artifact bytes");
+    const finalPath = join(root, `${createHash("sha256").update(bytes).digest("hex")}.artifact`);
+    effects.trace.length = 0;
+    effects.skipSync = skipSync === undefined ? undefined : (path) => skipSync(path, root);
+    const callbacks: string[] = [];
+    await createContentAddressedArtifactWriter({
+      admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), root),
+      injectFault: (step) => { callbacks.push(step); },
+    }).put(bytes, { mediaType: "text/plain" });
+    return { violations: publicationOrderViolations(effects.trace, root, finalPath), callbacks, entries: readdirSync(root), finalPath, root };
+  } finally {
+    effects.skipSync = undefined;
+    await rm(workspace, { recursive: true, force: true });
   }
-  for (const { step, final, temps } of trace) {
-    const published = step === "published" || step === "directory-synced";
-    if (final !== published) issues.push(`final artifact ${final ? "visible" : "missing"} at ${step}`);
-    if (!published && temps !== 1) issues.push(`expected one temp file at ${step}, found ${String(temps)}`);
-    if (step === "directory-synced" && temps !== 0) issues.push(`temp file left after ${step}`);
-  }
-  return issues;
 }
 
 describe("content-addressed artifact boundary", () => {
@@ -101,41 +154,25 @@ describe("content-addressed artifact boundary", () => {
   });
 
   it("publishes artifact bytes only after the temp file is written and synced", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-order-"));
-    try {
-      const artifactRoot = join(workspace, ".tracker/data/artifacts");
-      const bytes = new TextEncoder().encode("ordered artifact bytes");
-      const finalName = `${createHash("sha256").update(bytes).digest("hex")}.artifact`;
-      const trace: PublicationStep[] = [];
-      const writer = createContentAddressedArtifactWriter({
-        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), artifactRoot),
-        injectFault(step) {
-          const entries = readdirSync(artifactRoot);
-          trace.push({ step, final: entries.includes(finalName), temps: entries.filter((entry) => entry.endsWith(".tmp")).length });
-        },
-      });
-      await writer.put(bytes, { mediaType: "text/plain" });
-      assert.deepEqual(publicationOrderViolations(trace), []);
-      assert.deepEqual(readdirSync(artifactRoot), [finalName]);
-    } finally {
-      await rm(workspace, { recursive: true, force: true });
-    }
+    const ordered = await writeOrdered();
+    assert.deepEqual(ordered.violations, []);
+    assert.deepEqual(ordered.entries, [ordered.finalPath.slice(ordered.root.length + 1)]);
   });
 
-  it("catches an artifact made visible before its temp file is synced", () => {
-    const ordered: readonly PublicationStep[] = [
-      { step: "temp-written", final: false, temps: 1 },
-      { step: "temp-synced", final: false, temps: 1 },
-      { step: "published", final: true, temps: 1 },
-      { step: "directory-synced", final: true, temps: 0 },
+  it("catches a skipped or reordered real fsync while the writer's callbacks still fire", async () => {
+    const callbacks = ["temp-written", "temp-synced", "published", "directory-synced"];
+    const noTempSync = await writeOrdered((path) => path.endsWith(".tmp"));
+    assert.deepEqual(noTempSync.callbacks, callbacks);
+    assert.match(noTempSync.violations.join("\n"), /not fsynced after its write/u);
+    const noDirectorySync = await writeOrdered((path, root) => path === root);
+    assert.deepEqual(noDirectorySync.callbacks, callbacks);
+    assert.match(noDirectorySync.violations.join("\n"), /directory was not fsynced/u);
+    const root = "/artifacts", temp = `${root}/a.tmp`, finalPath = `${root}/a.artifact`;
+    const linkFirst: Effect[] = [
+      { op: "open:wx", path: temp }, { op: "write", path: temp }, { op: "link", path: temp, to: finalPath },
+      { op: "sync", path: temp }, { op: "unlink", path: temp }, { op: "sync", path: root },
     ];
-    assert.deepEqual(publicationOrderViolations(ordered), []);
-    assert.match(publicationOrderViolations(ordered.map((entry) => entry.step === "temp-synced" ? { ...entry, final: true } : entry))
-      .join("\n"), /visible at temp-synced/u);
-    assert.match(publicationOrderViolations([ordered[0], ordered[2], ordered[1], ordered[3]].filter((entry): entry is PublicationStep => entry !== undefined))
-      .join("\n"), /order/u);
-    assert.match(publicationOrderViolations(ordered.map((entry) => entry.step === "directory-synced" ? { ...entry, temps: 1 } : entry))
-      .join("\n"), /temp file left/u);
+    assert.match(publicationOrderViolations(linkFirst, root, finalPath).join("\n"), /linked before its temp file was fsynced/u);
   });
 
   it("catches direct mutable filesystem writes in a task implementation", () => {

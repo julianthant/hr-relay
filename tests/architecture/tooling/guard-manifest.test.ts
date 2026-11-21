@@ -294,14 +294,17 @@ function coverageThresholdViolations(thresholds: Readonly<Record<string, unknown
   const issues: string[] = [];
   for (const metric of COVERAGE_METRICS) {
     const value = thresholds[metric];
-    if (typeof value !== "number" || value < global) issues.push(`global ${metric} threshold ${String(value)} is below ${String(global)}`);
+    if (typeof value !== "number" || !Number.isFinite(value) || value < global) issues.push(`global ${metric} threshold ${String(value)} is below ${String(global)}`);
   }
   const configured = Object.keys(thresholds).filter((key) => !(COVERAGE_METRICS as readonly string[]).includes(key));
   for (const path of SAFETY_CRITICAL_COVERAGE) if (!configured.includes(path)) issues.push(`safety-critical coverage entry ${path} lost`);
   for (const path of configured) {
     if (!SAFETY_CRITICAL_COVERAGE.includes(path)) issues.push(`unratified coverage entry ${path}`);
     const floor = thresholds[path] as Partial<Record<(typeof COVERAGE_METRICS)[number], unknown>> | undefined;
-    if (COVERAGE_METRICS.some((metric) => typeof floor?.[metric] !== "number" || (floor[metric] as number) < safetyCritical)) {
+    if (COVERAGE_METRICS.some((metric) => {
+      const value = floor?.[metric];
+      return typeof value !== "number" || !Number.isFinite(value) || value < safetyCritical;
+    })) {
       issues.push(`${path} is below the safety-critical floor ${String(safetyCritical)}`);
     }
     if (globSync(path, { cwd: root }).length === 0) issues.push(`${path} matches no source file`);
@@ -454,8 +457,12 @@ describe("reviewed architecture guard manifest", () => {
     }
 
     assert.equal(REBUILD_COVERAGE_FLOORS.branches.phase1ReportOnly, true);
-    assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2Global >= inventory.coveragePolicy.branchPolicy.phase2Global);
-    assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2SafetyCritical >= inventory.coveragePolicy.branchPolicy.phase2SafetyCritical);
+    assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2Global >= 50);
+    assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2SafetyCritical >= 70);
+    assert.ok(inventory.coveragePolicy.branchPolicy.phase2Global >= 50);
+    assert.ok(inventory.coveragePolicy.branchPolicy.phase2SafetyCritical >= 70);
+    assert.ok(inventory.coveragePolicy.minimumFloors.global >= 60, "the ratified global floor cannot be lowered with its config");
+    assert.ok(inventory.coveragePolicy.minimumFloors.safetyCritical >= 80, "the ratified safety floor cannot be lowered with its config");
 
     const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
     assert.ok(thresholds);
@@ -469,7 +476,12 @@ describe("reviewed architecture guard manifest", () => {
     for (const path of SAFETY_CRITICAL_COVERAGE) {
       assert.match(coverageThresholdViolations(without(path), REPO_ROOT).join("\n"), new RegExp(`${path.replaceAll("*", "\\*")} lost`, "u"));
     }
+    for (const malformed of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.match(coverageThresholdViolations({ ...thresholds, lines: malformed }, REPO_ROOT).join("\n"), /global lines threshold/u);
+    }
     const lastSafety = SAFETY_CRITICAL_COVERAGE.at(-1) ?? "";
+    assert.match(coverageThresholdViolations({ ...thresholds, [lastSafety]: { ...REBUILD_COVERAGE_FLOORS.safetyCritical, lines: Number.NaN } }, REPO_ROOT)
+      .join("\n"), /below the safety-critical floor/u);
     assert.match(coverageThresholdViolations({ ...thresholds, [lastSafety]: { ...REBUILD_COVERAGE_FLOORS.safetyCritical, functions: 0 } }, REPO_ROOT)
       .join("\n"), /below the safety-critical floor/u);
     assert.match(coverageThresholdViolations({ ...thresholds, "src/backend/runtime/writes/missing-file.ts": REBUILD_COVERAGE_FLOORS.safetyCritical }, REPO_ROOT)
