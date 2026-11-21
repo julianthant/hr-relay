@@ -4,11 +4,10 @@ import { join } from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { afterEach, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { ProfileLoginChangeResultSchema, PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
-import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture as fixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 
 afterEach(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); });
 
@@ -18,7 +17,7 @@ it("serves password and username changes to the signed-in session only, and the 
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(runtime);
     const finished = await finish();
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
@@ -64,7 +63,7 @@ it("keeps the session after an unsettled change and settles it on the same appli
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(runtime);
     const finished = await finish();
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
@@ -103,7 +102,7 @@ it("answers an unknown outcome when a landed swap's flush and read-back both fai
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const { post, finish } = await readyPublicSignUp(runtime);
     const finished = await finish();
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
@@ -139,7 +138,7 @@ it("keeps a landed change's result and marks its diagnostics unrecorded when the
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const { post, finish } = await readyPublicSignUp(runtime);
     const finished = await finish();
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);

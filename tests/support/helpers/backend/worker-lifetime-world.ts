@@ -45,14 +45,14 @@ function readOwnerLine(child: ChildProcess): Promise<string> {
   ownerLines.set(child, read);
   return read();
 }
-async function stop(child: ChildProcess) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = once(child, "exit");
-  child.kill("SIGTERM");
-  await exited;
-}
 export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof createRunRecordServiceTestWorld>, options?: { fenceInOwner?: boolean }) {
-  const h = await world.fixture(), children: ChildProcess[] = [];
+  const h = await world.fixture();
+  const children = new Set<() => Promise<void>>();
+  const dispose = async () => {
+    const failures = (await Promise.allSettled([...children].map(stop => stop())))
+      .flatMap(result => result.status === "rejected" ? [result.reason as unknown] : []);
+    if (failures.length > 0) throw new AggregateError(failures, "fixture worker cleanup failed");
+  };
   const slot = h.database.authority.workerSlots.list()[0];
   if (slot === undefined) throw new Error("missing member");
   const now = h.clock.now().toISOString();
@@ -60,16 +60,27 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     const child = options?.fenceInOwner === true
       ? spawn(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../support/processes/write-fence-owner.ts", import.meta.url)), authorityPath, String(h.lifetime.port)], { stdio: ["pipe", "pipe", "inherit", "ipc"] })
       : spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: {} });
-    children.push(child);
-    onSpawn?.(child);
-    await once(child, "spawn");
-    if (options?.fenceInOwner === true) {
-      const ready = readOwnerLine(child);
-      await h.lifetime.share(child);
-      await ready;
+    const closed = new Promise<void>(resolve => { child.once("close", () => resolve()); });
+    const stop = async () => {
+      if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+      await closed;
+      children.delete(stop);
+    };
+    children.add(stop);
+    try {
+      await once(child, "spawn");
+      onSpawn?.(child);
+      if (options?.fenceInOwner === true) {
+        await h.lifetime.share(child);
+        await readOwnerLine(child);
+      }
+      if (child.pid === undefined) throw new Error("missing actual child pid");
+      return { child, pid: child.pid };
+    } catch (error) {
+      try { await stop(); }
+      catch (cleanup) { throw new AggregateError([error, cleanup], "fixture worker acquisition and cleanup failed", { cause: error }); }
+      throw error;
     }
-    if (child.pid === undefined) throw new Error("missing actual child pid");
-    return { child, pid: child.pid };
   };
   const old = await owner();
   return { ...h, slot, old, now, owner,
@@ -86,7 +97,7 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
       if (parsed.state === "refused") throw new Error(`fixture fence refused: ${parsed.refusal?.reason ?? "unknown"}`);
       return parsed;
     },
-    dispose: async () => { for (const child of children) await stop(child); } };
+    dispose };
 }
 
 

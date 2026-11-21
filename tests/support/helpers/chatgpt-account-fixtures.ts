@@ -48,14 +48,32 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
     throw new Error("Unexpected synthetic URL");
   };
   const repository = createChatGptCredentialRepository({ admission, stateRoot: root });
-  const service = createChatGptAccountService({ admission, stateRoot: root, clock, fetch: transport });
+  const account = createChatGptAccountService({ admission, stateRoot: root, clock, fetch: transport });
+  const callbacks = new WeakMap<ChatGptAuthorization, string>();
+  const service = {
+    ...account,
+    async signIn(input: Parameters<typeof account.signIn>[0]) {
+      const attempt = await account.signIn(input);
+      const uri = URL.parse(attempt.authorizationUrl)?.searchParams.get("redirect_uri");
+      const target = uri === undefined || uri === null ? null : URL.parse(uri);
+      if (target === null || target.protocol !== "http:" || target.hostname !== "127.0.0.1"
+        || target.port === "" || target.pathname !== "/auth/callback" || target.username || target.password || target.search || target.hash) {
+        try { throw new Error("fixture-oauth-listener-invalid"); }
+        finally { await attempt.cancel(); }
+      }
+      callbacks.set(attempt, target.href);
+      return attempt;
+    },
+  };
   async function callback(attempt: ChatGptAuthorization, patch: { [key: string]: string | null } = {}) {
+    const owned = callbacks.get(attempt);
+    if (owned === undefined || !attempt.signingIn) throw new Error("fixture-oauth-callback-unowned");
     const authorize = new URL(attempt.authorizationUrl); nonce = authorize.searchParams.get("nonce") ?? "";
-    const callback = new URL(authorize.searchParams.get("redirect_uri") ?? "");
+    const callback = new URL(owned);
     callback.searchParams.set("code", "synthetic-code"); callback.searchParams.set("state", authorize.searchParams.get("state") ?? "");
     if (authorize.searchParams.get("client_id") === "dynamic_agent_client") callback.searchParams.set("client_id", "oaiapp_fixture");
     for (const [key, value] of Object.entries(patch)) { if (value === null) callback.searchParams.delete(key); else callback.searchParams.set(key, value); }
-    return fetch(callback);
+    return fetch(callback, { redirect: "error" });
   }
   async function connected(usePlan = true) { const attempt = await service.signIn({ usePlan }); await callback(attempt); return attempt.completion; }
   async function cleanup() {

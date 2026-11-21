@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { createUcpathPayPathOperations } from "../../../../../src/backend/systems/ucpath/driver/paypath-operation.js";
 import { UcpathPayPathRefusedError } from "../../../../../src/models/ui/ucpath-paypath.js";
 import { EidSchema } from "../../../../../src/rules/identity/ids.js";
@@ -48,14 +48,32 @@ function payPathRecords() {
 }
 
 async function probedPage(state: Readonly<{ droppedStepClicks?: number; frameDelayMs?: number }> = {}) {
+  await using setup = new AsyncDisposableStack();
   const browser = await chromium.launch({ headless: true });
+  setup.defer(() => browser.close());
   const page = await browser.newPage();
   await page.addInitScript(payPathRecords);
   const body = template.replace("__FIXTURE__", JSON.stringify(state));
   await page.route("**/*", route => route.fulfill({ contentType: "text/html", body }));
   const driver = createUcpathPayPathOperations(() => undefined, page, manualClock(new Date("2026-11-13T20:30:00.000Z")));
+  setup.move();
   return { browser, page, driver };
 }
+
+it("closes its browser when PayPath fixture page setup rejects", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const failure = new Error("fixture page setup rejected");
+  const launch = vi.spyOn(chromium, "launch").mockResolvedValueOnce(browser);
+  const page = vi.spyOn(browser, "newPage").mockRejectedValueOnce(failure);
+  try {
+    await assert.rejects(probedPage(), error => error === failure);
+    assert.equal(browser.isConnected(), false);
+  } finally {
+    page.mockRestore();
+    launch.mockRestore();
+    await browser.close();
+  }
+});
 
 describe("UCPath PayPath search on the probed page states", () => {
   it("fills the begins-with Empl ID search field and runs the search", async () => {

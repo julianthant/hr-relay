@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { ProfileDetailsChangeResultSchema, PublicProfileStateSchema, type ProfileAccount } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
-import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture as fixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 
 /** A served dashboard with one finished sign-up, and the details route, account and actor reads of that session. */
 async function withSignedInDashboard(body: (served: Readonly<{ base: string; credential: string; change(body: unknown, session?: string): Promise<{ status: number; body: unknown }>;
@@ -17,7 +16,7 @@ async function withSignedInDashboard(body: (served: Readonly<{ base: string; cre
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(base);
+    const base = `http://127.0.0.1:${String(runtime.port)}`, { post, finish } = await readyPublicSignUp(runtime);
     const finished = await finish();
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);

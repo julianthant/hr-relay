@@ -28,18 +28,23 @@ describe("native authority admission",()=>{
 afterEach(_afterEachFixture0);
 
   it("admits complete run rows and publishes the derived search generation atomically",async()=>{
-    const f=await fixture();const authority=f.open();
-    authority.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const f=await fixture();
     const run=RunRecordSchema.parse({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,
       configFingerprint:CONFIG_SNAPSHOT.fingerprint},runNumber:1});
-    expect(authority.authority.runs.enqueue(run)).toEqual({state:"inserted",record:run});
-    expect(authority.authority.runs.enqueue(run)).toEqual({state:"existing",record:run});
-    expect(authority.getMeta().authorityGeneration).toBe(2);
-    expect(authority.authority.runs.get(run.envelope.runId)).toEqual(run);
-    expect(authority.authority.runs.nextItemAttempt({workflow:run.envelope.workflow,itemId:run.envelope.itemId})).toBe(2);
-    expect(authority.authority.runs.nextWorkflowRunNumber(run.envelope.workflow)).toBe(2);
-    authority.close();
-    const reopened=f.open();expect(reopened.authority.runs.get(run.envelope.runId)).toEqual(run);reopened.close();
+    {
+      using authority=f.open();
+      authority.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+      expect(authority.authority.runs.enqueue(run)).toEqual({state:"inserted",record:run});
+      expect(authority.authority.runs.enqueue(run)).toEqual({state:"existing",record:run});
+      expect(authority.getMeta().authorityGeneration).toBe(2);
+      expect(authority.authority.runs.get(run.envelope.runId)).toEqual(run);
+      expect(authority.authority.runs.nextItemAttempt({workflow:run.envelope.workflow,itemId:run.envelope.itemId})).toBe(2);
+      expect(authority.authority.runs.nextWorkflowRunNumber(run.envelope.workflow)).toBe(2);
+    }
+    {
+      using reopened=f.open();
+      expect(reopened.authority.runs.get(run.envelope.runId)).toEqual(run);
+    }
     const db=new DatabaseSync(f.path,{readOnly:true});
     try {expect(db.prepare("SELECT authority_generation,search_generation,search_state FROM database_states").get())
       .toEqual({authority_generation:2,search_generation:2,search_state:"ready"});

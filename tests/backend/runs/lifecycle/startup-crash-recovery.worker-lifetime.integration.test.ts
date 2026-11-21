@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { reconcileExitedWorker, reconcileStartupCrash } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
@@ -9,6 +10,24 @@ import { attemptingOwnedWrite, ownedWorkerLifetimeFixture } from "../../../suppo
 
 const world = createRunRecordServiceTestWorld();
 afterEach(world.cleanup);
+
+it("closes a just-spawned worker before reporting an acquisition failure", async () => {
+  const f = await ownedWorkerLifetimeFixture(world);
+  const failure = new Error("fixture owner acquisition rejected");
+  let child: ChildProcess | undefined;
+  let closed = false;
+  try {
+    await assert.rejects(f.owner(undefined, spawned => {
+      child = spawned;
+      spawned.once("close", () => { closed = true; });
+      throw failure;
+    }), error => error === failure);
+    assert.ok(child);
+    assert.equal(closed, true);
+  } finally {
+    await f.dispose();
+  }
+});
 
 it("leaves a queued run claimable after startup recovery of an exited idle worker", async () => {
   const f = await ownedWorkerLifetimeFixture(world);

@@ -13,13 +13,14 @@ import { syncBuiltinESMExports } from "node:module";
 import { createCredentialStore, observeCredentialPresence } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync, symlinkSync, linkSync, renameSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync, symlinkSync, linkSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
@@ -33,6 +34,28 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import { withOperationProof, revalidateOperationProof } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+
+it("refuses a canonical workspace outside the test temp root before acquiring admission", async () => {
+  const scratch = mkdtempSync(join(tmpdir(), "fixture-workspace-boundary-"));
+  const inside = join(scratch, "temp");
+  const outside = join(scratch, "temp-peer");
+  const acquire = vi.spyOn(RuntimeLifetimeLock, "acquire").mockRejectedValue(new Error("unexpected admission acquisition"));
+  try {
+    mkdirSync(inside);
+    mkdirSync(outside);
+    const alias = join(inside, "alias");
+    symlinkSync(outside, alias, "junction");
+    for (const key of ["TMPDIR", "TMP", "TEMP"]) vi.stubEnv(key, inside);
+    for (const workspace of [inside, outside, alias]) {
+      await assert.rejects(createBoundProfileFixture({ workspace }), /fixture-workspace-outside-test-temp/u);
+    }
+    assert.equal(acquire.mock.calls.length, 0);
+  } finally {
+    acquire.mockRestore();
+    vi.unstubAllEnvs();
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
 
 for (const change of ["registry-replacement", "native-stage", "unexpected-member"] as const)
   it(`keeps profile authority distinct from browser publication: ${change}`, async () => {
@@ -673,17 +696,23 @@ it("refuses stopped setup selection before creating or opening an authority data
 
 
 it("refuses foreign stopped diagnostic references before deleting any retained stage", async () => {
-  const f=await createBoundProfileFixture(),foreign=await createBoundProfileFixture();
-  const stage=await createContentAddressedArtifactWriter({admission:f.admission})
-    .stageDiagnostic(Buffer.from("fixture retained diagnostic"),{mediaType:"application/json"},"ordinary");
-  const root=f.admission.artifactRoot,before=fs.readdirSync(root).sort();
-  const operation=f.machine.acquireOfflineMaintenance(),stopped=f.admission.forStoppedMaintenance(operation);
-  try {
-    copyFileSync(foreign.path,f.path);
-    const bytes=readFileSync(f.path);
-    assert.throws(()=>AuthorityDatabase.reclaimStoppedDiagnostics(stopped,f.path,
-      join(f.workspace,rebuildRuntimeIsolation.processLockRoot),systemClock,operation), /profile-maintenance-binding-mismatch/u);
-    assert.deepEqual(fs.readdirSync(root).sort(),before);
-    assert.deepEqual(readFileSync(f.path),bytes);
-  } finally { stopped.release();operation.release();stage.dispose();await foreign.close();await f.close(); }
+  await using cleanup = new AsyncDisposableStack();
+  const f = await createBoundProfileFixture();
+  cleanup.defer(() => f.close());
+  const foreign = await createBoundProfileFixture();
+  cleanup.defer(() => foreign.close());
+  const stage = await createContentAddressedArtifactWriter({ admission: f.admission })
+    .stageDiagnostic(Buffer.from("fixture retained diagnostic"), { mediaType: "application/json" }, "ordinary");
+  cleanup.defer(() => stage.dispose());
+  const root = f.admission.artifactRoot, before = fs.readdirSync(root).sort();
+  const operation = f.machine.acquireOfflineMaintenance();
+  cleanup.defer(() => operation.release());
+  const stopped = f.admission.forStoppedMaintenance(operation);
+  cleanup.defer(() => stopped.release());
+  copyFileSync(foreign.path, f.path);
+  const bytes = readFileSync(f.path);
+  assert.throws(() => AuthorityDatabase.reclaimStoppedDiagnostics(stopped, f.path,
+    join(f.workspace, rebuildRuntimeIsolation.processLockRoot), systemClock, operation), /profile-maintenance-binding-mismatch/u);
+  assert.deepEqual(fs.readdirSync(root).sort(), before);
+  assert.deepEqual(readFileSync(f.path), bytes);
 });

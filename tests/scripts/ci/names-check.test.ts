@@ -1,14 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { closedWorktreeLine, type TicketOwner } from "../../../scripts/ci/names-check.js";
 import { nameCases, runNamesCheck } from "../../support/helpers/names-check-cases.js";
+import { gitFixtureEnvironment } from "../../support/helpers/git-fixture-environment.js";
 
 function git(cwd: string, args: readonly string[]): string {
-  return execFileSync("git", [...args], { cwd, encoding: "utf8" });
+  return execFileSync("git", [...args], { cwd, encoding: "utf8", env: gitFixtureEnvironment() });
 }
 
 function initRepo(root: string): void {
@@ -120,28 +121,35 @@ describe("names:check", () => {
   });
 
   it("lists off-pattern branches and worktrees twice without deleting them", () => {
+    using cleanup = new DisposableStack();
     const root = mkdtempSync(join(tmpdir(), "names-check-all-"));
+    cleanup.defer(() => rmSync(root, { recursive: true, force: true }));
     const outside = mkdtempSync(join(tmpdir(), "names-check-outside-"));
-    try {
-      initRepo(root);
-      git(root, ["branch", "staging"]);
-      git(root, ["branch", "chore/leftover"]);
-      git(root, ["worktree", "add", "-q", "-b", "feature/outside", outside]);
-      const before = snapshot(root);
-      const first = runNamesCheck(["--all"], root);
-      const second = runNamesCheck(["--all"], root);
-      expect(first.status).toBe(0);
-      expect(second.status).toBe(0);
-      expect(first.stdout).toBe(second.stdout);
-      expect(first.stderr).toBe("");
-      expect(first.stdout).toContain("chore/leftover");
-      expect(first.stdout).toContain(outside);
-      expect(snapshot(root)).toEqual(before);
-    } finally {
-      git(root, ["worktree", "remove", "--force", outside]);
-      rmSync(outside, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
-    }
+    cleanup.defer(() => rmSync(outside, { recursive: true, force: true }));
+    const hooks = join(outside, "hooks");
+    mkdirSync(hooks);
+    writeFileSync(join(hooks, "pre-commit"), "#!/bin/sh\nexit 97\n", { mode: 0o700 });
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "core.hooksPath");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", hooks);
+    try { initRepo(root); } finally { vi.unstubAllEnvs(); }
+    rmSync(hooks, { recursive: true });
+    git(root, ["branch", "staging"]);
+    git(root, ["branch", "chore/leftover"]);
+    git(root, ["worktree", "add", "-q", "-b", "feature/outside", outside]);
+    cleanup.defer(() => { git(root, ["worktree", "remove", "--force", outside]); });
+    const before = snapshot(root);
+    vi.stubEnv("GIT_DIR", join(root, "unowned.git"));
+    cleanup.defer(() => { vi.unstubAllEnvs(); });
+    const first = runNamesCheck(["--all"], root);
+    const second = runNamesCheck(["--all"], root);
+    expect(first.status).toBe(0);
+    expect(second.status).toBe(0);
+    expect(first.stdout).toBe(second.stdout);
+    expect(first.stderr).toBe("");
+    expect(first.stdout).toContain("chore/leftover");
+    expect(first.stdout).toContain(outside);
+    expect(snapshot(root)).toEqual(before);
   });
 
   it("exits zero when every local branch and worktree matches", () => {

@@ -25,6 +25,9 @@ it("stops an unused Duo provider once and refuses any later browser launch befor
 
 it("does not launch a Duo browser when shutdown arrives during focus capture", async () => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "duo-stop-capture-"));
+  await using cleanup = new AsyncDisposableStack();
+  let removable = true;
+  cleanup.defer(() => { if (removable) rmSync(root, { recursive: true }); });
   const browserRoot = join(root, "browsers"); mkdirSync(browserRoot, { mode: 0o700 });
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const roots = mockBrowserRootPort().browserRoots;
@@ -34,17 +37,18 @@ it("does not launch a Duo browser when shutdown arrives during focus capture", a
     browserRoots: { ...roots, beginSignupLaunch() { launches++; throw new Error("launched after shutdown"); } },
     clock: manualClock(new Date("2026-11-03T08:00:00.000Z")), closeProofMs: 100,
     focus: { async captureRelay() { entered.resolve(); await release.promise; return undefined; }, show: forbidden, returnToRelay: forbidden } });
+  removable = false;
+  cleanup.defer(async () => { await provider.stop(); removable = true; });
   let ownerReads = 0;
   const owner = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
     assertCurrent() { ownerReads++; }, readState: forbidden, reportEvent: forbidden,
     start: forbidden, cancel: forbidden, confirm: forbidden };
   const opening = provider.showBrowser(owner);
   const refused = assert.rejects(opening, error => error instanceof ProfileOnboardingDuoProviderError && error.reason === "revoked");
-  try {
-    await entered.promise;
-    await provider.stop();
-    const before = ownerReads;
-    release.resolve(); await refused;
-    assert.equal(ownerReads, before); assert.equal(launches, 0);
-  } finally { release.resolve(); await refused; await provider.stop(); rmSync(root, { recursive: true }); }
+  cleanup.defer(async () => { release.resolve(); await refused; });
+  await Promise.race([entered.promise, refused.then(() => { throw new Error("fixture browser refused before focus capture"); })]);
+  await provider.stop();
+  const before = ownerReads;
+  release.resolve(); await refused;
+  assert.equal(ownerReads, before); assert.equal(launches, 0);
 });

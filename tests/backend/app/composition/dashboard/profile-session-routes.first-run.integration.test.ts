@@ -5,14 +5,13 @@ import { beforeEach, it, vi } from "vitest";
 import * as dashboardRunners from "../../../../../src/backend/app/preflight/dashboard-runners.js";
 import * as httpServer from "../../../../../src/backend/transports/http/http-server.js";
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { ProfileRegistryDocumentSchema } from "../../../../../src/models/profiles/profile.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
-import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture as fixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 import { assertRuntimeLifetimeHeld } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import type { DashboardComposeInput } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 
@@ -43,7 +42,13 @@ it("serves the original local startup report at Finish and replays it without ch
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       onInitialPreflight: report => { reports.push(report); } });
-    const base = `http://127.0.0.1:${runtime.port}`, ready = await readyPublicSignUp(base);
+    const base = `http://127.0.0.1:${runtime.port}`, ready = await readyPublicSignUp(runtime);
+    const network = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 204 }));
+    try {
+      await assert.rejects(readyPublicSignUp({ ...runtime }), /fixture-signup-listener-unowned/u);
+      await assert.rejects(ready.post("//127.0.0.1:1/foreign", {}, ready.credential), /fixture-signup-origin-mismatch/u);
+      assert.equal(network.mock.calls.length, 0);
+    } finally { network.mockRestore(); }
     assert.equal(reports.length, 0);
     const finished = await ready.finish(), active = PublicProfileStateSchema.parse(await finished.json());
     assert.equal(active.state, "active");
@@ -92,7 +97,7 @@ it("a failed first-run check after Finish mounts the published profile and resum
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       onInitialPreflight: report => { reports.push(report); } });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
-    const { credential, finish, draft } = await readyPublicSignUp(base);
+    const { credential, finish, draft } = await readyPublicSignUp(runtime);
     const failed = await finish();
     assert.equal(failed.status, 200);
     const body = PublicProfileStateSchema.parse(await failed.json()), registry = f.machine.readProfileRegistry();
@@ -153,7 +158,7 @@ for (const phase of ["before-report", "after-report"] as const) it(`retains an u
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       onInitialPreflight: report => { reports.push(report); } });
-    const ready = await readyPublicSignUp(`http://127.0.0.1:${runtime.port}`), response = await ready.finish();
+    const ready = await readyPublicSignUp(runtime), response = await ready.finish();
     const body = PublicProfileStateSchema.parse(await response.json());
     if (phase === "before-report") {
       assert.equal(response.status, 200);

@@ -47,12 +47,29 @@ describe("Workforce Job Summary read in a real browser", () => {
     // Vitest compiles without keepNames; tsx wraps named inner functions in a __name helper the page realm lacks.
     const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import { chromium } from "playwright";
+      import assert from "node:assert/strict";
+      import { once } from "node:events";
+      import { createServer } from "node:http";
       import { readWorkforceJobSummaryOnPage } from "./src/backend/systems/ucpath/driver/workforce-job-summary-operation.ts";
       import { UCPATH_WORKFORCE_JOB_SUMMARY_UI } from "./src/backend/systems/ucpath/driver/workforce-job-summary-ui-registry.ts";
       const browser = await chromium.launch({ headless: true });
       try {
-        const page = await browser.newPage();
-        await page.route(UCPATH_WORKFORCE_JOB_SUMMARY_UI.url, route => route.fulfill({ contentType: "text/html", body: ${JSON.stringify(jobSummaryPage(blank))} }));
+        const context = await browser.newContext({ serviceWorkers: "block" });
+        await context.route("**/*", route => {
+          const request = route.request();
+          if (request.method() !== "GET" || request.url() !== UCPATH_WORKFORCE_JOB_SUMMARY_UI.url) return route.abort("blockedbyclient");
+          return route.fulfill({ contentType: "text/html", body: ${JSON.stringify(jobSummaryPage(blank))} });
+        });
+        let requests = 0;
+        await using peer = createServer((_request, response) => { requests++; response.end("synthetic peer"); });
+        peer.listen(0, "127.0.0.1");
+        await once(peer, "listening");
+        const probe = await context.newPage();
+        try {
+          await assert.rejects(probe.goto("http://127.0.0.1:" + peer.address().port + "/unmatched"), /net::ERR_BLOCKED_BY_CLIENT/u);
+        } finally { await probe.close(); }
+        assert.equal(requests, 0);
+        const page = await context.newPage();
         const read = await readWorkforceJobSummaryOnPage(() => undefined, page, { emplId: "10800003" }, "2026-11-17T10:00:00.000Z");
         const row = read.summary?.jobRows[0];
         process.stdout.write(JSON.stringify({ state: read.state, rowCount: read.summary?.rowCount, positionNumber: row?.positionNumber, jobCode: row?.jobCode, jobTitle: row?.jobTitle }));

@@ -36,7 +36,5 @@ export async function prepareTestProcesses(directory: string): Promise<string> {
       writeFileSync(join(cache, "test-process-loader.mjs"), output.contents, { mode: 0o600 });
     }
   }
-  const loader = pathToFileURL(join(cache, "test-process-loader.mjs")).href;
-  process.env.RELAY_TEST_PROCESS_IMPORT = loader;
-  return loader;
+  return pathToFileURL(join(cache, "test-process-loader.mjs")).href;
 }

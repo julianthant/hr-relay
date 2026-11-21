@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { gitFixtureEnvironment } from "./git-fixture-environment.js";
 
 const script = fileURLToPath(new URL("../../../scripts/ci/names-check.ts", import.meta.url));
 
@@ -68,5 +69,5 @@ export const nameCases: readonly NameCase[] = [
 ];
 
 export function runNamesCheck(args: readonly string[], cwd?: string) {
-  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8" });
+  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8", env: gitFixtureEnvironment() });
 }

@@ -4,12 +4,36 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runtimeLifetimeLock } from "./runtime-lifetime.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { composeDashboardApplication, type DashboardComposeInput } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 
-export async function readyPublicSignUp(base: string, methods: "confirmed" | "detected" = "confirmed") {
-  const post = (path: string, body: unknown, credential?: string) => fetch(`${base}${path}`, { method: "POST",
-    headers: { origin: base, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
+type PublicProfileRuntime = Awaited<ReturnType<typeof composeDashboardApplication>>;
+const fixtureMachines = new WeakSet<RuntimeAdmission>();
+const listenerOrigins = new WeakMap<PublicProfileRuntime, string>();
+
+export async function composePublicProfileFixtureRuntime(input: DashboardComposeInput): Promise<PublicProfileRuntime> {
+  const runtime = await composeDashboardApplication(input);
+  if (input.admission === undefined || !fixtureMachines.has(input.admission) || input.backendPortOverride !== 0) return runtime;
+  const owned: PublicProfileRuntime = Object.freeze({ ...runtime, stop() {
+    listenerOrigins.delete(owned);
+    return runtime.stop();
+  } });
+  listenerOrigins.set(owned, `http://127.0.0.1:${String(owned.port)}`);
+  return owned;
+}
+
+export async function readyPublicSignUp(runtime: PublicProfileRuntime, methods: "confirmed" | "detected" = "confirmed") {
+  const base = listenerOrigins.get(runtime);
+  if (base === undefined) throw new Error("fixture-signup-listener-unowned");
+  const post = async (path: string, body: unknown, credential?: string) => {
+    if (listenerOrigins.get(runtime) !== base) throw new Error("fixture-signup-listener-unowned");
+    const url = new URL(path, base);
+    if (url.origin !== base || url.username || url.password) throw new Error("fixture-signup-origin-mismatch");
+    return fetch(url, { method: "POST", redirect: "error",
+      headers: { origin: base, "content-type": "application/json", ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
+  };
   const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
   const draft = PublicProfileStateSchema.parse(await signup.json());
   assert.equal(draft.state, "onboarding");
@@ -39,5 +63,6 @@ export async function publicProfileShellFixture(lifetime?: Parameters<typeof acq
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
   const machine = acquireEntrypointAdmission(root, mode, controller);
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+  fixtureMachines.add(machine);
   return { root, lifetime: controller, machine };
 }

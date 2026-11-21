@@ -15,10 +15,10 @@ import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
 import assert from "node:assert/strict";
-import { readFileSync,rmSync } from "node:fs";
+import { existsSync,readFileSync,rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { afterAll,afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it,vi } from "vitest";
 import { z } from "zod";
 import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createIntakeParser, type PreparedIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
@@ -56,12 +56,39 @@ const ROSTER_CSV = [
 ].join("\n");
 
 const profileFixtures = createProfileFixtureSet();
-afterAll(() => profileFixtures.close());
-const profiles: BoundProfileStorageFixture[] = [];
-const openDatabases: AuthorityDatabase[] = [];
-afterEach(async () => {
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) await profile.close();
+const surfaces = new Map<BoundProfileStorageFixture, { database?: AuthorityDatabase }>();
+async function closeSurfaces() {
+  const errors: unknown[] = [];
+  for (const [profile, owner] of surfaces) {
+    try {
+      owner.database?.close();
+      delete owner.database;
+      await profile.close();
+      surfaces.delete(profile);
+    } catch (error) { errors.push(error); }
+  }
+  if (errors.length === 1 && errors[0] instanceof Error) throw errors[0];
+  if (errors.length > 0) throw new AggregateError(errors, "intake surface cleanup failed", { cause: errors[0] });
+}
+afterEach(closeSurfaces);
+afterAll(async () => { await closeSurfaces(); await profileFixtures.close(); });
+
+it("attempts independent surface cleanup and keeps the failed owner for retry", async () => {
+  const first = await surface();
+  const second = await surface();
+  const failure = new Error("fixture database close rejected");
+  const close = vi.spyOn(first.database, "close").mockImplementationOnce(() => { throw failure; });
+  try {
+    await assert.rejects(closeSurfaces, error => error === failure);
+    assert.equal(existsSync(first.root), true);
+    assert.equal(existsSync(second.root), false);
+    await closeSurfaces();
+    assert.equal(existsSync(first.root), false);
+  } finally {
+    close.mockRestore();
+    first.database.close();
+    second.database.close();
+  }
 });
 
 let commandSequence = 0;
@@ -88,14 +115,16 @@ interface Surface {
 }
 
 async function surface(parserFor?: (artifacts: Surface["artifacts"]) => PreparedIntakeParser): Promise<Surface> {
-  const profile = await profileFixtures.create(); profiles.push(profile);
+  const profile = await profileFixtures.create();
+  const owner: { database?: AuthorityDatabase } = {};
+  surfaces.set(profile, owner);
   const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "intake-surface-test" },
     clock,
   );
-  openDatabases.push(database);
+  owner.database = database;
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
 
 

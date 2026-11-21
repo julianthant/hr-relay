@@ -10,12 +10,11 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createServedOnboardingPort } from "../../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
-import { publicProfileShellFixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 
 vi.mock("../../../../../src/backend/app/composition/dashboard/runtime-startup.js", { spy: true });
 vi.mock("../../../../../src/backend/storage/configuration/verifier-store.js", { spy: true });
@@ -43,7 +42,7 @@ it("completes authenticated onboarding without sending a host cookie", async () 
   try {
     runtime = await start(fixture);
     const origin = `http://127.0.0.1:${runtime.port}`;
-    const onboarding = await readyPublicSignUp(origin);
+    const onboarding = await readyPublicSignUp(runtime);
     const response = await onboarding.finish();
     assert.equal(response.status, 200);
     assert.equal(PublicProfileStateSchema.parse(await response.json()).state, "active");
@@ -125,7 +124,7 @@ it("joins two enrolled tabs through state and resume during a cold mount", async
   try {
     runtime = await start(fixture);
     const port = runtime.port, origin = `http://127.0.0.1:${port}`;
-    const enrollment = await (await readyPublicSignUp(origin)).finish();
+    const enrollment = await (await readyPublicSignUp(runtime)).finish();
     assert.equal(PublicProfileStateSchema.parse(await enrollment.json()).state, "active");
     const proof = enrollment.headers.get("x-relay-resume");
     assert.ok(proof);
@@ -201,7 +200,7 @@ it("starts enrolled tabs while the cold mount response is awaiting browser settl
   try {
     runtime = await start(fixture);
     const port = runtime.port, origin = `http://127.0.0.1:${port}`;
-    const enrollment = await (await readyPublicSignUp(origin)).finish();
+    const enrollment = await (await readyPublicSignUp(runtime)).finish();
     const proof = enrollment.headers.get("x-relay-resume");
     assert.ok(proof);
     const epoch = machine.readProfileRegistry().sessionGeneration;
@@ -280,7 +279,7 @@ it.each(["logout", "login before settlement", "login after settlement", "login d
   try {
     runtime = await start(fixture, { clock });
     const origin = `http://127.0.0.1:${runtime.port}`;
-    const enrolled = await (await readyPublicSignUp(origin)).finish();
+    const enrolled = await (await readyPublicSignUp(runtime)).finish();
     assert.equal(PublicProfileStateSchema.parse(await enrolled.json()).state, "active");
     const localStorage = tabStorage(), sessionStorage = tabStorage();
     const load = () => {
@@ -370,7 +369,7 @@ it("admits the owned frontend but refuses its use of the backend origin's active
       frontendProbe: async ({ port }) => { assert.equal(port, address.port); probed = true; return { state: "owned" }; },
     });
     const origin = `http://127.0.0.1:${runtime.port}`, otherOrigin = `http://127.0.0.1:${address.port}`;
-    const enrollment = await (await readyPublicSignUp(origin)).finish();
+    const enrollment = await (await readyPublicSignUp(runtime)).finish();
     const credential = enrollment.headers.get("x-relay-session");
     assert.ok(credential);
     const stateAt = async (target: string) => {

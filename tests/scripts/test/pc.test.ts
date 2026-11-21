@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +7,7 @@ import { buildPcSource, pcSyncFiles, preparePcSource } from "../../../scripts/te
 import { runInNewContext } from "node:vm";
 import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
 import { measurePcPhase, pcDurationScript, pcListingArgs, pcVitestEnv, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
+import { gitFixtureEnvironment } from "../../support/helpers/git-fixture-environment.js";
 
 describe("PC test selection", () => {
   const portable = ["tests/models/a.test.ts", "tests/backend/a.integration.test.ts", "tests/architecture/a.test.ts"];
@@ -122,7 +123,15 @@ describe("PC phase receipts", () => {
 
 describe("PC Git source transport", () => {
   const roots: string[] = [];
-  afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+  beforeEach(() => {
+    const environment = gitFixtureEnvironment();
+    const keys = new Set([...Object.keys(process.env), ...Object.keys(environment)]);
+    for (const key of keys) if (key.toUpperCase().startsWith("GIT_")) vi.stubEnv(key, environment[key]);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
   function fixture() {
     const root = mkdtempSync(join(tmpdir(), "relay-pc-source-"));
     roots.push(root);

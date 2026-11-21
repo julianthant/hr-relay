@@ -59,7 +59,11 @@ it("safe account projection retains the original unproved credential resource th
 });
 
 it("close drains an awaited sign-out transaction and prevents publication after revocation cancellation", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-signout-port-"))), admission = RuntimeAdmission.syntheticRoots(root, root);
+  await using cleanup = new AsyncDisposableStack();
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-signout-port-")));
+  cleanup.defer(() => rmSync(root, { recursive: true, force: true }));
+  const admission = RuntimeAdmission.syntheticRoots(root, root);
+  cleanup.defer(() => admission.release());
   const entered = Promise.withResolvers<void>(), leaseCleanup = Promise.withResolvers<void>(), releaseLease = Promise.withResolvers<void>();
   let record: credentials.ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: "urn:uuid:00000000-0000-4000-8000-000000000001",
     clientId: "oaiapp_fixture", registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
@@ -75,6 +79,7 @@ it("close drains an awaited sign-out transaction and prevents publication after 
     },
   };
   const factory = vi.spyOn(credentials, "createChatGptCredentialRepository").mockReturnValue(repository);
+  cleanup.defer(() => { factory.mockRestore(); });
   const transport: typeof fetch = async (input, init = {}) => {
     const url = input instanceof Request ? input.url : input instanceof URL ? input.href : input;
     if (url.endsWith("/.well-known/openid-configuration")) return Response.json({ issuer: "https://auth.openai.com", jwks_uri: "https://auth.openai.com/jwks",
@@ -87,15 +92,18 @@ it("close drains an awaited sign-out transaction and prevents publication after 
   };
   const service = createChatGptAccountService({ admission, stateRoot: root, clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), fetch: transport });
   let closing: Promise<void> | undefined, signOut: Promise<void> | undefined;
-  try {
-    signOut = assert.rejects(service.signOut(), { code: "CHATGPT_SERVICE_CLOSED" }); await entered.promise;
-    closing = service.close().then(() => { closed = true; }); await leaseCleanup.promise;
-    assert.equal(leased, true); assert.equal(closed, false); assert.equal(writes, 0); assert.equal(record, original);
-    releaseLease.resolve(); await closing; await signOut;
-    assert.equal(leased, false); assert.equal(closed, true); assert.equal(writes, 0); assert.equal(record, original);
-    assert.throws(() => service.readAccount(), { code: "CHATGPT_SERVICE_CLOSED" });
-  } finally {
-    releaseLease.resolve(); await closing; await signOut;
-    factory.mockRestore(); admission.release(); rmSync(root, { recursive: true, force: true });
-  }
+  cleanup.defer(async () => {
+    releaseLease.resolve();
+    const results = await Promise.allSettled([closing ?? service.close(), signOut]);
+    const errors = results.flatMap(result => result.status === "rejected" ? [result.reason as unknown] : []);
+    if (errors.length > 0) throw new AggregateError(errors, "fixture sign-out cleanup failed");
+  });
+  signOut = assert.rejects(service.signOut(), { code: "CHATGPT_SERVICE_CLOSED" });
+  await Promise.race([entered.promise, signOut.then(() => { throw new Error("fixture sign-out settled before revocation"); })]);
+  closing = service.close().then(() => { closed = true; });
+  await Promise.race([leaseCleanup.promise, closing.then(() => { throw new Error("fixture close settled before lease cleanup"); })]);
+  assert.equal(leased, true); assert.equal(closed, false); assert.equal(writes, 0); assert.equal(record, original);
+  releaseLease.resolve(); await closing; await signOut;
+  assert.equal(leased, false); assert.equal(closed, true); assert.equal(writes, 0); assert.equal(record, original);
+  assert.throws(() => service.readAccount(), { code: "CHATGPT_SERVICE_CLOSED" });
 });

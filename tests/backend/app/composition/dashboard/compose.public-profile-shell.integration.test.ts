@@ -16,8 +16,7 @@ import * as debugEvents from "../../../../../src/backend/logs/debug-events.js";
 
 vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true });
 vi.mock("../../../../../src/backend/app/composition/storage-compose.js", { spy: true });
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture as fixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
@@ -26,8 +25,8 @@ import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 
-async function finishPublicSignUp(base: string): Promise<Response> {
-  return (await readyPublicSignUp(base)).finish();
+async function finishPublicSignUp(runtime: Awaited<ReturnType<typeof composeDashboardApplication>>): Promise<Response> {
+  return (await readyPublicSignUp(runtime)).finish();
 }
 
 for (const scenario of [{ action: "complete", withCause: true, unknownFirst: true }, { action: "cancel", withCause: true, unknownFirst: true },
@@ -59,7 +58,7 @@ for (const scenario of [{ action: "complete", withCause: true, unknownFirst: tru
       if (scenario.unknownFirst) {
         const signup = await post("sign-up", { firstName: "Held", lastName: "Fixture", email: "held-fixture@ucsd.edu", password: "disposable-held-fixture" });
         draft = PublicProfileStateSchema.parse(await signup.json()); credential = signup.headers.get("x-relay-session") ?? undefined;
-      } else { const ready = await readyPublicSignUp(base); draft = ready.draft; credential = ready.credential; }
+      } else { const ready = await readyPublicSignUp(runtime); draft = ready.draft; credential = ready.credential; }
       assert.ok(credential); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
       const call = (action: string, extra = {}) => { stage = action; return post(`onboarding/${action}`, { operationId: draft.operationId, ...extra }, credential); };
       if (scenario.unknownFirst) {
@@ -369,7 +368,7 @@ it("drains two subscribed tabs before revocation and refuses subscription reconn
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const base = `http://127.0.0.1:${runtime.port}`, signedUp = await finishPublicSignUp(base);
+    const base = `http://127.0.0.1:${runtime.port}`, signedUp = await finishPublicSignUp(runtime);
     assert.equal(PublicProfileStateSchema.parse(await signedUp.json()).state, "active");
     const credential = signedUp.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     assert.ok(context);
@@ -610,7 +609,7 @@ for (const fault of ["prior-custody", "transport-cancellation"] as const) it(`dr
     runtime = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
-    const signup = await finishPublicSignUp(base);
+    const signup = await finishPublicSignUp(runtime);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");
     assert.ok(context !== undefined && token !== undefined);
     context.database.getMeta(); profile.assertCurrent(token);
@@ -676,7 +675,7 @@ it("revokes retained selected producers before a genuine in-flight public transp
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {} });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
-    const signup = await finishPublicSignUp(base);
+    const signup = await finishPublicSignUp(runtime);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");
     assert.ok(profile !== undefined && context !== undefined && token !== undefined);
     const owner = profile, selected = context, capturedToken = token;
@@ -716,7 +715,7 @@ it("publishes a sign-up whose methods both finished from Duo's success heading",
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const { finish } = await readyPublicSignUp(`http://127.0.0.1:${String(runtime.port)}`, "detected");
+    const { finish } = await readyPublicSignUp(runtime, "detected");
     assert.equal(PublicProfileStateSchema.parse(await (await finish()).json()).state, "active");
     const completion = f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion;
     assert.ok(completion);
