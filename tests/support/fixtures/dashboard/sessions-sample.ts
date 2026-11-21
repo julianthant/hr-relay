@@ -33,7 +33,7 @@ export function sessionsSample(scenario: string): SessionsViewState {
       { ...workers[2], state: "waiting", browsers: [{ id: "kuali", label: "Kuali", state: "needs-duo" }, { id: "ucpath", label: "UCPath", state: "signed-out" }] }, workers[3], { ...workers[3], id: "sample-idle-2", label: "Worker 5" }] };
     case "empty": return { state: "ready", workers: [] };
     case "loading": return { state: "loading" };
-    case "unavailable": return { state: "unavailable", reason: "Sessions are unavailable." };
+    case "unavailable": return { state: "unavailable", reason: "Session information is unavailable." };
     default: throw new Error("sessions-sample-missing");
   }
 }

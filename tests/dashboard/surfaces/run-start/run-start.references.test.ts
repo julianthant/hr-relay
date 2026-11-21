@@ -137,5 +137,5 @@ it('refuses missing returned references and selections outside the input vector'
 });
 
 it('names a required reference with no selection as a plain refusal, not a malformed workbook', () => {
-  expect(() => launchWorkbookReferences(['roster-type'], [entry], {}, 1, sources, false)).toThrow('Add the reference spreadsheet this run looks people up in. One picked only as a check does not count.');
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], {}, 1, sources, false)).toThrow('Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.');
 });

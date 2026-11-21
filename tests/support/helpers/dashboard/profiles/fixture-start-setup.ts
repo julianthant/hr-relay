@@ -44,7 +44,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
         readiness: module.descriptor.requiredWorkbookFields.length === 0
           ? { scope: "workbook-sources", state: "ready" }
           : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
-            reason: "Import a Library spreadsheet before choosing a source.",
+            reason: "Import a Library spreadsheet before selecting a workflow source.",
             fixAction: { kind: "import-workbook", workflowId: module.descriptor.id } },
         ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
         enqueue: module.descriptor.enqueue,
