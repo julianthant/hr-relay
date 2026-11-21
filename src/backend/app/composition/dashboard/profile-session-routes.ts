@@ -218,8 +218,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
   app.use("/api/v1/profile/account/*", operatorMutationIngressGuard);
   app.use("/api/v1/profile/duo/reenrol/*", operatorMutationIngressGuard);
-  const activeState = (profileId: string, epoch: number) => {
-    const row = machine.readProfileRegistry().profiles.find(value => value.profileId === profileId);
+  const activeState = (profileId: string, epoch: number, registry = machine.readProfileRegistry()) => {
+    const row = registry.profiles.find(value => value.profileId === profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId, epoch, duoState: row.duoState,
       account: profileAccount(row, verifiers.identify) };
@@ -389,7 +389,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (completed.response.body.state === "active") {
         if (selection === undefined || selection.sessionId !== completed.activeSessionId || selection.profileId !== completed.profileId || selection.epoch !== completed.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
         profileRuntime.assertCurrent(selection.token);
+        const { account } = activeState(completed.profileId, completed.epoch, registry);
         issue(c, selection);
+        return c.json({ ...completed.response.body, account }, completed.response.status);
       }
       return c.json(completed.response.body, completed.response.status);
     }

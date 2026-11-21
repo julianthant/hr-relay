@@ -210,6 +210,40 @@ describe("Relay login change", () => {
     assert.equal(machine.machine.readProfileRegistry().profiles[0]?.relayEmail, undefined);
   });
 
+  it("keeps the legacy selection resumable after a missing UCPath password is restored", async () => {
+    const machine = await world(), profileId = await unupgraded(machine);
+    const session = machine.open(), at = alexFields.createdAt;
+    machine.saveInSettings(profileId, { ucpathPassword: { clear: true } });
+    assert.equal(refusalCode(session.resumeSignedInProfile({ at })), "PROFILE_AUTHORITY_UNAVAILABLE");
+    const refused = machine.machine.readProfileRegistry();
+    assert.equal(refused.activeProfileId, profileId);
+    assert.equal(refused.profiles[0]?.relayEmail, undefined);
+    machine.saveInSettings(profileId, { ucpathPassword: { set: alexFields.password } });
+    const resumed = session.resumeSignedInProfile({ at });
+    assert.ok(resumed.state === "active");
+    assert.equal(resumed.profileId, profileId);
+    assert.equal(machine.machine.readProfileRegistry().profiles[0]?.relayEmail, alexFields.email);
+  });
+
+  it("leaves account details untouched when the verifier cannot identify one owner", async () => {
+    const machine = await world(), session = machine.open();
+    const alex = await machine.signUp(session, alexFields);
+    const before = machine.machine.readProfileRegistry();
+    const path = join(machine.machineRoot, "machine", "profile-verifiers.json");
+    const bytes = fs.readFileSync(path);
+    const document = ProfileVerifierDocumentSchema.parse(JSON.parse(bytes.toString("utf8")));
+    const [row] = document.profiles;
+    assert.ok(row);
+    fs.writeFileSync(path, JSON.stringify({ ...document, profiles: [row, { ...row, profileId: randomUUID() }] }));
+    try { assert.throws(() => session.changeDetails(alex.token, { initials: "AXR" }), /profile email key is not unique/u); }
+    finally { fs.writeFileSync(path, bytes); }
+    assert.deepEqual(machine.machine.readProfileRegistry(), before);
+    const retried = session.changeDetails(alex.token, { initials: "AXR" });
+    assert.ok(retried.state === "changed");
+    assert.equal(retried.account.initials, "AXR");
+    assert.equal(retried.account.username, alexFields.email);
+  });
+
   it("surfaces a credential read failure during legacy resume and keeps the selection resumable", async () => {
     const machine = await world(), profileId = await unupgraded(machine);
     const path = join(machine.machineRoot, "profiles", profileId, "credentials", "protected.json");
