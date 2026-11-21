@@ -1,4 +1,4 @@
-// A resumed stream replays only a retained cursor range; otherwise reset requires a new snapshot.
+// A resumed stream replays the retained shared changes above its cursor; otherwise it is answered with a snapshot.
 import { z } from "zod";
 import {
   DashboardStreamEnvelopeSchema,
@@ -29,6 +29,9 @@ interface DashboardStreamProjection {
   buildDashboardDayWire(day: string): ReturnType<RunQueueProjection["buildDashboardDayWire"]>;
   generation(): number;
   cursor(): string;
+  /** Advances the projection's sequence for one envelope the hub mints. */
+  takeCursor(): string;
+  position(): number;
   descriptorSetHash(): string;
 }
 
@@ -45,11 +48,16 @@ export interface DashboardStreamHubDeps {
   readonly maxPending?: number;
 }
 
+type ChangeEnvelope = Extract<DashboardStreamEnvelope, { type: "change" }>;
+/** A change before handout: its `after` is the receiving connection's, so it is stamped per subscriber. */
+type UnstampedChange = Omit<ChangeEnvelope, "after">;
+type Outgoing = Exclude<DashboardStreamEnvelope, ChangeEnvelope> | UnstampedChange;
+
 /** One subscriber's delivery phase. A waiter exists only on an empty open queue. */
 type SubscriberQueue =
   | {
       readonly state: "open";
-      readonly queue: readonly DashboardStreamEnvelope[];
+      readonly queue: readonly Outgoing[];
       readonly waiter?: (envelope: DashboardStreamEnvelope | undefined) => void;
     }
   | { readonly state: "reset-pending"; readonly reason: "cursor-expired" }
@@ -58,12 +66,20 @@ type SubscriberQueue =
 interface Subscriber {
   readonly day: string;
   phase: SubscriberQueue;
+  /** Cursor of the last `change` or `snapshot` handed to this connection; the next change's `after`. */
+  handedCursor: string;
 }
 
-// A count-bearing snapshot marker invalidates the held payload and requires a fresh snapshot on resume.
+// Shared entries only. A handoff envelope is private to one connection and is never retained,
+// so retained cursors have holes. A snapshot marker requires a fresh snapshot on resume.
 type RetainedEntry =
-  | { readonly cursorNumber: number; readonly generation: number; readonly kind: "patch"; readonly day: string; readonly envelope: DashboardStreamEnvelope }
-  | { readonly cursorNumber: number; readonly generation: number; readonly kind: "snapshot" };
+  | { readonly cursorNumber: number; readonly kind: "change"; readonly day: string; readonly change: UnstampedChange }
+  | { readonly cursorNumber: number; readonly kind: "snapshot" };
+
+type ResumeDecision =
+  | { readonly state: "resumable"; readonly presentedCursor: string; readonly replay: readonly RetainedEntry[] }
+  | { readonly state: "gap"; readonly reason: "cursor-expired" | "snapshot-boundary" }
+  | { readonly state: "fresh" };
 
 function cursorNumber(cursor: string): number | undefined {
   const match = CURSOR_PATTERN.exec(cursor);
@@ -77,6 +93,8 @@ export class DashboardStreamHub {
   readonly #backfillGaps: Pick<BackfillGapNotifier, "detected">;
   readonly #subscribers = new Set<Subscriber>();
   #retained: RetainedEntry[] = [];
+  /** Cursor of the newest shared entry dropped from the retained window; 0 at the start of a generation. */
+  #evictedThrough = 0;
   #disposeProjection: () => void;
   #disposePublications?: () => void;
   #sourcesDisposed = false;
@@ -130,23 +148,28 @@ export class DashboardStreamHub {
     return 0;
   }
 
-  #hello(input?: Readonly<{ generation: number; cursor: string; descriptorHash: string }>): DashboardStreamEnvelope {
+  #hello(): DashboardStreamEnvelope {
     return DashboardStreamEnvelopeSchema.parse({
       type: "hello",
       wireVersion: 1,
-      descriptorHash: input?.descriptorHash ?? this.#projection.descriptorSetHash(),
-      projectionGeneration: input?.generation ?? this.#projection.generation(),
-      cursor: input?.cursor ?? this.#projection.cursor(),
+      descriptorHash: this.#projection.descriptorSetHash(),
+      projectionGeneration: this.#projection.generation(),
+      cursor: this.#projection.cursor(),
     });
   }
 
-  #snapshot(day: string): DashboardStreamEnvelope {
-    return DashboardStreamEnvelopeSchema.parse({
+  /** The day frozen at the projection's current cursor, in the turn that took it. */
+  #snapshot(day: string): Extract<DashboardStreamEnvelope, { type: "snapshot" }> {
+    const payload = this.#projection.buildDashboardDayWire(day);
+    const envelope = DashboardStreamEnvelopeSchema.parse({
       type: "snapshot",
       topic: "dashboard-day",
-      cursor: this.#projection.cursor(),
-      payload: this.#projection.buildDashboardDayWire(day),
+      cursor: payload.snapshotCursor,
+      position: this.#projection.position(),
+      payload,
     });
+    if (envelope.type !== "snapshot") throw new Error("dashboard stream snapshot parsed as another envelope");
+    return envelope;
   }
 
   #onProjectionChange(change: RunQueueProjectionChange): void {
@@ -157,49 +180,62 @@ export class DashboardStreamHub {
         cursor: change.cursor,
       });
       this.#retained = [];
+      this.#evictedThrough = 0;
       for (const subscriber of this.#subscribers) this.#push(subscriber, reset);
       return;
     }
     const cursor = cursorNumber(change.cursor);
     if (cursor === undefined) throw new Error(`projection produced a malformed cursor: ${change.cursor}`);
     if (change.kind === "snapshot") {
-
-      this.#retain({ cursorNumber: cursor, generation: this.#projection.generation(), kind: "snapshot" });
-      const byDay = new Map<string, DashboardStreamEnvelope>();
+      this.#retain({ cursorNumber: cursor, kind: "snapshot" });
+      const byDay = new Map<string, Extract<DashboardStreamEnvelope, { type: "snapshot" }>>();
       for (const subscriber of this.#subscribers) {
         let envelope = byDay.get(subscriber.day);
         if (envelope === undefined) {
-          envelope = this.#snapshot(subscriber.day);
+          const built = this.#snapshot(subscriber.day);
+          if (built.cursor !== change.cursor) {
+            throw new Error(`dashboard stream snapshot was built at ${built.cursor}, not at its change cursor ${change.cursor}`);
+          }
+          envelope = built;
           byDay.set(subscriber.day, envelope);
         }
         this.#push(subscriber, envelope);
       }
       return;
     }
-    const envelope = DashboardStreamEnvelopeSchema.parse({
-      type: "patch",
+    const unstamped: UnstampedChange = Object.freeze({
+      type: "change",
       topic: "dashboard-day",
       cursor: change.cursor,
-      payload: change.patch,
+      position: change.position,
+      day: change.patch,
     });
-    this.#retain({
-      cursorNumber: cursor,
-      generation: this.#projection.generation(),
-      kind: "patch",
-      day: change.day,
-      envelope,
-    });
+    this.#retain({ cursorNumber: cursor, kind: "change", day: change.day, change: unstamped });
     for (const subscriber of this.#subscribers) {
-      if (subscriber.day === change.day) this.#push(subscriber, envelope);
+      if (subscriber.day === change.day) this.#push(subscriber, unstamped);
     }
   }
 
   #retain(entry: RetainedEntry): void {
     this.#retained.push(entry);
-    if (this.#retained.length > this.#retention) this.#retained = this.#retained.slice(-this.#retention);
+    while (this.#retained.length > this.#retention) {
+      const evicted = this.#retained.shift();
+      if (evicted !== undefined) this.#evictedThrough = evicted.cursorNumber;
+    }
   }
 
-  #push(subscriber: Subscriber, envelope: DashboardStreamEnvelope): void {
+  /** Stamps a change with this connection's `after` at handout and records what the connection now holds. */
+  #handOut(subscriber: Subscriber, outgoing: Outgoing): DashboardStreamEnvelope {
+    if (outgoing.type === "change") {
+      const envelope = DashboardStreamEnvelopeSchema.parse({ ...outgoing, after: subscriber.handedCursor });
+      subscriber.handedCursor = outgoing.cursor;
+      return envelope;
+    }
+    if (outgoing.type === "snapshot") subscriber.handedCursor = outgoing.cursor;
+    return outgoing;
+  }
+
+  #push(subscriber: Subscriber, envelope: Outgoing): void {
     const phase = subscriber.phase;
     switch (phase.state) {
       case "closed":
@@ -210,7 +246,7 @@ export class DashboardStreamHub {
         if (waiter !== undefined) {
           // A consumer is asking right now; the queue is empty by construction.
           subscriber.phase = { state: "open", queue: phase.queue };
-          waiter(envelope);
+          waiter(this.#handOut(subscriber, envelope));
           return;
         }
         const queue = [...phase.queue, envelope];
@@ -248,7 +284,7 @@ export class DashboardStreamHub {
         const [queued, ...rest] = phase.queue;
         if (queued !== undefined) {
           subscriber.phase = { state: "open", queue: rest };
-          return Promise.resolve(queued);
+          return Promise.resolve(this.#handOut(subscriber, queued));
         }
         return new Promise<DashboardStreamEnvelope | undefined>((resolve) => {
           subscriber.phase = { state: "open", queue: [], waiter: resolve };
@@ -261,93 +297,62 @@ export class DashboardStreamHub {
     }
   }
 
+  /** Resumable when the generation matches and every shared entry above the presented cursor is still retained. */
+  #resumeDecision(input: Readonly<{ lastEventId?: string; lastProjectionGeneration?: number }>): ResumeDecision {
+    if (this.#projection.health().state === "degraded") return { state: "fresh" };
+    const presented = input.lastEventId === undefined ? undefined : cursorNumber(input.lastEventId);
+    const current = cursorNumber(this.#projection.cursor());
+    if (current === undefined) throw new Error(`projection produced a malformed cursor: ${this.#projection.cursor()}`);
+    if (input.lastEventId === undefined || presented === undefined || presented > current
+      || input.lastProjectionGeneration !== this.#projection.generation()) return { state: "fresh" };
+    if (presented < this.#evictedThrough) return { state: "gap", reason: "cursor-expired" };
+    const replay = this.#retained.filter((entry) => entry.cursorNumber > presented);
+    if (replay.some((entry) => entry.kind === "snapshot")) return { state: "gap", reason: "snapshot-boundary" };
+    return { state: "resumable", presentedCursor: input.lastEventId, replay };
+  }
+
   async connect(input: Readonly<{
     day: string;
     lastEventId?: string;
     lastProjectionGeneration?: number;
   }>): Promise<DashboardStreamConnection> {
     const day = z.iso.date().parse(input.day);
-    const subscriber: Subscriber = { day, phase: { state: "open", queue: [] } };
-    const live = this.#projection.health().state !== "degraded";
-    const capturedSnapshot = live ? this.#projection.buildDashboardDayWire(day) : undefined;
-    const capturedGeneration = capturedSnapshot?.projectionGeneration ?? this.#projection.generation();
-    const capturedCursor = capturedSnapshot?.snapshotCursor ?? this.#projection.cursor();
-    const initial: DashboardStreamEnvelope[] = [this.#hello({
-      generation: capturedGeneration,
-      cursor: capturedCursor,
-      descriptorHash: capturedSnapshot?.descriptorHash ?? this.#projection.descriptorSetHash(),
-    })];
+    const decision = this.#resumeDecision(input);
+    // A cursor that is not resumable cannot become resumable while the gap is recorded.
+    if (decision.state === "gap") {
+      await this.#backfillGaps.detected({
+        kind: "backfill-gap",
+        detector: "server-resume",
+        reason: decision.reason,
+        topic: "dashboard-day",
+        requestedCursor: input.lastEventId,
+        currentCursor: this.#projection.cursor(),
+        projectionGeneration: this.#projection.generation(),
+      });
+    }
+    return this.#admit(day, decision.state === "resumable" ? decision : undefined);
+  }
 
-    if (!live) {
+  /** The handoff boundary: one turn of the event loop, so nothing is published between its steps. */
+  #admit(day: string, resume: Extract<ResumeDecision, { state: "resumable" }> | undefined): DashboardStreamConnection {
+    const subscriber: Subscriber = { day, phase: { state: "open", queue: [] }, handedCursor: this.#projection.cursor() };
+    const initial: DashboardStreamEnvelope[] = [this.#hello()];
+    if (this.#projection.health().state === "degraded") {
       initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: "degraded" }));
     } else {
-      const resumeFrom = input.lastEventId === undefined ? undefined : cursorNumber(input.lastEventId);
-      const generation = capturedGeneration;
-      const generationMatches = input.lastProjectionGeneration !== undefined
-        && input.lastProjectionGeneration === generation;
-      const oldest = this.#retained[0];
-      // Resumable only when the retained window provably covers everything
-      // after the presented cursor, in the current generation.
-      const current = cursorNumber(capturedCursor);
-      const atHead = generationMatches
-        && resumeFrom !== undefined && current !== undefined && resumeFrom === current;
-      const retainedWindowCovers = generationMatches
-        && resumeFrom !== undefined
-        && oldest !== undefined
-        && resumeFrom >= oldest.cursorNumber - 1
-        && current !== undefined
-        && resumeFrom < current
-        && this.#retained.every((entry) => entry.generation === generation);
-      const resumable = atHead || retainedWindowCovers;
-      const window = resumable
-        ? this.#retained.filter((entry) => entry.cursorNumber > resumeFrom)
-        : undefined;
-      if (window !== undefined && window.every((entry) => entry.kind === "patch")) {
-        for (const entry of window) {
-          if (entry.day === day) initial.push(entry.envelope);
-        }
+      const handoff: Outgoing[] = [];
+      if (resume === undefined) {
+        // The connection's own cursor; the day is frozen at it.
+        this.#projection.takeCursor();
+        handoff.push(this.#snapshot(day));
       } else {
-        let handshakeRestarted = false;
-        const isHistoricalCursor = generationMatches
-          && resumeFrom !== undefined
-          && current !== undefined
-          && resumeFrom < current;
-        if (isHistoricalCursor) {
-          await this.#backfillGaps.detected({
-            kind: "backfill-gap",
-            detector: "server-resume",
-            reason: window === undefined ? "cursor-expired" : "snapshot-boundary",
-            topic: "dashboard-day",
-            requestedCursor: input.lastEventId,
-            currentCursor: capturedCursor,
-            projectionGeneration: generation,
-          });
-          const refreshed = this.#projection.buildDashboardDayWire(day);
-          initial.splice(0, initial.length,
-            this.#hello({
-              generation: refreshed.projectionGeneration,
-              cursor: refreshed.snapshotCursor,
-              descriptorHash: refreshed.descriptorHash,
-            }),
-            DashboardStreamEnvelopeSchema.parse({
-              type: "snapshot",
-              topic: "dashboard-day",
-              cursor: refreshed.snapshotCursor,
-              payload: refreshed,
-            }));
-          handshakeRestarted = true;
+        subscriber.handedCursor = resume.presentedCursor;
+        for (const entry of resume.replay) {
+          if (entry.kind === "change" && entry.day === day) handoff.push(entry.change);
         }
-        // Not resumable, or a count-bearing snapshot marker sits inside the
-        // window: a fresh snapshot supersedes whatever the client held.
-        if (!handshakeRestarted) {
-          initial.push(DashboardStreamEnvelopeSchema.parse({
-            type: "snapshot",
-            topic: "dashboard-day",
-            cursor: capturedCursor,
-            payload: capturedSnapshot,
-          }));
-        }
+        handoff.push({ type: "change", topic: "dashboard-day", cursor: this.#projection.takeCursor(), position: this.#projection.position() });
       }
+      for (const outgoing of handoff) initial.push(this.#handOut(subscriber, outgoing));
       initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: "live" }));
     }
 

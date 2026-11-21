@@ -203,8 +203,8 @@ export interface RunQueueProjectionDeps {
 }
 
 export type RunQueueProjectionChange =
-  | { readonly kind: "patch"; readonly cursor: string; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
-  | { readonly kind: "snapshot"; readonly cursor: string }
+  | { readonly kind: "patch"; readonly cursor: string; readonly position: number; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
+  | { readonly kind: "snapshot"; readonly cursor: string; readonly position: number }
   | { readonly kind: "generation"; readonly cursor: string };
 
 export interface RunQueueProjectionHealth {
@@ -323,7 +323,10 @@ export class RunQueueProjection {
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
   #storedCanonical: { key: string; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
-  #cursorValue = 0;
+  /** One step per emitted envelope; the projection is the only owner of the sequence. */
+  #cursorValue = 1;
+  /** One step per folded span event; orders a run's projected log entries. */
+  #foldRevision = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
 
@@ -351,7 +354,18 @@ export class RunQueueProjection {
   }
 
   cursor(): string {
-    return ProjectionCursorSchema.parse(`pc:${String(Math.max(1, this.#cursorValue))}`);
+    return ProjectionCursorSchema.parse(`pc:${String(this.#cursorValue)}`);
+  }
+
+  /** Advance the sequence for one envelope and name its cursor. */
+  takeCursor(): string {
+    this.#cursorValue += 1;
+    return this.cursor();
+  }
+
+  /** The highest `timeline_events.cursor` folded so far. */
+  position(): number {
+    return this.#timelineCursor;
   }
 
   runFold(runId: string): RunFoldRecord | undefined {
@@ -377,7 +391,7 @@ export class RunQueueProjection {
   apply(event: SpanEventWire): void {
     try {
       const affected = this.#fold(event);
-      this.#cursorValue += 1;
+      this.#foldRevision += 1;
       this.#notify(affected);
     } catch (error) {
       this.#degrade(`projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`);
@@ -400,7 +414,7 @@ export class RunQueueProjection {
       let workerChanged = false;
       for (const { event, line } of events) {
         const affected = this.#fold(event, line);
-        this.#cursorValue += 1;
+        this.#foldRevision += 1;
         this.#recordRunLog(event, line);
         for (const runId of affected.runIds) runIds.add(runId);
         workerChanged ||= affected.workerChanged;
@@ -418,7 +432,6 @@ export class RunQueueProjection {
       const fingerprint = this.#captureSharedAuthorityFingerprint();
       if (fingerprint === this.#workerAuthorityFingerprint) return;
       this.#workerAuthorityFingerprint = fingerprint;
-      this.#cursorValue += 1;
       this.#notify({ runIds: [], workerChanged: true });
     } catch (error) {
       this.#degrade(`worker authority reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -437,7 +450,7 @@ export class RunQueueProjection {
     if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
     const entries = this.#runLogs.get(event.runId) ?? [];
     if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);
-    entries.push(Object.freeze({ event, line, revision: this.#cursorValue }));
+    entries.push(Object.freeze({ event, line, revision: this.#foldRevision }));
   }
 
   /** Rebuild derived views from a consistent SQLite timeline snapshot. */
@@ -451,17 +464,17 @@ export class RunQueueProjection {
       this.#workers.clear();
       this.#runLogs.clear();
       this.#notifiedRows.clear();
-      this.#cursorValue = 0;
+      this.#foldRevision = 0;
       for (const { event, line } of events) {
         this.#fold(event, line);
-        this.#cursorValue += 1;
+        this.#foldRevision += 1;
         this.#recordRunLog(event, line);
       }
       // The tail resumes from exactly what this rebuild consumed — set
       // together with `live` so the two ingest paths can never overlap.
       this.#timelineCursor = whole.cursor;
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
-      this.#cursorValue = Math.max(1, this.#cursorValue);
+      this.#cursorValue = 1;
       this.#health = { state: "live" };
       this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
       const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
@@ -476,7 +489,6 @@ export class RunQueueProjection {
 
 
   refreshRun(runId: string): void {
-    this.#cursorValue += 1;
     this.#notify({ runIds: [runId], workerChanged: false });
   }
 
@@ -736,7 +748,7 @@ export class RunQueueProjection {
   // Row patches carry no count tuples; count changes require a snapshot.
   #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): void {
     const publications = this.#deps.reader.withRunTreeSnapshot([], () => {
-      const changes: RunQueueProjectionChange[] = [];
+      const patches: { day: string; patch: z.infer<typeof DashboardDayPatchSchema> }[] = [];
       let snapshotNeeded = affected.workerChanged;
       let batchPresentationChanged = false;
       let crossDayMembersChanged = false;
@@ -797,9 +809,7 @@ export class RunQueueProjection {
           snapshotNeeded = true;
           continue;
         }
-        changes.push({
-          kind: "patch",
-          cursor: this.cursor(),
+        patches.push({
           day,
           patch: DashboardDayPatchSchema.parse({
             operation: "replace-queue-surface",
@@ -808,15 +818,15 @@ export class RunQueueProjection {
           }),
         });
       }
-      const snapshotOnly = forceSnapshot || batchPresentationChanged || crossDayMembersChanged
-        || changes.filter(change => change.kind === "patch").length > 1;
+      const snapshotOnly = forceSnapshot || batchPresentationChanged || crossDayMembersChanged || patches.length > 1;
       if (snapshotOnly) snapshotNeeded = true;
       if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
-      if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.cursor() });
-      const publications: readonly RunQueueProjectionChange[] = snapshotOnly
-        ? [{ kind: "snapshot", cursor: this.cursor() }]
-        : changes;
-      return publications;
+      // Each emitted change takes its own cursor, in emission order.
+      const position = this.#timelineCursor;
+      const changes: RunQueueProjectionChange[] = snapshotOnly ? []
+        : patches.map(patch => ({ kind: "patch" as const, cursor: this.takeCursor(), position, ...patch }));
+      if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.takeCursor(), position });
+      return changes;
     });
     for (const change of publications) {
       for (const listener of this.#listeners) listener(change);
