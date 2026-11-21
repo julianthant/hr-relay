@@ -12,8 +12,8 @@ import { AssistantRefusalCodeSchema } from "../../../src/models/profiles/assista
 describe("error catalog", () => {
   it("keeps stopped backup closure and changed-source refusals fixed and private", () => {
     const expected = {
-      STORAGE_BACKUP_CLOSURE_UNPROVED: "Relay could not verify a completed browser closure step for this backup. The backup is refused; preserve the current installation for recovery.",
-      STORAGE_BACKUP_SOURCE_CHANGED: "The source no longer matches the retained backup. The first backup is preserved; keep this installation for recovery.",
+      STORAGE_BACKUP_CLOSURE_UNPROVED: "The browser may not have closed for this backup, so it was refused. Keep this installation.",
+      STORAGE_BACKUP_SOURCE_CHANGED: "The source no longer matches the saved backup. Keep this installation for recovery.",
     };
     for (const code of ["STORAGE_BACKUP_CLOSURE_UNPROVED", "STORAGE_BACKUP_SOURCE_CHANGED"] as const) {
       assert.equal(ErrorCatalogCodeSchema.parse(code), code);
@@ -37,7 +37,7 @@ describe("error catalog", () => {
     const resolved = resolveErrorCatalogFailure({ code: "DELEGATION_OUTCOME_POLICY_UNSATISFIED", parameters: {}, summary: "delegation-outcome-policy-unsatisfied" }, "http-response");
     assert.equal(resolved.state, "resolved");
     if (resolved.state !== "resolved") throw new Error("delegation policy catalog unresolved");
-    assert.equal(resolved.text, "A step this run depends on did not finish, so the run stopped. Open that step for the reason.");
+    assert.equal(resolved.text, "A step this run needs did not finish. Open it for why.");
   });
 
   it("maps the HTTP internal failure code without exposing its native cause", () => {
@@ -45,30 +45,30 @@ describe("error catalog", () => {
     const resolved = resolveErrorCatalogFailure(failure, "http-response");
     assert.equal(resolved.state, "resolved");
     assert.equal(resolved.code, "INTERNAL_FAILURE");
-    assert.equal(resolved.text, "Relay could not complete this request. Review the recorded local evidence before trying again.");
+    assert.equal(resolved.text, "Relay could not complete this request. Try again.");
     assert.equal(resolved.text.includes(failure.summary), false);
   });
   it("registers Person Lookup and shared sign-in codes with fixed sentence-case text", () => {
     const expected = {
-      PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS: "Match requires a date of birth or SSN.",
+      PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS: "A date of birth or SSN is needed to match.",
       PERSON_LOOKUP_NOT_FOUND: "Person not found.",
       PERSON_LOOKUP_MULTIPLE_MATCHES: "Multiple people match; none was chosen.",
       PERSON_LOOKUP_MATCH_MULTIPLE_MATCHES: "Multiple UCPath people match; none was chosen.",
       PERSON_LOOKUP_EMPLOYMENT_STATUS_UNDETERMINED: "Employment status could not be determined.",
-      INCONSISTENT_INPUTS: "Person Lookup received inconsistent UCPath and CRM identities.",
+      INCONSISTENT_INPUTS: "The UCPath and CRM records are for different people.",
       PERSON_LOOKUP_UCPATH_SEARCH_FAILED: "UCPath search failed.",
-      PERSON_LOOKUP_CRM_RECORD_IDENTITY_DRIFT: "CRM selected record identity changed.",
+      PERSON_LOOKUP_CRM_RECORD_IDENTITY_DRIFT: "The selected CRM record changed.",
       PERSON_LOOKUP_CRM_CHECK_FAILED: "CRM check failed.",
       PERSON_LOOKUP_CRM_DATES_CHECK_FAILED: "CRM dates check failed.",
-      PERSON_LOOKUP_CRM_DATES_BINDING_INVALID: "CRM dates subject binding is invalid.",
-      SHIBBOLETH_STALE_REQUEST: "Shibboleth served its stale-request page; the SAML execution expired during login.",
-      DUO_PROMPT_STALLED: "The Duo prompt never cleared; check that Fast Duo is loaded and its credential is current.",
-      DUO_REFUSAL_UNPROVEN: "The Duo prompt never cleared, and its terminal refusal could not be probed.",
-      SSO_FIRST_FACTOR_REJECTED: "The UCSD SSO form is still on the page; the first factor was rejected.",
-      LANDING_PROBE_UNAVAILABLE: "No authenticated landing appeared, and the stalled page could not be probed.",
-      AUTHENTICATED_LANDING_MISSING: "No authenticated landing appeared.",
-      TRAINING_REMINDER_REPEATED: "The UCSD training reminder appeared again after Continue Log In.",
-      DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run it again; if it repeats, check Fast Duo.",
+      PERSON_LOOKUP_CRM_DATES_BINDING_INVALID: "The CRM dates do not belong to this person.",
+      SHIBBOLETH_STALE_REQUEST: "Sign-in expired partway. Run it again.",
+      DUO_PROMPT_STALLED: "The Duo prompt never cleared. Check Fast Duo is loaded and current.",
+      DUO_REFUSAL_UNPROVEN: "The Duo prompt never cleared, and the reason could not be read.",
+      SSO_FIRST_FACTOR_REJECTED: "The UCSD sign-in rejected the password.",
+      LANDING_PROBE_UNAVAILABLE: "Sign-in did not finish, and the stalled page could not be read.",
+      AUTHENTICATED_LANDING_MISSING: "Sign-in did not finish.",
+      TRAINING_REMINDER_REPEATED: "The UCSD training reminder came back after Continue Log In.",
+      DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run again; if it repeats, check Fast Duo.",
       UCPATH_MAINTENANCE: "UCPath is down for maintenance. Try again later.",
       UCPATH_SIGN_IN_FAILED: "UCPath sign-in failed.",
       CRM_SIGN_IN_FAILED: "CRM sign-in failed.",
@@ -89,9 +89,9 @@ describe("error catalog", () => {
 
   it("registers spreadsheet parsing refusals with operator recovery text", () => {
     const expected = {
-      SPREADSHEET_WORKSHEET_REFERENCE_INVALID: "This workbook has an invalid worksheet reference. Export a new XLSX copy and try again.",
-      SPREADSHEET_WORKBOOK_XML_INVALID: "This workbook could not be read. Export a new XLSX copy and try again.",
-      SPREADSHEET_DIMENSIONS_INVALID: "This workbook has an invalid worksheet range. Export a new XLSX copy and try again.",
+      SPREADSHEET_WORKSHEET_REFERENCE_INVALID: "This workbook has a bad worksheet reference. Export a new XLSX copy.",
+      SPREADSHEET_WORKBOOK_XML_INVALID: "This workbook could not be read. Export a new XLSX copy.",
+      SPREADSHEET_DIMENSIONS_INVALID: "This workbook has a bad worksheet range. Export a new XLSX copy.",
     } as const;
     for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
       const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
@@ -102,17 +102,17 @@ describe("error catalog", () => {
 
   it("registers the exact Settings integration codes and fixed messages", () => {
     const expected = {
-      SETTINGS_INITIAL_READ_UNAVAILABLE: "Relay could not load your settings. Reload the page to try again.",
-      SETTINGS_REFRESH_UNAVAILABLE: "Current settings could not be read. Your drafts are retained.",
-      SETTINGS_DRAFT_INVALID: "Check the draft values. No request was sent.",
-      PROTECTED_SETTINGS_DRAFT_INVALID: "Check the credential draft. No request was sent.",
-      STORAGE_RELOCATION_DRAFT_INVALID: "Check the folder paths. No plan was sent.",
-      STORAGE_RELOCATION_DRAFT_UNCHANGED: "The draft matches the current plan. Undo the edit or choose another folder.",
-      STORAGE_RELOCATION_CANCEL_REQUIRED: "Cancel the current plan to keep the active locations, or choose another folder.",
-      SETTINGS_PATH_PICKER_BUSY: "Another path picker is already open.",
-      SETTINGS_PATH_PICKER_TIMEOUT: "The path picker timed out. Try again.",
-      SETTINGS_PATH_PICKER_UNSUPPORTED: "The path picker is unavailable on this host.",
-      SETTINGS_PATH_PICKER_FAILED: "The path picker could not be opened. Try again.",
+      SETTINGS_INITIAL_READ_UNAVAILABLE: "Settings could not load. Reload the page.",
+      SETTINGS_REFRESH_UNAVAILABLE: "Settings could not refresh. Your drafts are kept.",
+      SETTINGS_DRAFT_INVALID: "Check the draft values. Nothing was sent.",
+      PROTECTED_SETTINGS_DRAFT_INVALID: "Check the credential draft. Nothing was sent.",
+      STORAGE_RELOCATION_DRAFT_INVALID: "Check the folder paths. Nothing was sent.",
+      STORAGE_RELOCATION_DRAFT_UNCHANGED: "The draft matches the current plan. Undo the edit or pick another folder.",
+      STORAGE_RELOCATION_CANCEL_REQUIRED: "Cancel the current plan to keep the current folders, or pick another.",
+      SETTINGS_PATH_PICKER_BUSY: "A folder picker is already open.",
+      SETTINGS_PATH_PICKER_TIMEOUT: "The folder picker timed out. Try again.",
+      SETTINGS_PATH_PICKER_UNSUPPORTED: "The folder picker is unavailable on this computer.",
+      SETTINGS_PATH_PICKER_FAILED: "The folder picker did not open. Try again.",
     } as const;
     for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
       const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
@@ -123,7 +123,7 @@ describe("error catalog", () => {
 
   it("registers the exact Logs integration messages through the catalog types", () => {
     const expected = {
-      DASHBOARD_READ_FAILED: "The dashboard could not load this from the local service. Try again.",
+      DASHBOARD_READ_FAILED: "This could not load. Try again.",
       LOGS_READ_FAILED_TITLE: "Could not load logs",
       LOGS_UNAVAILABLE_TITLE: "Logs unavailable",
     } as const;
@@ -224,7 +224,7 @@ describe("error catalog", () => {
       const result = resolveErrorCatalogFailure(originalFailure, "http-response");
       assert.equal(result.state, "resolved");
       assert.equal(result.code, "BOUNDARY_VALIDATION_FAILED");
-      assert.equal(result.text, "The supplied data does not match the expected contract.");
+      assert.equal(result.text, "The data sent was not in the expected form.");
       assert.deepEqual(result.parameters, { source: "http-response" });
       assert.equal(ERROR_CATALOG.BOUNDARY_VALIDATION_FAILED.parameters.safeParse(result.parameters).success, true);
       assert.equal(
@@ -267,15 +267,15 @@ describe("error catalog", () => {
   });
   it("registers every assistant refusal code with fixed operator text", () => {
     const expected = {
-      ASSISTANT_AUTHORITY_INVALID: "The assistant permission could not be read. No action was taken.",
-      ASSISTANT_MODEL_PROPOSAL_REFUSED: "The assistant proposal was refused. No action was taken.",
-      ASSISTANT_PROPOSAL_MISMATCH: "The assistant proposal does not match this command. No action was taken.",
-      ASSISTANT_UNCLASSIFIED: "This command is not classified for the assistant. No action was taken.",
-      ASSISTANT_OPTIONS_UNBOUND: "This command's options cannot be bound exactly. No action was taken.",
-      ASSISTANT_SUBJECT_MISMATCH: "This command's subject does not match its classification. No action was taken.",
-      ASSISTANT_BINDING_STALE: "The assistant approval no longer matches this command. No action was taken.",
-      ASSISTANT_UNKNOWN_NOT_REPLAYABLE: "An uncertain assistant result cannot be replayed. Check its result before taking further action.",
-      ASSISTANT_EFFECT_UNDERSTATED: "This command does more than its assistant classification says. No action was taken.",
+      ASSISTANT_AUTHORITY_INVALID: "The assistant’s permission could not be read. Nothing was done.",
+      ASSISTANT_MODEL_PROPOSAL_REFUSED: "The proposal was refused. Nothing was done.",
+      ASSISTANT_PROPOSAL_MISMATCH: "The proposal does not match this action. Nothing was done.",
+      ASSISTANT_UNCLASSIFIED: "The assistant cannot do this action. Nothing was done.",
+      ASSISTANT_OPTIONS_UNBOUND: "This action’s options cannot be matched exactly. Nothing was done.",
+      ASSISTANT_SUBJECT_MISMATCH: "This action’s person does not match. Nothing was done.",
+      ASSISTANT_BINDING_STALE: "The approval no longer matches this action. Nothing was done.",
+      ASSISTANT_UNKNOWN_NOT_REPLAYABLE: "An unclear result cannot be repeated. Check it before doing more.",
+      ASSISTANT_EFFECT_UNDERSTATED: "This does more than the assistant described. Nothing was done.",
     } as const;
     assert.deepEqual([...AssistantRefusalCodeSchema.options].sort(), Object.keys(expected).sort());
     for (const code of AssistantRefusalCodeSchema.options) {
@@ -289,7 +289,7 @@ describe("error catalog", () => {
 
 it("owns Sessions availability and actual worker failure labels with strict empty parameters", () => {
   const entries = {
-    SESSIONS_UNAVAILABLE: "Session information is unavailable.",
+    SESSIONS_UNAVAILABLE: "Sessions are unavailable.",
     WORKER_CRASHED: "crashed",
   } as const;
   for (const code of Object.keys(entries) as (keyof typeof entries)[]) {
@@ -305,7 +305,7 @@ it("owns Sessions availability and actual worker failure labels with strict empt
 
 it("registers delegation config failure with fixed operator text and no private cause", () => {
   const code = ErrorCatalogCodeSchema.parse("DELEGATION_CONFIG_UNAVAILABLE");
-  const expected = "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.";
+  const expected = "Saved settings could not be checked, so the next workflow stopped.";
   assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, expected);
   const resolved = resolveErrorCatalogFailure({ code, parameters: {}, summary: "private retained snapshot mismatch" }, "http-response");
   assert.equal(resolved.state, "resolved");

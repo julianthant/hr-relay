@@ -102,7 +102,7 @@ it.each(['download', 'parse', 'abort', 'revoked'] as const)('creates nothing whe
   const original = service.create(workbook()), before = service.catalog();
   const imported = service.importSharePoint({ source: 'sharepoint', url, name: 'Remote' }, controller.signal);
   if (failure === 'parse') await expect(imported).rejects.toMatchObject({ code: 'WORKBOOK_SYNC_IMPORT_FAILED',
-    message: 'The downloaded file cannot be imported as a supported workbook.' });
+    message: 'The downloaded file is not a supported workbook.' });
   else await expect(imported).rejects.toThrow();
   expect(service.catalog()).toEqual(before);
   expect(service.list()).toEqual([original]);

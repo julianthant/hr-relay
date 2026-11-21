@@ -97,7 +97,7 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
 });
 it("shows retained failed-run workflow and reason without unavailable text or an inferred source policy", () => {
-  const summary = "UCPath could not be reached. Check the connection and review the run evidence.";
+  const summary = "UCPath could not be reached. Check the connection.";
   const retained = row("run-failed", { title: "Run failed", summary,
     context: { state: "workflow-only", workflow: "Onboarding" }, sourceEvent: { state: "unavailable" } });
   const projection = inboxProjection([retained], now);

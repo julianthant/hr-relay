@@ -530,7 +530,7 @@ export function toggleStepSelection(
 /** The footer's short reason while Continue is held; the sentence below stays as the refusal text. */
 export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
 /** The one sentence for a required reference spreadsheet that was never chosen. */
-export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
+export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. One picked only as a check does not count.";
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
