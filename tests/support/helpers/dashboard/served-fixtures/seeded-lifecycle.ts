@@ -30,6 +30,28 @@ deriveWriteBindingProofDigest,
 import { PersonLookupCanonicalInput } from "../../../../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,FAILURE_FINGERPRINT,INGRESS_SCHEMA_HASH,SEEDED_AT,SEEDED_NOW,WORKFLOW_ID } from "./seeded-identity.js";
+import { randomUUID } from "node:crypto";
+import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
+import { createWorkbookLibraryAdapter } from "../../../../../src/backend/processing/providers/workbook-library-adapter.js";
+import { createRunWorkbookService } from "../../../../../src/backend/runs/workbooks.js";
+import type { RunExecutorDependencies } from "../../../../../src/backend/runtime/execution/run-executor.js";
+import { createWriteSequencer } from "../../../../../src/backend/runtime/writes/write-sequencer.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/fake.js";
+import { deterministicPayPathOperations } from "../../../../../src/backend/systems/ucpath/driver/paypath-fake.js";
+import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../../src/models/processing/workbooks/reference-check-stop.js";
+import { REFERENCE_CHECK } from "../../../../../src/models/processing/workbooks/verify-person.js";
+import { UcpathPayPathReadSchema } from "../../../../../src/models/ui/ucpath-paypath.js";
+import type { TestClock } from "../../../../../src/rules/time/clock.js";
+import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
+import { workStudyWorkflow } from "../../../../../src/workflows/work-study/workflow.js";
+import { testRunLifecycle } from "../../../fixtures/run-lifecycle-fixtures.js";
+import { canonicalChildExecution } from "../../backend/canonical-child-execution.js";
+import { unexpectedWorkbookSync } from "../../backend/workbook-sync.js";
+import { duoCeremonyGatesOver } from "../../duo-ceremony-fixtures.js";
+import { ManualScheduler, recordingLogger, sessionFactoryHarness, sessionManagerFor } from "../../phase1f-executor-harness.js";
+import { protectedSecretSource } from "../../protected-secret-source.js";
+import { registeredModule } from "../../registered-workflows.js";
 
 
 /* ── deterministic identities ────────────────────────────────────────────── */
@@ -593,7 +615,8 @@ export function finishRunningStep(world: SeedWorld): string {
   return run.envelope.runId;
 }
 
-/** Gate parking: the running run parks at its declared node `cross-verify`, as the seeded gate run did. */
+/** The seed's own park: the running Person Lookup run takes the `parked-gate` lifecycle at its task node `cross-verify`.
+ * Person Lookup declares no gate; `createDeclaredGateDrive` parks a run at a gate its workflow declares. */
 export function parkRunningRunAtGate(world: SeedWorld): string {
   const run = seededRun(world, RUNNING_SEED);
   world.spans.emit({
@@ -613,4 +636,98 @@ export function parkRunningRunAtGate(world: SeedWorld): string {
 /** The notification event a publication drive sends: the seeded done run, verified. */
 export function seededDoneNotificationEvent(): { kind: "verified-done"; runId: string; workflowId: string } {
   return { kind: "verified-done", runId: uuidOf(DONE_SEED), workflowId: WORKFLOW_ID };
+}
+
+
+/* ── drive: a run parked at a gate its workflow declares, by the production executor ── */
+
+/** Work-Study declares the operator gate `reference-check-review`; its executor parks there when a picked spreadsheet lacks the employee. */
+export const DECLARED_GATE_MODULE = registeredModule(workStudyWorkflow);
+export const DECLARED_GATE_DESCRIPTOR: AnyWorkflowDescriptor = DECLARED_GATE_MODULE.descriptor;
+export const DECLARED_GATE_ID = REFERENCE_CHECK_REVIEW_GATE;
+
+const GATE_RUN_EMPL_ID = "10000001";
+const GATE_RUN_POOL_INDEX = 1;
+
+export interface DeclaredGateDrive {
+  /** Starts a Work-Study run through the start plan and the executor, held at its first UCPath read; answers its run id. */
+  start(): Promise<string>;
+  /** Lets the held run go on: the executor finishes the read and the reference check and parks at the declared gate. */
+  park(): Promise<string>;
+  close(): Promise<void>;
+}
+
+export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, profilePath: string): DeclaredGateDrive {
+  const { database } = world;
+  const descriptor = DECLARED_GATE_DESCRIPTOR;
+  const resolve = (workflowId: string): AnyWorkflowDescriptor | undefined => workflowId === String(descriptor.id) ? descriptor : undefined;
+  let held: Readonly<{ runId: string; workerId: string; release: () => void; settled: Promise<RunRecord | undefined>; close: () => Promise<void> }> | undefined;
+
+  async function start(): Promise<string> {
+    if (held !== undefined) throw new Error("the seeded server already drives one declared-gate run");
+    let entered = (): void => undefined, release = (): void => undefined;
+    const atRead = new Promise<void>(done => { entered = done; }), released = new Promise<void>(done => { release = done; });
+    const paypath = deterministicPayPathOperations({ read: UcpathPayPathReadSchema.parse({
+      pageStateId: "ucpath.paypath.position-data-ready", observedAt: SEEDED_NOW, emplId: GATE_RUN_EMPL_ID, displayedName: "Lee, Jordan",
+      position: { effectiveDate: "07/01/2026", positionChangeReason: "", positionPool: "", positionNumber: "40012345" },
+    }) });
+    const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath,
+      readPayPathPosition: async (input: Parameters<typeof paypath.readPayPathPosition>[0]) => { entered(); await released; return paypath.readPayPathPosition(input); } }) });
+    const manager = await sessionManagerFor(sessions, clock, undefined, undefined, duoCeremonyGatesOver(database, clock));
+    const scheduler = new ManualScheduler(clock, 0);
+    const log = recordingLogger().log;
+    const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
+    const runWorkbooks = createRunWorkbookService({ database, clock });
+    const base: RunExecutorDependencies = {
+      lifecycle: testRunLifecycle(database, clock), descriptor, stores: taskStoreRegistry, authority: database, sessions: manager,
+      emitter: world.spans, clock, ids: { uuid: randomUUID }, scheduler, taskDeadlineMs: 60_000, log,
+    };
+    const writeSequencer = createWriteSequencer({ lifecycle: base.lifecycle, stores: base.stores, authority: database, sessions: manager,
+      emitter: world.spans, clock, ids: { uuid: randomUUID }, scheduler, taskDeadlineMs: 60_000, operator: "local-operator", log });
+    const execution = canonicalChildExecution({ ...base, taskNotes: world.notes, writeSequencer }, database, profilePath, resolve, undefined, {
+      poolIndex: GATE_RUN_POOL_INDEX, workbooks: library,
+      protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper", profileInitials: "TQ" }),
+      resources: (_reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
+        adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
+          references: { runId: run.envelope.runId, write: () => { throw new Error("the reference check must not write a reference"); },
+            verifyPerson: command => runWorkbooks.verifyPerson(run, command) } }) } } }) });
+    // A reference spreadsheet without the employee: the check reports "not found" and the review gate applies.
+    const saved = library.create({ name: "Badge list", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Issued", width: 1, hidden: [], headerRow: 1,
+      columnBindings: [{ id: "column-0", sourceColumn: 0, sourceHeader: "eid", fieldId: "eid", basis: "manual" as const }],
+      rows: [{ id: "header", cells: [{ value: "eid" }] }, { id: "row-0", cells: [{ value: "10000009" }] }] }] });
+    const queued = execution.start(descriptor, { emplId: GATE_RUN_EMPL_ID, effectiveDate: "08/03/2026" }, { dryRun: false, workbookReferences: [{
+      entry: 1, typeId: REFERENCE_CHECK.id, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
+      sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version }] });
+    const runId = queued.envelope.runId;
+    const settled = execution.execute(queued, new AbortController().signal).then(({ run }) => run);
+    await Promise.race([atRead, settled.then(run => { throw new Error(`the declared-gate run ended before its UCPath read: ${run?.lifecycle.state ?? "absent"}`); })]);
+    const lifecycle = database.authority.runs.get(runId)?.lifecycle;
+    if (lifecycle?.state !== "running") throw new Error(`the declared-gate run is ${lifecycle?.state ?? "absent"} at its UCPath read, not running`);
+    world.workers.set(lifecycle.workerId, WorkerActivitySchema.parse({ state: "busy", runId }));
+    held = { runId, workerId: lifecycle.workerId, release, settled, close: () => manager.closeAll("worker-stop") };
+    return runId;
+  }
+
+  async function park(): Promise<string> {
+    if (held === undefined) throw new Error("no declared-gate run was started");
+    held.release();
+    const run = await held.settled;
+    if (run?.lifecycle.state !== "parked-gate" || String(run.lifecycle.gateId) !== DECLARED_GATE_ID) {
+      const failures = database.authority.failures.listByRun(held.runId).map(failure => `${failure.code}: ${failure.summary}`);
+      throw new Error(`the run did not park at ${DECLARED_GATE_ID}: ${run?.lifecycle.state ?? "absent"} ${JSON.stringify(failures)}`);
+    }
+    world.workers.set(held.workerId, WorkerActivitySchema.parse({ state: "idle" }));
+    return held.runId;
+  }
+
+  async function close(): Promise<void> {
+    if (held === undefined) return;
+    const current = held;
+    held = undefined;
+    current.release();
+    await current.settled;
+    await current.close();
+  }
+
+  return { start, park, close };
 }

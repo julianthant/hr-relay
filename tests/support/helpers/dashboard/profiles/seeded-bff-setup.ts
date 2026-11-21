@@ -11,7 +11,8 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
-import { finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
+import { createDeclaredGateDrive, DECLARED_GATE_DESCRIPTOR, finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
+import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
 
 import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -51,8 +52,12 @@ export interface SeededDrive {
   startQueuedRunAheadOfItsRow(): string;
   /** The running run's open task span ends; answers its run id. */
   finishRunningStep(): string;
-  /** The running run parks at its declared node; answers its run id. */
+  /** The running Person Lookup run takes the parked-gate lifecycle at its task node `cross-verify`; answers its run id. */
   parkRunningRunAtGate(): string;
+  /** A Work-Study run is started through the start plan and the executor and held at its first UCPath read; answers its run id. */
+  startDeclaredGateRun(): Promise<string>;
+  /** The held Work-Study run goes on and its executor parks it at the gate the workflow declares; answers its run id. */
+  parkAtDeclaredGate(): Promise<string>;
   /** A notification is published through the inbox and reaches every open stream. Product app only. */
   publishNotification(): Promise<void>;
 }
@@ -152,7 +157,8 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     try {
     seedRuntimeConfig(database, clock);
     const descriptors = {
-      resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
+      resolve: (workflowId: string): AnyWorkflowDescriptor | undefined => workflowId === WORKFLOW_ID ? personLookupDescriptor
+        : workflowId === String(DECLARED_GATE_DESCRIPTOR.id) ? DECLARED_GATE_DESCRIPTOR : undefined,
     };
     const projection = createRunQueueProjection({
       timeline: database.authority.timelineEvents,
@@ -214,11 +220,14 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       projection.reconcileWorkerAuthority();
       return result;
     };
+    const declaredGate = createDeclaredGateDrive(world, clock, profile.path);
     const drive: SeededDrive = Object.freeze({
       startQueuedRun: () => settle(startQueuedRun(world)),
       startQueuedRunAheadOfItsRow: () => startQueuedRun(world),
       finishRunningStep: () => settle(finishRunningStep(world)),
       parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
+      startDeclaredGateRun: async () => settle(await declaredGate.start()),
+      parkAtDeclaredGate: async () => settle(await declaredGate.park()),
       publishNotification: async () => {
         if (notificationInbox === undefined) throw new Error("the seeded server publishes notifications only as the product app");
         await notificationInbox.publish(seededDoneNotificationEvent());
@@ -279,6 +288,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
             server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
           });
           hub.close();
+          await declaredGate.close();
         } catch (error) {
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workers } });

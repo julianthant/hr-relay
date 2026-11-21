@@ -13,7 +13,7 @@ export const {
   startSeededServer
 } = createSeededBffSetup( {
   seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => seedInitialSettingsRuntimeConfig(database, clock),
-  composeFixtureServices: (input) => { const { app, hub } = composeSeededServices(input); return { app, hub }; },
+  composeFixtureServices: composeSeededServices,
   assertServedBundle,
   dateNavigationReader,
   seedDateNavigation

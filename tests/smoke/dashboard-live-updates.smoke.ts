@@ -2,7 +2,7 @@
 import type { Page } from "@playwright/test";
 import type { DashboardPage } from "../support/helpers/dashboard/smoke/dashboard-page.js";
 import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
-import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
+import { expect, SEEDED_PREFERENCE_WRITE, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
 /** The once-a-second lifecycle poll is not caused by an event and is counted apart. */
 const LIFECYCLE_POLL = "/api/v1/application-lifecycle";
@@ -28,23 +28,32 @@ async function quiet(page: Page, seen: readonly string[]): Promise<void> {
   }
 }
 
-type RunEvent = "run starting" | "run starting, its row not yet reconciled" | "step finishing" | "gate parking";
+type RunEvent = "run starting" | "run starting, its row not yet reconciled" | "step finishing" | "gate parking" | "declared gate parking";
 type View = "queue only" | "that run open" | "another run open";
 
-const DRIVE: Record<RunEvent, (server: SeededServer) => string> = {
-  "run starting": server => server.drive.startQueuedRun(),
-  "run starting, its row not yet reconciled": server => server.drive.startQueuedRunAheadOfItsRow(),
-  "step finishing": server => server.drive.finishRunningStep(),
-  "gate parking": server => server.drive.parkRunningRunAtGate(),
+const seededRun = (key: string) => (server: SeededServer): string => {
+  const runId = server.runIds[key];
+  if (runId === undefined) throw new Error(`Missing seeded run: ${key}`);
+  return runId;
 };
-const EVENT_RUN: Record<RunEvent, string> = { "run starting": "queuedRun", "run starting, its row not yet reconciled": "queuedRun", "step finishing": "runningRun", "gate parking": "runningRun" };
+/** `run` answers the run the event will move, before the page opens; `fire` is the event. */
+/** `workflow` is the queue the run's row is on, when it is not the one the dashboard opens on. */
+const EVENTS: Record<RunEvent, { workflow?: string; run(server: SeededServer): string | Promise<string>; fire(server: SeededServer): string | Promise<string> }> = {
+  "run starting": { run: seededRun("queuedRun"), fire: server => server.drive.startQueuedRun() },
+  "run starting, its row not yet reconciled": { run: seededRun("queuedRun"), fire: server => server.drive.startQueuedRunAheadOfItsRow() },
+  "step finishing": { run: seededRun("runningRun"), fire: server => server.drive.finishRunningStep() },
+  // Person Lookup declares no gate: its running run takes the parked-gate lifecycle at a task node.
+  "gate parking": { run: seededRun("runningRun"), fire: server => server.drive.parkRunningRunAtGate() },
+  // A Work-Study run held at its first read goes on and its executor parks it at the gate the workflow declares.
+  "declared gate parking": { workflow: "Work-Study", run: server => server.drive.startDeclaredGateRun(), fire: server => server.drive.parkAtDeclaredGate() },
+};
 
 const RUN = "GET /api/v1/runs/{id}";
 const LOGS = "GET /api/v1/runs/{id}/logs";
 const STREAM = "GET /events/v1";
 
 /** Requests in the quiet window after the event, sorted. The design's target for every cell is none. */
-const BASELINE: Record<RunEvent, Record<View, readonly string[]>> = {
+const BASELINE: Record<RunEvent, Partial<Record<View, readonly string[]>>> = {
   "run starting": {
     "queue only": [],
     "that run open": [RUN, LOGS],
@@ -66,29 +75,37 @@ const BASELINE: Record<RunEvent, Record<View, readonly string[]>> = {
     "that run open": [RUN, LOGS, "GET /api/v1/runs/{id}/identity-gate"],
     "another run open": [RUN, LOGS],
   },
+  // The Work-Study queue holds this one run, so there is no other run to hold open beside it.
+  "declared gate parking": {
+    "queue only": [],
+    "that run open": [RUN, LOGS, "GET /api/v1/runs/{id}/identity-gate", "GET /api/v1/runs/{id}/workbook-writes"],
+  },
 };
 
-async function openView(dashboard: DashboardPage, view: View, eventRun: string): Promise<void> {
+async function openView(dashboard: DashboardPage, view: View, eventRun: string, workflow: string | undefined): Promise<void> {
   await dashboard.open();
-  if (view === "that run open") await dashboard.openRun(dashboard.runId(eventRun));
+  if (workflow !== undefined) await dashboard.openWorkflow(workflow);
+  if (view === "that run open") await dashboard.openRun(eventRun);
   if (view === "another run open") await dashboard.openRun(dashboard.runId("doneRun"));
 }
 
 for (const event of Object.keys(BASELINE) as RunEvent[]) {
   for (const view of Object.keys(BASELINE[event]) as View[]) {
-    test(`${event}, ${view}: requests after the event`, async ({ dashboard, page, seeded }) => {
+    test(`${event}, ${view}: requests after the event`, async ({ dashboard, failures, page, seeded }) => {
+      if (EVENTS[event].workflow !== undefined) failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
       const seen = watchRequests(page);
-      await openView(dashboard, view, EVENT_RUN[event]);
+      const eventRun = await EVENTS[event].run(seeded);
+      await openView(dashboard, view, eventRun, EVENTS[event].workflow);
       await quiet(page, seen);
-      const row = page.locator(`[data-demo-row-id="${dashboard.runId(EVENT_RUN[event])}"]`).first();
+      const row = page.locator(`[data-demo-row-id="${eventRun}"]`).first();
       const before = await row.textContent();
       seen.length = 0;
 
-      DRIVE[event](seeded);
+      await EVENTS[event].fire(seeded);
 
       await expect.poll(() => row.textContent(), { message: "the queue row shows the event" }).not.toBe(before);
       await quiet(page, seen);
-      expect([...seen].sort()).toEqual([...BASELINE[event][view]].sort());
+      expect([...seen].sort()).toEqual([...BASELINE[event][view] ?? []].sort());
     });
   }
 }

@@ -16,7 +16,9 @@ import { CONFIG_FINGERPRINT } from "../served-fixtures/seeded-identity.js";
 import { CONFIG_SNAPSHOT_ID } from "../served-fixtures/seeded-identity.js";
 import { CONTRACT_FINGERPRINT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
-import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
+import { DECLARED_GATE_DESCRIPTOR, DECLARED_GATE_MODULE, uuidOf } from "../served-fixtures/seeded-lifecycle.js";
+import { dataOriginViewsOf, gateNodeViewsOf, writeContractViewsOf } from "../../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
 import { join } from "node:path";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { composeNotificationPublications, composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
@@ -67,10 +69,10 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
    selectionServices?: Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">;
    database: AuthorityDatabase; clock: Clock; stateRoot: string; root: string;
    projection: ReturnType<typeof createRunQueueProjection>; spans: ReturnType<typeof createTimelineEmitter>;
-   descriptors: {resolve: (workflowId: string) => typeof personLookupDescriptor | undefined}; runIds: Record<string,string>;
+   descriptors: {resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined}; runIds: Record<string,string>;
   }) {
     const runReader = sqliteRunReader(database, clock);
-    const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor] });
+    const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor, DECLARED_GATE_DESCRIPTOR] });
 
 
     const doneReceipt = trust.ensureReceipt(runIds.doneRun);
@@ -93,18 +95,14 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         getWriteIntent: (writeIntentId: string) => database.authority.writeIntents.get(writeIntentId),
         listGateResults: (runId: string) => database.authority.gateResults.listByRun(runId),
       },
+      // The declared-gate run records observed data, so its logs need the descriptor views production serves.
       descriptors: {
-        resolve: (workflowId: string) =>
-          (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+        resolve: (workflowId: string) => workflowId === String(DECLARED_GATE_DESCRIPTOR.id)
+          ? { ...DECLARED_GATE_DESCRIPTOR, gateNodes: gateNodeViewsOf(DECLARED_GATE_DESCRIPTOR), writeContracts: writeContractViewsOf(DECLARED_GATE_DESCRIPTOR),
+            dataOrigins: dataOriginViewsOf(DECLARED_GATE_MODULE) }
+          : descriptors.resolve(workflowId),
       },
-      canonical: {
-        reader: runReader,
-        database,
-        descriptors: {
-          resolve: (workflowId: string) =>
-            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
-        },
-      },
+      canonical: { reader: runReader, database, descriptors },
       trust,
     };
 

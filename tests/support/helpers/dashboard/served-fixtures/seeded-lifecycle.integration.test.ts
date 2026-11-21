@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DashboardDayWireSchema } from "../../../../../src/models/dashboard/projection.js";
+import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { startSeededServer, type SeededServer } from "./seeded-bff.js";
 
@@ -93,7 +94,35 @@ describe("seeded drive helpers", () => {
     expect(change.after).toBe(snapshot.cursor);
   });
 
-  it("parks the running run at its declared node with a healthy detail read", async () => {
+  it("parks a Work-Study run at the gate its workflow declares, through the executor", async () => {
+    const server = await boot();
+    const stream = await openStream(server);
+
+    const runId = await server.drive.startDeclaredGateRun();
+    expect((await rowOf(server, runId)).status).toBe("running");
+    await expect.poll(() => stream.envelopes.length).toBeGreaterThan(3);
+    const started = stream.envelopes.length;
+
+    expect(await server.drive.parkAtDeclaredGate()).toBe(runId);
+
+    const row = await rowOf(server, runId);
+    expect(row.workflowId).toBe("work-study");
+    expect(row.status).toBe("awaiting-approval");
+    await expect.poll(() => stream.envelopes.length).toBeGreaterThan(started);
+    const detail = await fetch(`${server.baseUrl}/api/v1/runs/${runId}`);
+    expect(detail.status).toBe(200);
+    const logs = await fetch(`${server.baseUrl}/api/v1/runs/${runId}/logs`);
+    expect(logs.status, await logs.clone().text()).toBe(200);
+    const { gate } = RunDetailWireSchema.parse(await detail.json());
+    if (gate.state !== "open") throw new Error(`the parked run serves a ${gate.state} gate`);
+    expect([gate.nodeId, gate.decision?.type]).toEqual(["reference-check-review", "review-before-write"]);
+    const cursors = stream.envelopes.flatMap(envelope => envelope.type === "change" || envelope.type === "snapshot" ? [envelope] : []);
+    for (const [index, envelope] of cursors.entries()) {
+      if (envelope.type === "change") expect(envelope.after).toBe(cursors[index - 1]?.cursor);
+    }
+  });
+
+  it("parks the running Person Lookup run at its task node with a healthy detail read", async () => {
     const server = await boot();
     const stream = await openStream(server);
 
