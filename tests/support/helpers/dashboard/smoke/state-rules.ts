@@ -2,6 +2,7 @@
  * wrong, with its own failure message; the check loop runs all of them on every story. */
 import { expect, type Page } from "@playwright/test";
 import { BANNED_PATTERNS, BANNED_PHRASES, BANNED_TERMS, WORD_LIMITS, type StateRuleName } from "./state-rule-limits.js";
+import { DIALOG_REFERENCE_SURFACE, DIALOG_REFERENCE_VARIANTS } from "./story-catalogue.js";
 import type { Story } from "./story-catalogue.js";
 
 export interface StateRuleContext {
@@ -10,8 +11,8 @@ export interface StateRuleContext {
   readonly story: Story;
   /** Everything the page has reported so far; `settle` waits for requests still in flight to finish and report. */
   readonly diagnostics: { readonly seen: readonly string[]; readonly settle: () => Promise<void> };
-  /** Dialog shapes seen so far in this run, by kind, so one kind is compared across stories. */
-  readonly dialogShapes: Map<string, { readonly storyId: string; readonly shape: string }>;
+  /** The shape each kind of dialog is held to in this run, by kind and viewport. */
+  readonly dialogShapes: Map<string, { readonly storyId: string; readonly shape: Readonly<Record<string, string>> }>;
 }
 
 type StateRuleCheck = (context: StateRuleContext) => Promise<readonly string[]>;
@@ -34,28 +35,44 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
     if (sideways > 0) found.push(`the page scrolls sideways by ${String(sideways)}px`);
     const clips = (value: string) => value === "hidden" || value === "clip";
     const scrolls = (value: string) => value === "auto" || value === "scroll";
+    const range = document.createRange();
     for (const element of document.querySelectorAll<HTMLElement>("body *:not(script, style)")) {
-      const text = [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent ?? "").join("").trim();
-      if (text === "") continue;
+      const nodes = [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim() !== "");
+      if (nodes.length === 0) continue;
       const style = getComputedStyle(element);
-      const box = element.getBoundingClientRect();
-      // A 1px box is the screen-reader-only pattern: read aloud, never drawn.
-      if (style.visibility === "hidden" || box.width <= 1 || box.height <= 1) continue;
-      const label = `"${text.slice(0, 60)}"`;
-      if (box.right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(box.right - window.innerWidth))}px past the right edge`);
-      if (clips(style.overflowX) && element.scrollWidth > element.clientWidth + 1) { found.push(`${label} is cut off sideways`); continue; }
-      if (clips(style.overflowY) && element.scrollHeight > element.clientHeight + 1) { found.push(`${label} is cut off at the bottom`); continue; }
+      if (style.visibility === "hidden") continue;
+      // Where the text itself is drawn, which can run past the box that holds it.
+      const drawn = nodes.flatMap(node => { range.selectNodeContents(node); return [...range.getClientRects()]; }).filter(rect => rect.width > 0 && rect.height > 0);
+      if (drawn.length === 0) continue;
+      const left = Math.min(...drawn.map(rect => rect.left));
+      const right = Math.max(...drawn.map(rect => rect.right));
+      // A line's rectangle is taller than its letters; the middle 0.7em is where the ink is.
+      const ink = Number.parseFloat(style.fontSize) * 0.35;
+      const top = Math.min(...drawn.map(rect => (rect.top + rect.bottom) / 2 - ink));
+      const bottom = Math.max(...drawn.map(rect => (rect.top + rect.bottom) / 2 + ink));
+      const label = `"${nodes.map(node => node.textContent ?? "").join("").trim().slice(0, 60)}"`;
+      const cuts: string[] = [];
       let checkX = true;
       let checkY = true;
-      for (let ancestor = element.parentElement; ancestor !== null && ancestor !== document.body && (checkX || checkY); ancestor = ancestor.parentElement) {
-        const ancestorStyle = getComputedStyle(ancestor);
-        const frame = ancestor.getBoundingClientRect();
-        if (checkX && clips(ancestorStyle.overflowX) && (box.right > frame.right + 1 || box.left < frame.left - 1)) { found.push(`${label} is cut off sideways by its container`); break; }
-        if (checkY && clips(ancestorStyle.overflowY) && (box.bottom > frame.bottom + 1 || box.top < frame.top - 1)) { found.push(`${label} is cut off by its container's height`); break; }
-        // Content below a scrolling container's edge is reachable by scrolling, not clipped.
-        if (scrolls(ancestorStyle.overflowX)) checkX = false;
-        if (scrolls(ancestorStyle.overflowY)) checkY = false;
+      let unseen = false;
+      for (let frameElement: HTMLElement | null = element; frameElement !== null && frameElement !== document.body && (checkX || checkY); frameElement = frameElement.parentElement) {
+        const frameStyle = getComputedStyle(frameElement);
+        const box = frameElement.getBoundingClientRect();
+        // A 1px clipping box is the screen-reader-only pattern: read aloud, never drawn.
+        if (box.width <= 1 || box.height <= 1) { unseen = true; break; }
+        // Clipping happens at the inside of the border.
+        const frameLeft = box.left + frameElement.clientLeft;
+        const frameTop = box.top + frameElement.clientTop;
+        const by = frameElement === element ? "" : " by its container";
+        if (checkX && clips(frameStyle.overflowX) && (right > frameLeft + frameElement.clientWidth + 1 || left < frameLeft - 1)) { cuts.push(`${label} is cut off sideways${by}`); checkX = false; }
+        if (checkY && clips(frameStyle.overflowY) && (bottom > frameTop + frameElement.clientHeight + 1 || top < frameTop - 1)) { cuts.push(`${label} is cut off at the ${bottom > frameTop + frameElement.clientHeight + 1 ? "bottom" : "top"}${by}`); checkY = false; }
+        // Text past a scrolling container's edge is reachable by scrolling, not clipped.
+        if (scrolls(frameStyle.overflowX)) checkX = false;
+        if (scrolls(frameStyle.overflowY)) checkY = false;
       }
+      if (unseen) continue;
+      if (right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
+      found.push(...cuts);
     }
     return found;
   });
@@ -136,23 +153,71 @@ export function skeletonOnlyWhileFetching({ page, story }: StateRuleContext): Pr
   }, story.slowFetch?.region ?? null);
 }
 
-export async function dialogsShareShape({ page, storyId, dialogShapes }: StateRuleContext): Promise<readonly string[]> {
-  const dialogs = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')]
+interface DialogShape { readonly kind: string; /** The design-system dialog this is, when it is one: its size, and whether it has the banded header and footer. */ readonly variant: string | null; readonly shape: Readonly<Record<string, string>> }
+
+/** Runs in the page. What each open dialog is drawn with: its edge, its title and the padding of each part. */
+function measureDialogs(): DialogShape[] {
+  return [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')]
     .filter(dialog => dialog.getBoundingClientRect().width > 1)
     .map(dialog => {
       const style = getComputedStyle(dialog);
       const title = dialog.querySelector('h1, h2, h3, [data-slot$="title"]');
-      return {
-        kind: [dialog.getAttribute("role"), dialog.getAttribute("data-size") ?? dialog.getAttribute("data-slot") ?? ""].join(":"),
-        shape: `radius ${style.borderRadius}; border ${style.borderTopWidth} ${style.borderTopColor}; padding ${style.padding}; `
-          + `title size ${title === null ? "none" : getComputedStyle(title).fontSize}`,
-      };
-    }));
+      const shape: Record<string, string> = { radius: style.borderRadius, padding: style.padding };
+      for (const edge of ["Top", "Right", "Bottom", "Left"] as const) {
+        shape[`${edge.toLowerCase()} border`] = `${style[`border${edge}Width`]} ${style[`border${edge}Style`]} ${style[`border${edge}Color`]}`;
+      }
+      if (title !== null) shape["title size"] = getComputedStyle(title).fontSize;
+      // The dashboard's dialogs pad their parts, not the dialog: the header, the body and the footer each carry their own.
+      for (const part of dialog.children) {
+        if (part.getBoundingClientRect().height <= 1) continue;
+        const name = title !== null && part.contains(title) ? "header" : part.matches("footer, [data-slot$=\"footer\"]") ? "footer" : "body";
+        shape[`${name} padding`] ??= getComputedStyle(part).padding;
+      }
+      const size = dialog.getAttribute("data-size");
+      const variant = size === null ? null : `${size}${dialog.hasAttribute("data-band") ? "-band" : ""}`;
+      return { kind: [dialog.getAttribute("role"), variant ?? dialog.getAttribute("data-slot") ?? ""].join(":"), variant, shape };
+    });
+}
+
+/** The design system's own dialog of this size, drawn alone in a second page at the same viewport. */
+async function designSystemDialogShape(page: Page, variant: string): Promise<DialogShape["shape"]> {
+  const reference = await page.context().newPage();
+  try {
+    await reference.goto(new URL("/", page.url()).href);
+    await reference.evaluate(story => {
+      const mount: unknown = Reflect.get(window, "mount");
+      if (typeof mount !== "function") throw new Error("the gallery page exposes no mount function");
+      Reflect.apply(mount, window, [{ story }]);
+    }, `${DIALOG_REFERENCE_SURFACE}/dialog/${variant}`);
+    await expect(reference.locator('[role="dialog"]'), `the reference ${variant} dialog`).toBeVisible();
+    const [measured] = await reference.evaluate(measureDialogs);
+    if (measured === undefined) throw new Error(`the reference ${variant} dialog could not be measured`);
+    return measured.shape;
+  } finally {
+    await reference.close();
+  }
+}
+
+export async function dialogsShareShape({ page, storyId, story, dialogShapes }: StateRuleContext): Promise<readonly string[]> {
+  const viewport = page.viewportSize();
   const found: string[] = [];
-  for (const { kind, shape } of dialogs) {
-    const first = dialogShapes.get(kind);
-    if (first === undefined) dialogShapes.set(kind, { storyId, shape });
-    else if (first.shape !== shape) found.push(`a ${kind} dialog is drawn with ${shape}, but ${first.storyId} draws it with ${first.shape}`);
+  for (const { kind, variant, shape } of await page.evaluate(measureDialogs)) {
+    const key = `${kind} at ${String(viewport?.width)}x${String(viewport?.height)}`;
+    let reference = dialogShapes.get(key);
+    // A dialog built on the design system is held to the design system's own dialog of that size.
+    if (reference === undefined && variant !== null && DIALOG_REFERENCE_VARIANTS.includes(variant)) {
+      reference = { storyId: "the design system", shape: await designSystemDialogShape(page, variant) };
+      dialogShapes.set(key, reference);
+    }
+    // Any other kind is held to the first story that draws it and is not a recorded break of this rule.
+    if (reference === undefined) {
+      if (story.knownFailures?.["dialogs-share-shape"] === undefined) dialogShapes.set(key, { storyId, shape });
+      continue;
+    }
+    for (const [part, drawn] of Object.entries(shape)) {
+      const expected = reference.shape[part];
+      if (expected !== undefined && expected !== drawn) found.push(`a ${kind} dialog has ${part} ${drawn}; ${reference.storyId} draws it with ${expected}`);
+    }
   }
   return found;
 }
@@ -231,22 +296,42 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
 const CONTROL_SELECTOR = 'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"], [role="link"], [role="checkbox"], '
   + '[role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="combobox"], [tabindex]';
 
-type FocusProbeStep = { readonly step: "tag"; readonly selector: string } | { readonly step: "stop" } | { readonly step: "clean" };
+type FocusProbeStep = { readonly step: "tag"; readonly selector: string } | { readonly step: "stop" } | { readonly step: "focus"; readonly index: string } | { readonly step: "clean" };
+interface FocusProbeControl {
+  readonly index: string;
+  readonly label: string;
+  /** Inside a widget whose members arrow keys move between. */
+  readonly composite: boolean;
+  /** The native radio group this belongs to: Tab stops on one member and the browser's arrow keys reach the rest. */
+  readonly radios: string | null;
+}
 interface FocusProbeResult {
-  readonly controls: readonly { readonly index: string; readonly label: string; readonly roving: boolean }[];
+  readonly controls: readonly FocusProbeControl[];
   /** Where keyboard focus is now: a tagged control, some other element, or nothing. */
   readonly stop: { readonly index: string | null; readonly nowhere: boolean; readonly ring: boolean };
 }
 
-/** Runs in the page. Tags every control an operator can use, then reports each Tab stop and how it is drawn. */
+/** Runs in the page. Tags every control an operator can use, then reports each keyboard stop and how it is drawn. */
 function focusProbe(input: FocusProbeStep): FocusProbeResult {
-  const look = (element: Element): string => {
-    const style = getComputedStyle(element);
-    const outline = style.outlineStyle === "none" || Number.parseFloat(style.outlineWidth) === 0 ? "none" : `${style.outlineWidth} ${style.outlineColor}`;
-    return JSON.stringify([outline, style.boxShadow, style.borderColor, style.backgroundColor]);
+  // A control drawn as a 1px box (a hidden radio or checkbox) shows its focus on the label that stands in for it.
+  const stoodInFor = (element: Element): readonly Element[] => {
+    const box = element.getBoundingClientRect();
+    if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1) return [element];
+    return [...element.labels ?? []].flatMap(label => [label, ...label.querySelectorAll("*")]).filter(part => part !== element);
   };
-  const controls: { index: string; label: string; roving: boolean }[] = [];
+  const look = (element: Element): string => JSON.stringify(stoodInFor(element).map(part => {
+    const style = getComputedStyle(part);
+    const outline = style.outlineStyle === "none" || Number.parseFloat(style.outlineWidth) === 0 ? "none" : `${style.outlineWidth} ${style.outlineColor}`;
+    return [outline, style.boxShadow, style.borderColor, style.backgroundColor];
+  }));
+  const controls: FocusProbeControl[] = [];
   let stop: FocusProbeResult["stop"] = { index: null, nowhere: true, ring: false };
+  const report = () => {
+    const active = document.activeElement;
+    if (active === null || active === document.body) return;
+    const index = active.getAttribute("data-state-rule-control");
+    stop = { index, nowhere: false, ring: index !== null && look(active) !== active.getAttribute("data-state-rule-look") };
+  };
   if (input.step === "tag") {
     // Focus styles ease in; measure where they settle.
     const still = document.createElement("style");
@@ -254,27 +339,29 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     still.textContent = "* { transition: none !important; }";
     document.head.append(still);
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    // Arrow keys, not Tab, move inside these; one member is the Tab stop.
     const composite = '[role="radiogroup"], [role="tablist"], [role="menu"], [role="menubar"], [role="listbox"], [role="toolbar"], [role="grid"], [role="tree"]';
     for (const element of document.querySelectorAll<HTMLElement>(`body :is(${input.selector})`)) {
       const box = element.getBoundingClientRect();
-      if (box.width <= 1 || box.height <= 1 || getComputedStyle(element).visibility === "hidden") continue;
+      if (box.width === 0 || box.height === 0 || getComputedStyle(element).visibility === "hidden") continue;
+      const shown = stoodInFor(element).filter(part => { const partBox = part.getBoundingClientRect(); return partBox.width > 1 && partBox.height > 1; });
+      if (shown.length === 0) continue;
       if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
       // A bare tabindex="-1" region is a focus target for scripts, not a control.
       if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]')) continue;
       const index = String(controls.length);
       element.setAttribute("data-state-rule-control", index);
       element.setAttribute("data-state-rule-look", look(element));
-      const text = (element.getAttribute("aria-label") ?? element.innerText).trim().slice(0, 40);
+      const stoodIn = shown[0] instanceof HTMLElement && shown[0] !== element ? shown[0].innerText : element.innerText;
+      const text = (element.getAttribute("aria-label") ?? stoodIn).trim().slice(0, 40);
+      const radio = element instanceof HTMLInputElement && element.type === "radio";
       controls.push({ index, label: text === "" ? `<${element.tagName.toLowerCase()} class="${element.className.slice(0, 60)}">` : `"${text}"`,
-        roving: element.closest(composite) !== null || element instanceof HTMLInputElement && element.type === "radio" });
+        composite: !radio && element.closest(composite) !== null, radios: radio ? `${element.form?.id ?? ""}/${element.name}` : null });
     }
   } else if (input.step === "stop") {
-    const active = document.activeElement;
-    if (active !== null && active !== document.body) {
-      const index = active.getAttribute("data-state-rule-control");
-      stop = { index, nowhere: false, ring: index !== null && look(active) !== active.getAttribute("data-state-rule-look") };
-    }
+    report();
+  } else if (input.step === "focus") {
+    document.querySelector<HTMLElement>(`[data-state-rule-control="${input.index}"]`)?.focus();
+    report();
   } else {
     document.querySelector("[data-state-rule-still]")?.remove();
     for (const element of document.querySelectorAll("[data-state-rule-control]")) {
@@ -290,13 +377,16 @@ export async function namedAndFocusable({ page }: StateRuleContext): Promise<rea
   const { controls } = await page.evaluate(focusProbe, { step: "tag", selector: CONTROL_SELECTOR });
   try {
     for (const { index, label } of controls) {
-      // The browser's own accessible name: hidden text and decorative images do not count.
+      // The browser's own accessible name: hidden text and decorative images do not count. Zero would wait for ever.
       const named = await expect(page.locator(`[data-state-rule-control="${index}"]`)).toHaveAccessibleName(/\S/u, { timeout: 250 })
         .then(() => true, () => false);
       if (!named) found.push(`${label} has no name`);
     }
-    // Walk the page as a keyboard user does. The walk ends when focus leaves the page or comes round again.
+    // Walk the page as a keyboard user does: Tab between stops, arrow keys inside a widget. Only a stop the walk
+    // lands on counts as reached. The walk ends when focus leaves the page or comes round again.
     const rings = new Map<string, boolean>();
+    const widgets = new Map(controls.map(control => [control.index, control.composite]));
+    const members = controls.filter(control => control.composite).length;
     for (let presses = 0; presses < controls.length * 2 + 20; presses += 1) {
       await page.keyboard.press("Tab");
       const { stop } = await page.evaluate(focusProbe, { step: "stop" });
@@ -304,12 +394,29 @@ export async function namedAndFocusable({ page }: StateRuleContext): Promise<rea
       if (stop.index === null) continue;
       if (rings.has(stop.index)) break;
       rings.set(stop.index, stop.ring);
+      if (widgets.get(stop.index) !== true) continue;
+      for (const key of ["ArrowRight", "ArrowDown"]) {
+        for (let moves = 0; moves < members; moves += 1) {
+          await page.keyboard.press(key);
+          const moved = (await page.evaluate(focusProbe, { step: "stop" })).stop;
+          if (moved.index === null || rings.has(moved.index)) break;
+          rings.set(moved.index, moved.ring);
+        }
+      }
     }
-    for (const { index, label, roving } of controls) {
+    // The browser moves between the radios of one native group with arrow keys, which would also change the choice;
+    // once Tab has reached the group, look at each other member's focus without choosing it.
+    const reachedGroups = new Set(controls.filter(control => control.radios !== null && rings.has(control.index)).map(control => control.radios));
+    for (const { index, radios } of controls) {
+      if (radios === null || rings.has(index) || !reachedGroups.has(radios)) continue;
+      const { stop } = await page.evaluate(focusProbe, { step: "focus", index });
+      if (stop.index === index) rings.set(index, stop.ring);
+    }
+    for (const { index, label } of controls) {
       const ring = rings.get(index);
-      if (ring === undefined) { if (!roving) found.push(`${label} cannot be reached with Tab`); continue; }
+      if (ring === undefined) found.push(`${label} cannot be reached with the keyboard`);
       // The dashboard marks keyboard focus with its focus fill (DESIGN.md); an outline, shadow or edge change also counts.
-      if (!ring) found.push(`${label} shows no focus ring`);
+      else if (!ring) found.push(`${label} shows no focus ring`);
     }
   } finally {
     await page.evaluate(focusProbe, { step: "clean" });

@@ -21,5 +21,7 @@ for (const [name, { story, finds, clean = [] }] of probes) {
       if (clean.includes(rule)) expect(found, `${rule} reports nothing here`).toBe("");
       for (const pattern of expected) expect(found, `${rule} reports the planted violation`).toMatch(pattern);
     }
+    // The planted state was on screen for every rule, not only when the story mounted.
+    await expect(page.locator(story.ready ?? "[data-app-root]").first(), "the state held through the checks").toBeVisible();
   });
 }

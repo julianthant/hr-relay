@@ -19,6 +19,11 @@ export interface Story {
   readonly knownFailures?: Readonly<Partial<Record<StateRuleName, string>>>;
 }
 
+/** The gallery's reference dialogs: the design system's own dialog at each size, plain and banded, mounted as
+ * `reference/dialog/<variant>`. The large dialog is always banded. */
+export const DIALOG_REFERENCE_SURFACE = "reference";
+export const DIALOG_REFERENCE_VARIANTS: readonly string[] = Object.freeze(["sm", "sm-band", "md", "md-band", "lg-band", "xl", "xl-band"]);
+
 export type StoryTable = Readonly<Record<string, Story>>;
 
 export interface CatalogueEntry {

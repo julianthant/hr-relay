@@ -19,11 +19,6 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     test.use({ viewport });
 
     for (const { id, surface, story } of CATALOGUE) {
-      const known = STATE_RULE_NAMES.flatMap(name => {
-        const ticket = story.knownFailures?.[name];
-        return ticket === undefined ? [] : [{ name, ticket }];
-      });
-
       test(`${id} passes the state rules`, { tag: `@${surface}` }, async ({ mount, page, diagnostics }) => {
         await mount(id);
         // The story's own ready point: the state it is for is on screen, whatever its requests are still doing.
@@ -32,11 +27,19 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await saveStateFrame(page, id, viewport.width);
         const context: StateRuleContext = { page, storyId: id, story, diagnostics, dialogShapes };
         for (const name of STATE_RULE_NAMES) {
-          if (known.some(recorded => recorded.name === name)) continue;
+          if (story.knownFailures?.[name] !== undefined) continue;
           await test.step(name, async () => {
             expect.soft(await STATE_RULES[name].check(context), STATE_RULES[name].failure).toEqual([]);
           });
         }
+      });
+    }
+
+    // Recorded breaks run after every story has passed, so a rule that compares stories has its reference by then.
+    for (const { id, surface, story } of CATALOGUE) {
+      const known = STATE_RULE_NAMES.flatMap(name => {
+        const ticket = story.knownFailures?.[name];
+        return ticket === undefined ? [] : [{ name, ticket }];
       });
 
       for (const { name, ticket } of known) {
