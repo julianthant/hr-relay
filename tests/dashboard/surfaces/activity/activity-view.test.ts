@@ -8,6 +8,7 @@ import { ActivityView } from '../../../../src/dashboard/surfaces/activity/activi
 import { activityRangeValue } from '../../../../src/dashboard/surfaces/activity/activity-model.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample, useActivitySampleReport } from '../../../support/fixtures/dashboard/activity-sample.js';
+import { analyticsPeriodLabel } from '../../../../src/dashboard/surfaces/activity/analytics-model.js';
 import type { ActivityViewState } from '../../../../src/dashboard/surfaces/activity/activity-view-model.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -156,4 +157,21 @@ it('while the report loads, shows a busy region and no guessed sections', async 
   assert(frame);
   assert.equal(frame.childElementCount, 0);
   assert.equal(document.querySelector('[data-slot="skeleton"]'), null);
+});
+
+it('while another range loads, keeps the last report under its own period with Export and Open runs locked', async () => {
+  if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
+  const next = { from: '2026-01-01', to: '2026-01-07' };
+  const props = { data, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onExport() {}, selection: null, onSelection() {} };
+  await act(async () => root?.render(createElement(ActivityView, { ...props, range: ACTIVITY_SAMPLE_RANGE })));
+  assert.equal(document.querySelector('[data-analytics-stale]'), null);
+  assert.equal(button().disabled, false);
+  assert.match(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
+  await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true })));
+  assert.equal(document.querySelector('[data-analytics-stale]')?.textContent, 'Updating');
+  assert.equal(button().disabled, true);
+  assert.equal([...document.querySelectorAll('a')].some(link => link.textContent?.includes('Open runs')), false);
+  assert.match(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
+  assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(next)));
+  assert.equal(document.querySelector('[aria-label="Loading analytics report"]'), null);
 });

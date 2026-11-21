@@ -176,6 +176,34 @@ it("keeps initial loading, read refusal, empty success and client replacement se
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
+it("holds the settled report, with export refused, while another range loads, and blanks only on a cold read", async () => {
+  const first = selection();
+  const second = selection([{ status: "done", durationMs: 0 }]);
+  const client = clientOf(first);
+  const resolvers: ((value: ActivityPopulationSelection) => void)[] = [];
+  client.activityPopulation = vi.fn(() => new Promise<ActivityPopulationSelection>(resolve => resolvers.push(resolve)));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  const current = (): ReturnType<typeof useActivityWiring> => state;
+  const total = () => { const data = current().data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.total; };
+  function Scene({ range }: { range: { from: string; to: string } }) { state = useActivityWiring(client, range, null, sources, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Scene, { range: first.report })));
+    assert.equal(current().data.state, "loading");
+    await act(async () => resolvers[0](first));
+    assert.equal(total(), 3);
+    assert.equal(current().exportReady, true);
+    await act(async () => root.render(createElement(Scene, { range: { from: "2026-05-06", to: "2026-08-03" } })));
+    assert.equal(total(), 3);
+    assert.equal(current().exportReady, false);
+    await assert.rejects(current().exportCsv(), /no longer matches/u);
+    assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
+    await act(async () => resolvers[1](second));
+    assert.equal(total(), 1);
+    assert.equal(current().exportReady, true);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
 it("uses the served calendar for the product producer and never substitutes workflow fixture detail", async () => {
   const selected = selection([{ status: "done", durationMs: 0 }]);
   const client = clientOf(selected);
