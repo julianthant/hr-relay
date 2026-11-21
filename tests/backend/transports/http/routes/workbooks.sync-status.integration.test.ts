@@ -6,7 +6,7 @@ import { afterEach, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import type { DashboardApp } from '../../../../../src/backend/transports/http/routes/api-types.js';
 import { registerWorkbookRoutes } from '../../../../../src/backend/transports/http/routes/workbooks.js';
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, validateWorkbookLibrary } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, validateWorkbookLibrary, WORKBOOK_PAYLOAD_TABLE } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService, type WorkbookSyncDownload } from '../../../../../src/backend/workbooks/workbook-library-service.js';
 import { SharePointDownloadError } from '../../../../../src/backend/systems/sharepoint/driver/interpreter.js';
 import { WorkbookLibraryCatalogSchema } from '../../../../../src/models/dashboard/workbook-library.js';
@@ -46,7 +46,7 @@ function open(database: DatabaseSync, sync: WorkbookSyncDownload) {
 
 function fixture(download: WorkbookSyncDownload, path = ':memory:') {
   const database = new DatabaseSync(path); databases.push(database);
-  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(sql);
+  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
   const opened = open(database, download);
   const create = (name: string) => opened.service.create({ name, themes: [], hasFormulas: false,
     sheets: [{ id: 'source', name: 'Sheet 1', width: 1, hidden: [], rows: [

@@ -617,7 +617,7 @@ describe("served Logs wiring", () => {
         children: createElement(LogSample, { selection: selected }) }) }));
       assert.match(document.body.textContent ?? "", /Authoritative note 0/);
       if (omitted === "node") assert.match(document.body.textContent ?? "", /Identity decision join not supplied/);
-      assert.equal(document.querySelector('article[aria-label="Identity Approval"]')?.querySelectorAll("button").length, 0);
+      assert.equal(document.querySelector('form[aria-label="Identity Approval"]')?.querySelectorAll("button").length, 0);
       assert.equal(submissions, 0);
       await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
     }

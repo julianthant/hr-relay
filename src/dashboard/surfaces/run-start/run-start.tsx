@@ -1,6 +1,7 @@
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
 import { useWorkbookRows, useWorkbookVersionSources, useCheckVersionSheets, checkVersionKey, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
+import type { IconName } from "../../../models/workflow/presentation.js";
 import { RunList, RunListRow, RunListSkeleton } from "../../ds/primitives/run-list.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
@@ -63,6 +64,8 @@ export interface RunStartWorkflow {
   readonly categoryId: string;
   // Use the served role; never infer it from an ID prefix.
   readonly role: WorkflowModuleRole;
+  /** The definition's own icon name; the dashboard names no workflow to choose one. */
+  readonly icon: IconName;
   readonly code?: string;
   /** the descriptor's own sentence about what this workflow does */
   readonly summary?: string;
@@ -237,7 +240,7 @@ export function RunStartDialog({
     const worksheets = source.sheets.filter(sheet => sheet.mappings.some(mapping => mapping.fieldId === workbookCheck.keyFieldId)).map(sheet => ({ sheetId: sheet.sheetId, sheetName: sheet.sheetName }));
     return entry === undefined || worksheets.length === 0 || entry.libraryId === referenceDrafts[workbookReference?.id ?? ""]?.libraryId ? []
       : [{ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned, currentVersionId: source.versionId, currentSheets: worksheets,
-        versions: entry.state.versions.map((version, index) => ({ id: version.id, name: version.name || `v${entry.state.versions.length - index}` })) }];
+        versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })) }];
   }).toSorted((a, b) => a.name.localeCompare(b.name)), [workbookCheck, library.compatibility, library.catalog, referenceDrafts, workbookReference?.id]);
   const historicalChecks = useMemo(() => checkLibraries.flatMap(entry => {
     const pick = checkPicks[entry.libraryId];
@@ -621,8 +624,8 @@ export function RunStartDialog({
     const draft = referenceDrafts[typeId];
     const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
     const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
-    const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name,
-      versions: entry.state.versions, currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
+    const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned,
+      versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
     return <RunReferenceRows key={typeId} checkRows={withCheck && workbookCheck !== undefined && checkSheets.length > 0 ? checkRows : undefined} requiredLabel={requiredLabelOf(requiredFields)}
       sheets={sheets} chosenLibraryId={draft?.libraryId} chosenVersionId={draft?.versionId} chosenSheetId={selectedReferences[typeId]?.sheetId ?? ''}
       worksheets={sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName }))} worksheetsState={versionSources.state} worksheetsError={versionSources.error}
@@ -694,15 +697,20 @@ export function RunStartDialog({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, hidden]);
+  /** The one thing stopping Continue or Start on this stage, as its own line beside the buttons. */
+  const stageHint = currentStage === "Input" ? blockedReason
+    : currentStage === "Options" ? optionsBlockedReason
+    : currentStage === "Steps" ? stepsBlockedReason
+    : currentStage === "Checks" && gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : "Checks are unavailable.")
+    : planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, ".");
   return (
     <Dialog open={open && !hidden} onOpenChange={closeAndReset}>
       <DialogContent
         onOpenAutoFocus={event => { if (isRerun) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>('button[aria-label="Close"]')?.focus(); } }}
         onCloseAutoFocus={event => { if (hidden) event.preventDefault(); else onCloseAutoFocus?.(event); }}
-        size="xl"
-        band
+        size="lg"
         title={isRerun ? "Rerun" : "Start run"}
-        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
+        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? workflow.label : "Choose a workflow to begin"}
         className={cn("launch-design launch-dialog", isRerun && "launch-rerun")}
       >
           {!isRerun && picker}
@@ -715,8 +723,8 @@ export function RunStartDialog({
                 const current = index === activeIndex;
                 return <li key={stage.label} aria-current={current ? "step" : undefined}>
                   <BareButton disabled={index > activeIndex || busy || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, via: "stage-bar" })}>
-                  <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check className="size-3" /> : stage.number}</span>
-                  <span className={cn("text-body", current ? "font-semibold" : "text-ui-secondary")}>{stage.label}</span>
+                  <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check aria-hidden className={dsIcon.sm} /> : stage.number}</span>
+                  <span className={cn("text-body", current ? "font-medium" : "text-ui-secondary")}>{stage.label}</span>
                   </BareButton>
                 </li>;
               })}
@@ -740,8 +748,8 @@ export function RunStartDialog({
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
               <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[calc(var(--ds-row-pad-x)+1px)]">
-              <h3 className="text-heading font-semibold">Steps</h3>
-              {workflow && <span className="text-[13px] text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
+              <h3 className="text-control font-medium">Steps</h3>
+              {workflow && <span className="text-control text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
               </div>
               <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
@@ -837,8 +845,8 @@ export function RunStartDialog({
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {launchFields.map(field => field.kind === "boolean"
                       ? <RunListRow key={field.field} title={field.label} {...(field.description === undefined ? {} : { description: field.description })}><Switch hideLabel label={field.label} checked={pdfRunSwitchValue(field, pdfInput.picks)} onCheckedChange={next => pdfInput.pick(field.field, next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>
-                      : <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
-                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="text-[12px] text-ui-secondary">Always on</span></RunListRow>
+                      : <RunListRow key={field.field} title={field.label}><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
+                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="text-body text-ui-secondary">Always on</span></RunListRow>
                   </>} />
               )}
 
@@ -861,8 +869,8 @@ export function RunStartDialog({
                         below={open === undefined ? undefined : <StepOmissionFactsForm step={row.label} form={open.form} draft={open.draft} errors={failure}
                           copied={copiedFields(row)} onChange={(field, next) => changeFact(row, open.form, field, next)} disabled={sending} />}>
                         {badge !== undefined && <Badge tone={badge === "completed" ? "success" : badge === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={badge}>{badge === "completed" ? "Completed" : badge === "skipped" ? "Skipped" : badge === "failed" ? "Failed" : "Not started"}</Badge>}
-                        {row.kind === "locked-manual" && <><span aria-hidden className="cursor-pointer text-[12px] text-ui-secondary" onClick={() => { if (!sending) toggleManual(row, !manualRows.includes(row.key)); }}>Enter manually</span>
-                          <Switch hideLabel label={`Enter manually for ${row.label}`} checked={manualRows.includes(row.key)} disabled={sending || multiSubject && !manualRows.includes(row.key)} onCheckedChange={next => toggleManual(row, next)} className="!min-h-0 !w-auto !py-0" /></>}
+                        {row.kind === "locked-manual" && <>
+                          <Switch label={<>Enter manually<span className="sr-only"> for {row.label}</span></>} checked={manualRows.includes(row.key)} disabled={sending || multiSubject && !manualRows.includes(row.key)} onCheckedChange={next => toggleManual(row, next)} className="!min-h-0 !w-auto !py-0" /></>}
                       </RunListRow>;
                     })}
                   </RunList>
@@ -897,23 +905,13 @@ export function RunStartDialog({
                 workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows)} of ${rows.length} steps`,
                 pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
-                currentStage === "Input"
-                  ? blockedReason ?? undefined
-                  : currentStage === "Options"
-                  ? optionsBlockedReason ?? undefined
-                  : currentStage === "Steps"
-                  ? stepsBlockedReason ?? undefined
-                  : currentStage === "Checks" && gates.checksBlocked
-                  ? checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : "Checks are unavailable."
-                  : undefined,
-                planRefusal === null ? undefined : planRefusal.sentence.replace(/\. .*$/u, "."),
               ].filter((item): item is string => item !== undefined)}
             />
           }
         >
-          {controls.hint !== null && <span className="text-[12px] text-ui-muted">{controls.hint}</span>}
+          {(controls.hint ?? stageHint) !== null && <span className="launch-hint">{controls.hint ?? stageHint}</span>}
           {controls.back !== null && (
-            <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back", path: gates.path })}>Back</Button>
+            <Button variant="ghost" icon={<ArrowLeft aria-hidden className={dsIcon.sm} />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back", path: gates.path })}>Back</Button>
           )}
           <Button variant="secondary" onClick={() => controls.cancel.type === "close" ? closeAndReset(false) : send(controls.cancel)}>
             Cancel
@@ -923,7 +921,7 @@ export function RunStartDialog({
           ) : (
             <Button
               variant="primary"
-              {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className="size-[14px]" /> })}
+              {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className={dsIcon.md} /> })}
               loading={controls.primary.loading}
               disabled={!controls.primary.enabled || planRefusal !== null}
               onClick={() => press(controls.primary.event)}

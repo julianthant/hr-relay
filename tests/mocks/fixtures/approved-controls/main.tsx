@@ -23,7 +23,7 @@ function countCall() { document.body.setAttribute('data-action-calls', String(++
 function SessionsBarHarness() {
   const [open, setOpen] = useState(query.get('open') === '1');
   return <div className="dashboard-shell">
-    <SessionsView open={open} onOpenChange={setOpen} onControl={() => {}} onAdd={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample('active')} account={{ onSettings: () => {}, onLogout: () => {} }} />
+    <SessionsView open={open} onOpenChange={setOpen} onControl={() => {}} onAdd={() => {}} workflows={[{ id: 'separations', label: 'Separations' }]} data={sessionsSample(query.get('scenario') ?? 'active')} account={{ onSettings: () => {}, onLogout: () => {} }} />
   </div>;
 }
 function Fixture() {

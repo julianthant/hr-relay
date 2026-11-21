@@ -2,8 +2,9 @@ import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Dialog, DialogContent, DialogFooter, EmptyState, SearchInput, SegmentedChoice } from "../../ds/ui.js";
+import { Button, Dialog, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice } from "../../ds/ui.js";
 import { AssistantServedActivity } from "./assistant-thread.js";
+import { publishAssistantModelChoice } from "./assistant-approval-model.js";
 import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";
 import { chatAge, createLocalHubChatsPort, useHubChats, useHubPanelPosition, useLogsTop, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
@@ -23,11 +24,12 @@ export function HubShell(props: HubShellProps) {
   const opened = useAssistantOpen();
   const [everOpened, setEverOpened] = useState(opened);
   if (opened && !everOpened) setEverOpened(true);
-  const history = useAssistantHistory(client, everOpened, props.authority);
+  const readModels = props.settingsOpen || everOpened;
+  const history = useAssistantHistory(client, props.authority, { preference: readModels, history: everOpened });
   return <HubShellBody key={history.store?.profileId ?? 'loading'} {...props} history={history.store}
-    preferenceChanged={history.preferenceChanged} assistantOpened={everOpened} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyNotice={history.notice} />;
+    preferenceChanged={history.preferenceChanged} readModels={readModels} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyNotice={history.notice} />;
 }
-function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged, assistantOpened }: HubShellProps & { assistantOpened: boolean; history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged, readModels }: HubShellProps & { readModels: boolean; history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const client = useDashboardClient();
   const panelPosition = useHubPanelPosition(4);
   useState(() => { assistantOpen.init(false); });
@@ -52,7 +54,14 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const localChats = useMemo(() => history?.chats ?? createLocalHubChatsPort(), [history]);
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant((id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
-  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels: assistantOpened });
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels });
+  const { models: catalog, chooseModel } = servedController;
+  const choose = useRef(chooseModel);
+  choose.current = chooseModel;
+  useEffect(() => {
+    publishAssistantModelChoice(modelPreference === undefined || catalog === undefined ? undefined : { preference: modelPreference, models: catalog, choose: preference => choose.current(preference) });
+    return () => publishAssistantModelChoice(undefined);
+  }, [modelPreference, catalog]);
   const served = historyPending ? { ...servedController, canCompose: false } : servedController;
   // With no stored chat the panel still opens, on an empty chat ready to compose.
   const current = model.chats.find(chat => chat.id === model.currentId) ?? (model.chats.length === 0 ? EMPTY_CHAT : undefined);
@@ -96,8 +105,8 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
         </div>
       </section>
     <span role="status" className="sr-only">{announcement}</span>
-    <Dialog open={logoutOpen} onOpenChange={onLogoutOpenChange}><DialogContent hideClose className="hub-modal" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><button tabIndex={0} className="hub-btn" onClick={() => onLogoutOpenChange(false)}>Cancel</button><button tabIndex={0} className="hub-btn primary" onClick={() => { onLogoutOpenChange(false); onLogout(); }}>Log out</button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose className="hub-modal" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
+    <Dialog open={logoutOpen} onOpenChange={onLogoutOpenChange}><DialogContent hideClose size="sm" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><Button variant="secondary" onClick={() => onLogoutOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={() => { onLogoutOpenChange(false); onLogout(); }}>Log out</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose size="sm" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
       onCloseAutoFocus={event => { event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : document.querySelector<HTMLElement>(".hub-chat-open") ?? document.querySelector<HTMLElement>("[data-assistant-launcher]"))?.focus({ preventScroll: true }); }}>
       <form onSubmit={event => {
         event.preventDefault(); if (!editing || saving) return;
@@ -110,8 +119,8 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
           else { served.forgetSession(id); assistant.forgetSession(id); setAnnouncement("Chat deleted."); }
         });
       }}>
-        {editing?.kind === "rename" && <input className="hub-field" aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} />}
-        <DialogFooter><button tabIndex={0} className="hub-btn" type="button" onClick={() => setEditing(undefined)}>Cancel</button><button tabIndex={0} className={`hub-btn ${editing?.kind === "delete" ? "danger" : "primary"}`} type="submit" aria-busy={saving || undefined} disabled={saving || editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</button></DialogFooter>
+        {editing?.kind === "rename" && <Input aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} />}
+        <DialogFooter><Button variant="secondary" type="button" onClick={() => setEditing(undefined)}>Cancel</Button><Button variant={editing?.kind === "delete" ? "danger" : "primary"} type="submit" aria-busy={saving || undefined} disabled={saving || editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</Button></DialogFooter>
       </form></DialogContent></Dialog>
   </>;
 }

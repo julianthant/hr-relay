@@ -29,9 +29,6 @@ export const CURRENT_FISCAL_TARGET = 'annualDates.current';
 
 const at = (section: string, label: string, target: string): RunCheckFix => ({ section, label, target });
 
-const NO_ADDRESS_CONTROL = 'Cannot be fixed in Settings. Relay cannot use this system\'s address, and this run cannot start until it can.';
-const NO_PROVIDER_CONTROL = 'Cannot be fixed in Settings. The lookup service did not answer; check again in a moment.';
-
 /** Every registered check id has an explicit entry; a test fails when one is missing. */
 export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.freeze({
   'runtime.compatibility': null,
@@ -57,38 +54,10 @@ export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.fre
   'provider.nominatim': null,
 });
 
-/** What to do about a failed check that has no Fix button; every null entry above has one. */
-export const RUN_CHECK_HINTS: Readonly<Record<string, string>> = Object.freeze({
-  'runtime.compatibility': 'Cannot be fixed in Settings. Reinstall Relay or update Node.js.',
-  'browser.assets': 'Cannot be fixed in Settings. Reinstall Relay to restore its browser files.',
-  'config.valid': 'Cannot be fixed in Settings. Restart Relay, then check again.',
-  'filesystem.health': 'Cannot be fixed in Settings. Free up disk space, then check again.',
-  'authority.health': 'Cannot be fixed in Settings. Restart Relay, then check again.',
-  'ports.available': 'Cannot be fixed in Settings. Close the program using the port.',
-  'secrets.sharepoint-roster': 'Cannot be fixed in Settings. The SharePoint roster location is not set, and this run cannot start until it is.',
-  'endpoint.ucpath.prod': NO_ADDRESS_CONTROL,
-  'endpoint.crm.prod': NO_ADDRESS_CONTROL,
-  'endpoint.onbase.prod': NO_ADDRESS_CONTROL,
-  'endpoint.kuali.prod': NO_ADDRESS_CONTROL,
-  'endpoint.servicenow.prod': NO_ADDRESS_CONTROL,
-  'endpoint.i9.prod': NO_ADDRESS_CONTROL,
-  'endpoint.new-kronos.prod': NO_ADDRESS_CONTROL,
-  'endpoint.old-kronos.prod': NO_ADDRESS_CONTROL,
-  'endpoint.sharepoint.prod': NO_ADDRESS_CONTROL,
-  'provider.census': NO_PROVIDER_CONTROL,
-  'provider.nominatim': NO_PROVIDER_CONTROL,
-});
-
 export function runCheckFix(check: string): RunCheckFix {
   const fix = RUN_CHECK_FIXES[check];
   if (fix === undefined) throw new Error(`Run check "${check}" has no Settings mapping`);
   return fix;
-}
-
-export function runCheckHint(check: string): string {
-  const hint = RUN_CHECK_HINTS[check];
-  if (hint === undefined) throw new Error(`Run check "${check}" has no cannot-fix-here hint`);
-  return hint;
 }
 
 /** The check a Settings row was opened for, or undefined when no Fix button targets that row. */

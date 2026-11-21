@@ -11,7 +11,8 @@ import {
   type ProposedStatus,
 } from "../shared/status/status-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
-import { elapsedSecondsBetween, fmtElapsed } from "../shared/status/format.js";
+import { elapsedSecondsBetween } from "../shared/status/format.js";
+import { formatDuration } from "../../lib/date-format.js";
 
 /** ONE ROW'S ⓘ CONTENT, as a fold rather than as JSX.
  * WHAT THE ⓘ IS FOR, in the operator's own words */
@@ -257,7 +258,7 @@ export function queueRowTitleTooltip(surface: QueueSurfaceWire): string | undefi
 /** Share gate-age measurement with its accessible name; missing gate instants never become zero. */
 export function queueGateAge(surface: QueueSurfaceWire, nowIso: string): string | undefined {
   return surface.gateOpenedAt.state === "present"
-    ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
+    ? formatDuration(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
     : undefined;
 }
 

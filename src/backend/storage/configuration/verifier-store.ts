@@ -1,11 +1,11 @@
 import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
-import { type DirectoryIdentity, noSymlinkAncestry, statDirectory, sameDirectory, fileIdentityObservation, readPrivateFile, CREDENTIAL_DIRECTORY_MODE, ensureChildDirectory } from "./credential-safe-file.js";
+import { type DirectoryIdentity, noSymlinkAncestry, statDirectory, sameDirectory, fileIdentityObservation, readPrivateFile, CREDENTIAL_DIRECTORY_MODE } from "./credential-safe-file.js";
 import {
   createSyntheticVerifier,
   emailKey,
@@ -15,6 +15,9 @@ import {
   type SyntheticVerifier,
 } from "./synthetic-verifier.js";
 
+
+const PEPPER_BYTES = 32;
+const MAX_VERIFIER_BYTES = 1_048_576;
 
 type VerifierDocument = z.infer<typeof ProfileVerifierDocumentSchema>;
 export interface PreparedProfileVerifier { readonly profileId: string; }
@@ -45,8 +48,13 @@ export function createProfileVerifiers(machineRoot: string) {
   const pepperPath = join(directory, "profile-pepper");
   const documentPath = join(directory, "profile-verifiers.json");
 
-  function ensureMachine(): void {
-    ensureChildDirectory(machineRoot, directory, "profile verifiers", CREDENTIAL_DIRECTORY_MODE, CREDENTIAL_DIRECTORY_MODE);
+  function readVerifierFile(path: string, maxBytes: number) {
+    const ancestry = new Map<string, DirectoryIdentity>();
+    if (!noSymlinkAncestry(directory, ancestry)) throw new Error("profile verifier directory unavailable");
+    statDirectory(directory, "profile verifiers", CREDENTIAL_DIRECTORY_MODE);
+    const file = readPrivateFile(path, { label: "lock", maxBytes });
+    noSymlinkAncestry(directory, ancestry);
+    return file;
   }
 
   function writeBytes(path: string, bytes: Uint8Array): void {
@@ -60,31 +68,27 @@ export function createProfileVerifiers(machineRoot: string) {
     }
   }
 
-  function pepper(): Buffer {
-    ensureMachine();
-    if (!existsSync(pepperPath)) writeBytes(pepperPath, randomBytes(32));
-    const loaded = readFileSync(pepperPath);
-    if (loaded.byteLength !== 32) throw new Error("profile pepper is malformed");
-    return loaded;
+  function pepper() {
+    const file = readVerifierFile(pepperPath, PEPPER_BYTES);
+    if (file === undefined) throw new Error("profile pepper is missing");
+    if (file.bytes.length !== PEPPER_BYTES) throw new Error("profile pepper is malformed");
+    return file;
   }
 
   function resumeMac(binding: ResumeBinding, nonce: string): Buffer {
-    const ancestry = new Map<string, DirectoryIdentity>();
-    if (!noSymlinkAncestry(directory, ancestry)) throw new Error("profile resume verifier directory unavailable");
-    statDirectory(directory, "profile verifiers", CREDENTIAL_DIRECTORY_MODE);
-    const secret = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
-    if (secret?.bytes.length !== 32 || !noSymlinkAncestry(directory, ancestry)) {
-      throw new Error("profile resume verifier unavailable");
-    }
-    return createHmac("sha256", secret.bytes).update(JSON.stringify([
+    return createHmac("sha256", pepper().bytes).update(JSON.stringify([
       "relay-profile-resume-v1", binding.installationId, binding.profileId, binding.epoch, binding.origin, nonce,
     ])).digest();
   }
 
+  function documentFile() {
+    const file = readVerifierFile(documentPath, MAX_VERIFIER_BYTES);
+    if (file === undefined) throw new Error("profile verifier document is missing");
+    return file;
+  }
+
   function read(): VerifierDocument {
-    ensureMachine();
-    if (!existsSync(documentPath)) return { schemaVersion: 1, profiles: [] };
-    return ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(documentPath, "utf8")));
+    return ProfileVerifierDocumentSchema.parse(JSON.parse(documentFile().bytes.toString("utf8")));
   }
 
   function write(document: VerifierDocument): void {
@@ -107,21 +111,21 @@ export function createProfileVerifiers(machineRoot: string) {
       return timingSafeEqual(resumeMac(binding, proof.slice(0, 64)), Buffer.from(proof.slice(65), "hex"));
     },
     identify(email: string): "unknown" | { readonly profileId: string } {
-      return emailMatch(read().profiles, pepper(), email);
+      return emailMatch(read().profiles, pepper().bytes, email);
     },
     emailKeyFor(email: string): string {
-      return emailKey(pepper(), email);
+      return emailKey(pepper().bytes, email);
     },
     prepare(profileId: string, email: string, password: string): PreparedProfileVerifier {
-      const created = createSyntheticVerifier(pepper(), email, password);
-      const document = readPrivateFile(documentPath, { label: "lock", maxBytes: 1_048_576 }), sourcePepper = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
-      if (document === undefined || sourcePepper === undefined || sourcePepper.bytes.length !== 32) throw new Error("profile-verifier-source-required");
+      const sourcePepper = pepper();
+      const document = documentFile();
+      const created = createSyntheticVerifier(sourcePepper.bytes, email, password);
       const current = ProfileVerifierDocumentSchema.parse(JSON.parse(document.bytes.toString("utf8")));
       if (current.profiles.some(entry => entry.profileId === profileId || entry.emailKey === created.emailKey)) throw new Error("profile verifier already exists");
       const row = ProfileVerifierDocumentSchema.shape.profiles.element.parse({ profileId, ...created, consecutiveFailures: 0 });
       const assertCurrent = () => {
-        for (const [path, before] of [[documentPath, document], [pepperPath, sourcePepper]] as const) {
-          const after = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
+        for (const [path, maxBytes, before] of [[documentPath, MAX_VERIFIER_BYTES, document], [pepperPath, PEPPER_BYTES, sourcePepper]] as const) {
+          const after = readVerifierFile(path, maxBytes);
           if (after === undefined || !sameDirectory(after.identity, before.identity)
             || createHash("sha256").update(after.bytes).digest("hex") !== createHash("sha256").update(before.bytes).digest("hex")) throw new Error("profile-verifier-publication-source-changed");
         }
@@ -132,7 +136,7 @@ export function createProfileVerifiers(machineRoot: string) {
       assertCurrent(); return witness;
     },
     save(profileId: string, email: string, password: string): void {
-      const created = createSyntheticVerifier(pepper(), email, password);
+      const created = createSyntheticVerifier(pepper().bytes, email, password);
       const current = read();
       if (current.profiles.some((entry) => entry.profileId === profileId || entry.emailKey === created.emailKey)) {
         throw new Error("profile verifier already exists");
@@ -150,7 +154,7 @@ export function createProfileVerifiers(machineRoot: string) {
     },
     /** Derive a profile's replacement login row now. `swap` replaces only that row and clears its failures; `landed` reads back whether the swap took effect. */
     prepareLoginChange(profileId: string, email: string, password: string): { swap(): void; landed(): boolean } {
-      const created = createSyntheticVerifier(pepper(), email, password);
+      const created = createSyntheticVerifier(pepper().bytes, email, password);
       return Object.freeze({
         swap() {
           const current = read();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { z } from 'zod';
 import {
   ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, ASSISTANT_HISTORY_METADATA_MAX_UNITS, AssistantModelPreferenceViewSchema, type AssistantConversationView, type AssistantFailureCode,
@@ -209,28 +209,54 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
 export type AssistantHistory = Awaited<ReturnType<typeof createAssistantHistory>>;
 const noSubscribe = () => () => {};
 const noNotice = () => '';
-export function useAssistantHistory(client: AssistantQueries, enabled: boolean, authority: unknown) {
-  const [resource, setResource] = useState<{ authority: unknown; state: 'ready'; store: AssistantHistory; preference: AssistantModelPreferenceView['preference'] } | { authority: unknown; state: 'failed'; error: string }>();
+export function useAssistantHistory(client: AssistantQueries, authority: unknown, demand: { preference: boolean; history: boolean }) {
+  const owner = useMemo(() => ({ client, authority }), [client, authority]);
+  const source = useMemo(() => demand.preference ? { owner } : undefined, [owner, demand.preference]);
+  const [preference, setPreference] = useState<{ source: NonNullable<typeof source>; view: AssistantModelPreferenceView | null }>();
   useEffect(() => {
-    if (!enabled) return;
+    if (!source) return;
     const abort = new AbortController();
     void (async () => {
       try {
-        if (client.assistantModelPreference === undefined || client.assistantHistory === undefined || client.assistantConversation === undefined || client.assistantHistoryWrite === undefined) throw Error('ASSISTANT_HISTORY_UNAVAILABLE');
-        const view = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(abort.signal));
-        const served = { assistantHistory: client.assistantHistory.bind(client), assistantConversation: client.assistantConversation.bind(client), assistantHistoryWrite: client.assistantHistoryWrite.bind(client) };
-        const store = await createAssistantHistory(served, sessionStorage, view.profileId, abort.signal);
-        if (!abort.signal.aborted) setResource({ authority, state: 'ready', store, preference: view.preference });
-      } catch { if (!abort.signal.aborted) setResource({ authority, state: 'failed', error: ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE }); }
+        const reader = source.owner.client;
+        if (!reader.assistantModelPreference) throw Error('ASSISTANT_HISTORY_UNAVAILABLE');
+        const view = AssistantModelPreferenceViewSchema.parse(await reader.assistantModelPreference(abort.signal));
+        if (!abort.signal.aborted) setPreference(prior => {
+          const previous = prior?.source.owner === source.owner ? prior.view : undefined;
+          return { source, view: previous?.profileId === view.profileId && previous.epoch === view.epoch
+            && previous.revision > view.revision ? previous : view };
+        });
+      } catch { if (!abort.signal.aborted) setPreference({ source, view: null }); }
     })();
     return () => abort.abort();
-  }, [client, enabled, authority]);
-  const preferenceChanged = useCallback((view: AssistantModelPreferenceView) => {
-    setResource(prior => prior?.state === 'ready' && prior.authority === authority && prior.store.profileId === view.profileId ? { ...prior, preference: view.preference } : prior);
-  }, [authority]);
-  const current = resource?.authority === authority ? resource : undefined;
-  const ready = current?.state === 'ready' ? current : undefined;
-  const notice = useSyncExternalStore(ready?.store.subscribe ?? noSubscribe, ready?.store.notice ?? noNotice);
-  return { preferenceChanged, store: enabled ? ready?.store : undefined, preference: enabled ? ready?.preference : undefined, pending: enabled && current === undefined,
-    blocked: ready?.store.blocked() === true, notice: current?.state === 'failed' ? current.error : notice };
+  }, [source]);
+  const view = preference && preference.source === source ? preference.view : undefined;
+  const preferenceChanged = useCallback((next: AssistantModelPreferenceView) => {
+    setPreference(prior => prior && prior.source.owner === owner && prior.view?.profileId === next.profileId
+      && next.revision >= prior.view.revision ? { source: prior.source, view: next } : prior);
+  }, [owner]);
+
+  const profileId = view?.profileId;
+  const [history, setHistory] = useState<{ source: NonNullable<typeof source>; profileId: string; store: AssistantHistory | null }>();
+  useEffect(() => {
+    if (!demand.history || !source || profileId === undefined) return;
+    const abort = new AbortController();
+    void (async () => {
+      try {
+        const reader = source.owner.client;
+        if (!reader.assistantHistory || !reader.assistantConversation || !reader.assistantHistoryWrite) throw Error('ASSISTANT_HISTORY_UNAVAILABLE');
+        const served = { assistantHistory: reader.assistantHistory.bind(reader), assistantConversation: reader.assistantConversation.bind(reader),
+          assistantHistoryWrite: reader.assistantHistoryWrite.bind(reader) };
+        const store = await createAssistantHistory(served, sessionStorage, profileId, abort.signal);
+        if (!abort.signal.aborted) setHistory({ source, profileId, store });
+      } catch { if (!abort.signal.aborted) setHistory({ source, profileId, store: null }); }
+    })();
+    return () => abort.abort();
+  }, [demand.history, source, profileId]);
+  const store = history && history.source === source && history.profileId === profileId ? history.store : undefined;
+  const notice = useSyncExternalStore(store?.subscribe ?? noSubscribe, store?.notice ?? noNotice);
+  const failed = view === null || store === null;
+  return { preferenceChanged, preference: view?.preference, store: store ?? undefined,
+    pending: demand.history && !failed && store === undefined, blocked: store?.blocked() === true,
+    notice: failed ? ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE : notice };
 }

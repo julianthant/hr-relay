@@ -200,8 +200,8 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
     async confirmDuo() { confirmed++; return draft; } };
   try {
     await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port })));
-    const buttons = host.querySelectorAll<HTMLButtonElement>("section button"); assert.equal(buttons.length, 2);
-    await act(async () => buttons[0].click());
+    const add = [...host.querySelectorAll("button")].find(button => button.textContent === "Add this device"); assert.ok(add);
+    await act(async () => add.click());
     assert.ok(document.querySelector('[role="dialog"]'));
     await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port: { ...port, onboarding: { ...draft,
       methods: { ...draft.methods, key: { ...draft.methods.key, attemptId: "00000000-0000-4000-8000-000000000004" } } } } })));
@@ -241,57 +241,51 @@ it("both served setup pages keep method outcomes visible without offering anothe
   const calls: string[] = [];
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
   try {
-    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Pending"], ["complete", "Completed"], ["unknown", "Not confirmed"], ["unavailable", "Unavailable"]] as const) {
+    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Waiting for Duo"], ["complete", "Added"], ["unknown", "Not confirmed"], ["unavailable", "Unavailable"]] as const) {
       const port: ServedOnboardingPort = { reopenBrowser: unavailable, resume: async () => { throw new Error("not called"); }, validate: validateOnboarding,
         onboarding: { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo",
           methods: { key: { ...method, state, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } },
         showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable,
         start: async () => { calls.push("start"); return unavailable(); }, confirmDuo: unavailable, submit: unavailable };
       await act(async () => root.render(createElement(OnboardingSetup, { page, port })));
-      const row = host.querySelector(page === "fast" ? ".method-list li" : ".device-row"); assert.ok(row);
-      assert.equal(row.querySelector(page === "fast" ? ".duo-method-pill" : "p")?.textContent, label);
+      const row = host.querySelector(".method-list li"); assert.ok(row);
+      assert.equal(row.querySelector(".method-status")?.textContent, label);
       assert.doesNotMatch(host.textContent ?? "", /Not added|Needs review|outcome unknown/);
-      assert.match(host.querySelector(".sr-only")?.textContent ?? "", new RegExp(`Security key: ${label}`));
+      assert.match(host.querySelector(".sr-only")?.textContent ?? "", /Security key: /);
       if (state === "unknown" || state === "unavailable") {
-        const capture = page === "fast" ? [...host.querySelectorAll("button")].find(button => button.textContent === "Start capture") : row.querySelector("button");
+        await act(async () => host.querySelector<HTMLButtonElement>(".method-head")!.click());
+        const capture = [...host.querySelectorAll("button")].find(button => button.textContent === "Add this device");
         assert.ok(capture); assert.equal(capture.disabled, true);
         await act(async () => capture.click());
         assert.equal(calls.length, 0);
-        if (page === "fast") assert.match(host.textContent ?? "", /then start over from the setup browser/);
+        assert.match(host.textContent ?? "", /remove any device you do not recognize, then add this one again/);
       }
     }
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it("selects Fast Duo cards through the device selector and blocks selection while a method is pending or busy", async () => {
+it("selects method cards and blocks selection while a method is pending or busy", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle, touch: idle } };
   const unused = async (): Promise<never> => { throw new Error("unexpected command"); };
   let settle!: (value: typeof draft) => void;
   const port: ServedOnboardingPort = { reopenBrowser: unused, resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: validateOnboarding, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unused, openPortal: () => new Promise(resolve => { settle = resolve; }) };
-  const cards = () => [...host.querySelectorAll<HTMLButtonElement>(".method-card")];
+  const cards = () => [...host.querySelectorAll<HTMLButtonElement>(".method-head")];
   try {
     await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port })));
     assert.equal(cards().length, 2);
-    assert.equal(host.querySelector(".method-heading")?.textContent, "Relay sign-in methods0 of 2 completed");
+    assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
     await act(async () => cards()[1].click());
     assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
-    const select = host.querySelector<HTMLButtonElement>("#device-type"); assert.ok(select);
-    assert.equal(select.dataset.value, "touch");
-    await act(async () => select.click());
-    const option = document.querySelector<HTMLElement>('[role="option"][data-value="key"]'); assert.ok(option);
-    await act(async () => option.click());
-    assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
-    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucsd.edu")!.click());
-    assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open Duo")!.click());
+    assert.ok(cards().every(card => card.disabled));
     await act(async () => settle(draft));
     assert.ok(cards().every(card => !card.disabled));
     await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port: { ...port, onboarding: { ...draft, methods: { key: idle, touch: { ...idle, state: "pending", attemptId: "00000000-0000-4000-8000-000000000003" } } } } })));
-    assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
-    await act(async () => cards()[1].click());
-    assert.equal(select.dataset.value, "key");
-    assert.equal(cards()[1].querySelector(".duo-method-pill")?.textContent, "Pending");
+    assert.ok(cards().every(card => card.disabled));
+    assert.equal(cards()[1].querySelector(".method-status")?.textContent, "Waiting for Duo");
+    assert.ok([...host.querySelectorAll("button")].find(button => button.textContent === "Stop"));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -370,12 +364,12 @@ it("opening the setup browser spins the button and leaves the instruction in pla
   const port: ServedOnboardingPort = { reopenBrowser: () => new Promise(resolve => { settle = resolve; }), resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: validateOnboarding, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, openPortal: unused,
     showBrowser: () => new Promise(resolve => { settle = resolve; }) };
   const instruction = () => host.querySelector("header p")?.textContent;
-  const show = () => host.querySelector<HTMLButtonElement>(".actions .btn.primary");
+  const show = () => host.querySelector<HTMLButtonElement>(".actions button:last-child");
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
     const before = instruction();
     assert.equal(before?.includes("Chromium window named"), false);
-    assert.equal(host.querySelector(".duo-window-status strong")?.textContent, "Setup window is open");
+    assert.equal(host.querySelector(".window-state strong")?.textContent, "Setup window is open");
     assert.equal(show()?.getAttribute("aria-busy"), null);
     await act(async () => show()!.click());
     assert.equal(instruction(), before);

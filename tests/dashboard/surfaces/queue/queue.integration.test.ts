@@ -518,8 +518,8 @@ describe("queue and run panel loading and status", () => {
 
   it("marks a dry run in the panel header", () => {
     const dry = QueueSurfaceWireSchema.parse({ ...single(), dryRun: true });
-    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: dry })), /dry run/);
+    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: dry })), /Dry run/);
     const real = QueueSurfaceWireSchema.parse({ ...single(), dryRun: false });
-    assert.doesNotMatch(renderToStaticMarkup(createElement(RunStateChips, { row: real })), /dry run/);
+    assert.doesNotMatch(renderToStaticMarkup(createElement(RunStateChips, { row: real })), /Dry run/);
   });
 });

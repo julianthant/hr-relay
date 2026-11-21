@@ -130,7 +130,7 @@ export function createBrowserSessionFactoryFixtures(
         const url = context.page.url();
         seen.push(url);
         if (options.authenticated === false) {
-          return { authenticated: false, reason: options.reason ?? "the fake verifier refused", check: options.check ?? "application-route" };
+          return { authenticated: false, observedUrl: url, reason: options.reason ?? "the fake verifier refused", check: options.check ?? "application-route" };
         }
         return {
           authenticated: true,

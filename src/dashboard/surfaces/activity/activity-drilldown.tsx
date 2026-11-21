@@ -3,7 +3,7 @@ import { LoadingRegion, SettingsRowsSkeleton } from "../shared/loading/loading.j
 import { dsStatusOf } from "../shared/status/status-model.js";
 import { useEffect, useMemo, useRef } from 'react';
 import { ArrowDownUp } from 'lucide-react';
-import { Button, PageBreadcrumbs, SearchInput, Select, dsFocus, dsIcon } from '../../ds/ui.js';
+import { Button, ButtonLink, PageBreadcrumbs, SearchInput, Select, TBody, TD, TH, THead, TR, Table, dsFocus, dsIcon } from '../../ds/ui.js';
 import { LogPanel } from '../run-detail/log-panel.js';
 import { StatusBadge } from '../shared/status/status.js';
 import { activityDuration, type ActivitySummary } from './activity-view-model.js';
@@ -58,14 +58,14 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
           </Select>
         </div>
         <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">
-          <table aria-label={title} className="w-full table-fixed border-collapse text-body">
+          <Table label={title} layout="fixed">
             <colgroup><col />{showWorkflow && <col className="w-[27%]" />}{showStatus && <col className="w-[20%]" />}<col className="w-[18%]" /></colgroup>
-            <thead className="bg-ui-table text-caption text-ui-secondary"><tr>{['Name', ...(showWorkflow ? ['Workflow'] : []), ...(showStatus ? ['Status'] : []), 'Duration'].map(label => <th key={label} scope="col" className="px-4 py-3 text-left font-normal last:text-right">{label}</th>)}</tr></thead>
-            <tbody>{result.rows.map(run => <tr key={run.id} className="border-t border-ui-stroke even:bg-ui-table">
-              <td className="px-4 py-3"><button type="button" aria-label={`Open logs for ${run.subject}, ${run.displayId}`} disabled={pending || blocked} onClick={() => onSelection({ ...selection, run: run.id })} className={`block max-w-full rounded-sm text-left text-ui-info hover:underline ${dsFocus}`}><span className="block text-control">{run.subject}</span><span className="block text-caption tabular-nums text-ui-muted">{run.displayId}</span></button></td>
-              {showWorkflow && <td className="px-4 py-3">{run.workflowLabel}</td>}{showStatus && <td className="px-4 py-3"><RunStatus run={run} /></td>}<td className="px-4 py-3 text-right tabular-nums">{activityDuration(run.seconds)}</td>
-            </tr>)}</tbody>
-          </table>
+            <THead><TR>{['Name', ...(showWorkflow ? ['Workflow'] : []), ...(showStatus ? ['Status'] : []), 'Duration'].map(label => <TH key={label} align={label === 'Duration' ? 'right' : 'left'}>{label}</TH>)}</TR></THead>
+            <TBody>{result.rows.map(run => <TR key={run.id}>
+              <TD><ButtonLink href="#" variant="ghost" aria-label={`Open logs for ${run.subject}, ${run.displayId}`} aria-disabled={pending || blocked || undefined} className="!h-auto max-w-full !justify-start !p-0 text-left text-ui-info hover:underline" onClick={event => { event.preventDefault(); if (!pending && !blocked) onSelection({ ...selection, run: run.id }); }}><span className="flex min-w-0 flex-col"><span className="text-control">{run.subject}</span><span className="text-caption tabular-nums text-ui-muted">{run.displayId}</span></span></ButtonLink></TD>
+              {showWorkflow && <TD>{run.workflowLabel}</TD>}{showStatus && <TD><RunStatus run={run} /></TD>}<TD align="right" className="tabular-nums">{activityDuration(run.seconds)}</TD>
+            </TR>)}</TBody>
+          </Table>
           {!result.rows.length && <p className="m-0 px-4 py-6 text-center text-body text-ui-secondary">{selection.query?.trim() ? 'No runs match your search.' : 'No matching runs in this period.'}</p>}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ui-stroke px-4 py-2 text-caption text-ui-muted">
             <span>{result.totalMatches ? `${result.start + 1}–${Math.min(result.totalMatches, result.start + ACTIVITY_RUN_PAGE_SIZE)} of ${result.totalMatches}` : '0 runs'}</span>

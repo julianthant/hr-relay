@@ -1,7 +1,7 @@
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowDownToLine, Check, Copy, ScanSearch } from "lucide-react";
-import { Button, IconButton, SearchInput } from "../../../ds/ui.js";
+import { ArrowDownToLine, Check, Copy } from "lucide-react";
+import { Button, EmptyState, IconButton, SearchInput } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { filterLogSteps, logPlainText, logRowCount, visualLogSteps, type LogEntry, type LogStep } from "./log-feed-model.js";
 import { LogDecisionBlock, type DecisionAnswerHandler } from "./log-decision.js";
@@ -16,7 +16,7 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
   const block = entry.kind === "decision" ? <LogDecisionBlock decision={entry.decision} onAnswer={onDecision ? (option, answer) => onDecision(entry.id, option, answer) : undefined} onCancel={onCancelRun ? () => onCancelRun(entry.id) : undefined} /> : undefined;
   if (entry.kind === "decision" && entry.decision.title === "Screenshot" && entry.decision.state === "recorded" && entry.decision.screenshots) return <LogScreenshots screenshots={entry.decision.screenshots} presentation={entry.decision.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />;
   if (block && timeInStep) return block;
-  if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-3"><time className="pt-4 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time>{block}</div>;
+  if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-3"><time className="pt-4 text-caption tabular-nums text-ui-muted">{entry.time}</time>{block}</div>;
   if (entry.kind === "fields") return <PageCard title={entry.title} bare={entry.title === undefined && entry.result === undefined}>
     <FieldRows padded={entry.title !== undefined || entry.result !== undefined}>
       {entry.fields.map(field => <FieldRow key={field.id} kind={field.kind} label={field.label} value={field.value} unread={field.unread} mark={field.mark} />)}
@@ -118,14 +118,14 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
           role={entry.kind === "decision" || (step.header === false && index === 0) ? "group" : undefined}
           aria-label={entry.kind === "decision" ? entry.decision.title : step.header === false && index === 0 ? step.title : undefined}
           tabIndex={(entry.kind === "decision" && !entry.decision.answered) || (step.header === false && index === 0) ? -1 : undefined}
-          className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} onCancelRun={onCancelRun} timeInStep={index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}
+          className={cn("rounded-lg", entry.kind === "decision" && entry.decision.answered ? "outline-none" : "focus:outline-2 focus:outline-offset-2 focus:outline-ui-info")}><Entry entry={entry} onDecision={onDecision} onCancelRun={onCancelRun} timeInStep={index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}
       </StepFrame>)}
-      {!visible.length && (loading && !steps.length ? <LogSkeleton /> : <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center"><ScanSearch aria-hidden className="mb-1 size-6 text-ui-muted" /><h3 className="m-0 text-heading">{query.trim() ? "No matching actions" : "No actions yet"}</h3><p className="m-0 text-body text-ui-secondary">{query.trim() ? "Try a field, value, or action name." : "Confirmed actions will appear here."}</p>{query.trim() && <Button variant="ghost" onClick={() => setQuery("")}>Clear search</Button>}</div>)}
+      {!visible.length && (loading && !steps.length ? <LogSkeleton /> : <EmptyState className="min-h-64" title={query.trim() ? "No matching actions" : "No actions yet"} action={query.trim() ? <Button variant="ghost" onClick={() => setQuery("")}>Clear search</Button> : undefined} />)}
       {trailingContent}
       <div ref={end} />
     </div>
     <footer className={cn("log-footer flex shrink-0 items-center gap-3 border-t border-ui-stroke bg-ui-panel px-3 py-2", embedded && "sticky bottom-0 mt-auto")}>
-      <SearchInput className="w-44 min-w-0 shrink" aria-label="Search logs" placeholder="Search logs…" value={query} onChange={event => { setQuery(event.target.value); setCopyState("idle"); }} onClear={() => setQuery("")} />
+      <SearchInput className="w-44 min-w-0 shrink" aria-label="Search logs" placeholder="Search logs" value={query} onChange={event => { setQuery(event.target.value); setCopyState("idle"); }} onClear={() => setQuery("")} />
       <span className="shrink-0 whitespace-nowrap text-caption tabular-nums text-ui-muted" role="status">{count} {query.trim() ? "matching " : ""}{count === 1 ? "action" : "actions"}</span>
       {footerContent}
       <span className="ml-auto inline-flex shrink-0 items-center gap-1">

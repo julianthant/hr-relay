@@ -240,7 +240,7 @@ it('binds selected-run workflow proposals to the current selection and confirms 
     assert.equal(turn.proposal.values[0].value, 'EID 10101010 · Person Lookup');
     assert.deepEqual(turn.proposal.values.slice(1, 5), [
       { label: 'Runs', value: '1' }, { label: 'Mode', value: 'Live read' },
-      { label: 'Browser', value: 'Headed' }, { label: 'Captures', value: 'On' },
+      { label: 'Browser', value: 'Visible' }, { label: 'Captures', value: 'On' },
     ]);
     assert.deepEqual(turn.proposal.issued, proposal);
   }

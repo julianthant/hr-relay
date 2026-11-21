@@ -102,14 +102,14 @@ import { withNativeRecordReadScope, predecessorRunRecordFromRow,runRecordColumns
 import { SearchStateColumnSchema,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
-import { createRunSummaries } from "./run-summaries.js";
+import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "./workbook-library-repository.js";
+import { assertPreMasterWorkbookHistory,createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,migrateWorkbookPayloads,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION,WORKBOOK_MASTER_MIGRATION,WORKBOOK_PAYLOAD_CONVERSION_ID,WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -761,7 +761,7 @@ function errorMessage(error: unknown): string {
 
 function readIntPragma(
   database: DatabaseSync,
-  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version" | "schema_version",
+  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version" | "schema_version" | "freelist_count",
 ): number {
   const row = IntPragmaRowSchema.parse(database.prepare(`PRAGMA ${name}`).get());
   const value = row[name === "busy_timeout" ? "timeout" : name];
@@ -1442,7 +1442,7 @@ function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads =
   const { database, expectedSchemaVersion, convertPreferences } = context;
   let validated = 0;
   if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
-    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version);
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_PAYLOAD_MIGRATION.version);
   // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
@@ -2194,10 +2194,12 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
         assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
         database.exec("DELETE FROM assistant_actions");
       }
+      if (migration.version === WORKBOOK_MASTER_MIGRATION.version && index === 0) assertPreMasterWorkbookHistory(database);
       execMigrationStatement(database, statement);
       if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       if (statement === `SELECT '${FAILURE_NOTE_REMOVAL_CONVERSION_ID}'`) migrateFailureNotes(database);
+      if (statement === `SELECT '${WORKBOOK_PAYLOAD_CONVERSION_ID}'`) migrateWorkbookPayloads(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -3525,6 +3527,31 @@ export class AuthorityDatabase implements Disposable {
     return result;
   }
 
+  // Returns the pages a committed upgrade freed to the file system. A store with no free pages is left alone (undefined).
+  // A failed compaction leaves a larger file, not an unproved store, so it is reported and never retried.
+  static compactStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
+    expected: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>): "compacted" | "failed" | undefined {
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
+    let outcome: "compacted" | "failed" | undefined;
+    let primary: { error: unknown } | undefined;
+    try {
+      if (readIntPragma(database, "user_version") !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-stopped-compaction-version-refused");
+      if (readIntPragma(database, "freelist_count") > 0) {
+        try { database.exec("VACUUM"); outcome = "compacted"; } catch { outcome = "failed"; }
+      }
+    } catch (error) { primary = { error }; }
+    const failures: unknown[] = [];
+    try { database.close(); } catch (error) { failures.push(error); }
+    if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { database });
+    if (primary !== undefined) throw primary.error;
+    if (outcome === undefined) return undefined;
+    const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
+    if (after.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || after.authorityGeneration !== expected.authorityGeneration
+      || after.authorityContentFingerprint !== expected.authorityContentFingerprint) throw new Error("profile-stopped-compaction-authority-changed");
+    return outcome;
+  }
+
 
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
@@ -4269,32 +4296,57 @@ export class AuthorityDatabase implements Disposable {
     const due = this.#database.prepare("SELECT * FROM diagnostic_snapshots WHERE retention_kind='ordinary' AND purge_after<=? ORDER BY purge_after,id").all(instant);
     const purged: string[] = [];
     let retainedBytes = 0;
+    // Active executions and external-write recovery cannot lose evidence; read under each lock that acts on it.
+    const evidenceSettled = (runId: string) => {
+      const run = this.authority.runs.get(runId);
+      if (run === undefined) throw new Error("diagnostic-retention-run-missing");
+      return run.lifecycle.state === "terminal" && !this.authority.writeIntents.listByRun(runId).some(intent => intent.status !== "committed");
+    };
+    const refOf = (attachment: DiagnosticBundle["attachments"][number]) => ArtifactRefSchema.parse({ id: attachment.artifactId,
+      sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
+    const readOwned = (bundleId: string) => {
+      const current = this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema);
+      if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
+      return current;
+    };
+    const write = (record: DiagnosticBundle) => sqliteChanges(this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?")
+      .run(canonicalJsonStringify(DiagnosticBundleSchema.parse(record)), record.bundleId).changes);
+    // Bytes a purged bundle shares stay while that bundle's run is active again.
+    const heldByActivePurge = (ref: ArtifactRef, bundleId: string) => this.#database.prepare(`SELECT DISTINCT s.run_id AS runId
+      FROM diagnostic_files f JOIN diagnostic_snapshots s ON s.id=f.snapshot_id
+      WHERE f.digest=? AND s.id<>? AND json_extract(s.payload_json,'$.availability.state')='purged'`).all(ref.sha256, bundleId)
+      .some(row => !evidenceSettled(z.strictObject({ runId: RunIdSchema }).parse(row).runId));
     for (const raw of due) {
       const bundle = this.#parseNativeRow("diagnostic_snapshots", raw, DiagnosticBundleSchema);
-      const run = this.authority.runs.get(bundle.runId);
-      if (run === undefined) throw new Error("diagnostic-retention-run-missing");
-      // Active executions and external-write recovery cannot lose evidence.
-      if (run.lifecycle.state !== "terminal" || this.authority.writeIntents.listByRun(bundle.runId).some(intent => intent.status !== "committed")) continue;
-      this.#authorityWrite("diagnostic_snapshots", () => {
-        const current = this.#readRecord("diagnostic_snapshots", bundle.bundleId, DiagnosticBundleSchema);
-        if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
-        if (current.availability !== undefined) return { result: undefined, changes: 0 };
-        const record = DiagnosticBundleSchema.parse({ ...current, availability: { state: "purged", at: instant, reason: "retention" } });
-        const result = this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?").run(canonicalJsonStringify(record), bundle.bundleId);
-        return { result: undefined, changes: sqliteChanges(result.changes) };
+      const marked = this.#authorityWrite("diagnostic_snapshots", () => {
+        if (!evidenceSettled(bundle.runId)) return { result: undefined, changes: 0 };
+        const current = readOwned(bundle.bundleId);
+        if (current.availability !== undefined) return { result: "earlier" as const, changes: 0 };
+        return { result: "now" as const, changes: write({ ...current, availability: { state: "purged", at: instant, reason: "retention" } }) };
       });
-      for (const attachment of bundle.attachments) {
-        const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
-        this.#authorityWrite("diagnostic_snapshots", () => {
+      if (marked === undefined) continue;
+      // One lock owns every byte removal of the bundle, so a requeue cannot fall between two attachments.
+      const removed = this.#authorityWrite("diagnostic_snapshots", () => {
+        if (!evidenceSettled(bundle.runId)) {
+          // Only a mark this sweep made is withdrawn; nothing was removed under it. An earlier purge stays refused.
+          if (marked === "earlier") return { result: false, changes: 0 };
+          const { availability: _marker, ...current } = readOwned(bundle.bundleId);
+          return { result: false, changes: write(current) };
+        }
+        for (const attachment of bundle.attachments) {
+          const ref = refOf(attachment);
           const references = [...this.readManagedArtifactReferences(ref), ...pendingDiagnosticArtifacts(this.#admission, false)];
-          if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
+          if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256) || heldByActivePurge(ref, bundle.bundleId)) {
+            retainedBytes += ref.bytes;
+            continue;
+          }
           // An explicit unavailable association survives failed or interrupted byte removal.
           try { removeArtifactDeletionFile(this.#admission, inspectArtifactDeletionFile(this.#admission, ref)); }
           catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
-          return { result: undefined, changes: 0 };
-        });
-      }
-      purged.push(bundle.bundleId);
+        }
+        return { result: true, changes: 0 };
+      });
+      if (removed) purged.push(bundle.bundleId);
     }
     return Object.freeze({ purged: Object.freeze(purged), retainedBytes });
   }
@@ -7393,7 +7445,7 @@ export class AuthorityDatabase implements Disposable {
       }
       if (eligible !== undefined) this.#refreshClaimRoutes();
       const candidates = eligible === undefined
-        ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued' AND pause_state IS NULL
+        ? this.#database.prepare(`SELECT * FROM runs INDEXED BY runs_queued_idx WHERE workflow=? AND state='queued' AND pause_state IS NULL
           ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all(request.workflow)
         : this.#database.prepare(`SELECT run.* FROM temp.claim_routes AS route INDEXED BY claim_routes_home_idx
           CROSS JOIN runs AS run ON run.id=route.run_id WHERE route.home=? OR route.home IS NULL
@@ -7603,7 +7655,7 @@ export class AuthorityDatabase implements Disposable {
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
       },
       // Either representation can reveal active membership when a row's state has drifted.
-      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs
+      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs INDEXED BY runs_nonterminal_idx
         WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
         ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
@@ -7624,11 +7676,7 @@ export class AuthorityDatabase implements Disposable {
       listByPauseState: (state: "requested" | "paused") => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE pause_state = ? ORDER BY created_at, id
       `).all(state).map((row) => runRecordFromRow(row))),
-      listWorkflows: () => Object.freeze(
-        z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
-          SELECT DISTINCT workflow AS workflow FROM runs ORDER BY workflow
-        `).all()).map(({ workflow }) => workflow),
-      ),
+      listWorkflows: () => Object.freeze(listRunWorkflows(this.#database)),
       findByTrace: (traceId: string) => {
         const parsed = TraceIdSchema.parse(traceId);
         const rows = this.#database.prepare(`

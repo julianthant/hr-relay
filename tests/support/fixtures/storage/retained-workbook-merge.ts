@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { WorkbookLibraryActionRecordSchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryStateSchema } from '../../../../src/models/dashboard/workbook-library.js';
-import { SavedWorkbookWireSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema } from '../../../../src/models/dashboard/workbooks.js';
+import { EditableWorkbookWireSchema, SavedWorkbookWireSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema } from '../../../../src/models/dashboard/workbooks.js';
 import { canonicalJsonStringify } from '../../../../src/rules/validation/canonical-json.js';
 import { sha256Hex } from '../../../../src/rules/validation/sha256.js';
 
@@ -43,18 +43,27 @@ const saveChanges = [
   { sheetId, rowId: JSON.stringify([sourceId, 'people', 'person']), fieldId: 'column:0', oldValue: null, newValue: 'Source' },
 ];
 
+/** A row payload in the store's own layout: from schema 38 its workbook is stored once in workbook_payloads and named by digest. */
+function rowPayload(database: DatabaseSync, record: Readonly<{ workbook: unknown }>): string {
+  if (database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='workbook_payloads'").get() === undefined) return canonicalJsonStringify(record);
+  const { workbook, ...envelope } = record;
+  const json = canonicalJsonStringify(JSON.parse(JSON.stringify(EditableWorkbookWireSchema.parse(workbook)))), digest = sha256Hex(json);
+  database.prepare('INSERT INTO workbook_payloads(digest,payload_json) VALUES(?,?) ON CONFLICT(digest) DO NOTHING').run(digest, json);
+  return JSON.stringify({ ...envelope, workbookDigest: digest });
+}
+
 export function installRetainedMergeFixture(database: DatabaseSync) {
   for (const [creation, current, state] of [[target, { ...merged, version: 3 }, targetState], [source, source, sourceState]] as const) {
     database.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json,ownership_json) VALUES(?,?,?,?,?,?)')
-      .run(current.libraryId, current.version, at, at, canonicalJsonStringify(SavedWorkbookWireSchema.parse(current)),
+      .run(current.libraryId, current.version, at, at, rowPayload(database, SavedWorkbookWireSchema.parse(current)),
         canonicalJsonStringify(current.libraryId === targetId ? { '["people","header","column:0"]': { owner: 'operator' }, '["people","person","column:0"]': { owner: 'operator' } } : {}));
-    database.prepare('INSERT INTO workbook_creations(id,payload_json) VALUES(?,?)').run(creation.libraryId, canonicalJsonStringify(creation));
+    database.prepare('INSERT INTO workbook_creations(id,payload_json) VALUES(?,?)').run(creation.libraryId, rowPayload(database, creation));
     database.prepare('INSERT INTO workbook_library_state(id,payload_json) VALUES(?,?)').run(state.libraryId, canonicalJsonStringify(state));
   }
   for (const [libraryId, id, workbook] of [[targetId, 'original', target.workbook], [sourceId, 'original', source.workbook],
     [targetId, 'revision:2', merged.workbook], [targetId, `merge:${sourceId}`, { ...source.workbook, libraryId: targetId }]] as const) {
     const snapshot = WorkbookLibrarySnapshotSchema.parse({ id: JSON.stringify([libraryId, id]), libraryId, workbook });
-    database.prepare('INSERT INTO workbook_library_snapshots(id,workbook_id,payload_json) VALUES(?,?,?)').run(snapshot.id, libraryId, canonicalJsonStringify(snapshot));
+    database.prepare('INSERT INTO workbook_library_snapshots(id,workbook_id,payload_json) VALUES(?,?,?)').run(snapshot.id, libraryId, rowPayload(database, snapshot));
   }
   for (const [operation, changes, revision] of [[save, saveChanges, 2], [metadata, [], 3]] as const) {
     const inserted = database.prepare('INSERT INTO workbook_operations(workbook_id,operation_id,digest,request_json) VALUES(?,?,?,?)')

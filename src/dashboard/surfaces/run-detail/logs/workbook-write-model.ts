@@ -2,7 +2,7 @@ import type { RunDetailWire, RunWorkbookWritesWire } from "../../../../models/da
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { LogDecision } from "./log-decision-model.js";
 import type { LogStep } from "./log-feed-model.js";
-import { fmtActionClock } from "../../shared/status/format.js";
+import { formatTimeWithSeconds } from "../../../lib/date-format.js";
 import type { DashboardCommandRequest } from "../../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
@@ -23,8 +23,8 @@ export function workbookWriteLogStep(operation: WorkbookWrite): LogStep {
     : receipt.state === "applied" ? "The captured workbook change was applied."
     : receipt.state === "refused" ? ERROR_CATALOG.WORKBOOK_INVALID.text
     : "Choose a matching row. Operator-owned cells remain protected.";
-  return { id: native.eventId, time: fmtActionClock(receipt.at), title: "Workbook change", entries: [{ kind: "decision",
-    id: native.eventId, time: fmtActionClock(receipt.at), decision: { title: resolution.state === "available" ? resolution.decision?.title ?? "Workbook change" : "Workbook change",
+  return { id: native.eventId, time: formatTimeWithSeconds(receipt.at), title: "Workbook change", entries: [{ kind: "decision",
+    id: native.eventId, time: formatTimeWithSeconds(receipt.at), decision: { title: resolution.state === "available" ? resolution.decision?.title ?? "Workbook change" : "Workbook change",
       state: resolution.state === "resolved" || receipt.state === "applied" ? "recorded" : receipt.state === "refused" ? "failed" : "review",
       message, ...(resolution.state === "available" && resolution.decision !== undefined ? { served: resolution.decision } : {}),
       ...(resolution.state === "resolved" && resolution.answer !== undefined ? { answered: resolution.answer } : {}) } }] };

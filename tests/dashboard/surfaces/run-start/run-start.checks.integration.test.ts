@@ -41,20 +41,16 @@ describe("the Run dialog's Checks step", () => {
     assert.deepEqual(reads, [{ workflowId: h.WORKFLOW_ID }]);
   });
 
-  it("lists every check with problems first, in readable words and no check ids", async () => {
+  it("lists only the checks that are not ready, problems first, in readable words and no check ids", async () => {
     const { client } = served(h.readiness([PASSING, WARNING, FIXABLE]));
     const dialog = await h.openDialog(client);
     await reachChecks(dialog);
     const rows = [...document.body.querySelectorAll('[aria-label="Check results"] .ds-run-row')].map(row => (row.textContent ?? "").trim());
-    assert.equal(rows.length, 3, "two problems and the passing summary row");
+    assert.equal(rows.length, 2, "the two problems only");
     assert.match(rows[0] ?? "", /UCPath sign-in.*The UCPath password is missing\..*Add password/u);
     assert.match(rows[1] ?? "", /Current fiscal year.*The fiscal year ends soon\..*Warning/u);
-    assert.match(rows[2] ?? "", /1 other check ready/u);
-    await dialog.press("Show ready checks");
-    const opened = [...document.body.querySelectorAll('[aria-label="Check results"] .ds-run-row')].map(row => (row.textContent ?? "").trim());
-    assert.equal(opened.length, 4);
-    assert.match(opened[3] ?? "", /Runtime settings.*Ready/u);
-    assert.ok(dialog.text().includes("1 of 3 ready"));
+    assert.ok(!dialog.text().includes("Relay settings"), "a ready check is not listed");
+    assert.ok(!/\d of \d ready|checks? ready/u.test(dialog.text()), "no count of ready checks is drawn");
     assert.ok(!/secrets\.|config\.valid|fiscal\.current/u.test(dialog.text()), "no check id is drawn");
   });
 
@@ -113,15 +109,16 @@ describe("the Run dialog's Checks step", () => {
     assert.deepEqual(fixes, [["account", "protected.ucpathPassword"]]);
   });
 
-  it("says on a failed check with no Fix button that Settings cannot fix it and what to do", async () => {
+  it("says on a failed check with no Fix button what is wrong and what to do, in one sentence", async () => {
     const files = { check: "filesystem.health", status: "fail", summary: "Relay is out of disk space." } as const;
     const address = { check: "endpoint.crm.prod", status: "fail", summary: "The CRM address is invalid." } as const;
     const { client } = served(h.readiness([files, address, PASSING]));
     const dialog = await h.openDialog(client);
     await reachChecks(dialog);
     assert.equal(h.buttons().filter(button => button.hasAttribute("data-run-check-fix")).length, 0);
-    assert.match(dialog.text(), /Cannot be fixed in Settings\. Free up disk space, then check again\. Relay is out of disk space\./u);
-    assert.match(dialog.text(), /Cannot be fixed in Settings\. Relay cannot use this system's address, and this run cannot start until it can\. The CRM address is invalid\./u);
+    assert.match(dialog.text(), /This computer is low on disk space\. Free up space, then check again\./u);
+    assert.match(dialog.text(), /Relay can't reach CRM\. Check again in a moment\./u);
+    assert.ok(!/Node\.js|dependenc|configuration|data store|scope/iu.test(dialog.text()), "no developer words");
   });
 
   it("holds the list's place while checking: one Checking indicator over eight placeholder rows", async () => {
@@ -182,24 +179,16 @@ describe("the Run dialog's Checks step", () => {
     assert.equal(document.activeElement, fixButton("Add password"));
   });
 
-  it("sums the passing checks in one row that opens them, closed again on each visit to the stage", async () => {
+  it("shows one Ready to start line when every check is ready", async () => {
     const { client } = served(h.readiness([PASSING, { check: "browser.assets", status: "pass" }]));
     const dialog = await h.openDialog(client);
     await reachChecks(dialog);
-    const results = () => document.body.querySelectorAll('[aria-label="Check results"] .ds-run-row').length;
-    assert.equal(results(), 1);
-    assert.ok(dialog.text().includes("All 2 checks ready"));
-    assert.ok(dialog.text().includes("2 of 2 ready"));
-    await dialog.press("Show ready checks");
-    assert.equal(results(), 3);
-    assert.equal(h.buttons().find(button => h.buttonName(button) === "Hide ready checks")?.getAttribute("aria-expanded"), "true");
-    await dialog.press("Back");
-    await dialog.press("Continue");
-    for (let wait = 0; wait < 6; wait += 1) await h.settle();
-    assert.equal(results(), 1, "the passing list is closed on the next visit");
+    const rows = [...document.body.querySelectorAll('[aria-label="Check results"] .ds-run-row')].map(row => (row.textContent ?? "").trim());
+    assert.deepEqual(rows, ["Ready to start"]);
+    assert.ok(!/\d of \d ready|checks? ready/u.test(dialog.text()), "no count of ready checks is drawn");
   });
 
-  it("announces the result through one status region that holds Checking and then the count", async () => {
+  it("announces the result through one status region that holds Checking and then the result", async () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
@@ -210,6 +199,6 @@ describe("the Run dialog's Checks step", () => {
     await act(async () => { pending.resolve(h.readiness([PASSING, UNFIXABLE])); });
     const after = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
     assert.equal(after, region, "the same live region is updated, not replaced");
-    assert.match(after?.textContent ?? "", /1 of 2 ready, 1 needs fixing/u);
+    assert.match(after?.textContent ?? "", /1 check needs fixing/u);
   });
 });

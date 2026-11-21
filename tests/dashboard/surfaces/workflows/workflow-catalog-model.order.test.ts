@@ -7,7 +7,7 @@ import { workflowNavigationGroups } from "../../../../src/dashboard/surfaces/she
 import { buildWorkflowCatalog, servedLaunchWorkflows } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
 
-/** Every served workflow: category groups as the rail shows them (Lookup, Separations, Onboarding, Work Study, then categories the rail does not name),
+/** Every served workflow: category groups as the rail shows them (Lookup, Separations, Onboarding, Work-Study, then categories the rail does not name),
  * inside each group the order `config/dashboard-workflow-sources.json` declares. */
 const LISTED_ORDER = [
   "person-lookup",

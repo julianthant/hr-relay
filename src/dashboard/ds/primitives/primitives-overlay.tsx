@@ -107,10 +107,12 @@ export const DialogClose = DialogPrimitive.Close;
 
 export type DsDialogSize = "sm" | "md" | "lg" | "xl";
 
+/** sm 400, md 560, lg 880. `lg` is the Start run frame: a 73px divided header and a 57px recessed footer.
+ * `xl` is Review records' own size and is not a general width. */
 const DIALOG_SIZE: Record<DsDialogSize, string> = {
   sm: "max-w-[400px]",
   md: "max-w-[560px]",
-  lg: "max-w-[760px]",
+  lg: "max-w-[880px]",
   xl: "max-w-[min(94vw,1100px)]",
 };
 
@@ -138,7 +140,6 @@ export function DialogContent({
   title,
   description,
   size = "md",
-  hideClose,
   band,
   className,
   onOpenAutoFocus,
@@ -149,8 +150,9 @@ export function DialogContent({
   title: ReactNode;
   description?: ReactNode;
   size?: DsDialogSize;
+  /** Ignored: every dialog has a close X. Left for surfaces that still pass it. */
   hideClose?: boolean;
-  /** The Run and Rerun dialog only: a divided header and a grey footer band. Every other dialog is compact. */
+  /** A divided header and a recessed footer band; `size="lg"` always has them. */
   band?: boolean;
   className?: string;
   onOpenAutoFocus?: (event: Event) => void;
@@ -164,7 +166,6 @@ export function DialogContent({
         title={title}
         description={description}
         size={size}
-        hideClose={hideClose}
         band={band}
         className={className}
         onOpenAutoFocus={onOpenAutoFocus}
@@ -188,7 +189,6 @@ function DialogSurface({
   title,
   description,
   size,
-  hideClose,
   band,
   className,
   onOpenAutoFocus,
@@ -199,7 +199,6 @@ function DialogSurface({
   title: ReactNode;
   description?: ReactNode;
   size: DsDialogSize;
-  hideClose?: boolean;
   band?: boolean;
   className?: string;
   onOpenAutoFocus?: (event: Event) => void;
@@ -213,7 +212,8 @@ function DialogSurface({
     <>
       <Scrim layer={dsLayer.modal} entered={entered} />
       <DialogPrimitive.Content
-        data-band={band || undefined}
+        data-band={band || size === "lg" || undefined}
+        data-size={size}
         {...(!description ? { "aria-describedby": undefined } : {})}
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
@@ -231,9 +231,9 @@ function DialogSurface({
           className,
         )}
       >
-        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)]">
+        <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] group-data-[band]/dialog:border-b group-data-[band]/dialog:border-[color:var(--ds-border)] group-data-[size=lg]/dialog:h-[73px] group-data-[size=lg]/dialog:items-center group-data-[size=lg]/dialog:bg-[var(--ds-surface-2)]">
           <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
-            <DialogPrimitive.Title className={cn(dsText.section, "font-semibold text-[color:var(--ds-fg)]")}>
+            <DialogPrimitive.Title className={cn(dsText.section, "font-medium text-[color:var(--ds-fg)]")}>
               {title}
             </DialogPrimitive.Title>
             {description && (
@@ -242,11 +242,9 @@ function DialogSurface({
               </DialogPrimitive.Description>
             )}
           </div>
-          {!hideClose && (
-            <DialogPrimitive.Close asChild>
-              <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
-            </DialogPrimitive.Close>
-          )}
+          <DialogPrimitive.Close asChild>
+            <IconButton label="Close" size="md" icon={<X aria-hidden className={dsIcon.md} />} />
+          </DialogPrimitive.Close>
         </header>
         {children}
       </DialogPrimitive.Content>
@@ -278,7 +276,7 @@ export function DialogFooter({
       className={cn(
         // Compact: the buttons sit in the dialog's own padding. Only the Run and Rerun dialog (`band`) has the recessed plane.
         "flex shrink-0 items-center gap-[var(--ds-space-base)] px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]",
-        "group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
+        "group-data-[size=lg]/dialog:h-[57px] group-data-[size=lg]/dialog:pb-0 group-data-[band]/dialog:border-t group-data-[band]/dialog:border-[color:var(--ds-border-subtle)] group-data-[band]/dialog:bg-[var(--ds-recess-bg)] group-data-[band]/dialog:pt-[var(--ds-space-cozy)] group-data-[band]/dialog:[border-end-start-radius:inherit] group-data-[band]/dialog:[border-end-end-radius:inherit]",
         meta ? "justify-between" : "justify-end",
         className,
       )}
@@ -298,9 +296,10 @@ export function DialogFooter({
   );
 }
 
-/** Confirm: the one dialog every confirmation uses.
- * No close ×: Escape and Cancel close it, and Cancel takes focus (ringed). A destructive action is a soft red button named for the action;
- * any other confirm is the blue primary. Never offers "Don't ask again" for deleting or merging data. */
+/** Confirm: the one dialog every confirmation uses, in the `sm` Dialog frame.
+ * The title is the question, `description` is the one consequence sentence, Cancel takes focus first and
+ * the confirm button is named for the action: red when `destructive`, the blue primary otherwise.
+ * Red appears on that one button only. Never offers "Don't ask again" for deleting or merging data. */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -318,7 +317,7 @@ export function ConfirmDialog({
   onOpenChange: (open: boolean) => void;
   title: ReactNode;
   description?: ReactNode;
-  /** The exact thing affected: a file name, path or ID. */
+  /** The exact thing affected: a file name or path. Not an id or revision. */
   detail?: ReactNode;
   confirmLabel: ReactNode;
   onConfirm: () => void;
@@ -328,53 +327,27 @@ export function ConfirmDialog({
   onCloseAutoFocus?: (event: Event) => void;
 }) {
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <ConfirmSurface title={title} description={description} detail={detail} confirmLabel={confirmLabel} onConfirm={onConfirm}
-          destructive={destructive} cancelLabel={cancelLabel} busy={busy} onCloseAutoFocus={onCloseAutoFocus} />
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
-  );
-}
-
-function ConfirmSurface({
-  title, description, detail, confirmLabel, onConfirm, destructive, cancelLabel, busy, onCloseAutoFocus,
-}: {
-  title: ReactNode; description?: ReactNode; detail?: ReactNode; confirmLabel: ReactNode; onConfirm: () => void;
-  destructive: boolean; cancelLabel: ReactNode; busy: boolean; onCloseAutoFocus?: (event: Event) => void;
-}) {
-  const entered = useEntered();
-  useRegisterModal();
-  return (
-    <>
-      <Scrim layer={dsLayer.modal} entered={entered} />
-      <DialogPrimitive.Content
-        {...(!description ? { "aria-describedby": undefined } : {})}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        size="sm"
+        title={title}
+        description={description}
         onCloseAutoFocus={onCloseAutoFocus}
         onOpenAutoFocus={event => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-confirm-cancel]")?.focus(); }}
-        className={cn(
-          "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] max-w-[420px] -translate-x-1/2 -translate-y-1/2",
-          dsLayer.modal,
-          "flex flex-col gap-[var(--ds-space-loose)] border p-5 outline-none", DIALOG_BLUE,
-          "rounded-[20px] border-[color:var(--ds-border)] bg-[var(--ds-surface-overlay)]",
-          dsElev.high,
-          dsMotion.enter,
-          entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
-        )}
       >
-        <div className="flex min-w-0 flex-col gap-1">
-          <DialogPrimitive.Title className="m-0 text-[20px] font-semibold leading-7 text-[color:var(--ds-fg)]">{title}</DialogPrimitive.Title>
-          {description && <DialogPrimitive.Description className="m-0 text-[13px] leading-5 text-[color:var(--ds-fg-muted)]">{description}</DialogPrimitive.Description>}
-          {detail && <p className="m-0 break-all font-mono text-[13px] leading-5 text-[color:var(--ds-fg-muted)]">{detail}</p>}
-        </div>
-        <div className="flex justify-end gap-3">
-          <DialogPrimitive.Close asChild>
-            <Button data-confirm-cancel variant="muted" disabled={busy} className="h-8 focus:[outline-style:solid] focus:outline-[length:var(--ds-focus-ring-w)] focus:outline-offset-[var(--ds-focus-ring-offset)] focus:outline-[color:var(--ds-focus-ring)]">{cancelLabel}</Button>
-          </DialogPrimitive.Close>
-          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm} className="h-8 rounded-[8px]">{confirmLabel}</Button>
-        </div>
-      </DialogPrimitive.Content>
-    </>
+        {detail && (
+          <DialogBody className="pt-0">
+            <p className={cn("m-0 break-all text-[color:var(--ds-fg-muted)]", dsText.ui)}>{detail}</p>
+          </DialogBody>
+        )}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button data-confirm-cancel variant="muted" disabled={busy}>{cancelLabel}</Button>
+          </DialogClose>
+          <Button variant={destructive ? "danger" : "primary"} loading={busy} onClick={onConfirm}>{confirmLabel}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

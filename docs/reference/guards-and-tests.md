@@ -55,7 +55,7 @@ helpers that hide test registrations behind a helper-style name.
 
 | Layer | Owner and selection | Evidence |
 | --- | --- | --- |
-| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. |
+| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. A unit test may use an isolated temporary store or folder it creates and removes. |
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
@@ -584,6 +584,10 @@ A dashboard change accounts for the client/shared schema, producer/view-model, c
 controls, and every consumer of changed shared data. Wiring tests exercise both command refusal
 arms (`rejected` and `conflict`), late settlements, request identity, and focus/remount behavior
 where relevant. A visible assertion pairs with an independent wire or authority fact.
+
+A storage statement over a table that grows with runs uses an index or a bound, which the store
+query plan guard checks. A new index lands in a forward migration that names the statement it
+serves. A whole-table read kept by design records its reason in the guard's audit.
 
 Focused tests establish the changed behavior, then lint and affected generated checks establish
 the candidate. Full acceptance uses the assigned final gate. Actual commands, exits, failures,

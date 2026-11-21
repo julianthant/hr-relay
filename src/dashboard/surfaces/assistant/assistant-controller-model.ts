@@ -49,7 +49,7 @@ export function presentResult(result: AssistantResult, requestId: number, prompt
           { label: 'Input', value: p.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
           { label: 'Runs', value: String(p.startPlan.planned.length) },
           { label: 'Mode', value: p.startPlan.dryRun ? 'Dry run' : 'Live read' },
-          { label: 'Browser', value: p.startPlan.browserMode === 'headed' ? 'Headed' : 'Headless' },
+          { label: 'Browser', value: p.startPlan.browserMode === 'headed' ? 'Visible' : 'Hidden' },
           { label: 'Captures', value: p.startPlan.captureBrowserScreenshots ? 'On' : 'Off' },
           { label: 'Expires', value: p.expiresAt },
         ] : p.effect === 'spreadsheet' ? [...p.facts, { label: 'Expires', value: p.expiresAt }]
@@ -298,15 +298,19 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const accountAvailable = accountPort.mode === 'live' && (account.state === 'connected' && account.planUsage === 'enabled' || usageUnread);
   const accountFailure = resource !== undefined && 'code' in resource ? resource.code === 'CHATGPT_AUTH_UNAVAILABLE' ? ACCOUNT_READ_FAILED : ERROR_CATALOG[resource.code].text : undefined;
   const accountReadFailed = account.state === 'unavailable' && accountPort.refresh !== undefined;
-  const [models, setModels] = useState<AssistantModelCatalog['models']>();
+  const catalogSource = useMemo(() => readModels && accountAvailable ? { client, authority } : undefined,
+    [readModels, accountAvailable, client, authority]);
+  const [catalog, setCatalog] = useState<{ source: NonNullable<typeof catalogSource>; models: AssistantModelCatalog['models'] }>();
   useEffect(() => {
-    const client = sessions.client;
-    if (!readModels || !accountAvailable || client.assistantModels === undefined) return;
+    if (!catalogSource?.client.assistantModels) return;
     const request = new AbortController();
-    client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
+    catalogSource.client.assistantModels(request.signal).then(result => {
+      if (!request.signal.aborted) setCatalog({ source: catalogSource, models: result.models });
+    }, () => { if (!request.signal.aborted) setCatalog(undefined); });
     return () => request.abort();
-  }, [readModels, accountAvailable, sessions.client]);
-  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => { void controller.choose(preference); }, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  }, [catalogSource]);
+  const models = catalog && catalog.source === catalogSource ? catalog.models : undefined;
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
     accountRetry: () => { void accountPort.refresh?.(); },

@@ -102,7 +102,7 @@ describe("clear all run history", () => {
     const workbook = library.create({ name: "Retained.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "Retained" }] }] }] });
     const selection = f.database.authority.workbooks.rememberLastUsed({ workflowId: 'person-lookup', acceptedCommandId: randomUUID(), usedAt: NOW,
       sources: [{ libraryId: workbook.libraryId, sheetId: 'sheet' }] });
-    const retained = ["workflow_workbook_selections", "settings", "settings_snapshots", "artifacts", "workbook_types", "workbook_library", "workbook_library_history", "workbook_operations", "workbook_creations", "workbook_library_state", "write_intents", "write_attempts"];
+    const retained = ["workflow_workbook_selections", "settings", "settings_snapshots", "artifacts", "workbook_types", "workbook_library", "workbook_library_history", "workbook_payloads", "workbook_operations", "workbook_creations", "workbook_library_state", "write_intents", "write_attempts"];
     const credentialFile = join(f.profile.stateRoot, "credentials", "protected.json"), credentials = readFileSync(credentialFile);
     const account = f.profile.machine.readProfileRegistry();
     const before = retained.map(table => [table, f.rows(table)]);
