@@ -55,7 +55,7 @@ const PENDING_LIMIT_MS = 15_000;
 
 /** Persistent refusal context: sticky toasts that only notify; each has a Priority notification item that opens the run. */
 export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {
-  return <>{results.map(entry => <Notice key={entry.id} sticky tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
+  return <>{results.map(entry => <Notice key={entry.id} tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
     title={commandResultTitle(entry)} description={commandResultDetail(entry)} />)}</>;
 }
 

@@ -72,7 +72,7 @@ describe("independent protected Settings surface", () => {
     const before = structuredClone(h.controller().protectedEditor.draft);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "conflict"); assert.deepEqual(h.controller().protectedEditor.draft, before); assert.equal(h.commands.length, 1);
-    assert.match(h.host.textContent ?? "", /Credentials changed.*Your draft is retained\. Review the current values before retrying\./u);
+    assert.doesNotMatch(h.host.textContent ?? "", /Credentials changed|Retry edit/u); // the model toasts the conflict once
     const current = h.controller().editor;
     assert.equal(current.state, "loaded");
     if (current.state !== "loaded" || current.document.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
@@ -154,14 +154,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { SettingsSaveState } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { SettingsSaveFeedback } from "../../../../src/dashboard/surfaces/settings/editor/settings-feedback.js";
 it.each([
-  [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", "Retry edit"],
-  [{ state: "refused", message: "Draft refused" }, "Credentials weren't saved", "Retry edit"],
-  [{ state: "applied", replayed: false }, "Saved", ""],
-  [{ state: "applied", replayed: true }, "Already saved", ""],
-] satisfies [SettingsSaveState, string, string][])("preserves the feedback title and retry affordance for %j", (save, title, retry) => {
-  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retryConflict: () => {} }));
-  assert.ok(html.includes(title.replace("'", "&#x27;")));
-  assert.equal(html.includes(retry || "Retry"), retry !== "");
+  [{ state: "conflict", message: "Current revision changed" }, ""],
+  [{ state: "refused", message: "Draft refused" }, ""],
+  [{ state: "applied", replayed: false }, "Saved"],
+  [{ state: "applied", replayed: true }, "Already saved"],
+] satisfies [SettingsSaveState, string][])("shows only a landed save inline for %j, never a button", (save, text) => {
+  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save }));
+  assert.equal(html.includes(text || "Credentials"), text !== "");
+  assert.equal(html.includes("<button"), false);
 });
 
 it("retains applied feedback until the next draft changes its state", async () => {
