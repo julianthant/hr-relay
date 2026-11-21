@@ -2,7 +2,7 @@
 
 `npm run mocks` runs Playwright with `playwright.mocks.config.ts` to render `/ui-mock` scenes from the
 mock dashboard build. It is not a test gate and CI never runs it. Dashboard behaviour is proven by
-Vitest unit/integration tests and `/verify` browser checks.
+Vitest unit/integration tests, the `tests/smoke/` browser suite and `/verify` browser checks.
 
 ## Scenes
 
