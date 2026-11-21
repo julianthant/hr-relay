@@ -1,13 +1,12 @@
 /** Shell smoke: every sidebar destination, the collapsed sidebar, search, notifications and browser history on the seeded backend. */
 import { DATA_PAGE_LABELS, DESKTOP_VIEWPORTS, WORKFLOW_LABELS } from "../support/helpers/dashboard/smoke/dashboard-page.js";
-import { expect, SEEDED_PREFERENCE_WRITE, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
+import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
 for (const viewport of DESKTOP_VIEWPORTS) {
   test.describe(`shell at ${viewport.width}x${viewport.height}`, () => {
     test.use({ viewport });
 
-    test("every workflow and data page renders its heading without sideways scroll", async ({ dashboard, failures }) => {
-      failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
+    test("every workflow and data page renders its heading without sideways scroll", async ({ dashboard }) => {
       await dashboard.open();
       for (const label of WORKFLOW_LABELS) {
         await dashboard.openWorkflow(label);
@@ -21,8 +20,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
   });
 }
 
-test("the collapsed sidebar still opens a workflow and a data page", async ({ dashboard, failures, page }) => {
-  failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
+test("the collapsed sidebar still opens a workflow and a data page", async ({ dashboard, page }) => {
   await dashboard.open();
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
@@ -82,8 +80,7 @@ test("the bell swaps the sidebar to notifications and back", async ({ dashboard,
   await expect(dashboard.workflows).toBeVisible();
 });
 
-test("Back, Forward and Reload follow the URL", async ({ dashboard, failures, page }) => {
-  failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
+test("Back, Forward and Reload follow the URL", async ({ dashboard, page }) => {
   await dashboard.open();
   await dashboard.openWorkflow("Separations");
   await dashboard.openDataPage("Analytics");

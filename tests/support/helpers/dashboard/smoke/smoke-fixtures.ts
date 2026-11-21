@@ -1,15 +1,12 @@
 import { expect, test as base, type Page } from "@playwright/test";
 import { MOCK_DIST_DIR } from "../served-fixtures/bundle.js";
-import { startSeededServer, type SeededServer } from "../served-fixtures/seeded-bff.js";
+import { startSeededServer, type SeededScenarios, type SeededServer } from "../served-fixtures/seeded-bff.js";
 import { DashboardPage } from "./dashboard-page.js";
 
 export interface PageFailures {
   /** Declares a failure the test expects; the reason says why the state under test produces it. */
   allow(pattern: RegExp, reason: string): void;
 }
-
-/** Choosing a workflow saves it as a preference; the seeded backend wires no settings executor and answers 500. */
-export const SEEDED_PREFERENCE_WRITE = /^(?:http 500: POST |console: Failed to load resource: the server responded with a status of 500 \(Internal Server Error\) )http:\/\/127\.0\.0\.1:\d+\/api\/v1\/commands$/u;
 
 /** Records every console error, page error, failed request and HTTP error the page produces from now on. */
 export function watchPageDiagnostics(page: Page): string[] {
@@ -32,12 +29,13 @@ interface TestFixtures {
   failures: PageFailures;
   dashboard: DashboardPage;
   seeded: SeededServer;
+  scenarios: SeededScenarios;
 }
 
 export const test = base.extend<TestFixtures>({
-  // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
-  seeded: async ({}, use) => {
-    const server = await startSeededServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true });
+  scenarios: [{}, { option: true }],
+  seeded: async ({ scenarios }, use) => {
+    const server = await startSeededServer({ ...scenarios, distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, productApp: true });
     try {
       await use(server);
     } finally {

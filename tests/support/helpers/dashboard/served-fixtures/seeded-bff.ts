@@ -5,7 +5,7 @@ import { dateNavigationReader,seedDateNavigation } from "./date-navigation-serve
 import { composeSeededServices } from "./seeded-services.js";
 import { createSeededBffSetup } from "../profiles/seeded-bff-setup.js";
 
-export type { SeededServer } from "../profiles/seeded-bff-setup.js";
+export type { SeededScenarios, SeededServer } from "../profiles/seeded-bff-setup.js";
 
 export const {
   SEEDED_COVERAGE_GAPS,

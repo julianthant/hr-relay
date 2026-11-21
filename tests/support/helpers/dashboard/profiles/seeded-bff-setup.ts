@@ -1,6 +1,6 @@
 import type { WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
 import { runningWorkerView } from "../../backend/fake-worker-port.js";
-import { createBoundProfileFixture } from '../../admission-fixture.js';
+import { boundProfileCredentials, createBoundProfileFixture } from '../../admission-fixture.js';
 import { retainAuthoritySourceClosure } from '../../../../../src/backend/storage/source-closure.js';
 
 import { sqliteRunReader } from "../../canonical-run-reader.js";
@@ -13,7 +13,7 @@ import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
 import { seed } from "../served-fixtures/seeded-lifecycle.js";
 
-import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
+import { registerSeededProfileRoutes } from "../served-fixtures/seeded-profile-routes.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { join } from "node:path";
@@ -39,6 +39,11 @@ export interface SeededServer {
   readonly day: string;
   readonly runIds: Readonly<Record<string, string>>;
   close(): Promise<void>;
+}
+
+export interface SeededScenarios {
+  readonly preflightScenario?: "ready" | "failed";
+  readonly workbookCompatibility?: "seeded" | "empty";
 }
 
 const retainedSeededFixtureOwners = new Set<object>();
@@ -101,7 +106,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }> & SeededScenarios,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
@@ -189,19 +194,16 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true});
+    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
+      credentials: boundProfileCredentials(profile.admission), preflightScenario: input.preflightScenario,
+      workbookCompatibility: input.workbookCompatibility});
     held.services = services;
     const { app, hub } = services;
+    registerSeededProfileRoutes(app);
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
-        // The real session needs a profile registry, keychain and Duo; the seeded app is served a fixed signed-in state.
-        if (url.pathname === "/api/v1/profile/state") {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify(FIXTURE_ACTIVE_PROFILE_STATE));
-          return;
-        }
         if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/events/")) {
           await bridge(app, req, res, url);
           return;
