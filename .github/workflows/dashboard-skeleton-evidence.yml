@@ -1,0 +1,54 @@
+name: Dashboard skeleton evidence
+
+# After review of both changes, combine the dashboard and harness on a dedicated
+# evidence branch. Have the operator or authorized publisher push the reviewed
+# combined SHA to chore/dashboard-skeleton-evidence-<suffix>. Run the normal
+# feature-to-development and development-to-staging PR gates independently.
+on:
+  push:
+    branches: ['chore/dashboard-skeleton-evidence-*']
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-skeleton-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Record candidate and run
+        run: |
+          printf 'SHA: %s\nRun: %s/%s/actions/runs/%s\n' \
+            "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
+            > "$RUNNER_TEMP/dashboard-skeleton-run.txt"
+          cat "$RUNNER_TEMP/dashboard-skeleton-run.txt" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run build:observer-policy
+      - run: npx playwright install --with-deps chromium
+      - run: npm run web:build
+      - name: Measure the seeded dashboard
+        env:
+          RELAY_DASHBOARD_SKELETON_EVIDENCE: '1'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/dashboard-skeleton-report.json
+        run: |
+          npm run test:smoke -- dashboard-skeletons.smoke.ts --reporter=list,json \
+            --output "$RUNNER_TEMP/dashboard-skeleton-tests"
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: dashboard-skeleton-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dashboard-skeleton-run.txt
+            ${{ runner.temp }}/dashboard-skeleton-report.json
+            ${{ runner.temp }}/dashboard-skeleton-tests/**/measurements.json
+          if-no-files-found: error
+          retention-days: 30
