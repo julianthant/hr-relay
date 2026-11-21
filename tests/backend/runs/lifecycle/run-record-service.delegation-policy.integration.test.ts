@@ -46,21 +46,33 @@ afterEach(world.cleanup);
 /** Records every row SQLite hands back, whatever SQL produced it. */
 function recordDecodedRows() {
   const rows: unknown[] = [];
-  const { get, all, iterate } = StatementSync.prototype;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with the original statement.
+  const nativeGet = StatementSync.prototype.get;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with the original statement.
+  const nativeAll = StatementSync.prototype.all;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with the original statement.
+  const nativeIterate = StatementSync.prototype.iterate;
   const spies = [
-    vi.spyOn(StatementSync.prototype, "get").mockImplementation(function (this: StatementSync, ...args: unknown[]) {
-      const row: unknown = Reflect.apply(get, this, args);
+    vi.spyOn(StatementSync.prototype, "get").mockImplementation(function (this: StatementSync, ...args) {
+      const row = nativeGet.call(this, ...args);
       if (row !== undefined) rows.push(row);
       return row;
-    } as StatementSync["get"]),
-    vi.spyOn(StatementSync.prototype, "all").mockImplementation(function (this: StatementSync, ...args: unknown[]) {
-      const result: unknown[] = Reflect.apply(all, this, args);
+    }),
+    vi.spyOn(StatementSync.prototype, "all").mockImplementation(function (this: StatementSync, ...args) {
+      const result = nativeAll.call(this, ...args);
       rows.push(...result);
       return result;
-    } as StatementSync["all"]),
-    vi.spyOn(StatementSync.prototype, "iterate").mockImplementation(function* (this: StatementSync, ...args: unknown[]) {
-      for (const row of Reflect.apply(iterate, this, args) as Iterable<unknown>) { rows.push(row); yield row; }
-    } as unknown as StatementSync["iterate"]),
+    }),
+    vi.spyOn(StatementSync.prototype, "iterate").mockImplementation(function (this: StatementSync, ...args) {
+      const iterator = nativeIterate.call(this, ...args);
+      const step = iterator.next.bind(iterator);
+      iterator.next = () => {
+        const result = step();
+        if (result.done !== true) rows.push(result.value);
+        return result;
+      };
+      return iterator;
+    }),
   ];
   return {
     total: () => rows.length,

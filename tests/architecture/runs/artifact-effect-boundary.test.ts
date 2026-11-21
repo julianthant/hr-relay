@@ -110,14 +110,14 @@ function publicationOrderViolations(trace: readonly Effect[], root: string, fina
   const temp = trace.find(({ op, path }) => op === "open:wx" && path.endsWith(".tmp"))?.path;
   if (temp === undefined) return ["no temp file was opened for exclusive write"];
   const at = (match: (effect: Effect) => boolean) => trace.findIndex(match);
-  const write = at(({ op, path }) => op === "write" && path === temp);
-  const tempSync = at(({ op, path }) => op === "sync" && path === temp);
+  const write = trace.findLastIndex(({ op, path }) => op === "write" && path === temp);
+  const tempSync = trace.findIndex(({ op, path }, index) => index > write && op === "sync" && path === temp);
   const linked = at(({ op, path, to }) => op === "link" && path === temp && to === finalPath);
   const removed = at(({ op, path }) => op === "unlink" && path === temp);
   const directorySync = trace.findLastIndex(({ op, path }) => op === "sync" && path === root);
   const issues: string[] = [];
   if (write < 0) issues.push("temp file was never written");
-  if (tempSync < 0 || tempSync < write) issues.push("temp file was not fsynced after its write");
+  if (tempSync < 0) issues.push("temp file was not fsynced after its last write");
   if (linked < 0 || linked < tempSync) issues.push("artifact was linked before its temp file was fsynced");
   if (removed < 0 || removed < linked) issues.push("temp file was not removed after publication");
   if (directorySync < 0 || directorySync < Math.max(linked, removed)) issues.push("artifact directory was not fsynced after publication");
@@ -163,7 +163,7 @@ describe("content-addressed artifact boundary", () => {
     const callbacks = ["temp-written", "temp-synced", "published", "directory-synced"];
     const noTempSync = await writeOrdered((path) => path.endsWith(".tmp"));
     assert.deepEqual(noTempSync.callbacks, callbacks);
-    assert.match(noTempSync.violations.join("\n"), /not fsynced after its write/u);
+    assert.match(noTempSync.violations.join("\n"), /not fsynced after its last write/u);
     const noDirectorySync = await writeOrdered((path, root) => path === root);
     assert.deepEqual(noDirectorySync.callbacks, callbacks);
     assert.match(noDirectorySync.violations.join("\n"), /directory was not fsynced/u);
@@ -173,6 +173,11 @@ describe("content-addressed artifact boundary", () => {
       { op: "sync", path: temp }, { op: "unlink", path: temp }, { op: "sync", path: root },
     ];
     assert.match(publicationOrderViolations(linkFirst, root, finalPath).join("\n"), /linked before its temp file was fsynced/u);
+    const writeAfterSync: Effect[] = [
+      { op: "open:wx", path: temp }, { op: "write", path: temp }, { op: "sync", path: temp }, { op: "write", path: temp },
+      { op: "link", path: temp, to: finalPath }, { op: "unlink", path: temp }, { op: "sync", path: root },
+    ];
+    assert.match(publicationOrderViolations(writeAfterSync, root, finalPath).join("\n"), /not fsynced after its last write/u);
   });
 
   it("catches direct mutable filesystem writes in a task implementation", () => {
