@@ -41,4 +41,25 @@ describe("vite probe response release", () => {
     assert.deepEqual(await probe(new Response(held.body)), { state: "not-owned", reason: "probe-response-invalid" });
     assert.equal(held.cancelled(), true);
   });
+
+  it("reports a failed body cancel with the refusal it was releasing", async () => {
+    const failure = new Error("fixture cancel refused");
+    const body = new ReadableStream<Uint8Array>({ cancel() { throw failure; } });
+    await assert.rejects(probe(new Response(body, { status: 503 })),
+      (error: unknown) => error instanceof AggregateError && error.errors.includes(failure) && error.message.includes("owner-endpoint-refused"));
+  });
+
+  it("reports a failed reader cancel and still releases the reader lock", async () => {
+    const failure = new Error("fixture cancel refused");
+    const body = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new Uint8Array([0xff])); }, cancel() { throw failure; } });
+    await assert.rejects(probe(new Response(body)),
+      (error: unknown) => error instanceof AggregateError && error.errors.includes(failure) && error.message.includes("probe-response-invalid"));
+    assert.equal(body.locked, false);
+  });
+
+  it("keeps the refusal of an errored stream without a second cleanup failure", async () => {
+    const body = new ReadableStream<Uint8Array>({ pull(controller) { controller.error(new Error("fixture transfer reset")); } });
+    assert.deepEqual(await probe(new Response(body)), { state: "not-owned", reason: "probe-request-failed" });
+    assert.equal(body.locked, false);
+  });
 });

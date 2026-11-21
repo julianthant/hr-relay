@@ -41,23 +41,32 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null
     && (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > maxBytes)) {
-    await cancelUnreadBody(response);
-    return { state: "unavailable", reason: "probe-response-too-large" };
+    return await refuseUnread(response, "probe-response-too-large");
   }
   if (response.body === null) return { state: "unavailable", reason: "probe-response-invalid" };
   const reader = response.body.getReader();
+  let open = true;
+  const result = await readText(reader, maxBytes, () => { open = false; });
+  try { if (open) await reader.cancel("Vite identity probe stopped reading"); }
+  catch (error) { throw cleanupFailure(result, error); }
+  finally { reader.releaseLock(); }
+  return result;
+}
+
+async function readText(
+  reader: ReadableStreamDefaultReader<Uint8Array>, maxBytes: number, ended: () => void,
+): Promise<ProbeTextResult> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytesRead = 0;
   let body = "";
-  let ended = false;
   try {
     for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) { ended = true; break; }
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      // An errored stream holds no transfer to cancel.
+      try { chunk = await reader.read(); } catch (error) { ended(); throw error; }
+      if (chunk.done) { ended(); break; }
       bytesRead += chunk.value.byteLength;
-      if (bytesRead > maxBytes) {
-        return { state: "unavailable", reason: "probe-response-too-large" };
-      }
+      if (bytesRead > maxBytes) return { state: "unavailable", reason: "probe-response-too-large" };
       body += decoder.decode(chunk.value, { stream: true });
     }
     body += decoder.decode();
@@ -67,15 +76,21 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
       state: "unavailable",
       reason: error instanceof TypeError ? "probe-response-invalid" : "probe-request-failed",
     };
-  } finally {
-    // A cancel on an already-errored stream rejects; the refusal above already classifies it.
-    if (!ended) await reader.cancel("Vite identity probe stopped reading").catch(() => undefined);
-    reader.releaseLock();
   }
 }
 
-async function cancelUnreadBody(response: Response): Promise<void> {
-  await response.body?.cancel("Vite identity probe refused the response").catch(() => undefined);
+async function refuseUnread(
+  response: Response, reason: Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"],
+): Promise<ProbeTextResult> {
+  const result: ProbeTextResult = { state: "unavailable", reason };
+  try { await response.body?.cancel("Vite identity probe refused the response"); }
+  catch (error) { throw cleanupFailure(result, error); }
+  return result;
+}
+
+function cleanupFailure(result: ProbeTextResult, error: unknown): AggregateError {
+  const outcome = result.state === "unavailable" ? result.reason : "available";
+  return new AggregateError([error], `Vite identity probe (${outcome}) could not release its response`, { cause: error });
 }
 
 async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number): Promise<ProbeTextResult> {
@@ -85,10 +100,7 @@ async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number
   } catch {
     return { state: "unavailable", reason: requestFailureReason(signal) };
   }
-  if (!response.ok) {
-    await cancelUnreadBody(response);
-    return { state: "unavailable", reason: "owner-endpoint-refused" };
-  }
+  if (!response.ok) return await refuseUnread(response, "owner-endpoint-refused");
   return readBoundedResponseText(response, maxBytes);
 }
 

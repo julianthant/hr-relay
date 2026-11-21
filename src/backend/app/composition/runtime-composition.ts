@@ -37,6 +37,8 @@ export interface RebuildRuntimeStart {
   readonly storage?: StorageComposer;
   /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
   readonly testData?: TestDataComposer;
+  /** A stop the secure bootstrap latched while the dashboard booted; the default shutdown signals honour it. */
+  readonly stopSignal?: AbortSignal;
 
   /** Explicit seam override for tests; production subscribes to the real process signals. */
   readonly signals?: RuntimeShutdownSignals;
@@ -152,7 +154,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
 }
 
 
-function processShutdownSignals(): RuntimeShutdownSignals {
+function processShutdownSignals(stopSignal: AbortSignal | undefined): RuntimeShutdownSignals {
   return {
     subscribe(handler): () => void {
       const onInterrupt = (): void => {
@@ -168,8 +170,10 @@ function processShutdownSignals(): RuntimeShutdownSignals {
       process.on("SIGTERM", onTerminate);
       process.on("message", onMessage);
       process.on("disconnect", onTerminate);
-      if (process.send !== undefined && !process.connected) onTerminate();
+      stopSignal?.addEventListener("abort", onTerminate);
+      if (process.send !== undefined && !process.connected || stopSignal?.aborted === true) onTerminate();
       return (): void => {
+        stopSignal?.removeEventListener("abort", onTerminate);
         process.removeListener("SIGINT", onInterrupt);
         process.removeListener("SIGTERM", onTerminate);
         process.removeListener("message", onMessage);
@@ -194,10 +198,14 @@ async function ownDashboardUntilShutdown(
   const failures: unknown[] = [];
   let running: RunningDashboard | undefined;
   try {
-    running = await compose();
-    announce(running);
-    if (!stopRequested) await ready?.();
-    if (!stopRequested) await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
+    if (!stopRequested) {
+      running = await compose();
+      announce(running);
+      const stopped = Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
+      // A stop never waits for readiness publication; a readiness failure after the stop has nothing left to report to.
+      if (!stopRequested) await Promise.race([Promise.resolve().then(ready), stopped]);
+      await stopped;
+    }
   } catch (error) { failures.push(error); }
   if (running !== undefined) {
     try { await running.stop(); }
@@ -244,7 +252,7 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     const options = parseDashboardCommandOptions(args.slice(1));
     await ownDashboardUntilShutdown(
       () => compose(input.isolation, options),
-      input.signals ?? processShutdownSignals(),
+      input.signals ?? processShutdownSignals(input.stopSignal),
       (running) => { write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`); },
       input.dashboardReady
       ?? (() => new Promise<void>((resolve, reject) => {

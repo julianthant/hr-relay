@@ -62,6 +62,17 @@ export function createProfileOnboarding(input: {
   function settleCustody(recovered: readonly Lease[]): void {
     for (const lease of recovered) lease.browserClosureProved = true;
   }
+  /** Drops leases whose provider and receipt closure are proved and whose retained failures are settled; unproved owners stay. */
+  function evictSettled(operationId: string): void {
+    const receiptClosed = new Set(input.read(operationId).attempts.filter(entry => entry.providerClosedAt !== undefined).map(entry => entry.attemptId));
+    for (const [attemptId, lease] of leases) {
+      if (lease.attempt.operationId !== operationId || !lease.closed || !receiptClosed.has(attemptId)) continue;
+      const failures = retainedFailures.filter(entry => entry.lease === lease);
+      if (failures.some(entry => lease.browserClosureProved !== true || hasUnprovedSourceClosure(entry.error))) continue;
+      leases.delete(attemptId);
+      for (const entry of failures) retainedFailures.splice(retainedFailures.indexOf(entry), 1);
+    }
+  }
   const browserHolds = new Map<string, ProfileSessionRefusedError>();
   const assertBrowserAvailable = (operationId: string) => { const hold = browserHolds.get(operationId); if (hold) throw hold; };
   const retainBrowserHold = (operationId: string, cause?: unknown) => {
@@ -272,6 +283,7 @@ export function createProfileOnboarding(input: {
         const hold = browserHolds.get(operationId);
         if (hold && hasUnprovedSourceClosure(hold)) throw hold;
         browserHolds.delete(operationId);
+        evictSettled(operationId);
         await showOwnedBrowser(provider, browser);
       })();
       recovery = { operationId, generation, work };
@@ -351,6 +363,7 @@ export function createProfileOnboarding(input: {
         }), result: undefined };
       });
       if (closure.state !== "closed") return unavailable();
+      evictSettled(operationId);
     },
     async drain(operationId: string): Promise<void> {
       assertBrowserAvailable(operationId);
@@ -359,11 +372,15 @@ export function createProfileOnboarding(input: {
       const pending = draft.attempts.filter(entry => entry.generation === draft.generation
         && entry.providerClosedAt === undefined && leases.get(entry.attemptId)?.closed !== true);
       if (pending.length > 0 && provider === undefined) return unavailable();
+      // An attempt that fails to close never keeps the setup browser open; its failure is reported after the browser close.
+      const attemptFailures: unknown[] = [];
+      let attemptsUnproved = false;
       for (const receipt of pending) {
         const lease = leases.get(receipt.attemptId); if (lease === undefined) return unavailable();
         lease.revoked = true;
-        const closure = await provider!.cancel(lease.attempt);
-        if (closure.state !== "closed") return unavailable();
+        let closure: Awaited<ReturnType<ProfileOnboardingDuoProvider["cancel"]>>;
+        try { closure = await provider!.cancel(lease.attempt); } catch (error) { attemptFailures.push(error); continue; }
+        if (closure.state !== "closed") { attemptsUnproved = true; continue; }
         lease.closed = true;
         input.update(operationId, current => {
           if (current.generation !== draft.generation) return unavailable();
@@ -376,14 +393,18 @@ export function createProfileOnboarding(input: {
         if (provider === undefined) return unavailable();
         const recovered = recoveredLeases(browser, provider.browserState?.(operationId).generation ?? -1);
         const closure = await provider.closeBrowser(browser);
-        if (closure.state === "uncertain") throw retainBrowserHold(operationId, closure.cause);
+        if (closure.state === "uncertain") {
+          throw retainBrowserHold(operationId, attemptFailures.length === 0 ? closure.cause
+            : new AggregateError([...attemptFailures, closure.cause], "profile-onboarding-drain-unproved"));
+        }
         settleCustody(recovered);
         browsers.delete(operationId);
       }
+      if (attemptFailures.length === 1) throw attemptFailures[0];
+      if (attemptFailures.length > 1) throw new AggregateError(attemptFailures, "profile-onboarding-attempt-closure-failed");
+      if (attemptsUnproved) return unavailable();
       assertCustody();
-      const receiptClosed = new Set(input.read(operationId).attempts.filter(entry => entry.providerClosedAt !== undefined).map(entry => entry.attemptId));
-      for (const [attemptId, lease] of leases) if (lease.attempt.operationId === operationId && lease.closed && receiptClosed.has(attemptId)) leases.delete(attemptId);
-      for (let index = retainedFailures.length - 1; index >= 0; index--) { const lease = retainedFailures[index]!.lease; if (lease !== undefined && !leases.has(lease.attempt.attemptId)) retainedFailures.splice(index, 1); }
+      evictSettled(operationId);
     },
     recoverClosed(operationId: string): void {
       const draft = input.read(operationId);
