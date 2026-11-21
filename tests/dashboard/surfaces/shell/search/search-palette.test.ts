@@ -23,8 +23,12 @@ it("reopens the search palette with an empty query", async () => {
   const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.bind(input()!);
   await act(async () => { setValue?.("archer"); input()!.dispatchEvent(new Event("input", { bubbles: true })); });
   assert.equal(input()?.value, "archer");
-  await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  const escape = () => act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  await escape();
+  assert.equal(input()?.value, "");
+  await escape();
   assert.equal(input(), null);
+  assert.equal(document.activeElement, trigger());
   await act(async () => trigger().click());
   assert.equal(input()?.value, "");
 });
