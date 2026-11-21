@@ -550,19 +550,41 @@ function validatedStagedSave(request: Request, expected: StagedExpectation): str
   return JSON.stringify(submit.data);
 }
 
+// The response event fires on headers; the body shares the operation deadline. Closing the page ends the stalled read.
+async function responseJsonBefore(page: Page, clock: Clock, deadline: number, response: Response, what: string): Promise<unknown> {
+  const body = response.json();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<"expired">(resolve => {
+    timer = setTimeout(() => resolve("expired"), Math.max(0, deadline - clock.monotonicMs()));
+  });
+  try {
+    const settled = await Promise.race([body.then(value => ({ value })), expired]);
+    if (settled !== "expired") return settled.value;
+  } finally {
+    clearTimeout(timer);
+  }
+  void body.catch(() => { /* The page close below rejects the abandoned read. */ });
+  await page.close();
+  throw new Error(`${what} did not finish its body by the deadline; the page was closed and the outcome is unknown`);
+}
+
 // GraphQL refusals can return HTTP 200; inspect refusal fields, then verify persisted values separately.
-async function assertSubmitNotRefused(assertCurrent: () => void, response: Response, documentNumber: string): Promise<void> {
+async function assertSubmitNotRefused(
+  assertCurrent: () => void, page: Page, clock: Clock, deadline: number, response: Response, documentNumber: string,
+): Promise<void> {
   if (!response.ok()) {
     throw new Error(
       `Kuali answered HTTP ${String(response.status())} to the save on document ${documentNumber}; `
       + "the write was refused at the transport level",
     );
   }
+  assertCurrent();
+  const read = responseJsonBefore(page, clock, deadline, response, `Kuali's answer to the save on document ${documentNumber}`);
   let body: unknown;
   try {
-    assertCurrent();
-    body = await response.json();
+    body = await read;
   } catch (error) {
+    if (page.isClosed()) throw error;
     assertCurrent();
     // Not a swallow: an unreadable answer means we cannot tell a refusal from
     // an acceptance, which is precisely the uncertainty this driver must raise.
@@ -697,6 +719,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     };
     page.on("request", observeRequest);
     try {
+      const deadline = clock.monotonicMs() + ACTION_LIST_FILTER_TIMEOUT_MS;
       const settled = Promise.race([
         page.waitForResponse(response => response.request() === submitted, { timeout: ACTION_LIST_FILTER_TIMEOUT_MS }),
         requestFailed.promise,
@@ -712,7 +735,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       if (!response.ok()) {
         throw new Error(`OldActions returned HTTP ${String(response.status())}`);
       }
-      const body: unknown = await response.json();
+      const body = await responseJsonBefore(page, clock, deadline, response, "The OldActions answer");
       assertCurrent();
       return ActionListResultSchema.parse(body).data.actions;
     } finally {
@@ -1610,6 +1633,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     assertCurrent();
     const refused = Promise.withResolvers<never>();
     let forwarded: Request | undefined;
+    const deadline = clock.monotonicMs() + SUBMIT_OBSERVE_TIMEOUT_MS;
     const answered = page.waitForResponse(
       response => response.request() === forwarded,
       { timeout: SUBMIT_OBSERVE_TIMEOUT_MS },
@@ -1652,7 +1676,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
       const response = await settled;
       assertCurrent();
-      await assertSubmitNotRefused(assertCurrent, response, expectation.documentNumber);
+      await assertSubmitNotRefused(assertCurrent, page, clock, deadline, response, expectation.documentNumber);
       assertCurrent();
       return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
     } finally {

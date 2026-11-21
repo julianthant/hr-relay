@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempDisposable, readFile } from "node:fs/promises";
+import { createServer as createSecureServer, type Server } from "node:https";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, it } from "vitest";
@@ -8,7 +13,7 @@ import { kualiFinalizationVerdict } from "../../../../../src/backend/systems/kua
 import { KUALI_RRSS_SAVE_BUTTON } from "../../../../../src/models/ui/kuali-rrss-document.js";
 import { KualiFinalizationTargetSchema } from "../../../../../src/models/ui/kuali-separation-finalization.js";
 import { FingerprintSchema, PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
-import { systemClock } from "../../../../../src/rules/time/clock.js";
+import { systemClock, type Clock } from "../../../../../src/rules/time/clock.js";
 import { mintMutationCapability } from "../../../../../src/workflow-kit/mutation-capability.js";
 import { kualiFinalizationVariablesInput } from "../../../../support/helpers/kuali-finalization-input-fixtures.js";
 
@@ -155,8 +160,8 @@ function saveVariables(): {
   };
 }
 
-async function stageSave(variables: ReturnType<typeof saveVariables>, query = SAVE_QUERY) {
-  const { driver, received: lookups } = await setupActionList();
+async function stageSave(variables: ReturnType<typeof saveVariables>, query = SAVE_QUERY, clock: Clock = systemClock) {
+  const { driver, received: lookups } = await setupActionList({ clock });
   const payload = { operationName: "submitDocumentV2", query, variables };
   const forwarded: unknown[] = [];
   await context.route(DOCUMENT_URL, route => route.fulfill({
@@ -212,6 +217,7 @@ async function setupActionList(options: {
   rowsUnchanged?: boolean;
   failure?: boolean;
   edges?: ReturnType<typeof actionListEdge>[];
+  clock?: Clock;
 } = {}) {
   const initial = options.initial ?? "";
   const received: unknown[] = [];
@@ -260,7 +266,7 @@ async function setupActionList(options: {
         : { data: { actions: { totalCount: edges.length, edges } } },
     });
   });
-  return { driver: createKualiRrssDocumentDriver(() => undefined, page, systemClock), received };
+  return { driver: createKualiRrssDocumentDriver(() => undefined, page, options.clock ?? systemClock), received };
 }
 
 describe("Kuali finalization safety", () => {
@@ -467,5 +473,70 @@ describe("Kuali finalization safety", () => {
     assert.equal((await fixture.commit()).performed, true);
     assert.deepEqual(fixture.forwarded, [fixture.payload]);
     assert.equal(kualiFinalizationVerdict(TARGET, await fixture.driver.readSavedSeparationFinalization(TARGET)).state, "absent");
+  });
+});
+
+describe("Kuali response deadline", () => {
+  let stalledBrowser: Browser;
+  let server: Server;
+  let headersSent = false;
+  // Headers arrive at once; the jump puts the operation past its deadline so only the body wait remains.
+  const jumpingClock: Clock = { ...systemClock, monotonicMs: () => performance.now() + (headersSent ? 120_000 : 0) };
+
+  beforeAll(async () => {
+    await using directory = await mkdtempDisposable(join(tmpdir(), "relay-kuali-"));
+    const key = join(directory.path, "key.pem"), cert = join(directory.path, "cert.pem");
+    execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost",
+      "-keyout", key, "-out", cert], { stdio: "ignore" });
+    server = createSecureServer({ key: await readFile(key), cert: await readFile(cert) }, (_request, response) => {
+      headersSent = true;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.write('{"data":');
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    stalledBrowser = await chromium.launch({ headless: true, args: ["--no-proxy-server", "--ignore-certificate-errors",
+      `--host-resolver-rules=MAP ucsd.kualibuild.com 127.0.0.1:${String(address.port)}, MAP * ~NOTFOUND`] });
+  });
+  afterAll(async () => {
+    await stalledBrowser?.close();
+    server?.closeAllConnections();
+    await new Promise(resolve => server?.close(resolve));
+  });
+  beforeEach(async () => {
+    headersSent = false;
+    await context.close();
+    context = await stalledBrowser.newContext({ serviceWorkers: "block" });
+    page = await context.newPage();
+  });
+
+  it("ends an Action List read whose body never finishes at the deadline", async () => {
+    const { driver } = await setupActionList({ clock: jumpingClock });
+    await context.route(GRAPHQL_URL, route => route.continue());
+    await assert.rejects(driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER }), (error: unknown) => {
+      assert.ok(error instanceof Error && error.cause instanceof Error);
+      assert.match(error.message, /outcome is unknown/u);
+      assert.match(error.cause.message, /did not finish its body by the deadline/u);
+      return true;
+    });
+    assert.ok(headersSent);
+    assert.ok(page.isClosed());
+  });
+
+  it("ends a forwarded Save whose body never finishes at the deadline as unknown", async () => {
+    const fixture = await stageSave(saveVariables(), SAVE_QUERY, jumpingClock);
+    await context.route(GRAPHQL_URL, async route => {
+      const received: unknown = route.request().postDataJSON();
+      if (typeof received === "object" && received !== null && "operationName" in received
+        && received.operationName === "submitDocumentV2") await route.continue();
+      else await route.fallback();
+    });
+    await assert.rejects(fixture.commit(), /deadline.*outcome is unknown/u);
+    assert.ok(headersSent);
+    assert.ok(page.isClosed());
   });
 });
