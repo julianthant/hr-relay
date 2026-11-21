@@ -72,6 +72,17 @@ describe("the plan audit", () => {
     }
   });
 
+  it("fails when the statement has no finite limit clause", () => {
+    for (const sql of ["SELECT * FROM runs LIMIT -1", "SELECT * FROM runs WHERE batch_id='LIMIT 1'", "SELECT * FROM runs WHERE batch_id=? LIMIT -1 OFFSET 2",
+      "SELECT * FROM runs WHERE batch_id=') LIMIT 1 --' AND created_at IN ('a', 'b')"]) {
+      expect(auditPlans(database, probe([sql])).scans.map(scan => scan.sql)).toEqual([sql]);
+    }
+  });
+
+  it("passes a scan a bound parameter limits", () => {
+    expect(auditPlans(database, probe(["SELECT * FROM runs WHERE batch_id=? LIMIT ?", "SELECT * FROM runs WHERE batch_id='x' LIMIT 500 OFFSET ?"])).scans).toEqual([]);
+  });
+
   it("passes a scan the limit stops and a scan inside a trigger body", () => {
     expect(auditPlans(database, probe(["SELECT * FROM runs WHERE batch_id=? LIMIT 1", "INSERT INTO run_batches(id) VALUES(?)"])).scans).toEqual([]);
   });
