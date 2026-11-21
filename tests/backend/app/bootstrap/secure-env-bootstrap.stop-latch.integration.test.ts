@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 it("latches a stop signal across admitted dashboard boot and releases the latch afterwards", async () => {
@@ -10,6 +11,7 @@ it("latches a stop signal across admitted dashboard boot and releases the latch 
   let latched = false;
   try {
     await runSecureEnvironmentBootstrap(["cli", "dashboard"], {
+      acquireLifetimeLock: () => RuntimeLifetimeLock.acquire(0),
       installCrashHandlers: () => undefined,
       acquireAdmission: () => profile.machine,
       assertEnvironment: () => undefined,
