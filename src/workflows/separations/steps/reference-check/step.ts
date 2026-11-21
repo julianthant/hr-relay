@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
+import { REFERENCE_CHECK_REVIEW_GATE, REFERENCE_STOP_NODE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../models/processing/workbooks/verify-person.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
@@ -8,7 +8,6 @@ import { EidSchema } from "../../../../rules/identity/ids.js";
 import type { StepProofSpec, WorkflowAuthor } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { REFERENCE_STOP_NODE } from "../../tasks/read-reference-stop.js";
 import type { SeparationsInput } from "../../workflow.js";
 import type { buildIdentity } from "../identity-check/step.js";
 

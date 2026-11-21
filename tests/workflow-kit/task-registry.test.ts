@@ -16,6 +16,7 @@ defineBrowserStore,
 defineServiceStore,
 defineWorkflowStore,
 defineTaskStoreRegistry,
+extendWorkflowStores,
 } from "../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../src/workflow-kit/task.js";
 
@@ -167,4 +168,23 @@ it("allows sessionless workflow tasks to retain artifacts while keeping provider
   const task = defineTask(contract, { sessions: [], async run({ ctx }) { void ctx.artifacts; return { value: "fixture" }; } });
   assert.doesNotThrow(() => defineWorkflowStore("person-lookup", { retainFile: task }));
   assert.throws(() => defineTaskContract({ ...fields, id: taskId("workflow:person-lookup/read-provider-fixture"), providers: ["ocr.extract"] as const }), /provider capabilities are legal only for service-store reads/u);
+});
+
+it("adds backend-owned workflow tasks only to their own workflow store", () => {
+  const fields = { title: "Workflow fixture", effect: "read", input: INPUT, output: OUTPUT, errorCodes: ["output-unavailable"] as const,
+    subject: { kind: "none", reason: "pure fixture" }, scenarios: [SCENARIO], freshness: { defaultMaxAgeMs: 0 }, provenance: { default: "derived" },
+    example: { value: "fixture" } } as const;
+  const fixtureTask = (id: string) => defineTask(defineTaskContract({ ...fields, id: taskId(id) }), { sessions: [], async run() { return { value: "fixture" }; } });
+  const own = defineWorkflowStore("person-lookup", { readRows: fixtureTask("workflow:person-lookup/read-rows-fixture") });
+  const other = defineWorkflowStore("separations", { readDates: fixtureTask("workflow:separations/read-dates-fixture") });
+  const archive = fixtureTask("workflow:person-lookup/read-archive-fixture");
+  const [extended, untouched] = extendWorkflowStores([own, other], { readArchive: archive });
+  assert.deepEqual(Object.keys(extended?.tasks ?? {}), ["readRows", "readArchive"]);
+  assert.equal(extended?.namespace, "workflow:person-lookup");
+  assert.equal(untouched, other);
+  assert.throws(() => extendWorkflowStores([own], { readRows: archive }), /repeats workflow:person-lookup store task key readRows/u);
+  assert.throws(() => extendWorkflowStores([other], { readArchive: archive }), /workflow:person-lookup\/read-archive-fixture has no registered workflow store/u);
+  assert.doesNotThrow(() => defineTaskStoreRegistry(extendWorkflowStores([own, other], { readArchive: archive }), {
+    scenarioIds: [SCENARIO], tasks: ["read-rows", "read-archive"].map(name => ({ id: `workflow:person-lookup/${name}-fixture`, effect: "read" }))
+      .concat({ id: "workflow:separations/read-dates-fixture", effect: "read" }) }));
 });

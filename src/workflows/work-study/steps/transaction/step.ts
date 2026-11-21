@@ -7,11 +7,11 @@ import { WorkStudyResultSchema } from "../../../../models/workflows/work-study/r
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { PAYPATH_POSITION_NODE } from "../../tasks/read-paypath-position.js";
-import { TRANSACTION_PLAN_NODE } from "../../tasks/read-transaction-plan.js";
 import type { buildReferenceCheck } from "../reference-check/step.js";
 import { buildUcpathAuth } from "../ucpath-auth/step.js";
 
 const PAGE = "PayPath Actions";
+const TRANSACTION_PLAN_NODE = "transaction-plan";
 export const SAVE_NODE = "save-transaction";
 const planned = (label: string, fieldPath: string, example: string) =>
   ({ label, sources: [{ nodeId: TRANSACTION_PLAN_NODE, kind: "output", fieldPath }], example }) as const;
