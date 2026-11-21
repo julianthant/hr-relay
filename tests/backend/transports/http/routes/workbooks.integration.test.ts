@@ -73,7 +73,7 @@ it('refreshes summaries after content and type changes and omits a removed workb
 it('lists the workbook revision and type from the same authority snapshot', async () => {
   const database = new DatabaseSync(':memory:');
   try {
-    for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+    for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_TABLE]) {
       for (const statement of migration.statements) database.exec(statement);
     }
     function transaction<Result>(work: () => Result): Result {
