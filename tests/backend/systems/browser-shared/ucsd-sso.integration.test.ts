@@ -48,7 +48,7 @@ it.each(["application", "sign-in form", "missing cookie"] as const)("proves the 
   const browserContext = await guardedContext();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
   const schedule = globalThis.setTimeout;
-  const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args) => {
+  const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args: unknown[]) => {
     const timer = schedule(callback, delay, ...args);
     // Advance one WFD poll after it is scheduled, leaving browser I/O outside virtual time.
     if (delay === 250) queueMicrotask(() => vi.advanceTimersByTime(delay));
