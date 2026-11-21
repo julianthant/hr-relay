@@ -1,7 +1,8 @@
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import ts from "typescript";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
@@ -11,19 +12,99 @@ import {
   sessionManagerFor,
 } from "../../support/helpers/phase1f-executor-harness.js";
 
+const SESSION_MODULE = "src/workflow-kit/session.ts";
+const LOGIN_OWNER = "src/backend/runtime/workers/worker-sessions.ts";
+const PROGRAM_OPTIONS: ts.CompilerOptions = {
+  target: ts.ScriptTarget.ESNext,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  jsx: ts.JsxEmit.ReactJSX,
+  skipLibCheck: true,
+};
+
+function repoPath(file: string): string {
+  return relative(REPO_ROOT, file).replaceAll("\\", "/");
+}
+
+/** The provider's own login function type, which every forwarded or aliased login signature resolves to. */
+function isLoginSignature(declaration: ts.Node | undefined): boolean {
+  return declaration !== undefined && ts.isFunctionTypeNode(declaration) && ts.isPropertySignature(declaration.parent)
+    && ts.isIdentifier(declaration.parent.name) && declaration.parent.name.text === "login"
+    && repoPath(declaration.getSourceFile().fileName) === SESSION_MODULE;
+}
+
+/** Every reference to the session provider's login member, by resolved symbol rather than spelling. */
+function sessionLoginReferences(program: ts.Program, files: readonly string[]): readonly string[] {
+  const checker = program.getTypeChecker();
+  const member = (owner: ts.Node, name: string) => checker.getTypeAtLocation(owner).getProperty(name);
+  const isSessionLogin = (symbol: ts.Symbol | undefined, location: ts.Node): boolean => symbol !== undefined && (
+    (symbol.declarations ?? []).some((declaration) => repoPath(declaration.getSourceFile().fileName) === SESSION_MODULE
+      && symbol.name === "login")
+    || checker.getTypeOfSymbolAtLocation(symbol, location).getCallSignatures()
+      .some((signature) => isLoginSignature(signature.getDeclaration())));
+  const references: string[] = [];
+  for (const file of files) {
+    const source = program.getSourceFile(file);
+    if (source === undefined) throw new Error(`missing parsed source ${repoPath(file)}`);
+    const at = (node: ts.Node) => {
+      const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+      references.push(`${repoPath(file)}:${String(line + 1)}`);
+    };
+    const literalKey = (node: ts.Node): string | undefined => {
+      if (ts.isStringLiteralLike(node)) return node.text;
+      const type = checker.getTypeAtLocation(ts.isComputedPropertyName(node) ? node.expression : node);
+      return type.isStringLiteral() ? type.value : undefined;
+    };
+    const keyOf = (node: ts.Node): string | undefined => ts.isIdentifier(node) ? node.text : literalKey(node);
+    const visit = (node: ts.Node): void => {
+      // The member name belongs to the interface, so filtering on it first keeps the checker work small.
+      if (ts.isPropertyAccessExpression(node) && node.name.text === "login"
+        && isSessionLogin(checker.getSymbolAtLocation(node.name), node)) at(node);
+      if (ts.isCallExpression(node) && isLoginSignature(checker.getResolvedSignature(node)?.getDeclaration())) at(node);
+      if (ts.isElementAccessExpression(node)) {
+        const key = literalKey(node.argumentExpression);
+        if (key === "login" && isSessionLogin(member(node.expression, key), node)) at(node);
+      }
+      if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+        const key = keyOf(node.propertyName ?? node.name);
+        if (key === "login" && isSessionLogin(member(node.parent, key), node)) at(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return [...new Set(references)];
+}
+
+function sourceFiles(): readonly string[] {
+  return walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] });
+}
+
 describe("single-flight login", () => {
   it("keeps session login invocation inside the worker session manager", () => {
-    const violations = walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })
-      .map((file) => ({
-        path: relative(REPO_ROOT, file).replaceAll("\\", "/"),
-        content: readFileSync(file, "utf8"),
-      }))
-      .filter(({ path, content }) =>
-        path !== "src/backend/runtime/workers/worker-sessions.ts" && content.includes("session.login("))
-      .map(({ path }) => path);
-    assert.deepEqual(violations, [], "a login path outside the session manager appeared");
-    const manager = readFileSync(join(REPO_ROOT, "src/backend/runtime/workers/worker-sessions.ts"), "utf8");
-    assert.ok(manager.includes("session.login("), "the manager must own the one login call");
+    const files = sourceFiles();
+    const references = sessionLoginReferences(createGuardProgram(files, PROGRAM_OPTIONS), files);
+    assert.deepEqual(references.filter((reference) => !reference.startsWith(`${LOGIN_OWNER}:`)), [],
+      "a login path outside the session manager appeared");
+    assert.ok(references.some((reference) => reference.startsWith(`${LOGIN_OWNER}:`)),
+      "the manager must own the one login call");
+  });
+
+  it("finds a login call reached through a renamed binding", () => {
+    const files = sourceFiles();
+    const host = join(REPO_ROOT, "src/backend/runtime/workers/worker-loop.ts");
+    const rogue = `${ts.sys.readFile(host) ?? ""}
+import type { SessionProvider as Provider } from "../../../workflow-kit/session.js";
+export function renamedDestructure(provider: Provider<"ucpath">) { const { login: signIn } = provider; return signIn; }
+export function renamedReceiver(provider: Provider<"ucpath">) { const auth = provider; return auth.login; }
+export function computedKey(provider: Provider<"ucpath">) { const key = "login" as const; return provider[key]; }
+export function typedForward(session: { login: Provider<"ucpath">["login"] }) { return session.login(undefined, {}); }
+export function renamedForward(session: { signIn: Provider<"ucpath">["login"] }) { return session.signIn(undefined, {}); }
+`;
+    const program = createGuardProgram(files, PROGRAM_OPTIONS, new Map([[host, rogue]]));
+    const outside = sessionLoginReferences(program, files)
+      .filter((reference) => reference.startsWith("src/backend/runtime/workers/worker-loop.ts:"));
+    assert.equal(outside.length, 5, `every renamed or forwarded login path must be found: ${outside.join(", ")}`);
   });
 
   it("authenticates once for two concurrent leases on one worker/system", async () => {

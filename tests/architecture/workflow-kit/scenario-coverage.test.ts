@@ -65,22 +65,6 @@ function scenarioCorpusFiles(): readonly ScenarioCorpusFile[] {
 }
 
 
-function nonSyntheticScenarioEidLocations(
-  sources: readonly Readonly<{ file: string; source: string }>[],
-): readonly string[] {
-  const reserved = /^(?:108000\d{2}|19999999)$/u;
-  return sources.flatMap(({ file, source }) =>
-    source
-        .split("\n")
-        .flatMap((line, index) => (
-          [...line.matchAll(/(?<![0-9A-Za-z-])1\d{7}(?![0-9A-Za-z-])/gu)]
-            .some((match) => !reserved.test(match[0]))
-            ? [`${file}:${String(index + 1)}`]
-            : []
-        )),
-  );
-}
-
 /** The fixture side: paths claimed for descriptors with no production reference. */
 function graphClaimedScenarioIds(): readonly string[] {
   return syntheticObservedScenarioIds();
@@ -167,15 +151,6 @@ describe("scenario coverage", () => {
       },
     ]);
     assert.match(renamed.join("\n"), /claims unknown coverage point branch-case:mode-branch\/renamed-arm/);
-  });
-
-  it("finds a non-synthetic EID in scenario support without echoing its value", () => {
-    const locations = nonSyntheticScenarioEidLocations([{
-      file: "tests/scenario/dashboard/example/world.ts",
-      source: 'export const FIXTURE_EID = "10770001";',
-    }]);
-    assert.deepEqual(locations, ["tests/scenario/dashboard/example/world.ts:1"]);
-    assert.doesNotMatch(locations.join("\n"), /10770001/u);
   });
 
   it("rejects typo references, orphan rows, and registered scenarios that did not execute", () => {

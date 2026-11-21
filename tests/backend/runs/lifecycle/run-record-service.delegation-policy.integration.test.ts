@@ -5,7 +5,7 @@ import * as delegationAdmission from "../../../../src/backend/runs/lifecycle/del
 import { delegationConfigResources } from "../../../support/helpers/backend/delegation-config-resources.js";
 import * as delegationAuthority from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import * as commandRows from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, StatementSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -42,6 +42,58 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
+
+/** Records every row SQLite hands back, whatever SQL produced it. */
+function recordDecodedRows() {
+  const rows: unknown[] = [];
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with the original statement.
+  const nativeGet = StatementSync.prototype.get;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with the original statement.
+  const nativeAll = StatementSync.prototype.all;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- invoked with the original statement.
+  const nativeIterate = StatementSync.prototype.iterate;
+  const spies = [
+    vi.spyOn(StatementSync.prototype, "get").mockImplementation(function (this: StatementSync, ...args) {
+      const row = nativeGet.call(this, ...args);
+      if (row !== undefined) rows.push(row);
+      return row;
+    }),
+    vi.spyOn(StatementSync.prototype, "all").mockImplementation(function (this: StatementSync, ...args) {
+      const result = nativeAll.call(this, ...args);
+      rows.push(...result);
+      return result;
+    }),
+    vi.spyOn(StatementSync.prototype, "iterate").mockImplementation(function (this: StatementSync, ...args) {
+      const iterator = nativeIterate.call(this, ...args);
+      const step = iterator.next.bind(iterator);
+      iterator.next = () => {
+        const result = step();
+        if (result.done !== true) rows.push(result.value);
+        return result;
+      };
+      return iterator;
+    }),
+  ];
+  return {
+    total: () => rows.length,
+    clear: () => { rows.length = 0; },
+    restore: () => { for (const spy of spies) spy.mockRestore(); },
+  };
+}
+
+function insertRunCopies(path: string, template: RunRecord, count: number, envelope: Partial<RunRecord["envelope"]> = {}): readonly string[] {
+  const { runNumber: _runNumber, ...copy } = template;
+  const raw = new DatabaseSync(path);
+  try {
+    return Array.from({ length: count }, () => {
+      const runId = RunIdSchema.parse(randomUUID());
+      const row = runRecordColumns({ ...copy, envelope: { ...copy.envelope, ...envelope, runId, itemId: ItemIdSchema.parse(randomUUID()) } });
+      const keys = Object.keys(row);
+      raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(row));
+      return runId;
+    });
+  } finally { raw.close(); }
+}
 
 function terminal(run: RunRecord, outcome: "cancelled" | "done" | "failed"): void {
   assert.ok(run.lifecycle.state === "terminal");
@@ -816,8 +868,10 @@ it("returns a typed refusal and rolls back parent recovery when a failed child i
 });
 
 
-it("claims a delegated child through the worker home and refuses changed physical parent evidence", async () => {
+async function delegatedClaimDecodedRows(unrelatedQueued: number) {
   const f = await fixture("cascade");
+  const foreign = f.modules.find(module => module.descriptor.id !== f.root.envelope.workflow); assert.ok(foreign);
+  insertRunCopies(f.path, f.root, unrelatedQueued, { workflow: foreign.descriptor.id });
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
   const child = f.child(), owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
@@ -832,14 +886,24 @@ it("claims a delegated child through the worker home and refuses changed physica
     peer.prepare("UPDATE runs SET parent_id=? WHERE id=?").run(f.root.envelope.runId, child.envelope.runId);
     peer.close();
   }
-  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const decoded = recordDecodedRows();
   try {
     const claimed = claim();
     assert.ok(claimed.state === "applied" && "run" in claimed);
     assert.equal(claimed.run.envelope.runId, child.envelope.runId);
-    assert.ok(prepare.mock.calls.every(([sql]) => !/^\s*SELECT \* FROM runs WHERE state='queued'/u.test(sql)),
-      "delegated claims must not load the global queue");
-  } finally { prepare.mockRestore(); }
+    const claimRows = decoded.total();
+    decoded.clear();
+    const audit = new DatabaseSync(f.path);
+    try { audit.prepare("select q.state from runs q where q.state = 'queued'").all(); } finally { audit.close(); }
+    return { claimRows, projectedScanRows: decoded.total() };
+  } finally { decoded.restore(); }
+}
+
+it("claims a delegated child through the worker home and refuses changed physical parent evidence", async () => {
+  const small = await delegatedClaimDecodedRows(0);
+  const grown = await delegatedClaimDecodedRows(24);
+  assert.equal(grown.claimRows, small.claimRows, "delegated claims must not load the global queue");
+  assert.equal(grown.projectedScanRows - small.projectedScanRows, 24, "an ID-free queue scan must still be seen");
 });
 
 it("refuses a foreign-home queued run whose ancestry exceeds the claim depth", async () => {
@@ -888,22 +952,31 @@ it("keeps idle claims off same-home terminal history after warming and a journal
   const idle = () => assert.deepEqual(f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow, workerId,
     runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
       settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }), { state: "refused", refusal: { reason: "none-eligible" } });
-  idle();
   const raw = new DatabaseSync(f.path);
-  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const measure = (grow: number) => {
+    insertRunCopies(f.path, f.currentRoot(), grow);
+    idle();
+    const spy = recordDecodedRows();
+    try {
+      idle();
+      const warm = spy.total();
+      raw.prepare("UPDATE runs SET updated_at=updated_at WHERE id=?").run(f.root.envelope.runId);
+      raw.exec("DELETE FROM authority_changes WHERE seq=(SELECT max(seq) FROM authority_changes)");
+      spy.clear();
+      idle();
+      const gap = spy.total();
+      spy.clear();
+      raw.prepare("select h.updated_at from runs h order by h.created_at").all();
+      return { warm, gap, projectedScan: spy.total() };
+    } finally { spy.restore(); }
+  };
   try {
-    idle();
-    const warmQueries = prepare.mock.calls.map(([sql]) => sql);
-    raw.prepare("UPDATE runs SET updated_at=updated_at WHERE id=?").run(f.root.envelope.runId);
-    raw.exec("DELETE FROM authority_changes WHERE seq=(SELECT max(seq) FROM authority_changes)");
-    prepare.mockClear();
-    idle();
-    const gapQueries = prepare.mock.calls.map(([sql]) => sql);
-    for (const queries of [warmQueries, gapQueries]) {
-      assert.ok(queries.every(sql => !/WITH RECURSIVE home\(id\)|SELECT \* FROM runs ORDER BY id/u.test(sql)),
-        "idle claims must not walk or decode retained history");
-    }
-  } finally { prepare.mockRestore(); raw.close(); }
+    const small = measure(4);
+    const grown = measure(24);
+    assert.equal(grown.warm, small.warm, "warm idle claims must not walk or decode retained history");
+    assert.equal(grown.gap, small.gap, "idle claims after a journal gap must not walk or decode retained history");
+    assert.equal(grown.projectedScan - small.projectedScan, 24, "an ID-free history scan must still be seen");
+  } finally { raw.close(); }
 });
 
 it("reuses native group authentication only within a current execution observation and refuses fresh mutation or tampering", async () => {

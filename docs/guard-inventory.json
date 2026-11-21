@@ -61,7 +61,7 @@
       "file": "tests/architecture/tooling/guard-manifest.test.ts",
       "status": "active",
       "owner": "docs/reference/guards-and-tests.md",
-      "invariant": "Every active architecture guard is registered exactly once and exists, every offline authored test is collected exactly once in its disjoint project, and coverage exclusions, floors and required ratchet arms remain executable against violating fixtures. Reviewed catch allowances pin exact current source bytes, require a nonzero original finding, and reject both an injected unsafe catch and an independent comment-only source change. Runtime cycle checks exclude erased type imports while value, mixed-value and side-effect cycles retain negative controls; layering inspects every import. Current storage-operation classifications preserve rollback, refusal, source-identity and cleanup behavior; injected unsafe catches and independent byte changes still fail.",
+      "invariant": "Every active architecture guard is registered exactly once and exists, every offline authored test is collected exactly once in its disjoint project, and coverage exclusions and required ratchet arms remain executable against violating fixtures. Coverage floors are read from the thresholds Vitest actually enforces: all three global metrics are finite and meet the ratified global floor (itself pinned at no less than 60, with branch policy at no less than 50/70), and the complete safety-critical membership is pinned, each entry meeting the safety-critical floor (no less than 80) with a finite value on every metric and resolving to at least one source file; removing any metric or entry, lowering one, or adding an unresolved or unratified entry fails. Reviewed catch allowances pin exact current source bytes, require a nonzero original finding, and reject both an injected unsafe catch and an independent comment-only source change. Runtime cycle checks exclude erased type imports while value, mixed-value and side-effect cycles retain negative controls; layering inspects every import. Current storage-operation classifications preserve rollback, refusal, source-identity and cleanup behavior; injected unsafe catches and independent byte changes still fail.",
       "replacementRequired": true
     },
     {
@@ -189,7 +189,7 @@
       "file": "tests/architecture/runs/artifact-effect-boundary.test.ts",
       "status": "active",
       "owner": "docs/reference/task-contract.md; docs/reference/guards-and-tests.md",
-      "invariant": "Artifact references expose stable UUID identity plus immutable digest/size/media type and no root or path; the real writer accepts only a non-symlinked rebuild-isolated artifact root, writes one metadata+payload object via temp\u2192file-fsync\u2192atomic-rename\u2192directory-fsync, recovers cleanly across injected boundaries, returns the same ref for byte-identical content, and keeps task/workflow implementations away from direct mutable filesystem primitives.",
+      "invariant": "Artifact references expose stable UUID identity plus immutable digest/size/media type and no root or path; the real writer accepts only a non-symlinked rebuild-isolated artifact root, writes one metadata+payload object via temp\u2192file-fsync\u2192atomic-link\u2192directory-fsync, proven by recording the writer's real node:fs/promises write, fsync, link and unlink effects (a run that skips a real temp or directory fsync while its fault callbacks still fire is caught), recovers cleanly across injected boundaries, returns the same ref for byte-identical content, and keeps task/workflow implementations away from direct mutable filesystem primitives.",
       "replacementRequired": true
     },
     {
@@ -375,7 +375,7 @@
       "file": "tests/architecture/workflow-kit/scenario-coverage.test.ts",
       "status": "active",
       "owner": "docs/reference/workflow-model.md",
-      "invariant": "The retained pure workflow-kit audit derives graph coverage points from the node tuple and keeps synthetic-input checks for stale paths, typo/orphan/unexecuted claims, and malformed synthetic corpus listings. This guard does not claim current executable scenario-corpus coverage.",
+      "invariant": "The retained pure workflow-kit audit derives graph coverage points from the node tuple and keeps synthetic-input checks for stale paths, typo/orphan/unexecuted claims, and malformed synthetic corpus listings. This guard does not claim current executable scenario-corpus coverage, and it no longer scans for non-synthetic EIDs: that detector read only a hard-coded example and the tests/scenario corpus it protected was removed.",
       "replacementRequired": true
     },
     {
@@ -391,7 +391,7 @@
       "file": "tests/architecture/runtime/single-flight-login.test.ts",
       "status": "active",
       "owner": "docs/reference/execution-and-sessions.md",
-      "invariant": "Session login is single-flight within one worker/system session creation (ref execution-and-sessions): store.session.login is invoked only inside the worker session manager, and two concurrent leases for one system produce exactly one session open and one authentication.",
+      "invariant": "Session login is single-flight within one worker/system session creation (ref execution-and-sessions): every reference to the session provider's login member, resolved through the TypeScript checker whatever the binding is named (renamed receiver, destructured alias, computed key, or any call whose resolved signature is the provider's login function type, including a structurally typed forward under another property name), stays inside the worker session manager, and two concurrent leases for one system produce exactly one session open and one authentication.",
       "replacementRequired": true
     },
     {
@@ -447,7 +447,7 @@
       "file": "tests/architecture/runs/transaction-pairing.test.ts",
       "status": "active",
       "owner": "docs/reference/write-safety.md",
-      "invariant": "A transaction pairs prepare and commit arms from one system under one lease, binds the commit key from workflow input and declared upstream outputs only, declares a positive probe-to-fence budget and a dry-run policy, carries a same-system read probe, and no commit contract is reachable as a standalone step anywhere in src/.",
+      "invariant": "A transaction pairs prepare and commit arms from one system under one lease, keeps commit.bind blind to prepare output (proven by executing a transaction whose prepare output carries a distinct value the commit scope never sees), declares a positive probe-to-fence budget and a dry-run policy, carries a same-system read probe, and no registered runtime step uses a non-read contract: descriptor definition refuses a commit contract used as a standalone step whatever it is named.",
       "replacementRequired": true
     },
     {
