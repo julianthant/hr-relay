@@ -25,7 +25,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, success and refusal in toasts while preserving %s recovery", async outcome => {
+it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, success and refusal in toasts and settles a %s add without the operator", async outcome => {
   vi.useFakeTimers();
   window.history.replaceState(null, "", `/?sessionsPreview=empty${outcome === "normal" ? "" : `&workerCommandPreview=${outcome}`}`);
   const host = document.createElement("div"); document.body.append(host);
@@ -45,35 +45,22 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
   assert.equal(trigger.disabled, true);
   await act(async () => vi.advanceTimersByTimeAsync(600));
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
-  if (outcome === "normal") {
-    assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Workers added");
-    assert.equal(panel.querySelectorAll("article").length, 1);
-    assert.equal(trigger.disabled, false);
-    await act(async () => render());
-    assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1, "rerender does not repeat confirmed feedback");
-  } else {
-    if (outcome === "refused") {
-      assert.equal(panel.querySelector('[role="alert"]')?.textContent, undefined, "a refusal is a toast, not an inline panel");
-      assert.deepEqual([...document.querySelectorAll('[data-slot="toast-title"]')].map(title => title.textContent), ["Couldn't add workers"]);
-      assert.match(document.querySelector('[data-slot="toast-description"]')?.textContent ?? "", /Worker control was refused/);
-    } else {
-      assert.match(panel.querySelector('[role="alert"]')?.textContent ?? "", /Response unavailable/);
-      assert.equal(document.querySelector('[data-slot="toast-title"]'), null, "settlement dismisses progress");
-    }
+  if (outcome === "uncertain") await act(async () => vi.advanceTimersByTimeAsync(1500));
+  assert.doesNotMatch(panel.textContent ?? "", /Check outcome|uncertain|Response unavailable/, "an unknown outcome is read back, never shown");
+  if (outcome === "refused") {
+    assert.equal(panel.querySelector('[role="alert"]')?.textContent, undefined, "a refusal is a toast, not an inline panel");
+    assert.deepEqual([...document.querySelectorAll('[data-slot="toast-title"]')].map(title => title.textContent), ["Couldn't add workers"]);
+    assert.match(document.querySelector('[data-slot="toast-description"]')?.textContent ?? "", /Worker control was refused/);
     assert.equal(panel.querySelectorAll("article").length, 0);
-    assert.equal(trigger.disabled, outcome === "uncertain");
-    if (outcome === "uncertain") {
-      const check = [...panel.querySelectorAll("button")].find(button => button.textContent === "Check outcome"); assert(check instanceof HTMLButtonElement);
-      await act(async () => check.click());
-      assert.match(panel.textContent ?? "", /Checking command/);
-      assert.equal(trigger.disabled, true);
-      await act(async () => vi.advanceTimersByTimeAsync(600));
-      assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Workers added");
-      assert.equal(panel.querySelectorAll("article").length, 1, "check confirms the original addition once");
-      assert.equal(trigger.disabled, false);
-      assert.doesNotMatch(panel.textContent ?? "", /Workers added|Adding workers/);
-    }
+    assert.equal(trigger.disabled, false);
+    return;
   }
+  assert.equal(panel.querySelector('[role="alert"]'), null);
+  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Workers added");
+  assert.equal(panel.querySelectorAll("article").length, 1, "the read-back confirms the addition once");
+  assert.equal(trigger.disabled, false);
+  await act(async () => render());
+  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1, "rerender does not repeat confirmed feedback");
 });
 
 it("dismisses add progress when the panel unmounts and ignores its late settlement", async () => {

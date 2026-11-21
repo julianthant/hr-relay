@@ -28,11 +28,11 @@ function SessionsSkeleton() {
   </div>)}</LoadingRegion>;
 }
 
-export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows, operations = {}, onCheck, idleCountdowns = {}, account }: {
+export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows, operations = {}, idleCountdowns = {}, account }: {
   data: SessionsViewState; open: boolean; onOpenChange: (open: boolean) => void;
   onControl: (id: string, control: SessionControl) => void; onAdd: (workflowId: string, count: number) => void;
   idleCountdowns?: Readonly<Record<string, IdleSessionCountdown>>;
-  operations?: Readonly<Record<string, SessionPreviewOperation>>; onCheck?: (id: string) => void;
+  operations?: Readonly<Record<string, SessionPreviewOperation>>;
   workflows: readonly { id: string; label: string }[];
   account?: { onSettings: () => void; onLogout: () => void };
 }) {
@@ -60,7 +60,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const [workflow, setWorkflow] = useViewState("workerWorkflow", workflows[0]?.id ?? "");
   const [count, setCount] = useState("1");
   const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
-  const addLocked = operations.add !== undefined && ["pending", "checking", "uncertain"].includes(operations.add.state);
+  const addLocked = operations.add?.state === "pending";
   const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];
   const selectedWorkflowId = selectedWorkflow?.id ?? "";
   const validWorkflow = selectedWorkflow !== undefined;
@@ -98,11 +98,10 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       </>}<AssistantLauncher /></span>
     </div>
     {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
-      {operations.add && ['uncertain', 'checking'].includes(operations.add.state) && <div role={operations.add.state === 'uncertain' ? 'alert' : 'status'} className="flex items-center gap-2 px-3 pb-2 text-caption"><span>{operations.add.message}</span>{operations.add.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.('add')}>Check outcome</Button>}</div>}
       <div className="session-body-cards">
       {data.state === "ready" ? data.workers.length ? <>
-        {cards.length > 0 && <div data-session-strip className="flex flex-wrap items-stretch gap-3 pb-1">{cards.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={onWorkerControl} />)}</div>}
-        {idle.length > 0 && <ul aria-label="Idle workers" className={cn("m-0 flex list-none flex-col gap-1 p-0", cards.length > 0 && "mt-2")}>{idle.map(worker => <IdleWorkerRow key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onCheck={onCheck} onControl={onWorkerControl} />)}</ul>}
+        {cards.length > 0 && <div data-session-strip className="flex flex-wrap items-stretch gap-3 pb-1">{cards.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onControl={onWorkerControl} />)}</div>}
+        {idle.length > 0 && <ul aria-label="Idle workers" className={cn("m-0 flex list-none flex-col gap-1 p-0", cards.length > 0 && "mt-2")}>{idle.map(worker => <IdleWorkerRow key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} onControl={onWorkerControl} />)}</ul>}
       </> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
       </div>
     </div>}

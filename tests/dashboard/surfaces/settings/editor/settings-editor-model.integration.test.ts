@@ -31,7 +31,7 @@ describe("typed Settings catalog controls", () => {
     assert.equal(h.controller().locked, false);
   });
   for (const failure of ["lost-response", "failed-readback", "stale-readback", "intervening-writer", "foreign-result", "wrong-family"] as const) {
-    it(`reverts the edit with a failure toast and no retry after ${failure}`, async () => {
+    it(`settles the edit from its read-back after ${failure}, never resending`, async () => {
       const h = await setup(); const original = h.authority.read();
       h.ports.execute = request => {
         const result = h.authority.execute(request);
@@ -44,12 +44,24 @@ describe("typed Settings catalog controls", () => {
         return result;
       };
       await settingsAction(() => h.controller().update("actor.label", "Unconfirmed draft")); await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().dirtyCount, 0); assert.deepEqual(h.problems, [FAILURE]); assert.deepEqual(h.notices, []);
-      assert.equal(h.commands.length, 1, "an unknown outcome is never silently retried");
-      assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message|Retry|Saving/u);
+      // The served value decides: the stored write shows silently; anything else is the previous value and one failure toast.
+      const stored = failure === "lost-response" || failure === "foreign-result" || failure === "wrong-family";
+      await vi.waitFor(async () => { await settingsAction(() => undefined); assert.ok(stored ? labelValue(h) === "Unconfirmed draft" && h.controller().dirtyCount === 0 : h.problems.length === 1); }, { timeout: 5000, interval: 50 });
+      assert.equal(h.controller().dirtyCount, 0);
+      if (stored) { assert.deepEqual(h.problems, []); assert.deepEqual(h.notices, [], "a save found by reading back shows no message"); }
+      else { assert.deepEqual(h.problems, [FAILURE]); assert.deepEqual(h.notices, []); }
+      assert.equal(h.commands.length, 1, "an unknown outcome is read back, never resent");
+      if (failure !== "failed-readback") assert.equal(h.controller().locked, false, "the control works again without a reload");
+      assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message|Retry|Saving|unconfirmed/u);
       if (failure === "intervening-writer") {
         assert.equal(h.authority.read().revision, original.revision + 2);
         assert.equal(labelValue(h), "Later writer");
+      }
+      if (failure !== "failed-readback") {
+        // The read-back freed the command lock: the next edit reaches Relay.
+        h.ports.execute = request => h.authority.execute(request);
+        await settingsAction(() => h.controller().update("actor.label", "Next draft", true));
+        await vi.waitFor(async () => { await settingsAction(() => undefined); assert.equal(h.commands.length, 2); }, { timeout: 5000, interval: 50 });
       }
     });
   }

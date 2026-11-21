@@ -42,9 +42,9 @@ export function commandSaveState(outcome: CommandOutcome | undefined): SettingsS
 export function settingsScopeRecoveryState(): SettingsSaveState {
   return { state: "unconfirmed", code: "DASHBOARD_AUTHORITY_REPLACED", message: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text };
 }
+/** An unconfirmed save has no problem to show: its model reads it back and settles it. */
 export function settingsSaveProblem(save: SettingsSaveState, protectedStore = false): SettingsSaveProblem | undefined {
   const name = protectedStore ? "Credentials" : "Settings";
-  if (save.state === "unconfirmed") return { tone: "warning", title: `${name} save unconfirmed`, description: "Your draft is retained. Retry the exact attempt to confirm the result." };
   if (save.state === "conflict") return { tone: "warning", title: `${name} changed`, description: "Your draft is retained. Review the current values before retrying." };
   if (save.state === "refused") return { tone: "danger", title: `${name} weren't saved`, description: "Your draft is retained. Review the save details before retrying." };
   return undefined;

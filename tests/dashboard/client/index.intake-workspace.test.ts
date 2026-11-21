@@ -10,7 +10,6 @@ import { IntakeCommandResultWireSchema } from "../../../src/models/dashboard/wor
 import { IntakeCommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { FIXTURE_INTAKE_VALIDATED } from "../../support/fixtures/dashboard/fixture-intake.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 import { createIntakeAuthority } from "../../support/fixtures/dashboard/fixture-intake-authority.js";
@@ -106,7 +105,8 @@ it("after an applied response, recovery reads the exact journaled command and re
   }, read: async (count, url) => count === 2 ? Promise.reject(new Error("readback failed")) : authority.app.request(url) });
   await confirm(h); await flush(() => h.button("Start 2 runs").click()); assert.equal(h.calls.length, 1);
   assert.equal(CommandResultSchema.parse(replies[0]).state, "applied");
-  assert.ok(h.host.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text));
+  assert.ok(h.host.textContent?.includes("Not confirmed yet."));
+  assert.doesNotMatch(h.host.textContent ?? "", /outcome is uncertain/u);
   assert.equal(h.button("Recover exact command").disabled, false); assert.equal(h.enqueued, 0);
   const committed = await authority.intake.read(wire.intakeSessionId); const minted = authority.mintedIds;
   assert.ok(committed.manifest); assert.equal(committed.expectedVersion, wire.expectedVersion + 1);

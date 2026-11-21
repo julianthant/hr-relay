@@ -247,8 +247,8 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.deepEqual(notices[1], { key: 'settings-save', title: `Saved ${label}` });
     assert.doesNotMatch(JSON.stringify(notices), /private-roster-sentinel/);
   });
-  it('withholds a protected toast on conflict and readback failure', async () => {
-    const { controller, authority, ports, notices, problems } = await setup();
+  it('withholds a protected toast on conflict and ends an unreadable save with one failure toast', async () => {
+    const { controller, authority, ports, notices, problems, commands } = await setup();
     await act(async () => controller().protectedEditor.update('sharepointOnboardingRosterUrl', 'https://roster.example.test/local'));
     assert.equal(authority.protectedApply({ sharepointOnboardingRosterUrl: { set: 'https://roster.example.test/other' } }).state, 'applied');
     await act(async () => controller().protectedEditor.submit());
@@ -257,9 +257,18 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.equal(problems[0]?.title, 'Credentials changed');
     ports.read = () => { throw new Error('synthetic-readback-unavailable'); };
     await act(async () => controller().protectedEditor.submit());
-    assert.equal(controller().protectedEditor.save.state, 'unconfirmed');
+    assert.equal(controller().protectedEditor.save.state, 'saving', 'an unknown save is read back, not shown');
     assert.deepEqual(notices, []);
-    assert.equal(problems[1]?.title, 'Credentials save unconfirmed');
+    assert.equal(problems.length, 1, 'an unconfirmed save is read back, not shown');
+    const sent = commands.length;
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    assert.deepEqual(problems.slice(1).map(problem => problem.title), ["Credentials weren't saved"]);
+    assert.equal(controller().protectedEditor.save.state, 'idle');
+    assert.equal(controller().protectedEditor.locked, false, 'the control works again without a reload');
+    assert.equal(commands.length, sent, 'the unknown save is read back, never resent');
+    await act(async () => controller().protectedEditor.update('sharepointOnboardingRosterUrl', 'https://roster.example.test/next'));
+    await act(async () => vi.advanceTimersByTimeAsync(1201));
+    assert.equal(commands.length, sent + 1, 'the read-back freed the lock: the next save reaches Relay');
   });
 
 });

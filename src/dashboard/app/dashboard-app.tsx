@@ -12,6 +12,8 @@ import type { PaletteAction } from "../surfaces/shell/search/search-palette-mode
 import { useStartupGate } from "./startup/startup-gate.js";
 import { signInProblems, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
+import { sameSessionAccount } from "../surfaces/settings/account/account-session.js";
+import { relayUsernameIn } from "../surfaces/settings/account/relay-username.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
 import { Onboarding } from "../surfaces/shell/onboarding.js";
@@ -111,6 +113,7 @@ type CommandAction,
 import { settleCommandResult } from "./commands/command-result.js";
 import { appliedWorkerStartupToast, stoppedWorkerToasts, unconfirmedBulkWorkerToast } from "./commands/worker-startup-toast.js";
 import { preflightAttentionToast } from "./commands/preflight-attention-toast.js";
+import { settingsSaveFailure } from "../surfaces/settings/editor/settings-attempt-model.js";
 import {
 RUN_START_DOOR_ID, currentCommandConfirmation, type DashboardAuthority
 } from "./dashboard-app-model.js";
@@ -237,7 +240,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: session.account?.name ?? boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
+          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => sameSessionAccount(await profileClient.readProfileSession(), session), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request), readUsername: async () => relayUsernameIn(await profileClient.editableSettings()) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -427,8 +430,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const commandLabels = useRef(new Map<string, string>());
   const routeRef = useRef(route);
   routeRef.current = route;
-  const { toast, dismiss } = useToasts();
-  const unknownWarnings = useRef(new Map<string, string>());
+  const { toast } = useToasts();
   const executor = useDashboardCommandExecutor();
   const commandScope = useMemo(() => Object.freeze({ actorId: boot.actor.id, client, authority: authorityEpoch, dayRequest: dayState.request }), [boot.actor.id, client, authorityEpoch, dayState.request]);
   const currentCommandScope = useRef<CommandExecutionScope | undefined>(commandScope);
@@ -440,13 +442,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     return () => { if (currentCommandScope.current === commandScope) currentCommandScope.current = undefined; };
   }, [commandScope]);
   const commandFeedback = useCallback((outcome: CommandOutcome): void => {
-    const warningId = unknownWarnings.current.get(outcome.commandId);
-    const unknown = commandAttemptView(outcome).view === "unknown";
-    if (unknown && warningId !== undefined) return;
-    if (!unknown && warningId !== undefined) {
-      dismiss(warningId);
-      unknownWarnings.current.delete(outcome.commandId);
-    }
+    // An unknown outcome is settled by its readback and the served day; the operator sees only the result.
+    if (commandAttemptView(outcome).view === "unknown") return;
     if (outcome.kind === "confirmed") {
       const request = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
       const warning = request === undefined ? undefined : appliedWorkerStartupToast(request, outcome.reply);
@@ -454,11 +451,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       return;
     }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
-    if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
-    const toastId = toast(original?.family === "start" && !unknown && (outcome.kind === "refused" || outcome.kind === "conflict")
-      ? runStartRefusalToast(outcome.feedback.text) : { tone: unknown || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
-    if (unknown) unknownWarnings.current.set(outcome.commandId, toastId);
-  }, [executor, toast, dismiss]);
+    if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // the Settings models toast these
+    toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
+      ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+  }, [executor, toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
   const currentPreferenceBinding = useRef(commandBinding);
   currentPreferenceBinding.current = commandBinding;
@@ -468,7 +464,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [preferences, client, authorityEpoch, commandScope]);
   const preferenceState = usePersonPreferences();
   useConfirmCloseDuringRun(preferenceState.value.confirmCloseDuringRun, (application?.targets.length ?? 0) > 0);
-  useEffect(() => { if (preferenceState.problem) toast({ tone: "warning", title: "Settings weren't saved", description: preferenceState.problem }); }, [preferenceState.problem, toast]);
+  useEffect(() => { if (preferenceState.problem) toast({ ...settingsSaveFailure(), description: preferenceState.problem }); }, [preferenceState.problem, toast]);
 
   const appAttempts = executor.retainedAttempts().filter(attempt => attempt.scope.actorId === commandScope.actorId
     && attempt.scope.authority === commandScope.authority && attempt.scope.client === client
@@ -638,8 +634,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           const response: BulkRunCommandResponse = { ...reply, results: reply.results.map((child, index) => {
             const verified = outcome.children?.[index];
             if (verified?.kind === "confirmed") return { ...child, detail: "Command confirmed." };
-            if (child.outcome === "applied") return { outcome: "errored", runId: child.runId, commandId: child.commandId, detail: verified !== undefined ? verified.feedback.text : formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text };
-            return { ...child, detail: verified !== undefined ? verified.feedback.text : formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text };
+            if (child.outcome === "applied") return { outcome: "errored", runId: child.runId, commandId: child.commandId, detail: verified !== undefined && commandAttemptView(verified).view !== "unknown" ? verified.feedback.text : "Not confirmed yet." };
+            // An unknown child keeps its Open control for the run's own recovery; its row never shows the internal sentence.
+            return { ...child, detail: verified === undefined ? formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text
+              : commandAttemptView(verified).view === "unknown" ? "Not confirmed yet." : verified.feedback.text };
           }) };
           setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response });
           const bulkWarning = unconfirmedBulkWorkerToast(request, reply, outcome.kind === "confirmed");
@@ -1193,7 +1191,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       {!settingsOpen && (
         <SessionPanel
           harness={workflowComposition.sessionsHarness}
-          binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
+          binding={{ client, executor, scope: commandScope, dayState, day, nowIso, workflowId: activeWorkflowId }}
           catalog={workflowCatalog}
           open={sessionsOpen}
           onOpenChange={setSessionsOpen}

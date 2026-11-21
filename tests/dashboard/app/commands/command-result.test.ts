@@ -290,7 +290,7 @@ describe_m2("CommandExecutor settlement and publication guards", () => {
 
     if (outcome.kind !== "uncertain") assert_m2.fail("expected an uncertain outcome");
     assert_m2.equal(outcome.cause, cause);
-    assert_m2.equal(outcome.feedback.text, "The command outcome is uncertain. Check its result before taking further action.");
+    assert_m2.equal(outcome.feedback.text, "Not confirmed yet.");
     const [retained] = h.executor.retainedAttempts();
     assert_m2.ok(retained);
     assert_m2.deepEqual(retained.request, request);
