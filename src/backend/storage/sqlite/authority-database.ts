@@ -3860,32 +3860,57 @@ export class AuthorityDatabase implements Disposable {
     const due = this.#database.prepare("SELECT * FROM diagnostic_snapshots WHERE retention_kind='ordinary' AND purge_after<=? ORDER BY purge_after,id").all(instant);
     const purged: string[] = [];
     let retainedBytes = 0;
+    // Active executions and external-write recovery cannot lose evidence; read under each lock that acts on it.
+    const evidenceSettled = (runId: string) => {
+      const run = this.authority.runs.get(runId);
+      if (run === undefined) throw new Error("diagnostic-retention-run-missing");
+      return run.lifecycle.state === "terminal" && !this.authority.writeIntents.listByRun(runId).some(intent => intent.status !== "committed");
+    };
+    const refOf = (attachment: DiagnosticBundle["attachments"][number]) => ArtifactRefSchema.parse({ id: attachment.artifactId,
+      sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
+    const readOwned = (bundleId: string) => {
+      const current = this.#readRecord("diagnostic_snapshots", bundleId, DiagnosticBundleSchema);
+      if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
+      return current;
+    };
+    const write = (record: DiagnosticBundle) => sqliteChanges(this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?")
+      .run(canonicalJsonStringify(DiagnosticBundleSchema.parse(record)), record.bundleId).changes);
+    // Bytes a purged bundle shares stay while that bundle's run is active again.
+    const heldByActivePurge = (ref: ArtifactRef, bundleId: string) => this.#database.prepare(`SELECT DISTINCT s.run_id AS runId
+      FROM diagnostic_files f JOIN diagnostic_snapshots s ON s.id=f.snapshot_id
+      WHERE f.digest=? AND s.id<>? AND json_extract(s.payload_json,'$.availability.state')='purged'`).all(ref.sha256, bundleId)
+      .some(row => !evidenceSettled(z.strictObject({ runId: RunIdSchema }).parse(row).runId));
     for (const raw of due) {
       const bundle = this.#parseNativeRow("diagnostic_snapshots", raw, DiagnosticBundleSchema);
-      const run = this.authority.runs.get(bundle.runId);
-      if (run === undefined) throw new Error("diagnostic-retention-run-missing");
-      // Active executions and external-write recovery cannot lose evidence.
-      if (run.lifecycle.state !== "terminal" || this.authority.writeIntents.listByRun(bundle.runId).some(intent => intent.status !== "committed")) continue;
-      this.#authorityWrite("diagnostic_snapshots", () => {
-        const current = this.#readRecord("diagnostic_snapshots", bundle.bundleId, DiagnosticBundleSchema);
-        if (current === undefined || current.retention.kind !== "ordinary") throw new Error("diagnostic-retention-owner-changed");
-        if (current.availability !== undefined) return { result: undefined, changes: 0 };
-        const record = DiagnosticBundleSchema.parse({ ...current, availability: { state: "purged", at: instant, reason: "retention" } });
-        const result = this.#database.prepare("UPDATE diagnostic_snapshots SET payload_json=? WHERE id=?").run(canonicalJsonStringify(record), bundle.bundleId);
-        return { result: undefined, changes: sqliteChanges(result.changes) };
+      const marked = this.#authorityWrite("diagnostic_snapshots", () => {
+        if (!evidenceSettled(bundle.runId)) return { result: undefined, changes: 0 };
+        const current = readOwned(bundle.bundleId);
+        if (current.availability !== undefined) return { result: "earlier" as const, changes: 0 };
+        return { result: "now" as const, changes: write({ ...current, availability: { state: "purged", at: instant, reason: "retention" } }) };
       });
-      for (const attachment of bundle.attachments) {
-        const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest, bytes: attachment.byteLength, mediaType: attachment.mediaType });
-        this.#authorityWrite("diagnostic_snapshots", () => {
+      if (marked === undefined) continue;
+      // One lock owns every byte removal of the bundle, so a requeue cannot fall between two attachments.
+      const removed = this.#authorityWrite("diagnostic_snapshots", () => {
+        if (!evidenceSettled(bundle.runId)) {
+          // Only a mark this sweep made is withdrawn; nothing was removed under it. An earlier purge stays refused.
+          if (marked === "earlier") return { result: false, changes: 0 };
+          const { availability: _marker, ...current } = readOwned(bundle.bundleId);
+          return { result: false, changes: write(current) };
+        }
+        for (const attachment of bundle.attachments) {
+          const ref = refOf(attachment);
           const references = [...this.readManagedArtifactReferences(ref), ...pendingDiagnosticArtifacts(this.#admission, false)];
-          if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256)) { retainedBytes += ref.bytes; return { result: undefined, changes: 0 }; }
+          if (references.some(reference => reference.id === ref.id || reference.sha256 === ref.sha256) || heldByActivePurge(ref, bundle.bundleId)) {
+            retainedBytes += ref.bytes;
+            continue;
+          }
           // An explicit unavailable association survives failed or interrupted byte removal.
           try { removeArtifactDeletionFile(this.#admission, inspectArtifactDeletionFile(this.#admission, ref)); }
           catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
-          return { result: undefined, changes: 0 };
-        });
-      }
-      purged.push(bundle.bundleId);
+        }
+        return { result: true, changes: 0 };
+      });
+      if (removed) purged.push(bundle.bundleId);
     }
     return Object.freeze({ purged: Object.freeze(purged), retainedBytes });
   }

@@ -10,13 +10,18 @@ import writeXlsxFile from "write-excel-file/node";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { WorkbookTableSchema } from "../../../models/processing/workbooks/read-result.js";
-import type { z } from "zod";
+import { z } from "zod";
 import { FingerprintSchema, IsoInstantSchema, type Fingerprint } from "../../../rules/identity/ids.js";
 import type { ArtifactOutboxStorageRecord } from "../sqlite/storage-records.js";
 
 import { ArtifactSinkConflictError, type ArtifactSink, type ArtifactSinkProjectionRequest } from "./artifact-sink.js";
 
 const SHEET_HEADER = ["stableKey", "keyValues", "record", "projectedAt"] as const;
+const JournalRowSchema = z.tuple([FingerprintSchema, z.string().min(1), z.string().min(1), IsoInstantSchema]);
+const JournalSchema = z.tuple([z.tuple([
+  z.literal(SHEET_HEADER[0]), z.literal(SHEET_HEADER[1]), z.literal(SHEET_HEADER[2]), z.literal(SHEET_HEADER[3]),
+])]).rest(JournalRowSchema);
+type JournalRow = z.output<typeof JournalRowSchema>;
 
 function contentSha256(bytes: Uint8Array): Fingerprint {
   return FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));
@@ -34,12 +39,14 @@ async function readWorkbookBytes(path: string): Promise<WorkbookBytes> {
   }
 }
 
-/** Parse the workbook back to text rows; the layout is this module's own. */
-async function readRows(bytes: Buffer): Promise<string[][]> {
+async function readRows(bytes: Buffer): Promise<JournalRow[]> {
   const workbook = await readXlsxFile(bytes);
   const first = workbook[0];
-  if (first === undefined) throw new Error("retention workbook has no worksheets");
-  return first.data.map((row) => row.map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
+  if (first === undefined) throw new Error("retention-workbook-journal-missing");
+  const parsed = JournalSchema.safeParse(first.data);
+  if (!parsed.success) throw new Error("retention-workbook-journal-invalid", { cause: parsed.error });
+  const [, ...rows] = parsed.data;
+  return rows;
 }
 
 export type PublicationFaultPoint = "before-stage" | "after-stage" | "after-stage-sync" | "after-prepare" | "before-replace" | "after-replace" | "after-directory-sync";
@@ -48,7 +55,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
   fault?: (point: PublicationFaultPoint) => void | Promise<void>;
 }>): ArtifactSink {
   const pathFor = (row: ArtifactOutboxStorageRecord) => typeof options.workbookPath === "string" ? options.workbookPath : options.workbookPath(row);
-  const compose = (rows: readonly (readonly string[])[]) => composeWorkbook(rows, options.view);
+  const compose = (rows: readonly JournalRow[]) => composeWorkbook(rows, options.view);
   return Object.freeze({
     sinkId: "xlsx-retention",
     async writerLockPath(row: ArtifactOutboxStorageRecord) {
@@ -84,29 +91,35 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         });
       }
 
-      const intended = [
-        String(row.stableKeyFingerprint),
+      const intended: JournalRow = [
+        row.stableKeyFingerprint,
         canonicalJsonStringify(row.keyValues),
         canonicalJsonStringify(row.payload.value),
-        String(row.createdAt),
+        row.createdAt,
       ];
 
       // Verify the head hash before parsing; malformed edited workbooks must still report a conflict.
       if (stored.present && head !== undefined) {
         const actual = contentSha256(stored.bytes);
         if (actual !== head.contentSha256) {
-          // Preserve BOTH files: the operator's bytes stay untouched, and the
-          // intended update is materialized beside them so nothing is lost.
           const pendingPath = `${workbookPath}.pending-${String(row.outboxId)}.xlsx`;
-          await writeFile(pendingPath, await compose([intended]));
+          const pendingBytes = await compose([intended]);
+          let published = false;
+          try {
+            await writeFile(pendingPath, pendingBytes, { flag: "wx", mode: 0o600 });
+            published = true;
+          } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+          }
           throw new ArtifactSinkConflictError({
             sinkId: "xlsx-retention",
             message: `workbook ${workbookPath} does not hash to the recorded head (recorded `
               + `${head.contentSha256}, actual ${actual}); the operator or another process changed it, `
-              + `and the intended update is preserved at ${pendingPath}`,
+              + (published ? `and the intended update is preserved at ${pendingPath}`
+                : `and the companion path is already occupied at ${pendingPath}`),
             recordedSha256: head.contentSha256,
             actualSha256: actual,
-            preservedPendingPath: pendingPath,
+            ...(published ? { preservedPendingPath: pendingPath } : {}),
           });
         }
       }
@@ -128,9 +141,14 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         if (request.previousArtifact === undefined) throw new Error("generated-artifact-previous-version-unavailable");
         await verifyRetained(request.previousArtifact, stored.bytes);
       }
-      const existingRows: string[][] = stored.present ? (await readRows(stored.bytes)).slice(1) : [];
-      const upserted = new Map(existingRows.map((cells) => [cells[0] ?? "", cells]));
-      const current = upserted.get(intended[0] ?? "");
+      const existingRows = stored.present ? await readRows(stored.bytes) : [];
+      const upserted = new Map<Fingerprint, JournalRow>();
+      for (const cells of existingRows) {
+        const key = cells[0];
+        if (upserted.has(key)) throw new Error("retention-workbook-journal-duplicate-stable-key");
+        upserted.set(key, cells);
+      }
+      const current = upserted.get(intended[0]);
       if (current !== undefined
         && current[1] === intended[1] && current[2] === intended[2]) {
         if (!stored.present) {
@@ -143,7 +161,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
         return Object.freeze({ contentSha256: contentSha256(stored.bytes), artifact });
       }
 
-      upserted.set(intended[0] ?? "", intended);
+      upserted.set(intended[0], intended);
       const nextBytes = await compose([...upserted.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, cells]) => cells));
       const artifact = await verifyRetained(
         await options.artifacts.put(nextBytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }), nextBytes,
@@ -184,7 +202,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
   });
 }
 
-async function composeWorkbook(rows: readonly (readonly string[])[], view?: (records: readonly Readonly<{ payload: JsonValue; projectedAt: string }>[]) => z.output<typeof WorkbookTableSchema>): Promise<Buffer> {
+async function composeWorkbook(rows: readonly JournalRow[], view?: (records: readonly Readonly<{ payload: JsonValue; projectedAt: string }>[]) => z.output<typeof WorkbookTableSchema>): Promise<Buffer> {
   const sheet = [
     [...SHEET_HEADER].map((header) => ({ value: header })),
     ...rows.map((cells) => cells.map((cell) => ({ value: cell }))),

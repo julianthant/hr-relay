@@ -19,15 +19,22 @@ export function exportTransactions(history: TransactionHistory, input: unknown) 
   const bytes = `${canonicalJsonStringify({ ...content, sourceDigest })}\n`;
   const output = resolve(request.output);
   const fd = openSync(output, "wx", 0o600);
-  const owned = descriptorStatus(fd);
-  try { writeFileSync(fd, bytes); fsyncSync(fd); }
-  catch (error) {
-    closeSync(fd);
-    const named = fileStatus(output, true);
-    if (named !== undefined && named.dev === owned.dev && named.ino === owned.ino) unlinkSync(output);
+  let owned: ReturnType<typeof descriptorStatus> | undefined;
+  try {
+    try {
+      owned = descriptorStatus(fd);
+      writeFileSync(fd, bytes);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } catch (error) {
+    if (owned !== undefined) {
+      const named = fileStatus(output, true);
+      if (named !== undefined && named.dev === owned.dev && named.ino === owned.ino) unlinkSync(output);
+    }
     throw error;
   }
-  closeSync(fd);
   const parent = openSync(dirname(output), "r");
   try { fsyncSync(parent); } finally { closeSync(parent); }
   return { output, sourceDigest, transactions: rows.length };

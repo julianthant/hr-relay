@@ -39,8 +39,8 @@ export interface PreparedIntakeParser extends IntakeParser {
   parse(key: Readonly<{ artifact: ArtifactRef; sheet: string; headerRowIndex: number | null }>): IntakeParse;
 }
 
-function retainKey(sha256: string, sheet: string | undefined): string {
-  return canonicalJsonStringify({ sha256, sheet: sheet ?? null });
+function retainKey({ sha256, mediaType }: ArtifactRef, sheet: string | undefined): string {
+  return canonicalJsonStringify({ sha256, mediaType, sheet: sheet ?? null });
 }
 
 function buildLayout(grid: readonly (readonly string[])[], headerRowIndex: number): IntakeLayout {
@@ -115,7 +115,7 @@ export function createIntakeParser(options: Readonly<{
     async prepare(key: IntakeParseKey): Promise<IntakeParse> {
       const artifact = ArtifactRefSchema.parse(key.artifact);
       const sheet = key.sheet;
-      const retainedKey = retainKey(artifact.sha256, sheet);
+      const retainedKey = retainKey(artifact, sheet);
       const held = retained.get(retainedKey);
       if (held !== undefined) return deriveIntakeParse(held, key.headerRowIndex ?? null);
       const bytes = await readArtifactBytes(() => options.artifacts.open(artifact));
@@ -127,17 +127,17 @@ export function createIntakeParser(options: Readonly<{
       });
       retain(retainedKey, grid);
 
-      if (grid.state === "parsed") retain(retainKey(artifact.sha256, grid.sheet), grid);
+      if (grid.state === "parsed") retain(retainKey(artifact, grid.sheet), grid);
       return deriveIntakeParse(grid, key.headerRowIndex ?? null);
     },
 
     parse(key: Readonly<{ artifact: ArtifactRef; sheet: string; headerRowIndex: number | null }>): IntakeParse {
       const artifact = ArtifactRefSchema.parse(key.artifact);
       const sheet = z.string().min(1).parse(key.sheet);
-      const held = retained.get(retainKey(artifact.sha256, sheet));
+      const held = retained.get(retainKey(artifact, sheet));
       if (held === undefined) {
         throw new Error(
-          `no intake parse was prepared for artifact ${artifact.sha256} sheet ${JSON.stringify(sheet)}; `
+          `no intake parse was prepared for artifact ${artifact.sha256} (${artifact.mediaType}) sheet ${JSON.stringify(sheet)}; `
           + "the caller must prepare the exact selection before the kernel reads it",
         );
       }
