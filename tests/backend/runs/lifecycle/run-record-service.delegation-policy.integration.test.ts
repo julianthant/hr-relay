@@ -5,7 +5,7 @@ import * as delegationAdmission from "../../../../src/backend/runs/lifecycle/del
 import { delegationConfigResources } from "../../../support/helpers/backend/delegation-config-resources.js";
 import * as delegationAuthority from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import * as commandRows from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, StatementSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -42,6 +42,49 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
+
+/** Records every row SQLite hands back, whatever SQL produced it. */
+function recordDecodedRows() {
+  const rows: unknown[] = [];
+  const { get, all, iterate } = StatementSync.prototype;
+  const spies = [
+    vi.spyOn(StatementSync.prototype, "get").mockImplementation(function (this: StatementSync, ...args: unknown[]) {
+      const row: unknown = Reflect.apply(get, this, args);
+      if (row !== undefined) rows.push(row);
+      return row;
+    } as StatementSync["get"]),
+    vi.spyOn(StatementSync.prototype, "all").mockImplementation(function (this: StatementSync, ...args: unknown[]) {
+      const result: unknown[] = Reflect.apply(all, this, args);
+      rows.push(...result);
+      return result;
+    } as StatementSync["all"]),
+    vi.spyOn(StatementSync.prototype, "iterate").mockImplementation(function* (this: StatementSync, ...args: unknown[]) {
+      for (const row of Reflect.apply(iterate, this, args) as Iterable<unknown>) { rows.push(row); yield row; }
+    } as unknown as StatementSync["iterate"]),
+  ];
+  return {
+    mentioning: (ids: readonly string[]) => rows.filter(row => {
+      const text = JSON.stringify(row, (_key, value: unknown) => typeof value === "bigint" ? String(value) : value);
+      return ids.some(id => text.includes(id));
+    }).length,
+    clear: () => { rows.length = 0; },
+    restore: () => { for (const spy of spies) spy.mockRestore(); },
+  };
+}
+
+function insertRunCopies(path: string, template: RunRecord, count: number, envelope: Partial<RunRecord["envelope"]> = {}): readonly string[] {
+  const { runNumber: _runNumber, ...copy } = template;
+  const raw = new DatabaseSync(path);
+  try {
+    return Array.from({ length: count }, () => {
+      const runId = RunIdSchema.parse(randomUUID());
+      const row = runRecordColumns({ ...copy, envelope: { ...copy.envelope, ...envelope, runId, itemId: ItemIdSchema.parse(randomUUID()) } });
+      const keys = Object.keys(row);
+      raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(row));
+      return runId;
+    });
+  } finally { raw.close(); }
+}
 
 function terminal(run: RunRecord, outcome: "cancelled" | "done" | "failed"): void {
   assert.ok(run.lifecycle.state === "terminal");
@@ -818,6 +861,8 @@ it("returns a typed refusal and rolls back parent recovery when a failed child i
 
 it("claims a delegated child through the worker home and refuses changed physical parent evidence", async () => {
   const f = await fixture("cascade");
+  const foreign = f.modules.find(module => module.descriptor.id !== f.root.envelope.workflow); assert.ok(foreign);
+  const unrelatedQueue = insertRunCopies(f.path, f.root, 24, { workflow: foreign.descriptor.id });
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
   const child = f.child(), owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
@@ -832,14 +877,17 @@ it("claims a delegated child through the worker home and refuses changed physica
     peer.prepare("UPDATE runs SET parent_id=? WHERE id=?").run(f.root.envelope.runId, child.envelope.runId);
     peer.close();
   }
-  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const decoded = recordDecodedRows();
   try {
     const claimed = claim();
     assert.ok(claimed.state === "applied" && "run" in claimed);
     assert.equal(claimed.run.envelope.runId, child.envelope.runId);
-    assert.ok(prepare.mock.calls.every(([sql]) => !/^\s*SELECT \* FROM runs WHERE state='queued'/u.test(sql)),
-      "delegated claims must not load the global queue");
-  } finally { prepare.mockRestore(); }
+    assert.equal(decoded.mentioning(unrelatedQueue), 0, "delegated claims must not load the global queue");
+    decoded.clear();
+    const audit = new DatabaseSync(f.path);
+    try { audit.prepare("select q.id from runs as q where q.state = 'queued'").all(); } finally { audit.close(); }
+    assert.equal(decoded.mentioning(unrelatedQueue), unrelatedQueue.length, "a differently spelled queue scan must still be seen");
+  } finally { decoded.restore(); }
 });
 
 it("refuses a foreign-home queued run whose ancestry exceeds the claim depth", async () => {
@@ -888,22 +936,21 @@ it("keeps idle claims off same-home terminal history after warming and a journal
   const idle = () => assert.deepEqual(f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow, workerId,
     runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
       settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }), { state: "refused", refusal: { reason: "none-eligible" } });
+  const history = insertRunCopies(f.path, f.currentRoot(), 24);
   idle();
   const raw = new DatabaseSync(f.path);
-  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  const decoded = recordDecodedRows();
   try {
     idle();
-    const warmQueries = prepare.mock.calls.map(([sql]) => sql);
+    assert.equal(decoded.mentioning(history), 0, "warm idle claims must not walk or decode retained history");
     raw.prepare("UPDATE runs SET updated_at=updated_at WHERE id=?").run(f.root.envelope.runId);
     raw.exec("DELETE FROM authority_changes WHERE seq=(SELECT max(seq) FROM authority_changes)");
-    prepare.mockClear();
+    decoded.clear();
     idle();
-    const gapQueries = prepare.mock.calls.map(([sql]) => sql);
-    for (const queries of [warmQueries, gapQueries]) {
-      assert.ok(queries.every(sql => !/WITH RECURSIVE home\(id\)|SELECT \* FROM runs ORDER BY id/u.test(sql)),
-        "idle claims must not walk or decode retained history");
-    }
-  } finally { prepare.mockRestore(); raw.close(); }
+    assert.equal(decoded.mentioning(history), 0, "idle claims after a journal gap must not walk or decode retained history");
+    raw.prepare("select h.id, h.envelope_json from runs h order by h.created_at").all();
+    assert.equal(decoded.mentioning(history), history.length, "a differently spelled history scan must still be seen");
+  } finally { decoded.restore(); raw.close(); }
 });
 
 it("reuses native group authentication only within a current execution observation and refuses fresh mutation or tampering", async () => {

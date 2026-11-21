@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, it } from "vitest";
 import ts from "typescript";
 import { ArtifactRefSchema } from "../../../src/models/artifacts/artifacts.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import {
+  createContentAddressedArtifactWriter,
+  type ArtifactWriteFaultStep,
+} from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { gitVisibleFiles, REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const MUTABLE_FILE_MODULES = new Set(["node:fs", "node:fs/promises", "fs", "fs/promises"]);
@@ -61,6 +68,29 @@ export function auditArtifactEffectBoundary(root: string): readonly string[] {
   return [...new Set(issues)];
 }
 
+interface PublicationStep {
+  readonly step: ArtifactWriteFaultStep;
+  readonly final: boolean;
+  readonly temps: number;
+}
+
+const PUBLICATION_ORDER: readonly ArtifactWriteFaultStep[] = ["temp-written", "temp-synced", "published", "directory-synced"];
+
+/** Checks an observed write trace: bytes stay invisible until the synced temp file is published, and no temp survives. */
+function publicationOrderViolations(trace: readonly PublicationStep[]): readonly string[] {
+  const issues: string[] = [];
+  if (trace.map(({ step }) => step).join(",") !== PUBLICATION_ORDER.join(",")) {
+    issues.push(`write steps ran in order ${trace.map(({ step }) => step).join(",")}`);
+  }
+  for (const { step, final, temps } of trace) {
+    const published = step === "published" || step === "directory-synced";
+    if (final !== published) issues.push(`final artifact ${final ? "visible" : "missing"} at ${step}`);
+    if (!published && temps !== 1) issues.push(`expected one temp file at ${step}, found ${String(temps)}`);
+    if (step === "directory-synced" && temps !== 0) issues.push(`temp file left after ${step}`);
+  }
+  return issues;
+}
+
 describe("content-addressed artifact boundary", () => {
   it("keeps task implementations away from mutable filesystem primitives", () => {
     assert.deepEqual(auditArtifactEffectBoundary(REPO_ROOT), []);
@@ -68,23 +98,44 @@ describe("content-addressed artifact boundary", () => {
     const refKeys = Object.keys(ArtifactRefSchema.shape).sort();
     assert.deepEqual(refKeys, ["bytes", "id", "mediaType", "sha256"]);
     assert.equal(refKeys.some((key) => /path|root|fileName/iu.test(key)), false);
-    const writer = readFileSync(
-      resolve(REPO_ROOT, "src/backend/storage/artifacts/content-addressed-artifact-writer.ts"),
-      "utf8",
-    );
-    let cursor = -1;
-    const durabilitySequence = [
-      "handle.writeFile",
-      "handle.sync",
-      "link(tempPath, finalPath)",
-      "unlink(tempPath)",
-      "syncDirectory(root)",
-    ].map((token) => {
-      cursor = writer.indexOf(token, cursor + 1);
-      return cursor;
-    });
-    assert.equal(durabilitySequence.every((index) => index >= 0), true);
-    assert.deepEqual([...durabilitySequence].sort((left, right) => left - right), durabilitySequence);
+  });
+
+  it("publishes artifact bytes only after the temp file is written and synced", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-order-"));
+    try {
+      const artifactRoot = join(workspace, ".tracker/data/artifacts");
+      const bytes = new TextEncoder().encode("ordered artifact bytes");
+      const finalName = `${createHash("sha256").update(bytes).digest("hex")}.artifact`;
+      const trace: PublicationStep[] = [];
+      const writer = createContentAddressedArtifactWriter({
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker/data"), artifactRoot),
+        injectFault(step) {
+          const entries = readdirSync(artifactRoot);
+          trace.push({ step, final: entries.includes(finalName), temps: entries.filter((entry) => entry.endsWith(".tmp")).length });
+        },
+      });
+      await writer.put(bytes, { mediaType: "text/plain" });
+      assert.deepEqual(publicationOrderViolations(trace), []);
+      assert.deepEqual(readdirSync(artifactRoot), [finalName]);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("catches an artifact made visible before its temp file is synced", () => {
+    const ordered: readonly PublicationStep[] = [
+      { step: "temp-written", final: false, temps: 1 },
+      { step: "temp-synced", final: false, temps: 1 },
+      { step: "published", final: true, temps: 1 },
+      { step: "directory-synced", final: true, temps: 0 },
+    ];
+    assert.deepEqual(publicationOrderViolations(ordered), []);
+    assert.match(publicationOrderViolations(ordered.map((entry) => entry.step === "temp-synced" ? { ...entry, final: true } : entry))
+      .join("\n"), /visible at temp-synced/u);
+    assert.match(publicationOrderViolations([ordered[0], ordered[2], ordered[1], ordered[3]].filter((entry): entry is PublicationStep => entry !== undefined))
+      .join("\n"), /order/u);
+    assert.match(publicationOrderViolations(ordered.map((entry) => entry.step === "directory-synced" ? { ...entry, temps: 1 } : entry))
+      .join("\n"), /temp file left/u);
   });
 
   it("catches direct mutable filesystem writes in a task implementation", () => {
