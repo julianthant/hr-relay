@@ -97,6 +97,17 @@ describe("authority classification and command families", () => {
     ))).success, false);
   });
 
+  it("keeps the family registry in its declared order with paired effects", () => {
+    assert.deepEqual(COMMAND_FAMILY_REGISTRY.map(({ family }) => family), [
+      "ocr-review", "application", "assistant-model-preference", "failure-resolution", "workflow-batch", "start",
+      "intake", "worker-browser", "settings", "run", "gate", "notification",
+    ]);
+    assert.deepEqual(COMMAND_FAMILY_REGISTRY.find(({ family }) => family === "settings"), {
+      family: "settings", actions: ["apply-settings", "apply-protected-settings"],
+      effects: ["apply-settings", "apply-protected-settings"].map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),
+    });
+  });
+
   it("assigns every command action one class from the closed effect set", () => {
     assert.deepEqual(
       [...CommandEffectClassSchema.options],
