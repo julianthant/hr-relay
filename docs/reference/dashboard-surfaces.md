@@ -551,9 +551,14 @@ served values remain unavailable.
 ### Preflight and storage
 
 Settings has no Preflight or Storage page. Preflight appears only as the Checks stage of the run
-dialog, which shows the served checks with scope, fingerprint, checked time, and readiness or refusal.
-Rerun keeps the completed report's nodes and geometry rather than blanking the stage. A rendered
-remedy does not repair. Missing checks and unavailable history stay explicit.
+dialog, which has three served states. Checking shows a skeleton list of the same height as the
+loaded one and a Checking status; it does not keep the previous report visible. Unavailable shows one
+failure notice with Check again. Ready lists only checks that are not passing, failures first and then
+warnings, each with its title and a one-line description; when nothing needs attention it says Ready
+to start. The stage shows no fingerprint or checked time. A failed check with a known remedy has a
+Fix button named for the remedy that opens its Settings section; a warning has no button, and a
+failed check with no remedy shows Failed alone. Opening a Fix does not repair anything. Start stays
+off until every check was read and none failed.
 
 Test OCR and Clear run history have no dashboard control. Storage repairs itself at startup before
 ordinary runtime admission; Settings rendering performs no repair or backup, and automatic backup
