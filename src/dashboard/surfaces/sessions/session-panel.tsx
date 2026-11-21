@@ -34,6 +34,6 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
     return { ...data, workers };
   }, [data, catalog]);
   return <SessionsView data={display} open={open} onOpenChange={onOpenChange} workflows={addable}
-    idleCountdowns={commands.idleCountdowns} onControl={commands.control} operations={commands.operations} onCheck={commands.check}
+    idleCountdowns={commands.idleCountdowns} onControl={commands.control} operations={commands.operations}
     onAdd={commands.add} account={account} />;
 }

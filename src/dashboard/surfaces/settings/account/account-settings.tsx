@@ -33,7 +33,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     try { result = await page.details(request); } catch { result = { state: "refused", code: "PROFILE_DETAILS_CHANGE_UNKNOWN" }; }
     if (result.state === "changed") { setSaved({ base, values: { ...values, ...result.account } }); return undefined; }
     if (result.code !== "PROFILE_DETAILS_CHANGE_UNKNOWN") return operatorFailureSentence(result.code);
-    toast({ key: `account-details-${title}`, tone: "warning", title: `${title} not confirmed`, description: operatorFailureSentence(result.code) });
+    toast({ key: `account-details-${title}`, tone: "danger", title: `${title} not saved` });
     return undefined;
   };
   const details = (label: string, shown: string, request: (next: string) => ProfileDetailsChangeRequest, settingsPath?: string) => {

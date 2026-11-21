@@ -36,20 +36,20 @@ function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
   return <TooltipProvider delayDuration={200}><ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul></TooltipProvider>;
 }
 
-export function IdleWorkerRow({ worker, countdown, operation, onControl, onCheck }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void; onCheck?: (id: string) => void }) {
-  const locked = operation !== undefined && ["pending", "checking", "uncertain"].includes(operation.state);
+export function IdleWorkerRow({ worker, countdown, operation, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void }) {
+  const locked = operation?.state === "pending";
   return <li aria-label={`${worker.label} · ${worker.workflow}`} className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3">
     <div className="flex min-h-8 items-center justify-between gap-3">
       <span className="min-w-0 truncate text-control" title={worker.workflow}>{worker.workflow}</span>
       <span className="flex shrink-0 items-center gap-2"><span className={cn("inline-flex items-center gap-1.5 text-caption", sessionStateColor(worker.state))}>{countdown ? <IdleRefreshRing countdown={countdown} /> : null}{SESSION_STATE_LABELS[worker.state]}</span>
         <IconActionButton tone="muted" label="Remove worker" disabled={locked} icon={<Trash2 aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "remove")} /></span>
     </div>
-    <WorkerOperationNote operation={operation} worker={worker} onCheck={onCheck} />
+    <WorkerOperationNote operation={operation} />
   </li>;
 }
 
-export function WorkerCard({ worker, countdown, operation, onControl, onCheck }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void; onCheck?: (id: string) => void }) {
-  const locked = operation !== undefined && ["pending", "checking", "uncertain"].includes(operation.state);
+export function WorkerCard({ worker, countdown, operation, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void }) {
+  const locked = operation?.state === "pending";
   const settled = worker.state === "failed" || worker.state === "stopped";
   const note = cardNote(worker);
   const wide = worker.browsers.length > MAX_SYSTEMS;
@@ -58,7 +58,7 @@ export function WorkerCard({ worker, countdown, operation, onControl, onCheck }:
     <header className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 truncate text-control font-medium" title={worker.workflow}>{worker.workflow}</h3><span title={note} className={cn("inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-caption", sessionStateColor(worker.state))}>{worker.state === "idle" && countdown ? <IdleRefreshRing countdown={countdown} /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}{SESSION_STATE_LABELS[worker.state]}{note !== undefined && <span className="sr-only">. {note}</span>}</span></header>
     <p className="mb-0 mt-1 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
     <Browsers worker={worker} wide={wide} />
-    <WorkerOperationNote operation={operation} worker={worker} onCheck={onCheck} />
+    <WorkerOperationNote operation={operation} />
     <footer className="flex items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="flex h-7 items-center text-caption tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span><span className="flex h-7 items-center gap-1">
       {settled ? <Button size="sm" variant="secondary" className="h-6 gap-1 px-2" disabled={locked} aria-label="Retry" title="Retry" icon={<RotateCw aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "retry")}>Retry</Button>
         : <>{worker.state === "running" && icon("Pause", "pause", Pause)}{worker.state === "paused" && icon("Resume", "resume", Play)}
@@ -74,6 +74,6 @@ function IdleRefreshRing({ countdown }: { countdown: IdleSessionCountdown }) {
   return <Tooltip side="top" content={label}><span role="img" aria-label={label} className="inline-flex size-4 shrink-0 text-ui-secondary"><svg aria-hidden viewBox="0 0 20 20" className="size-4 -rotate-90"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" opacity=".25" strokeWidth="2" /><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" pathLength="1" strokeDasharray="1" strokeDashoffset={1 - countdown.remainingMs / IDLE_REFRESH_MS} /></svg></span></Tooltip>;
 }
 
-function WorkerOperationNote({ operation, worker, onCheck }: { operation?: SessionPreviewOperation; worker: SessionWorker; onCheck?: (id: string) => void }) {
-  return <>{operation && (operation.request.action !== 'refresh' || ['refused', 'uncertain'].includes(operation.state)) && <div role={operation.state === 'refused' || operation.state === 'uncertain' ? 'alert' : 'status'} className={cn('mt-2 flex items-center justify-between gap-2 text-caption', operation.state === 'refused' ? 'text-ui-danger' : operation.state === 'uncertain' ? 'text-ui-warning' : 'text-ui-secondary')}><span>{operation.request.action === 'remove' && operation.state === 'refused' && operation.code && <><code className="break-all">{operation.code}</code>{' '}</>}{operation.message}</span>{operation.state === 'uncertain' && <Button size="sm" variant="secondary" onClick={() => onCheck?.(worker.id)}>Check outcome</Button>}</div>}</>;
+function WorkerOperationNote({ operation }: { operation?: SessionPreviewOperation }) {
+  return <>{operation && (operation.request.action !== 'refresh' || operation.state === 'refused') && <div role={operation.state === 'refused' ? 'alert' : 'status'} className={cn('mt-2 text-caption', operation.state === 'refused' ? 'text-ui-danger' : 'text-ui-secondary')}>{operation.message}</div>}</>;
 }

@@ -3,7 +3,7 @@ import { NEUTRAL_PERSON_PREFERENCES, type PersonPreferences } from "../../models
 import type { SettingsPatch } from "../../models/config/settings.js";
 export interface PersonPreferencesState {
   readonly value: PersonPreferences;
-  readonly state: "signed-out" | "loading" | "ready" | "saving" | "failed" | "uncertain";
+  readonly state: "signed-out" | "loading" | "ready" | "saving" | "failed";
   readonly problem?: string;
 }
 export interface PersonPreferencesPort {
