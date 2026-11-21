@@ -1,7 +1,8 @@
 import { default as assert } from "node:assert/strict";
-import { lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, fstatSync, lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
+import * as identities from "../../../../src/backend/storage/file-identity.js";
 import { exportTransactions, parseTransactionExportArgs } from "../../../../src/backend/storage/maintenance/transaction-export.js";
 import { fixtureUuid } from "../../../support/fixtures/ledger-projection-fixtures.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -43,6 +44,32 @@ afterEach(_afterEachFixture0);
     const link = `${w.root}/link.json`; symlinkSync(output, link);
     assert.throws(() => exportTransactions(w.history, { ...range, output: link }), /EEXIST/u);
     assert.equal(lstatSync(link).isSymbolicLink(), true); assert.equal(readFileSync(output, "utf8"), "other-owner");
+  });
+  it("closes the output descriptor when its first identity observation fails", async () => {
+    const w = await historyWorld();
+    cleanup.push(async () => await w.dispose());
+    const output = join(w.root, "failed.json");
+    const snapshot = w.history.query(range);
+    const history = { ...w.history, query: () => snapshot };
+    let opened: number | undefined;
+    const status = vi.spyOn(identities, "descriptorStatus").mockImplementationOnce(fd => {
+      opened = fd;
+      assert.equal(fstatSync(fd).ino, lstatSync(output).ino);
+      throw new Error("injected-export-observation-failure");
+    });
+    try {
+      assert.throws(() => exportTransactions(history, { ...range, output }), /injected-export-observation-failure/u);
+      const descriptor = opened;
+      assert.ok(descriptor !== undefined);
+      assert.throws(() => fstatSync(descriptor), { code: "EBADF" });
+      assert.equal(lstatSync(output).size, 0);
+    } finally {
+      status.mockRestore();
+      if (opened !== undefined) {
+        try { closeSync(opened); }
+        catch (error) { assert.ok(error instanceof Error && "code" in error && error.code === "EBADF"); }
+      }
+    }
   });
 });
 }

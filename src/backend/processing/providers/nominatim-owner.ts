@@ -107,7 +107,8 @@ export function createNominatimService(input: Readonly<{
       } catch { return unavailable(clock, controller.signal.aborted ? (options.signal.aborted ? "aborted" : "timeout") : "adapter-unavailable"); }
     });
     // The queue retains unfinished fetches even when their callers have cancelled.
-    tail = work.then(() => {}, () => {});
+    const releaseController = () => { controllers.delete(controller); };
+    tail = work.then(releaseController, releaseController);
     try {
       return await new Promise<ProviderAdapterOutcome>((done, reject) => {
         const cancel = () => done(cancelled());
@@ -118,7 +119,6 @@ export function createNominatimService(input: Readonly<{
     } finally {
       clearTimeout(timer);
       options.signal.removeEventListener("abort", abort);
-      void work.finally(() => controllers.delete(controller));
     }
   }
 
@@ -127,10 +127,11 @@ export function createNominatimService(input: Readonly<{
     const attached = transitionNominatimOwner(state.phase, { type: "attach" });
     if (!("state" in attached) || attached.state !== "running" || !child.connected) throw new Error("nominatim-parent-channel-unavailable");
     const requests = new Map<string, AbortController>();
-    const replyFailed = (cause: unknown): void => {
-      try { child.emit("error", new NominatimReplySendError(cause)); }
+    const failChannel = (error: Error): void => {
+      try { child.emit("error", error); }
       finally { if (child.connected) child.disconnect(); }
     };
+    const replyFailed = (cause: unknown): void => failChannel(new NominatimReplySendError(cause));
     const receive = (value: unknown) => {
       const cancellation = CancelSchema.safeParse(value);
       if (cancellation.success) { requests.get(cancellation.data.requestId)?.abort(); return; }
@@ -147,7 +148,9 @@ export function createNominatimService(input: Readonly<{
             if (error) replyFailed(error);
           });
         } catch (error) { replyFailed(error); }
-      }).finally(() => requests.delete(message.requestId));
+      }).finally(() => requests.delete(message.requestId)).catch((cause: unknown) => {
+        failChannel(cause instanceof Error ? cause : new Error("nominatim-invoke-failed", { cause }));
+      });
     };
     const disconnect = () => {
       child.removeListener("disconnect", disconnect);

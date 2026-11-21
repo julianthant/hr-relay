@@ -73,8 +73,11 @@ judging a visual difference.
 ## Checks
 
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
-- Prove dashboard behaviour with Vitest unit/integration tests and `/verify` browser checks; there
-  is no Playwright behaviour suite. `tests/mocks/` holds only `/ui-mock` scenes.
+- Prove dashboard behaviour with Vitest unit/integration tests, the `tests/smoke/` browser suite
+  and `/verify` browser checks. `tests/mocks/` holds only `/ui-mock` scenes.
+- Add browser coverage as `tests/smoke/*.smoke.ts` on the seeded backend, through the fixtures and
+  page object in `tests/support/helpers/dashboard/smoke/`. Assert behaviour and layout, never
+  screenshots. CI runs it in the `smoke` job; run it locally only when assigned.
 - Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

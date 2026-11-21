@@ -46,6 +46,14 @@ const kronosHops = [
 
 it.each(["application", "sign-in form", "missing cookie"] as const)("proves the final WFD document after the reset redirect chain (%s)", async landing => {
   const browserContext = await guardedContext();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  const schedule = globalThis.setTimeout;
+  const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args: unknown[]) => {
+    const timer = schedule(callback, delay, ...args);
+    // Advance one WFD poll after it is scheduled, leaving browser I/O outside virtual time.
+    if (delay === 250) queueMicrotask(() => vi.advanceTimersByTime(delay));
+    return timer;
+  });
   try {
     const page = await browserContext.newPage();
     const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
@@ -76,7 +84,11 @@ it.each(["application", "sign-in form", "missing cookie"] as const)("proves the 
       assert.deepEqual(evidence(), []);
     }
     assert.ok(reads.mock.calls.length >= 2, "the replacement document requires its own cookie proof");
-  } finally { await browserContext.close(); }
+  } finally {
+    timers.mockRestore();
+    vi.useRealTimers();
+    await browserContext.close();
+  }
 });
 
 it("waits for WFD when final verification starts on the SAML return hop", async () => {

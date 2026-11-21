@@ -57,6 +57,47 @@ export function workbookMatches(workbook: EditableWorkbookWire, keyField: string
       ? [{ sheetId: sheet.id, rowId: row.id, sheet, row }] : []);
   });
 }
+/** `workbookMatches` for every key at once, in the same order. */
+function workbookMatchIndex(workbook: EditableWorkbookWire, keyField: string) {
+  const index = new Map<string, ReturnType<typeof workbookMatches>>();
+  for (const sheet of workbook.sheets) {
+    const indexes = columns(sheet, keyField);
+    for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
+      for (const key of new Set(indexes.map(column => workbookKey(row.cells[column]?.value)))) {
+        if (key === undefined) continue;
+        const matches = index.get(key) ?? [];
+        matches.push({ sheetId: sheet.id, rowId: row.id, sheet, row });
+        index.set(key, matches);
+      }
+    }
+  }
+  return (key: string) => index.get(key) ?? [];
+}
+/** First sheet by id, first row by id within it, and a sheet's columns per field, each built once. */
+function workbookLookup(workbook: EditableWorkbookWire) {
+  type Sheet = EditableWorkbookWire['sheets'][number];
+  const sheets = new Map<string, Sheet>(), rows = new Map<Sheet, Map<string, Sheet['rows'][number]>>(), fields = new Map<Sheet, Map<string, number[]>>();
+  for (const sheet of workbook.sheets) if (!sheets.has(sheet.id)) sheets.set(sheet.id, sheet);
+  return {
+    sheet: (id: string) => sheets.get(id),
+    row(sheet: Sheet, id: string) {
+      let byId = rows.get(sheet);
+      if (byId === undefined) {
+        byId = new Map();
+        for (const row of sheet.rows) if (!byId.has(row.id)) byId.set(row.id, row);
+        rows.set(sheet, byId);
+      }
+      return byId.get(id);
+    },
+    columns(sheet: Sheet, field: string) {
+      let byField = fields.get(sheet);
+      if (byField === undefined) { byField = new Map(); fields.set(sheet, byField); }
+      let indexes = byField.get(field);
+      if (indexes === undefined) { indexes = columns(sheet, field); byField.set(field, indexes); }
+      return indexes;
+    },
+  };
+}
 function syncByCapturedKeys(workbook: EditableWorkbookWire, incoming: EditableWorkbookWire,
   ownership: WorkbookOwnership, witnesses: readonly WorkbookRowKeyWitness[]) {
   const next = structuredClone(incoming), relocated: WorkbookOwnership = {}, movedWitnesses: WorkbookRowKeyWitness[] = [];
@@ -227,22 +268,27 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
   if (change.kind === 'version' || change.kind === 'metadata') return { workbook, ownership, receipt };
   if (change.kind === 'save') {
     if (change.workbook.libraryId !== input.libraryId) return refuse('invalid');
-    const next = change.workbook;
-    for (const sheet of workbook.sheets) for (const row of sheet.rows) row.cells.forEach((cell, col) => {
-      const field = sheet.columnBindings?.[col]?.fieldId ?? `column:${col}`;
-      const nextSheet = next.sheets.find(candidate => candidate.id === sheet.id);
-      const nextRow = nextSheet?.rows.find(candidate => candidate.id === row.id);
-      const nextCol = nextSheet?.columnBindings ? columns(nextSheet, field)[0] : col;
-      const after = nextCol === undefined ? undefined : nextRow?.cells[nextCol];
-      if (!same(cell, after ?? null)) {
-        ownership[address(sheet.id, row.id, field)] = { owner: 'operator' };
+    const next = change.workbook, incoming = workbookLookup(next);
+    for (const sheet of workbook.sheets) {
+      const nextSheet = incoming.sheet(sheet.id);
+      for (const row of sheet.rows) {
+        const nextRow = nextSheet === undefined ? undefined : incoming.row(nextSheet, row.id);
+        row.cells.forEach((cell, col) => {
+          const field = sheet.columnBindings?.[col]?.fieldId ?? `column:${col}`;
+          const nextCol = nextSheet?.columnBindings ? incoming.columns(nextSheet, field)[0] : col;
+          const after = nextCol === undefined ? undefined : nextRow?.cells[nextCol];
+          if (!same(cell, after ?? null)) {
+            ownership[address(sheet.id, row.id, field)] = { owner: 'operator' };
+          }
+        });
       }
-    });
+    }
     workbook = structuredClone(next);
+    const saved = workbookLookup(workbook);
     nextWitnesses = nextWitnesses.filter(witness => {
-      const sheet = workbook.sheets.find(sheet => sheet.id === witness.sheetId);
-      const row = sheet?.rows.find(row => row.id === witness.rowId);
-      const keyColumns = sheet === undefined ? [] : columns(sheet, witness.keyFieldId);
+      const sheet = saved.sheet(witness.sheetId);
+      const row = sheet === undefined ? undefined : saved.row(sheet, witness.rowId);
+      const keyColumns = sheet === undefined ? [] : saved.columns(sheet, witness.keyFieldId);
       return row !== undefined && keyColumns.length === 1 && workbookKey(row.cells[keyColumns[0]]?.value) === witness.key;
     });
     receipt.changes = journalChanges(input.workbook, workbook, type);
@@ -285,6 +331,8 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
         if (columns(incoming, type.keyFieldId).length !== 1) return refuse('sync-ambiguous', true);
       }
 
+      // Copying owned cells never changes a row's key and added columns are never key columns, so both indexes stay exact.
+      const currentMatches = workbookMatchIndex(workbook, type.keyFieldId), incomingMatches = workbookMatchIndex(next, type.keyFieldId);
       for (const sheet of workbook.sheets) for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
         const keyCol = columns(sheet, type.keyFieldId);
         if (keyCol.length !== 1) return refuse('sync-ambiguous', true);
@@ -292,8 +340,8 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
         for (const field of type.fields) {
           const owner = ownership[address(sheet.id, row.id, field)];
           if (!owner) continue;
-          if (key === undefined || workbookMatches(workbook, type.keyFieldId, key).length !== 1) return refuse('sync-ambiguous', true);
-          const matches = workbookMatches(next, type.keyFieldId, key);
+          if (key === undefined || currentMatches(key).length !== 1) return refuse('sync-ambiguous', true);
+          const matches = incomingMatches(key);
           if (matches.length !== 1) return refuse('sync-ambiguous', true);
           const target = matches[0];
           legacyTargets.set(JSON.stringify([sheet.id, row.id]), target);
