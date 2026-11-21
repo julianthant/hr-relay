@@ -181,19 +181,24 @@ function assertCanonicalCredentialConversion(f: Awaited<ReturnType<typeof priorF
 
 it("converts only stopped machine-control format while keeping an incomplete historical profile held", async () => {
   const started = performance.now();
-  const f = await priorFormatFixture(), original = sourceBytes(f);
+  await using cleanup = new AsyncDisposableStack();
+  const f = await priorFormatFixture();
+  cleanup.defer(() => f.close());
+  const original = sourceBytes(f);
   const created = performance.now();
   console.info("stopped-control timing", { phase: "fixture", milliseconds: Math.round(created - started) });
   const controlBytes = readFileSync(f.controlPath), markerBytes = readFileSync(f.markerPath);
-  let maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  cleanup.defer(() => maintenance.release());
   const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   const planned = performance.now();
   console.info("stopped-control timing", { phase: "plan", milliseconds: Math.round(planned - created) });
   assert.deepEqual(plan, { state: "planned", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.equal(readFileSync(f.controlPath).equals(controlBytes), true); assert.equal(readFileSync(f.markerPath).equals(markerBytes), true);
   maintenance.release();
-  maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
+  const converting = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  cleanup.defer(() => converting.release());
+  const upgraded = await upgradeStoppedMachineControl(converting, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   console.info("stopped-control timing", { phase: "conversion", milliseconds: Math.round(performance.now() - planned) });
   assert.equal(upgraded.state, "upgraded"); assert.equal(upgraded.runtimeAccess, "onboarding-incomplete"); assert.equal(upgraded.profileCount, 1);
   assert.equal(typeof upgraded.receiptId, "string");
@@ -203,25 +208,29 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assert.equal(readdirSync(backup).filter(name => name.endsWith(".receipt.json")).length, 1);
   assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 7);
   assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 9);
-  assertCanonicalCredentialConversion(f, upgraded.receiptId, maintenance);
-  maintenance.release();
-  maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
+  assertCanonicalCredentialConversion(f, upgraded.receiptId, converting);
+  converting.release();
+  const currentMaintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  cleanup.defer(() => currentMaintenance.release());
+  const current = await upgradeStoppedMachineControl(currentMaintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
-  assert.throws(() => maintenance.admitProfile(f.profileId), /offline-maintenance-busy/u);
+  assert.throws(() => currentMaintenance.admitProfile(f.profileId), /offline-maintenance-busy/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
-  maintenance.release();
-  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
-  assert.throws(() => machine.admitProfile(f.profileId), /profile-storage-claim-unavailable/u);
-  const profile = composeProfileRuntime({ admission: machine,  hostFacts, clock: systemClock });
-  const signed = profile.session.signIn({ email: historicalIncompleteProfileFields.email, password: historicalIncompleteProfileFields.password,
-    at: new Date().toISOString() });
-  assert.equal(signed.state, "refused");
-  if (signed.state !== "refused") throw new Error("fixture historical runtime hold required");
-  assert.equal(signed.code, "PROFILE_TRANSITION_BLOCKED");
-  await profile.close(); machine.release();
+  currentMaintenance.release();
+  {
+    await using runtimeCleanup = new AsyncDisposableStack();
+    const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
+    runtimeCleanup.defer(() => machine.release());
+    assert.throws(() => machine.admitProfile(f.profileId), /profile-storage-claim-unavailable/u);
+    const profile = composeProfileRuntime({ admission: machine, hostFacts, clock: systemClock });
+    runtimeCleanup.defer(() => profile.close());
+    const signed = profile.session.signIn({ email: historicalIncompleteProfileFields.email, password: historicalIncompleteProfileFields.password,
+      at: new Date().toISOString() });
+    assert.equal(signed.state, "refused");
+    if (signed.state !== "refused") throw new Error("fixture historical runtime hold required");
+    assert.equal(signed.code, "PROFILE_TRANSITION_BLOCKED");
+  }
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
-  await f.close();
 });
 
 it("converts stopped schema2 only with authenticated empty suspect membership and preserves Duo and source bytes", async () => {

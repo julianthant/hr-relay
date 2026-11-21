@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { createBoundProfileFixture, initializeAdmissionFixture, fixtureAdmission, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtempSync,readdirSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,24 +22,32 @@ function child(source: string, lifetime: RuntimeLifetimeLock) {
   let stdout = "", stderr = "";
   process.stdout.on("data", bytes => { stdout += String(bytes); });
   process.stderr.on("data", bytes => { stderr += String(bytes); });
+  let failure: Error | undefined;
+  process.once("error", error => { failure = error; });
   const exited = new Promise<void>((resolve, reject) => {
-    process.once("error", reject);
-    process.once("close", (code, signal) => code === 0 || signal === "SIGKILL" ? resolve() : reject(new Error(`child failed ${code}: ${stderr}`)));
+    process.once("close", (code, signal) => {
+      if (failure !== undefined) reject(failure);
+      else if (code === 0 || signal === "SIGKILL") resolve();
+      else reject(new Error(`child failed ${code}: ${stderr}`));
+    });
   });
+  void exited.catch(() => undefined);
   void (async () => { await lifetime.share(process); })().catch(error => { process.kill("SIGKILL"); process.emit("error", error); });
   return { process, output: process.stdout, exited, stdout: () => stdout };
 }
 
 it.each(["ordinary", "pinned"] as const)("keeps a killed %s publisher witness across restart and requires actual stopped exclusive cleanup", async retention => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "diagnostic-crash-")));
+  await using cleanup = new AsyncDisposableStack();
+  const scratch = mkdtempSync(join(tmpdir(), "diagnostic-crash-"));
+  cleanup.defer(() => rmSync(scratch, { recursive: true, force: true }));
+  const root = realpathSync(scratch);
   const lifetime = await runtimeLifetimeLock();
   const initial = acquireEntrypointAdmission(root, "exclusive", lifetime);
   const artifactRoot = initial.artifactRoot;
-  const admittedInventory = readdirSync(artifactRoot).sort();
-  initial.release();
-  let publisher: ReturnType<typeof child> | undefined;
-  try {
-    publisher = child(`import { acquireSharedRuntimeAdmission } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/admission/admission.ts"))};
+  let admittedInventory: string[];
+  try { admittedInventory = readdirSync(artifactRoot).sort(); }
+  finally { initial.release(); }
+  const publisher = child(`import { acquireSharedRuntimeAdmission } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/admission/admission.ts"))};
       import { createContentAddressedArtifactWriter } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.ts"))};
       import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/admission/lifetime-lock.ts"))};
       const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
@@ -46,19 +55,25 @@ it.each(["ordinary", "pinned"] as const)("keeps a killed %s publisher witness ac
       const writer=createContentAddressedArtifactWriter({admission});
       const stage=await writer.stageDiagnostic(Buffer.from('owned crash bytes'),{mediaType:'application/json'},${JSON.stringify(retention)});
       stage.publish(); process.stdout.write('published'); setInterval(()=>{},1000);`, lifetime);
-    await new Promise<void>((resolve, reject) => { publisher?.output.on("data", () => resolve()); publisher?.process.once("exit", () => reject(new Error("publisher exited before witness"))); });
-    assert.throws(() => acquireExclusiveRuntimeAdmission(root, lifetime), /runtime-lifetime-owned-children-unclosed/u);
-    publisher.process.kill("SIGKILL"); await publisher.exited;
-    const admission = acquireExclusiveRuntimeAdmission(root, lifetime);
-    try {
-      const pending = pendingDiagnosticArtifacts(admission); assert.equal(pending.length, 1);
-      assert.equal(readdirSync(artifactRoot).length, admittedInventory.length + 2);
-      const before = readdirSync(artifactRoot).sort();
-      assert.equal(reclaimDiagnosticStages(admission, () => false), retention === "ordinary" ? 1 : 0);
-      assert.deepEqual(readdirSync(artifactRoot).sort(), retention === "ordinary" ? admittedInventory : before);
-      assert.equal(pendingDiagnosticArtifacts(admission).length, retention === "ordinary" ? 0 : 1);
-    } finally { admission.release(); }
-  } finally { publisher?.process.kill("SIGKILL"); if (publisher !== undefined) await publisher.exited; rmSync(root, { recursive: true, force: true }); }
+  cleanup.defer(async () => {
+    if (publisher.process.pid !== undefined && publisher.process.exitCode === null && publisher.process.signalCode === null) publisher.process.kill("SIGKILL");
+    await publisher.exited;
+  });
+  await Promise.race([
+    once(publisher.output, "data"),
+    publisher.exited.then(() => { throw new Error("publisher exited before witness"); }),
+  ]);
+  assert.throws(() => acquireExclusiveRuntimeAdmission(root, lifetime), /runtime-lifetime-owned-children-unclosed/u);
+  publisher.process.kill("SIGKILL"); await publisher.exited;
+  const admission = acquireExclusiveRuntimeAdmission(root, lifetime);
+  try {
+    const pending = pendingDiagnosticArtifacts(admission); assert.equal(pending.length, 1);
+    assert.equal(readdirSync(artifactRoot).length, admittedInventory.length + 2);
+    const before = readdirSync(artifactRoot).sort();
+    assert.equal(reclaimDiagnosticStages(admission, () => false), retention === "ordinary" ? 1 : 0);
+    assert.deepEqual(readdirSync(artifactRoot).sort(), retention === "ordinary" ? admittedInventory : before);
+    assert.equal(pendingDiagnosticArtifacts(admission).length, retention === "ordinary" ? 0 : 1);
+  } finally { admission.release(); }
 });
 
 it("delegates stopped-stage installation context only while its exclusive parent is live", async () => {

@@ -4,11 +4,10 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { DuoReenrolStateSchema, PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
-import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture as fixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 
 const OPERATION = "00000000-0000-4000-8000-000000000010";
 const ATTEMPT = "00000000-0000-4000-8000-000000000011";
@@ -33,8 +32,8 @@ async function boot(onboardingDuo: ReturnType<typeof syntheticOnboardingDuo> = s
   return { f, runtime, base, stop: async () => { await runtime.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); } };
 }
 
-async function signedIn(base: string) {
-  const ready = await readyPublicSignUp(base);
+async function signedIn(runtime: Awaited<ReturnType<typeof composeDashboardApplication>>) {
+  const ready = await readyPublicSignUp(runtime);
   const finished = await ready.finish();
   const state = PublicProfileStateSchema.parse(await finished.json());
   assert.equal(state.state, "active");
@@ -52,7 +51,7 @@ it("refuses every Duo re-enrolment route without the session credential or the m
     async recoverBrowser() { generation += 1; },
   });
   try {
-    const { post, credential, state } = await signedIn(started.base);
+    const { post, credential, state } = await signedIn(started.runtime);
     for (const [route, body] of DOORS) {
       const path = `/api/v1/profile/duo/reenrol/${route}`;
       const missingCredential = await post(path, body);
@@ -103,7 +102,7 @@ it("refuses every Duo re-enrolment route without the session credential or the m
 it("closes an open Duo re-enrolment on logout and before a non-macOS account deletion refusal", async () => {
   const started = await boot();
   try {
-    const { post, credential, state } = await signedIn(started.base);
+    const { post, credential, state } = await signedIn(started.runtime);
     const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
     assert.equal((await post("/api/v1/profile/duo/reenrol/start", { operationId: opened.operationId, method: "key" }, credential)).status, 200);
     const operation = join(started.f.machine.stateRoot, "machine", "operations", `${opened.operationId}.json`);
@@ -137,7 +136,7 @@ it("leaves the session signed in when closing a re-enrolment for logout cannot p
     return uncertain ? { state: "uncertain" } : synthetic.closeBrowser(...args);
   } });
   try {
-    const { post, credential } = await signedIn(started.base);
+    const { post, credential } = await signedIn(started.runtime);
     const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, credential)).json());
     assert.equal((await post("/api/v1/profile/duo/reenrol/browser", { operationId: opened.operationId }, credential)).status, 200);
     uncertain = true;

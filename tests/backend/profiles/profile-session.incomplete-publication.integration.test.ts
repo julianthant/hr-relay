@@ -210,7 +210,11 @@ it("refuses a foreign physical database binding without withdrawing publication"
 });
 
 it("holds a tampered withdrawal intent and recovers only its exact sealed original", async () => {
-  const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
+  await using cleanup = new AsyncDisposableStack();
+  const f = await historicalPrematureFixture();
+  cleanup.defer(() => f.close());
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
+  cleanup.defer(() => machine.release());
   const intentPath = join(f.root, ".tracker", "control", "profile-publication.json"), registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath);
   const rename = nativeFs.renameSync; let fired = false;
   const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
@@ -231,7 +235,6 @@ it("holds a tampered withdrawal intent and recovers only its exact sealed origin
   writeFileSync(intentPath, original, { mode: 0o600 });
   await machine.reclassifyIncompleteProfileAsDraft(f.profileId);
   assert.equal(machine.readProfileRegistry().profiles.length, 0); assert.equal(existsSync(intentPath), false);
-  machine.release(); await f.close();
 });
 
 function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPrematureFixture>>, kind: "deleted" | "unknown") {

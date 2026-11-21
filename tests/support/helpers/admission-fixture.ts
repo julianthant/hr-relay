@@ -14,8 +14,8 @@ import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { tmpdir } from "node:os";
 import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -23,16 +23,27 @@ import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOpti
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const admissions = new Map<string, RuntimeAdmission>();
+function fixtureWorkspace(root: string, testTemp = realpathSync(tmpdir())): string {
+  const canonical = realpathSync(root);
+  const child = relative(testTemp, canonical);
+  if (child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) {
+    throw new Error(`fixture-workspace-outside-test-temp: ${root}`);
+  }
+  return canonical;
+}
+
 export function initializeAdmissionFixture(root: string, lifetime: RuntimeLifetimeLock): void {
   const canonical = resolve(root);
   if (admissions.has(canonical)) throw new Error("fixture installation already initialized");
-  mkdirSync(join(canonical, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
-  const initial = acquireEntrypointAdmission(canonical, "exclusive", lifetime);
+  const workspace = fixtureWorkspace(canonical);
+  mkdirSync(join(workspace, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
+  const initial = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
   initial.release();
-  admissions.set(canonical, acquireEntrypointAdmission(canonical, "shared", lifetime));
+  admissions.set(canonical, acquireEntrypointAdmission(workspace, "shared", lifetime));
 }
 export function fixtureAdmission(root: string): RuntimeAdmission {
   const canonical = resolve(root);
+  const workspace = fixtureWorkspace(canonical);
   const existing = admissions.get(canonical);
   if (existing !== undefined) {
     try { existing.assertLive(); return existing; }
@@ -40,12 +51,12 @@ export function fixtureAdmission(root: string): RuntimeAdmission {
       if (!(error instanceof Error) || error.message !== "runtime-admission: missing or released admission") throw error;
       const lifetime = existing.lifetime;
       if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("fixture-root-lifetime-required", { cause: error });
-      const renewed = acquireEntrypointAdmission(canonical, "shared", lifetime);
+      const renewed = acquireEntrypointAdmission(workspace, "shared", lifetime);
       admissions.set(canonical, renewed);
       return renewed;
     }
   }
-  return RuntimeAdmission.syntheticRoots(join(canonical, rebuildRuntimeIsolation.stateRoot), join(canonical, rebuildRuntimeIsolation.artifactRoot));
+  return RuntimeAdmission.syntheticRoots(join(workspace, rebuildRuntimeIsolation.stateRoot), join(workspace, rebuildRuntimeIsolation.artifactRoot));
 }
 export function installationAdmission(root: string, lifetime: RuntimeLifetimeLock): RuntimeAdmission {
   if (!admissions.has(resolve(root))) initializeAdmissionFixture(root, lifetime);
@@ -183,11 +194,21 @@ export function signInBoundProfileFixture(machine: RuntimeAdmission): void {
 
 export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string; lifetime?: RuntimeLifetimeLock; email?: string } = {}) {
   if (options.pending !== undefined && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
-  const workspace = options.workspace === undefined
-    ? realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")))
-    : realpathSync(options.workspace);
+  const testTemp = realpathSync(tmpdir());
+  const workspace = fixtureWorkspace(options.workspace ?? mkdtempSync(join(testTemp, "relay-bound-profile-")), testTemp);
+  const removeWorkspace = () => {
+    if (!existsSync(workspace)) return;
+    if (fixtureWorkspace(workspace, testTemp) !== workspace) throw new Error("fixture-workspace-identity-changed");
+    rmSync(workspace, { recursive: true, force: true });
+  };
   const ownsLifetime = options.lifetime === undefined;
-  const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
+  const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0).catch((error: unknown) => {
+    if (options.workspace === undefined) {
+      try { removeWorkspace(); }
+      catch (cleanup) { throw new AggregateError([error, cleanup], "fixture lifetime acquisition and workspace cleanup failed", { cause: error }); }
+    }
+    throw error;
+  });
   const ownedAdmissions: RuntimeAdmission[] = [];
   try {
     return await withOperationProof(async () => {
@@ -253,7 +274,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
         if (ownsLifetime) await lifetime.close();
       })();
       return { workspace, lifetime, draft, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore, renewAfterSessionChange, closeController,
-        async close() { await closeController(); rmSync(workspace, { recursive: true, force: true }); } };
+        async close() { await closeController(); removeWorkspace(); } };
     });
   } catch (error) {
     failedBoundProfileFixtures.add({ workspace, admissions: ownedAdmissions, lifetime, primary: error });

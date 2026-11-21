@@ -56,11 +56,13 @@ beforeAll(async () => { browser = await chromium.launch({ headless: true }); });
 afterAll(async () => { await browser?.close(); });
 
 async function withI9App(scenario: Scenario, check: (page: Page) => Promise<void>, pages: Readonly<Record<string, string>> = {}): Promise<void> {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ serviceWorkers: "block" });
   try {
-    await context.route(`${I9_APP_ORIGIN}/**`, route => {
-      const path = new URL(route.request().url()).pathname;
-      return route.fulfill({ contentType: "text/html", body: pages[path] ?? i9App(scenario) });
+    await context.route("**/*", route => {
+      const request = route.request(), url = new URL(request.url());
+      if (url.origin !== I9_APP_ORIGIN || request.method() !== "GET") return route.abort("blockedbyclient");
+      const body = url.pathname === "/" ? i9App(scenario) : Object.hasOwn(pages, url.pathname) ? pages[url.pathname] : undefined;
+      return body === undefined ? route.abort("blockedbyclient") : route.fulfill({ contentType: "text/html", body });
     });
     const page = await context.newPage();
     await page.goto(I9_APP_ORIGIN);
@@ -71,6 +73,12 @@ async function withI9App(scenario: Scenario, check: (page: Page) => Promise<void
 }
 
 const input = { lastName: "Example", firstName: "Person", ssn: "123456789" };
+
+it("aborts navigation outside the I-9 fixture routes", async () => {
+  await withI9App("empty", async page => {
+    await assert.rejects(page.goto(`${I9_APP_ORIGIN}/unmatched-fixture-path`), /net::ERR_BLOCKED_BY_CLIENT/u);
+  });
+});
 
 describe("I-9 search dialog as rendered by I-9 Complete", () => {
   it("settles a zero-result search on the visible empty-state heading and reports not found", async () => {

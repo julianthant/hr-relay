@@ -4,7 +4,7 @@ import { planEmergencyContact, contactEffect } from "../../../../../src/rules/uc
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import fixture from "../../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { createUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/interpreter.js";
 import { UcpathEmergencyContactInputSchema, UcpathContactRefusedError } from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
@@ -23,7 +23,9 @@ async function browserFixture(options: {
   address?: boolean; disabledViewAll?: boolean; totalRows?: number; saveResponse?: "persist" | "ignore";
   backgroundOnSave?: boolean; savePost?: "different-action" | "http-error";
 } = {}) {
+  await using setup = new AsyncDisposableStack();
   const browser = await chromium.launch({ headless: true });
+  setup.defer(() => browser.close());
   const page = await browser.newPage();
   const data = { ...structuredClone(fixture), page: UcpathContactPageSnapshotSchema.parse(fixture.page) };
   if (options.foreign) data.page.displayedEid = "10000002";
@@ -53,6 +55,7 @@ async function browserFixture(options: {
   const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   const driver = createUcpathPersonOrgDriver(() => { if (!active) throw new Error("owner-revoked"); }, page,
     { ...clock, now: () => { clock.advanceWall(1); return clock.now(); } });
+  setup.move();
   return { browser, page, driver, navigations, backgroundRequests, clock, revoke: () => { active = false; } };
 }
 
@@ -62,6 +65,21 @@ async function events(page: Awaited<ReturnType<typeof browserFixture>>["page"]) 
     return { saves: state.saves, actions: state.actions };
   });
 }
+
+it("closes its browser when contact fixture page setup rejects", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const failure = new Error("fixture page setup rejected");
+  const launch = vi.spyOn(chromium, "launch").mockResolvedValueOnce(browser);
+  const page = vi.spyOn(browser, "newPage").mockRejectedValueOnce(failure);
+  try {
+    await assert.rejects(browserFixture(), error => error === failure);
+    assert.equal(browser.isConnected(), false);
+  } finally {
+    page.mockRestore();
+    launch.mockRestore();
+    await browser.close();
+  }
+});
 
 describe("production UCPath contact driver on a synthetic browser page", () => {
   it("reads the captured one-row structure with a begins-with search label, ID-less counter and disabled View All", async () => {

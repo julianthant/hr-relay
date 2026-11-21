@@ -12,6 +12,29 @@ import { createChatGptAccountService } from "../../../src/backend/accounts/chatg
 
 const image = { model: "gpt-6.1-sol", instruction: "Read this synthetic form", input: { kind: "image" as const, mediaType: "image/png" as const, base64: "YQ==" } };
 
+it("refuses OAuth callbacks from an unowned authorization before network dispatch", async () => {
+  const f = await chatGptFixture();
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 204 }));
+  try {
+    const attempt = await f.service.signIn({ usePlan: true });
+    const replaced = new URL(attempt.authorizationUrl);
+    replaced.searchParams.set("redirect_uri", "http://127.0.0.1:1/auth/callback");
+    const foreign = { ...attempt, authorizationUrl: replaced.href };
+    const completion = assert.rejects(foreign.completion, { code: "CHATGPT_AUTH_CANCELLED" });
+    void completion.catch(() => undefined);
+    try {
+      await assert.rejects(f.callback(foreign), /fixture-oauth-callback-unowned/u);
+      assert.equal(fetch.mock.calls.length, 0);
+    } finally {
+      await attempt.cancel();
+      await completion;
+    }
+  } finally {
+    fetch.mockRestore();
+    await f.cleanup();
+  }
+});
+
 it("absent account read is signed out without creating storage", async () => {
   const f = await chatGptFixture();
   try {

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { StoppedAuthorityBackupManifestSchema } from "../../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { ApplicationLifecycleSchema } from "../../../../../src/models/dashboard/application-lifecycle.js";
@@ -21,7 +22,24 @@ import { scaledMs } from "../../../../support/time-scale.js";
 
 const CHILD = join(process.cwd(), "tests", "support", "processes", "dashboard-signal-child.ts");
 const cleanups: (() => Promise<void> | void)[] = [];
-afterEach(async () => { for (const step of cleanups.splice(0).reverse()) await step(); }, 30_000);
+async function closeDashboardFixtures() {
+  const failures: unknown[] = [];
+  for (const step of cleanups.splice(0).reverse()) {
+    try { await step(); }
+    catch (error) { failures.push(error); }
+  }
+  if (failures.length === 1 && failures[0] instanceof Error) throw failures[0];
+  if (failures.length > 0) throw new AggregateError(failures, "dashboard fixture cleanup failed", { cause: failures[0] });
+}
+afterEach(closeDashboardFixtures, 30_000);
+
+it("runs earlier dashboard disposers after a later disposer rejects", async () => {
+  const failure = new Error("fixture child disposal rejected");
+  let removed = false;
+  cleanups.push(() => { removed = true; }, () => { throw failure; });
+  await assert.rejects(closeDashboardFixtures, error => error === failure);
+  assert.equal(removed, true);
+});
 
 const RESERVED_PORTS = [3938, 3939, 5174];
 const CUSTODY_FAULTS = /RUNTIME_CUSTODY_UNCERTAIN|WORKER_EXIT_UNOBSERVED|custody-unproved|WORKER_SUPERVISOR_FAILED/u;
@@ -41,6 +59,23 @@ function pidAlive(pid: number): boolean {
   catch (error) { if (error instanceof Error && "code" in error && error.code === "ESRCH") return false; throw error; }
 }
 
+async function dashboardExit<T>(exited: Promise<T>, diagnostics: () => string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { reject(new Error(`dashboard did not exit\n${diagnostics()}`)); }, scaledMs(90_000));
+  });
+  try { return await Promise.race([exited, deadline]); }
+  finally { clearTimeout(timer); }
+}
+
+it("clears the dashboard exit deadline as soon as the child closes", async () => {
+  vi.useFakeTimers();
+  try {
+    assert.equal(await dashboardExit(Promise.resolve("closed"), () => ""), "closed");
+    assert.equal(vi.getTimerCount(), 0);
+  } finally { vi.useRealTimers(); }
+});
+
 async function startDashboard(processGroup = false, fault?: "stream-close" | "stream-close-unproved" | "transport-close" | "worker-stop") {
   const f = await createBoundProfileFixture();
   cleanups.push(() => f.close());
@@ -50,11 +85,20 @@ async function startDashboard(processGroup = false, fault?: "stream-close" | "st
   cleanups.push(() => { rmSync(barrier, { recursive: true, force: true }); });
   const child: ChildProcess = spawn(process.execPath, ["--conditions=development", "--import", testProcessImport(), CHILD, f.workspace, barrier, ...(fault ? [fault] : [])],
     { detached: processGroup, cwd: process.cwd(), env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "pipe", "pipe"] });
-  cleanups.push(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { child.once("close", (code, signal) => { resolve({ code, signal }); }); });
+  cleanups.push(async () => {
+    try {
+      if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+        if (processGroup) process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      }
+    } finally { await exited; }
+  });
+  const spawned = once(child, "spawn");
   let output = "";
   child.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
   child.stderr?.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
-  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { child.once("close", (code, signal) => { resolve({ code, signal }); }); });
+  await spawned;
   const markers = () => readdirSync(barrier);
   const history = () => {
     if (!existsSync(f.path)) return [];
@@ -104,7 +148,7 @@ async function interruptMidRun(emplIds: readonly string[]) {
   await until(() => markers().find(name => name === `stop-shutdown-${String(workerPid)}`), "the parent's worker-stop", diagnostics);
   await until(() => runs().every(run => run.state === "queued") || undefined, "the held run to park before its search returns", diagnostics);
   writeFileSync(join(barrier, "release"), "");
-  const exit = await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => { reject(new Error(`dashboard did not exit\n${diagnostics()}`)); }, scaledMs(90_000)))]);
+  const exit = await dashboardExit(exited, diagnostics);
 
   assert.deepEqual(exit, { code: 0, signal: null }, diagnostics());
   const firstPhase = output().indexOf('"phase":"closing transport"');

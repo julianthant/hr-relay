@@ -3,9 +3,38 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { createVitest } from "vitest/node";
-import type * as PrivateTempSetup from "./private-temp-setup.js";
+import * as PrivateTempSetup from "./private-temp-setup.js";
+import { prepareTestProcesses } from "./compiled-process-setup.js";
+
+vi.mock("./compiled-process-setup.js", { spy: true });
+
+it("restores the test environment and removes the root when preparation rejects", async () => {
+  const keys = ["TMPDIR", "TMP", "TEMP", "RELAY_TEST_PROCESS_IMPORT"];
+  const before = keys.map(key => process.env[key]);
+  const failure = new Error("compiled process preparation rejected");
+  let root: string | undefined;
+  const prepare = vi.mocked(prepareTestProcesses).mockImplementationOnce(directory => {
+    root = directory;
+    return Promise.reject(failure);
+  });
+  try {
+    await assert.rejects(PrivateTempSetup.setup, error => error === failure);
+    assert.ok(root);
+    assert.equal(existsSync(root), false);
+    assert.deepEqual(keys.map(key => process.env[key]), before);
+  } finally {
+    prepare.mockClear();
+    PrivateTempSetup.teardown();
+    if (root !== undefined) rmSync(root, { recursive: true, force: true });
+    for (const [index, key] of keys.entries()) {
+      const value = before[index];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
 
 it("reuses one private root across project setup and removes only its own invocation", async () => {
   const parent = realpathSync(mkdtempSync(join(tmpdir(), "temp-setup-")));
@@ -68,6 +97,8 @@ it("reuses one private root across project setup and removes only its own invoca
     teardownSecond();
     assert.equal(existsSync(second), false);
     assert.ok(existsSync(peer));
+    for (const key of ["TMPDIR", "TMP", "TEMP"]) assert.equal(process.env[key], parent);
+    assert.equal(process.env.RELAY_TEST_PROCESS_IMPORT, undefined);
   } finally {
     delete process.env.KEEP_TEST_TMP;
     for (const teardown of teardowns.reverse()) teardown();

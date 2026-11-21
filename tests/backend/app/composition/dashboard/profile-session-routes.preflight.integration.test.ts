@@ -6,13 +6,12 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { writeDashboardBuildIdentity } from "../../../../../src/backend/app/composition/dashboard/build-identity.js";
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import type { DashboardComposeInput } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import { readLocalDebugLog } from "../../../../../src/backend/storage/events/local-debug-log.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
-import { publicProfileShellFixture as fixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture as fixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 
 const FRONTEND = rebuildRuntimeIsolation.frontendPort;
 
@@ -81,7 +80,7 @@ it("T1 keeps sign-in active when a foreign listener occupies the dev frontend po
   try {
     listener = await occupy(FRONTEND);
     runtime = await compose(f);
-    const finished = await (await readyPublicSignUp(`http://127.0.0.1:${runtime.port}`)).finish();
+    const finished = await (await readyPublicSignUp(runtime)).finish();
     assert.equal(finished.status, 200);
     const active = PublicProfileStateSchema.parse(await finished.json());
     assert.equal(active.state, "active");
@@ -122,7 +121,7 @@ it("T3 passes ports.available for the built bundle while the dev frontend port i
     installBundle(f.root);
     listener = await occupy(FRONTEND);
     runtime = await compose(f, { frontend: "built-bundle" });
-    const finished = await (await readyPublicSignUp(`http://127.0.0.1:${runtime.port}`)).finish();
+    const finished = await (await readyPublicSignUp(runtime)).finish();
     assert.equal(finished.status, 200);
     const active = PublicProfileStateSchema.parse(await finished.json());
     assert.equal(active.state, "active");
@@ -136,7 +135,7 @@ it("T5 names a compose failure PROFILE_RUNTIME_START_FAILED and logs only its ke
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     runtime = await compose(f, { onInitialPreflight: () => { throw new Error("some-kebab-token: detail"); } });
-    const finished = await (await readyPublicSignUp(`http://127.0.0.1:${runtime.port}`)).finish();
+    const finished = await (await readyPublicSignUp(runtime)).finish();
     assert.equal(finished.status, 500);
     const body = PublicProfileStateSchema.parse(await finished.json());
     assert.equal(body.state, "error");

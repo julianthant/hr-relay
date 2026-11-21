@@ -3,11 +3,10 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { DuoReenrolStateSchema, PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
-import { publicProfileShellFixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
+import { publicProfileShellFixture, readyPublicSignUp, composePublicProfileFixtureRuntime as composeDashboardApplication } from "../../../../support/helpers/backend/public-profile-shell.js";
 
 it("erases the account on macOS with a Duo re-enrolment open", async () => {
   assert.equal(process.platform, "darwin", "account erasure requires the macOS closure proof");
@@ -15,7 +14,7 @@ it("erases the account on macOS with a Duo re-enrolment open", async () => {
   const runtime = await composeDashboardApplication({ lifetimeLock: fixture.lifetime, admission: fixture.machine, isolation: rebuildRuntimeIsolation, repoRoot: fixture.root,
     backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
   try {
-    const { post, finish } = await readyPublicSignUp(`http://127.0.0.1:${String(runtime.port)}`);
+    const { post, finish } = await readyPublicSignUp(runtime);
     const finished = await finish();
     const active = PublicProfileStateSchema.parse(await finished.json());
     assert.equal(active.state, "active");
