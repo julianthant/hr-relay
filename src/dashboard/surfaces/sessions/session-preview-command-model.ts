@@ -42,8 +42,8 @@ type NativeAttempt = { readonly body: string; readonly actor: string; readonly c
   readonly commands: CommandRequest[]; readonly expected: number; snapshot?: DashboardDayWire; cause?: unknown };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 // Relay stamps its own requestedAt, requestedBy and source on admission; the audit still proves this command when everything else matches.
-const intent = ({ requestedAt: _at, requestedBy: _by, source: _source, ...rest }: CommandRequest) => canonicalJsonStringify(rest);
-const sameIntent = (recorded: CommandRequest, sent: CommandRequest) => intent(recorded) === intent(sent);
+const intent = ({ requestedAt: _at, requestedBy: _by, source: _source, ...rest }: DashboardCommandRequest) => canonicalJsonStringify(rest);
+const sameIntent = (recorded: DashboardCommandRequest, sent: DashboardCommandRequest) => intent(recorded) === intent(sent);
 const commandFeedback = (code: "COMMAND_REFUSED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 /** A worker command is confirmed once the served day shows its effect; the member fence makes each effect observable. */
