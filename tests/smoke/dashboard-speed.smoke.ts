@@ -7,6 +7,7 @@ import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.
 /** Bytes before compression. Raise a budget only with the reason in the same change; split the bundle instead where possible. */
 const SCRIPT_BUDGET_BYTES = 2_950_000;
 const STYLE_BUDGET_BYTES = 770_000;
+const IDLE_STYLE_WRITE_LIMIT = 20;
 
 function assetBytes(extension: string, exclude: RegExp): number {
   const assets = join(MOCK_DIST_DIR, "assets");
@@ -35,13 +36,22 @@ test("a cold load reaches the queue quickly", async ({ dashboard, page }) => {
   }), { message: "first contentful paint in ms" }).toBeLessThan(3_000);
 });
 
-test("an idle dashboard does not write styles every frame", async ({ dashboard, failures, page }) => {
+test("idle style writes stay within budget apart from the known assistant orbit", async ({ dashboard, page }) => {
   await dashboard.open();
   await expect(dashboard.queue).toBeVisible();
-  const styleWrites = await page.evaluate(async () => {
-    let writes = 0;
-    const observer = new MutationObserver(records => { writes += records.length; });
-    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["style"] });
+  const orbit = page.getByRole("button", { name: /^Assistant(?:,|$)/u })
+    .locator('svg[data-direction="orbit"][data-state="idle"] .mark-spin');
+  const writes = await orbit.evaluate(async satellite => {
+    const rotation = /^transform: rotate\(\d+(?:\.\d+)?deg\);$/u;
+    const counts = { orbit: 0, other: 0 };
+    const observer = new MutationObserver(records => {
+      const rotating = rotation.test(satellite.getAttribute("style") ?? "");
+      for (const record of records) {
+        if (record.target === satellite && rotating && rotation.test(record.oldValue ?? "")) counts.orbit += 1;
+        else counts.other += 1;
+      }
+    });
+    observer.observe(document.body, { subtree: true, attributeFilter: ["style"], attributeOldValue: true });
     const end = performance.now() + 2_000;
     await new Promise<void>(resolve => {
       const sample = (frameTime: number): void => {
@@ -51,9 +61,8 @@ test("an idle dashboard does not write styles every frame", async ({ dashboard, 
       requestAnimationFrame(sample);
     });
     observer.disconnect();
-    return writes;
+    return counts;
   });
-  failures.check();
-  test.fail(true, "The Ask mark's idle orbit rewrites an inline transform on every animation frame.");
-  expect(styleWrites, "inline style writes in two idle seconds").toBeLessThan(20);
+  expect(writes.other, "inline style writes outside the known rotation in two idle seconds").toBeLessThan(IDLE_STYLE_WRITE_LIMIT);
+  expect(writes.orbit, "known inline rotation; restore the overall budget once it is fixed").toBeGreaterThanOrEqual(IDLE_STYLE_WRITE_LIMIT);
 });

@@ -6,7 +6,6 @@ import { DashboardPage } from "./dashboard-page.js";
 export interface PageFailures {
   /** Declares a failure the test expects; the reason says why the state under test produces it. */
   allow(pattern: RegExp, reason: string): void;
-  check(): void;
 }
 
 /** Choosing a workflow saves it as a preference; the seeded backend wires no settings executor and answers 500. */
@@ -42,9 +41,8 @@ export const test = base.extend<TestFixtures>({
     page.on("response", response => {
       if (response.status() >= 400) seen.push(`http ${response.status()}: ${response.request().method()} ${response.url()}`);
     });
-    const check = () => expect(seen.filter(entry => !allowed.some(pattern => pattern.test(entry)))).toEqual([]);
-    await use({ allow: pattern => { allowed.push(pattern); }, check });
-    check();
+    await use({ allow: pattern => { allowed.push(pattern); } });
+    expect(seen.filter(entry => !allowed.some(pattern => pattern.test(entry))), "unexpected page diagnostics").toEqual([]);
   }, { auto: true }],
   dashboard: async ({ page, seeded }, use) => {
     await use(new DashboardPage(page, seeded));

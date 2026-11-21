@@ -25,7 +25,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 }
 
 for (const key of REFUSED_RUNS) {
-  test(`${key} opens its timeline and logs`, async ({ dashboard, failures }) => {
+  test(`${key} opens its panel and shows the known logs refusal`, async ({ dashboard, failures }) => {
     const runId = dashboard.runId(key);
     if (key === "openGateRun") {
       const conflict = new RegExp(String.raw`^(?:http 409: GET |console: Failed to load resource: the server responded with a status of 409 \(Conflict\) )http://127\.0\.0\.1:\d+/api/v1/runs/${runId}$`, "u");
@@ -33,12 +33,9 @@ for (const key of REFUSED_RUNS) {
     }
     await dashboard.open();
     await dashboard.openRun(runId);
-    const logs = dashboard.runPanel.getByRole("region", { name: "Run logs" });
     const refusal = dashboard.runPanel.getByText("Couldn't load logs.", { exact: true });
-    await expect(logs.or(refusal)).toBeVisible();
-    failures.check();
-    test.fail(true, "The seeded run's logs fail the dashboard's identity checks and the panel shows \"Couldn't load logs.\"");
-    await expect(logs).toBeVisible();
+    await expect(refusal, "known refusal; move this run to OPENABLE_RUNS once its logs load").toBeVisible();
+    await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeHidden();
   });
 }
 
