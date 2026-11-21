@@ -80,7 +80,7 @@ it("ignores late A reads after A to B to A, with no reused renderer cache", asyn
   assert.deepEqual(a.owner.snapshot().value, NEUTRAL_PERSON_PREFERENCES);
   assert.deepEqual(nextA.owner.snapshot().value, NEUTRAL_PERSON_PREFERENCES); nextA.close();
 });
-it("cannot publish an in-flight A save into B and never retries an unknown outcome", async () => {
+it("cannot publish an in-flight A save into B and settles an unknown outcome by reading it back", async () => {
   const w = world(); const a = w.select("A"); await ready(a.owner);
   const sent = Promise.withResolvers<void>(); const pending = Promise.withResolvers<void>();
   w.write(() => { sent.resolve(); return pending.promise; });
@@ -92,9 +92,20 @@ it("cannot publish an in-flight A save into B and never retries an unknown outco
   const again = unknown.select("A"); await ready(again.owner);
   unknown.write(() => Promise.reject(new Error("connection lost after dispatch")));
   assert.equal(await again.owner.change({ "preferences.animations": { set: false } }), false);
-  assert.equal(again.owner.snapshot().state, "uncertain");
-  assert.equal(await again.owner.change({ "preferences.animations": { set: false } }), false);
-  assert.equal(w.writes(), 1); assert.equal(unknown.writes(), 1); again.close();
+  assert.equal(again.owner.snapshot().state, "ready", "the served value settles it; the control is enabled again");
+  assert.equal(again.owner.snapshot().value.animations, NEUTRAL_PERSON_PREFERENCES.animations, "the previous value is back");
+  assert.equal(again.owner.snapshot().problem, "The previous value is back.");
+  assert.equal(w.writes(), 1); assert.equal(unknown.writes(), 1, "a lost reply is read back, never resent");
+  unknown.write(undefined); await again.owner.change({ "preferences.animations": { set: false } });
+  assert.equal(unknown.writes(), 2, "the read-back freed the lock: the next change reaches Relay"); again.close();
+  const landed = world();
+  const stored = landed.select("A"); await ready(stored.owner);
+  landed.write(() => Promise.reject(new Error("connection lost after dispatch")));
+  landed.read(() => Promise.resolve(fixtureSettingsDocument({ preferences: { animations: false } }, 2)));
+  assert.equal(await stored.owner.change({ "preferences.animations": { set: false } }), "recovered", "a save found by reading back asks callers to show nothing");
+  assert.equal(stored.owner.snapshot().state, "ready");
+  assert.equal(stored.owner.snapshot().value.animations, false, "the read-back shows the new value");
+  assert.equal(stored.owner.snapshot().problem, undefined, "with no message"); stored.close();
 });
 it("refuses malformed persisted preferences instead of publishing them as defaults", async () => {
   const w = world(); const malformed = fixtureSettingsDocument();

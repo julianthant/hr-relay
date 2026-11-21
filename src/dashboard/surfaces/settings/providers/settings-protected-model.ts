@@ -1,18 +1,32 @@
-import type { CommandExecutionOptions, CommandExecutionScope, CommandOutcome } from "../../../app/commands/command-executor.js";
+import type { CommandExecutionOptions, CommandExecutionScope } from "../../../app/commands/command-executor.js";
 import { attemptUnresolved, commandAttemptView } from "../../../app/commands/command-outcome.js";
+import { readBack } from "../../../app/commands/command-readback.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
-import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../../../models/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SET_MARKER, ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../../../models/config/protected-settings.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
-import { checkedSettingsResult, commandSaveState, settingsScopeRecoveryState, protectedReadbackConfirms, settingsSaveNotice, settingsSaveProblem, type SettingsSaveListener, type SettingsSaveProblemListener, type ProtectedSettingsAttempt, type SettingsSaveState } from "../editor/settings-attempt-model.js";
+import { checkedSettingsResult, commandSaveState, settingsScopeRecoveryState, protectedReadbackConfirms, settingsSaveFailure, settingsSaveNotice, settingsSaveProblem, type SettingsSaveListener, type SettingsSaveProblemListener, type ProtectedSettingsAttempt, type SettingsSaveState } from "../editor/settings-attempt-model.js";
 
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
 function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
   return ProtectedValueSchemas[name].parse(raw);
+}
+/** Whether the served credentials hold exactly what this save asked for: each set value served as sent, each cleared one absent.
+ * A marked attempt holds no values to compare, so it never counts as landed. */
+type ProtectedReadbackAttempt = Pick<ProtectedSettingsAttempt, "commandId" | "target"> & { readonly payload: { readonly entries: Readonly<Record<string, { readonly set: unknown } | { readonly clear: true } | undefined>> } };
+export function protectedSaveLanded(attempt: ProtectedReadbackAttempt, document: EditableSettingsWire | undefined): boolean {
+  const served = document?.protectedSettings.state === "available" ? document.protectedSettings : undefined;
+  if (served === undefined || served.readback.revision <= attempt.target.expectedRevision) return false;
+  const entries = Object.entries(attempt.payload.entries);
+  return entries.length > 0 && entries.every(([name, operation]) => {
+    const entry = served.entries[name as ProtectedSettingsName];
+    if (operation === undefined) return false;
+    return "clear" in operation ? entry === undefined : operation.set !== PROTECTED_SETTINGS_SET_MARKER && entry?.value === operation.set;
+  });
 }
 export function useProtectedSettings(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; readCurrent: () => Promise<EditableSettingsWire>; acceptReadback: (document: EditableSettingsWire) => void; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener;
@@ -26,8 +40,8 @@ export function useProtectedSettings(input: {
   const [explicitSave, setExplicitSave] = useState(false);
   const pending = useRef<string | undefined>(undefined);
   const busy = useRef(false);
-  const recoveryFailure = useRef<CommandOutcome | undefined>(undefined);
   const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
+  const readingBack = useRef<string | undefined>(undefined);
   const retained = binding?.executor.retainedAttempts().find(attempt => attemptUnresolved(attempt) && attempt.scope.actorId === binding.scope.actorId
     && attempt.request.family === "settings" && attempt.request.type === "apply-protected-settings");
   if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-protected-settings") {
@@ -67,9 +81,8 @@ export function useProtectedSettings(input: {
     const original = typeof command === "string" ? originalAttempt?.request : command;
     const parsed = ProtectedSettingsCommandRequestSchema.safeParse(original);
     if (!parsed.success) {
-      recoveryFailure.current = { kind: "uncertain", commandId, cause: { request: original, error: parsed.error },
-        feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})) };
-      busy.current = false; setSave(commandSaveState(recoveryFailure.current)); return;
+      busy.current = false; pending.current = undefined; setSave({ state: "idle" });
+      input.onSaveProblem?.({ ...settingsSaveFailure(), title: "Credentials weren't saved" }); return;
     }
     if (parsed.data.requestedBy !== binding.scope.actorId) { busy.current = false; setSave(settingsScopeRecoveryState()); return; }
     let document: EditableSettingsWire | undefined;
@@ -90,7 +103,8 @@ export function useProtectedSettings(input: {
         if (document !== undefined) input.acceptReadback(document);
         if (outcome.kind === "conflict") void input.refresh().catch(() => undefined);
         const view = commandAttemptView(outcome);
-        if (view.view !== "unknown" && !(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
+        if (view.view === "unknown") { settleUnknown(parsed.data); return; }
+        if (!(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome); setSave(next);
         if (outcome.kind === "confirmed" && document?.protectedSettings.state === "available") {
           setDraft({}); setErrors({});
@@ -126,6 +140,40 @@ export function useProtectedSettings(input: {
     return () => window.clearTimeout(timer);
   }, [available, draft, errors, explicitSave, input.readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
-  return { draft, errors, save: pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
+  const shown = pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save;
+  // An unknown save is read back, never resent: the served credentials show silently, or one failure toast.
+  function settleUnknown(attempt: ProtectedReadbackAttempt): void {
+    if (readingBack.current === attempt.commandId) return;
+    readingBack.current = attempt.commandId;
+    setSave({ state: "saving" });
+    void readBack(input.readCurrent, document => protectedSaveLanded(attempt, document)).then(document => {
+      const landed = protectedSaveLanded(attempt, document);
+      if (binding !== undefined) binding.executor.resolve(attempt.commandId, landed, binding.scope);
+      readingBack.current = undefined;
+      if (!live.current) return;
+      if (document !== undefined) input.acceptReadback(document);
+      pending.current = undefined;
+      setDraft({}); setErrors({}); setSave({ state: "idle" });
+      if (!landed) input.onSaveProblem?.({ ...settingsSaveFailure(), title: "Credentials weren't saved" });
+    });
+  }
+  // A save another mount left unknown is read back here once, instead of being adopted and resent;
+  // one still in flight is followed to its end so the editor never stays locked behind it.
+  const adopted = useEffectEvent(() => {
+    const attempt = retained?.request;
+    if (busy.current || binding === undefined || attempt?.family !== "settings" || attempt.type !== "apply-protected-settings") return;
+    if (retained?.state === "settled") { settleUnknown(attempt); return; }
+    void binding.executor.whenSettled(attempt.commandId).then(() => {
+      const after = binding.executor.retainedAttempts().find(next => next.request.commandId === attempt.commandId);
+      if (after !== undefined && attemptUnresolved(after)) { settleUnknown(attempt); return; }
+      if (!live.current || pending.current !== attempt.commandId) return;
+      pending.current = undefined; setSave({ state: "idle" });
+      void input.readCurrent().then(input.acceptReadback, () => undefined);
+      if (after?.outcome?.kind === "confirmed") { setDraft({}); setErrors({}); }
+      else input.onSaveProblem?.({ ...settingsSaveFailure(), title: "Credentials weren't saved" });
+    });
+  });
+  useEffect(() => { adopted(); }, [retained?.request.commandId, retained?.state]);
+  return { draft, errors, save: shown, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
     explicitSave, setExplicitSave, update, clear, reset, discard, submit, retry };
 }

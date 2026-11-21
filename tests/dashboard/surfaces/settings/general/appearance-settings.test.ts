@@ -11,11 +11,10 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); });
 
-it("gives the appearance rows no descriptions and preserves availability and save failures", async () => {
+it("gives the appearance rows no descriptions, preserves availability and keeps a failed save off the row", async () => {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  for (const state of ["ready", "saving", "loading", "failed", "uncertain", "signed-out"] as const) {
-    const snapshot: PersonPreferencesState = { value: NEUTRAL_PERSON_PREFERENCES, state,
-      ...(state === "uncertain" ? { problem: "Save outcome unknown. Do not retry." } : {}) };
+  for (const [state, problem] of [["ready", undefined], ["ready", "The previous value is back."], ["saving", undefined], ["loading", undefined], ["failed", undefined], ["signed-out", undefined]] as const) {
+    const snapshot: PersonPreferencesState = { value: NEUTRAL_PERSON_PREFERENCES, state, ...(problem === undefined ? {} : { problem }) };
     const port = { snapshot: () => snapshot, subscribe: () => () => {}, change: async () => false };
     await act(async () => root?.render(createElement(PersonPreferencesContext.Provider, { value: port,
       children: createElement(AppearanceSettings, { theme: "light", onToggleTheme() {} }) })));
@@ -31,7 +30,8 @@ it("gives the appearance rows no descriptions and preserves availability and sav
     assert.equal(controls.length, 1);
     assert.equal(controls[0]?.closest(".ds-switch-row")?.textContent, "Animations");
     assert.ok(controls.every(control => control.disabled === !editable));
-    if (state === "uncertain") assert.match(host.textContent ?? "", /Save outcome unknown\. Do not retry\./u);
+    // A failed save is one toast; the row never repeats it and stays usable.
+    assert.doesNotMatch(host.textContent ?? "", /previous value is back|outcome is uncertain/u);
   }
   await act(async () => root?.render(createElement(AppearanceSettings, { theme: "light", onToggleTheme() {} })));
   assert.match(host.textContent ?? "", /Sign in to save appearance preferences\./u);

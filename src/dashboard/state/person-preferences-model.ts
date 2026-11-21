@@ -8,7 +8,9 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
 import type { PersonPreferencesPort, PersonPreferencesState } from "../lib/person-preferences.js";
-import { ordinaryReadbackState, checkedSettingsResult } from "../surfaces/settings/editor/settings-attempt-model.js";
+import { ordinaryReadbackState, checkedSettingsResult, settingsSaveFailure } from "../surfaces/settings/editor/settings-attempt-model.js";
+import { ordinaryReadbackConfirms } from "../surfaces/settings/editor/settings-draft-model.js";
+import { readBack } from "../app/commands/command-readback.js";
 import { clearSettingsReads, settingsReadResource } from "./settings-read-model.js";
 
 type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "nowIso"> };
@@ -27,11 +29,11 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
   let document: EditableSettingsWire | undefined;
   const listeners = new Set<() => void>();
   const publish = (next: PersonPreferencesState) => { state = next; for (const listener of listeners) listener(); };
-  const fail = (problem: string, uncertain = false, value = state.value) => publish({ value, state: uncertain ? "uncertain" : "failed", problem });
+  const fail = (problem: string) => publish({ value: state.value, state: "failed", problem });
   const port: PersonPreferencesPort = {
     snapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    async change(patch: SettingsPatch): Promise<boolean> {
+    async change(patch: SettingsPatch): Promise<boolean | "recovered"> {
       if (!Object.keys(patch).every(path => path.startsWith("preferences."))) throw new Error("person-preferences-path-invalid");
       if (mode === "preview") {
         const value = resolvePersonPreferences(mergeSettingsPatch({ preferences: state.value }, patch).preferences);
@@ -56,16 +58,24 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
           return { state: verification === "confirmed" ? "matched" : verification === "superseded" ? "conflict" : "mismatch", evidence: readback };
         } });
       if (started !== generation) return false;
-      if (outcome.kind !== "confirmed" || readback === undefined) {
-        fail(outcome.kind === "confirmed" ? operatorFailureSentence("COMMAND_OUTCOME_UNCERTAIN") : outcome.feedback.text, commandAttemptView(outcome).view === "unknown", commandAttemptView(outcome).view === "unknown" ? state.value : previous);
+      // An unknown outcome is settled by reading the served value back, never shown to the operator.
+      if (outcome.kind !== "confirmed" && commandAttemptView(outcome).view === "unknown") {
+        readback = await readBack(async () => EditableSettingsWireSchema.parse(await active.client.editableSettings()), served => ordinaryReadbackConfirms(served, patch)) ?? readback;
+        // Frees the lock either way, so the next switch reaches Relay.
+        binding.executor.resolve(command.commandId, readback !== undefined && ordinaryReadbackConfirms(readback, patch), binding.scope);
+        if (started !== generation) return false;
+      }
+      const saved = readback !== undefined && (outcome.kind === "confirmed" || ordinaryReadbackConfirms(readback, patch));
+      if (readback !== undefined) document = readback;
+      if (!saved) {
+        publish({ value: readback === undefined ? previous : preferencesFromSettings(readback), state: "ready", problem: settingsSaveFailure().description });
         return false;
       }
-      document = readback;
       publish({ value: preferencesFromSettings(readback), state: "ready" });
       const resource = settingsReadResource<EditableSettingsWire>(active.client, active.binding.authority.epoch,
         canonicalJsonStringify([binding.scope.actorId, binding.authority.epoch.bootstrap.descriptorHash]), "editor");
       resource.accept(readback);
-      return true;
+      return outcome.kind === "confirmed" ? true : "recovered";
     },
   };
   return Object.assign(port, {
@@ -76,7 +86,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       const resource = settingsReadResource<EditableSettingsWire>(client, binding.authority.epoch,
         canonicalJsonStringify([binding.scope.actorId, binding.authority.epoch.bootstrap.descriptorHash]), "editor");
       const accept = () => {
-        if (started !== generation || state.state === "saving" || state.state === "uncertain") return;
+        if (started !== generation || state.state === "saving") return;
         const observed = resource.snapshot();
         if (observed.state !== "loaded") return;
         document = observed.value;
@@ -87,7 +97,8 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       void resource.read(async () => EditableSettingsWireSchema.parse(await client.editableSettings()), "SETTINGS_INITIAL_READ_UNAVAILABLE")
         .catch(() => { if (started === generation) fail(operatorFailureSentence("SETTINGS_INITIAL_READ_UNAVAILABLE")); });
       return () => { unsubscribe(); generation += 1; connection = undefined; document = undefined; resource.reset();
-        if (state.state === "saving") fail(operatorFailureSentence("DASHBOARD_AUTHORITY_REPLACED"), true); };
+        // The next connection reads the served value; a save cut off here is never left pending.
+        if (state.state === "saving") publish({ value: state.value, state: "loading" }); };
     },
     clear() { generation += 1; if (connection !== undefined) clearSettingsReads(connection.client); connection = undefined; document = undefined; state = { value: NEUTRAL_PERSON_PREFERENCES, state: "signed-out" }; },
   });

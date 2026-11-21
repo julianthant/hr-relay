@@ -17,27 +17,25 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
   const sendShown = SEND_SHORTCUT_TERMS.includes(query.toLowerCase());
   const actions = SHORTCUT_ACTIONS.filter(action => `${action.title} ${preferences.bindings[action.id].join(' ')}`.toLowerCase().includes(query.toLowerCase()));
   const edit = (id: ShortcutAction, index: number) => { setEditing({ id, index }); setCaptured(preferences.bindings[id][index] ?? ''); setError(''); };
-  /** Saves one change; a refusal becomes one plain sentence, never the validator's raw text. */
-  const commit = async (value: ShortcutPreferences): Promise<boolean> => {
+  /** Saves one change; a refusal becomes one plain sentence, never the validator's raw text. A failed save is the shared toast. */
+  const commit = async (value: ShortcutPreferences): Promise<boolean | "recovered"> => {
     setError('');
-    try {
-      if (await saveShortcutPreferences(value)) return true;
-      setError("Couldn't save. Try again.");
-    } catch (caught) {
+    try { return await saveShortcutPreferences(value); } catch (caught) {
       if (!(caught instanceof ShortcutRefusedError)) throw caught;
       setError(caught.sentence);
+      return false;
     }
-    return false;
   };
   const save = async () => {
     if (!editing || !captured) return;
     const next = [...preferences.bindings[editing.id]];
     next[editing.index] = captured;
-    if (!await commit({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } })) return;
+    const saved = await commit({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } });
+    if (saved === false) return;
     setEditing(null);
-    onSaved?.({ title: `Saved ${SHORTCUT_ACTIONS.find(action => action.id === editing.id)!.title} shortcut` });
+    if (saved === true) onSaved?.({ title: `Saved ${SHORTCUT_ACTIONS.find(action => action.id === editing.id)!.title} shortcut` });
   };
-  const resetAll = async () => { if (await commit(DEFAULT_SHORTCUT_PREFERENCES)) onSaved?.({ title: 'Shortcuts reset to defaults' }); };
+  const resetAll = async () => { if (await commit(DEFAULT_SHORTCUT_PREFERENCES) === true) onSaved?.({ title: 'Shortcuts reset to defaults' }); };
   return <section className="settings-compact-page settings-keyboard-page">
     <PageHeading title="Keyboard" actions={<Button variant="muted" onClick={() => { void resetAll(); }}>Reset all to defaults</Button>} />
     <SearchInput variant="field" aria-label="Search shortcuts" placeholder="Search shortcuts" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
@@ -60,7 +58,7 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
         </div>} />;
       })}
       {sendShown && <ResultRow label="Send shortcut" value={<Select aria-label="Send shortcut" value={person.value.sendShortcut} disabled={person.change === undefined || person.state === 'saving'}
-        onChange={event => { void person.change?.({ 'preferences.sendShortcut': { set: event.target.value } }).then(saved => { if (saved) onSaved?.({ title: 'Saved Send shortcut' }); }); }}>
+        onChange={event => { void person.change?.({ 'preferences.sendShortcut': { set: event.target.value } }).then(saved => { if (saved === true) onSaved?.({ title: 'Saved Send shortcut' }); }); }}>
         {SEND_SHORTCUT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Select>} />}
       {actions.length === 0 && !sendShown && <p role="status" className="p-5 text-ui-muted">No shortcuts match your search.</p>}
     </FormGroup>

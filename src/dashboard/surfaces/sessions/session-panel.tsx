@@ -17,7 +17,8 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
   const current = useMemo(() => ({ binding, catalog }), [binding, catalog]);
   const currentRef = useRef(current); currentRef.current = current;
   const servedPort = useMemo(() => createSessionPreviewPort(() => currentRef.current), []);
-  const commands = useSessionPreviewCommands(initial, catalog, harnessed ? harnessed.port : servedPort, binding === undefined || harnessed ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId,
+  const scope = useMemo(() => ({ scope: binding?.scope, workflowId: binding?.workflowId }), [binding?.scope, binding?.workflowId]);
+  const commands = useSessionPreviewCommands(initial, catalog, harnessed ? harnessed.port : servedPort, binding === undefined || harnessed ? undefined : { snapshot: binding.dayState.day, scope, actorId: binding.scope.actorId,
     onRefused: title => toast({ tone: "danger", title, duration: 6000 }) });
   useSessionAddFeedback(commands.operations.add);
   const data = commands.data;
@@ -34,6 +35,6 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
     return { ...data, workers };
   }, [data, catalog]);
   return <SessionsView data={display} open={open} onOpenChange={onOpenChange} workflows={addable}
-    idleCountdowns={commands.idleCountdowns} onControl={commands.control} operations={commands.operations} onCheck={commands.check}
+    idleCountdowns={commands.idleCountdowns} onControl={commands.control} operations={commands.operations}
     onAdd={commands.add} account={account} />;
 }

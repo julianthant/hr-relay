@@ -3,13 +3,14 @@ import { NEUTRAL_PERSON_PREFERENCES, type PersonPreferences } from "../../models
 import type { SettingsPatch } from "../../models/config/settings.js";
 export interface PersonPreferencesState {
   readonly value: PersonPreferences;
-  readonly state: "signed-out" | "loading" | "ready" | "saving" | "failed" | "uncertain";
+  readonly state: "signed-out" | "loading" | "ready" | "saving" | "failed";
   readonly problem?: string;
 }
 export interface PersonPreferencesPort {
   snapshot(this: void): PersonPreferencesState;
   subscribe(this: void, listener: () => void): () => void;
-  change(this: void, patch: SettingsPatch): Promise<boolean>;
+  /** "recovered": the reply was lost and only the read-back showed the save; callers show nothing for it. */
+  change(this: void, patch: SettingsPatch): Promise<boolean | "recovered">;
 }
 export const PersonPreferencesContext = createContext<PersonPreferencesPort | undefined>(undefined);
 const neutral: PersonPreferencesState = { value: NEUTRAL_PERSON_PREFERENCES, state: "signed-out" };
