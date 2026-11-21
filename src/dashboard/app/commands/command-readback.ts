@@ -1,12 +1,17 @@
 /** Waits before each read of a command's settled state after its outcome came back unknown. */
 export const READBACK_WAITS_MS: readonly number[] = [0, 250, 750, 1500];
+/** A read that has not answered by then counts as failed, so a stalled read never holds a control. */
+export const READBACK_READ_DEADLINE_MS = 3000;
 
 /** Reads until `settled` holds or the waits run out; the last good read wins, undefined when every read failed. */
 export async function readBack<T>(read: () => Promise<T>, settled: (value: T) => boolean = () => true, waits = READBACK_WAITS_MS): Promise<T | undefined> {
   let last: T | undefined;
   for (const wait of waits) {
     await new Promise(resolve => setTimeout(resolve, wait));
-    try { last = await read(); } catch { continue; }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      last = await Promise.race([read(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("READBACK_DEADLINE")), READBACK_READ_DEADLINE_MS); })]);
+    } catch { continue; } finally { clearTimeout(timer); }
     if (settled(last)) return last;
   }
   return last;

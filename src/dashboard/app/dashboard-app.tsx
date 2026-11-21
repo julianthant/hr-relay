@@ -249,7 +249,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: session.account?.name ?? boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
+          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => { const state = await profileClient.readProfileSession(); return state.state === "active" ? state.account : undefined; }, login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -666,7 +666,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             const verified = outcome.children?.[index];
             if (verified?.kind === "confirmed") return { ...child, detail: "Command confirmed." };
             if (child.outcome === "applied") return { outcome: "errored", runId: child.runId, commandId: child.commandId, detail: verified !== undefined && commandAttemptView(verified).view !== "unknown" ? verified.feedback.text : "Not confirmed yet." };
-            return { ...child, detail: verified !== undefined ? verified.feedback.text : formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text };
+            // An unknown child keeps its Open control for the run's own recovery; its row never shows the internal sentence.
+            return { ...child, detail: verified === undefined ? formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text
+              : commandAttemptView(verified).view === "unknown" ? "Not confirmed yet." : verified.feedback.text };
           }) };
           setBulkOutcome({ plan, subjects: bulkSubjectsOf(plan), response });
           const bulkWarning = unconfirmedBulkWorkerToast(request, reply, outcome.kind === "confirmed");
@@ -1247,7 +1249,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       {!settingsOpen && (
         <SessionPanel
           harness={workflowComposition.sessionsHarness}
-          binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
+          binding={{ client, executor, scope: commandScope, dayState, day, nowIso, workflowId: activeWorkflowId }}
           catalog={workflowCatalog}
           open={sessionsOpen}
           onOpenChange={setSessionsOpen}

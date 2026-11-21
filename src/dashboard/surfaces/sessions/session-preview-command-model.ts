@@ -24,6 +24,8 @@ export interface SessionPreviewCommandPort {
   retained?(): readonly SessionPreviewOperation[];
   /** The operation once its in-flight attempt settles; undefined when the attempt is gone or belongs to another scope. */
   afterSettled?(request: SessionPreviewRequest): Promise<SessionPreviewOperation | undefined>;
+  /** Frees the controls a read-back could not prove, so the next click reaches Relay. */
+  abandon?(request: SessionPreviewRequest): void;
 }
 
 export interface SessionCommandBinding {
@@ -33,11 +35,13 @@ export interface SessionCommandBinding {
   readonly dayState: DashboardDayState;
   readonly day: string;
   readonly nowIso: string;
+  /** The selected workflow; switching it clears every pending control. */
+  readonly workflowId?: string;
 }
 type NativeAttempt = { readonly body: string; readonly actor: string; readonly client: DashboardClient; readonly authority: object;
   readonly commands: CommandRequest[]; readonly expected: number; snapshot?: DashboardDayWire; cause?: unknown };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
-const commandFeedback = (code: "COMMAND_REFUSED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_READBACK_MISMATCH" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "DASHBOARD_AUTHORITY_REPLACED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+const commandFeedback = (code: "COMMAND_REFUSED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 /** A worker command is confirmed once the served day shows its effect; the member fence makes each effect observable. */
 export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCommandRequest): boolean {
@@ -117,9 +121,13 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     return all ? { id: request.id, state: "confirmed", data } : { id: request.id,
       state: attempt.commands.length === 1 && outcome !== undefined && outcome.kind !== "confirmed" && commandAttemptView(outcome).view !== "unknown" ? "refused" : "uncertain",
       code: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.code : undefined,
-      message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN"), data };
+      message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : FAILED[request.action], data };
   };
   const port: SessionPreviewCommandPort = {
+    abandon(request) {
+      const binding = current().binding;
+      for (const command of attempts.get(request.id)?.commands ?? []) binding?.executor.resolve(command.commandId, false, binding.scope);
+    },
     retained() {
       const binding = current().binding;
       return binding === undefined ? [] : binding.executor.retainedAttempts().flatMap(retained => retainedOperation(binding, retained) ?? []);
@@ -174,18 +182,18 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
         return result(request, attempt, await dispatch({ ...envelope(request.id, binding), type: `${request.action}-worker`, target }));
       } catch (cause) {
         attempt.cause = cause;
-        return { id: request.id, state: attempt.commands.length === 0 ? "refused" : "uncertain", message: commandFeedback(attempt.commands.length === 0 ? "COMMAND_REFUSED" : "COMMAND_OUTCOME_UNCERTAIN") };
+        return { id: request.id, state: attempt.commands.length === 0 ? "refused" : "uncertain", message: attempt.commands.length === 0 ? commandFeedback("COMMAND_REFUSED") : FAILED[request.action] };
       } finally { release(attempt); }
     },
     async check(request) {
       const binding = requireBinding();
       const attempt = attempts.get(request.id);
-      if (attempt === undefined || attempt.body !== JSON.stringify(request) || !valid(attempt, binding)) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+      if (attempt === undefined || attempt.body !== JSON.stringify(request) || !valid(attempt, binding)) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
       try {
         for (const command of attempt.commands) {
           const retained = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === command.commandId);
           if (retained === undefined) continue;
-          if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+          if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
           // The audited outcome, read without resending; a command with no audit stays unproved.
           const checked = retained.outcome !== undefined && commandAttemptView(retained.outcome).view === "unknown";
           const reply = checked ? CommandResultSchema.safeParse(retained.outcome?.reply) : undefined;
@@ -196,14 +204,18 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
             return record.state === "recorded" && canonicalJsonStringify(record.request) === canonicalJsonStringify(sent) ? record.result : undefined;
           } });
           if (settled?.kind === "refused" && settled.reason === undefined) return { id: request.id, state: "refused", message: settled.feedback.text, code: settled.feedback.code };
-          if (settled?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: checked && settled !== undefined ? settled.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+          if (settled?.kind !== "confirmed") {
+            // A missing or unproved audit falls back to the served workers.
+            if (!sessionCommandEffect(await read(attempt, binding), command)) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
+            binding.executor.resolve(command.commandId, true, binding.scope);
+          }
         }
         await read(attempt, binding);
-        if (!valid(attempt, binding)) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+        if (!valid(attempt, binding)) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
         return result(request, attempt);
       } catch (cause) {
         attempt.cause = cause;
-        return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+        return { id: request.id, state: "uncertain", message: FAILED[request.action] };
       } finally { release(attempt); }
     },
   };
@@ -221,10 +233,13 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const data = readback.key === sourceKey ? readback.data : initial;
   const epoch = useRef<object>({});
   const identity = useRef(source?.scope ?? port);
-  if (identity.current !== (source?.scope ?? port)) { identity.current = source?.scope ?? port; epoch.current = {}; }
+  const scopeChanged = identity.current !== (source?.scope ?? port);
+  if (scopeChanged) { identity.current = source?.scope ?? port; epoch.current = {}; }
   const latestSource = useRef(sourceKey); latestSource.current = sourceKey;
   const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>(() => Object.fromEntries((port.retained?.() ?? []).map(operation => [operation.request.target, operation])));
   const operationsRef = useRef<Record<string, SessionPreviewOperation>>(operations);
+  // Another day, sign-in or workflow leaves nothing pending behind, even while a reply or read is outstanding.
+  if (scopeChanged && Object.keys(operationsRef.current).length > 0) { operationsRef.current = {}; setOperations(operationsRef.current); }
   const onRefused = useRef(source?.onRefused); onRefused.current = source?.onRefused;
   const live = useRef(true);
   const ordinal = useRef(5);
@@ -256,6 +271,7 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     const answered = proves(sent);
     // A lost, malformed or foreign reply is read back from the served workers, never shown.
     const read = answered ? sent : await readBack(() => port.check(request), proves);
+    if (!proves(read)) port.abandon?.(request);
     if (!live.current || operationsRef.current[request.target]?.request.id !== request.id) return;
     // A changed scope (another day or sign-in) leaves nothing pending behind.
     if (attemptEpoch !== epoch.current) { drop(request); return; }
@@ -263,11 +279,13 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     if (proven !== undefined) acceptReadback(snapshot, request, proven);
     if (proven?.state === 'confirmed') {
       if (request.action === 'refresh') idle.current?.(request, proven.data);
-      retain({ request, state: 'confirmed', message: request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` });
+      // A result found only by reading back shows as the new state alone, with no note or toast.
+      if (answered) retain({ request, state: 'confirmed', message: request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` });
+      else drop(request);
       return;
     }
     // A refusal the send itself returned keeps its note; one found on read-back is a toast.
-    if (proven?.state === 'refused' && (answered || request.action === 'remove')) { retain({ request, state: 'refused', message: proven.message, code: proven.code }); return; }
+    if (proven?.state === 'refused' && answered) { retain({ request, state: 'refused', message: proven.message, code: proven.code }); return; }
     drop(request);
     onRefused.current?.(proven === undefined || request.action === 'retry' ? FAILED[request.action] : proven.message);
   }, [port, acceptReadback, retain, drop]);

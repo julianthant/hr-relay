@@ -62,6 +62,8 @@ interface Attempt {
   settling?: Promise<void>;
   release?: () => void;
 }
+/** Families whose unknown outcome a read-back may settle; none of them is an HR write. */
+const RESOLVABLE: ReadonlySet<DashboardCommandRequest["family"]> = new Set(["settings", "assistant-model-preference", "worker-browser"]);
 interface Reservation { readonly attempt: Attempt; readonly token: object }
 
 function feedback(code: "COMMAND_REFUSED" | "COMMAND_CONFLICT" | "COMMAND_CONFIRMATION_REQUIRED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "COMMAND_READBACK_MISMATCH" | "COMMAND_DISPATCH_FAILED" | "DASHBOARD_AUTHORITY_REPLACED"): ErrorCatalogMessage {
@@ -181,6 +183,22 @@ export class CommandExecutor {
     if (attempt.scope.actorId !== options.scope.actorId) return this.publish(this.refuse(commandId, "actor-mismatch"), options);
     if (attempt.state === "pending") return this.publish(this.refuse(commandId, "locked"), options);
     return this.dispatch(attempt, options, "replay");
+  }
+
+  /** Settles an unknown Settings or worker attempt from the surface's own read of the served state and frees its lock.
+   * HR writes never take this path: their unknown outcomes stay parked for a decision. */
+  resolve(commandId: string, landed: boolean, scope: CommandExecutionScope): CommandOutcome | undefined {
+    const attempt = this.attempts.get(commandId);
+    if (attempt === undefined || "targets" in attempt.request || !RESOLVABLE.has(attempt.request.family) || attempt.request.type === "check-parked-write"
+      || attempt.scope.actorId !== scope.actorId || attempt.scope.client !== scope.client || attempt.scope.authority !== scope.authority) return undefined;
+    const outcome: CommandOutcome = landed ? { kind: "confirmed", commandId, readback: undefined }
+      : { kind: "refused", commandId, feedback: feedback("COMMAND_REFUSED") };
+    const step = attemptTransition(attempt.state, { type: "resolve", retained: commandAttemptView(attempt), outcome });
+    if ("refused" in step) return undefined;
+    enter(attempt, step);
+    const key = lockKey(attempt.request);
+    if (this.reservations.get(key)?.attempt === attempt) this.reservations.delete(key);
+    return attempt.outcome;
   }
 
   private refuse(commandId: string, reason: Extract<CommandOutcome, { kind: "refused" }>["reason"]): CommandOutcome {

@@ -5,6 +5,7 @@ import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, F
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
 import { formatDayTime } from "../../../lib/date-format.js";
+import { readBack } from "../../../app/commands/command-readback.js";
 
 export interface AccountValues {
   readonly name: string;
@@ -13,7 +14,15 @@ export interface AccountValues {
   readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
 }
-export interface AccountPage { readonly values: AccountValues; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
+export interface AccountPage { readonly values: AccountValues; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; /** The served account now, read back after a details change whose reply was lost. */ readonly readAccount?: () => Promise<AccountValues | undefined>; readonly login: Omit<RelayLogin, "username"> }
+
+/** Whether the served account shows every value the change asked for. */
+function showsChange(request: ProfileDetailsChangeRequest, account: AccountValues | undefined): account is AccountValues {
+  return account !== undefined && (request.name === undefined || account.name === `${request.name.firstName} ${request.name.lastName}`)
+    && (request.initials === undefined || account.initials === request.initials)
+    && (request.timekeeperName === undefined || account.timekeeper === request.timekeeperName)
+    && (request.timekeeperInitials === undefined || account.timekeeperInitials === request.timekeeperInitials);
+}
 
 function Group({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return <BodySection title={label} description={description}><FormGroup label={label}>{children}</FormGroup></BodySection>;
@@ -33,6 +42,10 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     try { result = await page.details(request); } catch { result = { state: "refused", code: "PROFILE_DETAILS_CHANGE_UNKNOWN" }; }
     if (result.state === "changed") { setSaved({ base, values: { ...values, ...result.account } }); return undefined; }
     if (result.code !== "PROFILE_DETAILS_CHANGE_UNKNOWN") return operatorFailureSentence(result.code);
+    // A lost reply is read back: the served value shows silently, or one failure toast.
+    const read = page.readAccount;
+    const served = read === undefined ? undefined : await readBack(read, account => showsChange(request, account));
+    if (showsChange(request, served)) { setSaved({ base, values: { ...values, ...served } }); return undefined; }
     toast({ key: `account-details-${title}`, tone: "danger", title: `${title} not saved` });
     return undefined;
   };

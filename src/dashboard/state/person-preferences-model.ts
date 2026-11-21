@@ -33,7 +33,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
   const port: PersonPreferencesPort = {
     snapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    async change(patch: SettingsPatch): Promise<boolean> {
+    async change(patch: SettingsPatch): Promise<boolean | "recovered"> {
       if (!Object.keys(patch).every(path => path.startsWith("preferences."))) throw new Error("person-preferences-path-invalid");
       if (mode === "preview") {
         const value = resolvePersonPreferences(mergeSettingsPatch({ preferences: state.value }, patch).preferences);
@@ -61,6 +61,8 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       // An unknown outcome is settled by reading the served value back, never shown to the operator.
       if (outcome.kind !== "confirmed" && commandAttemptView(outcome).view === "unknown") {
         readback = await readBack(async () => EditableSettingsWireSchema.parse(await active.client.editableSettings()), served => ordinaryReadbackConfirms(served, patch)) ?? readback;
+        // Frees the lock either way, so the next switch reaches Relay.
+        binding.executor.resolve(command.commandId, readback !== undefined && ordinaryReadbackConfirms(readback, patch), binding.scope);
         if (started !== generation) return false;
       }
       const saved = readback !== undefined && (outcome.kind === "confirmed" || ordinaryReadbackConfirms(readback, patch));
@@ -73,7 +75,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       const resource = settingsReadResource<EditableSettingsWire>(active.client, active.binding.authority.epoch,
         canonicalJsonStringify([binding.scope.actorId, binding.authority.epoch.bootstrap.descriptorHash]), "editor");
       resource.accept(readback);
-      return true;
+      return outcome.kind === "confirmed" ? true : "recovered";
     },
   };
   return Object.assign(port, {

@@ -24,7 +24,7 @@ export function validateShortcutPreferences(value: unknown): ShortcutPreferences
   if (!parsed.success) throw new ShortcutRefusedError(parsed.error.issues[0]?.message ?? "That shortcut isn't allowed.");
   return parsed.data;
 }
-export async function saveShortcutPreferences(value: ShortcutPreferences, port: PersonPreferencesPort): Promise<boolean> {
+export async function saveShortcutPreferences(value: ShortcutPreferences, port: PersonPreferencesPort): Promise<boolean | "recovered"> {
   const validated = validateShortcutPreferences(value);
   const patch = { "preferences.shortcuts.numberMode": { set: validated.numberMode },
     ...Object.fromEntries(Object.entries(validated.bindings).map(([action, keys]) => [`preferences.shortcuts.bindings.${action}`, { set: [...keys] }])) };
@@ -33,7 +33,7 @@ export async function saveShortcutPreferences(value: ShortcutPreferences, port: 
 export function useShortcutPreferences(): ShortcutPreferences { return usePersonPreferences().value.shortcuts; }
 export function useSaveShortcutPreferences() {
   const port = useContext(PersonPreferencesContext);
-  return (value: ShortcutPreferences): Promise<boolean> => port === undefined ? Promise.resolve(false) : saveShortcutPreferences(value, port);
+  return (value: ShortcutPreferences): Promise<boolean | "recovered"> => port === undefined ? Promise.resolve(false) : saveShortcutPreferences(value, port);
 }
 export function shortcutChord(event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): string | null {
   if (['Meta', 'Control', 'Alt', 'Shift', 'Dead', 'Unidentified'].includes(event.key)) return null;
