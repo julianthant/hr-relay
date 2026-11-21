@@ -201,10 +201,12 @@ export function parseInputRunText(
 export function toRawSubmission(entry: ParsedInputEntry): Record<string, string | boolean | number> {
   const submission: { [key: string]: string | boolean | number } = {};
   for (const { field, value } of entry.fields) {
-    switch (value.kind) {
+    const { kind } = value;
+    switch (kind) {
       case "text": submission[field] = value.text; break;
       case "boolean": submission[field] = value.value; break;
       case "count": submission[field] = value.value; break;
+      default: throw new Error(`unhandled submission value kind: ${String(kind satisfies never)}`);
     }
   }
   return submission;

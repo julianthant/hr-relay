@@ -93,6 +93,15 @@ describe("run-surface ingress", () => {
     });
   });
 
+  it("refuses to silently omit a field with an unhandled value kind", () => {
+    const [entry] = parseInputRunText(PARSER, "10873698");
+    assert.throws(() => toRawSubmission({
+      ...entry,
+      // @ts-expect-error Exercise the reader with a value kind outside its current contract.
+      fields: [...entry.fields, { field: "option", value: { kind: "future-kind" } }],
+    }), /unhandled submission value kind: future-kind/u);
+  });
+
   it("treats whole-text parsing as a single entry", () => {
     const whole = InputParserSpecSchema.parse({
       split: { kind: "whole-text" },

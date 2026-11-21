@@ -261,7 +261,8 @@ export function assertRetainedReceiptDependencies(input: ReceiptDerivationBindin
   if (cited.length !== delegations.length) throw new Error("receipt-delegation-citation-mismatch");
   for (const dependency of result.dependencies) {
     const matches = input.checkpoints.filter(row => row.nodeId === dependency.nodeId);
-    switch (dependency.state) {
+    const { state } = dependency;
+    switch (state) {
       case "resolved": {
         const row = matches.find(candidate => candidate.runId === dependency.checkpoint.runId
           && candidate.itemId === dependency.checkpoint.itemId && candidate.attempt === dependency.checkpoint.attempt
@@ -300,6 +301,8 @@ export function assertRetainedReceiptDependencies(input: ReceiptDerivationBindin
         }
         break;
       }
+      default:
+        throw new Error(`unhandled receipt dependency state: ${String(state satisfies never)}`);
     }
   }
 }

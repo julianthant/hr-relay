@@ -6,9 +6,11 @@ import {
 buildRunEvidenceReceipt,
 type ReceiptBuildInput
 } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
-import { diffReceipts } from "../../../../src/backend/runtime/writes/receipt-derivation-binding.js";
+import { assertRetainedReceiptDependencies, diffReceipts } from "../../../../src/backend/runtime/writes/receipt-derivation-binding.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { RunResultRecordSchema } from "../../../../src/models/run/result.js";
 import { type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
+import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -46,6 +48,19 @@ describe("receipt derivation binding — a moved closure does not strand a recei
       "a closure move touched a fact about the run",
     );
   });
+});
+
+it("refuses to verify a citation with an unhandled dependency state", () => {
+  const evidence = kualiReceiptEvidence();
+  const run = RunRecordSchema.parse(evidence.run);
+  const result = RunResultRecordSchema.parse(evidence.result);
+  const checkpoints = evidence.checkpoints.map((row) => RunCheckpointRecordSchema.parse(row));
+  const futureDependency = { ...result.dependencies[0], state: "future-state" };
+  assert.throws(() => assertRetainedReceiptDependencies({ descriptor, run, checkpoints }, {
+    ...result,
+    // @ts-expect-error Exercise the reader with a dependency state outside its current contract.
+    dependencies: [futureDependency],
+  }), /unhandled receipt dependency state: future-state/u);
 });
 
 /* ── (c) chunk 2's shape, through the real immutable insert ──────────────── */
