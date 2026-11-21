@@ -63,6 +63,15 @@ async function rowOf(server: SeededServer, runId: string) {
   return row;
 }
 
+/** Every status the stream itself has delivered for one run's row, in order. */
+function streamedStatuses(envelopes: readonly DashboardStreamEnvelope[], runId: string): string[] {
+  return envelopes.flatMap(envelope => {
+    if (envelope.type === "snapshot") return envelope.payload.queueSurfaces.filter(surface => surface.runId === runId).map(surface => surface.status);
+    if (envelope.type === "change" && envelope.day?.operation === "replace-queue-surface" && envelope.day.target.runId === runId) return [envelope.day.replacement.status];
+    return [];
+  });
+}
+
 describe("seeded drive helpers", () => {
   it("starts the seeded queued run and tells the open stream", async () => {
     const server = await boot();
@@ -99,16 +108,12 @@ describe("seeded drive helpers", () => {
     const stream = await openStream(server);
 
     const runId = await server.drive.startDeclaredGateRun();
-    expect((await rowOf(server, runId)).status).toBe("running");
-    await expect.poll(() => stream.envelopes.length).toBeGreaterThan(3);
-    const started = stream.envelopes.length;
+    await expect.poll(() => streamedStatuses(stream.envelopes, runId).at(-1), { message: "the stream delivers the running row" }).toBe("running");
 
     expect(await server.drive.parkAtDeclaredGate()).toBe(runId);
 
-    const row = await rowOf(server, runId);
-    expect(row.workflowId).toBe("work-study");
-    expect(row.status).toBe("awaiting-approval");
-    await expect.poll(() => stream.envelopes.length).toBeGreaterThan(started);
+    await expect.poll(() => streamedStatuses(stream.envelopes, runId).at(-1), { message: "the stream delivers the parked row" }).toBe("awaiting-approval");
+    expect((await rowOf(server, runId)).workflowId).toBe("work-study");
     const detail = await fetch(`${server.baseUrl}/api/v1/runs/${runId}`);
     expect(detail.status).toBe(200);
     const logs = await fetch(`${server.baseUrl}/api/v1/runs/${runId}/logs`);
@@ -120,6 +125,15 @@ describe("seeded drive helpers", () => {
     for (const [index, envelope] of cursors.entries()) {
       if (envelope.type === "change") expect(envelope.after).toBe(cursors[index - 1]?.cursor);
     }
+  });
+
+  it("stops cleanly with the run still held at its read", async () => {
+    const server = await boot();
+    const runId = await server.drive.startDeclaredGateRun();
+    expect((await rowOf(server, runId)).status).toBe("running");
+
+    await server.close();
+    await expect(server.drive.parkAtDeclaredGate()).rejects.toThrow("no declared-gate run is held");
   });
 
   it("parks the running Person Lookup run at its task node with a healthy detail read", async () => {

@@ -31,21 +31,24 @@ async function quiet(page: Page, seen: readonly string[]): Promise<void> {
 type RunEvent = "run starting" | "run starting, its row not yet reconciled" | "step finishing" | "gate parking" | "declared gate parking";
 type View = "queue only" | "that run open" | "another run open";
 
+/** The status a queue row shows for a run parked at a gate. */
+const PARKED = "Review";
+
 const seededRun = (key: string) => (server: SeededServer): string => {
   const runId = server.runIds[key];
   if (runId === undefined) throw new Error(`Missing seeded run: ${key}`);
   return runId;
 };
 /** `run` answers the run the event will move, before the page opens; `fire` is the event. */
-/** `workflow` is the queue the run's row is on, when it is not the one the dashboard opens on. */
-const EVENTS: Record<RunEvent, { workflow?: string; run(server: SeededServer): string | Promise<string>; fire(server: SeededServer): string | Promise<string> }> = {
+/** `workflow` is the queue the run's row is on, when it is not the one the dashboard opens on. `shows` is the status the row must show before requests are counted. */
+const EVENTS: Record<RunEvent, { workflow?: string; shows?: string; run(server: SeededServer): string | Promise<string>; fire(server: SeededServer): string | Promise<string> }> = {
   "run starting": { run: seededRun("queuedRun"), fire: server => server.drive.startQueuedRun() },
   "run starting, its row not yet reconciled": { run: seededRun("queuedRun"), fire: server => server.drive.startQueuedRunAheadOfItsRow() },
   "step finishing": { run: seededRun("runningRun"), fire: server => server.drive.finishRunningStep() },
   // Person Lookup declares no gate: its running run takes the parked-gate lifecycle at a task node.
-  "gate parking": { run: seededRun("runningRun"), fire: server => server.drive.parkRunningRunAtGate() },
+  "gate parking": { shows: PARKED, run: seededRun("runningRun"), fire: server => server.drive.parkRunningRunAtGate() },
   // A Work-Study run held at its first read goes on and its executor parks it at the gate the workflow declares.
-  "declared gate parking": { workflow: "Work-Study", run: server => server.drive.startDeclaredGateRun(), fire: server => server.drive.parkAtDeclaredGate() },
+  "declared gate parking": { workflow: "Work-Study", shows: PARKED, run: server => server.drive.startDeclaredGateRun(), fire: server => server.drive.parkAtDeclaredGate() },
 };
 
 const RUN = "GET /api/v1/runs/{id}";
@@ -104,6 +107,8 @@ for (const event of Object.keys(BASELINE) as RunEvent[]) {
       await EVENTS[event].fire(seeded);
 
       await expect.poll(() => row.textContent(), { message: "the queue row shows the event" }).not.toBe(before);
+      const { shows } = EVENTS[event];
+      if (shows !== undefined) await expect(row, "the queue row shows the run's new status").toContainText(shows);
       await quiet(page, seen);
       expect([...seen].sort()).toEqual([...BASELINE[event][view] ?? []].sort());
     });

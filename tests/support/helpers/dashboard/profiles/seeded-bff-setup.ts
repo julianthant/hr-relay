@@ -282,18 +282,21 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       close: (): Promise<void> => {
         if (closePromise !== undefined) return closePromise;
         closePromise = (async () => {
+        let driveFailure: Error | undefined;
         try {
           server.closeAllConnections();
           await new Promise<void>((resolvePromise, rejectPromise) => {
             server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
           });
           hub.close();
-          await declaredGate.close();
+          driveFailure = await declaredGate.close();
         } catch (error) {
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workers } });
         }
         await cleanupAuthority();
+        // A driven run that failed unseen is reported once its sessions and the authority are closed.
+        if (driveFailure !== undefined) throw driveFailure;
         })();
         return closePromise;
       },

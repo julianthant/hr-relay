@@ -654,19 +654,25 @@ export interface DeclaredGateDrive {
   start(): Promise<string>;
   /** Lets the held run go on: the executor finishes the read and the reference check and parks at the declared gate. */
   park(): Promise<string>;
-  close(): Promise<void>;
+  /** Lets a held read go, waits for the run and closes its sessions. Answers the run's own failure when no caller has seen it;
+   * throws only when the sessions could not be closed. */
+  close(): Promise<Error | undefined>;
 }
 
 export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, profilePath: string): DeclaredGateDrive {
   const { database } = world;
   const descriptor = DECLARED_GATE_DESCRIPTOR;
   const resolve = (workflowId: string): AnyWorkflowDescriptor | undefined => workflowId === String(descriptor.id) ? descriptor : undefined;
-  let held: Readonly<{ runId: string; workerId: string; release: () => void; settled: Promise<RunRecord | undefined>; close: () => Promise<void> }> | undefined;
+  /** Everything one start owns, recorded as it is acquired so teardown reaches it wherever the start stopped. */
+  let owned: { release: () => void; closeSessions?: () => Promise<void>; settled?: Promise<RunRecord | undefined>; failureSeen: boolean;
+    held?: Readonly<{ runId: string; workerId: string }> } | undefined;
 
   async function start(): Promise<string> {
-    if (held !== undefined) throw new Error("the seeded server already drives one declared-gate run");
+    if (owned !== undefined) throw new Error("the seeded server already drives one declared-gate run");
     let entered = (): void => undefined, release = (): void => undefined;
     const atRead = new Promise<void>(done => { entered = done; }), released = new Promise<void>(done => { release = done; });
+    const current: NonNullable<typeof owned> = { release, failureSeen: false };
+    owned = current;
     const paypath = deterministicPayPathOperations({ read: UcpathPayPathReadSchema.parse({
       pageStateId: "ucpath.paypath.position-data-ready", observedAt: SEEDED_NOW, emplId: GATE_RUN_EMPL_ID, displayedName: "Lee, Jordan",
       position: { effectiveDate: "07/01/2026", positionChangeReason: "", positionPool: "", positionNumber: "40012345" },
@@ -674,6 +680,7 @@ export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, prof
     const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath,
       readPayPathPosition: async (input: Parameters<typeof paypath.readPayPathPosition>[0]) => { entered(); await released; return paypath.readPayPathPosition(input); } }) });
     const manager = await sessionManagerFor(sessions, clock, undefined, undefined, duoCeremonyGatesOver(database, clock));
+    current.closeSessions = () => manager.closeAll("worker-stop");
     const scheduler = new ManualScheduler(clock, 0);
     const log = recordingLogger().log;
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -700,33 +707,47 @@ export function createDeclaredGateDrive(world: SeedWorld, clock: TestClock, prof
       sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version }] });
     const runId = queued.envelope.runId;
     const settled = execution.execute(queued, new AbortController().signal).then(({ run }) => run);
-    await Promise.race([atRead, settled.then(run => { throw new Error(`the declared-gate run ended before its UCPath read: ${run?.lifecycle.state ?? "absent"}`); })]);
+    current.settled = settled;
+    try {
+      await Promise.race([atRead, settled.then(run => { throw new Error(`the declared-gate run ended before its UCPath read: ${run?.lifecycle.state ?? "absent"}`); })]);
+    } catch (error) {
+      current.failureSeen = true;
+      throw error;
+    }
     const lifecycle = database.authority.runs.get(runId)?.lifecycle;
     if (lifecycle?.state !== "running") throw new Error(`the declared-gate run is ${lifecycle?.state ?? "absent"} at its UCPath read, not running`);
     world.workers.set(lifecycle.workerId, WorkerActivitySchema.parse({ state: "busy", runId }));
-    held = { runId, workerId: lifecycle.workerId, release, settled, close: () => manager.closeAll("worker-stop") };
+    current.held = { runId, workerId: lifecycle.workerId };
     return runId;
   }
 
   async function park(): Promise<string> {
-    if (held === undefined) throw new Error("no declared-gate run was started");
-    held.release();
-    const run = await held.settled;
+    const current = owned;
+    if (current?.held === undefined || current.settled === undefined) throw new Error("no declared-gate run is held at its UCPath read");
+    current.release();
+    current.failureSeen = true;
+    const run = await current.settled;
+    const { runId, workerId } = current.held;
     if (run?.lifecycle.state !== "parked-gate" || String(run.lifecycle.gateId) !== DECLARED_GATE_ID) {
-      const failures = database.authority.failures.listByRun(held.runId).map(failure => `${failure.code}: ${failure.summary}`);
+      const failures = database.authority.failures.listByRun(runId).map(failure => `${failure.code}: ${failure.summary}`);
       throw new Error(`the run did not park at ${DECLARED_GATE_ID}: ${run?.lifecycle.state ?? "absent"} ${JSON.stringify(failures)}`);
     }
-    world.workers.set(held.workerId, WorkerActivitySchema.parse({ state: "idle" }));
-    return held.runId;
+    world.workers.set(workerId, WorkerActivitySchema.parse({ state: "idle" }));
+    return runId;
   }
 
-  async function close(): Promise<void> {
-    if (held === undefined) return;
-    const current = held;
-    held = undefined;
+  async function close(): Promise<Error | undefined> {
+    const current = owned;
+    if (current === undefined) return undefined;
     current.release();
-    await current.settled;
-    await current.close();
+    let runFailure: Error | undefined;
+    try { await current.settled; } catch (error) {
+      if (!current.failureSeen) runFailure = error instanceof Error ? error : new Error("the declared-gate run failed", { cause: error });
+    }
+    // `owned` is cleared only once the sessions are closed, so a failed close can be tried again.
+    await current.closeSessions?.();
+    owned = undefined;
+    return runFailure;
   }
 
   return { start, park, close };
