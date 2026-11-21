@@ -12,7 +12,7 @@ interface Worker {
   stop(): void;
 }
 
-const { createWorkflowWorker } = await vi.importActual<{ createWorkflowWorker(api: unknown): Worker }>(
+const { createWorkflowWorker } = await vi.importActual<{ createWorkflowWorker: (api: unknown) => Worker }>(
   "../../../fast-duo/src/workflow-background.js");
 
 function world(abortDeliveryFails: boolean) {

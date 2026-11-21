@@ -37,8 +37,9 @@ it("cancels an unanswered setup get and ignores a late pass-through reply", asyn
   if (!expire) throw new Error("Setup request has no deadline");
   expire();
   await expect(result).rejects.toMatchObject({ name: "NotAllowedError" });
+  const timedOutRequest: unknown = expect.objectContaining({ reason: "timed-out" });
   expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-    type: "RELAY_ENROLLMENT_FAILED", request: expect.objectContaining({ reason: "timed-out" }),
+    type: "RELAY_ENROLLMENT_FAILED", request: timedOutRequest,
   }));
   signing.resolve({ success: true, result: { passThrough: true } });
   await new Promise<void>(resolve => setImmediate(resolve));
