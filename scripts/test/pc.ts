@@ -5,7 +5,8 @@ import { dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
+import { systemClock } from "../../src/rules/time/clock.js";
+import { LINUX_NATIVE_FILES, NATIVE_FILES, readVitestListing, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
 import { isDirectExecution } from "./scope-files.js";
 import { buildPcSource } from "./pc-source.js";
 import type { PcSource } from "./pc-source.js";
@@ -24,15 +25,15 @@ const timingSchema = z.object({
 type PcTiming = z.infer<typeof timingSchema>;
 
 export async function measurePcPhase<T>(phase: PcTiming["phase"], record: (timing: PcTiming) => void, operation: () => Promise<T>): Promise<T> {
-  const startedAt = new Date().toISOString();
-  const started = performance.now();
+  const startedAt = systemClock.now().toISOString();
+  const started = systemClock.monotonicMs();
   let outcome: PcTiming["outcome"] = "failed";
   try {
     const value = await operation();
     outcome = typeof value === "number" && value !== 0 ? "failed" : "completed";
     return value;
   } finally {
-    record({ phase, startedAt, durationMs: performance.now() - started, outcome });
+    record({ phase, startedAt, durationMs: systemClock.monotonicMs() - started, outcome });
   }
 }
 
@@ -119,7 +120,7 @@ async function remote(slot: string): Promise<number> {
     execFileSync("git", ["update-index", "--info-only", "-z", "--index-info"], { input: Buffer.from(request.tracked, "base64") });
     if (request.files.some(file => file.endsWith(".integration.test.ts"))) {
       await measurePcPhase("build", record, () => checked("npm", ["run", "web:build"], cwd));
-    } else record({ phase: "build", startedAt: new Date().toISOString(), durationMs: 0, outcome: "skipped" });
+    } else record({ phase: "build", startedAt: systemClock.now().toISOString(), durationMs: 0, outcome: "skipped" });
     process.stdout.write(`test:pc slot=${slot} files=${request.files.length} node=${process.versions.node} tmpfs=${temp}\n`);
     return await measurePcPhase("test", record, () => command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd, undefined, undefined, pcVitestEnv(process.env)));
   } finally {
@@ -202,7 +203,8 @@ async function mac(patterns: string[]): Promise<number> {
   const run = join(resolve(git(["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(), ".."), ".work/test-pc", runId);
   mkdirSync(run, { recursive: true, mode: 0o700 });
   const log = join(run, "output.log");
-  const started = Date.now();
+  const startedAt = systemClock.now().toISOString();
+  const started = systemClock.monotonicMs();
   const result: { exitCode: number; slot?: string; files?: string[]; error?: string; runId: string; timings: PcTiming[]; timingErrors: string[]; source?: PcSource } = { exitCode: 1, runId, timings: [], timingErrors: [] };
   const record = (timing: PcTiming) => { result.timings.push(timing); };
   process.stdout.write(`test:pc result: ${join(run, "result.json")}\n`);
@@ -212,8 +214,7 @@ async function mac(patterns: string[]): Promise<number> {
       for (const [index, args] of pcListingArgs(patterns).entries()) {
         const listing = join(run, `listed-${index}.json`);
         await checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...args, "--filesOnly", `--json=${listing}`], root, log, undefined, pcVitestEnv(process.env));
-        files.push(...z.array(z.object({ file: z.string() })).parse(JSON.parse(readFileSync(listing, "utf8")))
-          .map(({ file }) => relative(root, file).replaceAll("\\", "/")));
+        files.push(...readVitestListing(listing, root));
       }
       return files;
     });
@@ -267,7 +268,7 @@ async function mac(patterns: string[]): Promise<number> {
     result.error = error instanceof Error ? error.message : String(error);
     throw error;
   } finally {
-    writeFileSync(join(run, "result.json"), JSON.stringify({ ...result, startedAt: new Date(started).toISOString(), durationMs: Date.now() - started, log }, null, 2) + "\n");
+    writeFileSync(join(run, "result.json"), JSON.stringify({ ...result, startedAt, durationMs: systemClock.monotonicMs() - started, log }, null, 2) + "\n");
   }
 }
 

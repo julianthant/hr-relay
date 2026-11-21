@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
-import { createWorkbookLibraryService, type WorkbookSyncDownload } from '../../../src/backend/workbooks/workbook-library-service.js';
+import { createWorkbookLibraryService, type WorkbookLibraryRepository, type WorkbookSyncDownload } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { encodeEditableWorkbook } from '../../../src/models/dashboard/workbooks.js';
 import { WorkbookLibraryError } from '../../../src/backend/workbooks/workbook-library-error.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
@@ -17,15 +17,20 @@ const workbook = () => ({ name: 'Roster.xlsx', themes: ['original theme'], hasFo
     rows: [{ id: 'header', cells: [{ value: 'Label' }, { value: 'Date' }] },
       { id: 'row', cells: [{ value: 'Original', numFmt: '@' }, { value: new Date(at) }] }] }] });
 
-function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync) {
+function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, wrap = (repository: WorkbookLibraryRepository) => repository) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(sql);
+  let depth = 0;
+  // Nested work runs in a savepoint, as authority writes do.
   const transaction = <T>(work: () => T) => {
-    database.exec('BEGIN IMMEDIATE');
-    try { const result = work(); database.exec('COMMIT'); return result; }
-    catch (error) { database.exec('ROLLBACK'); throw error; }
+    const savepoint = `nested_${String(depth)}`, outer = depth === 0;
+    database.exec(outer ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${savepoint}`);
+    depth++;
+    try { const result = work(); database.exec(outer ? 'COMMIT' : `RELEASE ${savepoint}`); return result; }
+    catch (error) { database.exec(outer ? 'ROLLBACK' : `ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`); throw error; }
+    finally { depth--; }
   };
-  const repository = createWorkbookLibraryRepository({ database, read: transaction, mutate: work => transaction(() => work().result) });
+  const repository = wrap(createWorkbookLibraryRepository({ database, read: transaction, mutate: work => transaction(() => work().result) }));
   return createWorkbookLibraryService({ repository, sync, clock: manualClock(new Date(at)) });
 }
 
@@ -106,6 +111,55 @@ it.each(['download', 'parse', 'abort', 'revoked'] as const)('creates nothing whe
   else await expect(imported).rejects.toThrow();
   expect(service.catalog()).toEqual(before);
   expect(service.list()).toEqual([original]);
+});
+
+it('leaves no spreadsheet when a write after the workbook row fails, so the same name imports on retry', async () => {
+  let failSync = true;
+  const download: WorkbookSyncDownload = { async withDownload(command, use) {
+    return use({ name: 'Roster.csv', bytes: new TextEncoder().encode('Label\nRemote\n').buffer },
+      { signal: command.signal, assertCurrent: () => command.signal.throwIfAborted() });
+  } };
+  const service = fixture(download, repository => ({ ...repository, recordSync(libraryId, record) {
+    if (failSync) { failSync = false; throw new WorkbookLibraryError('WORKBOOK_STORAGE_FAILED'); }
+    repository.recordSync(libraryId, record);
+  } }));
+  await expect(service.importSharePoint({ source: 'sharepoint', url, name: 'Remote', tags: ['Fall'] }, signal()))
+    .rejects.toMatchObject({ code: 'WORKBOOK_STORAGE_FAILED' });
+  expect(service.catalog()).toEqual([]);
+  expect(service.list()).toEqual([]);
+  const imported = await service.importSharePoint({ source: 'sharepoint', url, name: 'Remote', tags: ['Fall'] }, signal());
+  expect(service.catalog()).toHaveLength(1);
+  expect(service.catalog()[0]).toMatchObject({ libraryId: imported.workbook.libraryId, name: 'Remote',
+    metadata: { sharePoint: { url } }, state: { tags: ['Fall'] }, sync: { lastResult: 'ok' } });
+});
+
+it('commits nothing when the provider rejects after the import callback returns, so the same name imports on retry', async () => {
+  let failAfterUse = true;
+  const service = fixture({ async withDownload(command, use) {
+    const value = await use({ name: 'Roster.csv', bytes: new TextEncoder().encode('Label\nRemote\n').buffer },
+      { signal: command.signal, assertCurrent: () => command.signal.throwIfAborted() });
+    if (failAfterUse) { failAfterUse = false; throw new WorkbookLibraryError('WORKBOOK_SYNC_CONTEXT_CHANGED'); }
+    return value;
+  } });
+  await expect(service.importSharePoint({ source: 'sharepoint', url, name: 'Remote' }, signal()))
+    .rejects.toMatchObject({ code: 'WORKBOOK_SYNC_CONTEXT_CHANGED' });
+  expect(service.catalog()).toEqual([]);
+  expect(service.list()).toEqual([]);
+  await service.importSharePoint({ source: 'sharepoint', url, name: 'Remote' }, signal());
+  expect(service.catalog().map(entry => entry.name)).toEqual(['Remote']);
+});
+
+it('refuses the import write when the provider context changes after the download settles', async () => {
+  let current = true;
+  const service = fixture({ async withDownload(command, use) {
+    const value = await use({ name: 'Roster.csv', bytes: new TextEncoder().encode('Label\nRemote\n').buffer },
+      { signal: command.signal, assertCurrent() { if (!current) throw new WorkbookLibraryError('WORKBOOK_SYNC_CONTEXT_CHANGED'); } });
+    current = false;
+    return value;
+  } });
+  await expect(service.importSharePoint({ source: 'sharepoint', url, name: 'Remote' }, signal()))
+    .rejects.toMatchObject({ code: 'WORKBOOK_SYNC_CONTEXT_CHANGED' });
+  expect(service.catalog()).toEqual([]);
 });
 
 it('rechecks the import name after downloading so a concurrent create cannot duplicate it', async () => {

@@ -9,8 +9,11 @@ vi.mock("node:worker_threads", async () => {
   class Worker extends EventEmitter {
     static started: Worker[] = [];
     terminated = false;
+    exited = false;
+    readonly previousExited = Worker.started.every(worker => worker.exited);
     constructor(readonly entry: URL, readonly options: { execArgv: string[]; env: Record<string, string>; workerData: { path: string } }) {
       super();
+      this.once("exit", () => { this.exited = true; });
       Worker.started.push(this);
     }
     terminate(): Promise<number> { this.terminated = true; return Promise.resolve(1); }
@@ -19,7 +22,7 @@ vi.mock("node:worker_threads", async () => {
 });
 
 const { answerInspectionRequest, inspectBackupFileOffThread, workerExecArgv } = await import("../../../../src/backend/storage/sqlite/backup-inspection-worker.js");
-type StubWorker = import("node:events").EventEmitter & { terminated: boolean; options: { execArgv: string[]; env: Record<string, string>; workerData: { path: string } } };
+type StubWorker = import("node:events").EventEmitter & { terminated: boolean; previousExited: boolean; options: { execArgv: string[]; env: Record<string, string>; workerData: { path: string } } };
 const StubWorker = (await import("node:worker_threads")).Worker as unknown as { started: StubWorker[] };
 
 const verdict = { applicationId: 1_217_249_861, schemaVersion: 30, pageCount: 3, authorityGeneration: 7, authorityContentFingerprint: "a".repeat(64), quickCheck: "ok",
@@ -41,10 +44,10 @@ describe("backup inspection worker", () => {
     const inspection = await first;
     expect(inspection).toEqual(verdict);
     expect(Object.isFrozen(inspection.invariants)).toBe(true);
-    await new Promise(resolve => setTimeout(resolve, 5));
     expect(StubWorker.started).toHaveLength(1);
     worker.emit("exit", 0);
     const next = await started(2);
+    expect(next.previousExited).toBe(true);
     next.emit("message", { kind: "inspected", inspection: verdict }); next.emit("exit", 0);
     await expect(second).resolves.toEqual(verdict);
   });
