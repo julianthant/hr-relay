@@ -1124,7 +1124,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         {dayResource.state !== "failed" && (streamDown || lifecycle.resource.state === "failed")
           ? <Notice sticky tone="warning" title="Can't reach Relay" description="Reconnecting…" /> : null}
         {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
-          .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
+          .map(warning => <Notice key={warning.title} sticky tone={warning.tone} title={warning.title} />)}
 
         <div className="flex min-h-0 flex-1">
 

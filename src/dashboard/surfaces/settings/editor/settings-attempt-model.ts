@@ -45,18 +45,17 @@ export function settingsScopeRecoveryState(): SettingsSaveState {
 /** An unconfirmed save has no problem to show: its model reads it back and settles it. */
 export function settingsSaveProblem(save: SettingsSaveState, protectedStore = false): SettingsSaveProblem | undefined {
   const name = protectedStore ? "Credentials" : "Settings";
-  if (save.state === "conflict") return { tone: "warning", title: `${name} changed`, description: "Your draft is retained. Review the current values before retrying." };
-  if (save.state === "refused") return { tone: "danger", title: `${name} weren't saved`, description: "Your draft is retained. Review the save details before retrying." };
+  if (save.state === "conflict") return { tone: "warning", title: `${name} changed. Your draft is kept.` };
+  if (save.state === "refused") return { tone: "danger", title: `${name} weren't saved. Your draft is kept.` };
   return undefined;
 }
 /** One toast key so a later success replaces an earlier failure. */
 const SETTINGS_TOAST_KEY = "settings-save";
 export function settingsSaveFailure(): SettingsSaveProblem {
-  return { tone: "danger", title: "Settings weren't saved", description: "The previous value is back.", key: SETTINGS_TOAST_KEY };
+  return { tone: "danger", title: "Settings weren't saved. The previous value is back.", key: SETTINGS_TOAST_KEY };
 }
 export function settingsSaveNotice(labels: readonly string[], replayed: boolean, restartRequired = false): SettingsSaveNotice {
-  return { key: SETTINGS_TOAST_KEY, title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}`,
-    ...(restartRequired ? { description: "Restart required to use these changes." } : {}) };
+  return { key: SETTINGS_TOAST_KEY, title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}${restartRequired ? ". Restart to use them." : ""}` };
 }
 export function checkedSettingsResult(command: SettingsAttempt, input: unknown): CommandResult {
   const result = CommandResultSchema.safeParse(input);
