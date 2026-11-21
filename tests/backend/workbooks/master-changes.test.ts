@@ -128,7 +128,7 @@ it('syncs operator-owned fields of a large keyed workbook with a bounded number 
     [JSON.stringify(['people', `row-${index}`, 'roster.notes']), { owner: 'operator' }])));
   const operation = WorkbookOperationSchema.parse({ operationId: 'synthetic-sync', source: { kind: 'sync', syncId: 'synthetic-sync' },
     at: '2026-11-02T00:00:00.000Z', change: { kind: 'sync', expectedVersion: 1, workbook: incoming } });
-  const slice = Array.prototype.slice;
+  const slice: (this: unknown[], start?: number, end?: number) => unknown[] = Array.prototype.slice;
   let rowScans = 0;
   const spy = vi.spyOn(Array.prototype, 'slice').mockImplementation(function (this: unknown[], ...args: [number?, number?]) {
     if (this.length === rows + 1) rowScans++;

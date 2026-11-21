@@ -36,7 +36,7 @@ it("closes the worker channel and reports a rejected invocation without an unhan
 
   const sent: unknown[] = [];
   const child = connectedChild((message: unknown) => { sent.push(message); return true; });
-  const fault = once(child, "error", { signal: AbortSignal.timeout(scaledMs(5_000)) });
+  const fault: Promise<unknown[]> = once(child, "error", { signal: AbortSignal.timeout(scaledMs(5_000)) });
   service.attach(child, {
     register: (_family, handler) => {
       const message = { kind: "nominatim-request", requestId: randomUUID(), deadlineMs: machineMonotonicMs() + scaledMs(10_000), request };
