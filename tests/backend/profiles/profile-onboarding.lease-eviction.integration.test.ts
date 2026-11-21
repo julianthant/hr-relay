@@ -30,19 +30,20 @@ function rig(cancelOutcome: CancelOutcome) {
   const unused = (): never => { throw new Error("unexpected credential access"); };
   const started: WeakRef<object>[] = [];
   const cancelFailure = new Error("fixture worker stop refused");
-  let browserCloses = 0;
+  let browserCloses = 0, cancels = 0;
+  const faults: { update?: Error; closeBrowser?: Error } = {};
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
     failureDiagnostic: () => ({ kind: "unknown", causeTag: "provider" }),
-    read: () => draftOf(operation), update: (_id, change) => { const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
+    read: () => draftOf(operation), update: (_id, change) => { if (faults.update) throw faults.update; const next = change(draftOf(operation)); operation = withAttempts(operation, next.attempts); return next.result; },
     store: unused, publicState: unused,
     provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { unused(); }, async stop() {},
       browserState: () => ({ state: "open", generation: 1 }),
       async recoverBrowser(browser) { browser.assertCurrent(); },
-      async closeBrowser() { browserCloses += 1; return { state: "closed" }; },
-      async cancel() { if (cancelOutcome === "reject") throw cancelFailure; return { state: cancelOutcome }; },
+      async closeBrowser() { browserCloses += 1; if (faults.closeBrowser) throw faults.closeBrowser; return { state: "closed" }; },
+      async cancel() { cancels += 1; if (cancelOutcome === "reject") throw cancelFailure; return { state: cancelOutcome }; },
       async start(attempt) { started.push(new WeakRef(attempt)); } } });
   const latest = () => operation.onboarding!.attempts.at(-1)!;
-  return { operationId, owner, started, cancelFailure, latest, browserCloses: () => browserCloses };
+  return { operationId, owner, started, cancelFailure, latest, faults, browserCloses: () => browserCloses, cancels: () => cancels };
 }
 
 function collect(): void {
@@ -101,4 +102,39 @@ it("evicts the attempts a browser recovery closed before the final drain", async
   assert.equal(started.filter(entry => entry.deref() !== undefined).length, 0, "recovered attempts must not stay leased");
   await owner.drain(operationId);
   owner.assertClosed();
+});
+
+it("closes the setup browser when the closure receipt cannot be written, and writes the receipt on the next drain", async () => {
+  const { operationId, owner, faults, latest, browserCloses, cancels } = rig("closed");
+  await owner.start(operationId, "key");
+  faults.update = new Error("fixture receipt write refused");
+  await assert.rejects(owner.drain(operationId), (error: unknown) => error === faults.update);
+  assert.equal(browserCloses(), 1);
+  assert.equal(latest().providerClosedAt, undefined);
+  faults.update = undefined;
+  await owner.drain(operationId);
+  assert.notEqual(latest().providerClosedAt, undefined);
+  assert.equal(cancels(), 1, "a provider closure already proved is not repeated");
+  owner.assertAbortable(operationId);
+});
+
+it("reports the attempt failure together with a rejected setup browser close", async () => {
+  const { operationId, owner, faults, cancelFailure } = rig("reject");
+  await owner.start(operationId, "key");
+  faults.closeBrowser = new Error("fixture browser close refused");
+  await assert.rejects(owner.drain(operationId), (error: unknown) => error instanceof AggregateError
+    && error.errors.includes(cancelFailure) && error.errors.includes(faults.closeBrowser));
+});
+
+it("answers a repeated cancel of a closed attempt from its receipt, leaving a newer attempt alone", async () => {
+  const { operationId, owner, latest, cancels } = rig("closed");
+  await owner.start(operationId, "key");
+  const first = latest().attemptId;
+  await owner.cancelAttempt(operationId, "key", first);
+  await owner.start(operationId, "key");
+  const second = latest().attemptId;
+  await owner.cancelAttempt(operationId, "key", first);
+  assert.equal(cancels(), 1);
+  assert.equal(owner.hasLiveAttempt(second), true);
+  await assert.rejects(owner.cancelAttempt(operationId, "touch", first));
 });

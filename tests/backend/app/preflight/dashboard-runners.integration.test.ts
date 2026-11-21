@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { createServer as createServer_m0, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { probeOwnedViteServer } from "../../../../src/backend/app/host/local-vite-probe.js";
 
@@ -190,6 +190,22 @@ afterEach(_afterEachFixture0);
       manualClock(new Date(NOW)),
       NEVER_DEADLINE_SCHEDULER,
     ), /frontend inspection failed/);
+
+    // The real probe keeps its refusal when the response it refuses cannot be released.
+    const unreleasable = [
+      new ReadableStream<Uint8Array>({ cancel() { throw new Error("fixture cancel refused"); } }),
+      new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error("fixture transfer reset")); } }),
+    ];
+    for (const body of unreleasable) {
+      const refused = composeRunners_m1({ ...options, frontendProbe: async (input) => {
+        vi.stubGlobal("fetch", () => Promise.resolve(new Response(body, { status: 503 })));
+        try { return await probeOwnedViteServer({ ...input, ownerNonce: "b".repeat(64) }); } finally { vi.unstubAllGlobals(); }
+      } }).runners.find(({ check }) => check === "ports.available");
+      assert.ok(refused);
+      const refusal = await executePreflightRunner(refused, new AbortController().signal, manualClock(new Date(NOW)), NEVER_DEADLINE_SCHEDULER);
+      assert.equal(refusal.state, "unhealthy");
+      assert.match(refusal.summary, /owner-endpoint-refused/);
+    }
   });
 
 });
