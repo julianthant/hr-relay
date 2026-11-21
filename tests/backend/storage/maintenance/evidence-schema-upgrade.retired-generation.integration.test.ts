@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import type { EvidenceSchemaAdmission } from "../../../../src/models/storage/evidence-schema-admission.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { retiredSeparationsRun, simulatePreviousSeparationsInputGeneration } from "../../../support/helpers/backend/retired-separations-run.js";
@@ -117,11 +118,28 @@ const backupEntries = (stateRoot: string) => {
 type ProfileAdmission = ReturnType<ReturnType<typeof acquireEntrypointAdmission>["admitProfile"]>;
 type PredecessorStore = Awaited<ReturnType<typeof predecessorSeparationsRerun>>;
 
-async function startupOnce(f: PredecessorStore) {
+async function startupOnce(f: PredecessorStore, verify?: (f: PredecessorStore, lifetime: RuntimeLifetimeLock) => Promise<void>) {
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
   const { initializeRegisteredPersonStores } = await import("../../../../src/backend/app/composition/storage-compose.js");
   const lifetime = await RuntimeLifetimeLock.acquire(0);
-  try { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK); } finally { await lifetime.close(); }
+  try {
+    await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK);
+    await verify?.(f, lifetime);
+  } finally { await lifetime.close(); }
+}
+
+async function assertWindowsConversionRefused(f: PredecessorStore, lifetime: RuntimeLifetimeLock) {
+  const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
+  const { composeProfileRuntime } = await import("../../../../src/backend/app/composition/storage-compose.js");
+  const { ProfileSessionRefusedError } = await import("../../../../src/backend/profiles/profile-errors.js");
+  const { StorageMaintenanceCustodyUnavailableError } = await import("../../../../src/backend/storage/maintenance/custody-availability.js");
+  const machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+  const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: CLOCK });
+  try {
+    assert.throws(() => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() }),
+      (error: unknown) => error instanceof ProfileSessionRefusedError
+        && error.cause instanceof StorageMaintenanceCustodyUnavailableError && error.cause.operation === "backup");
+  } finally { await runtime.close("shutdown"); machine.release(); }
 }
 
 async function parseRecord(row: string | undefined) {
@@ -171,7 +189,7 @@ it("converts both pending generations on one startup, one backed record each", a
   try {
     const fresh = await assertGenerationMoved();
     if (process.platform === "win32") {
-      await startupOnce(f).catch(() => undefined);
+      await startupOnce(f, assertWindowsConversionRefused);
       assert.deepEqual(frozenRows(f.path), before); assert.equal(journal(f.path, "retired-input-generation").length, 0); return;
     }
     await startupOnce(f);
@@ -211,7 +229,7 @@ it("adds generation 2 to a store that already recorded generation 1", async () =
   try {
     assert.equal(stored, NAME_DOMAIN_CANONICAL_INPUT_HASH);
     if (process.platform === "win32") {
-      await startupOnce(f).catch(() => undefined);
+      await startupOnce(f, assertWindowsConversionRefused);
       assert.deepEqual(frozenRows(f.path), before); assert.equal(journal(f.path, "profile-name-domain").length, 0); return;
     }
     restoreBuild = simulatePreviousSeparationsInputGeneration();

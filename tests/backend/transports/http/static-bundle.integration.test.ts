@@ -1,10 +1,11 @@
 
 import { Hono } from "hono";
 import assert from "node:assert/strict";
-import { chmodSync,mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,unlinkSync,writeFileSync } from "node:fs";
+import * as filesystem from "node:fs/promises";
+import { mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,unlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,describe,it,vi } from "vitest";
 import { assertDashboardBuildCurrent,MOCK_BUILD_COMMAND,writeDashboardBuildIdentity } from "../../../../src/backend/app/composition/dashboard/build-identity.js";
 import {
 decideStaticBundlePath,
@@ -15,6 +16,8 @@ type StaticBundle,
 import type { ActorId } from "../../../../src/rules/identity/ids.js";
 
 type TestDashboardEnv = { Variables: { requestActorId: ActorId } };
+
+vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
 const roots: string[] = [];
 const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
@@ -232,17 +235,18 @@ describe("static bundle over a real temp bundle", () => {
     const app = new Hono<TestDashboardEnv>();
     app.use("*", staticBundleHandler(bundle));
     app.onError((error, c) => c.json({ name: error.name, message: error.message }, 500));
-    chmodSync(join(dist, "favicon.svg"), 0o000);
+    const open = vi.spyOn(filesystem, "open").mockRejectedValueOnce(
+      Object.assign(new Error(`permission denied: ${join(bundle.distRoot, "favicon.svg")}`), { code: "EACCES" }),
+    );
     try {
       const response = await app.request("http://127.0.0.1:3938/favicon.svg");
-      if (response.status === 200) return; // running as a user that ignores mode bits (root); nothing to prove here
       assert.equal(response.status, 500);
       const body = (await response.json()) as { name: string; message: string };
       assert.equal(body.name, "StaticBundleReadError");
       assert.equal(body.message, "the static bundle could not read the requested file");
       assert.doesNotMatch(body.message, /favicon|dist|hrauto/u);
     } finally {
-      chmodSync(join(dist, "favicon.svg"), 0o644);
+      open.mockRestore();
     }
   });
 
