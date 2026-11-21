@@ -26,11 +26,21 @@ function runtimeImports(source: ts.SourceFile): readonly string[] {
   return specifiers;
 }
 
+/** True when the module calls the task factory under its own name, an import alias, or a namespace import. */
 function callsDefineTask(source: ts.SourceFile): boolean {
+  const names = new Set(["defineTask"]);
+  for (const statement of source.statements) {
+    const bindings = ts.isImportDeclaration(statement) ? statement.importClause?.namedBindings : undefined;
+    if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      if ((element.propertyName ?? element.name).text === "defineTask") names.add(element.name.text);
+    }
+  }
   let found = false;
   const visit = (node: ts.Node): void => {
     if (found) return;
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "defineTask") found = true;
+    if (ts.isCallExpression(node) && ((ts.isIdentifier(node.expression) && names.has(node.expression.text))
+      || (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "defineTask"))) found = true;
     else ts.forEachChild(node, visit);
   };
   visit(source);
@@ -55,7 +65,8 @@ export function auditBrowserSafeSteps(root: string): readonly string[] {
     return source;
   };
   const steps = walkFiles(resolve(root, "src/workflows"))
-    .filter(path => /\/steps\/[^/]+\/[^/]+\.ts$/u.test(repoPath(root, path))).sort();
+    .filter(path => /^src\/workflows\/[^/]+\/steps\/.+\.tsx?$/u.test(repoPath(root, path))).sort();
+  if (steps.length === 0) throw new Error("browser-safe-steps resolved no step modules under src/workflows/*/steps/");
   const issues: string[] = [];
   for (const step of steps) {
     const via = new Map<string, string | undefined>([[step, undefined]]);
