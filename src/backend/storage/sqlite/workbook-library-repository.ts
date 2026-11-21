@@ -334,6 +334,31 @@ for (const phase of ['absent', 'queued', 'applied', 'resolve-required', 'refused
   if (WORKBOOK_OPERATION_TRANSITIONS[phase] === undefined) throw new Error(`workbook-operation-table-incomplete:${phase}`);
 }
 
+/** Least recently used entries, kept while their stored JSON totals at most `limit` characters. */
+function storedSizeCache<Value extends Readonly<{ row: Readonly<{ payload_json: string }> }>>(limit: number) {
+  const entries = new Map<string, Value>();
+  let size = 0;
+  const drop = (key: string) => {
+    const value = entries.get(key);
+    if (value === undefined) return;
+    entries.delete(key);
+    size -= value.row.payload_json.length;
+  };
+  return {
+    get(key: string) {
+      const value = entries.get(key);
+      if (value !== undefined) { entries.delete(key); entries.set(key, value); }
+      return value;
+    },
+    set(key: string, value: Value) {
+      drop(key);
+      entries.set(key, value);
+      size += value.row.payload_json.length;
+      for (const oldest of entries.keys()) { if (size <= limit) break; drop(oldest); }
+    },
+  };
+}
+
 export function createWorkbookLibraryRepository(deps: Readonly<{
   database: DatabaseSync;
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
@@ -341,10 +366,13 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> | undefined;
   /** Reads a store from before schema 30, whose states carry no pin or tags yet. */
   beforePinTags?: boolean;
+  /** Stored JSON characters each decode cache keeps across change keys; 32 MiB by default. */
+  decodedCacheCharacters?: number;
 }>): WorkbookLibraryRepository {
   const { database } = deps;
-  const decodedRecords = new Map<string, { row: z.infer<typeof RowSchema>; record: SavedWorkbook }>();
-  const decodedSnapshots = new Map<string, { row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema> }>();
+  const decodedCacheCharacters = deps.decodedCacheCharacters ?? 32 * 1024 * 1024;
+  const decodedRecords = storedSizeCache<{ row: z.infer<typeof RowSchema>; record: SavedWorkbook }>(decodedCacheCharacters);
+  const decodedSnapshots = storedSizeCache<{ row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema> }>(decodedCacheCharacters);
   let cache: {
     key: string;
     records: Map<string, SavedWorkbook>;
