@@ -1,14 +1,30 @@
+import { useRef, type ReactNode } from "react";
+import { useFirstScreen } from "../../app/startup/first-screen.js";
+import { dsText } from "../../ds/ui.js";
+import { cn } from "../../lib/utils.js";
 import { AppLockup } from "./app-lockup.js";
 import "./startup-loading.css";
 
-/** The 1fr/auto/1fr grid keeps the lockup still while the bar loops and when the dashboard replaces it. */
-export function StartupLoading() {
+/**
+ * One loader from app start to the finished first screen: the dashboard mounts hidden beneath it
+ * and appears once it has its data. The 1fr/auto/1fr grid keeps the lockup still while the bar loops.
+ */
+export function StartupLoading({ children }: { children?: ReactNode }) {
+  const screen = useRef<HTMLDivElement>(null);
+  const mounted = children !== undefined;
+  const { revealed, slow } = useFirstScreen(screen, mounted);
   return (
-    <main data-startup-loading role="status" aria-label="Starting Relay" aria-busy="true"
-      className="grid min-h-0 flex-1 grid-rows-[1fr_auto_1fr] justify-items-center bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]">
-      <div />
-      <div className="flex items-center gap-2 text-[length:var(--ds-text-section)] font-semibold"><AppLockup /></div>
-      <div className="pt-[var(--ds-space-loose)]"><div className="startup-bar" aria-hidden /></div>
-    </main>
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {!revealed && <main data-startup-loading role="status" aria-label="Starting Relay" aria-busy="true"
+        className="absolute inset-0 grid grid-rows-[1fr_auto_1fr] justify-items-center bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]">
+        <div />
+        <div className="flex items-center gap-2 text-[length:var(--ds-text-section)] font-semibold"><AppLockup /></div>
+        <div className="flex flex-col items-center gap-[var(--ds-space-loose)] pt-[var(--ds-space-loose)]">
+          <div className="startup-bar" aria-hidden />
+          {slow && <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Taking longer than usual</p>}
+        </div>
+      </main>}
+      {mounted && <div ref={screen} className={cn("flex min-h-0 flex-1 flex-col", !revealed && "invisible")} inert={!revealed} aria-hidden={!revealed || undefined}>{children}</div>}
+    </div>
   );
 }

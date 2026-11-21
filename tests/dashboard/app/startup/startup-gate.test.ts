@@ -31,8 +31,8 @@ function dashboardServer() {
 }
 
 type Answer = () => Response | Promise<Response>;
-async function start(answers: Record<string, Answer>, fallback?: (url: string, init?: RequestInit) => Response | Promise<Response>) {
-  const previous = window.location.href; window.history.replaceState(null, "", "/");
+async function start(answers: Record<string, Answer>, fallback?: (url: string, init?: RequestInit) => Response | Promise<Response>, at = "/") {
+  const previous = window.location.href; window.history.replaceState(null, "", at);
   const paths: string[] = [];
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname; paths.push(path);
@@ -45,7 +45,7 @@ async function start(answers: Record<string, Answer>, fallback?: (url: string, i
   const watcher = new MutationObserver(() => {
     if (host.querySelector("h1")?.textContent === "Log in to Relay") signInFrames++;
     const frame = host.querySelector("[data-startup-loading]") ? "loading" : host.querySelector("h1")?.textContent === "Log in to Relay" ? "sign-in"
-      : host.querySelector(".dashboard-shell:not([aria-busy])") ? "dashboard" : host.querySelector("[aria-busy]") ? "skeleton" : "other";
+      : host.querySelector('[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)') ? "skeleton" : host.querySelector(".dashboard-shell") ? "dashboard" : "other";
     if (frames.at(-1) !== frame) frames.push(frame);
   });
   watcher.observe(host, { childList: true, subtree: true, characterData: true });
@@ -98,7 +98,7 @@ it("hands a signed-in start to the dashboard without ever mounting the sign-in p
     assert.equal(app.host.querySelector(".hub-onboarding"), null);
     assert.equal(app.frames[0], "loading");
     assert.equal(app.frames.at(-1), "dashboard");
-    assert.ok(!app.frames.includes("sign-in"), `frames: ${app.frames.join(" > ")}`);
+    assert.ok(!app.frames.includes("sign-in") && !app.frames.includes("skeleton"), `frames: ${app.frames.join(" > ")}`);
     console.log(`[frames] ${app.frames.join(" > ")}`);
   } finally { await app.stop(); }
 });
@@ -142,3 +142,36 @@ it("resumes once when the resume request fails and shows the existing failure on
     assert.match(app.host.querySelector('[role="alert"]')?.textContent ?? "", /./);
   } finally { await app.stop(); }
 });
+
+const READ_DELAY_MS = 2_500;
+const delayed = (server: (url: string, init?: RequestInit) => Response | Promise<Response>) =>
+  async (url: string, init?: RequestInit) => { await new Promise(resolve => setTimeout(resolve, READ_DELAY_MS)); return server(url, init); };
+
+/** A remembered session with every read, the session read included, delayed 2.5 s. */
+async function delayedStart(at: string, server = dashboardServer()) {
+  return start({}, delayed((url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active) : server(url, init)), at);
+}
+
+for (const [page, at] of [["the queue", "/"], ["a Settings URL", "/?settings=general"], ["an Analytics URL", "/?activity="]] as const) {
+  it(`goes from the loader straight to the complete dashboard on ${page} when every read takes 2.5 s`, async () => {
+    const app = await delayedStart(at);
+    try {
+      await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 40_000, interval: 50 });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, READ_DELAY_MS * 2)); });
+      console.log(`[frames ${at}] ${app.frames.join(" > ")}`);
+      assert.deepEqual(app.frames, ["loading", "dashboard"]);
+    } finally { await app.stop(); }
+  }, 60_000);
+}
+
+it("shows the dashboard with the queue's failure notice when the day read fails", async () => {
+  const server = dashboardServer();
+  const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active)
+    : url.includes("/events/v1?") ? new Response("unavailable", { status: 503 }) : server(url, init));
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 20_000, interval: 50 });
+    console.log(`[frames failed day] ${app.frames.join(" > ")}`);
+    assert.ok(!app.frames.includes("skeleton"), `frames: ${app.frames.join(" > ")}`);
+    assert.match(app.host.querySelector('.dashboard-shell [role="alert"]')?.textContent ?? "", /./);
+  } finally { await app.stop(); }
+}, 30_000);

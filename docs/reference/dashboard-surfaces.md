@@ -38,7 +38,8 @@ workflow navigation and Sessions mounted; an outer boundary also catches shell c
 Navigation clears the failed page state, and recovery replaces the failing URL.
 
 The outer app root applies theme and the 1024×720 CSS-pixel minimum canvas above Tooltip and Toast
-providers. Before bootstrap, `DashboardSkeleton` preserves the requested page's geometry. A failed
+providers. One startup loader stays up until the first screen has its data; the dashboard mounts
+beneath it and replaces it in one step, with no skeleton after it. A failed
 bootstrap shows The dashboard could not start and the client's error. Invalid view parameters
 show Invalid navigation link with Open dashboard. Missing destinations show Destination unavailable.
 

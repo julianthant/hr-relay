@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { DsBodyScope, Field, FormGroup, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsBorder, dsRadius, dsSurface, dsText } from "../../../ds/ui.js";
+import { Field, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsBorder, dsRadius, dsSurface, dsText } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export function LoadingRegion({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
@@ -88,20 +88,6 @@ export function RunPanelSkeleton() {
     <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3"><div className="flex min-h-6 min-w-0 items-center"><SkeletonText className="w-60 text-heading" /></div></header>
     <LogTimelineSkeleton /><div className="min-h-0 flex-1 overflow-hidden"><LogFeedPadding><LogSkeleton /></LogFeedPadding></div>
   </section>;
-}
-
-export function DashboardSkeleton({ settings = false, settingsContent }: { settings?: boolean; settingsContent?: ReactNode }) {
-  return <LoadingRegion label="Starting dashboard" className="dashboard-shell ui-theme-scope flex h-full min-h-0 flex-1 flex-col bg-ui-canvas" >
-    <div aria-hidden className="flex min-h-0 flex-1">
-      <div className="flex w-[var(--shell-rail-width)] shrink-0 flex-col gap-5 border-r border-ui-stroke bg-ui-panel p-4">
-        <SkeletonText className="w-3/5 text-page" /><Skeleton className="h-8" />
-        {Array.from({ length: 8 }, (_, index) => <div key={index} className="flex items-center gap-3"><Skeleton className="size-4 shrink-0" /><SkeletonText className="w-3/4 text-body" /></div>)}
-      </div>
-      <div className="min-h-0 min-w-0 flex-1">{settings ? <div className="settings-takeover h-full overflow-y-auto"><div className="settings-content"><DsBodyScope className="settings-tab-body">{settingsContent ?? <><SkeletonText className="w-60 text-page" /><div className="mb-8 mt-2"><SkeletonText className="w-80 text-body" /></div><FormGroup label="Settings loading"><SettingsRowsSkeleton /></FormGroup></>}</DsBodyScope></div></div>
-        : <div className="dashboard-panel-columns"><div className="dashboard-queue-column"><QueueSkeleton /></div><div className="dashboard-log-column"><div className="dashboard-action-panel gap-2 px-3"><Skeleton className="h-8 w-28" /><Skeleton className="h-8 w-24" /><Skeleton className="ml-auto h-8 w-36" /></div><RunPanelSkeleton /></div></div>}
-      </div>
-    </div><div className="flex h-11 shrink-0 items-center gap-3 border-t border-ui-stroke bg-ui-panel px-4"><SkeletonText className="w-20 text-caption" /><SkeletonText className="w-14 text-caption" /></div>
-  </LoadingRegion>;
 }
 
 export function IntakeSkeleton() {

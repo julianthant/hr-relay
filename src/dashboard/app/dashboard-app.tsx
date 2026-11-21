@@ -33,8 +33,7 @@ import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
 import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflows/workflow-catalog-model.js";
 import { PanelBoundary } from "../surfaces/shared/panel-boundary.js";
-import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
-import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
+import { QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
 import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./navigation/url-state.js";
 import { resolveDateSelection, routeForStartedRun } from "./navigation/date-state-model.js";
@@ -223,12 +222,12 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onStep={onboarding => { setProfileCreationChosen(onboarding === "signup"); setRoute({ start: false, onboarding }); }} onDashboard={() => setRoute({ start: false })} />
       ) : route.onboarding !== undefined ? (
         <Onboarding step={route.onboarding} port={publicProfile.port} authenticated={session?.state === "active"} onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
-      ) : account === undefined && session?.state === "active" ? (
-        <DashboardSkeleton />
+      ) : account === undefined && session?.state === "active" || boot === undefined && bootstrap.state !== "failed" ? (
+        <StartupLoading />
       ) : boot === undefined ? (
-        <BootGate bootstrap={bootstrap} />
+        <BootFailure />
       ) : (
-        <ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
+        <StartupLoading><ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
           preferences={preferences}
           profileTarget={profileTarget}
           boot={boot}
@@ -254,7 +253,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onWells={setOpenWells}
           sort={sort}
           onSort={setSort}
-        /></DashboardPageBoundary></ViewNavigationProvider>
+        /></DashboardPageBoundary></ViewNavigationProvider></StartupLoading>
       )}
     </ToastProvider>
     </TooltipProvider>
@@ -281,29 +280,16 @@ export class DashboardPageBoundary extends Component<{ resetKey: string; onRecov
 
 /** Boot is the one place a hard failure has nowhere else to go: without the boot
  * document the shell has no vocabulary to render. */
-function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> }) {
-  if (bootstrap.state === "failed") {
-    return (
-      <main
-        data-mock-ready="failed"
-        className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
-      >
-        <div className="w-full max-w-[560px]">
-          <FailureNotice sentence="Couldn't start Relay."
-            action={{ label: "Reload", onClick: () => window.location.reload() }} />
-        </div>
-      </main>
-    );
-  }
+function BootFailure() {
   return (
     <main
-      data-mock-ready="loading"
-      className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
+      data-mock-ready="failed"
+      className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
     >
-      <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
-        ["general", "paths", "performance", "providers", "routes", "credentials", "account"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
-          ? <SettingsSectionSkeleton section={new URLSearchParams(window.location.search).get("settings")!} /> : undefined
-      } />
+      <div className="w-full max-w-[560px]">
+        <FailureNotice sentence="Couldn't start Relay."
+          action={{ label: "Reload", onClick: () => window.location.reload() }} />
+      </div>
     </main>
   );
 }
