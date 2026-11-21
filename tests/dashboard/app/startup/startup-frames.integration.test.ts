@@ -61,16 +61,62 @@ it("fails reads still pending at the startup deadline into their notices, then s
 }, STARTUP_READ_DEADLINE_MS + 20_000);
 
 const servedSessions: typeof MOCK_WORKFLOW_COMPOSITION = workflows => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), sessionsHarness: undefined });
-for (const [sessions, composition] of [["sample", MOCK_WORKFLOW_COMPOSITION], ["served", servedSessions]] as const)
+const sessionsOpen = `&view=${encodeURIComponent(JSON.stringify({ sessions: true }))}`;
+for (const [sessions, composition, view] of [["sample", MOCK_WORKFLOW_COMPOSITION, ""], ["served", servedSessions, ""], ["served, expanded", servedSessions, sessionsOpen]] as const)
 it(`shows the date recovery, not an endless loader, for a cold link to a future day (${sessions} Sessions)`, async () => {
   const server = dashboardServer();
-  const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active) : server(url, init), "/?day=2099-01-01", composition);
+  const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active) : server(url, init), `/?day=2099-01-01${view}`, composition);
   try {
     await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
     assert.deepEqual(app.frames, ["loading", "dashboard"]);
     assert.match(app.firstDashboard(), /Choose a valid date/u);
+    const bar = app.host.querySelector('[aria-label="Session actions"]')?.textContent ?? "";
+    assert.doesNotMatch(bar, /Loading/u, `the Sessions bar is settled: ${bar}`);
+    if (view !== "") assert.match(app.host.querySelector('[aria-label="Sessions"]')?.textContent ?? "", /Sessions unavailable/u);
   } finally { await app.stop(); }
 }, 20_000);
+
+it("shows the dashboard while a startup chat history write is still unanswered, and the write still settles", async () => {
+  const server = dashboardServer();
+  let answer: (response: Response) => void = () => {};
+  const app = await start({}, (url, init) => {
+    const path = new URL(url).pathname;
+    if (path === "/api/v1/profile/state") return Response.json(active);
+    if (path === "/api/v1/assistant/history" && init?.method === "POST") return new Promise<Response>(resolve => { answer = resolve; });
+    return server(url, init);
+  });
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    assert.deepEqual(app.frames, ["loading", "dashboard"]);
+    assert.ok(app.paths.filter(path => path === "/api/v1/assistant/history").length >= 2, "the history read and its create write were sent");
+    const panelText = () => app.host.querySelector('[aria-label="Assistant panel"]')?.textContent ?? "";
+    assert.doesNotMatch(panelText(), /chat history/u, "the write is still pending, not expired as a read failure");
+    await act(async () => { answer(new Response("refused", { status: 500 })); });
+    await vi.waitFor(() => assert.match(panelText(), /Couldn't load chat history\./u), { timeout: 5_000, interval: 50 });
+    assert.deepEqual(app.frames, ["loading", "dashboard"]);
+  } finally { await app.stop(); }
+}, 20_000);
+
+it("opens Search from a cold link or its shortcut only once the dashboard shows", async () => {
+  const app = await delayedStart(`/?view=${encodeURIComponent(JSON.stringify({ search: true }))}`);
+  const dialogs: number[] = [];
+  const watcher = new MutationObserver(() => { if (app.host.querySelector("[data-startup-loading]")) dialogs.push(document.querySelectorAll('[role="dialog"]').length); });
+  watcher.observe(document.body, { childList: true, subtree: true });
+  try {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, READ_DELAY_MS + 100)); });
+    assert.ok(app.host.querySelector("[data-startup-loading]"), "the loader is still up");
+    await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", bubbles: true, cancelable: true })); });
+    assert.equal(document.querySelectorAll('[role="dialog"]').length, 0, "the shortcut opens nothing under the loader");
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 40_000, interval: 50 });
+    watcher.disconnect();
+    assert.ok(dialogs.length > 0 && dialogs.every(count => count === 0), "no dialog while the loader is up");
+    await vi.waitFor(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      assert.match(dialog?.textContent ?? "", /Search Relay/u);
+      assert.ok(dialog?.contains(document.activeElement), "focus is inside Search");
+    }, { timeout: 10_000, interval: 50 });
+  } finally { watcher.disconnect(); await app.stop(); }
+}, 60_000);
 
 it("ends a bootstrap read that never answers in the Reload notice", async () => {
   const server = dashboardServer();

@@ -10,6 +10,8 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+// jsdom has no scrolling; the search list scrolls its active row into view.
+Element.prototype.scrollIntoView ??= () => {};
 
 /** The fixture BFF serves every dashboard read; the day arrives on the event stream like the real one. */
 export function dashboardServer() {
@@ -43,11 +45,11 @@ export async function start(answers: Record<string, Answer>, fallback?: (url: st
   const watcher = new MutationObserver(() => {
     if (host.querySelector("h1")?.textContent === "Log in to Relay") signInFrames++;
     const frame = host.querySelector("[data-startup-loading]") ? "loading" : host.querySelector("h1")?.textContent === "Log in to Relay" ? "sign-in"
-      : host.querySelector('[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)') ? "skeleton" : host.querySelector(".dashboard-shell") ? "dashboard" : "other";
+      : [...host.querySelectorAll('[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)')].some(part => part.closest("[hidden]") === null) ? "skeleton" : host.querySelector(".dashboard-shell") ? "dashboard" : "other";
     if (frames.at(-1) !== frame) frames.push(frame);
     if (frame === "dashboard" && firstDashboard === "") firstDashboard = host.textContent ?? "";
   });
-  watcher.observe(host, { childList: true, subtree: true, characterData: true });
+  watcher.observe(host, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] });
   await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition }) })));
   return { host, paths, frames, signInFrames: () => signInFrames, firstDashboard: () => firstDashboard,
     stop: async () => { watcher.disconnect(); await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", previous); } };

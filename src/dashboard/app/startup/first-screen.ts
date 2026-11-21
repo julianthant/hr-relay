@@ -34,10 +34,11 @@ export function useFirstScreen(screen: RefObject<HTMLElement | null>, mounted: b
     const node = screen.current;
     if (!mounted || node === null) { setRevealed(false); return; }
     if (revealed) { deadline.end(); return; }
-    const complete = () => node.querySelector(STILL_LOADING) === null;
+    // A part inside a hidden subtree (the closed assistant) is not on the first screen; it shows its own loading once opened.
+    const complete = () => [...node.querySelectorAll(STILL_LOADING)].every(part => part.closest("[hidden]") !== null);
     // flushSync: the reveal commits in the same task as the last load, so no frame shows the loader over a finished screen.
     const observer = new MutationObserver(() => { if (complete()) flushSync(() => setRevealed(true)); });
-    observer.observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-busy", "data-slot", "data-loading-layout"] });
+    observer.observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-busy", "data-slot", "data-loading-layout", "hidden"] });
     if (complete()) setRevealed(true);
     const timer = setTimeout(deadline.expire, STARTUP_READ_DEADLINE_MS);
     return () => { observer.disconnect(); clearTimeout(timer); };
