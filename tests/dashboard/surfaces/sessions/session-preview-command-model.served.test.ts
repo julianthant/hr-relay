@@ -25,6 +25,9 @@ import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "
 import { DashboardDayWireSchema, WorkerCardWireSchema, UnavailableWorkerCardWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../mocks/helpers/fixture-day.js";
 
+/** Waits for the panel's own read-back of an unknown outcome to settle (at most about 2.5 s). */
+async function settled(check: () => void) { await vi.waitFor(async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); check(); }, { timeout: 4000, interval: 20 }); }
+
 function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
   return createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, props)));
 }
@@ -164,7 +167,7 @@ it.each([
   { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "direct" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED" }, code: "WORKER_REMOVAL_CHILD_CLOSE_UNPROVED", via: "direct" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "WORKER_BUSY" }, code: "WORKER_BUSY", via: "audit" },
-  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "check" },
+  { status: 409, result: { state: "conflict", currentVersion: 0, message: "WORKER_TARGET_STALE" }, code: "WORKER_TARGET_STALE", via: "later audit" },
   { status: 422, result: { state: "rejected", code: "invalid-state", message: "PRIVATE_SERVER_DETAIL" }, code: "COMMAND_REFUSED", via: "direct" },
 ] as const)("shows the $code and summary on the retained Remove card via $via", async ({ status, result, code, via }) => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -181,14 +184,9 @@ it.each([
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
-    if (via === "check") {
-      h.audit(recorded(h.sent[0]));
-      const check = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Check outcome");
-      assert(check);
-      await act(async () => check.click());
-    }
+    if (via === "later audit") h.audit(recorded(h.sent[0]));
     const card = document.querySelector(WORKER_ENTRY); assert(card);
-    assert.ok(card.textContent?.includes(code), card.textContent ?? "");
+    await settled(() => assert.ok(card.textContent?.includes(code), card.textContent ?? ""));
     assert.ok(card.textContent?.includes(ERROR_CATALOG[code].text), card.textContent ?? "");
     assert.doesNotMatch(card.textContent ?? "", /PRIVATE_SERVER_DETAIL|Check outcome/u);
     assert.equal(h.sent.length, 1);
@@ -211,7 +209,7 @@ it("removes the card when a lost Remove reply is confirmed by its audit and serv
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
-    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
+    await settled(() => assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0));
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -319,7 +317,7 @@ it("refresh confirms only while the member keeps the lifetime it was sent to", a
   assert.equal(h.sent.length, 1);
 });
 
-it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome without resending", async outcome => {
+it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flight across a remount to its %s outcome by reading it back, without resending", async outcome => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
   h.effect(command => { original = command; return new Promise((resolve, reject) => { release = value => { if (value instanceof Error) reject(value); else resolve(value); }; }); });
@@ -335,13 +333,14 @@ it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flig
     assert.match(text(), /Remove requested/u, "the remounted panel holds the in-flight Remove");
     assert.doesNotMatch(text(), /Check outcome/u);
     await act(async () => { release(outcome === "pending" ? { state: "pending", commandId: original!.commandId } : outcome === "lost" ? new Error("connection reset") : applied(original!)); await Promise.resolve(); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    assert.match(text(), /Check outcome/u, "the settled unknown outcome is checkable on the new mount");
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     h.setDay(effectOf(h.day(), original));
-    const check = [...document.querySelectorAll("button")].find(button => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === "Check outcome"); assert(check);
-    await act(async () => check.click());
-    assert.equal(document.querySelectorAll(WORKER_ENTRY).length, outcome === "applied" ? 0 : 1, outcome === "applied" ? "its own applied reply confirms once served" : "a served removal is no proof for a command with no applied reply");
+    // The new mount reads the unknown outcome back by itself; nothing asks the operator to check it.
+    await settled(() => {
+      assert.doesNotMatch(text(), /Check outcome|Remove requested/u);
+      if (outcome === "applied") assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0, "its own applied reply confirms once served");
+      else { assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1, "a served removal is no proof for a command with no applied reply"); assert.match(text(), /Couldn't remove this worker\./u); }
+    });
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -357,7 +356,7 @@ it("hydrates no retained control for another scope", async () => {
   release({ state: "pending", commandId: request.id }); await sent;
 });
 
-it("hydrates mounted Remove after remount, retains it through outage and a failed phase, and removes only on readback", async () => {
+it("hydrates mounted Remove after remount, locks a newer failed phase, and removes only on readback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); let original: CommandRequest | undefined;
   h.effect(command => { original = command; return applied(command); });
@@ -373,14 +372,12 @@ it("hydrates mounted Remove after remount, retains it through outage and a faile
     const pendingDay = h.day();
     await act(async () => root.unmount()); root = createRoot(host);
     await act(async () => render());
-    assert.match(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
-    h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing member", members: pendingDay.workerAuthority.members }, workerCards: [] }));
-    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
+    assert.match(document.body.textContent ?? "", /Remove requested/); assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
-    await act(async () => render()); assert.match(document.body.textContent ?? "", /Check outcome/);
+    await act(async () => render());
     const retry = document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert(retry?.disabled, "same Remove still locks newest failed card");
     h.setDay(effectOf(pendingDay, original));
-    await click("Check outcome"); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.equal(h.sent.length, 1);
+    await settled(() => assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0)); assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
@@ -637,21 +634,16 @@ async function lostRetry(options: { audit?: (command: CommandRequest) => unknown
   const text = () => document.body.textContent ?? "";
   const retry = () => document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]');
   const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(toast => (toast.textContent ?? "").includes("Couldn't restart this worker."));
-  const checkOutcome = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => (button.textContent ?? "").includes("Check outcome"));
   await render();
   const button = retry(); assert(button && !button.disabled);
   const dayBeforeClick = h.day(); const getsBeforeClick = h.gets.length;
   await act(async () => button.click());
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-  if (!audit) { assert.match(text(), /Check outcome/); assert(retry()?.disabled, "the uncertain Retry locks the control"); }
+  assert.doesNotMatch(text(), /Check outcome/);
   assert.equal(h.sent.length, 1);
   const command = h.sent[0]; assert(command.family === "worker-browser" && command.type === "retry-worker");
   const finish = async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); };
-  return { h, card, command, render, text, retry, toasts, checkOutcome, dayBeforeClick, getsBeforeClick, finish };
-}
-async function publishChange(h: ReturnType<typeof harness>, render: () => Promise<void>) {
-  h.setDay(DashboardDayWireSchema.parse({ ...h.day() })); await render();
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  return { h, card, command, render, text, retry, toasts, dayBeforeClick, getsBeforeClick, finish };
 }
 const rejected = (command: CommandRequest) => ({ state: "recorded", request: command, result: { state: "rejected", commandId: command.commandId, code: "invalid-state", message: "WORKER_START_FAILED" } });
 const anyToasts = () => document.querySelectorAll('[data-slot="toast"]').length;
@@ -659,23 +651,21 @@ const anyToasts = () => document.querySelectorAll('[data-slot="toast"]').length;
 it("recovers a Retry whose reply was lost from its audited rejection: one toast, controls released, no resend", async () => {
   const { h, render, text, retry, toasts, dayBeforeClick, getsBeforeClick, finish } = await lostRetry({ audit: rejected });
   try {
+    await settled(() => { assert.equal(toasts().length, 1); assert.equal(retry()?.disabled, false); });
     assert.equal(h.day(), dayBeforeClick, "the served day was never changed"); assert.equal(h.gets.length, getsBeforeClick, "a rejection needs no day read");
-    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled, false);
-    assert.equal(toasts().length, 1); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
     await render(); await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.equal(h.day(), dayBeforeClick); assert.equal(toasts().length, 1); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 
-it("settles a lost Retry on Check outcome once its audit is recorded, with one toast", async () => {
-  const { h, command, text, retry, toasts, checkOutcome, finish } = await lostRetry();
+it("settles a lost Retry once its audit is recorded during the read-back, with one toast", async () => {
+  const { h, command, text, retry, toasts, finish } = await lostRetry();
   try {
+    assert(retry()?.disabled, "the control stays locked while its result is read back");
     h.audit(rejected(command));
-    const button = checkOutcome(); assert(button);
-    await act(async () => button.click());
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled, false);
-    assert.equal(toasts().length, 1); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
+    await settled(() => { assert.equal(toasts().length, 1); assert.equal(retry()?.disabled, false); });
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 1); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 
@@ -686,30 +676,20 @@ it("recovers a lost Retry reply from its audited success without resending", asy
   };
   const { h, text, retry, finish } = await lostRetry({ serverEffect: restart, audit: command => ({ state: "recorded", request: command, result: applied(command) }) });
   try {
-    assert.doesNotMatch(text(), /Check outcome/); assert.equal(retry()?.disabled ?? false, false);
-    assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
+    await settled(() => assert.equal(retry()?.disabled ?? false, false));
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 
-it("keeps a lost Retry unproved while no audit is recorded", async () => {
-  const { h, render, text, retry, finish } = await lostRetry();
+for (const [name, audit] of [["no audit is recorded", undefined], ["only another command's outcome is recorded", (command: CommandRequest) => {
+  const copy = structuredClone(command); assert(copy.family === "worker-browser" && copy.type === "retry-worker");
+  copy.target.lifetimeId = uuidOf(7999); return rejected(copy);
+}]] as const) it(`ends a lost Retry in one failure toast with the control released when ${name}`, async () => {
+  const { h, text, retry, toasts, dayBeforeClick, finish } = await lostRetry(audit === undefined ? {} : { audit });
   try {
-    await publishChange(h, render);
-    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
-    assert.equal(document.querySelectorAll('[data-slot="toast"]').length, 0); assert.equal(h.sent.length, 1);
-  } finally { await finish(); }
-});
-
-it("does not adopt another command's recorded outcome for a lost Retry", async () => {
-  const other = (command: CommandRequest) => {
-    const copy = structuredClone(command); assert(copy.family === "worker-browser" && copy.type === "retry-worker");
-    copy.target.lifetimeId = uuidOf(7999); return rejected(copy);
-  };
-  const { h, render, text, retry, finish } = await lostRetry({ audit: other });
-  try {
-    await publishChange(h, render);
-    assert.match(text(), /Check outcome/); assert(retry()?.disabled);
-    assert.equal(anyToasts(), 0); assert.equal(h.sent.length, 1);
+    await settled(() => { assert.equal(toasts().length, 1); assert.equal(retry()?.disabled, false); });
+    assert.doesNotMatch(text(), /Check outcome/); assert.equal(anyToasts(), 1);
+    assert.equal(h.day(), dayBeforeClick); assert.equal(h.sent.length, 1);
   } finally { await finish(); }
 });
 

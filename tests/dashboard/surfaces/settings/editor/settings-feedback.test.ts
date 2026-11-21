@@ -13,21 +13,23 @@ const button = (name: string) => { const found = [...document.querySelectorAll('
 const press = async (name: string) => act(async () => button(name).click());
 describe('mounted frontend reliability contracts', () => {
   it('shows nothing while a save is in flight', async () => {
-    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'saving' }, retry: () => undefined }));
+    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'saving' } }));
     assert.equal(host.textContent, '');
   });
   it('shows a refused save with its Retry edit control', async () => {
     let retried = 0;
-    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'refused', message: 'Check the draft values. No request was sent.' }, retry: () => undefined, retryConflict: () => retried++ }));
+    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'refused', message: 'Check the draft values. No request was sent.' }, retryConflict: () => retried++ }));
     assert.match(host.textContent ?? '', /Settings weren't saved.*Your draft is retained\. Review the save details before retrying\./u);
     await press('Retry edit'); assert.equal(retried, 1);
   });
-  it('retains saved status, distinguishes restart-required and preserves uncertain retry', async () => {
-    vi.useFakeTimers(); let retry = 0;
-    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'applied', replayed: false }, restartRequired: true, retry: () => retry++ }));
+  it('retains saved status, distinguishes restart-required and shows nothing for an unconfirmed save', async () => {
+    vi.useFakeTimers();
+    const host = await mount(createElement(SettingsSaveFeedback, { save: { state: 'applied', replayed: false }, restartRequired: true }));
     await act(async () => vi.advanceTimersByTime(10000));
     assert.match(host.textContent ?? '', /Saved · Restart required/);
-    await act(async () => root?.render(createElement(SettingsSaveFeedback, { save: { state: 'unconfirmed', message: 'Response unavailable' }, retry: () => retry++ })));
-    assert(!host.textContent?.includes('Saved')); await press('Retry exact attempt'); assert.equal(retry, 1);
+    await act(async () => root?.render(createElement(SettingsSaveFeedback, { save: { state: 'unconfirmed', message: 'Response unavailable' } })));
+    assert.equal(host.textContent, '', 'its model reads the save back; nothing is shown inline');
+    assert.equal(host.querySelector('button'), null);
   });
+});
 });

@@ -102,7 +102,7 @@ describe("editable Settings surface", () => {
     assert.equal(host.querySelectorAll("input").length, 3, "navigation search and the two UCPath credentials remain editable");
   });
 
-  it("guards retained workflow credentials before leaving after an unconfirmed write", async () => {
+  it("guards a credentials draft, then settles a lost write by reading it back", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exited = 0;
     const transport = await settingsClient([], "lost");
@@ -119,16 +119,12 @@ describe("editable Settings surface", () => {
     assert.match(document.body.textContent ?? "", /Discard changes\?/u);
     await act(async () => overlayButton("Keep editing").click());
     assert.equal(input.value, "synthetic-local");
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1250)); });
-    assert.match(host.textContent ?? "", /Credentials save unconfirmed.*Your draft is retained\./u);
-    assert.equal(button("Retry exact attempt").disabled, false);
+    // The lost reply is replayed and read back by itself; the stored write ends as saved with no inline warning.
+    await vi.waitFor(async () => { await act(async () => undefined); assert.equal(input.value, "", "the served value replaces the draft"); }, { timeout: 8000, interval: 100 });
+    assert.doesNotMatch(host.textContent ?? "", /unconfirmed|Retry exact attempt|outcome is uncertain/u);
     assert.equal(transport.authority.credentials.read().revision, 2, "the lost response retains an actually stored protected write");
     await act(async () => guard?.(() => { exited += 1; }));
-    assert.match(document.body.textContent ?? "", /will be lost/u);
-    assert.equal(exited, 0);
-    await act(async () => overlayButton("Keep editing").click());
-    assert.equal(exited, 0);
-    assert.equal(input.value, "synthetic-local");
+    assert.equal(exited, 1, "nothing is left to guard once the save settles");
     assert.doesNotMatch(host.textContent ?? "", /Provider keys|Add key/u);
   });
 

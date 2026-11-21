@@ -19,13 +19,12 @@ import { sessionsSample } from "../../../support/fixtures/dashboard/sessions-sam
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("clears the idle countdown when the audit proves a refresh whose reply was lost", async () => {
+it("restarts the idle countdown when the read-back proves a refresh whose reply was lost", async () => {
   vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const requests: SessionPreviewRequest[] = [];
   const port: SessionPreviewCommandPort = {
     send: async request => { requests.push(request); return { id: request.id, state: "uncertain", message: "Lost acknowledgment" }; },
-    check: async request => ({ id: request.id, state: "uncertain", message: "unused" }),
-    audited: async request => ({ id: request.id, state: "confirmed" }),
+    check: async request => ({ id: request.id, state: "confirmed" }),
   };
   let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
   const initial = sessionsSample("active");
@@ -34,9 +33,12 @@ it("clears the idle countdown when the audit proves a refresh whose reply was lo
   try {
     await act(async () => root.render(createElement(Harness)));
     await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS));
+    for (let step = 0; step < 12; step += 1) await act(async () => vi.advanceTimersByTimeAsync(250));
     assert.equal(requests.length, 1);
     assert.equal(commands?.operations["sample-worker-4"].state, "confirmed");
-    assert.deepEqual(commands?.idleCountdowns["sample-worker-4"], { remainingMs: IDLE_REFRESH_MS, waiting: false });
+    const countdown = commands?.idleCountdowns["sample-worker-4"];
+    assert.equal(countdown?.waiting, false);
+    assert.ok((countdown?.remainingMs ?? 0) > IDLE_REFRESH_MS - 3000, "the countdown restarts from the read-back");
   } finally { await act(async () => root.unmount()); }
 });
 

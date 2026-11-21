@@ -775,6 +775,9 @@ const _afterEachFixture0 = async () => {
 };
 afterEach_m2(_afterEachFixture0);
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
+const liveToasts = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+/** Waits for the read-back that settles an unknown outcome; nothing is shown before it ends. */
+async function settledToast(text: RegExp) { await vi_m1.waitFor(async () => { await settle(); assert_m2.ok(liveToasts().some(node => text.test(node.textContent ?? "")), `no toast ${text}`); }, { timeout: 8000, interval: 50 }); }
 
 function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION_m2>[0]) {
   const composition = MOCK_WORKFLOW_COMPOSITION_m2(workflows);
@@ -927,11 +930,12 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 
 describe_m2('real mounted dashboard through the typed mock transport', () => {
 
-  it_m2("reverts an ordinary save whose reply was lost with one failure toast and no retry", async () => {
+  for (const stored of [false, true]) it_m2(`settles an ordinary save whose reply was lost from its read-back (${stored ? "stored" : "not stored"})`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
       commands.push(body);
+      if (stored) authority.execute(CommandRequestSchema.parse(body));
       return Promise.reject(new Error("private-transport-sentinel"));
     } });
     const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "Task");
@@ -948,15 +952,16 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act_m2(async () => input.blur()); await settle();
-    assert_m2.equal(commands.length, 1);
-    const toasts = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+    assert_m2.equal(liveToasts().length, 0, "nothing is shown while the save is read back");
+    await settledToast(stored ? /Saved Task/u : /Settings weren't saved/u);
+    const toasts = liveToasts();
     assert_m2.equal(toasts.length, 1);
-    assert_m2.match(toasts[0]?.textContent ?? "", /Settings weren't saved/u);
-    assert_m2.match(toasts[0]?.textContent ?? "", /The previous value is back\./u);
-    assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /save unconfirmed|Command result|private-transport-sentinel/u);
+    if (!stored) assert_m2.match(toasts[0]?.textContent ?? "", /The previous value is back\./u);
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|outcome is uncertain|Command result|private-transport-sentinel/u);
     assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
-    assert_m2.equal(input.value, original);
-    await settle(); assert_m2.equal(commands.length, 1, "a lost reply must not retry automatically");
+    assert_m2.equal(input.value, stored ? "240" : original);
+    assert_m2.equal(input.disabled, false, "the field works again without a reload");
+    await settle(); assert_m2.equal(commands.length, 1, "a lost reply is read back, never resent");
   });
 
   for (const settlement of ["confirmed", "conflict", "refused"] as const) it_m2(`settles an ordinary Settings save on a ${settlement} reply with one toast`, async () => {
@@ -1000,16 +1005,13 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     await settle(); assert_m2.equal(commands.length, 1, "a settled save is never retried");
   });
 
-  for (const save of [
-    { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed" },
-  ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
+  for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replays a lost credentials save by itself and settles on ${replacement}`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
-    const h = await mount({ accountless: true, search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
+    const h = await mount({ accountless: true, search: "settings=credentials", settingsRead: authority.read, command: body => {
       commands.push(body);
       const command = ProtectedSettingsCommandRequestSchema.parse(body);
       if (replacement === "confirmed" && commands.length === 1) {
-        // An older build could commit this write before losing the reply.
         const applied = authority.credentials.apply(ProtectedSettingsApplyInputSchema.parse({
           ...command.payload,
           commandId: command.commandId,
@@ -1024,45 +1026,27 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
         ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
         : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
     } });
-    const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === save.field);
-    assert_m2.ok(label, `missing ${save.field} label`);
+    const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "UCPath username");
+    assert_m2.ok(label, "missing UCPath username label");
     const input = document.getElementById(label.htmlFor);
     assert_m2.ok(input instanceof HTMLInputElement);
     await act_m2(async () => {
       input.focus();
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
       if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
-      descriptor.set.call(input, save.value);
+      descriptor.set.call(input, "private-credential-sentinel");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act_m2(async () => input.blur()); await settle();
-    assert_m2.equal(commands.length, 1);
-    const toasts = document.querySelectorAll('[data-slot="toast"]');
-    assert_m2.equal(toasts.length, 1);
-    assert_m2.equal(toasts[0]?.getAttribute("role"), "status");
-    assert_m2.match(toasts[0]?.textContent ?? "", new RegExp(save.title, "u"));
-    assert_m2.match(toasts[0]?.textContent ?? "", /Your draft is retained\. Retry the exact attempt to confirm the result\./u);
-    assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /Command result|private-credential-sentinel|private-transport-sentinel/u);
-    assert_m2.equal(input.value, save.value);
-    await settle(); assert_m2.equal(commands.length, 1, "uncertainty must not retry automatically");
-    const retry = async () => {
-      const button = [...document.querySelectorAll("button")].find(candidate => candidate.textContent === "Retry exact attempt");
-      assert_m2.ok(button, "missing exact retry");
-      await act_m2(async () => button.click()); await settle();
-    };
-    await retry();
-    assert_m2.equal(commands.length, 2);
-    assert_m2.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style")).length, 1, "repeated uncertainty shows one warning");
-    await retry();
+    assert_m2.equal(liveToasts().length, 0, "a lost reply shows nothing while it is replayed");
+    await settledToast(replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
     assert_m2.equal(commands.length, 3);
-    assert_m2.deepEqual(commands, [commands[0], commands[0], commands[0]], "all retries keep the original command identity and bytes");
-    assert_m2.equal(toasts[0]?.isConnected === false || toasts[0]?.hasAttribute("data-ending-style"), true, "known replacement dismisses the exact original warning");
-    const activeToasts = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
-    assert_m2.equal(activeToasts.length, 1);
-    assert_m2.doesNotMatch(activeToasts[0]?.textContent ?? "", /save unconfirmed/u);
-    assert_m2.match(activeToasts[0]?.textContent ?? "", replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
+    assert_m2.deepEqual(commands, [commands[0], commands[0], commands[0]], "every replay keeps the original command identity and bytes");
+    assert_m2.equal(liveToasts().length, 1);
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|outcome is uncertain|Command result|private-credential-sentinel|private-transport-sentinel/u);
+    assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
   });
-  it_m2("keeps an ordinary failure toast apart from the credentials warning and dismisses a replayed command's own warning", async () => {
+  it_m2("settles a lost ordinary save and a lost credentials save independently, each with its own result", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ accountless: true, search: "settings=performance", settingsRead: authority.read, command: body => {
@@ -1086,20 +1070,15 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       await act_m2(async () => input.blur()); await settle();
     };
     await edit("Task", "240");
-    assert_m2.match(document.querySelector('[data-slot="toast"]')?.textContent ?? "", /Settings weren't saved/u);
+    await settledToast(/Settings weren't saved/u);
     const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Account");
     assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
     await edit("UCPath username", "Synthetic credential");
-    assert_m2.equal(commands.length, 2);
+    await settledToast(/Saved UCPath username/u);
+    assert_m2.equal(commands.length, 3);
     assert_m2.notEqual(commands[0]?.commandId, commands[1]?.commandId);
-    const shown = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
-    const unconfirmed = () => shown().filter(node => /save unconfirmed/u.test(node.textContent ?? ""));
-    assert_m2.equal(unconfirmed().length, 1, "only the credentials save is left unconfirmed");
-    assert_m2.match(unconfirmed()[0]?.textContent ?? "", /Credentials save unconfirmed/u);
-    const retry = [...document.querySelectorAll("button")].find(button => button.textContent === "Retry exact attempt"); assert_m2.ok(retry);
-    await act_m2(async () => retry.click()); await settle();
-    assert_m2.equal(commands.length, 3); assert_m2.deepEqual(commands[2], commands[1]);
-    assert_m2.equal(shown().filter(node => node.textContent?.includes("Credentials save unconfirmed")).length, 0, "the replayed command's warning is dismissed");
+    assert_m2.deepEqual(commands[2], commands[1], "the lost credentials save is replayed exactly");
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|Retry exact attempt|outcome is uncertain/u);
   });
   it_m2("retains the served Delete run label when its original row disappears", async () => {
     const candidate = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.surfaceKind === "single" && row.actions.some(action => action.kind === "command" && action.command === "delete"));

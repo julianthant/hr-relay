@@ -83,7 +83,7 @@ describe("independent protected Settings surface", () => {
     assert.equal(h.controller().protectedEditor.save.state, "applied");
   });
   for (const failure of ["lost-response", "failed-readback", "pending-reply", "intervening-writer", "foreign-result", "legacy-readback"] as const) {
-    it(`keeps exact protected attempt and truthful uncertainty for ${failure}`, async () => {
+    it(`replays the exact protected attempt by itself and settles after ${failure}`, async () => {
       const h = await setup();
       h.ports.execute = input => {
         const result = h.authority.execute(input); const request = ProtectedSettingsCommandRequestSchema.parse(input);
@@ -97,15 +97,12 @@ describe("independent protected Settings surface", () => {
       };
       await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/draft-secret-sentinel"));
       await settingsAction(() => h.controller().protectedEditor.submit());
-      assert.equal(h.controller().protectedEditor.save.state, "unconfirmed"); assert.equal(h.controller().protectedEditor.dirtyCount, 1);
-      assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel/u);
-      const exact = structuredClone(h.commands[0]);
-      await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/divergent-secret-sentinel"));
-      assert.deepEqual(h.controller().protectedEditor.draft.sharepointOnboardingRosterUrl, { kind: "set", raw: "https://example.test/draft-secret-sentinel" });
+      // The transport recovers; the model replays the exact attempt by itself and settles on its result.
       h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
-      await settingsAction(() => h.controller().protectedEditor.retry());
-      assert.deepEqual(h.commands[1], exact);
+      await vi.waitFor(async () => { await settingsAction(() => undefined); assert.ok(["applied", "conflict"].includes(h.controller().protectedEditor.save.state), h.controller().protectedEditor.save.state); }, { timeout: 5000, interval: 50 });
       assert.equal(h.controller().protectedEditor.save.state, failure === "intervening-writer" ? "conflict" : "applied");
+      assert.ok(h.commands.length >= 2); for (const command of h.commands) assert.deepEqual(command, h.commands[0], "every replay keeps the original command identity and bytes");
+      assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel|unconfirmed|Retry exact attempt/u);
     });
   }
   it("recovers definitive write-id reuse with new identity and the unchanged draft", async () => {
@@ -150,12 +147,11 @@ import type { SettingsSaveState } from "../../../../src/dashboard/surfaces/setti
 import { SettingsSaveFeedback } from "../../../../src/dashboard/surfaces/settings/editor/settings-feedback.js";
 it.each([
   [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", "Retry edit"],
-  [{ state: "unconfirmed", message: "Readback unavailable" }, "Credentials save unconfirmed", "Retry exact attempt"],
   [{ state: "refused", message: "Draft refused" }, "Credentials weren't saved", "Retry edit"],
   [{ state: "applied", replayed: false }, "Saved", ""],
   [{ state: "applied", replayed: true }, "Already saved", ""],
 ] satisfies [SettingsSaveState, string, string][])("preserves the feedback title and retry affordance for %j", (save, title, retry) => {
-  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retry: () => {}, retryConflict: () => {} }));
+  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retryConflict: () => {} }));
   assert.ok(html.includes(title.replace("'", "&#x27;")));
   assert.equal(html.includes(retry || "Retry"), retry !== "");
 });
@@ -168,13 +164,11 @@ it("retains applied feedback until the next draft changes its state", async () =
   try {
     await act(async () => root.render(createElement(SettingsSaveFeedback, {
       save: { state: "applied", replayed: true },
-     
-      retry: () => undefined,
     })));
     assert.match(host.textContent ?? "", /Already saved/u);
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     assert.match(host.textContent ?? "", /Already saved/u);
-    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" }, retry: () => undefined })));
+    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" } })));
     assert.equal(host.textContent, "");
     assert.doesNotMatch(host.textContent ?? "", /Already saved/u);
   } finally {
