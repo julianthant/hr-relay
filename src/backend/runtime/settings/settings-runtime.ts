@@ -4,7 +4,7 @@ import { authenticateSavedSettings } from "../../storage/sqlite/settings-storage
 import { selectActiveRunSettings } from "../../runs/settings/run-settings.js";
 import { StoredConfigSchema } from "../../../models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../../app/config/resolve.js";
@@ -172,9 +172,18 @@ export function startSettingsKeepAwake(input: KeepAwakeOptions & Readonly<{
   };
   const report = () => input.debugEvents.emit({ category: "boot", phase: "failed", area: "keep-awake",
     reason: "keep-awake-observation-failed", correlationId: randomUUID() });
-  const timer = setInterval(() => { void observe().catch(report); }, 1000);
+  const revision = database.trackAuthorityTables(["settings", "settings_snapshots", "commands", "command_audits", "runs"]);
+  let observed: number | undefined, safetyAt = -Infinity;
+  const poll = async () => {
+    const current = revision(), now = systemClock.monotonicMs();
+    if (current !== undefined && current === observed && now < safetyAt) return;
+    await observe();
+    observed = current;
+    safetyAt = now + 60_000;
+  };
+  const timer = setInterval(() => { void poll().catch(report); }, 1000);
   timer.unref();
-  void observe().catch(report);
+  void poll().catch(report);
   const stop = (): Promise<void> => {
     if (closing !== undefined) return closing;
     clearInterval(timer);
