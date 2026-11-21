@@ -262,7 +262,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
           if (surface === "Settings") {
             await control.click();
             await expect(content).toBeVisible();
-            await page.getByRole("button", { name: "Back to dashboard" }).click();
+            await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/ }).click();
             await expect(content).toBeHidden();
           }
           await measure(page, control, () => control.click(), () => expect(content).toBeVisible());
