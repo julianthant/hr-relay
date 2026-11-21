@@ -10,6 +10,7 @@ import { operatorFailureSentence } from "../../models/failures/error-catalog.js"
 import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import type { PaletteAction } from "../surfaces/shell/search/search-palette-model.js";
 import { useStartupGate } from "./startup/startup-gate.js";
+import { FirstScreenRevealedContext } from "./startup/first-screen.js";
 import { signInProblems, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import { sameSessionAccount } from "../surfaces/settings/account/account-session.js";
@@ -350,6 +351,7 @@ function LoadedApp({
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
   const client = useDashboardClient();
+  const firstScreenRevealed = useContext(FirstScreenRevealedContext);
   const authorityEpoch = useMemo(() => Object.freeze({ client, bootstrap: boot, profileTarget }), [client, boot, profileTarget]);
   const lifecycle = useApplicationLifecycle(client, authorityEpoch);
   const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
@@ -1177,7 +1179,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       <PanelBoundary resetKey={`${activeWorkflowId}:${launch.open}`} sentence="Couldn't open Start run." className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
       <RunLaunchHost
         controller={launch}
-        hidden={route.settings !== undefined}
+        hidden={route.settings !== undefined || !firstScreenRevealed}
         onFixCheck={(section, settingsTarget) => setRoute(current => ({ ...current, settings: section, settingsTarget, settingsFrom: "run" }))}
         catalog={workflowCatalog}
         panelWorkflowId={activeWorkflowId}

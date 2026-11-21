@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from "react";
-import { useFirstScreen } from "../../app/startup/first-screen.js";
+import { FirstScreenRevealedContext, useFirstScreen } from "../../app/startup/first-screen.js";
+import { DashboardClientProvider, useDashboardClient } from "../../state/client-context.js";
 import { dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { AppLockup } from "./app-lockup.js";
@@ -12,7 +13,7 @@ import "./startup-loading.css";
 export function StartupLoading({ children }: { children?: ReactNode }) {
   const screen = useRef<HTMLDivElement>(null);
   const mounted = children !== undefined;
-  const { revealed, slow } = useFirstScreen(screen, mounted);
+  const { revealed, slow, client } = useFirstScreen(screen, mounted, useDashboardClient());
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {!revealed && <main data-startup-loading role="status" aria-label="Starting Relay" aria-busy="true"
@@ -24,7 +25,9 @@ export function StartupLoading({ children }: { children?: ReactNode }) {
           {slow && <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Taking longer than usual</p>}
         </div>
       </main>}
-      {mounted && <div ref={screen} className={cn("flex min-h-0 flex-1 flex-col", !revealed && "invisible")} inert={!revealed} aria-hidden={!revealed || undefined}>{children}</div>}
+      {mounted && <div ref={screen} className={cn("flex min-h-0 flex-1 flex-col", !revealed && "invisible")} inert={!revealed} aria-hidden={!revealed || undefined}>
+        <FirstScreenRevealedContext.Provider value={revealed}><DashboardClientProvider client={client}>{children}</DashboardClientProvider></FirstScreenRevealedContext.Provider>
+      </div>}
     </div>
   );
 }

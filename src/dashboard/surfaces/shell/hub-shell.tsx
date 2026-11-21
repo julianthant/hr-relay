@@ -12,7 +12,7 @@ import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 import { useDashboardClient } from '../../state/client-context.js';
 import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
-import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { ASSISTANT_FAILURES, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
 const EMPTY_CHAT = { id: 'empty-chat', title: 'New chat', minutes: 0, group: 'Today' } as const;
 const HISTORY_TABS = [{ value: "chats", label: "Chats" }, { value: "activity", label: "Activity" }] as const;
@@ -94,7 +94,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
         </div> : <div className="hub-transcript">{client.assistantActivity ? <AssistantServedActivity query={query} read={signal => client.assistantActivity!(signal)} /> : <EmptyState title="No activity today" />}</div>}
         </div> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
-          {current && currentSession && <AssistantPanel key={current.id} loading={historyPending} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={served} onAutomaticTitle={title => currentSession.autoTitle(title)} conversationPort={currentSession.conversationPort} draft={currentSession.draft} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
+          {current && currentSession && <AssistantPanel key={current.id} loading={historyPending && historyNotice !== ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={served} onAutomaticTitle={title => currentSession.autoTitle(title)} conversationPort={currentSession.conversationPort} draft={currentSession.draft} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
             onClose={closePanel} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)} ></AssistantPanel>}
         </div>
       </section>
