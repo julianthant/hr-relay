@@ -31,7 +31,8 @@ export function deriveGraphCoveragePoints(
   };
 
   for (const node of nodes) {
-    switch (node.kind) {
+    const { kind } = node;
+    switch (kind) {
       case "branch": {
         for (const caseName of Object.keys(node.cases)) {
           push("branch-case", node.id, caseName, `branch ${node.id} selects "${caseName}"`);
@@ -73,8 +74,11 @@ export function deriveGraphCoveragePoints(
           `transaction ${node.id} finds its permanent key already satisfied`);
         break;
       }
-      default:
+      case "task":
+      case "parallel":
         break;
+      default:
+        throw new Error(`unhandled graph node kind: ${String(kind satisfies never)}`);
     }
   }
   return Object.freeze(points);
