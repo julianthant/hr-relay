@@ -7,6 +7,7 @@ import { admitFixtureSlot, testWorkerLifetime } from "../../../fixtures/run-life
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../run-integration-world.js";
 import { browserSessionSpanPath,workerSpanPath } from "../../../../../src/backend/logs/span-emitter.js";
 import { buildRunResult } from "../../../../../src/backend/runs/lifecycle/run-result.js";
+import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/index.js";
 import type { RunRecord } from "../../../../../src/models/run/record.js";
@@ -228,6 +229,17 @@ function taskSpan(world: SeedWorld, run: RunRecord, node: string, outcome?: "don
 }
 
 
+/** A run-level note through the writer a task's notes go through. */
+function note(world: SeedWorld, run: RunRecord, level: "step" | "error", message: string): void {
+  createNoteTimelineWriter({ repository: world.database.authority.timelineEvents, clock: world.clock }).emitNote({
+    workflow: WORKFLOW_ID,
+    address: { runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId, spanPath: run.envelope.traceId },
+    level,
+    message,
+  });
+}
+
+
 function claimOf(run: RunRecord): { workerId: string; claimGeneration: number } {
   if (!("workerId" in run.lifecycle)) {
     throw new Error(`run ${run.envelope.runId} holds no claim to authorize a terminal transition`);
@@ -372,6 +384,8 @@ export function seed(world: SeedWorld): Record<string, string> {
   // running — claimed, executing, one task span still open.
   const running = startRunning(world, { seed: 2, title: "Morrow, Bea" }, 1, "searching");
   taskSpan(world, running, "searching");
+  note(world, running, "step", "opened UCPath person search");
+  note(world, running, "error", "UCPath person search returned an unavailable response; retrying");
 
   // The terminal outcomes the lifecycle's `transition` arm owns, one row each.
   const cancelled = endRun(world, startRunning(world, { seed: 7, title: "EID 10222333" }, 3, "searching"), "cancelled");

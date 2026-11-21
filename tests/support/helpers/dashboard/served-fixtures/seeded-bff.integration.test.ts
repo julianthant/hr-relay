@@ -208,10 +208,23 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     );
     if (logs.section !== "logs") throw new Error("expected the logs section");
     // The reference check's own note, written through the executor's note writer when it asked the spreadsheet library.
-    expect(logs.payload.notes.map(({ level, message, native }) => ({ level, message, runId: native.runId })))
+    expect(logs.payload.notes.map(({ level, message, native }) => ({ level, message, runId: native?.runId })))
       .toEqual([{ level: "info", message: "provider request", runId }]);
-    expect(logs.payload.notes[0]?.native.spanPath).toContain("/reference-check#");
+    expect(logs.payload.notes[0]?.native?.spanPath).toContain("/reference-check#");
     expect((logs.payload.rows ?? []).filter(row => row.kind === "note")).toHaveLength(1);
+  });
+
+  it("serves a seeded run's step and error notes with their severities", async () => {
+    const server = await boot();
+    const runId = server.runIds.runningRun;
+    const logs = RunDetailSectionResponseSchema.parse(
+      await (await fetch(`${server.baseUrl}/api/v1/runs/${runId}/logs`)).json(),
+    );
+    if (logs.section !== "logs") throw new Error("expected the logs section");
+    expect(logs.payload.notes.map(({ level, message, native }) => ({ level, message, runId: native?.runId }))).toEqual([
+      { level: "info", message: "opened UCPath person search", runId },
+      { level: "error", message: "UCPath person search returned an unavailable response; retrying", runId },
+    ]);
   });
 
   it("serves the done run with every step it ran completed and none upcoming", async () => {
@@ -219,10 +232,12 @@ describe("seeded mock BFF (adapter #2 — real machinery)", () => {
     const detail = RunDetailWireSchema.parse(
       await (await fetch(`${server.baseUrl}/api/v1/runs/${server.runIds.doneRun}`)).json(),
     );
-    expect(detail.timeline.steps.map(step => [step.key, step.state])).toEqual([
+    const steps = detail.timeline.steps;
+    if (steps === undefined) throw new Error("the done run's detail served no timeline steps");
+    expect(steps.map(step => [step.key, step.state])).toEqual([
       ["searching", "done"], ["cross-verify", "done"], ["active-status", "done"],
     ]);
-    expect(detail.timeline.steps.flatMap(step => step.members.map(member => [member.nodeId, member.state]))).toEqual([
+    expect(steps.flatMap(step => step.members.map(member => [member.nodeId, member.state]))).toEqual([
       ["searching", "done"], ["search-identity", "done"], ["cross-verify", "done"], ["crm-identity", "done"], ["active-status", "done"],
     ]);
   });
