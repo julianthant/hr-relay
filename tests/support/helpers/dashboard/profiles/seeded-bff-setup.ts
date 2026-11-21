@@ -46,6 +46,9 @@ export interface SeededServer {
 export interface SeededDrive {
   /** The seeded queued run is claimed and moved to running; answers its run id. */
   startQueuedRun(): string;
+  /** The same start, seen between two production polls: the claim span is folded, the later
+   * transitions are not reconciled, so the run's detail is ahead of its queue row. */
+  startQueuedRunAheadOfItsRow(): string;
   /** The running run's open task span ends; answers its run id. */
   finishRunningStep(): string;
   /** The running run parks at its declared node; answers its run id. */
@@ -213,6 +216,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     };
     const drive: SeededDrive = Object.freeze({
       startQueuedRun: () => settle(startQueuedRun(world)),
+      startQueuedRunAheadOfItsRow: () => startQueuedRun(world),
       finishRunningStep: () => settle(finishRunningStep(world)),
       parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
       publishNotification: async () => {
