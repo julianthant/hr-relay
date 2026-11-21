@@ -157,6 +157,29 @@ describe("Settings > Account Relay login rows", () => {
     assert.doesNotMatch(rowText(), /new\.name@ucsd\.edu/u);
   });
 
+  it("reads a lost username reply back and shows the new username with no message when it landed", async () => {
+    let served = "jordan.lee@ucsd.edu";
+    await mount(login({ changeUsername: async request => { served = request.newUsername; throw new Error("reply lost"); }, readUsername: async () => served }));
+    await click("Edit username");
+    await type("currentPassword", "pw");
+    await type("newUsername", "new.name@ucsd.edu");
+    await click("Save");
+    await vi.waitFor(async () => { await settle(); assert.match(rowText(), /new\.name@ucsd\.edu/u); });
+    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.doesNotMatch(document.body.textContent ?? "", /not changed|could not confirm/iu);
+  });
+
+  it("reads a lost username reply back and keeps the old username with one failure toast when it did not land", async () => {
+    await mount(login({ changeUsername: async () => { throw new Error("request dropped"); }, readUsername: async () => "jordan.lee@ucsd.edu" }));
+    await click("Edit username");
+    await type("currentPassword", "pw");
+    await type("newUsername", "new.name@ucsd.edu");
+    await click("Save");
+    await vi.waitFor(async () => { await settle(); assert.match(document.body.textContent ?? "", /Relay username not changed/u); }, { timeout: 5000, interval: 50 });
+    assert.match(rowText(), /jordan\.lee@ucsd\.edu/u);
+    assert.doesNotMatch(document.body.textContent ?? "", /could not confirm/iu);
+  });
+
   it("keeps the password dialog open with its values when the current password is refused", async () => {
     await mount(login({ changePassword: async () => ({ state: "refused", code: "PROFILE_CURRENT_PASSWORD_REFUSED" }) }));
     await click("Change Relay password");

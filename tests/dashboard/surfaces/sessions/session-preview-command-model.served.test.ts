@@ -82,7 +82,7 @@ function harness(initial = dayWith()) {
       if (typeof init.body !== "string") throw new Error("JSON body missing");
       const command = CommandRequestSchema.parse(JSON.parse(init.body)); sent.push(command);
       const reply = await effect(command); return reply instanceof Response ? reply : Response.json(reply); }
-    if (String(url).includes("/api/v1/worker-commands/")) return Response.json(auditFor ? auditFor(String(url).split("/").pop() ?? "") : audit);
+    if (String(url).includes("/api/v1/worker-commands/")) return Response.json(auditFor ? await auditFor(String(url).split("/").pop() ?? "") : audit);
     gets.push(String(url)); return Response.json(await read(day));
   } });
   let scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
@@ -348,6 +348,24 @@ it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flig
     });
     assert.equal(h.sent.length, 1);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("a worker audit that never answers ends at its deadline, and the next click on that worker reaches Relay", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const h = harness(); const card = h.day().workerCards[0];
+    const request: SessionPreviewRequest = { id: uuidOf(8950), target: card.workerId, action: "pause" };
+    h.effect(command => ({ state: "pending", commandId: command.commandId }));
+    assert.equal((await h.port.send(request)).state, "uncertain");
+    h.auditBy(() => new Promise(() => undefined));
+    const checked = h.port.check(request);
+    await vi.advanceTimersByTimeAsync(3000);
+    assert.equal((await checked).state, "uncertain");
+    await h.port.abandon?.(request);
+    h.effect(command => applied(command));
+    await h.port.send({ id: uuidOf(8951), target: card.workerId, action: "pause" });
+    assert.equal(h.sent.length, 2, "the stalled check no longer holds the worker's lock");
+  } finally { vi.useRealTimers(); }
 });
 
 it("hydrates no retained control for another scope", async () => {

@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { ToastProvider } from "../../../../../src/dashboard/ds/ui.js";
-import { AccountSettings, type AccountPage, type ProfileDetailsChangeRequest, type ProfileDetailsChangeResult } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
+import { AccountSettings, sameSessionAccount, type AccountPage, type ProfileDetailsChangeRequest, type ProfileDetailsChangeResult } from "../../../../../src/dashboard/surfaces/settings/account/account-settings.js";
 import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
@@ -171,5 +171,14 @@ describe("Settings > Account details rows", () => {
     assert.equal(dialog(), null);
     assert.match(text(), /Timekeeper nameCasey Morgan Park/u);
     assert.equal(document.activeElement, pencil("Edit timekeeper name"));
+  });
+
+  it("takes a details read-back only from the profile and sign-in that made the change", () => {
+    const owner = { profileId: "11111111-1111-4111-8111-111111111111", epoch: 3 };
+    const active = (over: object) => ({ state: "active", duoState: "ready", ...owner, account: values, ...over }) as Parameters<typeof sameSessionAccount>[0];
+    assert.deepEqual(sameSessionAccount(active({}), owner), values);
+    assert.equal(sameSessionAccount(active({ profileId: "22222222-2222-4222-8222-222222222222" }), owner), undefined, "a replacement profile is no proof");
+    assert.equal(sameSessionAccount(active({ epoch: 4 }), owner), undefined, "a later sign-in is no proof");
+    assert.equal(sameSessionAccount({ state: "signed-out" }, owner), undefined);
   });
 });

@@ -103,7 +103,10 @@ describe("independent protected Settings surface", () => {
       assert.equal(h.controller().protectedEditor.save.state, "idle");
       assert.equal(h.controller().protectedEditor.dirtyCount, 0);
       assert.equal(h.commands.length, 1, "an unknown outcome is read back, never resent");
-      assert.deepEqual(h.problems, [], "the stored write is found by the read-back"); assert.deepEqual(h.notices, [], "a save found by reading back shows no message");
+      // Another value served over this save is no proof that it landed, so it ends as one failure.
+      if (failure === "intervening-writer") assert.deepEqual(h.problems.map(problem => problem.title), ["Credentials weren't saved"]);
+      else assert.deepEqual(h.problems, [], "the stored write is found by the read-back");
+      assert.deepEqual(h.notices, [], "a save found by reading back shows no message");
       assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel|unconfirmed|Retry exact attempt/u);
       await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/next-secret-sentinel"));
       await settingsAction(() => h.controller().protectedEditor.submit());

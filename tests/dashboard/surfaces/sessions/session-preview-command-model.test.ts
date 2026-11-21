@@ -87,7 +87,7 @@ describe("worker controls", () => {
     vi.useFakeTimers();
     const sent: SessionPreviewRequest[] = [], problems: string[] = [], abandoned: SessionPreviewRequest[] = [];
     const host = await mount(paused({ send: async request => { sent.push(request); return { id: request.id, state: "uncertain", message: "Lost response" }; },
-      check: async request => ({ id: request.id, state: "uncertain", message: "No served effect yet" }), abandon: request => { abandoned.push(request); } }, problems));
+      check: async request => ({ id: request.id, state: "uncertain", message: "No served effect yet" }), abandon: async request => { abandoned.push(request); } }, problems));
     await act(async () => firstPause(host)?.click());
     await advance(READBACK_MS);
     assert.deepEqual(problems, ["Couldn't pause this worker."]);

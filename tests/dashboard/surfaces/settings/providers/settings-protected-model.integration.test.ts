@@ -30,6 +30,9 @@ async function mountRecovery() {
   const sent: string[] = [];
   let loseReply = true;
   let available = true;
+  let key = 0;
+  let beforeEffect: ((body: string) => Promise<void> | void) | undefined;
+  const problems: string[] = [];
   let documentWire = authority.read();
   let binding: DashboardCommandBinding | undefined;
   let controller: ReturnType<typeof useProtectedSettings> | undefined;
@@ -44,6 +47,7 @@ async function mountRecovery() {
     sent.push(init.body);
     const request = ProtectedSettingsCommandRequestSchema.safeParse(JSON.parse(init.body));
     if (!request.success) throw new Error("marked transport fixture lost reply");
+    await beforeEffect?.(init.body);
     const result = authority.execute(request.data);
     if (loseReply) throw new Error("reply lost after effect");
     return Response.json(result);
@@ -52,14 +56,14 @@ async function mountRecovery() {
     binding = originalBindingHook();
     controller = useProtectedSettings({ actorId: "local-operator", readReady: true, document: documentWire,
       refresh: async () => authority.read(), readCurrent: async () => authority.read(),
-      acceptReadback: value => { documentWire = value; } });
+      acceptReadback: value => { documentWire = value; }, onSaveProblem: problem => { problems.push(problem.title); } });
     return createElement("div", null, controller.save.state);
   }
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   cleanups.push(() => { act(() => root.unmount()); host.remove(); });
   const render = async () => { await act(async () => root.render(createElement(commandContext.DashboardClientProvider, { client,
-    children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Harness) }) }))); };
+    children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Harness, { key }) }) }))); };
   await render();
   assert.ok(binding);
   const executor = binding.executor;
@@ -79,7 +83,11 @@ async function mountRecovery() {
       await Promise.all(settlements.slice(before));
     });
   };
-  return { authority, sent, render, host, action,
+  return { authority, sent, render, host, action, problems,
+    /** A new editor instance, as when Settings is closed and opened again. */
+    remount: async () => { key += 1; await render(); },
+    /** Runs before the fixture store applies a POST; throwing drops the request before any effect. */
+    beforeEffect(next: typeof beforeEffect) { beforeEffect = next; },
     controller: () => { assert.ok(controller); return controller; },
     binding: () => { assert.ok(binding); return binding; },
     setAvailable(value: boolean) { available = value; },
@@ -166,4 +174,43 @@ it("writes a dialog-held credential only on explicit submit, never on the autosa
   await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/confirmed-operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.sent.length, 1, "one dispatch for the confirmed Save");
+});
+
+it("ends with one failure when the save never arrived and another save set a different value", async () => {
+  const h = await mountRecovery();
+  const before = h.authority.credentials.read().revision;
+  h.beforeEffect(body => {
+    h.beforeEffect(undefined);
+    const lost = ProtectedSettingsCommandRequestSchema.parse(JSON.parse(body));
+    h.authority.execute(ProtectedSettingsCommandRequestSchema.parse({ ...lost, commandId: crypto.randomUUID(),
+      payload: { ...lost.payload, writeId: crypto.randomUUID(), entries: { sharepointOnboardingRosterUrl: { set: "https://example.test/someone-else" } } } }));
+    throw new Error("request dropped before Relay");
+  });
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/mine"));
+  await h.action(() => h.controller().submit());
+  await unlocked(h);
+  assert.equal(h.authority.credentials.read().revision, before + 1, "only the other save landed");
+  assert.equal(h.authority.credentials.read().entries.sharepointOnboardingRosterUrl?.value, "https://example.test/someone-else");
+  assert.deepEqual(h.problems, ["Credentials weren't saved"], "a newer revision with another value is no proof of this save");
+  assert.equal(h.sent.length, 1, "read back, never resent");
+});
+
+it("follows a save still in flight across a remount and unlocks the new editor when it confirms", async () => {
+  const h = await mountRecovery();
+  h.restoreReply();
+  let release!: () => void;
+  h.beforeEffect(() => new Promise<void>(resolve => { release = resolve; }));
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/in-flight"));
+  await act(async () => { h.controller().submit(); await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert.equal(h.sent.length, 1);
+  await h.remount();
+  assert.equal(h.controller().locked, true, "the new editor holds the control while the save is outstanding");
+  h.beforeEffect(undefined);
+  await act(async () => { release(); });
+  await unlocked(h);
+  assert.deepEqual(h.problems, [], "a confirmed save ends silently");
+  assert.equal(h.authority.credentials.read().entries.sharepointOnboardingRosterUrl?.value, "https://example.test/in-flight");
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/after-remount"));
+  await h.action(() => h.controller().submit());
+  assert.equal(h.sent.length, 2, "the next save reaches Relay");
 });
