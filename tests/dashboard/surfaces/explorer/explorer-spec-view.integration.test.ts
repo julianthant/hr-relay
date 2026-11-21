@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { resolveExplorer } from "../../../../src/dashboard/surfaces/explorer/explorer-spec.js";
-import { ExplorerSpecView } from "../../../../src/dashboard/surfaces/explorer/explorer-spec-view.js";
+import { ExplorerPage, ExplorerSpecView } from "../../../../src/dashboard/surfaces/explorer/explorer-spec-view.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../../mocks/helpers/fixture-explorer.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -19,7 +19,7 @@ const workflows = [{ id: "person-lookup", title: "Person Lookup" }];
 async function mount() {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ExplorerSpecView, { spec, workflowId: "person-lookup", workflows, onWorkflow: () => undefined }))));
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(ExplorerPage, { workflowId: "person-lookup", workflows, onWorkflow: () => undefined, children: createElement(ExplorerSpecView, { spec, onWorkflow: () => undefined }) }))));
   return host;
 }
 const click = async (node: Element | null) => { assert.ok(node instanceof HTMLElement); await act(async () => { node.focus(); node.click(); }); };

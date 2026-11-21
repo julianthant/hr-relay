@@ -20,13 +20,13 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
   const { state, retry, workflows: wire } = useExplorerWiring(client, workflowId, registered?.served?.version);
   if (wire !== undefined && wire !== known) setKnown(wire);
   if (workflowId === undefined) return <EmptyState title="Workflow unavailable" description="No workflow is registered to inspect." />;
-  // The first read of the definitions shows the page heading and picker only: run options and steps differ per workflow, so no guessed frame stands in for them.
+  // One page heading and picker stay mounted around the body. The first read shows nothing below them: run options and steps differ per workflow, so no guessed frame stands in.
   const spec = state.state === "ready" ? state.spec : state.state === "refused" ? state.previous : undefined;
   return <>{state.state === "refused" && spec !== undefined && <Notice tone="warning" title="Workflow definition unavailable" description={formatErrorCatalogFailure(state.failure).text} />}
-    {spec !== undefined ? <ExplorerSpecView key={workflowId} spec={spec} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} />
-      : <ExplorerPage workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId}>
-        {state.state === "unavailable" ? <EmptyState title="Workflow unavailable" description={state.reason} />
-          : state.state === "refused" ? <EmptyState title="Workflow unavailable" description={formatErrorCatalogFailure(state.failure).text} action={<Button onClick={retry}>Retry</Button>} />
-          : <LoadingRegion label="Loading workflow definition">{null}</LoadingRegion>}
-      </ExplorerPage>}</>;
+    <ExplorerPage workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId}>
+      {spec !== undefined ? <ExplorerSpecView key={workflowId} spec={spec} onWorkflow={setWorkflowId} />
+        : state.state === "unavailable" ? <EmptyState title="Workflow unavailable" description={state.reason} />
+        : state.state === "refused" ? <EmptyState title="Workflow unavailable" description={formatErrorCatalogFailure(state.failure).text} action={<Button onClick={retry}>Retry</Button>} />
+        : <LoadingRegion label="Loading workflow definition">{null}</LoadingRegion>}
+    </ExplorerPage></>;
 }

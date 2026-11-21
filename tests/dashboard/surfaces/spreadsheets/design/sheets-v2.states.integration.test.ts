@@ -34,13 +34,12 @@ afterEach(async () => { await act(async () => root?.unmount()); root = undefined
 const render = () => act(async () => root?.render(createElement(ToastProvider, null, createElement(TooltipProvider, null, createElement(SheetsV2)))));
 const click = (element: Element | null | undefined) => { assert.ok(element); return act(async () => { (element as HTMLElement).click(); }); };
 
-it('shows only the search toolbar while the list is read: no guessed table, heading or rows', async () => {
+it('draws nothing while the list is first read: a busy region, no guessed search bar, table or rows', async () => {
   wiring.loading = true; await render();
-  const frame = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading spreadsheets"] .ds-table-list');
+  const frame = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading spreadsheets"]');
   assert.ok(frame);
-  assert.deepEqual([...frame.children].map(child => child.className), ['ds-table-toolbar']);
-  assert.ok(frame.querySelector('.ds-table-toolbar-search [data-slot="skeleton"]'), 'the search field keeps its place');
-  assert.equal(host.querySelector('.sv2-card, .sv2-row, h2, h3'), null);
+  assert.equal(frame.childElementCount, 0);
+  assert.equal(host.querySelector('[data-slot="skeleton"], .ds-table-toolbar, .sv2-card, .sv2-row'), null);
 });
 
 it('shows an opening sheet\'s heading at once and a loading frame only where its grid will be', async () => {

@@ -69,7 +69,8 @@ export function ExplorerPage({ workflowId, workflows, onWorkflow, children }: { 
   </section>;
 }
 
-export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { spec: ExplorerReviewSpec; workflowId: string; workflows: readonly ExplorerWorkflowOption[]; onWorkflow: (id: string) => void }) {
+/** The spec below the page heading; the caller keeps one ExplorerPage around it and keys this by workflow. */
+export function ExplorerSpecView({ spec, onWorkflow }: { spec: ExplorerReviewSpec; onWorkflow: (id: string) => void }) {
   const [chosen, setChosen] = useState<SpecValues>({});
   const [decisions, setDecisions] = useState<SpecValues>({});
   const [source, setSource] = useState<Source>();
@@ -86,7 +87,7 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
   const decide = (id: string, value: string) => { setDecisions(current => ({ ...current, [id]: value })); setSource(undefined); };
   const sourceStep = source && steps.find(step => step.id === source.stepId);
 
-  return <ExplorerPage workflowId={workflowId} workflows={workflows} onWorkflow={onWorkflow}>
+  return <>
     {options.length > 0 && <section aria-labelledby="run-options" className="mb-4 mt-6">
       <h2 id="run-options" className="m-0 mb-4 text-section">Run options</h2>
       <div className="grid grid-cols-4 gap-4">{options.map(option => <div key={option.id} className="flex min-w-0 flex-col gap-1.5">
@@ -120,5 +121,5 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
     {source && sourceStep && <ExplorerSource key={source.row.id} label={source.row.label} destination={`${sourceStep.system === undefined ? "Local" : systemName(sourceStep.system)} · ${source.card}`}
       source={fieldSource(spec, source.row, numberOf)} onClose={closeSource}
       onJump={number => { setSource(undefined); const target = document.getElementById(stepId(number)); target?.scrollIntoView({ block: "start", behavior: "instant" }); target?.focus({ preventScroll: true }); }} />}
-  </ExplorerPage>;
+  </>;
 }

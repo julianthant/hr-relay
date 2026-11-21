@@ -13,7 +13,7 @@ export function SettingsSectionSkeleton({ section, contentOnly = false }: { sect
     <LoadingRegion label={`Loading ${copy.title.toLowerCase()}`} className="settings-compact-form">
       <div className="ds-body-stack">
         {section === "general" ? <>
-          {[...contentOnly ? [] : [{ title: "Assistant", rows: 4, singleLine: [] as number[] }], { title: "App", rows: 5, singleLine: [2, 3] }, ...GENERAL_RUN_GROUPS.map(group => ({ title: group.title, rows: group.rows.length, singleLine: [] as number[] }))].map(group => <BodySection key={group.title} title={group.title}><FormGroup label={`${group.title} loading`}><SettingsRowsSkeleton rows={group.rows} singleLine={group.singleLine} /></FormGroup></BodySection>)}
+          {[...contentOnly ? [] : [{ title: "Assistant", rows: 4, singleLine: [] as number[] }], { title: "App", rows: 5, singleLine: [2, 3] }, ...GENERAL_RUN_GROUPS.map(group => ({ title: group.title, rows: group.rows.length, singleLine: group.rows.map((_, row) => row) }))].map(group => <BodySection key={group.title} title={group.title}><FormGroup label={`${group.title} loading`}><SettingsRowsSkeleton rows={group.rows} singleLine={group.singleLine} /></FormGroup></BodySection>)}
         </> : section === "performance" ? <>
           {[{ title: "Navigation", rows: 3 }, { title: "Work", rows: 3 }, { title: "Sign-in & Duo", rows: 4 }, { title: "Additional limits", rows: 4 }].map(group => <BodySection key={group.title} title={group.title}><FormGroup label={`${group.title} loading`}><SettingsRowsSkeleton rows={group.rows} presentation={group.title === "Additional limits" ? "disclosure" : "field"} /></FormGroup></BodySection>)}
         </> : section === "routes" ? <>

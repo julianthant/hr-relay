@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { BodySection, Skeleton, TableToolbar, dsIcon, dsRadius } from '../../../ds/ui.js';
+import { BodySection, dsIcon } from '../../../ds/ui.js';
 import { LoadingRegion } from '../../shared/loading/loading.js';
 import { type Sheet, stamp, tagsOf } from './sheets-v2-model.js';
 import { DownloadIcon, SheetMenu, SyncStatus, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
@@ -50,10 +50,8 @@ export function SheetTable({ title, heading, sheets, narrow, actions, limit }: {
   return heading ? <BodySection title={heading}>{body}</BodySection> : <section className="ds-body-section">{body}</section>;
 }
 
-/** The list while its first read is slow: only the search toolbar, the one part whose place and size are known before the
- * library is. Tables, group headings and the empty state depend on what the read returns, so no guessed rows stand in for them. */
+/** The list while its first read is slow: a busy region with nothing drawn. The search bar, tables, group headings and the
+ * empty state all depend on what the read returns, so no guessed part stands in for them. */
 export function SheetsSkeleton() {
-  return <LoadingRegion label="Loading spreadsheets"><div aria-hidden className="ds-table-list">
-    <TableToolbar search={<Skeleton className={`h-[var(--ds-h-md)] w-full ${dsRadius.lg}`} />} />
-  </div></LoadingRegion>;
+  return <LoadingRegion label="Loading spreadsheets">{null}</LoadingRegion>;
 }

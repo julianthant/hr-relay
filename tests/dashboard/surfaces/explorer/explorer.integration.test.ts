@@ -106,3 +106,19 @@ it("while the definitions are first read, shows the heading and picker and no gu
   assert.equal(frame.childElementCount, 0);
   assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
 });
+
+it("keeps the workflow picker mounted, focus included, when the definitions arrive", async () => {
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  let settle!: (wire: typeof FIXTURE_EXPLORER_WIRE) => void;
+  const pending = { workflowExplorer: () => new Promise<typeof FIXTURE_EXPLORER_WIRE>(resolve => { settle = resolve; }) } as never;
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: pending }))));
+  const picker = host.querySelector<HTMLSelectElement>('[aria-label="Explorer workflow"]');
+  assert.ok(picker);
+  picker.focus();
+  await act(async () => { settle(FIXTURE_EXPLORER_WIRE); });
+  assert.equal(host.querySelector('[aria-label="Loading workflow definition"]'), null);
+  assert.ok(host.querySelector("#run-options"), "the spec replaced the busy region");
+  assert.equal(host.querySelector('[aria-label="Explorer workflow"]'), picker, "the same picker node");
+  assert.equal(document.activeElement, picker);
+});
