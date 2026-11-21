@@ -35,6 +35,7 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
       id: module.descriptor.id,
       code: module.descriptor.code,
       label: module.descriptor.label,
+      icon: module.descriptor.icon,
       categoryId: module.descriptor.category,
       descriptorFingerprint: module.descriptor.contractFingerprint,
       availability: { state: "available" },

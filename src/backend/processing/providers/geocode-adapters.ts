@@ -31,8 +31,8 @@ const CensusResponseSchema = z.looseObject({
         state: z.string().optional(),
         zip: z.string().optional(),
       }).optional(),
-    })).optional(),
-  }).optional(),
+    })),
+  }),
 });
 
 const NominatimResponseSchema = z.array(z.looseObject({
@@ -68,6 +68,13 @@ function producedOutcome(value: unknown, summary: string, clock: Clock): Provide
   });
 }
 
+function invalidResponseOutcome(reason: string, summary: string, clock: Clock): ProviderAdapterOutcome {
+  return ProviderAdapterOutcomeSchema.parse({
+    response: { state: "invalid-response", reason },
+    evidence: { summary, capturedAt: clock.now().toISOString() },
+  });
+}
+
 async function fetchJson(
   fetchFn: typeof fetch,
   url: string,
@@ -76,21 +83,15 @@ async function fetchJson(
   clock: Clock,
 ): Promise<Readonly<{ ok: true; body: unknown }> | Readonly<{ ok: false; outcome: ProviderAdapterOutcome }>> {
   const response = await fetchFn(url, { headers, signal: options.signal });
-  if (response.status === 429) {
-    return {
-      ok: false,
-      outcome: unavailableOutcome({
-        code: "adapter-unavailable",
-        message: "Geocoder rate limit was reached; the request was not retried.",
-      }, clock),
-    };
-  }
   if (!response.ok) {
+    await response.body?.cancel();
     return {
       ok: false,
       outcome: unavailableOutcome({
         code: "adapter-unavailable",
-        message: `geocoder answered HTTP ${String(response.status)}`,
+        message: response.status === 429
+          ? "Geocoder rate limit was reached; the request was not retried."
+          : `geocoder answered HTTP ${String(response.status)}`,
       }, clock),
     };
   }
@@ -101,14 +102,11 @@ async function fetchJson(
     // The body could contain anything; report SHAPE only, never an excerpt.
     return {
       ok: false,
-      outcome: ProviderAdapterOutcomeSchema.parse({
-        response: {
-          state: "invalid-response",
-          reason: `the provider answered ${String(text.length)} chars that are not JSON`,
-        },
-
-        evidence: { summary: "geocode response was not JSON", capturedAt: clock.now().toISOString() },
-      }),
+      outcome: invalidResponseOutcome(
+        `the provider answered ${String(text.length)} chars that are not JSON`,
+        "geocode response was not JSON",
+        clock,
+      ),
     };
   }
 }
@@ -142,12 +140,13 @@ export function createCensusGeocodeAdapter(
       if (!fetched.ok) return fetched.outcome;
       const parsed = CensusResponseSchema.safeParse(fetched.body);
       if (!parsed.success) {
-        return unavailableOutcome({
-          code: "adapter-unavailable",
-          message: "geocoder response body did not carry the documented shape",
-        }, dependencies.clock);
+        return invalidResponseOutcome(
+          "geocoder response body did not carry the documented shape",
+          "census response had an invalid shape",
+          dependencies.clock,
+        );
       }
-      const match = parsed.data.result?.addressMatches?.[0];
+      const match = parsed.data.result.addressMatches[0];
       if (match === undefined) {
         return producedOutcome({ state: "no-match" }, "census found no match", dependencies.clock);
       }

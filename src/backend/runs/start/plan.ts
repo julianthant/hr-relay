@@ -228,7 +228,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
     }
     const sourceIdentity = (selection: typeof references[number]) => JSON.stringify([selection.libraryId, selection.versionId, selection.sheetId]);
-    if ((requirement === undefined ? requiredPicks.length !== 0 : requiredPicks.length < 1 || requiredPicks.length > MAX_SELECTED_WORKBOOK_SOURCES)
+    if (requirement !== undefined && requiredPicks.length === 0) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text); continue;
+    }
+    if ((requirement === undefined ? requiredPicks.length !== 0 : requiredPicks.length > MAX_SELECTED_WORKBOOK_SOURCES)
       || requiredPicks.some(selection => selection.typeId !== undefined && selection.typeId !== requirement?.id)
       || checkPicks.some(selection => selection.selectedRow !== undefined)
       || new Set(references.map(sourceIdentity)).size !== references.length) {

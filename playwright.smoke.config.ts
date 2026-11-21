@@ -1,4 +1,5 @@
-/** Dashboard smoke: every sidebar page renders on the seeded backend with a clean console. */
+/** Browser smoke checks for the built dashboard on the seeded backend. */
+import "./tests/support/helpers/credential-keychain-process-preload.mjs";
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
@@ -10,6 +11,11 @@ export default defineConfig({
   retries: 0,
   timeout: 120_000,
   expect: { timeout: 10_000 },
-  use: { browserName: "chromium", headless: true, viewport: { width: 1280, height: 720 } },
+  use: {
+    browserName: "chromium",
+    headless: true,
+    timezoneId: "America/Los_Angeles",
+    viewport: { width: 1280, height: 720 },
+  },
   reporter: [["list"]],
 });

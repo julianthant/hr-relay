@@ -43,7 +43,7 @@ const saveChanges = [
   { sheetId, rowId: JSON.stringify([sourceId, 'people', 'person']), fieldId: 'column:0', oldValue: null, newValue: 'Source' },
 ];
 
-/** A row payload in the store's own layout: from schema 36 its workbook is stored once in workbook_payloads and named by digest. */
+/** A row payload in the store's own layout: from schema 38 its workbook is stored once in workbook_payloads and named by digest. */
 function rowPayload(database: DatabaseSync, record: Readonly<{ workbook: unknown }>): string {
   if (database.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='workbook_payloads'").get() === undefined) return canonicalJsonStringify(record);
   const { workbook, ...envelope } = record;

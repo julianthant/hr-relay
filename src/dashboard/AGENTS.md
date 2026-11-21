@@ -25,9 +25,9 @@ for folder owners and the [dashboard contract](../../docs/reference/dashboard-su
   vocabulary go in a sibling `*-model.ts`. The `ds/ui.tsx` barrel is the exception.
 - Use served data for availability, identity, status and write results. Never invent them in the
   browser. Keep exact run joins.
-- Select served or mock data once per workflow in `config/dashboard-workflow-sources.json`.
-  Keep mock data until the workflow's signed-off activation. Never fall back to mock at runtime;
-  render served failures as failures.
+- Declare a workflow `served` or `hidden` in `config/dashboard-workflow-sources.json` once it is
+  built and ready for testing; an undeclared workflow does not appear. Never fall back to mock at
+  runtime; render served failures as failures.
 - The Logs timeline lists every step and action in the order it happened. Steps that don't apply
   stay visible as Skipped.
 - Desktop only, with a minimum canvas of 1024×720 CSS pixels: queue beside detail, and the document
@@ -73,8 +73,11 @@ judging a visual difference.
 ## Checks
 
 - Follow the [root test path](../../AGENTS.md#checks) for runner placement and slots.
-- Prove dashboard behaviour with Vitest unit/integration tests and `/verify` browser checks; there
-  is no Playwright behaviour suite. `tests/mocks/` holds only `/ui-mock` scenes.
+- Prove dashboard behaviour with Vitest unit/integration tests, the `tests/smoke/` browser suite
+  and `/verify` browser checks. `tests/mocks/` holds only `/ui-mock` scenes.
+- Add browser coverage as `tests/smoke/*.smoke.ts` on the seeded backend, through the fixtures and
+  page object in `tests/support/helpers/dashboard/smoke/`. Assert behaviour and layout, never
+  screenshots. CI runs it in the `smoke` job; run it locally only when assigned.
 - Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

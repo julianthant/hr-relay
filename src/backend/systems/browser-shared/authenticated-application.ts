@@ -35,7 +35,7 @@ export async function probeSessionCookie(page: Page, input: Readonly<{
   let issued: readonly { name: string; domain: string; value: string }[];
   try {
     input.assertCurrent();
-    issued = await page.context().cookies();
+    issued = await page.context().cookies(page.url());
     input.assertCurrent();
   } catch (error) {
     input.assertCurrent();
@@ -95,10 +95,10 @@ export async function assertAuthenticatedApplication(
   refusal = "the login could not prove the authenticated application",
 ): Promise<AuthenticatedApplicationEvidence> {
   context.assertCurrent();
-  const probe = await verify(context);
+  const probe = await verify(context, "landing");
   context.assertCurrent();
   if (!probe.authenticated) {
-    throw new BrowserLoginError(system, "verify-landing", `${refusal}: ${probe.reason}`, context.page.url(), undefined, undefined, probe.check);
+    throw new BrowserLoginError(system, "verify-landing", `${refusal}: ${probe.reason}`, probe.observedUrl, undefined, undefined, probe.check);
   }
   if (probe.evidence.system !== system) {
     throw new BrowserLoginError(

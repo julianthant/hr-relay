@@ -18,7 +18,7 @@ const base = OnboardingReadWritePlan.input.parse({ mode: "new-hire", plan, match
 const person = { emplId: EidSchema.parse("10800000"), name: "Hire, Fixture" };
 const confirmed = { hits: [person], confirmed: [person], dropped: [] };
 const existing = OnboardingReadWritePlan.input.parse({ ...base, match: confirmed,
-  subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", match: confirmed }),
+  subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", ssnSearched: false, match: confirmed }),
   lookup: { state: "not-required", subjectState: "existing-person" }, approval: { decision: "existing-person", emplId: person.emplId, confirmedBy: "person-org" } });
 
 // 10800002 carries the hire's own name (dropped for another reason); the others are under another name.
@@ -26,7 +26,7 @@ const hits = ["10800003", "10800001", "10800002"].map(emplId => ({ emplId: EidSc
 const allDropped = SearchPersonMatchOutputSchema.parse({ hits, confirmed: [], dropped: hits.map(hit => ({ ...hit, reason: "Last name does not match" })) });
 const checked = { state: "checked" as const, childRunId: "aaaaaaaa-0001-4000-8000-000100000001", result: { i9Status: "not-found" as const, signerName: "" as const } };
 const unconfirmed = OnboardingReadWritePlan.input.parse({ ...base, match: allDropped, lookup: checked,
-  subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", match: allDropped }),
+  subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", ssnSearched: false, match: allDropped }),
   approval: { decision: "new-hire", ruledOut: ["10800001", "10800002", "10800003"] } });
 
 describe("reviewed onboarding write plan", () => {
@@ -40,7 +40,7 @@ describe("reviewed onboarding write plan", () => {
     }
     assert.throws(() => readOnboardingWritePlan({ ...unconfirmed, lookup: { state: "not-required", subjectState: "review-required" } }), /i9-skip-source-disagrees/u);
     assert.throws(() => readOnboardingWritePlan({ ...unconfirmed, mode: "rehire",
-      subject: matchHireSubject({ mode: "rehire", firstName: "Fixture", lastName: "Hire", match: allDropped }),
+      subject: matchHireSubject({ mode: "rehire", firstName: "Fixture", lastName: "Hire", ssnSearched: false, match: allDropped }),
       lookup: { state: "not-required", subjectState: "review-required" } }), /new-hire-choice-has-existing-or-unresolved-identity/u);
   });
   it("files a concurrent hire under a same-name dropped hit the operator picked, and nothing else overrides a drop", () => {
@@ -54,14 +54,14 @@ describe("reviewed onboarding write plan", () => {
     assert.throws(() => readOnboardingWritePlan({ ...picked, approval: { ...picked.approval, emplId: EidSchema.parse("10800004") } }), /existing-hire-choice-not-independently-confirmed/u);
     const squeezed = { emplId: EidSchema.parse("10800004"), name: "HIRE,FIXTURE" };
     const punctuation = SearchPersonMatchOutputSchema.parse({ hits: [squeezed], confirmed: [], dropped: [{ ...squeezed, reason: "No Person Org record" }] });
-    assert.throws(() => readOnboardingWritePlan({ ...picked, match: punctuation, subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", match: punctuation }),
+    assert.throws(() => readOnboardingWritePlan({ ...picked, match: punctuation, subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", ssnSearched: false, match: punctuation }),
       approval: { ...picked.approval, emplId: squeezed.emplId } }), /existing-hire-choice-not-independently-confirmed/u,
     "a name equal only after punctuation is refused before the UCPath hire query, which accepts case and spacing alone");
   });
   it("refuses an operator pick or a new hire while Person Org confirmed a hit", () => {
     const other = { emplId: EidSchema.parse("10800001"), name: "Other, Person" };
     const mixed = SearchPersonMatchOutputSchema.parse({ hits: [person, other], confirmed: [person], dropped: [{ ...other, reason: "Last name does not match" }] });
-    const input = { ...existing, match: mixed, subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", match: mixed }),
+    const input = { ...existing, match: mixed, subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", ssnSearched: false, match: mixed }),
       lookup: { state: "not-required" as const, subjectState: "review-required" as const } };
     assert.equal(readOnboardingWritePlan(input).hire.emplId, person.emplId);
     assert.throws(() => readOnboardingWritePlan({ ...input, approval: { decision: "existing-person", emplId: other.emplId, confirmedBy: "operator" } }), /existing-hire-choice-not-independently-confirmed/u);
@@ -71,7 +71,7 @@ describe("reviewed onboarding write plan", () => {
   it("accepts a confirmed person whose name differs from its hit only in case or punctuation", () => {
     const hit = { emplId: person.emplId, name: "HIRE,FIXTURE" };
     const cased = SearchPersonMatchOutputSchema.parse({ hits: [hit], confirmed: [{ ...hit, name: "Hire, Fixture" }], dropped: [] });
-    const result = readOnboardingWritePlan({ ...existing, match: cased, subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", match: cased }) });
+    const result = readOnboardingWritePlan({ ...existing, match: cased, subject: matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", ssnSearched: false, match: cased }) });
     assert.equal(result.hire.emplId, person.emplId);
   });
   it("binds an empty UCPath match and complete findings to the captured row and full new-hire targets", () => {
@@ -89,6 +89,18 @@ describe("reviewed onboarding write plan", () => {
     assert.throws(() => readOnboardingWritePlan({ ...existing, approval: { decision: "existing-person", emplId: person.emplId, confirmedBy: "operator" } }));
     assert.throws(() => readOnboardingWritePlan({ ...existing, approval: { decision: "new-hire", ruledOut: [person.emplId] } }));
     assert.throws(() => readOnboardingWritePlan({ ...base, approval: existing.approval }));
+  });
+  it("files under a name, DOB and SSN match with no gate answer, and never skips the answer for a weaker match", () => {
+    const withSsn = { ...plan, employee: { ...plan.employee, ssn: "123456789" } };
+    const ssnFindings = { ...findings, queryDigest: ucpathHireSearchDigest(withSsn.employee) };
+    const settled = matchHireSubject({ mode: "new-hire", firstName: "Fixture", lastName: "Hire", ssnSearched: true, match: confirmed });
+    const { approval: _approval, ...unanswered } = existing;
+    const input = { ...unanswered, plan: withSsn, findings: ssnFindings, subject: settled };
+    const result = readOnboardingWritePlan(input);
+    assert.equal(result.hire.mode, "rehire"); assert.equal(result.hire.emplId, person.emplId); assert.equal(result.i9, null);
+    assert.throws(() => readOnboardingWritePlan({ ...input, approval: existing.approval }), /hire-review-answer-unexpected/u);
+    assert.throws(() => readOnboardingWritePlan({ ...input, plan, findings }), /hire-subject-source-disagrees/u);
+    assert.throws(() => readOnboardingWritePlan(unanswered), /hire-review-answer-missing/u);
   });
   it("refuses altered match classifications, an inaccessible lookup and incomplete or foreign findings", () => {
     for (const change of [

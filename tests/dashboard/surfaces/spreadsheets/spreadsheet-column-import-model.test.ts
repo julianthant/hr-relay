@@ -4,7 +4,7 @@ import { afterEach as afterEach_m0,afterEach as afterEach_m1,describe as describ
 import { prepareSpreadsheetColumns as prepareSpreadsheetColumns_m0,prepareSpreadsheetColumns as prepareSpreadsheetColumns_m1,selectSpreadsheetColumns as selectSpreadsheetColumns_m0,selectSpreadsheetColumns as selectSpreadsheetColumns_m1,setSpreadsheetColumnField as setSpreadsheetColumnField_m0,setSpreadsheetColumnField as setSpreadsheetColumnField_m1,setSpreadsheetHeaderRow as setSpreadsheetHeaderRow_m1,spreadsheetColumnErrors as spreadsheetColumnErrors_m0,spreadsheetColumnErrors as spreadsheetColumnErrors_m1,spreadsheetColumnValueIssues, spreadsheetRowsWithoutEid } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
 import { newEditableWorkbook as newEditableWorkbook_m0 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { type EditableWorkbook as EditableWorkbook_m0, type EditableWorkbook as EditableWorkbook_m1 } from '../../../../src/rules/spreadsheets/workbook-io.js';
-import { registerLocalSpreadsheet as registerLocalSpreadsheet_m0,registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m1,searchMockSpreadsheet as searchMockSpreadsheet_m0 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
+import { registerLocalSpreadsheet as registerLocalSpreadsheet_m0,registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m1,searchMockSpreadsheet as searchMockSpreadsheet_m0 } from '../../../support/fixtures/dashboard/spreadsheet-mock-model.js';
 
 
 {

@@ -26,7 +26,8 @@ for (const stopped of [true, false]) it(`uses private pipes and requires positiv
     if (stopped) child.emit("exit", null, signal);
     return stopped;
   });
-  const context = {} as BrowserContext;
+  const addInitScript = vi.fn(async () => undefined);
+  const context = { addInitScript } as unknown as BrowserContext;
   const fakeBrowser = { contexts: () => [context], newBrowserCDPSession: async () => ({
     async send(method: string, input: unknown) { assert.equal(method, "Browser.setDownloadBehavior"); assert.deepEqual(input, { behavior: "deny" }); }, async detach() {},
   }) } as unknown as Browser;
@@ -39,6 +40,7 @@ for (const stopped of [true, false]) it(`uses private pipes and requires positiv
     assert.equal(await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: "synthetic-owned-profile", extensionDirectory: "synthetic-extension",
       headless: false, acceptDownloads: false, downloadsPath: "synthetic-owned-profile", viewport: { width: 640, height: 720 }, timeoutMs: 50,
       ownedProcess: value => { owned = value; } }), context);
+    assert.equal(addInitScript.mock.calls.length, 1);
     assert.ok(owned); assert.ok(transport);
     const launch = launches.at(-1); assert.ok(launch);
     assert.equal(launch.executable, chromium.executablePath());
@@ -68,7 +70,7 @@ for (const outcome of ["exit-without-reply", "no-exit", "refused", "transport-fa
   const sessionCalls: string[] = [];
   let exitDelivered = false;
   const deliverExit = () => { if (outcome === "exit-without-reply" && !exitDelivered) { exitDelivered = true; child.emit("exit", 0, null); } };
-  const context = { browser: () => browser } as unknown as BrowserContext;
+  const context = { browser: () => browser, addInitScript: async () => undefined } as unknown as BrowserContext;
   const browser = { isConnected: () => true, contexts: () => [context], newBrowserCDPSession: async () => ({
     // A session close exits the child but never answers, so a reply-dependent stop cannot settle.
     async send(method: string) { sessionCalls.push(method); if (method === "Browser.close") { deliverExit(); await new Promise<never>(() => {}); } }, async detach() {},

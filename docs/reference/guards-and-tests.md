@@ -55,7 +55,7 @@ helpers that hide test registrations behind a helper-style name.
 
 | Layer | Owner and selection | Evidence |
 | --- | --- | --- |
-| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. |
+| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. A unit test may use an isolated temporary store or folder it creates and removes. |
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
@@ -452,8 +452,8 @@ the boundary for deliberate loss of protection. The inventory still uses machine
 and activation fields; this prose does not alter their schema or statuses.
 
 The workflow-ID guard (`no-workflow-id-branches`) admits registered ids in generic code only at the
-files, and the one directory prefix `src/dashboard/surfaces/workflows/mocks/`, listed with a reason
-for named ids; a new branch elsewhere, a stale entry or a missing reason fails.
+files listed with a reason for named ids; a new branch elsewhere, a stale entry or a missing reason fails.
+The `src-imports-no-tests` guard fails when a module under `src/` imports from `tests/` or from a path named `mocks`.
 
 ### 5.1 Required source scanners
 

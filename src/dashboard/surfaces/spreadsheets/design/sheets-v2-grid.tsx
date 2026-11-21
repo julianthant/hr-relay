@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Checkbox, SearchInput, Popover, PopoverContent, PopoverTrigger, Tooltip, useToasts } from '../../../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../../ds/primitives/dropdown-menu.js';
 import { samplesOf, type Cell, type Dataset, type Field, type Mapping } from './sheets-v2-model.js';
@@ -44,7 +44,7 @@ function WorksheetPicker({ control }: { control: WorksheetControl }) {
 
 const Highlight = ({ text, query }: { text: string; query: string }) => {
   const at = query ? text.toLowerCase().indexOf(query) : -1;
-  return at < 0 ? <>{text}</> : <>{text.slice(0, at)}<mark className="rounded-sm bg-[color-mix(in_srgb,var(--warning)_45%,transparent)] text-inherit">{text.slice(at, at + query.length)}</mark>{text.slice(at + query.length)}</>;
+  return at < 0 ? <>{text}</> : <>{text.slice(0, at)}<mark className="rounded-sm bg-[color-mix(in_srgb,var(--ds-fg)_22%,transparent)] text-inherit">{text.slice(at, at + query.length)}</mark>{text.slice(at + query.length)}</>;
 };
 
 /** The sheet read through its own mapping; `worksheets` adds the dropdown that switches the view. */
@@ -61,9 +61,9 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, colum
   const [selection, setSelection] = useState<Range>();
   const [dragging, setDragging] = useState(false);
   const mappedOrder = [...new Set(fields.map(field => mapping[field.key]).filter((header): header is string => !!header && dataset.headers.includes(header)))];
-  const shown = [...mappedOrder, ...dataset.headers.filter(header => extra.includes(header) && !mappedOrder.includes(header))].map(header => ({ header, index: dataset.headers.indexOf(header) }));
-  const others = dataset.headers.filter(header => !mappedOrder.includes(header));
-  const unseen = others.filter(header => !extra.includes(header)).length;
+  const shown = (mappedOrder.length ? [...mappedOrder, ...dataset.headers.filter(header => extra.includes(header) && !mappedOrder.includes(header))] : dataset.headers).map(header => ({ header, index: dataset.headers.indexOf(header) }));
+  const others = mappedOrder.length ? dataset.headers.filter(header => !mappedOrder.includes(header)) : [];
+  const unseen = mappedOrder.length ? others.filter(header => !extra.includes(header)).length : 0;
   useEffect(() => { const up = () => setDragging(false); window.addEventListener('mouseup', up); return () => window.removeEventListener('mouseup', up); }, []);
   const box = selection && { r0: Math.min(selection.r0, selection.r1), r1: Math.max(selection.r0, selection.r1), c0: Math.min(selection.c0, selection.c1), c1: Math.max(selection.c0, selection.c1) };
   const inside = (row: number, column: number) => !!box && row >= box.r0 && row <= box.r1 && column >= box.c0 && column <= box.c1;
@@ -93,20 +93,20 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, colum
             {fields.map(field => <FieldRow key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onPicking={setPicking}
               onChange={header => { setSelection(undefined); onMap({ [field.key]: header }); }} />)}
           </section>
-          <div className="ds-menu-separator" />
+          {others.length > 0 && <><div className="ds-menu-separator" />
           <section aria-label="Show columns">
             <h3 className="ds-menu-label m-0">Show columns (view only)</h3>
             <div className={MENU}>{others.map(header => <div key={header} className="ds-menu-item"><Checkbox className="[&_.ds-checkbox-label]:!font-normal" label={header} checked={extra.includes(header)} onCheckedChange={checked => { setSelection(undefined); setExtra(current => checked === true ? [...current, header] : current.filter(item => item !== header)); }} /></div>)}</div>
-          </section>
+          </section></>}
         </PopoverContent>
       </Popover>
     </div>
     <div className={`${maxHeight} overflow-auto sv2-card border border-ui-stroke`}>
-      <table className="sv2-grid w-full select-none border-collapse text-[12px]">
-        <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => <th key={header} className="whitespace-nowrap px-2.5 py-1.5 text-left text-[11px] font-medium text-ui-muted">{header}</th>)}</tr></thead>
-        <tbody>{view.length === 0 && <tr><td /><td colSpan={Math.max(shown.length, 1)} className="px-2.5 py-2 text-ui-muted">No rows match.</td></tr>}{view.map(({ row, i }, r) => <tr key={i} className="border-t border-ui-stroke"><td className="px-2 py-1 text-right text-[11px] tabular-nums text-ui-muted">{i + 1}</td>
+      <table className="sv2-grid w-full select-none border-collapse ds-text-body">
+        <thead className="sticky top-0 bg-ui-table"><tr><th className="w-9 px-2 py-1.5" />{shown.map(({ header }) => <th key={header} className="whitespace-nowrap px-2.5 py-1.5 text-left ds-text-meta font-medium text-ui-muted">{header}</th>)}</tr></thead>
+        <tbody>{view.length === 0 && <tr><td /><td colSpan={Math.max(shown.length, 1)} className="px-2.5 py-2 text-ui-muted">No rows match.</td></tr>}{view.map(({ row, i }, r) => <tr key={i} className="border-t border-ui-stroke"><td className="px-2 py-1 text-right ds-text-meta tabular-nums text-ui-muted">{i + 1}</td>
           {shown.map(({ index }, c) => { const cell = row[index], on = inside(r, c); return <td key={c} onMouseDown={event => { setDragging(true); setSelection(event.shiftKey && selection ? { ...selection, r1: r, c1: c } : { r0: r, c0: c, r1: r, c1: c }); }} onMouseEnter={() => { if (dragging) setSelection(current => current && { ...current, r1: r, c1: c }); }}
-            style={on ? { boxShadow: edge(r, c) } : { background: cell.fill, color: cell.fill ? 'rgb(31 41 55)' : undefined }} data-selected={on || undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
+            style={on ? { boxShadow: edge(r, c) } : cell.fill ? { '--sv2-fill': cell.fill } as CSSProperties : undefined} data-selected={on || undefined} data-fill={cell.fill && !on ? '' : undefined} className={`whitespace-nowrap px-2.5 py-1 ${cell.align === 'right' ? 'text-right tabular-nums' : ''}`}><Highlight text={cell.text} query={q} /></td>; })}</tr>)}</tbody>
       </table>
     </div>
   </section>;

@@ -38,7 +38,6 @@ describe("released surface fixtures", () => {
       });
       assert.deepEqual(await client.settingsFacts(), FIXTURE_SETTINGS_FACTS);
       assert.deepEqual(await client.editableSettings(), FIXTURE_EDITABLE_SETTINGS);
-      assert.deepEqual(await client.storageDoctor(), FIXTURE_STORAGE_DOCTOR);
       assert.deepEqual(await client.workflowExplorer(), FIXTURE_EXPLORER_WIRE);
       assert.equal((await client.intakeSession(FIXTURE_INTAKE_IDS.mapping)).intakeSessionId,
         FIXTURE_INTAKE_IDS.mapping);

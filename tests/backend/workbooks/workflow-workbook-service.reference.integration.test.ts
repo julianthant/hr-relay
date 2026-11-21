@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_PAYLOAD_TABLE } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_PAYLOAD_TABLE, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService, readRetainedWorkbookReference } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookLibraryAdapter } from "../../../src/backend/processing/providers/workbook-library-adapter.js";
 import { createProviderClient } from "../../../src/backend/processing/providers/provider-client.js";
@@ -28,7 +28,7 @@ const runId = "00000000-0000-4000-8000-000000000001", signal = new AbortControll
 
 async function fixture(duplicate = false) {
   const database = new DatabaseSync(":memory:"); databases.push(database);
-  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
+  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
   database.exec("CREATE TABLE runs (id TEXT PRIMARY KEY,state TEXT NOT NULL,lifecycle_json TEXT NOT NULL); CREATE TABLE run_requests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL)");
   const transaction = <T>(work: () => T) => { database.exec("BEGIN IMMEDIATE");
     try { const result = work(); database.exec("COMMIT"); return result; } catch (cause) { database.exec("ROLLBACK"); throw cause; } };

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
 import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
+import { useAuthenticatedImage } from "../../shared/authenticated-image.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import { captureGeometry, captureKindLabel, captureLoadProblem, captureSourceDimensions, type CaptureMode } from "./log-screenshots-model.js";
 import "./log-presentation.css";
@@ -9,26 +10,37 @@ import "./log-presentation.css";
 function CaptureImage({ screenshot, className, style, eager = false, onFailure, retryable = false }: { screenshot: LogScreenshot; className?: string; style?: CSSProperties; eager?: boolean; onFailure?: () => void; retryable?: boolean }) {
   const [problem, setProblem] = useState<string>();
   const [attempt, setAttempt] = useState(0);
-  if (problem) return <div role="alert" className="log-image-error"><ImageOff aria-hidden className="size-4" /><span>{problem}</span>{retryable && <Button size="sm" variant="secondary" onClick={() => { setProblem(undefined); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</div>;
-  return <img key={attempt} src={screenshot.src} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} loading={eager ? "eager" : "lazy"} className={className} style={style} onError={() => { setProblem("Screenshot could not be loaded."); onFailure?.(); }} onLoad={event => {
+  const image = useAuthenticatedImage(screenshot.src, attempt);
+  const failure = problem ?? (image.failed ? "Screenshot could not be loaded." : undefined);
+  useEffect(() => { if (image.failed) onFailure?.(); }, [image.failed, onFailure]);
+  if (failure) return <div role="alert" className="log-image-error"><ImageOff aria-hidden className="size-4" /><span>{failure}</span>{retryable && <Button size="sm" variant="secondary" onClick={() => { setProblem(undefined); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</div>;
+  if (image.src === undefined) return <div role="status" aria-label="Loading screenshot" className={className} style={{ ...style, aspectRatio: `${screenshot.width} / ${screenshot.height}` }} />;
+  const loaded = image.src;
+  return <img key={attempt} src={loaded} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} loading={eager ? "eager" : "lazy"} className={className} style={style} onError={() => { setProblem("Screenshot could not be loaded."); onFailure?.(); }} onLoad={event => {
     const element = event.currentTarget;
-    void captureSourceDimensions(screenshot.src).then(actual => {
+    void captureSourceDimensions(loaded).then(actual => {
       if (!element.isConnected) return;
       const failure = captureLoadProblem(screenshot, actual);
       if (failure) { setProblem(failure); onFailure?.(); }
     }, () => { if (element.isConnected) { setProblem("Screenshot could not be loaded."); onFailure?.(); } });
   }} />;
 }
+function CaptureThumb({ src }: { src: string }) {
+  const image = useAuthenticatedImage(src);
+  return image.src === undefined ? <span aria-hidden /> : <img src={image.src} alt="" loading="lazy" />;
+}
 function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: LogScreenshot; submit?: boolean; onChoose: (button: HTMLButtonElement) => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const onFailure = useCallback(() => setFailed(true), []);
   return <figure className={cn("log-capture", submit && "log-capture--submit")} data-kind={screenshot.kind} data-log-capture-id={screenshot.logId}>
     {!submit && <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>}
-    <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-open" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
-      <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={() => setFailed(true)} /></div>
-      {!failed && <span className="log-capture-expand"><Expand aria-hidden className="size-3.5" /></span>}
-      {screenshot.kind === "form" && !failed && <span className="log-form-hint">Full form · open to scroll</span>}
-    </button></DialogTrigger>
+    <div className="log-capture-open">
+      <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-hit" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
+        <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={onFailure} /></div>
+      </button></DialogTrigger>
+      {!failed && <DialogTrigger asChild><IconButton label="Expand capture" className="log-capture-expand" icon={<Expand aria-hidden className="size-4" />} onClick={event => onChoose(event.currentTarget)} /></DialogTrigger>}
+    </div>
     <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? screenshot.time}</span>{submit && !failed && <time className="tabular-nums text-ui-muted">{screenshot.time}</time>}{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
   </figure>;
 }
@@ -73,7 +85,7 @@ function CaptureWorkspace({ screenshots, selected, choose }: { screenshots: read
     if (event.key === "-") { event.preventDefault(); zoomBy(-1); }
     if (event.key.toLowerCase() === "r") { event.preventDefault(); setRotation(value => (value + 90) % 360); }
   }}>
-    {screenshots.length > 1 && <aside className="log-capture-sidebar" aria-label="Capture selection"><p>{screenshots.length} {screenshots.length === 1 ? "capture" : "captures"}</p>{screenshots.map((item, index) => <button key={`${item.src}-${index}`} type="button" className="log-capture-tab" aria-pressed={index === selected} onClick={() => switchCapture(index)}><img src={item.src} alt="" loading="lazy" /><strong>{item.system ?? "Capture"}</strong><span>{item.label ?? captureKindLabel(item.kind)}</span></button>)}</aside>}
+    {screenshots.length > 1 && <aside className="log-capture-sidebar" aria-label="Capture selection"><p>{screenshots.length} {screenshots.length === 1 ? "capture" : "captures"}</p>{screenshots.map((item, index) => <button key={`${item.src}-${index}`} type="button" className="log-capture-tab" aria-pressed={index === selected} onClick={() => switchCapture(index)}><CaptureThumb src={item.src} /><strong>{item.system ?? "Capture"}</strong><span>{item.label ?? captureKindLabel(item.kind)}</span></button>)}</aside>}
     <div className="log-image-workspace"><div className="log-viewer-toolbar"><SegmentedChoice label="Image size" hideLabel value={zoom === undefined ? mode : "width"} onChange={reset} options={[{ value: "width", label: "Fit width" }, { value: "whole", label: "Whole image" }, { value: "actual", label: "100%" }]} />
       <IconButton size="md" label="Zoom out" icon={<Minus aria-hidden className="size-4" />} onClick={() => zoomBy(-1)} disabled={(zoom ?? scale) <= .1} /><span className="log-zoom" role="status">{Math.round((zoom ?? scale) * 100)}%</span><IconButton size="md" label="Zoom in" icon={<Plus aria-hidden className="size-4" />} onClick={() => zoomBy(1)} disabled={(zoom ?? scale) >= 4} />
       <IconButton size="md" label="Rotate image" icon={<RotateCw aria-hidden className="size-4" />} onClick={() => setRotation(value => (value + 90) % 360)} />{screenshots.length > 1 && <IconButton size="md" label="Compare captures" icon={<Columns2 aria-hidden className="size-4" />} aria-pressed={compare} onClick={() => { setCompare(value => !value); reset("whole"); }} />}

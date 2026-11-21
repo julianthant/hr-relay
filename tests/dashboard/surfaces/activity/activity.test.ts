@@ -1,4 +1,3 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { vi } from "vitest";
 // @vitest-environment jsdom
 import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';
@@ -7,10 +6,11 @@ import { createRoot as createRoot_m0 } from 'react-dom/client';
 import { renderToStaticMarkup as renderToStaticMarkup_m1 } from "react-dom/server";
 import { TooltipProvider as TooltipProvider_m1 } from "../../../../src/dashboard/ds/ui.js";
 import { afterEach as afterEach_m0,beforeEach as beforeEach_m0,describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from 'vitest';
+import { activityRangeValue } from '../../../../src/dashboard/surfaces/activity/activity-model.js';
+import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, useActivitySampleReport } from '../../../support/fixtures/dashboard/activity-sample.js';
 import { ActivityReport as ActivityReport_m0,ActivityReport as ActivityReport_m1 } from '../../../../src/dashboard/surfaces/activity/activity.js';
 import { WorkflowExplorer as WorkflowExplorer_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer.js";
-import { LogSample as LogSample_m1 } from "../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
-import { buildWorkflowCatalog as buildWorkflowCatalog_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { LogPreview as LogSample_m1 } from "../../../support/fixtures/dashboard/log-preview/log-preview.js";
 
 
 {
@@ -34,13 +34,13 @@ afterEach_m0(_afterEachFixture1);
       await act_m0(async () => element.click());
     };
     try {
-      await act_m0(async () => root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { source: "mock", range: '', onRange: () => {} }))));
+      await act_m0(async () => root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { useReport: useActivitySampleReport, today: ACTIVITY_SAMPLE_TODAY, range: activityRangeValue(ACTIVITY_SAMPLE_RANGE), onRange: () => {} }))));
       assert_m0.equal(host.querySelector('h1')?.textContent, 'Analytics');
       await click('button[aria-label="Show Separations details"]');
-      const open = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Open runs'); assert_m0(open);
+      const open = [...host.querySelectorAll<HTMLAnchorElement>('a')].find(link => link.textContent?.trim() === 'Open runs'); assert_m0(open);
       await act_m0(async () => open.click());
       assert_m0.equal(host.querySelectorAll('tbody tr').length, 2);
-      await click('button[aria-label^="Open logs for"]');
+      await click('a[aria-label^="Open logs for"]');
       assert_m0(host.querySelector('section[aria-label="Selected run logs"]'));
       assert_m0.doesNotMatch(host.querySelector('section[aria-label="Selected run logs"] header')?.textContent ?? '', /Attempt #|Elapsed/);
       const breadcrumbs = () => host.querySelector('nav[aria-label="Analytics breadcrumbs"]');
@@ -57,7 +57,7 @@ afterEach_m0(_afterEachFixture1);
     const host = document.createElement('div'); document.body.append(host);
     const root = createRoot_m0(host);
     try {
-      await act_m0(async () => { root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { source: "served", today: "2026-09-10", range: '', onRange: () => {} }))); });
+      await act_m0(async () => { root.render(createElement_m0(TooltipProvider_m1, null, createElement_m0(ActivityReport_m0, { today: "2026-09-10", range: '', onRange: () => {} }))); });
       const period = host.querySelector<HTMLInputElement>('fieldset input[type="radio"]:checked');
       assert_m0.equal(period?.value, '7d', 'the 7d preset is pressed');
       assert_m0.equal([...host.querySelectorAll('button')].filter(button => /Custom/.test(button.textContent ?? '')).length, 0, 'no Custom range menu');
@@ -73,11 +73,12 @@ afterEach_m0(_afterEachFixture1);
 const noop = () => {};
 describe_m1("frontend presentation producers", () => {
   it_m1("renders canonical surfaces without a client provider or registered-definition fallback", () => {
-    const activity = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(ActivityReport_m1, { source: "mock", range: "", onRange: noop })));
+    const activity = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(ActivityReport_m1, { useReport: useActivitySampleReport, today: ACTIVITY_SAMPLE_TODAY, range: activityRangeValue(ACTIVITY_SAMPLE_RANGE), onRange: noop })));
     assert_m1.match(activity, /Workflows/);
     assert_m1.doesNotMatch(activity, /Sample data/);
-    const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([], true, previewFixtureSources([])) })));
-    assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
+    const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: [] })));
+    assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 0);
+    assert_m1.match(explorer, /No workflow is registered to inspect\./);
     assert_m1.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
     const logs = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(LogSample_m1)));
     assert_m1.match(logs, /Save and Submit/);

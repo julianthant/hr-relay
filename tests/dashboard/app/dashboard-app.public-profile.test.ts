@@ -25,7 +25,7 @@ for (const source of ["show", "poll", "initial", "initial-network"] as const) it
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const button = (text: string) => { const result = [...host.querySelectorAll("button")].find(button => button.textContent === text); assert.ok(result); return result; };
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "served" }) })));
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {}) })));
     if (source.startsWith("initial")) {
       assert.equal(host.querySelector("h1")?.textContent, "Log in to Relay");
       if (source === "initial") assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /Browser closure could not be verified/);
@@ -59,12 +59,12 @@ for (const route of ["/", "/?onboarding=ready", "/?onboardingSetup=duo"]) it(`ke
   const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(StrictMode, { children: createElement(DashboardClientProvider,
-      { client, children: createElement(DashboardApp, { profileSource: "served" }) }) })));
+      { client, children: createElement(DashboardApp, {}) }) })));
     assert.match(host.textContent ?? "", /Log in to Relay/);
     assert.doesNotMatch(host.textContent ?? "", /Demo:|UI mock|Both methods are registered/);
     assert.ok(calls.length > 0);
     assert.ok(calls.every(path => path === "/api/v1/profile/state"));
-    assert.equal(host.querySelector('[data-source="served"]') !== null, true);
+    assert.equal(host.querySelector('.hub-onboarding') !== null, true);
   } finally { await act(async () => root.unmount()); host.remove(); window.history.replaceState(null, "", previous); }
 });
 
@@ -81,8 +81,8 @@ for (const ready of [false, true]) it(`resumes the server draft stage without or
   } });
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "served" }) })));
-    assert.equal(host.querySelector('[data-source="served"]') !== null, true);
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {}) })));
+    assert.equal(host.querySelector('.hub-onboarding') !== null, true);
     assert.equal(host.querySelector('form'), null);
     assert.ok(calls.length > 0); assert.ok(calls.every(path => path === "/api/v1/profile/state"));
     if (ready) assert.equal(host.querySelector<HTMLButtonElement>("main button:not(ol button)")?.disabled, false);

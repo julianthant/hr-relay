@@ -29,6 +29,8 @@ export {
 export { useDemoTheme, DEMO_THEME_ATTR, DEMO_THEME_LABEL } from "./theme/theme.js";
 export type { DemoTheme } from "./theme/theme.js";
 
+export { FailureNotice } from "./primitives/failure-notice.js";
+
 export {
   Button,
   BareButton,
@@ -43,6 +45,8 @@ export {
   Separator,
   VisuallyHidden,
 } from "./primitives/primitives-core.js";
+export { NavRow } from "./primitives/nav-row.js";
+export type { DsNavRowProps } from "./primitives/nav-row.js";
 export type {
   DsButtonProps,
   DsButtonLinkProps,

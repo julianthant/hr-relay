@@ -10,8 +10,8 @@ import type { StartPlanResponse } from "../../client/commands/start-commands.js"
 import type { LaunchFinalCommand, LaunchVerificationPlan } from "./run-launch-recovery.js";
 import type { RerunLaunchSource } from "./run-launch-model.js";
 
-/** The Run and Rerun dialog stages. There is no Confirm: the last stage's Start plans and submits. */
-export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning";
+/** The Run and Rerun dialog stages. There is no Confirm: Checks is the last stage and its Start plans and submits. */
+export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning" | "Checks";
 
 export type RunDialogState = Readonly<{
   nextRequest: number;
@@ -74,9 +74,13 @@ export type LaunchGates = Readonly<{
   /** A required launch pick (a PDF workflow's File to OnBase) is still unmade. */
   optionsBlocked: boolean;
   rerunInputBlocked: boolean;
+  /** A readiness check failed or has not been read yet; Start stays off until every check passes or only warns. */
+  checksBlocked: boolean;
   referencesUnavailable: boolean;
   omissionMismatch: boolean;
   plannedCount: number;
+  /** The stages on screen, in order; Back from Checks skips Steps unless the person is customizing steps. */
+  path?: readonly RunStartStage[];
   /** Undefined when the workflow has no dry run; otherwise the draft's choice. */
   dryRun?: boolean;
 }>;
@@ -88,7 +92,7 @@ export type RunDialogEvent =
   | { type: "source-failed"; request: number; message: string }
   | { type: "pick-workflow" }
   | { type: "draft-changed" }
-  | { type: "go-to"; stage: RunStartStage; via: "back" | "stage-bar" }
+  | { type: "go-to"; stage: RunStartStage; via: "back" | "stage-bar"; path?: readonly RunStartStage[] }
   | { type: "continue"; gates: LaunchGates }
   | { type: "plan-settled"; request: number; plan: StartPlanResponse; planRequest: StartPlanRequest }
   | { type: "plan-failed"; request: number; message: string }
@@ -115,7 +119,7 @@ export type RunDialogEffect =
   | { kind: "retain-and-submit"; request: number; command: LaunchFinalCommand; plan?: StartPlanResponse }
   | { kind: "dismiss-recovery"; command: LaunchFinalCommand }
   | { kind: "feedback" }
-  | { kind: "applied"; workflowId: string; count?: number; workerStartup?: RunWorkerStartupFailure }
+  | { kind: "applied"; workflowId: string; count?: number; runId?: string; workerStartup?: RunWorkerStartupFailure }
   | { kind: "close-dialog" } | { kind: "refusal-toast" }
   /** A clean plan from Start: the runner sends `start` again with fresh authority and gates. */
   | { kind: "auto-start" };
@@ -130,11 +134,12 @@ export const initialRunDialogState: RunDialogState = { nextRequest: 1, stage: "I
 
 /** Stage order per source; Warning sits between Steps and Values and is never a Back target. */
 function stageOrder(source: LaunchSource): readonly RunStartStage[] {
-  return source.kind === "start" ? ["Input", "Options", "Steps"] : ["Steps", "Warning", "Values", "Options"];
+  return source.kind === "start" ? ["Input", "Options", "Steps", "Checks"] : ["Steps", "Warning", "Values", "Options", "Checks"];
 }
-function previousStage(state: RunDialogState): RunStartStage | null {
+/** `path` is the stages this draft walks (Steps only when customizing); without it every stage of the source counts. */
+function previousStage(state: RunDialogState, path: readonly RunStartStage[] = stageOrder(state.source)): RunStartStage | null {
   if (state.stage === "Warning") return null;
-  const order = stageOrder(state.source).filter(stage => stage !== "Warning");
+  const order = path.filter(stage => stage !== "Warning");
   return order[order.indexOf(state.stage) - 1] ?? null;
 }
 
@@ -176,11 +181,12 @@ function closeState(state: RunDialogState): { next: RunDialogState; effects: Run
 function startRefusal(state: RunDialogState, gates: LaunchGates, current: Planned | undefined): RunDialogRefusal | undefined {
   if (gates.next !== null || state.stage === "Warning") return "not-here";
   if (state.activity.kind !== "idle" || sendingExists(state)) return "busy";
+  if (gates.checksBlocked) return "blocked";
   if (state.recovery.state === "unreadable") return "blocked";
   if (state.recovery.state === "retained" && current?.plan.startPlanId !== state.recovery.command.target.startPlanId) return "blocked";
   if (current !== undefined) return gates.omissionMismatch || gates.plannedCount === 0 ? "blocked" : undefined;
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
-  if (state.stage === "Steps" && gates.stepsBlocked) return "blocked";
+  if (gates.stepsBlocked) return "blocked";
   if (gates.optionsBlocked) return "blocked";
   if (state.source.kind === "start" ? gates.inputBlocked : gates.rerunInputBlocked) return "blocked";
   return undefined;
@@ -193,6 +199,7 @@ function continueRefusal(state: RunDialogState, gates: LaunchGates): RunDialogRe
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
   if (state.stage === "Input" && gates.inputBlocked) return "blocked";
   if (state.stage === "Options" && gates.optionsBlocked) return "blocked";
+  if (state.stage === "Steps" && gates.stepsBlocked) return "blocked";
   if (state.stage === "Values" && (gates.rerunInputBlocked || gates.stepsBlocked)) return "blocked";
   return undefined;
 }
@@ -266,8 +273,9 @@ function submitSettled(state: RunDialogState, event: Extract<RunDialogEvent, { t
       case "landed": {
         const reply = event.reply;
         const workerStartup = reply !== undefined && (reply.state === "applied" || reply.state === "already-applied") ? reply.workerStartup : undefined;
+        const startedRunId = reply !== undefined && (reply.state === "applied" || reply.state === "already-applied") ? reply.affectedTargets.find(target => target.family === "run")?.runId : undefined;
         return step(closed, [{ kind: "dismiss-recovery", command: request.command }, { kind: "feedback" },
-          { kind: "applied", workflowId: request.command.target.workflowId,
+          { kind: "applied", workflowId: request.command.target.workflowId, ...(startedRunId === undefined ? {} : { runId: startedRunId }),
             ...(request.plannedCount === undefined ? {} : { count: request.plannedCount }), ...(workerStartup === undefined ? {} : { workerStartup }) },
           { kind: "close-dialog" }]);
       }
@@ -316,7 +324,7 @@ export function runDialogTransition(state: RunDialogState, event: RunDialogEvent
     }
     case "go-to": {
       if (event.via === "back") {
-        const previous = previousStage(state);
+        const previous = previousStage(state, event.path);
         return previous === null || previous !== event.stage ? { refused: "not-here" } : step({ ...state, stage: previous });
       }
       if (state.activity.kind !== "idle") return { refused: "busy" };
@@ -439,7 +447,7 @@ export type RunDialogControls = Readonly<{
 /** The footer, once: the button, the hint and the Enter handler all read it. `view` comes from `visibleRunDialog`. */
 export function runDialogControls(view: RunDialogState, gates: LaunchGates): RunDialogControls {
   const loading = view.activity.kind !== "idle";
-  const back = previousStage(view);
+  const back = previousStage(view, gates.path);
   if (view.stage === "Warning") {
     const button = (via: "button" | "enter") => () => ({ type: "acknowledge", via }) as const;
     return { primary: { label: "Confirm", enabled: acknowledgeRefusal(view, "button") === undefined && !loading && view.recovery.state === "none", loading, event: button("button") },
@@ -453,8 +461,7 @@ export function runDialogControls(view: RunDialogState, gates: LaunchGates): Run
       enter: enabled ? event : null, hint: enabled ? "Enter to continue" : null };
   }
   const plan = view.shown?.plan;
-  const label = plan === undefined ? gates.dryRun === undefined ? "Start run" : gates.dryRun ? "Start dry run" : "Start live run"
-    : plan.dryRun ? "Start dry run" : view.source.kind === "rerun" ? "Create rerun" : `Start ${String(plan.planned.length)} ${plan.planned.length === 1 ? "run" : "runs"}`;
+  const label = gates.dryRun === undefined ? "Start run" : (plan === undefined ? gates.dryRun : plan.dryRun) ? "Start dry run" : "Start live run";
   const enabled = startRefusal(view, gates, view.shown) === undefined;
   const event = (input: RunDialogPrimaryInput) => ({ type: "start", ...input }) as const;
   return { primary: { label, enabled, loading, event }, back, cancel: { type: "close" },
@@ -473,7 +480,7 @@ export type RunDialogEffects = Readonly<{
   submit: (command: LaunchFinalCommand, verification: LaunchVerificationPlan | undefined) => Promise<CommandOutcome>;
   dismissRecovery: (command: LaunchFinalCommand) => void;
   feedback: (outcome: CommandOutcome) => void;
-  applied: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  applied: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure, runId?: string) => void;
   closeDialog: () => void;
   refusalToast: () => void;
   /** Runs after the clean plan has rendered, so the component sends `start` with fresh gates and authority. */
@@ -544,7 +551,7 @@ export function useRunDialogMachine(input: Readonly<{ stage: RunStartStage; setS
         }
         case "dismiss-recovery": fx.dismissRecovery(effect.command); break;
         case "feedback": if (outcome.current !== undefined) fx.feedback(outcome.current); break;
-        case "applied": fx.applied(effect.workflowId, effect.count, effect.workerStartup); break;
+        case "applied": fx.applied(effect.workflowId, effect.count, effect.workerStartup, effect.runId); break;
         case "close-dialog": fx.closeDialog(); break;
         case "refusal-toast": fx.refusalToast(); break;
         case "auto-start": autoStart.current = true; break;

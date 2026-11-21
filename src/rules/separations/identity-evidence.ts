@@ -4,7 +4,7 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { FingerprintSchema, EidSchema, IsoInstantSchema } from "../identity/ids.js";
 import { directIdentifierDisplay } from "../redaction/redaction.js";
-import type { Fingerprint } from "../identity/ids.js";
+import type { Eid, Fingerprint } from "../identity/ids.js";
 import {
   NameSimilarityTierSchema,
   classifyNameSimilarity,
@@ -52,7 +52,14 @@ export const IdentityFieldComparisonSchema = z.strictObject({
 });
 export type IdentityFieldComparison = z.infer<typeof IdentityFieldComparisonSchema>;
 
-/** What a search on the DOCUMENT'S NAME resolves, run on every identity check, so the two-candidate presentation exists on every run rather than only on the runs a threshold selects. */
+/** The lookup row keeps its stored key. An Employee ID query carries the exact ID where a name query carries its description. */
+export function employeeIdFromLookupComparison({ field, documentValue }: IdentityFieldComparison): Eid | undefined {
+  if (field !== "name-search") return undefined;
+  const parsed = EidSchema.safeParse(documentValue);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** The Person Org selection under the packet's stored nameSearch key. */
 export const IdentityNameSearchSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("resolved"),
@@ -155,7 +162,7 @@ export function deriveApprovalShape(input: Readonly<{
     input.nameTier === "similar"
     || input.nameSearchStatus === "ambiguous"
     || !input.nameSearchAgrees
-    || input.disposition !== "single-active-job"
+    || (input.disposition !== "single-active-job" && input.disposition !== "sole-record")
   ) {
     return "choose-a-candidate";
   }
@@ -172,6 +179,7 @@ interface IdentityEvidenceInput {
   readonly documentEidConflicts: boolean;
   readonly jobSummary: UcpathJobSummary;
   readonly nameSelection: UcpathPersonSelection;
+  readonly searchedEmployeeId?: Eid | undefined;
   readonly plan: SeparationWritePlan;
 }
 
@@ -183,12 +191,13 @@ export function buildIdentityEvidencePacket(
   const nameTier = classifyNameSimilarity(input.documentName, input.jobSummary.displayedName);
   const nameSearchEid = nameSearch.status === "resolved" ? nameSearch.candidate.eid : undefined;
   const nameSearchAgrees = nameSearchEid === input.jobSummary.emplId;
+  const searchedEmployeeId = input.searchedEmployeeId;
 
   const nameSearchValue = nameSearch.status === "resolved"
     ? `${nameSearch.candidate.name} (${directIdentifierDisplay(nameSearch.candidate.eid)}, ${nameSearch.candidate.jobTitle})`
     : nameSearch.status === "ambiguous"
       ? `${String(nameSearch.candidateEids.length)} candidates: ${nameSearch.candidateEids.map(directIdentifierDisplay).join(", ")}`
-      : "no UCPath person matched this name";
+      : searchedEmployeeId === undefined ? "no UCPath person matched this name" : "no UCPath person matched this Employee ID";
 
   const comparisons: IdentityFieldComparison[] = [
     {
@@ -223,24 +232,30 @@ export function buildIdentityEvidencePacket(
       documentValue: "a separation is being prepared for this person",
       ucpathValue: `${jobs.disposition} — ${String(jobs.activeRowCount)} active of `
         + `${String(jobs.rowCount)} employment rows`,
-      agrees: jobs.disposition === "single-active-job",
+      agrees: jobs.disposition === "single-active-job" || jobs.disposition === "sole-record",
       note: jobs.disposition === "single-active-job"
         ? "exactly one active employment, which is the ordinary separation shape"
-        : jobs.disposition === "no-active-job"
-          ? "UCPath shows no active employment — this person may already be fully separated (S21/S22)"
-          : jobs.disposition === "concurrent-active-jobs"
-            ? "more than one active employment; which job is being separated is not derivable (S23)"
-            : "at least one employment row carries an HR status this system does not recognize",
+        : jobs.disposition === "sole-record"
+          ? "UCPath opened the person's only employment record directly; that page shows no status, so the sole record is the job"
+          : jobs.disposition === "no-active-job"
+            ? "UCPath shows no active employment — this person may already be fully separated (S21/S22)"
+            : jobs.disposition === "concurrent-active-jobs"
+              ? "more than one active employment; which job is being separated is not derivable (S23)"
+              : "at least one employment row carries an HR status this system does not recognize",
     },
     {
       field: "name-search",
-      documentValue: `a UCPath search on "${input.documentName}"`,
+      documentValue: searchedEmployeeId ?? `a UCPath search on "${input.documentName}"`,
       ucpathValue: nameSearchValue,
       agrees: nameSearchAgrees,
-      note: nameSearchAgrees
-        ? "searching the document's name resolves the same person the document's EID does"
-        : "searching the document's name does NOT resolve the person being checked; both candidates "
-          + "remain visible; an exact supplied EID read-back takes precedence, while name-only identity requires approval",
+      note: searchedEmployeeId === undefined
+        ? nameSearchAgrees
+          ? "searching the document's name resolves the same person the document's EID does"
+          : "searching the document's name does NOT resolve the person being checked; both candidates "
+            + "remain visible; an exact supplied EID read-back takes precedence, while name-only identity requires approval"
+        : nameSearchAgrees
+          ? "the Employee ID lookup and Job Summary confirm the same person"
+          : "the Employee ID lookup does not confirm the person being checked",
     },
   ];
   comparisons.sort((left, right) => Number(left.agrees) - Number(right.agrees));

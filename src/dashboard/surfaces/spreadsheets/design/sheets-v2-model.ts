@@ -1,8 +1,10 @@
-import type { WorkbookCompatibility, WorkbookLibraryEntry } from '../../../../models/dashboard/workbook-library.js';
+import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibrarySyncStatus } from '../../../../models/dashboard/workbook-library.js';
+import { ERROR_CATALOG } from '../../../../models/failures/error-catalog.js';
 import { spreadsheetField } from '../../../../models/fields/workbook-fields.js';
 import { cellText, type EditableSheet } from '../../../../rules/spreadsheets/workbook-io.js';
 import { columnName } from '../spreadsheet-editor-model.js';
 import { setSpreadsheetColumnField, spreadsheetHeaderRow } from '../spreadsheet-column-import-model.js';
+import { formatDayTime } from '../../../lib/date-format.js';
 
 export interface Field { readonly key: string; readonly label: string }
 export interface VersionEntry { readonly id: string; readonly n: number; readonly at: string; readonly note: string }
@@ -11,25 +13,34 @@ export interface Sheet {
   readonly id: string; readonly name: string; readonly sharePoint: string | null;
   readonly pinned: boolean; readonly tags: readonly string[];
   readonly workflow?: string; readonly run?: { readonly id: string; readonly day: string };
+  /** Served on SharePoint-linked entries only. */
+  readonly sync?: WorkbookLibrarySyncStatus;
   readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versions: readonly VersionEntry[];
 }
 export type Mapping = Readonly<Record<string, string | null>>;
 export interface Cell { readonly text: string; readonly fill?: string; readonly align?: 'right' }
 export interface Dataset { readonly headers: readonly string[]; readonly rows: readonly (readonly Cell[])[] }
 
-const stampFormat = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-/** "2026-11-08T14:32:00Z" → "Nov 8, 14:32" in the operator's time zone. */
-export const stamp = (iso: string): string => stampFormat.format(new Date(iso)).replace(' at ', ', ');
+/** "2026-11-08T14:32:00Z" → "Nov 8, 2:32 PM" in the operator's time zone. */
+export const stamp = (iso: string): string => formatDayTime(iso);
 
 export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
   id: entry.libraryId, name: entry.name, sharePoint: entry.metadata.sharePoint?.url ?? null, pinned: entry.state.pinned, tags: entry.state.tags,
   workflow: entry.state.origin.kind === 'workflow' ? entry.state.origin.workflowLabel : undefined,
   run: entry.state.origin.kind === 'workflow' ? { id: entry.state.origin.runId, day: entry.state.origin.partitionDay } : undefined,
-  updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
+  sync: entry.sync, updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
   versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, note: version.name })).toSorted((a, b) => b.n - a.n),
 });
 
-export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Created' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Created';
+const SYNC_WHY = ['WORKBOOK_SYNC_FAILED', 'WORKBOOK_SYNC_NOT_APPLIED', 'WORKBOOK_VERSION_CONFLICT', 'WORKBOOK_METADATA_UNSUPPORTED'] as const;
+/** The plain sentence for why the last sync failed, or undefined when it did not fail; a code outside the sync set gets the generic sync sentence. */
+export function syncFailureWhy(sheet: Sheet): string | undefined {
+  if (sheet.sync?.lastResult !== 'failed') return undefined;
+  const code = SYNC_WHY.find(known => known === sheet.sync?.lastFailureCode) ?? 'WORKBOOK_SYNC_FAILED';
+  return ERROR_CATALOG[code].text;
+}
+
+export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Spreadsheets' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Spreadsheets';
 export const newestFirst = (sheets: readonly Sheet[]): readonly Sheet[] => sheets.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 /** A run's workflow is an automatic tag, always first; the operator's own tags follow. */
 export const tagsOf = (sheet: Sheet): readonly string[] => sheet.workflow ? [sheet.workflow, ...sheet.tags] : sheet.tags;

@@ -27,17 +27,12 @@ import {
 } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../../../../models/workflow/step-omission.js";
 import { SeparationsMatchIdentity } from "../../../../models/workflows/separations/match-identity.js";
 import {
   SeparationsMatchTerminationType,
 } from "../../../../models/workflows/separations/match-termination-type.js";
 import {
-  ReadSeparationDatesOutputSchema
-} from "../../../../models/workflows/separations/read-separation-dates.js";
-import {
   SeparationsVerifyIdentityApproval,
-  VerifyIdentityApprovalOutputSchema,
 } from "../../../../models/workflows/separations/verify-identity-approval.js";
 import {
   SeparationsVerifyTerminationReceipt,
@@ -48,10 +43,6 @@ import {
   ResolvedIdentitySubjectSchema,
 } from "../../../../rules/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
-import {
-  TERMINATION_RECEIPT_ACCEPTED_STATUSES,
-  assertTerminationReceipt,
-} from "../../../../rules/separations/termination-receipt.js";
 import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
 import type { StepProofSpec, WorkflowAuthor, WorkflowEntryScope } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
@@ -80,7 +71,7 @@ const UCPATH_TRANSACTION_DISPLAY = {
   operatorFields: [
     { label: "Transaction number", example: "T000000001", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "transactionNumber" }] },
     { label: "Approval status", example: "Submitted", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "approvalStatus" }] },
-    { label: "Effective date", example: "4/26/2031", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "effectiveDate" }] },
+    { label: "Effective date", example: "4/27/2031", sources: [{ nodeId: "receipt", kind: "output", fieldPath: "effectiveDate" }] },
   ],
   review: {
     pages: [
@@ -91,24 +82,29 @@ const UCPATH_TRANSACTION_DISPLAY = {
         nodeIds: ["pending-set", "clear-pending"],
         lines: [
           { id: "read-pending", kind: "read", text: "Read the exact pending termination set.", nodeIds: ["pending-set"] },
-          { id: "select-pending", kind: "check", text: "Select and verify the conflicting pending terminations.", nodeIds: ["clear-pending"] },
-          { id: "clear-pending", kind: "action", text: "In a live run, clear the verified pending terminations.", nodeIds: ["clear-pending"] }
+          { id: "search", kind: "click", target: "Search", nodeIds: ["pending-set"] },
+          { id: "select-pending", kind: "check", text: "Select and verify the conflicting pending terminations.", nodeIds: ["clear-pending"], when: [{ "clear-pending": ["saved", "dry-run"] }] },
+          { id: "clear-pending", kind: "click", target: "Delete Selected Transactions", nodeIds: ["clear-pending"], when: [{ "dry-run": ["false"], "clear-pending": ["saved"] }] }
         ],
         fields: [
           {
             id: "smart-hr-search-employee-id",
+            example: "10000001",
             label: "Employee ID",
             transactionFields: [{ nodeId: "clear-pending", kind: "input", fieldPath: "emplId" }],
             source: { origin: "Approved identity", detail: "The employee ID verified or approved for this separation.", chain: [] }
           },
           {
             id: "smart-hr-search-employee-name",
+            example: "Quillan, Petra A.",
             label: "Employee name",
             transactionFields: [{ nodeId: "clear-pending", kind: "input", fieldPath: "expectedName" }],
             source: { origin: "Approved identity", detail: "The verified name used to check the displayed UCPath person.", chain: [] }
           },
           {
             id: "smart-hr-search-pending-transaction-ids",
+            when: [{ "clear-pending": ["saved", "dry-run"] }],
+            example: "T000000002",
             label: "Pending transaction IDs",
             transactionFields: [{ nodeId: "clear-pending", kind: "input", fieldPath: "observedSet.eligible.transactionId" }],
             source: { origin: "UCPath pending terminations", detail: "Only the exact eligible transactions read before this cleanup may be selected.", chain: [] }
@@ -120,21 +116,27 @@ const UCPATH_TRANSACTION_DISPLAY = {
         title: "Smart HR transaction setup",
         mode: "Fill form",
         nodeIds: ["file-termination"],
-        lines: [{ id: "setup", kind: "action", text: "Enter the termination template and effective date.", nodeIds: ["file-termination"] }],
+        when: [{ "file-termination": ["saved", "dry-run"] }],
+        lines: [
+          { id: "setup", kind: "action", text: "Enter the termination template and effective date.", nodeIds: ["file-termination"] },
+          { id: "create-transaction", kind: "click", target: "Create Transaction", nodeIds: ["file-termination"] },
+        ],
         fields: [
           {
             id: "termination-setup-template",
+            example: "UC_VOL_TERM",
             label: "Template",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "template" }],
             source: {
               origin: "Resolved termination type",
-              detail: "The UCPath template selected by the declared termination-type mapping.",
+              detail: "The UCPath template matched to the request's termination type.",
               chain: [],
               read: { stepKey: "kuali-extraction", page: "Kuali RRSS Separation Request Form", field: "Termination type" }
             }
           },
           {
             id: "termination-setup-transaction-date",
+            example: "4/27/2031",
             label: "Transaction date",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "effectiveDate" }],
             source: {
@@ -151,13 +153,16 @@ const UCPATH_TRANSACTION_DISPLAY = {
         title: "Smart HR transaction details",
         mode: "Fill form",
         nodeIds: ["file-termination"],
+        when: [{ "file-termination": ["saved", "dry-run"] }],
         lines: [
           { id: "details", kind: "action", text: "Fill the employee ID and termination reason.", nodeIds: ["file-termination"] },
-          { id: "verify-details", kind: "check", text: "Check the displayed person and dates before continuing.", nodeIds: ["file-termination"] }
+          { id: "verify-details", kind: "check", text: "Check the displayed person and dates before continuing.", nodeIds: ["file-termination"] },
+          { id: "continue", kind: "click", target: "Continue", nodeIds: ["file-termination"] }
         ],
         fields: [
           {
             id: "termination-details-employee-id",
+            example: "10000001",
             label: "Employee ID",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "emplId" }],
             source: {
@@ -169,18 +174,21 @@ const UCPATH_TRANSACTION_DISPLAY = {
           },
           {
             id: "termination-details-employee-name",
+            example: "Quillan, Petra A.",
             label: "Employee name",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "expectedName" }],
             source: { origin: "Approved identity", detail: "Check the displayed person against the verified or approved name.", chain: [] }
           },
           {
             id: "termination-details-employee-record",
+            example: "0",
             label: "Employee record",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "emplRecord" }],
             source: { origin: "UCPath employment", detail: "Check the employee record selected from the active job.", chain: [] }
           },
           {
             id: "termination-details-action-reason",
+            example: "Resignation",
             label: "Action reason",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "reasonCode" }],
             source: { origin: "Resolved termination type", detail: "Resolve this mapped reason against the options UCPath currently offers.", chain: [] }
@@ -192,9 +200,10 @@ const UCPATH_TRANSACTION_DISPLAY = {
         title: "Smart HR transaction information",
         mode: "Fill form",
         nodeIds: ["file-termination"],
+        when: [{ "file-termination": ["saved", "dry-run"] }],
         lines: [
           { id: "comments", kind: "action", text: "Fill the reviewed comments and verify the prepared termination.", nodeIds: ["file-termination"] },
-          { id: "save", kind: "action", text: "In a live run, submit the prepared termination.", nodeIds: ["file-termination"] }
+          { id: "save", kind: "click", target: "Save and Submit", nodeIds: ["file-termination"], when: [{ "dry-run": ["false"], "file-termination": ["saved"] }] }
         ],
         fields: [
           {
@@ -206,6 +215,7 @@ const UCPATH_TRANSACTION_DISPLAY = {
           },
           {
             id: "termination-information-last-date-worked",
+            example: "4/25/2031",
             label: "Last date worked",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "lastDateWorked" }],
             source: {
@@ -217,6 +227,7 @@ const UCPATH_TRANSACTION_DISPLAY = {
           },
           {
             id: "termination-information-initiator-comments",
+            example: "Effective 4/27/2031; last worked 4/25/2031. Kuali document 3000001.",
             label: "Initiator comments",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "initiatorComments" }],
             source: {
@@ -230,6 +241,7 @@ const UCPATH_TRANSACTION_DISPLAY = {
           },
           {
             id: "termination-information-transaction-comments",
+            example: "Effective 4/27/2031; last worked 4/25/2031. Kuali document 3000001.",
             label: "Transaction comments",
             transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "initiatorComments" }],
             source: {
@@ -319,42 +331,6 @@ const receiptNode = ucpathTransactionEntries.task(RECEIPT_NODE, SeparationsVerif
   label: "Termination Receipt",
   replay: "always-rerun",
 });
-
-const UcpathTransactionFactsSchema = z.strictObject({
-  transactionNumber: z.string().min(1),
-  approvalStatus: z.string().min(1),
-});
-
-export const UCPATH_TRANSACTION_OMISSION: StepOmissionDeclaration = {
-  form: {
-    fields: [
-      {
-        key: "transactionNumber", label: "UCPath transaction number", kind: "text",
-        help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.",
-      },
-      {
-        key: "approvalStatus", label: "Approval status", kind: "enum",
-        values: [...TERMINATION_RECEIPT_ACCEPTED_STATUSES],
-        help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.",
-      },
-    ],
-  },
-  produces: {
-    [RECEIPT_NODE]: ({ facts, scope }) => {
-      const typed = UcpathTransactionFactsSchema.parse(facts);
-      const approval = VerifyIdentityApprovalOutputSchema.parse(scope.outputs["approval"]);
-      const dates = ReadSeparationDatesOutputSchema.parse(scope.outputs["dates"]);
-      return assertTerminationReceipt({
-        transactionNumber: typed.transactionNumber,
-        approvalStatus: typed.approvalStatus,
-        approvedEmplId: approval.approved.emplId,
-        approvedName: approval.approved.ucpathName,
-        expectedEffectiveDate: dates.terminationEffectiveDate,
-      });
-    },
-  },
-};
-
 
 
 const TerminationInputShape = {
@@ -446,7 +422,7 @@ export function buildTermination({ task, transaction, group }: Author, extractio
   }));
   return {
     receipt, clearPending, fileTermination,
-    steps: [[group(UCPATH_TRANSACTION_STEP, { ...UCPATH_TRANSACTION_DISPLAY, omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]]] as const
+    steps: [[group(UCPATH_TRANSACTION_STEP, UCPATH_TRANSACTION_DISPLAY), [pendingSet, clearPending, fileTermination, receipt]]] as const
   };
 }
 

@@ -63,7 +63,7 @@ export function createBackupFixtures(cleanups: (() => void | Promise<void>)[], C
   async function takeBackup(world: Awaited<ReturnType<typeof openCurrentWorld>>) {
     const service = new AuthorityBackupService(world.admission, world.database, { directory: world.backupDirectory }, CLOCK);
     const report = await service.request({
-      trigger: "operator",
+      trigger: "schema-migration",
       requiredGeneration: world.database.getMeta().authorityGeneration,
     });
     const manifest = report.manifests[0];
@@ -101,7 +101,7 @@ export async function takeStoppedProfileBackupFixture(admission: RuntimeAdmissio
     try {
       const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
       const closure = await prepareStoppedBackupClosure(profileBrowserClosure, stopped, operation, clock, processLockRoot);
-      return await backupStoppedAuthority(closure, stopped, stopped.stateRoot, clock, processLockRoot, operation);
+      return await backupStoppedAuthority(closure, stopped, stopped.stateRoot, clock, processLockRoot, operation, "schema-migration");
     } catch (error) {
       retain = hasUnprovedSourceClosure(error);
       if (retain) retainUnprovedSourceOwners(error, { admission: stopped, restore: operation });

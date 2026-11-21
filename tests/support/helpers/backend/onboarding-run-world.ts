@@ -44,6 +44,7 @@ import { UCPATH_HIRE_SUBJECT } from "../../../../src/models/ui/ucpath-hire.js";
 import type { z } from "zod";
 import { SearchPersonMatchOutputSchema } from "../../../../src/models/systems/ucpath/search-person-match.js";
 import { ONBOARDING_WRITE_REVIEW_GATE, OnboardingWriteApprovalSchema } from "../../../../src/models/workflows/onboarding/read-write-plan.js";
+import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
 
 export function createOnboardingRunWorld() {
   const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
@@ -137,15 +138,25 @@ export function createOnboardingRunWorld() {
           ...(candidate.referenceDigest === undefined || candidate.workbookVersion === undefined ? {}
             : { referenceDigest: candidate.referenceDigest, workbookVersion: candidate.workbookVersion }) } });
     };
+    /** Saves one extra library spreadsheet and returns its pick as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
+    const checkSheet = (name: string, sheetName: string, fields: readonly string[], rows: readonly (readonly string[])[]) => {
+      const extra = library.create({ name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: sheetName, width: fields.length, hidden: [], headerRow: 1,
+        columnBindings: fields.map((fieldId, index) => ({ id: `check-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+        rows: [{ id: "header", cells: fields.map(value => ({ value })) }, ...rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
+      return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
+        sheetId: "sheet", expectedVersion: library.read(extra.libraryId).version };
+    };
+    /** The start request with the required roster pick and these extra spreadsheets as the second check. */
+    const withChecks = (picks: readonly ReturnType<typeof checkSheet>[]) => ({ ...request, workbookReferences: [...request.workbookReferences, ...picks] });
     return { ...h, profilePath, key, library, repository, id: saved.libraryId, secondId: second?.libraryId, selection, request, plan, start, edit, park, section, choice,
-      snapshots: () => snapshots };
+      checkSheet, withChecks, snapshots: () => snapshots };
   }
 
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
     match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string; crmReadFails?: boolean;
-    personMatch?: z.output<typeof SearchPersonMatchOutputSchema>;
+    personMatch?: z.output<typeof SearchPersonMatchOutputSchema>; ssn?: string;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;
   } = {}) {
@@ -157,7 +168,8 @@ export function createOnboardingRunWorld() {
       crm: () => ({ ...healthyCrmDriver(), readHireData: async (input: { email: string }) => {
         calls.push({ system: "crm", input });
         if (options.crmReadFails === true) throw new Error("synthetic CRM read failure");
-        return CrmReadHireData.example;
+        return options.ssn === undefined ? CrmReadHireData.example
+          : { ...CrmReadHireData.example, fields: { ...CrmReadHireData.example.fields, ssn: options.ssn } };
       } }),
       ucpath: () => {
         const base = healthyUcpathDriver();
@@ -182,7 +194,7 @@ export function createOnboardingRunWorld() {
       const running = f.database.authority.runs.listByWorkflow(descriptor.id).filter(run => run.lifecycle.state === "running");
       assert.equal(running.length, 1); const run = running[0]; assert.ok(run);
       return createWorkbookLibraryAdapter({ runId: run.envelope.runId, repository: f.repository, clock: f.clock,
-        references: { runId: run.envelope.runId, write: command => workbooks.write(run, command) } }).invoke(request, invocation);
+        references: { runId: run.envelope.runId, write: command => workbooks.write(run, command), verifyPerson: command => workbooks.verifyPerson(run, command) } }).invoke(request, invocation);
     } };
     const rawExecution = canonicalChildExecution({ descriptor, stores: taskStoreRegistry, authority: f.database,
       lifecycle, sessions: manager, emitter, writeSequencer,

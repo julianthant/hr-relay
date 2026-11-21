@@ -233,6 +233,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/dashboard/awaiting-queue-fixtures.ts` | awaiting queue fixtures |
 | `helpers/backend/stream-backpressure-fixtures.ts` | stream backpressure fixtures |
 | `helpers/storage/backup-fixtures.ts` | backup fixtures |
+| `helpers/ucpath-job-rows.ts` | Workforce Job Summary rows built from fixture cells, shared by separation identity and gate fixtures |
 | `helpers/ucpath-pending-row-fixtures.ts` | Keiichiro pending rows and deterministic driver transaction rows |
 | `helpers/storage/admission-child-fixtures.ts` | admission child fixtures |
 | `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |

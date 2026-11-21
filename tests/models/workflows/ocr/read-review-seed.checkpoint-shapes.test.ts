@@ -14,7 +14,7 @@ it("reads the OCR checkpoint shapes the Emergency Contact build stores", () => {
     readResult: deriveSchemaHash(ReadOcrResult.output, "output"),
   }, {
     readSourcePages: "83c17ecc15d6956b11af505927bd47dd21cabf12d25f4af71e4b343c5a8b9969",
-    readReviewSeed: "70eabd1dfa14218417c0f4933e81bc2a9704b5bef5b72fc845b2a3ecb449f4fa",
+    readReviewSeed: "7c75eda440868d4f4689811d9a9fe3c2aa60a07e58625b5ef8fa08c3d8ecc570",
     readResult: "5bf2e1ec7fbf79fd4800870c9605663ff709f0e549e875ceed1e7358cbb96488",
   });
 });

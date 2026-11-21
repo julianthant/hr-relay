@@ -3,7 +3,7 @@ import { taskId,TaskIdSchema } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { emergencyContactIdempotencyKey,proofExample,subject,writeScenarios } from "./contact-contract.js";
 import {
-UcpathContactEffectProofSchema,
+contactEffectIdentity, UcpathContactEffectProofSchema,
 UcpathContactWriteTargetSchema, UCPATH_CONTACT_REFUSAL_CODES
 } from "./emergency-contacts.js";
 export const UcpathSaveEmergencyContact = defineTaskContract({
@@ -13,6 +13,10 @@ export const UcpathSaveEmergencyContact = defineTaskContract({
   writeSafety: {
     completion: { kind: "save-verify", verify: { taskId: TaskIdSchema.parse("ucpath/verify-emergency-contact-plan"), effect: "read" },
       proofSchema: UcpathContactEffectProofSchema, proofFromOutput: (output: { proof: z.output<typeof UcpathContactEffectProofSchema> }) => output.proof,
+      effectIdentity: ({ emplId, effect, contacts }: z.output<typeof UcpathContactEffectProofSchema>) => ({
+        emplId, effect: contactEffectIdentity(effect),
+        contacts: contacts.rows.filter(row => row.kind === "contact").map(row => contactEffectIdentity(row.effect)).sort(),
+      }),
       proofFromPresentProbe: ({ proof }: { proof: z.output<typeof UcpathContactEffectProofSchema> }) => proof, outputFromProof: (proof: z.output<typeof UcpathContactEffectProofSchema>) => ({ proof }) },
     idempotency: { probe: { taskId: TaskIdSchema.parse("ucpath/match-emergency-contact-plan"), effect: "read" }, key: emergencyContactIdempotencyKey,
       recoveryAbsence: { kind: "operator-only", reason: "Contact Save has no accepted live saved-effect recovery authority." } },

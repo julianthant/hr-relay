@@ -3,6 +3,8 @@ import type { I9CheckInputValue } from "../../models/workflows/i9-check/input.js
 import type { I9CheckRow, I9Identity } from "../../models/workflows/i9-check/check.js";
 import type { ReadRetentionRow } from "../../models/workflows/i9-check/read-retention-row.js";
 import type { SearchPersonMatchOutputSchema } from "../../models/systems/ucpath/search-person-match.js";
+import type { SearchPersonOrgOutputSchema } from "../../models/systems/ucpath/search-person-org.js";
+import type { ReadEmploymentCandidates } from "../../models/workflows/i9-check/read-employment-candidates.js";
 import { parseUsOrIsoDate } from "../../models/fields/cell-coercion.js";
 
 export function i9MatchOutcome(match?: z.output<typeof SearchPersonMatchOutputSchema>): I9Identity {
@@ -14,17 +16,24 @@ export function i9MatchOutcome(match?: z.output<typeof SearchPersonMatchOutputSc
   return { status: "found", eid: hit.emplId, name: hit.name };
 }
 
-function lookupIdentity({ input, initial, search }: z.output<typeof ReadRetentionRow.input>): I9Identity {
+export function i9EmploymentCandidates(search: z.output<typeof SearchPersonOrgOutputSchema>): z.output<typeof ReadEmploymentCandidates.output> {
+  return { candidates: search.results.map(candidate => ({
+    emplId: candidate.emplId, name: candidate.name,
+    hireDate: candidate.startDate.trim() === "" ? candidate.effectiveDate : candidate.startDate,
+  })) };
+}
+
+function lookupIdentity({ input, initial, candidates: observed }: z.output<typeof ReadRetentionRow.input>): I9Identity {
   if (initial.status === "found") return initial;
-  if (search === undefined) throw new Error("I-9 name search observation is missing");
-  const candidates = initial.status === "ambiguous" ? search.results.filter(candidate => initial.candidateEids.includes(candidate.emplId)) : search.results;
+  if (observed === undefined) throw new Error("I-9 name search observation is missing");
+  const candidates = initial.status === "ambiguous" ? observed.filter(candidate => initial.candidateEids.includes(candidate.emplId)) : observed;
   const candidateEids = [...new Set(candidates.map(candidate => candidate.emplId))];
   const candidateCount = candidateEids.length;
   if (candidateCount === 0) return initial.status === "ambiguous" ? initial : { status: "not-found", candidateCount: 0 };
   const hireDate = input.person.hireDate;
   if (hireDate === undefined) return { status: "ambiguous", candidateCount, candidateEids, reason: "missing-hire-date" };
   const matched = candidates.filter(candidate => {
-    const raw = candidate.startDate.trim() === "" ? candidate.effectiveDate : candidate.startDate;
+    const raw = candidate.hireDate;
     if (raw.trim() === "") return false;
     const date = parseUsOrIsoDate(raw, `${input.asOf}T00:00:00.000Z`);
     if (date === null) throw new Error("I-9 UCPath hire date is invalid");

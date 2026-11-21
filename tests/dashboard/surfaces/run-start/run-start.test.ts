@@ -1,23 +1,15 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement, useState } from "react";
-import { afterEach, describe, it, onTestFinished, vi } from "vitest";
+import { act } from "react";
+import { afterEach, describe, it, onTestFinished } from "vitest";
 import { StartPlanRequestSchema as StartPlanSubmissionSchema, type StartPlanWire as StartPlanResponse, StartPlanWireSchema as StartPlanResponseSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { type CommandResult } from "../../../../src/rules/commands/commands.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
-import { type DashboardClient, createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { type RunStartWorkflow, RunStartSurfaces } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
-import { createRoot, type Root } from "react-dom/client";
-import { type AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
-import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
-import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
-import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { seedMockRuns } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 
 {
 const { cleanup, openDialog, stubClient, WORKFLOW_ID, TYPED, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName } = createRunStartDialogHarness();
@@ -72,6 +64,10 @@ it("Enter advances and starts, Shift+Enter keeps its newline, buttons keep their
   assert.equal(await dialog.enter({ on: back }), false, "a focused button keeps its Enter");
   assert.equal(await dialog.enter(), true);
   assert.equal(dialog.stage(), "Options");
+  assert.ok(dialog.text().includes("Enter to continue"));
+  await dialog.enter({ on: document.body });
+  for (let wait = 0; wait < 6; wait += 1) await settle();
+  assert.equal(dialog.stage(), "Checks");
   assert.ok(dialog.text().includes("Enter to start"));
   assert.deepEqual(revealed, []);
   await dialog.enter({ on: document.body });
@@ -99,6 +95,7 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     const settlePlan = release;
     assert.ok(settlePlan !== undefined, "the dialog never called submitStartPlan");
 
+    await dialog.press("Back");
     await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
@@ -129,6 +126,7 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
 
     await dialog.press("Back");
+    await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
     await act(async () => {
@@ -148,7 +146,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
   it("drops the plan when a run control moves under it", async () => {
 
     const dialog = await openDialog(stubClient({
-      submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
+      submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), priority: "bulk", refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
     }));
     await dialog.type(`${TYPED}\n10873699`);
     await dialog.press("Continue");
@@ -156,10 +154,12 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
     await dialog.press("Start run");
     assert.ok(planIsDrawn(), "the plan never rendered");
 
-    await dialog.choosePriority("bulk");
+    await dialog.press("Back");
+    await dialog.choosePriority("interactive");
+    await dialog.press("Continue");
 
     assert.ok(!planIsDrawn(), "the plan survived a control that re-fingerprints the request");
-    assert.equal(dialog.stage(), "Options");
+    assert.equal(dialog.stage(), "Checks");
   });
 
 
@@ -202,7 +202,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     assert.ok(dialog.text().includes("CRM Dates"), "the optional step disappeared");
     await dialog.press("CRM Dates");
     await dialog.press("Start run");
-    assert.equal(dialog.stage(), "Steps");
+    assert.equal(dialog.stage(), "Checks");
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
     assert.ok(!dialog.text().includes("Test destination"));
@@ -283,7 +283,7 @@ describe("spreadsheet registration stays outside Run", () => {
   });
   it("keeps the full run path and offers no upload that could enqueue spreadsheet rows", async () => {
     await openDialog(stubClient({}));
-    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 2);
+    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 3);
     assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
     assert.deepEqual(intakeHandoffs, []);
   });
@@ -307,7 +307,7 @@ describe("spreadsheet registration stays outside Run", () => {
   it("keeps mock registration from becoming a prerequisite for a live start", async () => {
     const dialog = await openDialog(stubClient({ submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001") }));
     await dialog.type(TYPED); await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options"); assert.equal(dialog.disabled("Start run"), false);
+    assert.equal(dialog.stage(), "Options"); assert.equal(dialog.disabled("Continue"), false);
     assert.equal([...document.querySelectorAll("dt")].some(label => label.textContent === "Workbook"), false);
     assert.ok(!dialog.text().includes("Import spreadsheet"));
   });
@@ -315,7 +315,7 @@ describe("spreadsheet registration stays outside Run", () => {
     const dialog = await openDialog(stubClient({}));
     await dialog.type(TYPED); await dialog.press("Continue"); await dialog.press("Back");
     assert.equal(dialog.stage(), "Input"); assert.equal(dialog.typedInput().value, TYPED);
-    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 2);
+    assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 3);
     assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
   });
 });
@@ -335,6 +335,7 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
     label: entry.label,
     categoryId: entry.categoryId,
     role: entry.role,
+    icon: entry.icon,
     ...(entry.code === undefined ? {} : { code: entry.code }),
     ...(start.summary === undefined ? {} : { summary: start.summary }),
     enqueue: start.enqueue,
@@ -351,6 +352,47 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
 });
 
 const SEPARATIONS = Object.freeze({ workflows: SEPARATIONS_WORKFLOWS, panelWorkflowId: "separations" });
+
+// The served Separations write steps always run, so these Steps-screen tests supply their own omittable controls.
+const SEPARATIONS_OMITTABLE_WRITES = Object.freeze({
+  panelWorkflowId: "separations",
+  workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
+    ? workflow
+    : {
+      ...workflow,
+      steps: workflow.steps.map((step): RunStartWorkflow["steps"][number] => {
+        if (step.key === "ucpath-transaction") {
+          return {
+            ...step,
+            control: {
+              state: "omittable",
+              forces: [],
+              form: {
+                fields: [
+                  {
+                    key: "transactionNumber",
+                    label: "UCPath transaction number",
+                    kind: "text",
+                    help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.",
+                  },
+                  {
+                    key: "approvalStatus",
+                    label: "Approval status",
+                    kind: "enum",
+                    values: ["Approved", "Manually Processed", "Pending"],
+                    help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.",
+                    replaces: { nodeId: "receipt", path: "approvalStatus" },
+                  },
+                ],
+              },
+            },
+          };
+        }
+        if (step.key === "kuali-finalization") return { ...step, control: { state: "omittable", forces: [], form: { fields: [] } } };
+        return step;
+      }),
+    }),
+});
 
 const DOCUMENT = "4502";
 
@@ -404,8 +446,8 @@ it("keeps staging's dry-run sentence for a typed workflow", async () => {
   assert.equal((row.textContent ?? "").includes("or saving"), false);
 });
 
-async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
-  const dialog = await openDialog(client, SEPARATIONS);
+async function openSteps(client: DashboardClient, typed: string = DOCUMENT, scenario: typeof SEPARATIONS = SEPARATIONS): Promise<OpenDialog> {
+  const dialog = await openDialog(client, scenario);
   await dialog.type(typed);
   await dialog.press("Continue");
   await dialog.press("Customize steps");
@@ -426,12 +468,13 @@ describe("an omittable step draws its own form when it is left out", () => {
     assert.ok(dialog.text().includes("Last day worked"), "omitting the step drew no form");
     assert.ok(dialog.text().includes("Separation date"));
 
-    assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
-    assert.ok(dialog.text().includes("6 / 7 included"));
+    assert.ok(dialog.text().includes("Enter last day worked for kronos timecard."), "the first missing field drew no error in place of its help");
+    assert.ok(dialog.text().includes("The last day on pay status, MM/DD/YYYY"), "a field without an error drew no help line");
+    assert.ok(dialog.text().includes("6 of 7 included"));
   });
 
   it("says so when the omitted step asks for nothing at all", async () => {
-    const dialog = await openSteps(stubClient({}));
+    const dialog = await openSteps(stubClient({}), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("Kuali finalization");
     assert.ok(
       dialog.text().includes("This step asks for nothing"),
@@ -441,7 +484,7 @@ describe("an omittable step draws its own form when it is left out", () => {
 
   it("draws an enum as a choice with NO pre-selected value", async () => {
 
-    const dialog = await openSteps(stubClient({}));
+    const dialog = await openSteps(stubClient({}), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("UCPath transaction");
     const label = [...document.body.querySelectorAll("label")]
       .find((candidate) => (candidate.textContent ?? "").trim() === "Approval status");
@@ -474,12 +517,12 @@ describe("Start is not sent while an omitted step's form does not parse", () => 
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "6/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Start live run");
 
+    assert.equal(dialog.disabled("Continue"), true, "Continue stayed on with an unparsable fact");
     assert.equal(dialog.stage(), "Steps", "an unparsable fact reached the server");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
-    assert.ok(dialog.text().includes("a date fact must be MM/DD/YYYY"), "the declared refusal was not drawn");
-    assert.ok(dialog.text().includes("Fill in the facts"), "the footer never said why Next did nothing");
+    assert.equal(document.body.querySelectorAll('[role="alert"]').length, 1, "the refusal was not drawn as one alert");
+    assert.ok(dialog.text().includes("Last day worked must be a valid date in MM/DD/YYYY format."), "the first failure was not drawn");
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.press("Start live run");
@@ -498,7 +541,7 @@ describe("the request carries the operator's omissions", () => {
         submitted = input;
         return separationsPlan(["kronos-timecard", "ucpath-transaction"]);
       },
-    }));
+    }), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("UCPath transaction");
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "06/30/2026");
@@ -517,7 +560,8 @@ describe("the request carries the operator's omissions", () => {
       "an omitted step was still selected",
     );
 
-    assert.ok(dialog.text().includes("5 / 7 included"));
+    await dialog.press("Back");
+    assert.ok(dialog.text().includes("5 of 7 included"));
   });
 
   it("sends no omissions at all when the operator omitted nothing", async () => {
@@ -546,12 +590,12 @@ describe("a plan that omits a different set cannot be started", () => {
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.press("Start live run");
-    assert.equal(dialog.stage(), "Steps");
+    assert.equal(dialog.stage(), "Checks");
 
     assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
     assert.ok(dialog.text().includes("kronos-timecard"));
     assert.ok(dialog.text().includes("kuali-finalization"));
-    assert.equal(dialog.disabled("Start 1 run"), true, "a plan for a different run was startable");
+    assert.equal(dialog.disabled("Start live run"), true, "a plan for a different run was startable");
   });
 
   it("starts when the plan names exactly the set the dialog sent", async () => {
@@ -586,7 +630,7 @@ describe("typed facts describe ONE subject", () => {
 
 const CASCADING_SEPARATIONS = Object.freeze({
   panelWorkflowId: "separations",
-  workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
+  workflows: SEPARATIONS_OMITTABLE_WRITES.workflows.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
     ? workflow
     : {
       ...workflow,
@@ -617,12 +661,12 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     assert.equal(dialog.disabled("UCPath transaction"), false);
 
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("5 / 7 included"), dialog.text());
+    assert.ok(dialog.text().includes("5 of 7 included"), dialog.text());
     assert.equal(dialog.disabled("UCPath transaction"), true, "the forced row stayed pressable");
     assert.ok(dialog.text().includes("Omitted with Kronos timecard."));
 
     await dialog.press("UCPath transaction");
-    assert.ok(dialog.text().includes("5 / 7 included"));
+    assert.ok(dialog.text().includes("5 of 7 included"));
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
@@ -632,46 +676,10 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.deepEqual(request.stepOmissions?.map(({ step }) => step), ["kronos-timecard", "ucpath-transaction"]);
 
+    await dialog.press("Back");
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("7 / 7 included"), "undoing the choice left the forced step out");
+    assert.ok(dialog.text().includes("7 of 7 included"), "undoing the choice left the forced step out");
     assert.equal(dialog.disabled("UCPath transaction"), false);
-  });
-});
-}
-
-{
-Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
-let root: Root | undefined;
-
-async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); return host; }
-const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert(found, name); return found; };
-const press = async (name: string) => act(async () => button(name).click());
-describe('mounted frontend reliability contracts', () => {
-  afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); vi.useRealTimers(); vi.unstubAllGlobals(); });
-
-  it('keeps mock rerun stages under the mock form when its routed dialog mounts or restores', async () => {
-    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
-    const runs = seedMockRuns(), source = runs.find(run => run.workflowId === 'onboarding'); assert(source);
-    const previewLaunch = { workflowId: source.workflowId, source }, catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
-    const requests: string[] = [];
-    const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async url => { requests.push(String(url)); throw new Error('Unexpected backend request'); } });
-    let current: AppRouteState;
-    function Harness() {
-      const [route, setRoute] = useState<AppRouteState>({ start: true, view: { launchStage: 'Steps' } }); current = route;
-      return createElement(ViewNavigationProvider, { route, setRoute, children: createElement(DashboardClientProvider, { client, children: createElement(ToastProvider, { children: createElement(RunStartSurfaces, {
-        catalog, open: true, onOpenChange: () => {}, panelWorkflowId: previewLaunch.workflowId, actorId: 'local-operator', previewLaunch, previewRuns: runs,
-        onSubmitPreview: () => {}, onOpenIntake: () => { throw new Error('Unexpected intake'); },
-      }) }) }) });
-    }
-    await mount(createElement(Harness));
-    assert.match(document.body.textContent ?? '', /Select steps for the new run/u);
-    assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); assert.match(document.body.textContent ?? '', /Reference spreadsheets/u);
-    assert.equal(current!.view?.launchStage, 'Values');
-    await press('Back'); assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); await press('Continue');
-    assert.match(document.body.textContent ?? '', /Screenshots/u); assert.equal(current!.view?.launchStage, 'Options');
-    assert.deepEqual(requests, [], 'a local mock rerun must not ask a served planner to reconcile its stage');
   });
 });
 }

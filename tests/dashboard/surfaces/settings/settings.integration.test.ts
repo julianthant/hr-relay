@@ -15,21 +15,16 @@ function savedText(host: HTMLElement): string {
   return copy.outerHTML;
 }
 describe("independent protected Settings surface", () => {
-  it("starts empty, validates every editable credential, and shows saved values after save", async () => {
+  it("refuses a Settings change to the Relay login, validates every editable credential, and saves a credential that is not the login", async () => {
     const h = await setup(); const ordinary = h.authority.read();
     const before = h.authority.credentials.read();
-    assert.equal(h.authority.protectedApply({
-      ucpathUserId: { clear: true }, ucpathPassword: { clear: true },
-    }, before.revision).state, "applied");
-    await settingsAction(() => h.controller().reload());
-    const emptied = h.authority.credentials.read();
-    assert.equal(emptied.revision, before.revision + 1);
-    assert.equal(emptied.entries.ucpathUserId, undefined);
-    assert.equal(emptied.entries.ucpathPassword, undefined);
-    assert.equal(emptied.entries.ucpathUserId, undefined);
+    // 9f5ac865dd: the Relay login (both UCPath entries) changes only in Account, so a Settings write to either is refused.
+    const refusal = h.authority.protectedApply({ ucpathUserId: { clear: true }, ucpathPassword: { clear: true } }, before.revision);
+    assert.equal(refusal.state, "rejected"); assert.equal("code" in refusal && refusal.code, "not-editable");
+    assert.equal(h.authority.credentials.read().revision, before.revision);
+    assert.ok(h.authority.credentials.read().entries.ucpathUserId); assert.ok(h.authority.credentials.read().entries.ucpathPassword);
     assert.equal(h.host.querySelectorAll('input[type="password"]').length, 1);
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
-    assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
     const username = h.host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
     const password = h.host.querySelector<HTMLInputElement>('input[name="ucpathPassword"]');
     assert.equal(username?.autocomplete, "section-ucpath username");
@@ -42,21 +37,13 @@ describe("independent protected Settings surface", () => {
       await settingsAction(() => h.controller().protectedEditor.update(name, values[name])); assert.equal(h.controller().protectedEditor.errors[name], undefined);
     }
     assert.doesNotMatch(savedText(h.host), /synthetic-(?:password|url|sentinel)/u);
+    for (const name of ["ucpathUserId", "ucpathPassword"] as const) await settingsAction(() => h.controller().protectedEditor.reset(name));
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
-    assert.equal(h.authority.credentials.read().revision, emptied.revision + 1);
-    for (const [name, expected] of [["UCPath username", values.ucpathUserId]] as const) {
-      const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === name);
-      assert.ok(label);
-      const input = h.host.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`);
-      assert.equal(input?.type, "text");
-      assert.equal(input.value, expected);
-      assert.equal(h.host.querySelector(`button[aria-label="Show ${name}"]`), null);
-    }
-    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[0]?.value, values.ucpathPassword);
-    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]').length, 1);
+    assert.equal(h.authority.credentials.read().revision, before.revision + 1);
+    assert.equal(h.authority.credentials.read().entries.sharepointOnboardingRosterUrl?.value, values.sharepointOnboardingRosterUrl);
+    assert.equal(h.authority.credentials.read().entries.ucpathUserId?.value, before.entries.ucpathUserId?.value);
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
-    assert.match(JSON.stringify(after), /synthetic-password-sentinel/u);
     const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
     const history = h.authority.database.authority.commands.getSettingsHistory(request.commandId);
     const audit = h.authority.database.authority.commandAudits.findSettingsHistory(request.commandId);
@@ -67,21 +54,21 @@ describe("independent protected Settings surface", () => {
   it("ordinary and credential drafts, revisions and outcomes are independent; Clear is explicit", async () => {
     const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
     await settingsAction(() => h.controller().update("actor.label", "Ordinary draft"));
-    await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "synthetic-separate-sentinel"));
+    await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/synthetic-separate-sentinel"));
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().dirtyCount, 1); assert.equal(h.authority.read().revision, 1);
-    await settingsAction(() => h.controller().protectedEditor.clear("ucpathPassword"));
+    await settingsAction(() => h.controller().protectedEditor.clear("sharepointOnboardingRosterUrl"));
     await settingsAction(() => h.controller().submit());
     assert.equal(h.controller().protectedEditor.dirtyCount, 1); assert.equal(h.authority.credentials.read().revision, credentialRevision + 1);
     await settingsAction(() => h.controller().protectedEditor.submit());
-    const clear = ProtectedSettingsCommandRequestSchema.parse(h.commands[2]); assert.deepEqual(clear.payload.entries, { ucpathPassword: { clear: true } });
-    assert.equal(h.authority.credentials.read().entries.ucpathPassword, undefined); assert.equal(h.authority.read().revision, 2);
+    const clear = ProtectedSettingsCommandRequestSchema.parse(h.commands[2]); assert.deepEqual(clear.payload.entries, { sharepointOnboardingRosterUrl: { clear: true } });
+    assert.equal(h.authority.credentials.read().entries.sharepointOnboardingRosterUrl, undefined); assert.equal(h.authority.read().revision, 2);
     assert.equal(SettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, 1);
   });
   it("refreshes protected conflict presence while retaining the draft for deliberate resubmission", async () => {
     const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
-    await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "retained-secret-sentinel"));
-    assert.equal(h.authority.protectedApply({ ucpathUserId: { set: "competing-name-sentinel" } }).state, "applied");
+    await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/retained-secret-sentinel"));
+    assert.equal(h.authority.protectedApply({ sharepointOnboardingRosterUrl: { set: "https://example.test/competing-name-sentinel" } }).state, "applied");
     const before = structuredClone(h.controller().protectedEditor.draft);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "conflict"); assert.deepEqual(h.controller().protectedEditor.draft, before); assert.equal(h.commands.length, 1);
@@ -90,7 +77,7 @@ describe("independent protected Settings surface", () => {
     assert.equal(current.state, "loaded");
     if (current.state !== "loaded" || current.document.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
     assert.equal(current.document.protectedSettings.readback.revision, credentialRevision + 1);
-    assert.equal(current.document.protectedSettings.entries.ucpathUserId?.value, "competing-name-sentinel");
+    assert.equal(current.document.protectedSettings.entries.sharepointOnboardingRosterUrl?.value, "https://example.test/competing-name-sentinel");
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(ProtectedSettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, credentialRevision + 1);
     assert.equal(h.controller().protectedEditor.save.state, "applied");
@@ -103,18 +90,18 @@ describe("independent protected Settings surface", () => {
         if (failure === "lost-response") throw new Error("raw-secret-server-sentinel");
         if (failure === "failed-readback") h.ports.read = () => { throw new Error("raw-secret-server-sentinel"); };
         if (failure === "pending-reply") return { state: "pending", commandId: request.commandId };
-        if (failure === "intervening-writer") h.authority.protectedApply({ ucpathPassword: { set: "later-secret-sentinel" } });
+        if (failure === "intervening-writer") h.authority.protectedApply({ sharepointOnboardingRosterUrl: { set: "https://example.test/later-secret-sentinel" } });
         if (failure === "foreign-result") return { ...result, commandId: "00000000-0000-4000-8000-000000000099" };
         if (failure === "legacy-readback" && "entries" in result) return { ...result, entries: { ...result.entries, personLookupCanaryEid: { present: false }, separationsKualiFinalizationCanaryDocumentNumber: { present: false } } };
         return result;
       };
-      await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "draft-secret-sentinel"));
+      await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/draft-secret-sentinel"));
       await settingsAction(() => h.controller().protectedEditor.submit());
       assert.equal(h.controller().protectedEditor.save.state, "unconfirmed"); assert.equal(h.controller().protectedEditor.dirtyCount, 1);
       assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel/u);
       const exact = structuredClone(h.commands[0]);
-      await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "divergent-secret-sentinel"));
-      assert.deepEqual(h.controller().protectedEditor.draft.ucpathPassword, { kind: "set", raw: "draft-secret-sentinel" });
+      await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/divergent-secret-sentinel"));
+      assert.deepEqual(h.controller().protectedEditor.draft.sharepointOnboardingRosterUrl, { kind: "set", raw: "https://example.test/draft-secret-sentinel" });
       h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
       await settingsAction(() => h.controller().protectedEditor.retry());
       assert.deepEqual(h.commands[1], exact);
@@ -124,7 +111,7 @@ describe("independent protected Settings surface", () => {
   it("recovers definitive write-id reuse with new identity and the unchanged draft", async () => {
     const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
     h.ports.execute = input => ({ state: "rejected", commandId: ProtectedSettingsCommandRequestSchema.parse(input).commandId, code: "write-id-reused", message: "raw-secret-sentinel" });
-    await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "retained-value-sentinel")); await settingsAction(() => h.controller().protectedEditor.submit());
+    await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/retained-value-sentinel")); await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "refused"); assert.equal(h.authority.credentials.read().revision, credentialRevision);
     h.ports.execute = h.authority.execute;
     await settingsAction(() => h.controller().protectedEditor.submit());
@@ -136,7 +123,7 @@ describe("independent protected Settings surface", () => {
   it("distinguishes a typed request refusal before effect from an unknown transport failure", async () => {
     const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
     h.ports.response = () => new Response(JSON.stringify({ state: "error", code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "raw-secret-sentinel", retryable: false }), { status: 403 });
-    await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "retained-secret-sentinel"));
+    await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/retained-secret-sentinel"));
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "refused");
     assert.equal(h.authority.credentials.read().revision, credentialRevision);
@@ -195,4 +182,39 @@ it("retains applied feedback until the next draft changes its state", async () =
     host.remove();
     vi.useRealTimers();
   }
+});
+
+import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
+
+describe("closing Settings", () => {
+  it("closes on the back arrow and on Escape unless a dialog or list has the key", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const closed = vi.fn();
+    try {
+      await act(async () => root.render(createElement(DashboardClientProvider, {
+        client: {} as DashboardClient,
+        children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: closed, section: "budgets", actorId: "local-operator", descriptorFingerprint: "a".repeat(64), onSection: () => undefined }),
+      })));
+      const exit = host.querySelector<HTMLButtonElement>('button[aria-label="Back to dashboard"]');
+      assert.ok(exit);
+      assert.ok(exit.querySelector("svg.lucide-arrow-left"));
+      const dialog = document.body.appendChild(document.createElement("div"));
+      dialog.setAttribute("role", "dialog");
+      const inner = dialog.appendChild(document.createElement("button"));
+      await act(async () => { inner.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+      assert.equal(closed.mock.calls.length, 0);
+      dialog.remove();
+      await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+      assert.equal(closed.mock.calls.length, 1);
+      await act(async () => { exit.click(); });
+      assert.equal(closed.mock.calls.length, 2);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
 });

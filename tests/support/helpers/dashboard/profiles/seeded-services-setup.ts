@@ -1,7 +1,7 @@
 import { resolveWriteCommandTarget } from "../../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
-import { explorerQueryDeps } from "../../../fixtures/explorer-seams.js";
+import { registeredExplorerQueryDeps } from "../../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS } from "../../../fixtures/intake-kernel-seams.js";
 import { UNSTORED_CONFIG_IDENTITY } from "../../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_INTAKE_PARSER } from "../../../fixtures/intake-kernel-seams.js";
@@ -147,6 +147,9 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     });
     // Product-app services: real notification and workbook-library composition; the live-only ones (SharePoint download,
     // ChatGPT assistant) are the minimum the dashboard's start-up reads need.
+    const modules = productWorkflows === true
+      ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
+      : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
     const productAppDeps = (): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
       const { observer } = createTrustNotifications({ database, clock, ids: sequentialIdFactory("n"), reader: lifecycle });
       const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
@@ -165,7 +168,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       };
       return {
         notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
-        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: [] },
+        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: modules.map(module => module.descriptor) },
         assistant,
       };
     };
@@ -194,9 +197,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         appVersion: SEEDED_APP_VERSION,
         clock,
 
-        modules: productWorkflows === true
-          ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
-          : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
+        modules,
         descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
         settingsSchemaHash: descriptorSetHash(["settings-schema"]),
         projection,
@@ -247,7 +248,6 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
           stateRoot,
           authorityPath: join(stateRoot, "state.db"),
           backupDirectory: join(stateRoot, "backups", "authority"),
-          maxBackupAgeMs: 45 * 60 * 1000,
           busyTimeoutMs: 1000,
         },
         clock,
@@ -256,7 +256,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
           reason: "the seeded adapter runs no backup lane",
         }),
       },
-      explorer: explorerQueryDeps(clock, descriptorSetHash([CONTRACT_FINGERPRINT])),
+      explorer: registeredExplorerQueryDeps(clock, descriptorSetHash([CONTRACT_FINGERPRINT])),
     });
 
 

@@ -7,7 +7,7 @@ import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-st
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
 const workflow: RunStartWorkflow = {
-  workflowId: "rerun-proof", version: 1, label: "Rerun proof", categoryId: "operations", role: { kind: "standalone" },
+  workflowId: "rerun-proof", version: 1, label: "Rerun proof", categoryId: "operations", role: { kind: "standalone" }, icon: "Search",
   enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [], referenceSources: [],
   inputRun: { state: "present", surface: { placeholder: "Employee ID", parser: {
     split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }],
@@ -26,7 +26,7 @@ const snapshot = RerunValuesSnapshotSchema.parse({
   values: [], transactions: [],
 });
 
-describe("Rerun current-step defaults", () => {
+describe("Rerun step defaults", () => {
   it("restores only the exact declared plain-parser identity from a safe partial input", () => {
     assert.ok(workflow.inputRun.state === "present");
     const surface = workflow.inputRun.surface;
@@ -42,8 +42,8 @@ describe("Rerun current-step defaults", () => {
     assert.throws(() => defaultRerunSteps(snapshot, { ...workflow, workflowId: "other-workflow" }),
       /response|validation|invalid|understand|expected/iu);
   });
-  it("preserves completed-step preselection for the same descriptor", () => {
-    assert.deepEqual(defaultRerunSteps(snapshot, workflow), ["finish"]);
+  it("includes every step, completed or not, for the same descriptor", () => {
+    assert.deepEqual(defaultRerunSteps(snapshot, workflow), ["read", "finish"]);
   });
   it("selects every current step when the descriptor version changed", () => {
     assert.deepEqual(defaultRerunSteps(snapshot, { ...workflow, version: 2 }), ["read", "finish"]);

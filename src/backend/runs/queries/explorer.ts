@@ -19,6 +19,7 @@ import { z } from "zod";
 import {
   ExplorerFreshnessWireSchema,
   ExplorerProvenanceWireSchema,
+  ExplorerWorkflowWireSchema,
   SourcePathSchema,
   WorkflowExplorerWireSchema,
   type ExplorerContractFieldWire,
@@ -35,11 +36,13 @@ import {
   type ExplorerTaskWire,
   type ExplorerUiLinkWire,
   type ExplorerWriteSafetyWire,
+  type ExplorerWorkflowWire,
   type SourceLinkWire,
   type WorkflowExplorerWire,
 } from "../../../models/dashboard/explorer.js";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import type { UiTaskLink } from "../../systems/ui-task-links.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { currentBuildId } from "../../runtime/build-id.js";
@@ -62,18 +65,24 @@ export interface ExplorerModuleView {
   readonly definition?: AnyWorkflowDefinition;
 }
 
-export interface ExplorerQueryDeps {
+interface ExplorerReadContext {
   readonly clock: Clock;
-  /** The composition root's own tuple — never a re-listed copy of it. */
-  readonly modules: readonly ExplorerModuleView[];
   readonly descriptorSetHash: Fingerprint;
-
-  readonly pendingImplBindings: PendingImplBindings;
-  /** Semantic UI identifiers attributed to tasks by the registered drivers. */
-  readonly uiTaskLinks: readonly UiTaskLink[];
 
   // Missing executable scenario files report unresolved names; packaging without tests must not discard the Explorer.
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
+}
+
+export interface ExplorerQueryInput extends ExplorerReadContext {
+  /** The composition root's own tuple — never a re-listed copy of it. */
+  readonly modules: readonly ExplorerModuleView[];
+  readonly pendingImplBindings: PendingImplBindings;
+  /** Semantic UI identifiers attributed to tasks by the registered drivers. */
+  readonly uiTaskLinks: readonly UiTaskLink[];
+}
+
+export interface ExplorerQueryDeps extends ExplorerReadContext {
+  readonly catalog: readonly Readonly<{ workflow: ExplorerWorkflowWire; scenarios: (sources: ReturnType<ExplorerReadContext["listScenarioSources"]>) => readonly ExplorerScenarioWire[] }>[];
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
@@ -200,14 +209,12 @@ function writeSafetyWire(contract: AnyTaskContract): ExplorerWriteSafetyWire | u
     completionKind: completion.kind,
     ...(completion.kind === "receipt" ? {} : { verifyTaskId: completion.verify.taskId }),
     probeTaskId: safety.idempotency.probe.taskId,
-    recoveryAbsence: absence.kind === "operator-only"
-      ? { kind: "operator-only", reason: absence.reason }
-      : {
-        kind: "stabilized",
-        minSinceFenceMs: absence.minSinceFenceMs,
-        consistentReads: absence.consistentReads,
-        minBetweenReadsMs: absence.minBetweenReadsMs,
-      },
+    recoveryAbsence: {
+      kind: "operator-only",
+      reason: absence.kind === "operator-only"
+        ? absence.reason
+        : "The operator must resolve an unconfirmed write before another attempt.",
+    },
     ...(completion.kind === "upload-verify" && completion.unverifiableByPage !== undefined
       ? {
         unverifiableByPage: {
@@ -412,7 +419,8 @@ function taskWire(
 }
 
 /** The control shape of one node, one arm per graph node kind. */
-function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
+/** The served control-shape of one runtime node. */
+export function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
   switch (node.kind) {
     case "task":
       return {
@@ -541,10 +549,9 @@ function proseWire(
 
 function workflowWire(
   module: ExplorerModuleView,
-  deps: ExplorerQueryDeps,
+  deps: ExplorerQueryInput,
   ui: ReadonlyMap<string, readonly ExplorerUiLinkWire[]>,
-  scenarioSources: readonly Readonly<{ path: string; text: string }>[],
-): unknown {
+): ExplorerQueryDeps["catalog"][number] {
   const descriptor = module.descriptor;
   const workflowId = String(descriptor.id);
   const projections = workflowProjections(descriptor);
@@ -627,7 +634,7 @@ function workflowWire(
       coveragePoints: coverageByNode.get(String(node.id)) ?? [],
     }));
 
-  return {
+  const workflow = ExplorerWorkflowWireSchema.parse({
     id: descriptor.id,
     label: descriptor.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
@@ -693,24 +700,36 @@ function workflowWire(
       nodes: group.nodes.map((node) => node.id),
     })),
     edges: edgesOf(nodes),
-    scenarios: scenarioWires(descriptor, projections.scenarios.map(String), scenarioSources),
+    scenarios: [],
     sources: {
       descriptor: sourceLink(descriptorPath, "no workflow definition exists at this path"),
 
       module: resolved(modulePath),
     },
-  };
+  });
+  const scenarioIds = projections.scenarios.map(String);
+  return { workflow, scenarios: sources => scenarioWires(descriptor, scenarioIds, sources) };
+}
+
+export function registerExplorerCatalog(deps: ExplorerQueryInput): ExplorerQueryDeps {
+  const ui = uiLinkIndex(deps.uiTaskLinks);
+  const catalog = deepFreeze(deps.modules.map(module => {
+    try { return workflowWire(module, deps, ui); }
+    catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`workflow ${module.descriptor.id} Explorer registration failed: ${detail}`, { cause });
+    }
+  }));
+  return Object.freeze({ clock: deps.clock, descriptorSetHash: deps.descriptorSetHash, listScenarioSources: deps.listScenarioSources, catalog });
 }
 
 export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
-  const ui = uiLinkIndex(deps.uiTaskLinks);
   const scenarioSources = deps.listScenarioSources();
   return WorkflowExplorerWireSchema.parse({
     wireVersion: 1,
     generatedAt: deps.clock.now().toISOString(),
     descriptorHash: deps.descriptorSetHash,
     buildId: currentBuildId(),
-    workflows: deps.modules.map((module) =>
-      workflowWire(module, deps, ui, scenarioSources)),
+    workflows: deps.catalog.map(({ workflow, scenarios }) => ({ ...workflow, scenarios: scenarios(scenarioSources) })),
   });
 }

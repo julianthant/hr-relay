@@ -1,5 +1,7 @@
-import { CrmReadOnboardingDates } from "../../../../models/systems/crm/read-onboarding-dates.js";
+import { CrmReadOnboardingDates, ReadOnboardingDatesOutputSchema } from "../../../../models/systems/crm/read-onboarding-dates.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
+import { ActiveStatusOutcomeSchema } from "../../../../models/workflows/person-lookup/read-active-status.js";
 import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
 import { derivePersonLookupOutcome } from "../../../../rules/matching/person-lookup.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
@@ -9,11 +11,33 @@ import { buildActiveStatus } from "../active-status/step.js";
 import { buildCrossVerify } from "../cross-verify/step.js";
 import { buildSearching } from "../searching/step.js";
 
+export const CRM_DATES_NODE = "crm-dates";
+
+/** Typed CRM dates for the person this run's employment status names; nothing is read from CRM. */
+export const CRM_DATES_MANUAL: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "employmentDate", label: "Employment date", kind: "iso-date", replaces: { nodeId: CRM_DATES_NODE, path: "employmentDate" } },
+      { key: "oathDate", label: "Oath date", kind: "iso-date", replaces: { nodeId: CRM_DATES_NODE, path: "oathDate" } },
+    ],
+  },
+  produces: {
+    [CRM_DATES_NODE]: ({ facts, scope }) => {
+      const status = ActiveStatusOutcomeSchema.parse(scope.outputs["active-status"]);
+      return ReadOnboardingDatesOutputSchema.parse({
+        state: "read", emplId: requireFact(status.details.eid, "active-status", "details.eid"),
+        employmentDate: facts.employmentDate, oathDate: facts.oathDate, reason: "",
+      });
+    },
+  },
+};
+
 export const CRM_DATES_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "crm-dates", label: "Read CRM dates" }),
   description: "Read employment and oath dates from the selected CRM record.",
   system: "crm",
   selection: { inputField: "includeCrmDates", selectedWhen: true },
+  manual: CRM_DATES_MANUAL,
   operatorFields: [
     ...[["employmentDate", "Employment date", "3/14/2031"], ["oathDate", "Oath date", "3/10/2031"]].map(([fieldPath, label, example]) => ({
       label, example,
@@ -21,13 +45,15 @@ export const CRM_DATES_STEP = Object.freeze({
     })),
   ],
   review: {
+    // Dates are read only for a found employee ID (datesEid in rules/matching/person-lookup.ts).
+    when: [{ "employment-status": ["active", "inactive", "crm-only", "undetermined"] }],
     pages: [
       {
         id: "crm-onboarding-record",
         title: "CRM onboarding record",
         mode: "Read only",
         nodeIds: ["crm-dates"],
-        lines: [{ id: "read-dates", kind: "read", text: "Read employment and oath dates for the selected CRM identity.", nodeIds: ["crm-dates"] }],
+        lines: [],
         fields: [
           {
             id: "employment-date",
@@ -57,8 +83,6 @@ export const CRM_DATES_STEP = Object.freeze({
 } as const);
 
 const crmDatesEntries = defineStepEntries(CRM_DATES_STEP);
-
-export const CRM_DATES_NODE = "crm-dates";
 
 export const crmDatesNode = crmDatesEntries.task(CRM_DATES_NODE, CrmReadOnboardingDates, {
   replay: "checkpoint",

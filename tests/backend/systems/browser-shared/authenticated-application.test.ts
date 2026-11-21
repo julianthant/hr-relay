@@ -23,7 +23,7 @@ const cases = [
     legitimate: [CONFIG.urls.kuali.prod.entry, "https://ucsd.kualibuild.com/app/api/v0/graphql"] },
   { system: "new-kronos", host: "ucsd-sso.prd.mykronos.com", path: "/wfd/home",
     verify: verifyNewKronosAuthenticatedApplication, cookies: [{ name: "kronosAuthToken", domain: "ucsd-sso.prd.mykronos.com", value: "synthetic-session" }],
-    legitimate: [CONFIG.urls.newKronos.prod.entry, "https://ucsd-sso.prd.mykronos.com/wfd", "https://ucsd-sso.prd.mykronos.com/wfd/timekeeping#/timecard"] },
+    legitimate: [CONFIG.urls.newKronos.prod.entry, "https://ucsd-sso.prd.mykronos.com/wfd", "https://ucsd-sso.prd.mykronos.com/wfd/timekeeping#/timecard", "https://ucsd-sso.prd.mykronos.com/timekeeping#/timecard"] },
   { system: "ucpath", host: "ucphrprdpub.universityofcalifornia.edu", path: "/psc/ucphrprd/EMPLOYEE/HRMS/c/app",
     verify: verifyUcpathAuthenticatedApplication, cookies: [{ name: "PS_TOKEN", domain: "ucphrprdpub.universityofcalifornia.edu", value: "synthetic-session" }],
     legitimate: [CONFIG.urls.ucpath.prod.smartHr, CONFIG.urls.ucpath.prod.personProfile] },

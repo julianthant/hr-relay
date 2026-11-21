@@ -1,4 +1,5 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
+import { queryAssistantUsage } from "../../assistant/usage-counts.js";
 import { activityTypicalTime, successfulActivityTiming } from "./activity-timing.js";
 import { z } from "zod";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
@@ -213,6 +214,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       from: start,
       to: end,
       generatedAt: bounds.generatedAt,
+      ...queryAssistantUsage(database, bounds),
       totalRuns: inRange.length,
       terminalRuns,
       inFlightRuns: inRange.length - terminalRuns,

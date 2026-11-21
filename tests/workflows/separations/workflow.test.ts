@@ -105,10 +105,11 @@ describe("workflow definition public equivalence characterization", () => {
         ],
         surfaces: {
           inputRun: {
-            placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+            placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
             parser: {
               split: { kind: "delimited", delimiters: [";", "\n"] },
               rules: [{ when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" }],
+              unmatched: "Kuali ID must contain digits.",
             },
             examples: [
               { key: "one-document", label: "One document", text: "4502", note: "the ordinary case — one run for one Kuali separation document" },
@@ -144,13 +145,7 @@ describe("workflow definition public equivalence characterization", () => {
           },
           {
             key: "identity-check", label: "Identity check", nodes: [
-              { id: "name-search", label: "Name Search" }, { id: "subject", label: "Separation Subject" },
-              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
-              { id: "approval", label: "Approval Check" },
-            ]
-          },
-          {
-            key: "job-summary", label: "Job summary", nodes: [
+              { id: "name-search", label: "Employee ID Search" }, { id: "subject", label: "Separation Subject" },
               { id: "job-summary", label: "Job Summary" }, { id: "employment", label: "Employment" },
               { id: "department-option", label: "Department Option" },
             ]
@@ -159,6 +154,12 @@ describe("workflow definition public equivalence characterization", () => {
             key: "kronos-timecard", label: "Kronos timecard", nodes: [
               { id: "timecard-search", label: "Timecard Search" }, { id: "timecard", label: "Timecard" },
               { id: "dates", label: "Reconciled Dates" },
+            ]
+          },
+          {
+            key: "identity-review", label: "Identity approval", nodes: [
+              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
+              { id: "approval", label: "Approval Check" },
             ]
           },
           {
@@ -184,23 +185,12 @@ describe("workflow definition public equivalence characterization", () => {
             step: "kronos-timecard",
             form: {
               fields: [
-                { key: "lastDayWorked", label: "Last day worked", help: "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.", kind: "us-date" },
-                { key: "separationDate", label: "Separation date", help: "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.", kind: "us-date" },
+                { key: "lastDayWorked", label: "Last day worked", help: "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.", kind: "us-date", replaces: { nodeId: "dates", path: "lastDayWorked" } },
+                { key: "separationDate", label: "Separation date", help: "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.", kind: "us-date", replaces: { nodeId: "dates", path: "separationDate" } },
               ]
             },
             produces: ["dates"],
           },
-          {
-            step: "ucpath-transaction",
-            form: {
-              fields: [
-                { key: "transactionNumber", label: "UCPath transaction number", help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.", kind: "text" },
-                { key: "approvalStatus", label: "Approval status", help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.", kind: "enum", values: ["Approved", "Manually Processed", "Pending"] },
-              ]
-            },
-            produces: ["receipt"],
-          },
-          { step: "kuali-finalization", form: { fields: [] }, produces: [] },
         ],
       },
       module: {
@@ -263,9 +253,9 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "document", kind: "task", dependsOn: ["resolve-action"] },
         { id: "plan", kind: "task", dependsOn: ["document"] },
         { id: "termination-type", kind: "task", dependsOn: ["document"] },
-        { id: "name-search", kind: "task", dependsOn: ["plan"] },
-        { id: "subject", kind: "task", dependsOn: ["document", "plan", "name-search"] },
-        { id: "job-summary", kind: "task", dependsOn: ["subject"] },
+        { id: "name-search", kind: "task", dependsOn: ["document"], when: { kind: "equals", of: { from: "node", nodeId: "document", path: "employee.eid.state" }, value: "present" } },
+        { id: "subject", kind: "task", dependsOn: ["document", "name-search"] },
+        { id: "job-summary", kind: "task", dependsOn: ["document", "subject"] },
         { id: "employment", kind: "task", dependsOn: ["document", "job-summary"] },
         { id: "department-option", kind: "task", dependsOn: ["document", "employment"] },
         { id: "timecard-search", kind: "task", dependsOn: ["subject"] },
@@ -281,20 +271,20 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "clear-pending", kind: "transaction", dependsOn: ["approval", "pending-set", "reference-check-review"], dryRun: "stop-after-prepare" },
         { id: "file-termination", kind: "transaction", dependsOn: ["approval", "termination-type", "employment", "dates", "clear-pending"], dryRun: "stop-after-prepare" },
         { id: "receipt", kind: "task", dependsOn: ["approval", "dates", "file-termination"] },
-        { id: "filing-presence", kind: "task", dependsOn: ["receipt"] },
+        { id: "filing-presence", kind: "task", dependsOn: ["receipt", "employment"] },
         { id: "finalize-kuali", kind: "transaction", dependsOn: ["approval", "resolve-action", "document", "plan", "employment", "department-option", "dates", "receipt", "filing-presence"], dryRun: "stop-after-prepare" },
       ],
       omissions: {
         kronos: { asserted: [{ node: "dates", step: "kronos-timecard" }], omitted: [["timecard-search", "kronos-timecard"], ["timecard", "kronos-timecard"]], refusals: [] },
-        ucpath: { asserted: [{ node: "receipt", step: "ucpath-transaction" }], omitted: [["pending-set", "ucpath-transaction"], ["clear-pending", "ucpath-transaction"], ["file-termination", "ucpath-transaction"]], refusals: [] },
-        kuali: { asserted: [], omitted: [["filing-presence", "kuali-finalization"], ["finalize-kuali", "kuali-finalization"]], refusals: [] },
+        ucpath: { asserted: [], omitted: [], refusals: [{ code: "step-not-omittable", step: "ucpath-transaction", message: 'step "ucpath-transaction" declares no omission; it must run' }] },
+        kuali: { asserted: [], omitted: [], refusals: [{ code: "step-not-omittable", step: "kuali-finalization", message: 'step "kuali-finalization" declares no omission; it must run' }] },
       },
       steps: [
         { key: "resolve-action", nodeId: "resolve-action", label: "Kuali Action", kind: "task", taskId: "kuali/search-separation-action", conditional: false },
         { key: "document", nodeId: "document", label: "Separation Document", kind: "task", taskId: "kuali/read-separation-document", conditional: false },
         { key: "plan", nodeId: "plan", label: "Separation Plan", kind: "task", taskId: "workflow:separations/read-separation-plan", conditional: false },
         { key: "termination-type", nodeId: "termination-type", label: "Termination Type", kind: "task", taskId: "workflow:separations/match-termination-type", conditional: false },
-        { key: "name-search", nodeId: "name-search", label: "Name Search", kind: "task", taskId: "ucpath/search-person-org", conditional: false },
+        { key: "name-search", nodeId: "name-search", label: "Employee ID Search", kind: "task", taskId: "ucpath/search-person-org", conditional: true },
         { key: "subject", nodeId: "subject", label: "Separation Subject", kind: "task", taskId: "workflow:separations/match-separation-subject", conditional: false },
         { key: "job-summary", nodeId: "job-summary", label: "Job Summary", kind: "task", taskId: "ucpath/read-job-summary", conditional: false },
         { key: "employment", nodeId: "employment", label: "Employment", kind: "task", taskId: "workflow:separations/match-active-employment", conditional: false },

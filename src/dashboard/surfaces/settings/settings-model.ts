@@ -29,11 +29,7 @@ export type SettingsNavIcon =
   | "routes"
   | "capabilities"
   | "keyboard"
-  | "unrendered"
-  | "subscription"
-  | "spreadsheets"
-  | "explorer"
-  | "activity";
+  | "unrendered";
 
 
 /** The glyph for each SERVED section this build renders, keyed by the id the
@@ -52,6 +48,7 @@ const EDITOR_SECTIONS = new Set(["general", "display", "performance", "paths", "
 const FOLDED_EDITOR_SECTIONS = new Set(["display", "annual-dates"]);
 const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   display: "general",
+  subscription: "general",
   "annual-dates": "general",
   "runtime-isolation": "general",
   paths: "general",
@@ -91,7 +88,7 @@ export interface SettingsNavEntry {
 
 
 export interface SettingsNavGroup {
-  readonly id: "personal" | "advanced" | "data" | "status" | "help";
+  readonly id: "personal" | "advanced" | "help";
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
@@ -103,7 +100,6 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
 
 /** Route token kept only for compatibility notices */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
-export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
 
 
 /** The gear's stable DOM id, and the app shell's main region behind the
@@ -111,6 +107,7 @@ export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer
 export const SETTINGS_GEAR_ID = "settings-gear";
 
 export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
+export const DASHBOARD_LOGS_REGION_ID = "dashboard-logs-region";
 
 
 /** Which id to focus when the takeover closes: the gear it was opened from, or
@@ -129,16 +126,10 @@ export function buildSettingsNav(
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
     clientEntry("account", "Account", "credentials"),
-    clientEntry("subscription", "Subscription", "subscription"),
   ] });
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
     .map(section => servedEntry(section.id, section.label)) ?? [];
   if (advanced.length > 0) groups.push({ id: "advanced", heading: "Advanced", entries: advanced });
-  groups.push({ id: "data", heading: "Data", entries: [
-    clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
-    clientEntry("explorer", "Explorer", "explorer"),
-    clientEntry("activity", "Analytics", "activity"),
-  ] });
   groups.push({
     id: "help",
     heading: "Help",
@@ -180,5 +171,5 @@ export { useSettingsFacts } from "./editor/settings-facts-model.js";
 export type { SettingsFactsState } from "./editor/settings-facts-model.js";
 export { SYSTEM_HOST_PRESENTATION } from "./general/settings-hosts-model.js";
 export type { SystemHostPresentation } from "./general/settings-hosts-model.js";
-export { spanAuthorityProblemDetail,storageNeedsAttention } from "./storage/storage-settings-model.js";
-export type { SpanAuthorityProblem,StorageHealthSummary } from "./storage/storage-settings-model.js";
+export { storageNeedsAttention } from "./storage/storage-settings-model.js";
+export type { StorageHealthSummary } from "./storage/storage-settings-model.js";

@@ -12,6 +12,7 @@ import {
 ucpathPendingTransactionSetDigest
 } from "../../../../src/models/systems/ucpath/delete-pending-terminations.js";
 import type {
+UcpathTerminationEmploymentRecordObservation,
 UcpathTransactionRow,
 UcpathTransactionScan,
 } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
@@ -36,9 +37,11 @@ const TARGET = {
 
 const { row } = createUcpathPendingRowFixtures(EID, NAME, EFFDT);
 
-function scan(rows: readonly UcpathTransactionRow[]): UcpathTransactionScan {
-  return { state: "read", emplId: EID, rows: [...rows], scannedRowCount: rows.length, observedAt: OBSERVED_AT };
+function scan(rows: readonly UcpathTransactionRow[], employmentRecords: UcpathTerminationEmploymentRecordObservation[] = []): UcpathTransactionScan {
+  return { state: "read", emplId: EID, rows: [...rows], employmentRecords, scannedRowCount: rows.length, observedAt: OBSERVED_AT };
 }
+
+const record = (transactionId = row().transactionId) => ({ transactionId, emplRecord: TARGET.emplRecord });
 
 const EMPTY_SET = {
   kind: "ucpath-pending-termination-set" as const,
@@ -52,14 +55,14 @@ const SWEEP_TARGET = { emplId: EID, expectedName: NAME, observedSet: EMPTY_SET }
 
 describe("ucpath termination verdicts", () => {
 
-  it("folds the live four-row scan for EID 10203262 to `present` on the matching date", () => {
+  it("folds the four-row scan to `present` on the matching date with an exact record observation", () => {
 
     const verdict = ucpathTerminationVerdict(TARGET, scan([
       row(),
       row({ transactionId: "T002197996", approvalStatus: "Approved", startDate: "07/01/2026" }),
       row({ transactionId: "T001816218", action: "(blank)", approvalStatus: "Approved", startDate: "01/02/2025" }),
       row({ transactionId: "T001781115", action: "HIR", approvalStatus: "Approved", startDate: "09/01/2024" }),
-    ]));
+    ], [record()]));
     assert.equal(verdict.state, "present");
     if (verdict.state !== "present") return;
     assert.equal(verdict.proof.transactionId, "T002209631");
@@ -83,7 +86,7 @@ describe("ucpath termination verdicts", () => {
     const verdict = ucpathTerminationVerdict(TARGET, scan([
       row(),
       row({ transactionId: "T002209999" }),
-    ]));
+    ], [record(), record("T002209999")]));
     assert.equal(verdict.state, "ambiguous");
     if (verdict.state !== "ambiguous") return;
     assert.equal(verdict.matches, 2);
@@ -201,7 +204,7 @@ describe("ucpath termination verdicts", () => {
       displayedName: NAME,
       disposition: "committed",
     });
-    const present = ucpathTerminationFilingPresence(receipt, scan([row()]));
+    const present = ucpathTerminationFilingPresence(receipt, scan([row()], [record()]), TARGET.emplRecord);
     assert.equal(present.state, "present");
     if (present.state === "present") {
       assert.equal(present.proof.transactionId, receipt.transactionNumber);
@@ -210,25 +213,27 @@ describe("ucpath termination verdicts", () => {
 
     for (const invalid of [
       scan([]),
-      scan([row({ emplId: EidSchema.parse("10779300") })]),
-      scan([row({ startDate: "06/12/2026" })]),
-      scan([row({ approvalStatus: "Denied" })]),
-      scan([row({ action: "HIR" })]),
-      scan([row({ displayedName: "Somebody Else" })]),
-      scan([row(), row()]),
+      scan([row({ emplId: EidSchema.parse("10779300") })], [record()]),
+      scan([row({ startDate: "06/12/2026" })], [record()]),
+      scan([row({ approvalStatus: "Denied" })], [record()]),
+      scan([row({ action: "HIR" })], [record()]),
+      scan([row({ displayedName: "Somebody Else" })], [record()]),
+      scan([row(), row()], [record()]),
     ]) {
-      assert.notEqual(ucpathTerminationFilingPresence(receipt, invalid).state, "present");
+      assert.notEqual(ucpathTerminationFilingPresence(receipt, invalid, TARGET.emplRecord).state, "present");
     }
 
     const advanced = ucpathTerminationFilingPresence(
       receipt,
-      scan([row({ approvalStatus: "Approved" })]),
+      scan([row({ approvalStatus: "Approved" })], [record()]),
+      TARGET.emplRecord,
     );
     assert.equal(advanced.state, "present", "a still-acceptable status may advance after filing");
 
     const asserted = ucpathTerminationFilingPresence(
       TerminationReceiptSchema.parse({ ...receipt, disposition: "operator-asserted" }),
-      scan([row()]),
+      scan([row()], [record()]),
+      TARGET.emplRecord,
     );
     assert.equal(
       asserted.state === "present" ? asserted.proof.receiptDisposition : undefined,

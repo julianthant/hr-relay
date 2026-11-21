@@ -31,9 +31,15 @@ function schema29Store() {
   return database;
 }
 
-it('is schema version 30, under the workbook payloads\' current 37', () => {
+it('is schema version 30, under the workbook payloads\' current 38', () => {
   expect(WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version).toBe(30);
-  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(37);
+  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(38);
+});
+
+it('validates a schema-29 library as a predecessor and refuses it as current', () => {
+  const database = schema29Store();
+  expect(validateWorkbookLibrary(database, true, true, false)).toBeGreaterThan(0);
+  expect(() => validateWorkbookLibrary(database)).toThrow();
 });
 
 it('upgrades every stored state and recorded action to unpinned with no manual tags, keeping actions immutable', () => {
@@ -58,6 +64,7 @@ it('refuses to upgrade a schema-29 state that already carries a pin or tags, cha
   const database = schema29Store();
   database.exec(`UPDATE workbook_library_state SET payload_json=json_set(payload_json,'$.pinned',${SYNTHETIC_PIN_TAGS.replace('$TAGS', '$.tags')})`);
   const before = payloads(database, 'workbook_library_state');
+  expect(() => validateWorkbookLibrary(database, true, true, false)).toThrow();
   expect(() => upgrade(database)).toThrow(/workbook_pin_tags_already_stored/u);
   expect(payloads(database, 'workbook_library_state')).toEqual(before);
 });
@@ -68,6 +75,7 @@ it('refuses to upgrade a schema-29 recorded action whose result already carries 
     UPDATE workbook_library_actions SET payload_json=json_set(payload_json,'$.result.pinned',${SYNTHETIC_PIN_TAGS.replace('$TAGS', '$.result.tags')});
     CREATE TRIGGER workbook_library_actions_update BEFORE UPDATE ON workbook_library_actions BEGIN SELECT RAISE(ABORT,'workbook-library-action-immutable'); END`);
   const before = payloads(database, 'workbook_library_actions');
+  expect(() => validateWorkbookLibrary(database, true, true, false)).toThrow();
   expect(() => upgrade(database)).toThrow(/workbook_pin_tags_already_stored/u);
   expect(payloads(database, 'workbook_library_actions')).toEqual(before);
 });
@@ -78,6 +86,7 @@ it('steps a current store with a library action back through every historical re
     const database = currentStore();
     rewind(database);
     expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(target);
+    expect(validateWorkbookLibrary(database, true, true, false)).toBeGreaterThan(0);
     applyAuthorityMigrationsAfter(database, target, CAPTURE);
     expect(validateWorkbookLibrary(database)).toBeGreaterThan(0);
   }

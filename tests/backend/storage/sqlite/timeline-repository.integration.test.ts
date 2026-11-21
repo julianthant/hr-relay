@@ -5,13 +5,15 @@ import { randomUUID as randomUUID_m0 } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { describe, it } from "vitest";
-import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { DatabaseSync, StatementSync } from "node:sqlite";
+import { describe, it, vi } from "vitest";
+import { createDebugEventWriter, emitOptionalDiagnostic } from "../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { resolutionApp, resolutionFixture } from "../../../support/helpers/failure-resolution/fixtures.js";
 
 {
@@ -43,7 +45,7 @@ describe("native logging authority", () => {
       assert.equal(rows.length, 1);
       assert.deepEqual(repository.get(rows[0].eventId), rows[0]);
       assert.equal(repository.highWaterMark(), rows[0].cursor);
-      assert.deepEqual(database.prepare("SELECT name FROM sqlite_temp_master WHERE name LIKE 'timeline_ordinary_bytes%'").all(), []);
+      assert.deepEqual(database.prepare("SELECT name FROM sqlite_temp_master WHERE name LIKE 'timeline_diagnostic_bytes%'").all(), []);
     } finally {
       database.close();
       try {
@@ -93,13 +95,13 @@ describe("native logging authority", () => {
       assert.equal(repository.page({}).length, 1);
     } finally { database.close(); }
   });
-  it("maintains ordinary byte caps through outer rollback, prune and external commits", () => {
+  it("maintains the optional diagnostic byte cap through outer rollback, prune and external commits", () => {
     const root = mkdtempSync(join(tmpdir(), "logging-cap-"));
     const path = join(root, "state.db");
     const { database, repository } = fixture(path);
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
-    const actualBytes = () => Number(database.prepare("SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE retention_class='ordinary'").get()?.bytes);
-    const cachedBytes = () => Number(database.prepare("SELECT bytes FROM timeline_ordinary_bytes WHERE id=1").get()?.bytes);
+    const actualBytes = () => Number(database.prepare("SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE kind='debug' AND retention_class='ordinary'").get()?.bytes);
+    const cachedBytes = () => Number(database.prepare("SELECT bytes FROM timeline_diagnostic_bytes WHERE id=1").get()?.bytes);
     try {
       database.exec("BEGIN IMMEDIATE");
       writer.emit({ category: "http", phase: "failed", correlationId: "first-initialization-rollback" });
@@ -107,13 +109,18 @@ describe("native logging authority", () => {
       assert.equal(actualBytes(), 0);
       writer.emit({ category: "http", phase: "failed", correlationId: "initial" });
       assert.equal(cachedBytes(), actualBytes());
+      const noteWriter = createNoteTimelineWriter({ repository, clock: manualClock(AT), pid: 1 });
+      noteWriter.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" },
+        level: "step", message: "worker started" });
+      const pinned = writer.emit({ category: "http", phase: "failed", correlationId: "pinned", pinned: true }).record;
+      assert.equal(cachedBytes(), actualBytes());
       const before = actualBytes();
       database.exec("BEGIN IMMEDIATE");
       writer.emit({ category: "http", phase: "failed", correlationId: "rolled-back" });
       assert.ok(cachedBytes() > before);
       database.exec("ROLLBACK");
       assert.equal(cachedBytes(), before);
-      assert.equal(repository.pruneBefore("2027-01-01"), 1);
+      assert.equal(repository.pruneBefore("2027-01-01"), 2);
       assert.equal(cachedBytes(), 0);
       const peer = new DatabaseSync(path);
       try {
@@ -121,16 +128,29 @@ describe("native logging authority", () => {
         createDebugEventWriter({ repository: peerRepository, clock: manualClock(AT), build: "test" }).emit({ category: "http", phase: "failed", correlationId: "external" });
         writer.emit({ category: "http", phase: "failed", correlationId: "after-external" });
         assert.equal(cachedBytes(), actualBytes());
-        peer.exec("DELETE FROM timeline_events");
+        peer.exec("DELETE FROM timeline_events WHERE retention_class='ordinary'");
         writer.emit({ category: "http", phase: "failed", correlationId: "after-external-delete" });
         assert.equal(cachedBytes(), actualBytes());
         const trigger = peer.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get();
         assert.equal(typeof trigger?.sql, "string");
         peer.exec("DROP TRIGGER timeline_events_immutable");
-        peer.prepare("UPDATE timeline_events SET payload_json=payload_json || printf('%*s',?,'')").run(250 * 1024 * 1024);
+        peer.prepare("UPDATE timeline_events SET payload_json=payload_json || printf('%*s',?,'') WHERE retention_class='ordinary'").run(250 * 1024 * 1024);
         peer.exec(String(trigger?.sql));
-        assert.throws(() => writer.emit({ category: "http", phase: "failed", correlationId: "over-cap" }), /timeline-ordinary-cap-exceeded/u);
-        assert.equal(Number(database.prepare("SELECT count(*) AS n FROM timeline_events").get()?.n), 1);
+        const reads = vi.spyOn(StatementSync.prototype, "get");
+        const byteScans = () => reads.mock.contexts.filter(stmt =>
+          stmt instanceof StatementSync && /SUM\(.*payload_json.*FROM timeline_events/iu.test(stmt.sourceSQL)).length;
+        try {
+          assert.equal(emitOptionalDiagnostic(() => writer.emit({ category: "boot", phase: "settled", correlationId: "optional" })), "budget-full");
+          assert.equal(byteScans(), 1);
+          assert.throws(() => emitOptionalDiagnostic(() => writer.emit({ category: "invalid" })));
+          assert.throws(() => writer.emit({ category: "http", phase: "failed", correlationId: "over-cap" }), /timeline-diagnostic-cap-exceeded/u);
+          assert.equal(byteScans(), 1, "repeated refusal must reuse the refreshed byte count");
+          assert.equal(Number(database.prepare("SELECT count(*) AS n FROM timeline_events").get()?.n), 2);
+          assert.deepEqual(repository.get(pinned.eventId), pinned);
+          peer.exec("DELETE FROM timeline_events WHERE retention_class='ordinary'");
+          assert.equal(writer.emit({ category: "http", phase: "settled", correlationId: "space-reopened" }).state, "inserted");
+          assert.equal(byteScans(), 2, "a peer commit must refresh the byte count");
+        } finally { reads.mockRestore(); }
       } finally { peer.close(); }
     } finally { database.close(); rmSync(root, { recursive: true, force: true }); }
   });
@@ -145,6 +165,50 @@ describe("native logging authority", () => {
       const remaining = repository.page({}); assert.equal(remaining.length, 2);
       assert.equal(repository.pruneBefore("2027-01-01"), 1);
       assert.equal(repository.page({}).length, 1);
+    } finally { database.close(); }
+  });
+
+  it("retains a task span across the append-day boundary and prunes it as a pair", async () => {
+    const f = await trustWorld();
+    try {
+      const repository = f.database.authority.timelineEvents;
+      const clock = f.world.clock;
+      clock.setWall(new Date(2026, 9, 10, 23, 59));
+      const run = f.create(820);
+      const { workflow, runId, traceId, attempt } = run.envelope;
+      const writer = createTimelineEmitter({ repository, clock, pid: 1 });
+      const task = { kind: "task", workflow, runId, traceId, attempt,
+        spanPath: `${traceId}/lookup`, parentSpanPath: traceId };
+      writer.emit({ ...task, t: "span.started", name: "Lookup", ts: clock.now().toISOString() });
+      clock.advanceWall(120_000);
+      writer.emit({ ...task, t: "span.ended", outcome: "done", ts: clock.now().toISOString() });
+      f.cancel(run, 821);
+      const taskRows = () => repository.page({ runId }).filter(row =>
+        row.payload.kind === "span" && "kind" in row.payload.event && row.payload.event.kind === "task");
+      const pair = taskRows();
+      assert.deepEqual(pair.map(row => row.retentionDate), ["2026-10-10", "2026-10-11"]);
+
+      repository.pruneBefore("2026-10-11");
+      assert.deepEqual(taskRows(), pair);
+      repository.pruneBefore("2026-10-12");
+      assert.deepEqual(taskRows(), []);
+    } finally { await f.dispose(); }
+  });
+
+  it("expires an SSE start and its successful settle together seven days after settlement", () => {
+    const { database, repository } = fixture();
+    try {
+      const clock = manualClock(new Date(2026, 9, 10, 23, 59));
+      const writer = createDebugEventWriter({ repository, clock, build: "test" });
+      const started = writer.emit({ category: "sse", phase: "started", correlationId: "successful" }).record;
+      clock.advanceWall(120_000);
+      const settled = writer.emit({ category: "sse", phase: "settled", correlationId: "successful" }).record;
+      const unrelated = writer.emit({ category: "sse", phase: "started", correlationId: "other" }).record;
+
+      assert.equal(repository.pruneBefore("2026-09-18"), 0);
+      assert.deepEqual(repository.page({}), [started, settled, unrelated]);
+      assert.equal(repository.pruneBefore("2026-09-19"), 2);
+      assert.deepEqual(repository.page({}), [unrelated]);
     } finally { database.close(); }
   });
 });

@@ -1,23 +1,22 @@
-/* Search palette: sits on the page background with a faint edge; the input is its first row. */
-.search-palette { --pal-text: color-mix(in srgb, var(--ds-fg) 76%, var(--ui-canvas)); --pal-label: color-mix(in srgb, var(--ds-fg) 50%, var(--ui-canvas)); --pal-faint: color-mix(in srgb, var(--ds-fg) 38%, var(--ui-canvas)); --palette-fill: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas)); border-color: var(--palette-fill); background: var(--ui-canvas); box-shadow: 0 12px 40px rgb(0 0 0 / 0.12); }
-[data-demo-theme="light"] .search-palette { --pal-text: color-mix(in srgb, var(--ds-fg) 76%, #fff); --pal-label: color-mix(in srgb, var(--ds-fg) 50%, #fff); --pal-faint: color-mix(in srgb, var(--ds-fg) 38%, #fff); --palette-fill: color-mix(in srgb, var(--ds-fg) 8%, #fff); background: #fff; }
+/* Search palette: input first, the filter tabs directly under it, then a list that is a whole number of 36px rows. */
+.search-palette { --pal-row: 36px; --pal-text: color-mix(in srgb, var(--ds-fg) 76%, var(--ds-surface-1)); --pal-label: color-mix(in srgb, var(--ds-fg) 50%, var(--ds-surface-1)); --pal-faint: color-mix(in srgb, var(--ds-fg) 38%, var(--ds-surface-1)); --palette-fill: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1)); border-color: var(--palette-fill); background: var(--ds-surface-1); box-shadow: 0 12px 40px rgb(0 0 0 / 0.12); }
 [data-demo-theme="dark"] .search-palette { box-shadow: 0 12px 40px rgb(0 0 0 / 0.45); }
 .search-palette-scrim { position: fixed; inset: 0; background: var(--ds-surface-scrim); }
-.search-palette { position: fixed; left: 50%; top: 64px; width: min(760px, calc(100vw - 32px)); max-height: min(500px, calc(100vh - 128px)); transform: translateX(-50%); display: flex; flex-direction: column; overflow: hidden; padding: 0; outline: none; }
-.search-palette-input { box-sizing: border-box; width: 100%; height: 51px; flex: none; padding: 0 16px; border: 0; border-bottom: 1px solid var(--ui-stroke); background: transparent; color: var(--ui-primary); font: inherit; font-size: 16px; outline: none; }
+.search-palette { position: fixed; left: 50%; top: 64px; width: min(760px, calc(100vw - 32px)); transform: translateX(-50%); display: flex; flex-direction: column; overflow: hidden; padding: 0; outline: none; }
+.search-palette-input { box-sizing: border-box; width: 100%; height: 52px; flex: none; padding: 0 var(--ds-space-loose); border: 0; background: transparent; color: var(--ui-primary); font: inherit; font-size: 16px; outline: none; }
 .search-palette-input::placeholder { color: var(--pal-label); }
-.search-palette-list { min-height: 0; flex: 1; overflow-y: auto; padding: 4px; overscroll-behavior: contain; scrollbar-width: none; }
+.search-palette-chips { display: flex; flex: none; gap: var(--ds-space-tight); padding: 0 var(--ds-space-base) var(--ds-space-base); border-bottom: 1px solid var(--ui-stroke); }
+.search-palette-chips button { height: 28px; padding: 0 var(--ds-space-cozy); border: 0; border-radius: 9999px; background: transparent; color: var(--pal-label); font-size: 13px; cursor: pointer; }
+.search-palette-chips button:hover { background: color-mix(in srgb, var(--ds-fg) 6%, transparent); }
+.search-palette-chips button[aria-pressed="true"] { background: color-mix(in srgb, var(--ds-fg) 10%, transparent); color: var(--ui-primary); }
+.search-palette-list { box-sizing: content-box; min-height: 0; flex: 1; overflow-y: auto; padding: var(--ds-space-tight); overscroll-behavior: contain; scrollbar-width: none; max-height: round(down, min(9 * var(--pal-row), 100vh - 260px), var(--pal-row)); }
 .search-palette-list::-webkit-scrollbar { display: none; }
-.search-palette-label { padding: 10px 12px 4px; font-size: 12px; line-height: 20px; color: var(--pal-label); }
-.search-palette-row { display: flex; height: 35px; align-items: center; gap: 11px; padding: 0 10px 0 12px; border-radius: 10px; color: var(--pal-text); font-size: 13px; cursor: default; user-select: none; }
+.search-palette-label { display: flex; height: var(--pal-row); align-items: center; padding: 0 var(--ds-space-cozy); font-size: 12px; color: var(--pal-label); }
+.search-palette-row { display: flex; box-sizing: border-box; height: var(--pal-row); align-items: center; gap: var(--ds-space-cozy); padding: 0 var(--ds-space-cozy); border-radius: 10px; color: var(--pal-text); font-size: 13px; cursor: default; user-select: none; }
 .search-palette-row[data-selected="true"] { background: var(--palette-fill); }
 .search-palette-row > svg { width: 16px; height: 16px; flex: none; color: var(--pal-label); }
 .search-palette-row-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-palette-row-tag { max-width: 50%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--pal-faint); }
-.search-palette-key { flex: none; padding: 1px 7px; border-radius: 9999px; background: color-mix(in srgb, var(--ds-fg) 8%, transparent); font-size: 12px; line-height: 18px; color: var(--pal-faint); }
-.search-palette-empty { margin: 0; padding: 14px 12px; font-size: 13px; color: var(--pal-label); }
-.search-palette-chips { display: flex; flex: none; gap: 4px; padding: 8px 4px 4px; margin: 0 4px; border-top: 1px solid var(--ui-stroke); }
-.search-palette-chips button { height: 32px; padding: 0 14px; border: 0; border-radius: 9999px; background: transparent; color: var(--pal-label); font-size: 13px; cursor: pointer; }
-.search-palette-chips button:hover { background: color-mix(in srgb, var(--ds-fg) 6%, transparent); }
-.search-palette-chips button[aria-pressed="true"] { background: color-mix(in srgb, var(--ds-fg) 10%, transparent); color: var(--ui-primary); }
-.search-palette-notice { margin: 0; padding: 6px 16px; font-size: 12px; color: var(--ui-secondary); }
+.search-palette-empty { display: flex; height: var(--pal-row); align-items: center; margin: 0; padding: 0 var(--ds-space-cozy); font-size: 13px; color: var(--pal-label); }
+.search-palette-notice { margin: 0; padding: var(--ds-space-snug) var(--ds-space-loose); border-top: 1px solid var(--ui-stroke); font-size: 12px; color: var(--ui-secondary); }
+.search-palette-skeleton-row { pointer-events: none; }

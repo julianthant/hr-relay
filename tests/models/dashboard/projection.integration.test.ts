@@ -259,5 +259,20 @@ afterEach(_afterEachFixture0);
       gateOpenedAt: { state: "present", value: "2026-08-03T17:05:00.000Z" },
     }).success, false);
   });
+
+  it("requires a strict Duo wait fact on regular and operation rows", async () => {
+    const w = await world();
+    seedWorld(w);
+    const present = { state: "present", kind: "duo", system: "ucpath", since: "2026-08-03T17:00:00.000Z" };
+    for (const seed of [2, 6]) {
+      const row = rowOf(w, seed);
+      assert.deepEqual(row.operatorWait, { state: "absent" });
+      assert.deepEqual(QueueSurfaceWireSchema.parse({ ...row, operatorWait: present }).operatorWait, present);
+      for (const operatorWait of [undefined, { state: "absent", system: "ucpath" }, { ...present, kind: "other" },
+        { ...present, system: "other" }, { ...present, since: "yesterday" }, { ...present, since: undefined }, { ...present, extra: true }]) {
+        assert.equal(QueueSurfaceWireSchema.safeParse({ ...row, operatorWait }).success, false);
+      }
+    }
+  });
 });
 }

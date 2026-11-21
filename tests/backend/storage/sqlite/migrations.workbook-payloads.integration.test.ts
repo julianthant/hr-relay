@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -10,7 +11,7 @@ import { encodeSavedWorkbook, type SavedWorkbook } from "../../../../src/models/
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { restoreSchema36WorkbookPayloads } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema36QueryIndexes, restoreSchema37WorkbookPayloads } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const CAPTURE = { now: "2026-11-17T00:00:00.000Z", captureFile: () => { throw new Error("no capture expected"); } };
@@ -61,21 +62,21 @@ function currentStore(): DatabaseSync {
   return database;
 }
 
-/** Each schema-36 row's payload, canonical, with its embedded workbook. */
+/** Each schema-37 row's payload, canonical, with its embedded workbook. */
 const embedded = (database: DatabaseSync) => TABLES.map(table => database.prepare(`SELECT payload_json FROM ${table} ORDER BY rowid`).all()
   .map(row => canonicalJsonStringify(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json))));
-/** Each schema-37 row's payload with its stored workbook put back in SQL, canonical. */
+/** Each schema-38 row's payload with its stored workbook put back in SQL, canonical. */
 const reassembled = (database: DatabaseSync) => TABLES.map(table => database.prepare(`SELECT json_set(json_remove(source.payload_json,'$.workbookDigest'),'$.workbook',json(stored.payload_json)) AS payload_json
     FROM ${table} AS source JOIN workbook_payloads AS stored ON stored.digest=json_extract(source.payload_json,'$.workbookDigest') ORDER BY source.rowid`).all()
   .map(row => canonicalJsonStringify(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json))));
 const storedBytes = (database: DatabaseSync, tables: readonly string[]) => tables.reduce((total, table) =>
   total + z.object({ bytes: z.number() }).parse(database.prepare(`SELECT coalesce(sum(length(payload_json)),0) AS bytes FROM ${table}`).get()).bytes, 0);
 
-describe("workbook payload migration 37", () => {
+describe("workbook payload migration 38", () => {
   it("is the current schema and adds only the payload table", () => {
-    assert.equal(WORKBOOK_PAYLOAD_MIGRATION.version, 37);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 37);
-    assert.deepEqual(migrationTableNames(37).filter(table => !migrationTableNames(36).includes(table)), ["workbook_payloads"]);
+    assert.equal(WORKBOOK_PAYLOAD_MIGRATION.version, 38);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 38);
+    assert.deepEqual(migrationTableNames(38).filter(table => !migrationTableNames(37).includes(table)), ["workbook_payloads"]);
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
 
@@ -83,12 +84,12 @@ describe("workbook payload migration 37", () => {
     const database = currentStore();
     seed(database);
     const before = readback(database);
-    restoreSchema36WorkbookPayloads(database);
+    restoreSchema37WorkbookPayloads(database);
     const rows = embedded(database);
     assert.deepEqual(rows.map(table => table.length), [1, 1, 1, 3]);
     const copies = storedBytes(database, TABLES);
     database.exec("BEGIN");
-    applyAuthorityMigrationsAfter(database, 36, CAPTURE);
+    applyAuthorityMigrationsAfter(database, 37, CAPTURE);
     database.exec("COMMIT");
     assert.deepEqual(reassembled(database), rows);
     assert.equal(readback(database), before);
@@ -122,19 +123,45 @@ describe("workbook payload migration 37", () => {
     assert.equal(database.prepare("DELETE FROM workbook_payloads WHERE digest=?").run(sha256Hex("{}")).changes, 1);
   });
 
-  it("refuses a schema-36 workbook row that is not strict schema-36 data, changing nothing", () => {
+  it("refuses a schema-37 workbook row that is not strict schema-37 data, changing nothing", () => {
     const database = currentStore();
     seed(database);
-    restoreSchema36WorkbookPayloads(database);
+    restoreSchema37WorkbookPayloads(database);
     database.exec("UPDATE workbook_library SET payload_json=json_set(payload_json,'$.workbook.libraryId','other')");
     const rows = embedded(database);
     database.exec("BEGIN");
-    assert.throws(() => applyAuthorityMigrationsAfter(database, 36, CAPTURE));
+    assert.throws(() => applyAuthorityMigrationsAfter(database, 37, CAPTURE));
     database.exec("ROLLBACK");
     assert.deepEqual(embedded(database), rows);
   });
 
-  it("upgrades a schema-36 store through the store upgrade and compacts the file", async () => {
+  it("validates a stopped schema-36 store's library in its own layout through read-only inspection", async () => {
+    const f = await storageRecoveryFixture(7);
+    try {
+      const database = new DatabaseSync(f.path);
+      try {
+        database.exec("PRAGMA foreign_keys=ON");
+        for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
+        database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+        database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+        seed(database);
+        restoreSchema36QueryIndexes(database);
+      } finally { database.close(); }
+      const inspect = () => {
+        const copy = new DatabaseSync(f.path, { readOnly: true });
+        try { return inspectNativeAuthority(copy, 36).schemaVersion; } finally { copy.close(); }
+      };
+      assert.equal(inspect(), 36);
+      const writer = new DatabaseSync(f.path);
+      try {
+        writer.prepare("UPDATE workbook_library_state SET sync_json=? WHERE id='roster'")
+          .run(JSON.stringify({ url: "https://example.sharepoint.com/sites/hr/Roster.csv", finishedAt: USED, result: "failed", code: "download timed out" }));
+      } finally { writer.close(); }
+      assert.throws(inspect);
+    } finally { await f.dispose(); }
+  });
+
+  it("keeps a committed upgrade and reports it upgraded when compaction fails", async () => {
     const f = await storageRecoveryFixture(7);
     try {
       let before: string;
@@ -146,8 +173,67 @@ describe("workbook payload migration 37", () => {
         database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
         seed(database);
         before = readback(database);
-        restoreSchema36WorkbookPayloads(database);
-        assert.equal(inspectNativeAuthority(database, 36).schemaVersion, 36);
+        restoreSchema37WorkbookPayloads(database);
+      } finally { database.close(); }
+      const exec = DatabaseSync.prototype.exec;
+      let refused = 0;
+      const vacuum = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
+        if (sql === "VACUUM") { refused++; throw new Error("database or disk is full"); }
+        exec.call(this, sql);
+      });
+      try {
+        const report = await f.run();
+        assert.equal(report.state, "upgraded");
+        assert.equal(report.compaction, "failed");
+      } finally { vacuum.mockRestore(); }
+      assert.equal(refused, 1);
+      const manifests = () => readdirSync(join(dirname(f.path), "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+      const backups = manifests();
+      assert.equal(backups.length, 1);
+      const sizeFailed = statSync(f.path).size;
+      const upgraded = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.equal(inspectNativeAuthority(upgraded).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+        assert.equal(readback(upgraded), before);
+        assert.deepEqual(upgraded.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
+      } finally { upgraded.close(); }
+      // An already-current store with free pages is never rewritten: compaction is attempted once, inside the upgrade.
+      let vacuums = 0;
+      const later = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
+        if (sql === "VACUUM") vacuums++;
+        exec.call(this, sql);
+      });
+      try {
+        const again = await f.run();
+        assert.equal(again.state, "already-upgraded");
+        assert.equal(again.compaction, undefined);
+      } finally { later.mockRestore(); }
+      assert.equal(vacuums, 0);
+      assert.equal(statSync(f.path).size, sizeFailed);
+      const untouched = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.ok(Number(untouched.prepare("PRAGMA freelist_count").get()?.freelist_count) > 0);
+        assert.equal(readback(untouched), before);
+        assert.deepEqual(untouched.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
+      } finally { untouched.close(); }
+      assert.deepEqual(manifests(), backups);
+    } finally { await f.dispose(); }
+  });
+
+  it("upgrades a schema-37 store through the store upgrade and compacts the file", async () => {
+    const f = await storageRecoveryFixture(7);
+    try {
+      let before: string;
+      const database = new DatabaseSync(f.path);
+      try {
+        database.exec("PRAGMA foreign_keys=ON");
+        for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
+        database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+        database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+        seed(database);
+        before = readback(database);
+        restoreSchema37WorkbookPayloads(database);
+        assert.equal(inspectNativeAuthority(database, 37).schemaVersion, 37);
       } finally { database.close(); }
       const sizeBefore = statSync(f.path).size;
       assert.equal((await f.run()).state, "upgraded");

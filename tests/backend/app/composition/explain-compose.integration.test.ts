@@ -12,7 +12,7 @@ import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest } from "..
 import { canonicalInputSamples } from "../../../../src/models/workflow/canonical-input.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { personLookupDescriptor, separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
 import { z } from "zod";
@@ -29,6 +29,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,describe,it,vi } from "vitest";
 import { composeExplainRuntime,explainRunFrom,parseDiagnosticArgs } from "../../../../src/backend/app/composition/explain-compose.js";
+import { startRebuildRuntime } from "../../../../src/backend/app/composition/runtime-composition.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
@@ -152,7 +153,7 @@ function failedFollowup(database: AuthorityDatabase, attempt: number, retryOf?: 
       expectedVersion: run.version, claim, authorizedAt: now, failureId: failure.failureId } }).run;
 }
 
-async function failedChild(descriptor: AnyWorkflowDescriptor) {
+async function failedRun(descriptor: AnyWorkflowDescriptor, kind: "child" | "root" = "child") {
   const database = await seeded();
   const source = requireTrustRun(createTrustRunReader(database), EXIT_RUN_ID);
   const profile = heldProfiles.at(-1); assert.ok(profile);
@@ -160,26 +161,29 @@ async function failedChild(descriptor: AnyWorkflowDescriptor) {
   const runId = randomUUID();
   const traceId = `${descriptor.code}-001113-${runId.slice(0, 4)}`;
   const canonical = descriptor.canonicalInput.parse(canonicalInputSamples(descriptor.canonicalInput)[0]);
+  const protectedBindings = (descriptor.protectedInputs ?? []).map(declaration => ({
+    ...declaration, kind: "protected-store", valueId: randomUUID(),
+  }));
   const failure = FailureRecordSchema.parse({ failureId: randomUUID(), fingerprint: "f".repeat(64),
     runId, traceId, attempt: 1, workflowId: descriptor.id,
-    code: "RUN_INTERRUPTED_BY_CRASH", summary: "Synthetic child failure", transient: false, writeState: "not-attempted",
-    causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "Synthetic child failure", role: "primary", transient: false }],
-    remediation: [{ kind: "operator-action", message: "Inspect child failure" }], occurredAt: now });
+    code: "RUN_INTERRUPTED_BY_CRASH", summary: "Synthetic run failure", transient: false, writeState: "not-attempted",
+    causeChain: [{ code: "RUN_INTERRUPTED_BY_CRASH", summary: "Synthetic run failure", role: "primary", transient: false }],
+    remediation: [{ kind: "operator-action", message: "Inspect run failure" }], occurredAt: now });
   const authorization = FailureTerminalAuthorizationRecordSchema.parse({ kind: "failed", runId, workflowId: descriptor.id, attempt: 1,
     descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
     expectedVersion: 4, claim: { workerId: "fixture-child-worker", claimGeneration: 1 }, authorizedAt: now, failureId: failure.failureId });
   const terminal = RunRecordSchema.parse({ ...source,
     envelope: { ...source.envelope, runId, workflow: descriptor.id, itemId: randomUUID(), traceId,
       descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, dryRun: true, enqueuedAt: now,
-      parent: { runId: EXIT_RUN_ID, tracePrefix: EXIT_TRACE_ID, edgeId: "fixture-child" } },
-    input: { ...source.input, raw: canonical, parsed: { protectedBindings: [],
+      ...(kind === "child" ? { parent: { runId: EXIT_RUN_ID, tracePrefix: EXIT_TRACE_ID, edgeId: "fixture-child" } } : {}) },
+    input: { ...source.input, raw: canonical, parsed: { protectedBindings,
       schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: canonical } },
     lifecycle: { state: "terminal", outcome: "failed", endedAt: now, failureId: failure.failureId, errorSummary: failure.summary },
     completion: completionFromAuthorization(authorization), claimGeneration: 1, version: 5, createdAt: now, updatedAt: now,
   });
   const result = createRunTerminalEvidenceResult(terminal, { kind: "failed-evidence", authorization,
     failureDigest: deriveTerminalFailureDigest(failure) });
-  // Insert a retained child snapshot without executing a workflow or changing immutable evidence.
+  // Seed the terminal snapshot without executing a workflow.
   const raw = new DatabaseSync(join(profile.stateRoot, "state.db"));
   try {
     const runColumns = runRecordColumns(terminal);
@@ -191,15 +195,60 @@ async function failedChild(descriptor: AnyWorkflowDescriptor) {
     raw.prepare(`INSERT INTO run_results (${Object.keys(resultColumns).join(",")}) VALUES (${Object.keys(resultColumns).map(() => "?").join(",")})`)
       .run(...Object.values(resultColumns));
   } finally { raw.close(); }
-  assert.equal(requireTrustRun(createTrustRunReader(database), runId).envelope.parent?.runId, EXIT_RUN_ID);
-  return { database, runId, failure };
+  assert.equal(requireTrustRun(createTrustRunReader(database), runId).envelope.parent?.runId, kind === "child" ? EXIT_RUN_ID : undefined);
+  return { database, runId, failure, profile, terminal };
+}
+
+async function failedSeparationWithSubject(field: Readonly<Record<string, string>>) {
+  const { database, runId, profile, terminal } = await failedRun(separationsDescriptor, "root");
+  const { envelope, claimGeneration, updatedAt } = terminal;
+  const value = { emplId: "10000001", emplIdSource: "document-eid", candidateCount: 1, ...field };
+  database.authority.runCheckpoints.insert({
+    workflowId: envelope.workflow, itemId: envelope.itemId, nodeId: "subject",
+    attempt: envelope.attempt, claimGeneration, runId,
+    output: { schemaHash: "2041043789d888110f63de4ec16f72ea42b266ef37b225eb73e73a0bdcffc9d8", value },
+    descriptorVersion: envelope.descriptorVersion, contractFingerprint: envelope.contractFingerprint,
+    implFingerprint: "c".repeat(64), writtenAt: updatedAt,
+    provenance: Object.keys(value).map(path => ({ path, source: "derived", observedAt: updatedAt, originalObservedAt: updatedAt })),
+  });
+  return { database, runId, profile };
 }
 
 describe("explain run", () => {
+  it("explains a retained Separations subject with searchedName", async () => {
+    const { database, runId, profile } = await failedSeparationWithSubject({ searchedName: "Synthetic Person" });
+    const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["run", runId, "--json"] });
+    const view = z.object({ runId: z.string(), receipt: z.object({ state: z.string() }) }).parse(JSON.parse(output));
+    assert.equal(view.runId, runId);
+    assert.equal(view.receipt.state, "present");
+    assert.equal(output.includes("Synthetic Person"), false);
+    const fact = database.authority.evidenceReceipts.findByRun(runId)?.observations.find(row => row.field === "searchedName");
+    assert.deepEqual(fact?.state === "satisfied" && fact.value, {
+      key: "searchedName", state: "allowed", classification: "direct-identifier", transform: "allow", value: "Synthetic Person",
+    });
+  });
+
+  it("reports the invalid evidence path on stderr and exits unsuccessfully", async () => {
+    const { runId, profile } = await failedSeparationWithSubject({ unknownSubjectField: "Synthetic private value" });
+    const write = vi.fn();
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const priorExitCode = process.exitCode;
+    try {
+      await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: ["explain", "run", runId, "--json"], write,
+        explain: (isolation, args) => composeExplainRuntime({ admission: profile.machine, isolation, args }) });
+      assert.equal(process.exitCode, 1);
+      assert.equal(write.mock.calls.length, 0);
+      assert.deepEqual(stderr.mock.calls, [['explain run: invalid data at ["unknownSubjectField"] (custom)\n']]);
+    } finally {
+      process.exitCode = priorExitCode;
+      stderr.mockRestore();
+    }
+  });
+
   it("explains a failed I-9 Lookup child with its own timeline, failure and receipt", async () => {
     const module = CHILD_ONLY_WORKFLOW_MODULES.find(entry => entry.descriptor.id === "i9-lookup");
     assert.ok(module);
-    const { database, runId, failure } = await failedChild(module.descriptor);
+    const { database, runId, failure } = await failedRun(module.descriptor);
     const view = explainRunFrom(database, runId);
     assert.equal(view.workflowId, "i9-lookup");
     assert.deepEqual(view.timeline.map(entry => entry.nodeId), ["lookup-source", "lookup"]);
@@ -246,7 +295,7 @@ describe("explain run", () => {
 
   it.each(CHILD_ONLY_WORKFLOW_MODULES.map(module => [String(module.descriptor.id), module.descriptor] as const))(
     "explains a failed child snapshot for registered %s", async (workflowId, descriptor) => {
-      const { database, runId, failure } = await failedChild(descriptor);
+      const { database, runId, failure } = await failedRun(descriptor);
       const view = explainRunFrom(database, runId);
       assert.equal(view.workflowId, workflowId);
       assert.deepEqual(view.outcome, { state: "present", value: "failed" });
@@ -326,8 +375,10 @@ describe("explain run", () => {
     const output = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
     let after = 0; const categories = new Set<string>();
+    const pages: ReturnType<typeof AuthorityDatabase.inspectTimelinePageReadOnly>[] = [];
     for (;;) {
       const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, path, { after, limit: 2 });
+      pages.push(page);
       assert.ok(page.records.length <= 2);
       const rendered = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation,
         args: ["diagnostics", "--after", String(after), "--limit", "2", "--json"] });
@@ -342,11 +393,24 @@ describe("explain run", () => {
       if (!page.hasMore) break;
     }
     assert.equal(categories.size, 7);
+    const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+    try {
+      const batched = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation,
+        args: ["diagnostics", "--limit", "2", "--pages", "3", "--json"] });
+      const view = z.object({ records: z.array(z.object({ eventId: z.string() })), after: z.number(), nextCursor: z.number(),
+        through: z.number(), highWaterMark: z.number(), hasMore: z.boolean() }).parse(JSON.parse(batched));
+      const last = pages[2]; assert.ok(last);
+      assert.deepEqual(view, { records: pages.slice(0, 3).flatMap(page => page.records.map(({ eventId }) => ({ eventId }))),
+        after: 0, nextCursor: last.nextCursor, through: last.through, highWaterMark: last.highWaterMark, hasMore: last.hasMore });
+      assert.equal(prepare.mock.calls.filter(([sql]) => sql === "PRAGMA quick_check").length, 1);
+    } finally { prepare.mockRestore(); }
     assert.deepEqual(readFileSync(path), before, "state.db"); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
     for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes, name);
     assert.throws(() => parseDiagnosticArgs(["--limit", "1001"]));
     assert.throws(() => parseDiagnosticArgs(["--after", "-1"]));
     assert.throws(() => parseDiagnosticArgs(["--boot", "--run", EXIT_RUN_ID]));
+    assert.throws(() => parseDiagnosticArgs(["--boot", "--pages", "2"]));
+    assert.throws(() => parseDiagnosticArgs(["--limit", "1000", "--pages", "2"]));
   });
 
   it("keeps a cause's code and class name and drops its stack, path and free text", async () => {

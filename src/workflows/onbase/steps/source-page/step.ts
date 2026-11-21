@@ -11,8 +11,12 @@ export const ONBASE_SOURCE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "
         title: "Source PDF page",
         mode: "Read only",
         nodeIds: ["source-page"],
-        lines: [{ id: "source", kind: "check", text: "Extract and verify exactly the approved person’s original PDF page.", nodeIds: ["source-page"] }],
-        fields: []
+        lines: [
+          { id: "read-source", kind: "read", text: "Read the selected original PDF page for this person.", nodeIds: ["source-page"] },
+          { id: "source", kind: "check", text: "Extract and verify exactly the approved person’s original PDF page.", nodeIds: ["source-page"] },
+        ],
+        fields: [{ id: "page", label: "PDF page", inputField: "sourcePage", example: "1",
+          source: { origin: "Approved PDF record", detail: "The first original PDF page belonging to this person.", chain: [] } }]
       }
     ],
     branchLabels: []

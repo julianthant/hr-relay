@@ -1,189 +1,478 @@
 import type { ExplorerNodeWire } from "../../../models/dashboard/explorer.js";
-import { ExplorerReviewSpecSchema, type ExplorerReviewDecision, type ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
+import { ExplorerReviewSpecSchema, type ExplorerReviewSpec, type ExplorerSpecValue } from "../../../models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { contractCollectionFieldOptions, contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../models/validation/contract-boundary.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../models/failures/failure-labels.js";
+import type { NodeCondition } from "../../../models/workflow/node-condition.js";
+import type { OperatorFieldDisplay } from "../../../models/workflow/presentation.js";
 import { WorkflowStepReviewSchema } from "../../../models/workflow/review-spec.js";
+import { contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../models/validation/contract-boundary.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import type { ExplorerModuleView } from "./explorer.js";
 
-function runOptions(module: ExplorerModuleView): ExplorerReviewSpec["runOptions"] {
-  const descriptor = module.descriptor;
-  const inputRun = descriptor.surfaces.inputRun;
-  const typed = inputRun?.typedInput;
-  const upload = descriptor.surfaces.uploadRun;
-  const controls: ExplorerReviewSpec["runOptions"]["controls"] = [];
-  if (typed !== undefined) for (const control of typed.controls) {
-    if (control.placement === "hidden") continue;
-    const leaves = typed.submitsMode === false ? contractSchemaLeaves(descriptor.input)
-      : contractSchemaLeavesForModes(descriptor.input, typed.modeField, control.modes);
-    const leaf = leaves.find(candidate => candidate.path === control.field);
-    if (leaf === undefined) throw new Error(`workflow ${descriptor.id} review control names unknown input field ${control.field}`);
-    controls.push({ field: control.field, label: control.label, placement: control.placement, modes: control.modes, requires: control.requires,
-      kind: leaf.kind, ...(leaf.options === undefined ? {} : { options: [...leaf.options] }) });
-  }
-  const visibleFields = new Set(controls.map(control => control.field));
-  return {
-    start: { input: inputRun !== undefined, upload: upload !== undefined, emptyOpensUpload: inputRun?.emptyOpensUpload === true },
-    supportsDryRun: workflowDryRunSupport(descriptor).state === "supported",
-    omittableSteps: descriptor.stepOmissions.map(omission => {
-      const step = descriptor.timeline.find(group => group.key === omission.step);
-      if (step === undefined) throw new Error(`workflow ${descriptor.id} review omission names unknown step ${omission.step}`);
-      return { stepKey: step.key, label: step.label, form: omission.form };
-    }),
-    ...(typed === undefined ? {} : { mode: { field: typed.modeField, label: typed.modeLabel, initial: typed.initialMode,
-      options: typed.modes.map(mode => ({ value: mode.value, label: mode.label,
-        defaults: mode.defaults.filter(field => visibleFields.has(field.field)) })) } }),
-    controls,
-    ...(upload === undefined ? {} : { upload: { fields: [...upload.fields], accepts: [...upload.accepts] } }),
-  };
+type Condition = Readonly<Record<string, readonly string[]>>;
+/** Alternatives, any of which shows a part; `undefined` shows it always. */
+type When = readonly Condition[];
+type Choices = ReadonlyMap<string, readonly string[]>;
+type Spec = ExplorerReviewSpec;
+type Option = Spec["options"][number];
+type Step = Spec["steps"][number];
+type Block = Step["blocks"][number];
+type Decision = Extract<Block, { kind: "decision" }>;
+type Outcome = Decision["outcomes"][number];
+type StepReview = ReturnType<typeof WorkflowStepReviewSchema.parse>;
+type RuntimeNode = ReturnType<typeof descriptorRuntimeNodes>[number];
+type RunOptions = {
+  options: Option[]; choices: Choices;
+  conditionGate(condition: NodeCondition | undefined): When | undefined;
+  inputGate(path: string): When | undefined;
+  selectionGate(field: string, selectedWhen: boolean): When | undefined;
+};
+
+const STOPS = "The run stops with a failure card.";
+const ON_OFF = [{ value: "true", label: "On" }, { value: "false", label: "Off" }];
+const DRY_RUN = "dry-run";
+const DRY: When = [{ [DRY_RUN]: ["true"] }];
+const LIVE: When = [{ [DRY_RUN]: ["false"] }];
+
+/** Drops keys that admit every choice and alternatives another alternative already covers; `undefined` when one admits every run. */
+function simplify(when: When, choices: Choices): When | undefined {
+  const reduced = when.map(condition => Object.fromEntries(Object.entries(condition).flatMap(([key, values]) => {
+    const all = choices.get(key);
+    if (all !== undefined && all.every(value => values.includes(value))) return [];
+    return [[key, all === undefined ? [...new Set(values)] : all.filter(value => values.includes(value))] as const];
+  })));
+  if (reduced.some(condition => Object.keys(condition).length === 0)) return undefined;
+  const merged = mergeAlternatives(reduced);
+  if (merged.length < reduced.length) return simplify(merged, choices);
+  const covers = (wide: Condition, narrow: Condition) => Object.entries(wide).every(([key, values]) => narrow[key]?.every(value => values.includes(value)) === true);
+  return reduced.filter((condition, index) => !reduced.some((other, at) => at !== index && covers(other, condition) && (at < index || !covers(condition, other))));
 }
 
-function sessionRequirements(module: ExplorerModuleView, modules: readonly ExplorerModuleView[]): ExplorerReviewSpec["sessionStep"] {
-  const requirements: ExplorerReviewSpec["sessionStep"]["requirements"] = [];
-  const unavailableDelegations: ExplorerReviewSpec["sessionStep"]["unavailableDelegations"] = [];
-  const visit = (current: ExplorerModuleView, path: ExplorerReviewSpec["sessionStep"]["requirements"][number]["delegationPath"], ancestry: readonly string[]): void => {
-    const workflowId = current.descriptor.id;
-    if (ancestry.includes(workflowId)) throw new Error(`workflow ${workflowId} review session delegation cycle`);
-    const nodes = descriptorRuntimeNodes(current.descriptor);
-    for (const group of current.descriptor.timeline) for (const member of group.nodes) {
-      const node = nodes.find(candidate => candidate.id === member.id);
-      if (node === undefined) throw new Error(`workflow ${workflowId} review session names unknown node ${member.id}`);
-      const contracts = node.kind === "task" ? [node.uses] : node.kind === "transaction" ? [node.prepare.uses, node.commit.uses] : [];
-      for (const contract of contracts) for (const store of current.stores) for (const task of Object.values(store.tasks)) {
-        if (task.contract !== contract || store.kind !== "browser") continue;
-        for (const [index, need] of task.impl.sessions.entries()) {
-          requirements.push({
-            id: [...path.map(edge => `${edge.workflowId}/${edge.nodeId}`), `${workflowId}/${node.id}/${contract.id}/${index}`].join("/"),
-            workflowId, stepKey: group.key, stepTitle: group.label, nodeId: node.id, taskId: contract.id, need,
-            scope: path.length === 0 ? "direct" : "delegated",
-            preparation: "before-owning-workflow-claim",
-            useTiming: path.length === 0 ? "when-step-runs" : "when-delegated-step-runs",
-            delegationPath: path, signIn: "required-by-declaration",
-            lock: need.exclusive === true ? "exclusive-required" : "not-exclusive",
-          });
-        }
+/** Two alternatives that differ only in one key's values are one alternative admitting both. */
+function mergeAlternatives(when: When): When {
+  for (const [index, left] of when.entries()) for (const [at, right] of when.entries()) {
+    if (at <= index) continue;
+    const keys = Object.keys(left);
+    if (keys.length !== Object.keys(right).length || !keys.every(key => right[key] !== undefined)) continue;
+    const differing = keys.filter(key => JSON.stringify(left[key]) !== JSON.stringify(right[key]));
+    if (differing.length > 1) continue;
+    const merged = Object.fromEntries(keys.map(key => [key, [...new Set([...left[key] ?? [], ...right[key] ?? []])]]));
+    return mergeAlternatives([...when.filter((_, position) => position !== index && position !== at), merged]);
+  }
+  return when;
+}
+
+function join(left: Condition, right: Condition): Condition | undefined {
+  const joined: Record<string, readonly string[]> = { ...left };
+  for (const [key, values] of Object.entries(right)) {
+    const kept = joined[key]?.filter(value => values.includes(value)) ?? values;
+    if (kept.length === 0) return undefined;
+    joined[key] = kept;
+  }
+  return joined;
+}
+
+/** Every gate holds. */
+function both(choices: Choices, ...gates: readonly (When | undefined)[]): When | undefined {
+  let joined: readonly Condition[] | undefined;
+  for (const gate of gates) {
+    if (gate === undefined) continue;
+    joined = (joined ?? [{}]).flatMap((left): Condition[] => gate.flatMap((right): Condition[] => { const next = join(left, right); return next === undefined ? [] : [next]; }));
+    if (joined.length === 0) throw new Error(`explorer gates ${JSON.stringify(gates)} admit no run`);
+  }
+  return joined === undefined ? undefined : simplify(joined, choices);
+}
+
+/** Any gate holds. */
+function either(choices: Choices, gates: readonly (When | undefined)[]): When | undefined {
+  if (gates.length === 0 || gates.some(gate => gate === undefined)) return undefined;
+  return simplify(gates.flatMap(gate => gate ?? []), choices);
+}
+
+const gated = (when: When | undefined) => when === undefined ? {} : { when: when.map(condition => Object.fromEntries(Object.entries(condition).map(([key, values]) => [key, [...values]]))) };
+
+/** The run options Start run declares, and how input conditions read as gates on them. */
+function runOptions(module: ExplorerModuleView, modules: readonly ExplorerModuleView[], ancestry: readonly string[] = []): RunOptions {
+  const { descriptor } = module;
+  if (ancestry.includes(descriptor.id)) throw new Error(`workflow ${descriptor.id} review option source cycle`);
+  const inputLabels = new Map<string, string>();
+  for (const [group] of module.definition?.steps ?? []) for (const page of group.review?.pages ?? []) for (const field of page.fields) {
+    if ("inputField" in field && !inputLabels.has(field.inputField)) inputLabels.set(field.inputField, field.label);
+  }
+  const typed = descriptor.surfaces.inputRun?.typedInput;
+  const options: Option[] = [];
+  const choices = new Map<string, readonly string[]>();
+  const gates = new Map<string, When | undefined>();
+  const emitted = new Map<string, { option: string; value: string }>();
+  const add = (option: Omit<Option, "when">, when: When | undefined): void => {
+    if (choices.has(option.id)) throw new Error(`workflow ${descriptor.id} repeats review option ${option.id}`);
+    options.push({ ...option, ...gated(when) });
+    choices.set(option.id, option.choices.map(choice => choice.value));
+    gates.set(option.id, when);
+  };
+  if (typed !== undefined) {
+    const modeOption = typed.submitsMode !== false && typed.modes.length > 1 ? typed.modeField : undefined;
+    if (modeOption !== undefined) add({ id: modeOption, label: typed.modeLabel, choices: typed.modes.map(mode => ({ value: mode.value, label: mode.label })),
+      initial: typed.initialMode ?? typed.modes[0]?.value ?? "" }, undefined);
+    const modeGate = (modes: readonly string[]): When | undefined =>
+      modeOption === undefined || typed.modes.every(mode => modes.includes(mode.value)) ? undefined : [{ [modeOption]: modes }];
+    for (const mode of typed.modes) {
+      if (mode.parser.kind !== "entries") continue;
+      const fields = [...new Set(mode.parser.spec.rules.map(rule => rule.emit))];
+      if (fields.length < 2) continue;
+      const id = `${mode.value}-by`;
+      add({ id, label: `${mode.label} by`, choices: fields.map(field => {
+        const label = inputLabels.get(field);
+        if (label === undefined) throw new Error(`workflow ${descriptor.id} option ${id} has no review row that reads input field ${field}`);
+        return { value: field, label };
+      }), initial: mode.parser.spec.rules.find(rule => rule.when.kind === "otherwise")?.emit ?? fields[0] ?? "" }, modeGate([mode.value]));
+      for (const field of fields) emitted.set(field, { option: id, value: field });
+    }
+    for (const control of typed.controls) {
+      if (control.placement === "hidden" || "kind" in control) continue;
+      const leaves = typed.submitsMode === false ? contractSchemaLeaves(descriptor.input)
+        : contractSchemaLeavesForModes(descriptor.input, typed.modeField, control.modes);
+      const leaf = leaves.find(candidate => candidate.path === control.field);
+      if (leaf === undefined) throw new Error(`workflow ${descriptor.id} review control names unknown input field ${control.field}`);
+      const offered = leaf.kind === "boolean" ? ON_OFF : leaf.options?.map(value => ({ value, label: value }));
+      if (offered === undefined) continue;
+      const defaults = new Map(typed.modes.filter(mode => control.modes.includes(mode.value)).flatMap(mode => {
+        const declared = mode.defaults.find(field => field.field === control.field)?.value;
+        const value = declared === undefined ? undefined : declared.kind === "boolean" ? String(declared.value) : declared.kind === "text" ? declared.text : undefined;
+        return value === undefined ? [] : [[mode.value, value] as const];
+      }));
+      const first = offered[0]?.value ?? "";
+      const initialMode = typed.initialMode ?? typed.modes[0]?.value;
+      const distinct = new Set(defaults.values());
+      const initial: ExplorerSpecValue = distinct.size <= 1 || modeOption === undefined ? [...distinct][0] ?? first
+        : { by: modeOption, values: Object.fromEntries(defaults), otherwise: (initialMode === undefined ? undefined : defaults.get(initialMode)) ?? first };
+      add({ id: control.field, label: control.label, choices: offered, initial },
+        both(choices, modeGate(control.modes), ...control.requires.map(field => both(choices, [{ [field]: ["true"] }], gates.get(field)))));
+    }
+  }
+  for (const field of descriptor.surfaces.uploadRun?.fields ?? []) {
+    if (field.kind === "text") continue;
+    if (field.kind === "boolean") {
+      add({ id: field.field, label: field.label, choices: ON_OFF, initial: String(field.initial) }, undefined);
+    } else {
+      if (field.options.some(option => option.value === "unselected")) throw new Error(`workflow ${descriptor.id} upload option ${field.field} uses reserved unselected value`);
+      add({ id: field.field, label: field.label, choices: [{ value: "unselected", label: "Choose…" }, ...field.options], initial: "unselected" }, undefined);
+    }
+  }
+  for (const [group] of module.definition?.steps ?? []) for (const source of group.review?.optionsFrom ?? []) {
+    const parent = modules.find(candidate => candidate.descriptor.id === source.workflowId);
+    if (parent === undefined) throw new Error(`workflow ${descriptor.id} review option source ${source.workflowId} is absent from the catalog`);
+    const inherited = runOptions(parent, modules, [...ancestry, descriptor.id]);
+    for (const field of source.fields) {
+      const option = inherited.options.find(candidate => candidate.id === field);
+      if (option === undefined) throw new Error(`workflow ${descriptor.id} inherits unknown review option ${source.workflowId}/${field}`);
+      add(option, option.when);
+    }
+  }
+  if (workflowDryRunSupport(descriptor).state === "supported") add({ id: DRY_RUN, label: "Dry run", choices: ON_OFF, initial: "false" }, undefined);
+  for (const omission of descriptor.stepOmissions) {
+    const step = descriptor.timeline.find(group => group.key === omission.step);
+    if (step === undefined) throw new Error(`workflow ${descriptor.id} review omission names unknown step ${omission.step}`);
+    add({ id: `skip-${step.key}`, label: step.label, choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }], initial: "run" }, undefined);
+  }
+  /** The gate an input condition puts on a node; a condition on another node's output depends on the run, so it gates nothing. */
+  const conditionGate = (condition: NodeCondition | undefined): When | undefined => {
+    if (condition?.of.from !== "input") return undefined;
+    const path = String(condition.of.path);
+    const values = choices.get(path);
+    const option = (picked: readonly string[]) => values === undefined ? undefined : both(choices, [{ [path]: picked }], gates.get(path));
+    switch (condition.kind) {
+      case "equals": return values?.includes(String(condition.value)) === true ? option([String(condition.value)]) : undefined;
+      case "not-equals": return option(values?.filter(value => value !== String(condition.value)) ?? []);
+      case "is-true": return option(["true"]);
+      case "is-false": return option(["false"]);
+      case "is-present": case "is-absent": {
+        const emit = emitted.get(path);
+        if (emit === undefined) return undefined;
+        const all = choices.get(emit.option) ?? [];
+        return both(choices, [{ [emit.option]: condition.kind === "is-present" ? [emit.value] : all.filter(value => value !== emit.value) }], gates.get(emit.option));
       }
-      if (node.kind !== "child-run") continue;
-      const child = modules.find(candidate => candidate.descriptor.id === node.target.id);
-      if (child === undefined) {
-        unavailableDelegations.push({ workflowId: node.target.id, nodeId: node.id,
-          reason: "The delegated workflow is absent from this catalog; its browser requirements are unavailable." });
-        continue;
-      }
-      visit(child, [...path, { workflowId, stepKey: group.key, nodeId: node.id }], [...ancestry, workflowId]);
     }
   };
-  visit(module, [], []);
-  return { id: "browser-sessions", title: "Open browser sessions", requirements, unavailableDelegations };
+  const inputGate = (path: string): When | undefined => {
+    const emit = emitted.get(path);
+    return emit === undefined ? undefined : both(choices, [{ [emit.option]: [emit.value] }], gates.get(emit.option));
+  };
+  const selectionGate = (field: string, selectedWhen: boolean): When | undefined =>
+    choices.get(field)?.includes(String(selectedWhen)) === true ? both(choices, [{ [field]: [String(selectedWhen)] }], gates.get(field)) : undefined;
+  return { options, choices, conditionGate, inputGate, selectionGate };
 }
 
-function decisions(node: ExplorerNodeWire, labels: readonly { nodeId: string; outcome: string; label: string }[]): ExplorerReviewDecision[] {
-  const outcomes: ExplorerReviewDecision[] = [];
-  const add = (outcome: string, action: ExplorerReviewDecision["action"], text: string): void => {
-    outcomes.push({ id: `${node.id}/${outcome}`, nodeId: node.id,
-      kind: node.shape.kind === "child-run" ? "delegation" : node.shape.kind,
-      outcome, action, label: { state: "authored", text } });
-  };
-  switch (node.shape.kind) {
-    case "task":
-      add("succeeded", "continue", "The step finishes successfully; continue.");
-      if (node.shape.dryRun === "stop-before-publish") add("dry-run", "continue", "Preview the prepared output without saving it.");
-      if (node.shape.condition !== undefined) outcomes.push({ id: `${node.id}/skipped`, nodeId: node.id, kind: "condition",
-        outcome: "skipped", action: "continue", label: { state: "authored", text: "This step does not apply; continue." } });
-      break;
-    case "branch":
-      for (const branch of node.shape.cases) {
-        const label = labels.find(candidate => candidate.nodeId === node.id && candidate.outcome === branch.name);
-        outcomes.push({ id: `${node.id}/${branch.name}`, nodeId: node.id, kind: "branch", outcome: branch.name, action: "continue",
-          label: label === undefined ? { state: "unavailable", reason: "This declared branch outcome has no operator label." }
-            : { state: "authored", text: label.label } });
-      }
-      break;
-    case "gate":
-      add("waiting", node.shape.resolvedBy === "operator" ? "ask" : "continue", node.shape.resolvedBy === "operator"
-        ? "Ask the operator to resolve this review before continuing." : "Wait for the required results, then continue automatically.");
-      add("resolved", "continue", "The review is complete; continue.");
-      if (node.shape.condition !== undefined) outcomes.push({ id: `${node.id}/skipped`, nodeId: node.id, kind: "condition",
-        outcome: "skipped", action: "continue", label: { state: "authored", text: "This review does not apply; continue." } });
-      break;
-    case "child-run":
-      add("dispatched", "continue", node.shape.await === "none" ? "Start the delegated work without waiting for its result." : "Start the delegated work and wait for its terminal result.");
-      if (node.shape.await !== "none") {
-        add("succeeded", "continue", "The delegated work succeeds; continue.");
-        add("child-failed", node.shape.onChildFailed === "allow-partial" ? "continue" : node.shape.onChildFailed === "block-parent" ? "ask" : "stop",
-          node.shape.onChildFailed === "allow-partial" ? "Keep the available results when delegated work fails."
-            : node.shape.onChildFailed === "block-parent" ? "Hold this run for review when delegated work fails." : "Stop this run when delegated work fails.");
-        add("child-retried", node.shape.afterChildRetry === "resume-parent" ? "continue" : "ask",
-          node.shape.afterChildRetry === "resume-parent" ? "Resume this run after delegated work is retried." : "Ask the operator to resume after delegated work is retried.");
-      }
-      break;
-    case "transaction":
-      add("committed", "continue", "The save is confirmed; continue.");
-      add("already-present", "continue", "The intended record is already confirmed; continue without saving again.");
-      add("unknown", "ask", "The save is unconfirmed; park the write for operator review and do not retry it.");
-      if (node.shape.dryRun === "stop-after-prepare") add("dry-run", "continue", "Preview the prepared change without saving it.");
-      break;
-    case "parallel":
-      add("succeeded", "continue", "The parallel reads finish; continue.");
-      add("failed", node.shape.join === "all-settled" ? "continue" : "stop", node.shape.join === "all-settled"
-        ? "Wait for every parallel result, including failed reads, then continue." : "Stop if a parallel read fails.");
-      break;
-  }
-  for (const task of node.tasks) for (const code of task.errorCodes) {
-    const failureCode = failureCodeFromTaskCode(code);
-    outcomes.push({ id: `${node.id}/${task.arm}/${code}`, nodeId: node.id, taskId: task.taskId, kind: "failure",
-      outcome: code, action: "stop", failureCode, label: { state: "authored", text: operatorFailureSentence(failureCode) } });
-  }
-  return outcomes;
+function scalarAt(value: unknown, path: readonly string[]): unknown {
+  if (Array.isArray(value)) return value.map(item => scalarAt(item, path)).find(item => item !== undefined);
+  if (path.length === 0) return value === null || value === "" || typeof value === "object" ? undefined : value;
+  if (value === null || typeof value !== "object") return undefined;
+  const [head, ...rest] = path;
+  const entry: unknown = Object.entries(value).find(([key]) => key === head)?.[1];
+  return scalarAt(entry, rest);
+}
+
+function sampleText(value: unknown, display: OperatorFieldDisplay | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const shown = display?.cases.find(entry => entry.value === value)?.text;
+  if (shown !== undefined) return shown;
+  return typeof value === "boolean" ? (value ? "Yes" : "No") : typeof value === "string" || typeof value === "number" ? String(value) : undefined;
 }
 
 export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: readonly ExplorerModuleView[], nodes: readonly ExplorerNodeWire[]): ExplorerReviewSpec {
-  const runtimeNodes = descriptorRuntimeNodes(module.descriptor);
-  const steps = module.descriptor.timeline.map(group => {
+  const { descriptor } = module;
+  const runtimeNodes = descriptorRuntimeNodes(descriptor);
+  const reviews = new Map<string, StepReview>(descriptor.timeline.flatMap(group => {
     const authored = module.definition?.steps.find(([candidate]) => candidate.key === group.key)?.[0].review;
-    const review = authored === undefined ? undefined : WorkflowStepReviewSchema.parse(authored);
-    return {
-      id: group.key, title: group.label, ...(group.system === undefined ? {} : { system: group.system }),
-      pages: review === undefined ? { state: "unavailable" as const, reason: "This step has no authored page review metadata." }
-        : { state: "authored" as const, items: review.pages.map(page => ({ ...page, fields: page.fields.map(field => {
-          if (!("operatorField" in field)) {
-            if ("constant" in field) return { id: field.id, label: field.label,
-              example: field.example ?? String(field.constant.value),
-              sources: field.constant.nodeIds.map(nodeId => ({ nodeId, kind: "constant" as const, value: field.constant.value })), source: field.source };
-            const sources = field.transactionFields.map(reference => {
-              const node = runtimeNodes.find(node => node.id === reference.nodeId);
-              if (node?.kind !== "transaction") throw new Error(`workflow ${module.descriptor.id} review field ${field.id} requires transaction source ${reference.nodeId}`);
-              const options = contractCollectionFieldOptions(node.prepare.uses[reference.kind], reference.fieldPath,
-                `workflow ${module.descriptor.id} review transaction field ${field.id} source ${reference.nodeId}`);
-              return { binding: { ...reference, arm: "prepare" as const, taskId: node.prepare.uses.id }, options };
-            });
-            const options = field.display !== undefined ? field.display.cases.map(entry => entry.text)
-              : sources.some(source => source.options === undefined) ? [] : [...new Set(sources.flatMap(source => source.options ?? []))];
-            return { id: field.id, label: field.label, ...(field.example === undefined ? {} : { example: field.example }),
-              ...(field.display === undefined ? {} : { display: field.display }), ...(options.length === 0 ? {} : { options }),
-              sources: sources.map(source => source.binding), source: field.source };
-          }
-          const operator = group.operatorFields?.find(candidate => candidate.label === field.operatorField && candidate.visibility !== "logs");
-          if (operator === undefined) throw new Error(`workflow ${module.descriptor.id} review field ${field.id} has no visible operator field ${field.operatorField}`);
-          const sourceOptions = operator.sources.map(source => {
-            const node = runtimeNodes.find(candidate => candidate.id === source.nodeId);
-            if (node?.kind !== "task") throw new Error(`workflow ${module.descriptor.id} review field ${field.id} requires task source ${source.nodeId}`);
-            return contractCollectionFieldOptions(node.uses[source.kind], source.fieldPath,
-              `workflow ${module.descriptor.id} review field ${field.id} source ${source.nodeId}`);
-          });
-          const options = operator.display !== undefined ? operator.display.cases.map(entry => entry.text)
-            : sourceOptions.some(options => options === undefined) ? [] : [...new Set(sourceOptions.flatMap(options => options ?? []))];
-          return { id: field.id, label: operator.label, ...(operator.example === undefined ? {} : { example: operator.example }),
-            ...(operator.display === undefined ? {} : { display: operator.display }),
-            ...(options.length === 0 ? {} : { options }), sources: operator.sources, source: field.source };
-        }) })) },
-      decisions: group.nodes.flatMap(member => {
-        const node = nodes.find(candidate => candidate.id === member.id);
-        if (node === undefined) throw new Error(`workflow ${module.descriptor.id} review step ${group.key} names unknown node ${member.id}`);
-        return decisions(node, review?.branchLabels ?? []);
-      }),
+    return authored === undefined ? [] : [[group.key, WorkflowStepReviewSchema.parse(authored)] as const];
+  }));
+  const run = runOptions(module, modules);
+  const known = new Map(run.choices);
+  const nodeWire = (id: string): ExplorerNodeWire => {
+    const node = nodes.find(candidate => candidate.id === id);
+    if (node === undefined) throw new Error(`workflow ${descriptor.id} review names unknown node ${id}`);
+    return node;
+  };
+  const nodeGate = (id: string): When | undefined => {
+    const { shape } = nodeWire(id);
+    const branches = nodes.flatMap((node): When[] => {
+      if (node.shape.kind !== "branch") return [];
+      const selected = node.shape.cases.filter(branch => branch.nodes.some(member => member === id)).map(branch => branch.name);
+      return selected.length === 0 ? [] : [[{ [node.id]: selected }]];
+    });
+    return both(known, run.conditionGate(shape.kind === "task" || shape.kind === "gate" ? shape.condition : undefined), ...branches);
+  };
+  const previewsOnDryRun = (node: ExplorerNodeWire): boolean => "leaseScope" in node.shape && node.shape.dryRun === "stop-after-prepare" && known.has(DRY_RUN);
+  const runtimeNode = (id: string): RuntimeNode => {
+    const node = runtimeNodes.find(candidate => candidate.id === id);
+    if (node === undefined) throw new Error(`workflow ${descriptor.id} review names unknown node ${id}`);
+    return node;
+  };
+  const omitted = new Set(descriptor.stepOmissions.map(omission => omission.step));
+  const stepGates = descriptor.timeline.map(group => both(known,
+    group.selection === undefined ? undefined : run.selectionGate(group.selection.inputField, group.selection.selectedWhen),
+    omitted.has(group.key) ? [{ [`skip-${group.key}`]: ["run"] }] : undefined,
+    either(known, group.nodes.map(member => nodeGate(member.id))),
+    reviews.get(group.key)?.when));
+  const continueText = (index: number): string => {
+    const next = descriptor.timeline[index + 1];
+    return next === undefined ? "The run finishes." : stepGates[index + 1] === undefined ? `Continues to ${next.label}.` : "Continues to the next step.";
+  };
+  const decisionReads = new Map<string, { decision: string; values: readonly string[] }>();
+  const sources: Spec["sources"] = {};
+  const stepSystems = new Map(descriptor.timeline.map(group => {
+    const systems = new Set<NonNullable<Step["system"]>>();
+    for (const member of group.nodes) {
+      const node = nodeWire(member.id);
+      for (const task of node.tasks) if (task.binding.state === "bound" && task.binding.driverSystem !== undefined) systems.add(task.binding.driverSystem);
+      if (node.shape.kind !== "child-run") continue;
+      const target = node.shape.targetWorkflowId;
+      const child = modules.find(candidate => candidate.descriptor.id === target);
+      if (child === undefined) throw new Error(`workflow ${descriptor.id} delegates to ${target}, which is absent from the catalog`);
+      for (const store of child.stores) if (store.kind === "browser") systems.add(store.driver.system);
+    }
+    return [group.key, group.system ?? (systems.size === 1 ? [...systems][0] : undefined)] as const;
+  }));
+  const systemOf = (stepKey: string) => stepSystems.get(stepKey);
+
+  const steps = descriptor.timeline.map((group, index): Step => {
+    const review = reviews.get(group.key);
+    const stepGate = stepGates[index];
+    const description: Step["description"] = group.description === undefined ? [] : [{ text: group.description }];
+    const checks: Step["checks"] = [];
+    const blocks: Block[] = [];
+    const displayOf = (nodeId: string, fieldPath: string): OperatorFieldDisplay | undefined => descriptor.timeline.flatMap(candidate => candidate.operatorFields ?? [])
+      .find(field => field.display !== undefined && field.sources.some(source => source.nodeId === nodeId && source.kind === "output" && source.fieldPath === fieldPath))?.display;
+    const outputSample = (references: readonly { nodeId: string; kind: "input" | "output"; fieldPath: string }[], display: OperatorFieldDisplay | undefined): string | undefined => {
+      for (const reference of references) {
+        if (reference.kind !== "output") continue;
+        const node = runtimeNode(reference.nodeId);
+        const example = node.kind === "task" ? node.uses.example : "prepare" in node ? node.prepare.uses.example : undefined;
+        const sample = sampleText(scalarAt(example, reference.fieldPath.split(".")), display);
+        if (sample !== undefined) return sample;
+      }
+      return undefined;
     };
+    const byDecision = (references: readonly { nodeId: string; kind: "input" | "output"; fieldPath: string }[], display: OperatorFieldDisplay | undefined, sample: ExplorerSpecValue | undefined): ExplorerSpecValue | undefined => {
+      if (display === undefined || typeof sample !== "string") return sample;
+      for (const reference of references) {
+        const read = reference.kind === "output" ? decisionReads.get(`${reference.nodeId}/${reference.fieldPath}`) : undefined;
+        if (read === undefined) continue;
+        const values = Object.fromEntries(display.cases.filter(entry => read.values.includes(String(entry.value))).map(entry => [String(entry.value), entry.text]));
+        return Object.keys(values).length === 0 ? sample : { by: read.decision, values, otherwise: sample };
+      }
+      return sample;
+    };
+    // Declared decisions are known before the step's rows so a row that reads the same output follows its outcome.
+    for (const decision of review?.decisions ?? []) {
+      decisionReads.set(`${decision.reads.nodeId}/${decision.reads.fieldPath}`, { decision: decision.id, values: decision.outcomes.map(outcome => outcome.value) });
+    }
+    for (const page of review?.pages ?? []) {
+      const pageGate = both(known, page.when, either(known, page.nodeIds.map(nodeGate)));
+      const rows = page.fields.map(field => {
+        const id = `${group.key}/${page.id}/${field.id}`;
+        sources[id] = { origin: field.source.origin, detail: field.source.detail, reads: [field.source.read, ...field.source.chain.map(link => link.read)]
+          .flatMap(read => read === undefined ? [] : [{ ...(systemOf(read.stepKey) === undefined ? {} : { system: systemOf(read.stepKey) }), step: read.stepKey, page: read.page, field: read.field }]) };
+        const row = (label: string, value: ExplorerSpecValue | undefined, when: When | undefined) => {
+          if (value === undefined && page.mode === "Read only") throw new Error(`workflow ${descriptor.id} review field ${field.id} on read page ${page.id} has no example value`);
+          return { id: field.id, label, ...(value === undefined ? {} : { value }), source: id, ...gated(when) };
+        };
+        if ("operatorField" in field) {
+          const operator = group.operatorFields?.find(candidate => candidate.label === field.operatorField && candidate.visibility !== "logs");
+          if (operator === undefined) throw new Error(`workflow ${descriptor.id} review field ${field.id} has no visible operator field ${field.operatorField}`);
+          const sample = operator.example ?? outputSample(operator.sources, operator.display);
+          return row(operator.label, byDecision(operator.sources, operator.display, sample), both(known, field.when, either(known, operator.sources.map(source => nodeGate(source.nodeId)))));
+        }
+        if ("inputField" in field) return row(field.label, field.example, both(known, field.when, run.inputGate(field.inputField)));
+        if ("constant" in field) return row(field.label, field.example ?? sampleText(field.constant.value, undefined), both(known, field.when, either(known, field.constant.nodeIds.map(nodeGate))));
+        const references = "taskFields" in field ? field.taskFields : field.transactionFields;
+        const display = "display" in field ? field.display : undefined;
+        return row(field.label, byDecision(references, display, field.example ?? outputSample(references, display)), both(known, field.when, either(known, references.map(reference => nodeGate(reference.nodeId)))));
+      });
+      blocks.push({ kind: "card", id: page.id, title: page.title, mode: page.mode === "Fill form" ? "fill" : "read", ...gated(pageGate), rows });
+      for (const line of page.lines) {
+        const when = both(known, pageGate, line.when, either(known, line.nodeIds.map(nodeGate)));
+        if (line.kind === "click") blocks.push({ kind: "click", target: line.target, ...gated(when) });
+        else (line.kind === "check" ? checks : description).push({ text: line.text, ...gated(when) });
+      }
+    }
+
+    for (const { nodeId, when, ...pick } of review?.picks ?? []) {
+      blocks.push({ kind: "pick", ...pick, ...gated(both(known, when, nodeGate(nodeId))) });
+    }
+    const decisions: { block: Decision; nodeIds: readonly string[] }[] = [];
+    const continuing = (value: string, label: string, when?: When): Outcome => ({ value, label, then: continueText(index), stops: false, ...gated(when) });
+    for (const decision of review?.decisions ?? []) {
+      const display = displayOf(decision.reads.nodeId, decision.reads.fieldPath);
+      decisions.push({ nodeIds: decision.nodeIds, block: { kind: "decision", id: decision.id, label: decision.label, initial: decision.initial,
+        ...gated(both(known, decision.when, nodeGate(decision.reads.nodeId))), outcomes: decision.outcomes.map(outcome => {
+          const label = outcome.label ?? display?.cases.find(entry => String(entry.value) === outcome.value)?.text;
+          if (label === undefined) throw new Error(`workflow ${descriptor.id} review decision ${decision.id} outcome ${outcome.value} has no label`);
+          return { value: outcome.value, label, then: outcome.then ?? continueText(index), stops: outcome.stops === true, ...gated(outcome.when) };
+        }).concat(decision.cancellation === undefined ? [] : [{ value: "cancelled", label: decision.cancellation.label,
+          then: decision.cancellation.then, stops: true }]) } });
+    }
+    for (const member of group.nodes) {
+      const node = nodeWire(member.id);
+      const { shape } = node;
+      const child = shape.kind === "child-run" ? modules.find(candidate => candidate.descriptor.id === shape.targetWorkflowId) : undefined;
+      const start = review?.starts?.find(start => start.nodeId === node.id);
+      const point = (initial: ExplorerSpecValue, outcomes: Outcome[]) => decisions.push({ nodeIds: [node.id],
+        block: { kind: "decision", id: node.id, label: review?.branches?.find(branch => branch.nodeId === node.id)?.label
+          ?? (child === undefined ? node.label : `${child.descriptor.label} result`),
+          initial, ...gated(both(known, nodeGate(node.id), start?.when)), outcomes } });
+      if (shape.kind === "child-run") {
+        if (child === undefined) throw new Error(`workflow ${descriptor.id} delegates to ${shape.targetWorkflowId}, which is absent from the catalog`);
+        blocks.push({ kind: "starts", workflowId: child.descriptor.id, title: child.descriptor.label,
+          each: start?.each ?? (shape.cardinality === "many" ? "Each item" : "This run"), ...gated(both(known, nodeGate(node.id), start?.when)) });
+      }
+      if (shape.kind === "branch") {
+        point(review?.branches?.find(branch => branch.nodeId === node.id)?.initial ?? shape.cases[0]?.name ?? "", shape.cases.map(branch => {
+          const label = review?.branchLabels.find(candidate => candidate.nodeId === node.id && candidate.outcome === branch.name)?.label;
+          if (label === undefined) throw new Error(`workflow ${descriptor.id} review branch ${node.id}/${branch.name} has no label`);
+          return continuing(branch.name, label);
+        }));
+      } else if (shape.kind === "gate" && shape.resolvedBy === "operator") {
+        if (!decisions.some(decision => decision.nodeIds.includes(node.id))) {
+          point("waits", [{ value: "waits", label: "Waits for you", then: "Waits for you to resolve it in Logs, then continues.", stops: false },
+            { value: "cancelled", label: "Cancel run", then: "Cancels this run before the next step.", stops: true }]);
+        }
+      } else if ("leaseScope" in shape) {
+        const live = previewsOnDryRun(node) ? LIVE : undefined;
+        point(live === undefined ? "saved" : { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: "saved" }, [continuing("saved", "Saved", live),
+          { value: "already-present", label: "Already present", then: "Uses the verified existing change without saving it again, then continues.", stops: false },
+          { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: true, ...gated(live) },
+          ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }])]);
+      } else if (shape.kind === "child-run" && shape.await === "terminal" && child !== undefined) {
+        const name = child.descriptor.label;
+        const [finished, failed] = shape.cardinality === "many" ? [`${name}: all finished`, `${name}: some failed`] : [`${name} finished`, `${name} failed`];
+        point("succeeded", [continuing("succeeded", finished), shape.onChildFailed === "fail-parent"
+          ? { value: "child-failed", label: failed, then: STOPS, stops: true }
+          : { value: "child-failed", label: failed, then: shape.onChildFailed === "allow-partial"
+            ? "Retains completed and failed results for review, then continues." : "Holds this run for your review in Logs.", stops: shape.onChildFailed === "block-parent" }]);
+      }
+    }
+    const generic: Decision = { kind: "decision", id: `${group.key}-result`, label: "Step result", initial: "succeeded", outcomes: [continuing("succeeded", "Finishes")] };
+    const owners = new Map<string, Decision[]>();
+    /** The catalog sentence of each listed failure outcome, which leads what the run does. */
+    const failureSentences = new Map<Outcome, string>();
+    for (const member of group.nodes) {
+      const node = nodeWire(member.id);
+      const authored = decisions.filter(candidate => candidate.nodeIds.includes(node.id)).map(candidate => candidate.block);
+      const applicable = authored.length === 0 ? [generic] : authored;
+      owners.set(node.id, applicable);
+      for (const owner of applicable) {
+        if (node.shape.kind === "task" && node.shape.dryRun === "stop-before-publish" && known.has(DRY_RUN) && !owner.outcomes.some(outcome => outcome.value === DRY_RUN)) {
+          owner.outcomes.push({ value: DRY_RUN, label: "Dry run", then: "Prepares the output without publishing it, then continues.", stops: false, ...gated(DRY) });
+          if (typeof owner.initial === "string") owner.initial = { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: owner.initial };
+        }
+        for (const task of node.tasks) for (const code of task.errorCodes) {
+          const catalogCode = failureCodeFromTaskCode(code);
+          if (isUnlistedStorageFailure(catalogCode)) continue;
+          const label = operatorFailureLabel(catalogCode);
+          if (label === undefined) throw new Error(`workflow ${descriptor.id} failure ${code} has no short operator label`);
+          const sentence = operatorFailureSentence(catalogCode);
+          // A dry run prepares a transaction and never commits it, so commit failures apply only to a live run.
+          const when = both(known, nodeGate(node.id), task.arm === "commit" && previewsOnDryRun(node) ? LIVE : undefined);
+          const existing = owner.outcomes.findIndex(outcome => outcome.value === code);
+          const previous = owner.outcomes[existing];
+          const outcome: Outcome = { value: code, label, then: `${sentence} ${STOPS}`, stops: true,
+            ...gated(previous === undefined ? when : either(known, [previous.when, when])) };
+          if (previous === undefined) owner.outcomes.push(outcome); else owner.outcomes[existing] = outcome;
+          failureSentences.set(outcome, sentence);
+        }
+      }
+    }
+    for (const override of review?.outcomes ?? []) {
+      const outcomes = owners.get(override.nodeId)?.flatMap(owner => owner.outcomes.filter(outcome => outcome.value === override.value)) ?? [];
+      if (outcomes.length === 0) throw new Error(`workflow ${descriptor.id} review overrides unknown outcome ${override.nodeId}/${override.value}`);
+      for (const outcome of outcomes) {
+        const sentence = failureSentences.get(outcome);
+        outcome.then = sentence === undefined ? override.then : `${sentence} ${override.then}`;
+        if (override.stops !== undefined) outcome.stops = override.stops;
+      }
+    }
+    if (generic.outcomes.length > 1) decisions.push({ nodeIds: [], block: generic });
+    for (const { block } of decisions) {
+      blocks.push(block);
+      known.set(block.id, block.outcomes.map(outcome => outcome.value));
+    }
+    const system = systemOf(group.key);
+    return { id: group.key, title: group.label, ...(system === undefined ? {} : { system }), ...gated(stepGate), description, checks, blocks };
   });
-  return ExplorerReviewSpecSchema.parse({ unlistedFailure: "Anything not listed stops the run with a failure card",
-    runOptions: runOptions(module), sessionStep: sessionRequirements(module, modules), steps });
+
+  const sessions = new Map<string, (When | undefined)[]>();
+  const visit = (current: ExplorerModuleView, gate: (stepIndex: number, nodeId: string) => When | undefined, ancestry: readonly string[]): void => {
+    const workflowId = current.descriptor.id;
+    if (ancestry.includes(workflowId)) throw new Error(`workflow ${workflowId} review session delegation cycle`);
+    const nodesOf = descriptorRuntimeNodes(current.descriptor);
+    for (const [stepIndex, group] of current.descriptor.timeline.entries()) for (const member of group.nodes) {
+      const node = nodesOf.find(candidate => candidate.id === member.id);
+      if (node === undefined) throw new Error(`workflow ${workflowId} review session names unknown node ${member.id}`);
+      const contracts = node.kind === "task" ? [node.uses] : "prepare" in node ? [node.prepare.uses, node.commit.uses] : [];
+      for (const contract of contracts) for (const store of current.stores) for (const task of Object.values(store.tasks)) {
+        if (task.contract !== contract || store.kind !== "browser") continue;
+        for (const need of task.impl.sessions) sessions.set(need.system, [...sessions.get(need.system) ?? [], gate(stepIndex, node.id)]);
+      }
+      if (node.kind !== "child-run") continue;
+      const child = modules.find(candidate => candidate.descriptor.id === node.target.id);
+      if (child === undefined) throw new Error(`workflow ${workflowId} delegates to ${node.target.id}, which is absent from the catalog`);
+      const delegated = gate(stepIndex, node.id);
+      visit(child, stepIndex => {
+        const childGroup = child.definition?.steps[stepIndex]?.[0];
+        return both(known, delegated, childGroup?.review?.when);
+      }, [...ancestry, workflowId]);
+    }
+  };
+  visit(module, (stepIndex, nodeId) => both(known, stepGates[stepIndex], nodeGate(nodeId)), []);
+  // Sessions open before the run starts, so a chip follows run options only; conditions on outcomes are dropped.
+  const optionsOnly = (gate: When | undefined): When | undefined => gate === undefined ? undefined
+    : simplify(gate.map(condition => Object.fromEntries(Object.entries(condition).filter(([key]) => run.choices.has(key)))), run.choices);
+
+  return ExplorerReviewSpecSchema.parse({
+    unlistedFailure: "Anything not listed stops the run with a failure card.",
+    options: run.options,
+    sessions: [...sessions].map(([system, gates]) => ({ system, ...gated(either(run.choices, gates.map(optionsOnly))) })),
+    steps, sources,
+  });
 }

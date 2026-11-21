@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isCredentialPath } from "../test/pc-source.js";
 import synthetic from "./privacy-synthetic.json" with { type: "json" };
 
 export interface PrivacyFinding { readonly path: string; readonly rule: string }
@@ -49,8 +50,7 @@ export function inspectTrackedFile(path: string, content: Buffer): PrivacyFindin
   if (/(?:^|\/)\.local-private(?:\/|$)/u.test(path)) rules.add("private-directory");
   if (/(?:^|\/)\.env(?:\.[^/]*)?$/iu.test(path)) rules.add("environment-file");
   if (/\.(?:xlsx?|csv|tsv|pdf)$/iu.test(path) && fixtureFiles.get(path) !== digest) rules.add("private-document");
-  if ((/(?:^|\/)\.?(?:credentials?|secrets?|auth|tokens?)(?:\.(?:json|ya?ml|toml|txt|ini|conf|cfg|properties|env|csv|xml|db|sqlite3?))?$|(?:^|\/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|\.npmrc|\.pypirc|\.netrc|\.git-credentials|test-data\.local\.json)$|\.(?:pem|key|p12|pfx|jks)$/iu.test(path)
-    || /(?:^|\/)(?:credentials|\.ssh|\.aws|\.kube)\//iu.test(path)) && publicConfigFiles.get(path) !== digest) rules.add("credential-file");
+  if (isCredentialPath(path) && publicConfigFiles.get(path) !== digest) rules.add("credential-file");
   const binaryImage = (/\.png$/iu.test(path) && content.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
     || (/\.webp$/iu.test(path) && content.subarray(0, 4).equals(Buffer.from("RIFF")) && content.subarray(8, 12).equals(Buffer.from("WEBP")));
   const texts = fixtureFiles.get(path) === digest ? []

@@ -53,4 +53,20 @@ describe("dashboard design tokens", () => {
       );
     }
   });
+
+  it("keeps one grid: no fractional px in the theme or app stylesheet", () => {
+    const fractional: string[] = [];
+    for (const file of [TOKENS_CSS, resolve(DASHBOARD, "app/index.css")]) {
+      const css = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//gu, "");
+      for (const match of css.matchAll(/(?<![\w.])\d+\.\d+px/gu)) fractional.push(`${relative(DASHBOARD, file)}: ${match[0]}`);
+    }
+    assert.deepEqual(fractional, []);
+  });
+
+  it("holds the approved sidebar width and group label", () => {
+    const css = readFileSync(TOKENS_CSS, "utf8");
+    assert.match(css, /--ds-sidebar-width:\s*264px/u);
+    assert.match(css, /\.ds-text-group-label\s*\{[^}]*font-size:\s*11px[^}]*font-weight:\s*500/u);
+    assert.doesNotMatch(css, /\.ds-text-caps|--log-violet/u);
+  });
 });

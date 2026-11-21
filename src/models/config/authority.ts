@@ -145,12 +145,8 @@ export type ProjectionTableName = z.infer<typeof ProjectionTableNameSchema>;
 export type TableName = z.infer<typeof TableNameSchema>;
 export type TableSpec = z.infer<typeof TableSpecSchema>;
 
-export const AuthorityUpgradePhaseSchema = z.enum([
-  "baseline",
-  "planned",
-  "committed",
-  "settled",
-]);
+/** The two phases a build writes: `baseline` when a database is created, `settled` when an upgrade commits. */
+export const AuthorityUpgradePhaseSchema = z.enum(["baseline", "settled"]);
 
 const AuthorityUpgradeRecordBaseSchema = z.strictObject({
   recordKey: z.uuid(),
@@ -163,14 +159,14 @@ const AuthorityUpgradeRecordBaseSchema = z.strictObject({
 
 const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
   upgradeId: z.literal("fresh"),
-  phase: z.literal("baseline"),
+  phase: AuthorityUpgradePhaseSchema.extract(["baseline"]),
   fromSchemaVersion: z.literal(0),
   toSchemaVersion: z.literal(RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS),
 });
 
 const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
   upgradeId: FingerprintSchema,
-  phase: z.enum(["planned", "committed", "settled"]),
+  phase: AuthorityUpgradePhaseSchema.extract(["settled"]),
   planDigest: FingerprintSchema,
   startupLogout: z.strictObject({ operation: LogoutOperationSchema, postimage: FingerprintSchema }).optional(),
   backup: z.strictObject({
@@ -181,7 +177,7 @@ const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.ext
 });
 
 export const AuthorityEvidenceSchemaUpgradeRecordSchema = AuthorityForwardUpgradeRecordSchema.omit({ startupLogout: true }).extend({
-  phase: z.literal("settled"), fromSchemaVersion: z.literal(EVIDENCE_SCHEMA_UPGRADE_VERSIONS), toSchemaVersion: z.literal(EVIDENCE_SCHEMA_UPGRADE_VERSIONS),
+  fromSchemaVersion: z.literal(EVIDENCE_SCHEMA_UPGRADE_VERSIONS), toSchemaVersion: z.literal(EVIDENCE_SCHEMA_UPGRADE_VERSIONS),
   evidenceSchemas: EvidenceSchemaConversionSchema, evidenceSchemaMac: FingerprintSchema,
 });
 
@@ -191,6 +187,8 @@ export const AuthorityUpgradeRecordSchema = z.union([
   AuthorityEvidenceSchemaUpgradeRecordSchema,
 ]);
 export type AuthorityUpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
+export type AuthorityForwardUpgradeRecord = z.infer<typeof AuthorityForwardUpgradeRecordSchema>;
+export type AuthorityEvidenceSchemaUpgradeRecord = z.infer<typeof AuthorityEvidenceSchemaUpgradeRecordSchema>;
 
 export const ProtectedSettingsEntrySchema = z.strictObject({
   name: z.string().min(1),

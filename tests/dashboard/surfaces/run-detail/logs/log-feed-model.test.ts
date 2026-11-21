@@ -1,13 +1,13 @@
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
 import { visualLogSteps as visualLogSteps_m0 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
-import { separationLogs as separationLogs_m0 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-fixture.js";
+import { separationLogs as separationLogs_m0 } from "../../../../support/fixtures/dashboard/log-preview/log-fixture";
 // @vitest-environment jsdom
 import assert_m1 from "node:assert/strict";
 import { act as act_m1 } from "react";
 import { type Root as Root_m1 } from "react-dom/client";
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from "vitest";
-import { logDecisionExamples as logDecisionExamples_m1 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
+import { logDecisionExamples as logDecisionExamples_m1 } from "../../../../support/fixtures/dashboard/log-preview/log-decision-fixture";
 import { filterLogSteps as filterLogSteps_m1,logPlainText as logPlainText_m1,logRowCount as logRowCount_m1,type LogEntry as LogEntry_m1,type LogStep as LogStep_m1 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
-import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
+import { projectStartRows, projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
@@ -20,7 +20,7 @@ import { AUDITING_FORM,FOLDING_FORM,omissionCascadingDescriptor,READING_FORM } f
 import { AT,makeWorld,type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
-import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { StorageAuthoritySummarySchema } from "../../../../src/models/storage/storage-status.js";
 import { PreflightReportSchema } from "../../../../src/models/preflight/preflight.js";
 
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
@@ -104,14 +104,14 @@ describe("bootstrap start-surface block", () => {
         .toEqual(DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "reference-check": [], "crm-dates": ["crm"] },
-        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
+        separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
-        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"],
+        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"], "reference-check": [],
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
         "emergency-contact": { "read-document": [], members: [] },
-        "emergency-contact-member": { "contact-plan": ["ucpath"], "contact-preview": ["ucpath"] },
+        "emergency-contact-member": { "contact-plan": ["ucpath"], "reference-check": [], "contact-preview": ["ucpath"] },
         "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
-        "work-study": { "ucpath-auth": ["ucpath"], transaction: ["ucpath"] },
+        "work-study": { "ucpath-auth": ["ucpath"], "reference-check": [], transaction: ["ucpath"] },
       };
       for (const descriptor of DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
@@ -129,7 +129,7 @@ describe("bootstrap start-surface block", () => {
                 fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
-          ...(descriptor.id === "person-lookup" ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
+          ...(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "emergency-contact", "emergency-contact-member"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,
@@ -141,6 +141,14 @@ describe("bootstrap start-surface block", () => {
               : step.control.state === "omittable"
                 ? { state: "omittable", form: step.control.form, forces: step.control.forces }
                 : { state: "required", reason: step.control.reason },
+          })),
+          rows: projectStartRows(descriptor).map((row) => ({
+            key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
+            ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
+            members: row.members.map((member) => ({ ...member })),
+            ...(row.target === undefined ? {} : { target: { ...row.target } }),
+            ...(row.manual === undefined ? {} : { manual: { form: row.manual.form, forces: [...row.manual.forces] } }),
+            ...(row.selection === undefined ? {} : { selection: { inputField: row.selection.inputField } }),
           })),
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
@@ -244,7 +252,7 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
 
 /** The wire's own vocabulary, read off the schema — never retyped. */
 function armsOf(key: "authority"): readonly string[] {
-  const field = StorageHealthSummaryWireSchema.shape[key];
+  const field = StorageAuthoritySummarySchema.shape[key];
   assert.ok(field instanceof z.ZodEnum, `${key} is expected to be a closed enum`);
   return Object.values(field.enum).map(String);
 }

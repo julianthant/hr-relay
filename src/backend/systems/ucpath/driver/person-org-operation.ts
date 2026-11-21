@@ -18,15 +18,6 @@ import { EidSchema } from "../../../../rules/identity/ids.js";
 import type { Eid, ElementId } from "../../../../rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import {
-  UCPATH_JOB_SUMMARY_PAGE_STATE,
-  UcpathJobRowSchema,
-  UcpathJobSummaryReadSchema,
-} from "../../../../models/ui/ucpath-job-summary.js";
-import type {
-  UcpathJobRow,
-  UcpathJobSummaryRead,
-} from "../../../../models/ui/ucpath-job-summary.js";
-import {
   UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_EID_INPUT,
@@ -427,18 +418,24 @@ function outputFor(
   });
 }
 
+function matchingGridRows(
+  rows: readonly PersonOrgResultGridRow[],
+  input: z.output<typeof SearchPersonOrgInputSchema>,
+): readonly PersonOrgResultGridRow[] {
+  return rows.filter(row => row.businessUnit === "SDCMP" && (input.kind === "by-eid"
+    ? row.emplId === input.emplId
+    : matchesExactPersonName(row.name, input.name)));
+}
+
 async function candidatesFromGrid(
   assertCurrent: () => void,
   pagePort: PersonOrgPagePort,
   rows: readonly PersonOrgResultGridRow[],
-  requestedName?: string,
+  input: z.output<typeof SearchPersonOrgInputSchema>,
 ): Promise<readonly UcpathCandidate[]> {
-  const sdcmpRows = rows.filter(row => row.businessUnit === "SDCMP"
-    && (requestedName === undefined || matchesExactPersonName(row.name, requestedName)));
+  const matchedRows = matchingGridRows(rows, input);
   const candidates: UcpathCandidate[] = [];
-  for (let index = 0; index < sdcmpRows.length; index += 1) {
-    const row = sdcmpRows[index];
-    if (row === undefined) throw new Error(`Person Org SDCMP row ${String(index)} disappeared`);
+  for (const row of matchedRows) {
     assertCurrent();
     const detail = await pagePort.drill(row.rowIndex);
     if (detail.observedEid !== row.emplId) {
@@ -447,7 +444,7 @@ async function candidatesFromGrid(
       );
     }
     const candidate = candidateFromDetail(detail, row.lastName);
-    if (requestedName !== undefined && !matchesExactPersonName(candidate.name, requestedName)) {
+    if (input.kind === "by-name" && !matchesExactPersonName(candidate.name, input.name)) {
       throw new Error("Person Org detail name does not match the requested name");
     }
     candidates.push(candidate);
@@ -461,12 +458,18 @@ async function candidatesFromGrid(
   return candidates;
 }
 
-async function verifySelectedGridDetail(assertCurrent: () => void, pagePort: PersonOrgPagePort, rows: readonly PersonOrgResultGridRow[], candidates: readonly UcpathCandidate[], selected: UcpathCandidate | null, requestedName?: string): Promise<void> {
+async function verifySelectedGridDetail(
+  assertCurrent: () => void,
+  pagePort: PersonOrgPagePort,
+  rows: readonly PersonOrgResultGridRow[],
+  candidates: readonly UcpathCandidate[],
+  selected: UcpathCandidate | null,
+  input: z.output<typeof SearchPersonOrgInputSchema>,
+): Promise<void> {
   assertCurrent();
   if (selected === null) return;
   const index = candidates.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(selected));
-  const row = rows.filter(row => row.businessUnit === "SDCMP"
-    && (requestedName === undefined || matchesExactPersonName(row.name, requestedName)))[index];
+  const row = matchingGridRows(rows, input)[index];
   if (row === undefined) throw new Error("Person Org selected candidate has no verified results row");
   const detail = await pagePort.drill(row.rowIndex);
   if (detail.observedEid !== row.emplId || JSON.stringify(candidateFromDetail(detail, row.lastName)) !== JSON.stringify(selected)) {
@@ -480,15 +483,15 @@ async function candidatesFromOutcome(
   pagePort: PersonOrgPagePort,
   outcome: PersonOrgSearchPageOutcome,
   expectedLastName: string,
-  requestedName?: string,
+  input: z.output<typeof SearchPersonOrgInputSchema>,
 ): Promise<readonly UcpathCandidate[]> {
   assertCurrent();
   if (outcome.kind === "not-found") return [];
   if (outcome.kind === "detail") {
-    if (requestedName !== undefined && !matchesExactPersonName(outcome.detail.displayedName, requestedName)) return [];
+    if (input.kind === "by-name" && !matchesExactPersonName(outcome.detail.displayedName, input.name)) return [];
     return [candidateFromDetail(outcome.detail, expectedLastName)];
   }
-  return candidatesFromGrid(assertCurrent, pagePort, outcome.rows, requestedName);
+  return candidatesFromGrid(assertCurrent, pagePort, outcome.rows, input);
 }
 
 export async function searchPersonOrgWithPagePort(
@@ -502,17 +505,17 @@ export async function searchPersonOrgWithPagePort(
     const outcome = await pagePort.search({ kind: "by-eid", eid: input.emplId });
     let candidates: readonly UcpathCandidate[];
     if (outcome.kind === "grid") {
-      if (outcome.rows.length === 0 || outcome.rows.some(({ emplId }) => emplId !== input.emplId)) {
+      if (outcome.rows.length === 0) {
         throw new Error(`Person Org EID ${directIdentifierDisplay(input.emplId)} returned an unexpected results grid`);
       }
       assertCurrent();
-      candidates = await candidatesFromGrid(assertCurrent, pagePort, outcome.rows);
+      candidates = await candidatesFromGrid(assertCurrent, pagePort, outcome.rows, input);
     } else {
       const expectedLastName = outcome.kind === "detail"
         ? lastNameFromDisplayedName(outcome.detail.displayedName)
         : "";
       assertCurrent();
-      candidates = await candidatesFromOutcome(assertCurrent, pagePort, outcome, expectedLastName);
+      candidates = await candidatesFromOutcome(assertCurrent, pagePort, outcome, expectedLastName, input);
     }
     for (const candidate of candidates) {
       if (candidate.emplId !== input.emplId) {
@@ -526,7 +529,7 @@ export async function searchPersonOrgWithPagePort(
     const output = outputFor(assertCurrent, input, candidates);
     if (outcome.kind === "grid") {
       assertCurrent();
-      await verifySelectedGridDetail(assertCurrent, pagePort, outcome.rows, candidates, output.selection.selected);
+      await verifySelectedGridDetail(assertCurrent, pagePort, outcome.rows, candidates, output.selection.selected, input);
     }
     assertCurrent();
     return output;
@@ -548,7 +551,7 @@ export async function searchPersonOrgWithPagePort(
     assertCurrent();
     recordBrowserAction("read", "ucpath.person-org.search-results", JSON.stringify({ total, sdcmp }));
     assertCurrent();
-    const observed = await candidatesFromOutcome(assertCurrent, pagePort, outcome, requestedLastName, input.name);
+    const observed = await candidatesFromOutcome(assertCurrent, pagePort, outcome, requestedLastName, input);
     finalGrid = outcome.kind === "grid" ? { rows: outcome.rows, candidates: observed } : undefined;
     const removed = input.keepNonHdh ? [] : observed.filter(({ hdh }) => !hdh);
     results = input.keepNonHdh ? observed : observed.filter(({ hdh }) => hdh);
@@ -560,7 +563,7 @@ export async function searchPersonOrgWithPagePort(
   const output = outputFor(assertCurrent, input, results);
   if (finalGrid !== undefined) {
     assertCurrent();
-    await verifySelectedGridDetail(assertCurrent, pagePort, finalGrid.rows, finalGrid.candidates, output.selection.selected, input.name);
+    await verifySelectedGridDetail(assertCurrent, pagePort, finalGrid.rows, finalGrid.candidates, output.selection.selected, input);
   }
   assertCurrent();
   return output;
@@ -647,111 +650,6 @@ async function ensureResultsExpanded(assertCurrent: () => void, page: Page): Pro
   assertCurrent();
 }
 
-
-const JOB_ROW_CELL_COUNT = 12;
-
-function jobCell(raw: string | undefined, label: string): { state: "present"; value: string }
-  | { state: "absent"; reason: string } {
-  const value = (raw ?? "").trim();
-  return value.length === 0
-    ? {
-      state: "absent",
-      reason: `the Person Org Employment Instances grid rendered ${label} as an empty cell`,
-    }
-    : { state: "present", value };
-}
-
-
-export function deriveJobRowFromCells(cells: readonly string[], rowIndex: number): UcpathJobRow {
-  if (cells.length < JOB_ROW_CELL_COUNT) {
-    throw new Error(
-      `Person Org job row ${String(rowIndex)} has ${String(cells.length)} cells; expected at least `
-      + String(JOB_ROW_CELL_COUNT),
-    );
-  }
-  const values = cells.map((cell) => cell.trim());
-  if (values[6] === "Department Description") {
-    throw new Error("Person Org job-summary extraction reached a header row instead of data");
-  }
-  return UcpathJobRowSchema.parse({
-    rowIndex,
-    emplRecord: values[0],
-    hrStatus: values[2],
-    businessUnit: values[3],
-    effectiveDate: jobCell(values[1], "Effective Date"),
-    positionNumber: jobCell(values[4], "Position Number"),
-    deptId: jobCell(values[5], "Dept ID"),
-    department: jobCell(values[6], "Department Description"),
-    jobCode: jobCell(values[7], "Job Code"),
-    jobTitle: jobCell(values[8], "Job Code Description"),
-    expectedJobEndDate: jobCell(values[9], "Expected Job End Date"),
-    fte: jobCell(values[10], "FTE"),
-    emplClass: jobCell(values[11], "Empl Class"),
-  });
-}
-
-
-async function readJobSummaryWithPagePort(
-  pagePort: PersonOrgPagePort,
-  input: Readonly<{ emplId: Eid }>,
-  observedAt: string,
-): Promise<UcpathJobSummaryRead> {
-  const emplId = EidSchema.parse(input.emplId);
-  const outcome = await pagePort.search({ kind: "by-eid", eid: emplId });
-  if (outcome.kind === "not-found") {
-    return UcpathJobSummaryReadSchema.parse({
-      state: "employee-not-found",
-      emplId,
-      observedMarker: outcome.marker,
-    });
-  }
-  let detail: PersonOrgDetail;
-  let entry: "auto-detail" | "drilled-from-grid";
-  let searchResultRows: number;
-  if (outcome.kind === "detail") {
-    detail = outcome.detail;
-    entry = "auto-detail";
-    searchResultRows = 0;
-  } else {
-    // Employment-instance rows lead to the same Person Org detail; drill any row only after proving the shared person.
-    const foreign = outcome.rows.filter(({ emplId: rowEid }) => rowEid !== emplId);
-    if (foreign.length > 0) {
-      throw new Error(
-        `Person Org EID ${directIdentifierDisplay(emplId)} returned a results grid carrying ${String(foreign.length)} row(s) for `
-        + `other people (${[...new Set(foreign.map(({ emplId: rowEid }) => directIdentifierDisplay(rowEid)))].join(", ")})`,
-      );
-    }
-    const first = outcome.rows[0];
-    if (first === undefined) throw new Error(`Person Org EID ${directIdentifierDisplay(emplId)} returned an empty results grid`);
-    detail = await pagePort.drill(first.rowIndex);
-    entry = "drilled-from-grid";
-    searchResultRows = outcome.rows.length;
-  }
-  if (detail.observedEid !== emplId) {
-    return UcpathJobSummaryReadSchema.parse({
-      state: "subject-mismatch",
-      expectedEid: emplId,
-      observedEid: detail.observedEid,
-    });
-  }
-  const jobRows = detail.cells.map((cells, rowIndex) => deriveJobRowFromCells(cells, rowIndex));
-  return UcpathJobSummaryReadSchema.parse({
-    state: "read",
-    summary: {
-      pageStateId: UCPATH_JOB_SUMMARY_PAGE_STATE,
-      emplId,
-      displayedName: detail.displayedName,
-      jobRows,
-      rowCount: jobRows.length,
-      renderContext: {
-        entry,
-        searchResultRows,
-        employmentInstances: detail.employmentInstances,
-      },
-      observedAt,
-    },
-  });
-}
 
 async function ensureEmploymentInstancesExpanded(
   assertCurrent: () => void,
@@ -1003,17 +901,6 @@ export async function searchPersonOrgOnPage(
   input: z.output<typeof SearchPersonOrgInputSchema>,
 ): Promise<SearchPersonOrgOutput> {
   const result = await searchPersonOrgWithPagePort(assertCurrent, createPlaywrightPersonOrgPage(assertCurrent, page), input);
-  assertCurrent();
-  return result;
-}
-
-export async function readJobSummaryOnPage(
-  assertCurrent: () => void,
-  page: Page,
-  input: Readonly<{ emplId: Eid }>,
-  observedAt: string,
-): Promise<UcpathJobSummaryRead> {
-  const result = await readJobSummaryWithPagePort(createPlaywrightPersonOrgPage(assertCurrent, page), input, observedAt);
   assertCurrent();
   return result;
 }

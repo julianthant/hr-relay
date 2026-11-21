@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach,beforeEach,describe,it,vi } from 'vitest';
 import { ACTIVITY_RUN_PAGE_SIZE,activityDrilldown,activityOrderValue,setActivityOrder,type ActivityBrowse,type ActivitySelectionHandler } from '../../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
 import { ActivityDrilldown } from '../../../../src/dashboard/surfaces/activity/activity-drilldown.js';
-import { ACTIVITY_SAMPLE_RANGE,activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { ACTIVITY_SAMPLE_RANGE,activitySample } from '../../../support/fixtures/dashboard/activity-sample.js';
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -132,7 +132,7 @@ describe('Activity drilldown records and navigation', () => {
       assert.equal(document.activeElement, input); assert.equal(input.value, 'Jordan');
       const result = activityDrilldown(value.runs, searched); if (result.state !== 'loaded') throw new Error('filtered-run-missing');
       assert.match(host.querySelector('[role="status"]')?.textContent ?? '', new RegExp(`${result.matches.length} of 24 completed runs`));
-      await act(async () => host.querySelector<HTMLButtonElement>('tbody button')!.click());
+      await act(async () => host.querySelector<HTMLAnchorElement>('tbody a[aria-label^="Open logs for"]')!.click());
       assert.deepEqual(onSelection.mock.calls[0], [{ ...searched, run: result.rows[0].id }]);
       const empty = { ...searched, query: 'no such person' };
       await act(async () => root.render(createElement(ActivityDrilldown, { report: value, selection: empty, onSelection })));

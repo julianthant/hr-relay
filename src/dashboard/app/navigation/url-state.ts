@@ -23,6 +23,8 @@ export interface AppRouteState {
   /** The read-only Workflow Explorer, addressed by workflow id.
  * It is its own key rather than a value of `intake` because the two takeovers */
   readonly explore?: string;
+  /** The Spreadsheets page, a main-region page beside Explorer and Analytics. */
+  readonly spreadsheets?: boolean;
   /** The generated UI catalog's search term, SUBORDINATE to `settings`.
  * The catalog is a Settings section, so `?settings=ui-catalog` is what opens */
   readonly catalog?: string;
@@ -46,6 +48,8 @@ export interface AppRouteState {
  * `?settings=keyboard` is the Help → Keyboard destination; an EMPTY value */
   readonly settings?: string;
   readonly settingsTarget?: string;
+  /** Settings opened by a Run dialog Fix button; the dialog waits hidden behind it and Settings offers "Back to run". */
+  readonly settingsFrom?: "run";
 }
 
 /** Preserve the raw date identity so the date boundary can explain and recover invalid links. */
@@ -84,7 +88,8 @@ export function parseRoute(search: string): AppRouteState {
   if (run !== null && run.length > 0) route.run = run;
   if (section !== null && section.length > 0) route.section = section;
   if (intake !== null && intake.length > 0) route.intake = intake;
-  if (explore !== null && explore.length > 0) route.explore = explore;
+  if (explore !== null) route.explore = explore;
+  if (params.get("spreadsheets") === "1") route.spreadsheets = true;
   // The catalog keys are subordinate to `settings`: an empty VALUE still reads as an open section.
   // the section open with no term, but presence does not open anything.
   if (catalog !== null && settings === SETTINGS_UI_CATALOG_SECTION_ID) {
@@ -116,10 +121,13 @@ export function parseRoute(search: string): AppRouteState {
   if (activity !== null) route.activity = activity;
     // Follows `archive` and `activity`: an EMPTY value is meaningful (the page's
   // first section), so presence opens the takeover; an unknown section id is NOT dropped.
+  const legacyPage = settings === null ? undefined : DATA_PAGE_SETTINGS_IDS[settings];
+  if (legacyPage !== undefined) return withDataPage(route, legacyPage);
   if (settings !== null) {
     route.settings = settings;
     const target = params.get("settingsTarget");
     if (target !== null && target.length > 0 && target.length <= 200) route.settingsTarget = target;
+    if (params.get("settingsFrom") === "run" && route.start) route.settingsFrom = "run";
   }
   return route;
 }
@@ -134,6 +142,7 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.start) params.set("start", "1");
   if (route.intake !== undefined) params.set("intake", route.intake);
   if (route.explore !== undefined) params.set("explore", route.explore);
+  if (route.spreadsheets === true) params.set("spreadsheets", "1");
     // The other half of the catalog gate above, so the pair round-trips: a catalog
   // term is written only while the section that reads it is open.
   if (route.catalog !== undefined && route.settings === SETTINGS_UI_CATALOG_SECTION_ID) {
@@ -158,6 +167,7 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.settings !== undefined) {
     params.set("settings", route.settings);
     if (route.settingsTarget !== undefined) params.set("settingsTarget", route.settingsTarget);
+    if (route.settingsFrom !== undefined) params.set("settingsFrom", route.settingsFrom);
   }
   if (route.view !== undefined) {
     const encoded = JSON.stringify(route.view);
@@ -180,7 +190,7 @@ export function routeForCrossDateSearchResult(
     section: undefined,
     start: false,
     intake: undefined,
-    explore: undefined,
+    explore: undefined, spreadsheets: undefined,
     catalog: undefined,
     catalogView: undefined,
     archive: undefined,
@@ -188,7 +198,7 @@ export function routeForCrossDateSearchResult(
     archiveDashboard: undefined,
     archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
     activity: undefined,
-    settings: undefined, settingsTarget: undefined,
+    settings: undefined, settingsTarget: undefined, settingsFrom: undefined,
   };
 }
 
@@ -204,6 +214,7 @@ export type ActiveTakeover =
   | "archive"
   | "activity"
   | "explore"
+  | "spreadsheets"
   | "none";
 
 export function activeTakeover(route: AppRouteState): ActiveTakeover {
@@ -214,6 +225,7 @@ export function activeTakeover(route: AppRouteState): ActiveTakeover {
   if (route.archive !== undefined) return "archive";
   if (route.activity !== undefined) return "activity";
   if (route.explore !== undefined) return "explore";
+  if (route.spreadsheets === true) return "spreadsheets";
   return "none";
 }
 
@@ -226,13 +238,46 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
     // The Archive removal route shows only its removal notice; the switcher has no segment for it.
     case "archive":
     case "settings":
+    case "spreadsheets":
     case "intake": return "none";
   }
 }
 
 /** A close leaves one queue surface, including links containing competing keys. */
 export function routeWithoutTakeovers(route: AppRouteState): AppRouteState {
-  return { ...route, intake: undefined, explore: undefined, archive: undefined, archiveView: undefined,
+  return { ...route, intake: undefined, explore: undefined, spreadsheets: undefined, archive: undefined, archiveView: undefined,
     archiveDashboard: undefined, archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
-    activity: undefined, settings: undefined, settingsTarget: undefined, catalog: undefined, catalogView: undefined };
+    activity: undefined, settings: undefined, settingsTarget: undefined, settingsFrom: undefined, catalog: undefined, catalogView: undefined };
+}
+
+/** The data pages, which sit in the main region beside the workflows. */
+export type DataPage = "spreadsheets" | "explorer" | "activity";
+
+/** Settings section ids that older links used for the data pages. */
+const DATA_PAGE_SETTINGS_IDS: Readonly<Record<string, DataPage | undefined>> = Object.freeze({
+  spreadsheets: "spreadsheets", explorer: "explorer", activity: "activity",
+});
+
+export function dataPageOf(route: AppRouteState): DataPage | undefined {
+  if (route.settings !== undefined || route.intake !== undefined || route.archive !== undefined) return undefined;
+  if (route.activity !== undefined) return "activity";
+  if (route.explore !== undefined) return "explorer";
+  return route.spreadsheets === true ? "spreadsheets" : undefined;
+}
+
+/** Open a data page with every other takeover cleared; an open page keeps its own keys. */
+export function withDataPage(route: AppRouteState, page: DataPage): AppRouteState {
+  const base = routeWithoutTakeovers(route);
+  switch (page) {
+    case "spreadsheets": return { ...base, spreadsheets: true };
+    case "explorer": return { ...base, explore: route.explore ?? "" };
+    case "activity": return { ...base, activity: route.activity ?? "" };
+  }
+}
+
+/** Open a Settings section; a data page id, as an old link or quick action names it, opens that page instead. */
+export function settingsRoute(route: AppRouteState, section: string, settingsTarget?: string): AppRouteState {
+  const page = DATA_PAGE_SETTINGS_IDS[section];
+  if (page !== undefined) return withDataPage(route, page);
+  return { ...routeWithoutTakeovers(route), settings: section, settingsTarget };
 }

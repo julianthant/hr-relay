@@ -113,24 +113,23 @@ it("retains marked-only pseudonym recovery without a render throw or a metadata 
   assert.equal(h.controller().locked, true);
 });
 
-it("preserves a schema-admitted literal marker credential through exact-byte recovery", async () => {
+it("refuses a literal marker login credential in Settings and writes nothing", async () => {
+  // 9f5ac865dd: the Relay login changes only in Account, so a Settings write of either UCPath entry is refused, "<set>" included.
   const h = await mountRecovery();
+  const before = h.authority.credentials.read();
   await act(async () => h.controller().update("ucpathPassword", "<set>"));
   await h.action(() => h.controller().submit());
   assert.equal(h.controller().save.state, "unconfirmed");
-  const originalBody = h.sent[0];
-  const originalId = h.binding().executor.retainedAttempts()[0].request.commandId;
   h.restoreReply();
   await h.action(() => h.controller().retry());
-  assert.equal(h.sent.length, 2); assert.equal(h.sent[1], originalBody);
-  assert.equal(h.binding().executor.retainedAttempts()[0].request.commandId, originalId);
-  assert.equal(h.controller().save.state, "applied");
-  assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, "<set>");
+  assert.equal(h.controller().save.state, "refused");
+  assert.equal(h.authority.credentials.read().revision, before.revision);
+  assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, before.entries.ucpathPassword?.value);
 });
 
 it("keeps the unknown original ID and draft while authority is absent, then replays exact bytes", async () => {
   const h = await mountRecovery();
-  await act(async () => h.controller().update("ucpathUserId", "Retained operator"));
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/retained-operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.controller().save.state, "unconfirmed");
   const draft = structuredClone(h.controller().draft);
@@ -138,7 +137,7 @@ it("keeps the unknown original ID and draft while authority is absent, then repl
   const commandId = h.binding().executor.retainedAttempts()[0].request.commandId;
   h.setAvailable(false); await h.render();
   await h.action(() => h.controller().retry());
-  await act(async () => h.controller().update("ucpathUserId", "Divergent operator"));
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/divergent-operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.sent.length, 1); assert.equal(h.controller().save.state, "unconfirmed");
   assert.equal(h.controller().locked, true); assert.deepEqual(h.controller().draft, draft);
@@ -153,14 +152,14 @@ it("writes a dialog-held credential only on explicit submit, never on the autosa
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); cleanups.push(() => { vi.useRealTimers(); });
   const h = await mountRecovery();
   await act(async () => { h.controller().setExplicitSave(true); });
-  await act(async () => h.controller().update("ucpathUserId", "Held operator"));
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/held-operator"));
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   assert.equal(h.sent.length, 0, "no dispatch past the autosave timer while the dialog holds the draft");
-  await act(async () => h.controller().reset("ucpathUserId"));
+  await act(async () => h.controller().reset("sharepointOnboardingRosterUrl"));
   await act(async () => { h.controller().setExplicitSave(false); await vi.advanceTimersByTimeAsync(5000); });
   assert.equal(h.sent.length, 0, "no dispatch after Cancel");
   await act(async () => { h.controller().setExplicitSave(true); });
-  await act(async () => h.controller().update("ucpathUserId", "Confirmed operator"));
+  await act(async () => h.controller().update("sharepointOnboardingRosterUrl", "https://example.test/confirmed-operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.sent.length, 1, "one dispatch for the confirmed Save");
 });

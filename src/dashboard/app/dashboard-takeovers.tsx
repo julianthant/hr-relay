@@ -1,4 +1,4 @@
-import type { SurfaceSource, WorkflowSourcePolicy } from "./workflow-sources.js";
+import type { WorkflowSourcePolicy } from "./workflow-sources.js";
 import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
@@ -6,12 +6,14 @@ import type { AccountPage } from "../surfaces/settings/account/account-settings.
 import {
 type FrontendBootstrapWire
 } from "../../models/dashboard/bootstrap.js";
-import { ActivityReport } from "../surfaces/activity/activity.js";
+import { ActivityReport, type ActivityReportHook } from "../surfaces/activity/activity.js";
 import { WorkflowExplorer } from "../surfaces/explorer/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake/intake.js";
 import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
 import type { DemoTheme } from "../ds/ui.js";
 import { SettingsPage } from "../surfaces/settings/settings.js";
+import { SheetsV2 } from "../surfaces/spreadsheets/design/sheets-v2.js";
+import { DataPage } from "./data-page.js";
 import {
 RUN_START_DOOR_ID,
 type DashboardTakeoverCloseFocusTargetId
@@ -22,11 +24,12 @@ import type { RouteSetter } from "./navigation/view-route-model.js";
 import {
 activeTakeover,
 routeWithoutTakeovers,
+settingsRoute,
 type AppRouteState
 } from "./navigation/url-state.js";
-export function DashboardTakeovers({client,activitySource,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
+export function DashboardTakeovers({client,useActivityReport,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
- activitySource?: SurfaceSource; today: string; workflowSources: WorkflowSourcePolicy;
+ useActivityReport?: ActivityReportHook; today: string; workflowSources: WorkflowSourcePolicy;
  client: ComponentProps<typeof WorkflowExplorer>["client"];
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: RouteSetter;
  boot: FrontendBootstrapWire;
@@ -40,30 +43,31 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  onSettingsSaveProblem?: ComponentProps<typeof SettingsPage>["onSaveProblem"];
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
- const dataSection = takeover === "settings" ? route.settings
-   : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
- const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} source={activitySource ?? "served"} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
- : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
- return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
+ if (takeover === "activity" || takeover === "explore" || takeover === "spreadsheets") return (
+   <DataPage page={takeover}>
+     {takeover === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, activity: next }))} />
+     : takeover === "explore" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div>
+     : <SheetsV2 onOpenRun={onOpenRun} />}
+   </DataPage>
+ );
+ return (takeover === "settings" || takeover === "archive" ? (
             <SettingsPage
-              onOpenRun={onOpenRun}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
               accountPage={accountPage}
-              section={route.settings ?? dataSection ?? ""}
+              section={route.settings ?? (takeover === "archive" ? "archive" : "")}
               searchTarget={route.settingsTarget}
-              dataContent={dataContent}
               actorId={boot.actor.id}
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
-              onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,
-                ...(next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
-              onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
+              onSection={(next, settingsTarget) => setRoute({ ...settingsRoute(route, next, settingsTarget), ...(route.settingsFrom === undefined ? {} : { settingsFrom: route.settingsFrom }) })}
+              onClose={() => route.settingsFrom === "run" ? setRoute(routeWithoutTakeovers(route)) : closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
+              backToRun={route.settingsFrom === "run"}
               onExitGuardChange={onSettingsExitGuardChange}
               onSaved={onSettingsSaved}
               onSaveProblem={onSettingsSaveProblem}
             />
-          ) : takeover === "intake" && route.intake !== undefined ? (
+ ) : takeover === "intake" && route.intake !== undefined ? (
              /** The surface owns the same full-bleed `TakeoverFrame` as every other
  * window-replacing view; no shell gutter may sit between frame and column. */
             <IntakeWorkspace

@@ -1,75 +1,111 @@
+/**
+ * The Explorer review spec: what a run of one workflow does, generated from its definition. Every part may carry `when`,
+ * a list of alternatives that shows it when any alternative holds: each key (an option or decision id) holds one of its
+ * values. A reader picks options, then walks the steps, taking each visible decision at its chosen or initial outcome and
+ * ending at an outcome that stops. A step's cards, lines and rows may follow the step's own decisions.
+ */
 import { z } from "zod";
-import { BrowserSystemIdSchema, ErrorCodeSchema, NodeIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
-import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
-import { ContractFieldPathSchema } from "../task/task-contract.js";
-import { SessionNeedSchema } from "../sessions/session.js";
-import { FileAcceptSpecSchema, SurfaceFieldSchema, UploadFieldSpecSchema } from "../workflow/ingress.js";
-import { OperatorFieldDisplaySchema } from "../workflow/presentation.js";
-import { StepOmissionFormSchema } from "../workflow/step-omission.js";
-import { WorkflowReviewSourceSchema } from "../workflow/review-spec.js";
+import { BrowserSystemIdSchema } from "../../rules/identity/ids.js";
+import { ReviewDecisionInitialSchema, ReviewPickContentSchema, ReviewValueSchema } from "../workflow/review-spec.js";
+import { TaskErrorCodeSchema } from "../task/task-contract.js";
 
 const TextSchema = z.string().min(1);
-const ReviewLabelSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("authored"), text: TextSchema }),
-  z.strictObject({ state: z.literal("unavailable"), reason: TextSchema }),
+const IdSchema = z.string().min(1);
+export const ExplorerSpecConditionSchema = z.record(IdSchema, z.array(z.string()).min(1));
+export const ExplorerSpecWhenSchema = z.array(ExplorerSpecConditionSchema).min(1);
+const Gate = { when: ExplorerSpecWhenSchema.optional() };
+export type ExplorerSpecGate = Readonly<{ when?: z.infer<typeof ExplorerSpecWhenSchema> }>;
+/** A value that follows an option or decision: `values[by]`, else `otherwise`. */
+export type ExplorerSpecValue = z.infer<typeof ReviewValueSchema>;
+const SystemSchema = z.union([BrowserSystemIdSchema, z.literal("local")]);
+const TextLineSchema = z.strictObject({ text: TextSchema, ...Gate });
+
+export const ExplorerSpecOutcomeSchema = z.strictObject({ value: z.string(), label: TextSchema, then: TextSchema, stops: z.boolean(), ...Gate });
+const BlockSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("card"), id: IdSchema, title: TextSchema, mode: z.enum(["fill", "read"]), ...Gate,
+    rows: z.array(z.strictObject({ id: IdSchema, label: TextSchema, value: ReviewValueSchema.optional(), source: IdSchema, ...Gate })) }),
+  z.strictObject({ kind: z.literal("click"), target: TextSchema, ...Gate }),
+  z.strictObject({ kind: z.literal("starts"), workflowId: IdSchema, title: TextSchema, each: TextSchema, ...Gate }),
+  ReviewPickContentSchema.extend({ kind: z.literal("pick"), ...Gate }),
+  z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: ReviewDecisionInitialSchema, ...Gate,
+    outcomes: z.array(ExplorerSpecOutcomeSchema).min(1) }),
 ]);
-export const ExplorerReviewDecisionSchema = z.strictObject({
-  id: TextSchema,
-  nodeId: NodeIdSchema,
-  kind: z.enum(["task", "condition", "branch", "gate", "delegation", "transaction", "parallel", "failure"]),
-  outcome: TextSchema,
-  action: z.enum(["continue", "ask", "stop"]),
-  label: ReviewLabelSchema,
-  taskId: TaskIdSchema.optional(),
-  failureCode: ErrorCodeSchema.optional(),
-});
-export type ExplorerReviewDecision = z.infer<typeof ExplorerReviewDecisionSchema>;
+
 export const ExplorerReviewSpecSchema = z.strictObject({
-  unlistedFailure: z.literal("Anything not listed stops the run with a failure card"),
-  runOptions: z.strictObject({
-    start: z.strictObject({ input: z.boolean(), upload: z.boolean(), emptyOpensUpload: z.boolean() }),
-    supportsDryRun: z.boolean(),
-    omittableSteps: z.array(z.strictObject({ stepKey: TextSchema, label: TextSchema, form: StepOmissionFormSchema })),
-    mode: z.strictObject({ field: TextSchema, label: TextSchema, initial: TextSchema.nullable(),
-      options: z.array(z.strictObject({ value: TextSchema, label: TextSchema, defaults: z.array(SurfaceFieldSchema) })).min(1) }).optional(),
-    controls: z.array(z.strictObject({ field: TextSchema, label: TextSchema, placement: z.enum(["input", "step"]),
-      modes: z.array(TextSchema).min(1), requires: z.array(TextSchema), kind: ContractSchemaLeafKindSchema,
-      options: z.array(z.string()).min(1).optional() })),
-    upload: z.strictObject({ fields: z.array(UploadFieldSpecSchema), accepts: z.array(FileAcceptSpecSchema).min(1) }).optional(),
-  }),
-  sessionStep: z.strictObject({
-    id: z.literal("browser-sessions"), title: z.literal("Open browser sessions"),
-    unavailableDelegations: z.array(z.strictObject({ workflowId: WorkflowIdSchema, nodeId: NodeIdSchema, reason: TextSchema })),
-    requirements: z.array(z.strictObject({
-      id: TextSchema, workflowId: WorkflowIdSchema, stepKey: TextSchema, stepTitle: TextSchema,
-      nodeId: NodeIdSchema, taskId: TaskIdSchema, need: SessionNeedSchema,
-      scope: z.enum(["direct", "delegated"]),
-      preparation: z.literal("before-owning-workflow-claim"),
-      useTiming: z.enum(["when-step-runs", "when-delegated-step-runs"]),
-      delegationPath: z.array(z.strictObject({ workflowId: WorkflowIdSchema, stepKey: TextSchema, nodeId: NodeIdSchema })),
-      signIn: z.literal("required-by-declaration"), lock: z.enum(["exclusive-required", "not-exclusive"]),
-    })),
-  }),
-  steps: z.array(z.strictObject({
-    id: TextSchema, title: TextSchema, system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
-    pages: z.discriminatedUnion("state", [
-      z.strictObject({ state: z.literal("unavailable"), reason: TextSchema }),
-      z.strictObject({ state: z.literal("authored"), items: z.array(z.strictObject({
-        id: TextSchema, title: TextSchema, mode: z.enum(["Fill form", "Read only"]), nodeIds: z.array(NodeIdSchema).min(1),
-        lines: z.array(z.strictObject({ id: TextSchema, kind: z.enum(["action", "check", "read"]), text: TextSchema,
-          nodeIds: z.array(NodeIdSchema).min(1) })),
-        fields: z.array(z.strictObject({ id: TextSchema, label: TextSchema, example: TextSchema.optional(),
-          display: OperatorFieldDisplaySchema.optional(), options: z.array(z.string()).min(1).optional(),
-          sources: z.array(z.union([
-            z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema }),
-            z.strictObject({ nodeId: NodeIdSchema, arm: z.literal("prepare"), taskId: TaskIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema }),
-            z.strictObject({ nodeId: NodeIdSchema, kind: z.literal("constant"), value: z.union([z.string().min(1), z.boolean(), z.number().finite()]) }),
-          ])).min(1),
-          source: WorkflowReviewSourceSchema,
-        })),
-      })) }),
-    ]),
-    decisions: z.array(ExplorerReviewDecisionSchema),
-  })).min(1),
+  unlistedFailure: z.literal("Anything not listed stops the run with a failure card."),
+  options: z.array(z.strictObject({ id: IdSchema, label: TextSchema, ...Gate,
+    choices: z.array(z.strictObject({ value: TextSchema, label: TextSchema })).min(2), initial: ReviewValueSchema })),
+  /** One chip per system the chosen run signs in to before it starts, delegated runs included. */
+  sessions: z.array(z.strictObject({ system: BrowserSystemIdSchema, ...Gate })),
+  steps: z.array(z.strictObject({ id: IdSchema, title: TextSchema, system: SystemSchema.optional(), ...Gate,
+    description: z.array(TextLineSchema), checks: z.array(TextLineSchema), blocks: z.array(BlockSchema) })).min(1),
+  /** Where each row's value comes from, keyed by the row's `source`. */
+  sources: z.record(IdSchema, z.strictObject({ origin: TextSchema, detail: TextSchema,
+    reads: z.array(z.strictObject({ system: SystemSchema.optional(), step: IdSchema, page: TextSchema, field: TextSchema })) })),
+}).superRefine((spec, context) => {
+  type Path = (string | number)[];
+  const issue = (path: Path, message: string): void => { context.addIssue({ code: "custom", path, message }); };
+  const known = new Map<string, readonly string[]>();
+  const checkGate = (gate: ExplorerSpecGate, path: Path, scope: ReadonlyMap<string, readonly string[]> = known): void => {
+    for (const [index, alternative] of (gate.when ?? []).entries()) for (const [key, values] of Object.entries(alternative)) {
+      const allowed = scope.get(key);
+      if (allowed === undefined) issue([...path, "when", index, key], `gate names ${key}, which is no earlier option or decision`);
+      else for (const value of values) if (!allowed.includes(value)) issue([...path, "when", index, key], `gate names ${key}=${value}, which it never holds`);
+    }
+  };
+  const values: [ExplorerSpecValue | undefined, Path][] = [];
+  /** A value may follow a decision taken later in its own step, so values are checked once every id is known. */
+  const checkValue = (value: ExplorerSpecValue | undefined, path: Path): void => { values.push([value, path]); };
+  const candidates = (value: ExplorerSpecValue): readonly string[] => typeof value === "string" ? [value] : [...Object.values(value.values), value.otherwise];
+  for (const [index, option] of spec.options.entries()) {
+    const path = ["options", index];
+    if (known.has(option.id)) issue(path, `option ${option.id} repeats`);
+    checkGate(option, path);
+    const choices = option.choices.map(choice => choice.value);
+    if (new Set(choices).size !== choices.length) issue(path, `option ${option.id} repeats a choice`);
+    checkValue(option.initial, [...path, "initial"]);
+    for (const initial of candidates(option.initial)) if (!choices.includes(initial)) issue([...path, "initial"], `option ${option.id} starts at ${initial}, which is no choice`);
+    known.set(option.id, choices);
+  }
+  spec.sessions.forEach((session, index) => { checkGate(session, ["sessions", index]); });
+  for (const [stepIndex, step] of spec.steps.entries()) {
+    const path = ["steps", stepIndex];
+    checkGate(step, path);
+    const own = new Map(known);
+    for (const block of step.blocks) if (block.kind === "decision") own.set(block.id, block.outcomes.map(outcome => outcome.value));
+    [...step.description.map((line, index) => [line, "description", index] as const), ...step.checks.map((line, index) => [line, "checks", index] as const)]
+      .forEach(([line, list, index]) => { checkGate(line, [...path, list, index], own); });
+    for (const [blockIndex, block] of step.blocks.entries()) {
+      const blockPath = [...path, "blocks", blockIndex];
+      if (block.kind !== "decision") checkGate(block, blockPath, own);
+      if (block.kind === "pick") for (const [rowIndex, row] of block.rows.entries()) {
+        if (row.cells.length !== block.columns.length) issue([...blockPath, "rows", rowIndex], "pick row width differs from its columns");
+      }
+      if (block.kind === "card") for (const [rowIndex, row] of block.rows.entries()) {
+        checkGate(row, [...blockPath, "rows", rowIndex], own);
+        checkValue(row.value, [...blockPath, "rows", rowIndex, "value"]);
+        if (spec.sources[row.source] === undefined) issue([...blockPath, "rows", rowIndex, "source"], `row names unknown source ${row.source}`);
+      }
+      if (block.kind !== "decision") continue;
+      checkGate(block, blockPath);
+      if (known.has(block.id)) issue(blockPath, `decision ${block.id} repeats an option or decision id`);
+      const outcomes = block.outcomes.map(outcome => outcome.value);
+      if (new Set(outcomes).size !== outcomes.length) issue(blockPath, `decision ${block.id} repeats an outcome`);
+      block.outcomes.forEach((outcome, index) => { checkGate(outcome, [...blockPath, "outcomes", index]); });
+      checkValue(block.initial, [...blockPath, "initial"]);
+      const defaultInitial = typeof block.initial === "string" ? block.initial : block.initial.otherwise;
+      for (const initial of candidates(block.initial)) {
+        const forcedFailure = initial !== defaultInitial && TaskErrorCodeSchema.safeParse(initial).success;
+        if (!block.outcomes.some(outcome => outcome.value === initial && (!outcome.stops || forcedFailure))) issue([...blockPath, "initial"], `decision ${block.id} starts at ${initial}, which is no continuing outcome`);
+      }
+      known.set(block.id, outcomes);
+    }
+  }
+  for (const [value, path] of values) {
+    if (value === undefined || typeof value === "string") continue;
+    const allowed = known.get(value.by);
+    if (allowed === undefined) issue(path, `value follows ${value.by}, which is no option or decision`);
+    else for (const key of Object.keys(value.values)) if (!allowed.includes(key)) issue(path, `value names ${value.by}=${key}, which it never holds`);
+  }
 });
 export type ExplorerReviewSpec = z.infer<typeof ExplorerReviewSpecSchema>;

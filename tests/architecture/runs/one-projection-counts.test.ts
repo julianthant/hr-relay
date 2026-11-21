@@ -54,7 +54,6 @@ function identifiers(filePath: string): ReadonlySet<string> {
   return found;
 }
 
-const MOCK_COUNT_OWNER = "src/dashboard/surfaces/workflows/mocks/workflow-mock-model.ts";
 function countFieldConstructions(filePath: string, content = readFileSync(filePath, "utf8")): readonly string[] {
   const source = ts.createSourceFile(
     filePath,
@@ -68,16 +67,7 @@ function countFieldConstructions(filePath: string, content = readFileSync(filePa
     // is a count being BUILT; reading one off a parsed payload is fine.
     if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
       const name = node.name;
-      if (ts.isIdentifier(name) && COUNT_FIELDS.has(name.text)) {
-        let parent: ts.Node | undefined = node.parent;
-        while (parent !== undefined && !ts.isFunctionDeclaration(parent)) parent = parent.parent;
-        const admitted = relative(REPO_ROOT, filePath).replaceAll("\\", "/") === MOCK_COUNT_OWNER
-          && parent !== undefined && ts.isFunctionDeclaration(parent) && parent.name?.text === "mockWorkflowCounts"
-          && parent.parameters.length === 1 && parent.parameters[0].name.getText(source) === "runs"
-          && parent.body?.getText(source).replace(/\s+/gu, "") === '{returnMOCK_WORKFLOWS.filter(flow=>flow.id!=="ocr").map(flow=>{constrows=runs.filter(run=>run.workflowId===flow.id);returnWorkflowCountWireSchema.parse({workflowId:flow.id,count:rows.length,statusCounts:mockQueueCounts(rows)});});}'
-          && name.text === "statusCounts";
-        if (!admitted) found.push(name.text);
-      }
+      if (ts.isIdentifier(name) && COUNT_FIELDS.has(name.text)) found.push(name.text);
     }
     ts.forEachChild(node, visit);
   };
@@ -113,19 +103,6 @@ describe("one-projection-counts", () => {
       countFieldConstructions(`${REPO_ROOT}/${THE_PROJECTION}`).length >= 3,
       "the run/queue projection must be the module that builds the count fields",
     );
-  });
-
-  it("admits the one closed preview count constructor and rejects served, sibling or extra constructors", () => {
-    const path = `${REPO_ROOT}/${MOCK_COUNT_OWNER}`;
-    const content = readFileSync(path, "utf8");
-    assert.ok(content.includes("statusCounts: mockQueueCounts(rows)"));
-    assert.deepEqual(countFieldConstructions(path, content), []);
-    for (const [candidatePath, candidate] of [
-      [`${REPO_ROOT}/src/dashboard/client/queries/day-queries.ts`, content],
-      [`${REPO_ROOT}/src/dashboard/surfaces/workflows/mocks/new-sibling.ts`, content],
-      [path, `${content}\nconst arbitrary = { statusCounts: [] };`],
-      [path, content.replace("statusCounts: mockQueueCounts(rows)", "statusCounts: []")],
-    ]) assert.ok(countFieldConstructions(candidatePath, candidate).length > 0);
   });
 
   it("bounds carve-out to one builder and one consumer", () => {

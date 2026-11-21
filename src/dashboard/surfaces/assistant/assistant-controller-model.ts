@@ -6,10 +6,10 @@ import { systemClock } from '../../../rules/time/clock.js';
 import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/chatgpt-account-model.js';
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
-import type { AssistantReceipt, AssistantResult } from '../../../models/dashboard/assistant.js';
+import type { AssistantReceipt, AssistantResult, AssistantStageResult } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelCatalog, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
-import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
+import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantProposal, type AssistantState } from './assistant-model.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
@@ -25,12 +25,14 @@ export async function assistantProposalDigest(proposal: AssistantActionProposal)
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJsonStringify(proposal)));
   return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
+const ACCOUNT_NOT_CONNECTED = 'Connect ChatGPT to use the assistant.';
+const ACCOUNT_READ_FAILED = 'Relay could not check your ChatGPT account.';
 /** A run start or run action whose answer was lost is unknown, shown as one line and never retried. */
-const lostDecision = (proposal: AssistantMockProposal): AssistantAction =>
+const lostDecision = (proposal: AssistantProposal): AssistantAction =>
   ({ type: 'action-state', id: proposal.id, disposition: 'unknown', message: { id: `action-${proposal.id}`, role: 'assistant', text: ASSISTANT_UNKNOWN_NOTICE } });
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
-export function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
+export function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantProposal; disposition?: "unknown" } {
   const id = `assistant-${requestId}`;
   switch (result.state) {
     case 'answered': return { message: { id, role: 'assistant', text: result.text } };
@@ -47,7 +49,7 @@ export function presentResult(result: AssistantResult, requestId: number, prompt
           { label: 'Input', value: p.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
           { label: 'Runs', value: String(p.startPlan.planned.length) },
           { label: 'Mode', value: p.startPlan.dryRun ? 'Dry run' : 'Live read' },
-          { label: 'Browser', value: p.startPlan.browserMode === 'headed' ? 'Headed' : 'Headless' },
+          { label: 'Browser', value: p.startPlan.browserMode === 'headed' ? 'Visible' : 'Hidden' },
           { label: 'Captures', value: p.startPlan.captureBrowserScreenshots ? 'On' : 'Off' },
           { label: 'Expires', value: p.expiresAt },
         ] : p.effect === 'spreadsheet' ? [...p.facts, { label: 'Expires', value: p.expiresAt }]
@@ -111,7 +113,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     if (current()) owner.preferenceChanged?.(actual, true);
     return { kind: "saved", view: actual };
   }
-  async function respond(requestId: number, prompt: string) {
+  async function respond(requestId: number, prompt: string, staged?: readonly string[]) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
     const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
@@ -152,7 +154,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         return;
       }
       const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId,
-        message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
+        message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }), ...(staged?.length ? { attachments: [...staged] } : {}) }, request.abort.signal);
       if (envelope.receipt !== undefined) history?.receipt(envelope.receipt);
       if (!current()) return;
       if (envelope.kind === 'delivery') {
@@ -163,7 +165,8 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       publish(assistantReducer(state, { type: "settle", requestId, ...presented }));
     } catch {
       if (current()) {
-        await readBack({ type: "uncertain", requestId });
+        // A chat turn only reads and proposes, so a lost reply is a retryable failure; a model-preference save may have written, so it stays unknown.
+        await readBack(assistantSetupCommand(prompt) === undefined ? { type: "fail", requestId } : { type: "uncertain", requestId });
       }
     } finally {
       if (outstanding === request) outstanding = undefined;
@@ -215,6 +218,11 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       pendingDecision = undefined; retired = true;
       decision?.abort.abort(); listeners.clear();
     },
+    /** Stages one picked file under this chat so a later send can name it; nothing reaches the model before then. */
+    async stage(file: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>): Promise<AssistantStageResult> {
+      if (client.assistantStageAttachment === undefined) throw new Error(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE);
+      return client.assistantStageAttachment(conversationId, file);
+    },
     /** A picker choice: saved without a chat turn; the executor's feedback reports a refusal or unknown result. */
     async choose(preference: AssistantModelPreference) {
       if (retired) return;
@@ -245,7 +253,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (action.type === 'edit' || action.type === 'new-chat' || action.type === 'cancel') abort();
       const previous = state;
       publish(assistantReducer(state, action));
-      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt);
+      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt, state.turn.staged);
     },
   });
 }
@@ -288,7 +296,8 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   // An unreadable usage meter is not a sign-in failure; a turn that gets no reply is the failure signal.
   const usageUnread = resource !== undefined && 'code' in resource && resource.code === 'CHATGPT_USAGE_UNAVAILABLE';
   const accountAvailable = accountPort.mode === 'live' && (account.state === 'connected' && account.planUsage === 'enabled' || usageUnread);
-  const accountFailure = resource !== undefined && 'code' in resource ? ERROR_CATALOG[resource.code].text : undefined;
+  const accountFailure = resource !== undefined && 'code' in resource ? resource.code === 'CHATGPT_AUTH_UNAVAILABLE' ? ACCOUNT_READ_FAILED : ERROR_CATALOG[resource.code].text : undefined;
+  const accountReadFailed = account.state === 'unavailable' && accountPort.refresh !== undefined;
   const [models, setModels] = useState<AssistantModelCatalog['models']>();
   useEffect(() => {
     const client = sessions.client;
@@ -297,10 +306,11 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
     return () => request.abort();
   }, [accountAvailable, sessions.client]);
-  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => { void controller.choose(preference); }, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
-    accountAction: (account.state === 'loading' ? undefined : account.state === 'connected' || account.state === 'unavailable' ? 'settings' : 'sign-in'),
+    accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),
+    accountRetry: () => { void accountPort.refresh?.(); },
     accountHeading: account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable',
-    accountNotice: accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish ChatGPT sign-in in Settings.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
+    accountNotice: accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish signing in to ChatGPT in your browser.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : account.state === 'signed-out' ? ACCOUNT_NOT_CONNECTED : account.state === 'unavailable' ? ACCOUNT_READ_FAILED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
     statusText: 'Read and propose', footnote: 'Review the exact action before confirming. Workflow starts require a confirmed plan.' };
 }

@@ -1,26 +1,28 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { StatusDot, dsElev, dsSurface, dsText, type DsStatus } from "../../ds/ui.js";
 import "./analytics-charts.css";
+import { RUNS_CHART_HEIGHT, SMALL_LINE_HEIGHT, countScale } from "./analytics-model.js";
 
-const AXIS = "text-[12px] leading-4 tabular-nums text-ui-secondary";
+const AXIS = "text-body tabular-nums text-ui-secondary";
 
 export interface ChartDay { label: string; date: string }
-export interface ChartSeries { id: string; label: string; color: string; values: readonly (number | null)[] }
-interface Tip { title: string; rows: readonly { name: string; value: string; color: string }[] }
+export interface ChartSeries { id: string; label: string; status?: DsStatus; color: string; values: readonly (number | null)[] }
+interface Tip { title: string; rows: readonly { name: string; value: string; status?: DsStatus }[] }
 interface Hover { index: number; x: number; top: number }
 
 const sumAt = (series: readonly ChartSeries[], index: number) => series.reduce((total, line) => total + (line.values[index] ?? 0), 0);
 /** A small label above a big number. */
 export function ChartHeading({ label, value }: { label: string; value: string }) {
-  return <div className="mb-4"><p className="m-0 text-[12px] leading-[18px] text-ui-primary">{label}</p><p className="m-0 text-[28px] leading-8 tabular-nums text-ui-primary">{value}</p></div>;
+  return <div className="mb-4"><p className="m-0 text-body text-ui-secondary">{label}</p><p className={`m-0 ${dsText.display} tabular-nums text-ui-primary`}>{value}</p></div>;
 }
 
-/** The legend bars: a 4px rounded bar spanning the label and the value (count and share). Colour is never the only cue. */
-export function KeyFigures({ items, inline = false }: { items: readonly { label: string; color: string; count: number }[]; inline?: boolean }) {
+/** The legend: a status dot, the label, then the count and share. Colour is never the only cue. */
+export function KeyFigures({ items, inline = false }: { items: readonly { label: string; status: DsStatus; count: number }[]; inline?: boolean }) {
   const finished = items.reduce((total, item) => total + item.count, 0) || 1;
   return <ul aria-label="Key figures" className={`m-0 flex list-none p-0 ${inline ? "flex-wrap gap-x-6 gap-y-2" : "gap-3"}`}>
-    {items.map(item => <li key={item.label} className={`flex gap-3 ${inline ? "" : "min-w-0 flex-1"}`}>
-      <span aria-hidden className="w-1 shrink-0 rounded-full" style={{ background: item.color }} />
-      <span className="flex flex-col"><span className="text-[12px] leading-4 text-ui-primary">{item.label}</span><span className="text-[16px] leading-6 tabular-nums text-ui-primary">{item.count} · {Math.round(item.count / finished * 100)}%</span></span>
+    {items.map(item => <li key={item.label} className={`flex flex-col ${inline ? "" : "min-w-0 flex-1"}`}>
+      <span className="flex items-center gap-2 text-body text-ui-secondary"><StatusDot status={item.status} />{item.label}</span>
+      <span className={`${dsText.title} tabular-nums text-ui-primary`}>{item.count} · {Math.round(item.count / finished * 100)}%</span>
     </li>)}
   </ul>;
 }
@@ -69,11 +71,11 @@ function ChartFrame({ label, days, ticks, top, height, header, footer, tip, plot
     </div>
     <div className="h-6" />
     {footer}
-    {hover && active && <div ref={tipBox} aria-hidden className="ds-chart-tip">
-      <p className="m-0 text-[12px] font-medium leading-[18px] text-ui-primary">{active.title}</p>
-      <p className="m-0 text-[12px] leading-[18px] text-ui-muted">{days[hover.index]?.date}</p>
-      <ul className="ds-chart-tip-rows">{active.rows.map(row => <li key={row.name} className="text-[12px] leading-5">
-        <span className="size-2.5 shrink-0 rounded-full" style={{ background: row.color }} /><span className="min-w-0 flex-1 truncate text-ui-muted">{row.name}</span><span className="tabular-nums text-ui-primary">{row.value}</span>
+    {hover && active && <div ref={tipBox} aria-hidden className={`ds-chart-tip ${dsSurface.overlay} ${dsElev.mid}`}>
+      <p className="m-0 text-body font-medium text-ui-primary">{active.title}</p>
+      <p className="m-0 text-body text-ui-muted">{days[hover.index]?.date}</p>
+      <ul className="ds-chart-tip-rows">{active.rows.map(row => <li key={row.name} className="text-body">
+        {row.status && <StatusDot status={row.status} />}<span className="min-w-0 flex-1 truncate text-ui-muted">{row.name}</span><span className="tabular-nums text-ui-primary">{row.value}</span>
       </li>)}</ul>
     </div>}
     <table className="sr-only"><caption>{label}</caption><thead><tr><th>Day</th>{tip(0).rows.map(row => <th key={row.name}>{row.name}</th>)}</tr></thead>
@@ -82,55 +84,37 @@ function ChartFrame({ label, days, ticks, top, height, header, footer, tip, plot
 }
 
 /** Stacked columns per day, flush, only the top segment rounded; the hovered column lifts. */
-export function StackedBars({ label, days, series, unit, height = 160, header, footer }: {
+export function StackedBars({ label, days, series, unit, height = RUNS_CHART_HEIGHT, header, footer }: {
   label: string; days: readonly ChartDay[]; series: readonly ChartSeries[]; unit: readonly [string, string]; height?: number; header?: ReactNode; footer?: ReactNode;
 }) {
-  const { top, ticks } = barScale(Math.max(...days.map((_, index) => sumAt(series, index))));
+  const { top, ticks } = countScale(Math.max(...days.map((_, index) => sumAt(series, index))));
   return <ChartFrame label={label} days={days} ticks={ticks} top={top} height={height} header={header} footer={footer}
-    tip={index => ({ title: `${sumAt(series, index)} ${sumAt(series, index) === 1 ? unit[0] : unit[1]}`, rows: series.map(line => ({ name: line.label, value: String(line.values[index] ?? 0), color: line.color })) })}
+    tip={index => ({ title: `${sumAt(series, index)} ${sumAt(series, index) === 1 ? unit[0] : unit[1]}`, rows: series.map(line => ({ name: line.label, value: String(line.values[index] ?? 0), status: line.status })) })}
     plot={active => <div className="pointer-events-none absolute inset-0 flex items-end">
       {days.map((day, index) => <div key={day.date} className="flex h-full min-w-0 flex-1 flex-col-reverse items-center">
         <div className="flex w-3/5 max-w-12 flex-col-reverse" style={{ height: `${sumAt(series, index) / top * 100}%`, filter: active === index ? "var(--chart-lift)" : undefined }}>
-          {series.map(line => (line.values[index] ?? 0) > 0 && <span key={line.id} aria-hidden className="block w-full last:rounded-t-[4px]" style={{ flexGrow: line.values[index] ?? 0, flexBasis: 0, background: line.color }} />)}
+          {series.map(line => (line.values[index] ?? 0) > 0 && <span key={line.id} aria-hidden className="block w-full last:rounded-t-[var(--ds-radius-xs)]" style={{ flexGrow: line.values[index] ?? 0, flexBasis: 0, background: line.color }} />)}
         </div>
       </div>)}
     </div>} />;
 }
 
-/** Counts in multiples of 6 so four ticks fall on whole numbers. */
-function barScale(max: number) {
-  const top = Math.max(6, Math.ceil(max / 6) * 6);
-  return { top, ticks: [top, top * 2 / 3, top / 3, 0].map(value => ({ value, label: String(value) })) };
-}
-
-/** Consecutive measured days; a missing day breaks the line instead of plotting zero. */
-function runsOf(values: readonly (number | null)[]) {
-  const runs: { index: number; value: number }[][] = [];
-  let current: { index: number; value: number }[] | undefined;
-  values.forEach((value, index) => {
-    if (value === null) { current = undefined; return; }
-    if (!current) { current = []; runs.push(current); }
-    current.push({ index, value });
-  });
-  return runs;
-}
-
-/** One line per series, a dot on each line at the hovered day. `summary` is the hover card's title for a day. */
-export function LineChart({ label, days, series, ticks, top, format, summary, height = 120, header }: {
-  label: string; days: readonly ChartDay[]; series: readonly ChartSeries[]; ticks: readonly { value: number; label: string }[]; top: number;
-  format: (value: number | null) => string; summary: (index: number) => string; height?: number; header?: ReactNode;
+/** A small neutral line of one daily count; the latest day carries a dot, and the hovered day takes it. */
+export function SmallLine({ label, name, days, values, summary, header }: {
+  label: string; name: string; days: readonly ChartDay[]; values: readonly number[]; summary: (index: number) => string; header?: ReactNode;
 }) {
+  const { top } = countScale(Math.max(0, ...values));
   const x = (index: number) => (index + 0.5) / days.length * 100;
   const y = (value: number) => 100 - value / top * 100;
-  return <ChartFrame label={label} days={days} ticks={ticks} top={top} height={height} header={header}
-    footer={<ul aria-label="Legend" className="m-0 mt-3 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[12px] leading-4 text-ui-secondary">
-      {series.map(line => <li key={line.id} className="flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-full" style={{ background: line.color }} />{line.label}</li>)}
-    </ul>}
-    tip={index => ({ title: summary(index), rows: series.map(line => ({ name: line.label, value: format(line.values[index] ?? null), color: line.color })) })}
-    plot={active => <>
-      <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {series.flatMap(line => runsOf(line.values).map(run => <polyline key={`${line.id}:${run[0]?.index}`} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={run.map(point => `${x(point.index)},${y(point.value)}`).join(" ")} />))}
-      </svg>
-      {active !== null && series.map(line => line.values[active] == null ? null : <span key={line.id} aria-hidden className="ds-chart-dot" style={{ left: `${x(active)}%`, top: `${y(line.values[active])}%`, background: line.color }} />)}
-    </>} />;
+  return <ChartFrame label={label} days={days} ticks={[]} top={top} height={SMALL_LINE_HEIGHT} header={header}
+    tip={index => ({ title: summary(index), rows: [{ name, value: String(values[index] ?? 0) }] })}
+    plot={active => {
+      const mark = active ?? values.length - 1;
+      return <>
+        <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polyline fill="none" stroke="var(--ui-secondary)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={values.map((value, index) => `${x(index)},${y(value)}`).join(" ")} />
+        </svg>
+        {values.length > 0 && <span aria-hidden className="ds-chart-dot" style={{ left: `${x(mark)}%`, top: `${y(values[mark] ?? 0)}%`, background: "var(--ui-secondary)" }} />}
+      </>;
+    }} />;
 }

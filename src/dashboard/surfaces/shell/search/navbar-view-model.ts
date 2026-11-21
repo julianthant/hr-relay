@@ -2,13 +2,14 @@ import { formatCalendarDate } from "../../../lib/date-format.js";
 import type { NotificationDestination } from "../../notifications/notifications-view-model.js";
 import type { ShellView } from "../top-bar-model.js";
 import type { PaletteSheet } from "./search-palette-model.js";
+import { formatMonthYear } from "../../../lib/date-format.js";
 
 export const NAVBAR_VIEWS: readonly { id: ShellView; label: string }[] = [
   { id: "queue", label: "Dashboard" },
   { id: "explorer", label: "Explorer" }, { id: "activity", label: "Analytics" },
 ];
 export type NavbarSearchResult = Readonly<{ id: string; subject: string; workflow: string; day: string; state: string; publicId?: string; destination?: NotificationDestination }>;
-export type NavbarData = Readonly<{ today: string; counts: Readonly<Record<string, number>>; results: readonly NavbarSearchResult[]; totalMatches?: number; unavailable?: string; sheets?: readonly PaletteSheet[]; sheetsUnavailable?: string }>;
+export type NavbarData = Readonly<{ today: string; counts: Readonly<Record<string, number>>; results: readonly NavbarSearchResult[]; totalMatches?: number; unavailable?: string; loading?: boolean; sheets?: readonly PaletteSheet[]; sheetsUnavailable?: string }>;
 
 function dateValue(day: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(day)) throw new Error("navbar-day-invalid");
@@ -30,7 +31,7 @@ export function navbarShiftMonth(month: string, amount: number): string {
   return date.toISOString().slice(0, 7);
 }
 export function navbarMonthLabel(month: string): string {
-  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(dateValue(`${month}-01`));
+  return formatMonthYear(month);
 }
 export function navbarCalendarKey(day: string, key: string): string | undefined {
   const date = dateValue(day);

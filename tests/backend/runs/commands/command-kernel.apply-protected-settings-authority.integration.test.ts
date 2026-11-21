@@ -38,7 +38,7 @@ function protectedSettingsCommand(input: Readonly<{
     payload: {
       protectedSchemaHash: input.protectedSchemaHash ?? PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId: input.writeId ?? UUID_7,
-      entries: { ucpathPassword: { set: input.value } },
+      entries: { sharepointOnboardingRosterUrl: { set: input.value } },
     },
   });
 }
@@ -54,7 +54,7 @@ describe("apply-protected-settings authority", () => {
     const command = protectedSettingsCommand({
       expectedRevision: 1,
       protectedSchemaHash: HASH_A,
-      value: "must-not-reach-authority",
+      value: "https://roster.example.test/must-not-reach-authority",
     });
 
     assert.deepEqual(harness.kernel.execute(command), {
@@ -81,7 +81,7 @@ describe("apply-protected-settings authority", () => {
         },
       },
     }));
-    const protectedValue = "protected-value-before-audit";
+    const protectedValue = "https://roster.example.test/protected-value-before-audit";
     const revision = harness.credentials.read().revision;
     const command = protectedSettingsCommand({ value: protectedValue, expectedRevision: revision });
     const protectedPath = join(harness.stateRoot, "credentials", "protected.json");
@@ -91,7 +91,7 @@ describe("apply-protected-settings authority", () => {
       /credential-audit-uncertain: credentials committed; retry the exact command/u,
     );
     assert.equal(harness.credentials.read().revision, revision + 1);
-    assert.equal(harness.credentials.read().entries.ucpathPassword?.value, protectedValue);
+    assert.equal(harness.credentials.read().entries.sharepointOnboardingRosterUrl?.value, protectedValue);
     const committedBytes = readFileSync(protectedPath);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
     assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
@@ -99,7 +99,7 @@ describe("apply-protected-settings authority", () => {
     const divergent = protectedSettingsCommand({
       commandId: command.commandId,
       expectedRevision: revision,
-      value: "divergent-protected-value",
+      value: "https://roster.example.test/divergent-protected-value",
       writeId: command.payload.writeId,
     });
     const divergentResult = harness.kernel.execute(divergent);
@@ -116,7 +116,7 @@ describe("apply-protected-settings authority", () => {
 
     const stale = protectedSettingsCommand({
       expectedRevision: revision,
-      value: "stale-protected-value",
+      value: "https://roster.example.test/stale-protected-value",
       writeId: UUID_4,
     });
     const staleResult = harness.kernel.execute(stale);
@@ -127,7 +127,7 @@ describe("apply-protected-settings authority", () => {
 
     const reusedWrite = protectedSettingsCommand({
       expectedRevision: revision + 1,
-      value: "reused-write-protected-value",
+      value: "https://roster.example.test/reused-write-protected-value",
       writeId: command.payload.writeId,
     });
     const reusedResult = harness.kernel.execute(reusedWrite);
@@ -139,7 +139,8 @@ describe("apply-protected-settings authority", () => {
 
   it("journals only marked operations while the independent store owns credential values", async () => {
     const harness = await createHarness();
-    const protectedValue = "protected-value-that-must-never-reach-sqlite";
+    const protectedMarker = "protected-value-that-must-never-reach-sqlite";
+    const protectedValue = `https://roster.example.test/${protectedMarker}`;
     const revision = harness.credentials.read().revision;
     const command = protectedSettingsCommand({ value: protectedValue, expectedRevision: revision });
     const result = harness.kernel.execute(command);
@@ -149,19 +150,19 @@ describe("apply-protected-settings authority", () => {
     assert.equal(result.restartRequired, false);
     assert.equal(result.revision, revision + 1);
     assert.deepEqual(result.affectedTargets, [{ family: "protected-settings", revision: revision + 1 }]);
-    assert.equal(result.entries?.ucpathPassword.present, true);
+    assert.equal(result.entries?.sharepointOnboardingRosterUrl.present, true);
     const journal = harness.database.authority.commands.get(command.commandId);
     const audit = harness.database.authority.commandAudits.findByCommand(command.commandId);
     assert.ok(journal !== undefined);
     assert.ok(audit !== undefined);
     const durableBytes = JSON.stringify({ journal, audit, current: harness.database.authority.settingsCurrent.get() });
-    assert.equal(durableBytes.includes(protectedValue), false);
+    assert.equal(durableBytes.includes(protectedMarker), false);
     assert.equal(durableBytes.includes(sha256Hex(protectedValue)), false);
     assert.equal(durableBytes.includes('"set":"<set>"'), true);
     assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
     const credentialRecord = harness.credentials.read();
     assert.equal(credentialRecord.revision, revision + 1);
-    assert.equal(credentialRecord.entries.ucpathPassword?.value, protectedValue);
+    assert.equal(credentialRecord.entries.sharepointOnboardingRosterUrl?.value, protectedValue);
     assert.equal(credentialRecord.lastApplied?.commandId, command.commandId);
   });
 });

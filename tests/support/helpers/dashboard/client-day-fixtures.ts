@@ -25,6 +25,7 @@ export function createClientDayFixtures(DAY: string, HASH_D: string) {
     startedAt: "2026-08-03T17:00:00.000Z",
     updatedAt: "2026-08-03T17:00:00.000Z",
     endedAt: { state: "absent", reason: "run is running" },
+    operatorWait: { state: "absent" },
     gateOpenedAt: { state: "absent", reason: "no gate has opened on this run" },
     displayName: { state: "absent", reason: "the operator has not renamed this run" },
     title,

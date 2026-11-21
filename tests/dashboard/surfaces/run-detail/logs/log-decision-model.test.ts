@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
-import { logDecisionExamples } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
+import { logDecisionExamples } from "../../../../support/fixtures/dashboard/log-preview/log-decision-fixture";
 import { answeredOutcome, answeredRow, choiceOptions, decisionAnswerValid, lookupTyped, recommendedOption } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import { LogDecisionBlock, type DecisionAnswerHandler } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision.js";
 import { type LogEntry } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
@@ -135,7 +135,7 @@ describe("served log decisions", () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const base = example("failure-no-write").decision;
     await act(async () => root?.render(createElement(LogDecisionBlock, { decision: { ...base, answered: { optionId: "check-again", label: "Check again", at: "2026-08-03T16:41:05.000Z" as never, actor: { kind: "assistant", onBehalfOf: { name: "Alex Rivera" } } } } })));
-    assert.match(host.querySelector("p[data-answered]")?.textContent ?? "", /^Retried · \d\d:\d\d · assistant on behalf of Alex Rivera$/u);
+    assert.match(host.querySelector("p[data-answered]")?.textContent ?? "", /^Retried · \d{1,2}:\d\d [AP]M · assistant on behalf of Alex Rivera$/u);
     assert.ok(host.querySelector("h4"));
     assert.deepEqual([...host.querySelectorAll("button")].map(button => button.textContent).filter(text => /Confirm|Cancel run|Retry|Check again/u.test(text ?? "")), []);
   });

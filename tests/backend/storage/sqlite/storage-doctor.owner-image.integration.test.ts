@@ -71,7 +71,7 @@ it("keeps a normal report when a live checkpoint or write hits every active-auth
 
 async function backupChangedDuringRead(f: Fixture, owner: Fixture["database"] | undefined) {
   const service = new AuthorityBackupService(f.admission, f.database, { directory: f.options.backupDirectory }, systemClock);
-  const taken = await service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+  const taken = await service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
   const manifest = taken.manifests.at(-1);
   assert.ok(manifest);
   const backupPath = join(f.options.backupDirectory, manifest.backupFileName);
@@ -178,7 +178,7 @@ function duringBindingRead(effect: () => void) {
 it("keeps a verified backup restore-eligible when a checkpoint lands during the binding read", async () => {
   const f = await fixture();
   const service = new AuthorityBackupService(f.admission, f.database, { directory: f.options.backupDirectory }, systemClock);
-  const taken = await service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+  const taken = await service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
   assert.ok(taken.manifests[0]);
   const race = duringBindingRead(() => {
     journalWrite(f);
@@ -195,7 +195,7 @@ it("keeps a verified backup restore-eligible when a checkpoint lands during the 
 it("rejects the pass as changed when another database is renamed onto the path during the binding read", async () => {
   const f = await fixture();
   const service = new AuthorityBackupService(f.admission, f.database, { directory: f.options.backupDirectory }, systemClock);
-  const taken = await service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+  const taken = await service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
   assert.ok(taken.manifests[0]);
   const replacement = `${f.options.authorityPath}.replacement`;
   const race = duringBindingRead(() => {

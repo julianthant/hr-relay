@@ -33,7 +33,7 @@ export function reconcileFictionalSeparation(input: unknown): DraftFields {
   return draftFields.parse({ ...source, effectiveDate, comments, managerComments: comments, template: "UC_VOL_TERM", pending: "none", transaction: "SIM-042", finalPay: "Does not need final pay · student", mode: "confirmed", review: source.separationDate < source.lastDayWorked ? "required" : "not-required" });
 }
 const recordFields = (value: Record<string, string>): DataPoint[] => [{ direction: "read", field: "fictional", value }];
-const common = { subject: { kind: "none" as const, reason: "Fictional separation form; no HR authority or external effects" }, errorCodes: ["document-read-timeout"] as const, scenarios: [scenario], freshness: { defaultMaxAgeMs: 0 }, provenance: { default: "live" as const } };
+const common = { subject: { kind: "none" as const, reason: "Fictional separation form; no HR authority or external effects" }, errorCodes: ["unreadable-page"] as const, scenarios: [scenario], freshness: { defaultMaxAgeMs: 0 }, provenance: { default: "live" as const } };
 const readContract = defineTaskContract({ ...common, id: taskId("kuali/read-separation-document"), title: "Read separation request", effect: "read", input: Plan1Input, output: z.strictObject({ fictional: documentFields }), example: { fictional: fictionalSeparationDocument }
 });
 const readTask = defineTask(kualiDriver, readContract, { sessions: [{ system: "kuali", access: "read", session: "reuse-worker" }], async run({ ctx }) {
@@ -77,7 +77,7 @@ const verifyContract = defineTaskContract({ ...common, id: taskId("kuali/verify-
 const verifyTask = defineTask(kualiDriver, verifyContract, { sessions: [{ system: "kuali", access: "read", session: "reuse-worker" }], async run({ input, ctx }) {
   await ctx.driver.visit("reloaded");
   const result = { ...input };
-  for (const field of kualiFields) { if (input.mode === "fail") ctx.fail("document-read-timeout", "Fictional document session expired; document fields unavailable after reload.", { transient: true }); result[field] = await ctx.driver.read(field); }
+  for (const field of kualiFields) { if (input.mode === "fail") ctx.fail("unreadable-page", "Fictional document session expired; document fields unavailable after reload.", { transient: true }); result[field] = await ctx.driver.read(field); }
   const parsed = draftFields.parse(result);
   ctx.recordData(recordFields(parsed));
   return { fictional: parsed };

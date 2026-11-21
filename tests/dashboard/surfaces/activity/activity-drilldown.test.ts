@@ -6,14 +6,14 @@ import { createRoot as createRoot_m0 } from 'react-dom/client';
 import { afterEach as afterEach_m0,beforeEach as beforeEach_m0,describe as describe_m0,it as it_m0 } from 'vitest';
 import { type ActivityBrowse as ActivityBrowse_m0 } from '../../../../src/dashboard/surfaces/activity/activity-drilldown-model.js';
 import { ActivityDrilldown as ActivityDrilldown_m0 } from '../../../../src/dashboard/surfaces/activity/activity-drilldown.js';
-import { ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m0,activitySample as activitySample_m0 } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m0,activitySample as activitySample_m0 } from '../../../support/fixtures/dashboard/activity-sample.js';
 // @vitest-environment jsdom
 import assert_m1 from 'node:assert/strict';
 import { act as act_m1,createElement as createElement_m1 } from 'react';
 import { createRoot as createRoot_m1 } from 'react-dom/client';
 import { it as it_m1 } from 'vitest';
 import { ActivityBreadcrumbs as ActivityBreadcrumbs_m1 } from '../../../../src/dashboard/surfaces/activity/activity-drilldown.js';
-import { ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m1,activitySample as activitySample_m1 } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m1,activitySample as activitySample_m1 } from '../../../support/fixtures/dashboard/activity-sample.js';
 
 
 {
@@ -57,7 +57,7 @@ afterEach_m0(_afterEachFixture1);
         if (scenario.selection.metric === 'timed') {
           assert_m0.match(host.textContent ?? '', /24 completed runs with recorded duration/);
           assert_m0.doesNotMatch(table.textContent ?? '', /Separations|Done/);
-          await act_m0(async () => table.querySelector<HTMLButtonElement>('tbody button')!.click());
+          await act_m0(async () => table.querySelector<HTMLAnchorElement>('tbody a[aria-label^="Open logs for"]')!.click());
           assert_m0.deepEqual(onSelection.mock.calls[0], [{ ...scenario.selection, run: value.runs.find(row => row.workflowId === 'sample-separations' && row.status === 'completed' && row.seconds !== null)!.id }]);
         }
         if (scenario.selection.metric === 'outstanding') {
