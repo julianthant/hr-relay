@@ -7,7 +7,7 @@ import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../mocks/helpers/fixture-da
 import { runLaunchAppliedToast } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import type { RunWorkerStartupFailure } from "../../../../src/rules/commands/commands.js";
 
-const MESSAGE = "Your run is queued, but its worker did not start. Check Sessions; do not start it again.";
+const MESSAGE = "Your run is queued, but its worker did not start. Don’t start it again.";
 
 function startup(state: "refused" | "unknown", message = MESSAGE): RunWorkerStartupFailure {
   return { state, code: "RUN_QUEUED_WORKER_UNAVAILABLE", message, detail: "spawn" };
