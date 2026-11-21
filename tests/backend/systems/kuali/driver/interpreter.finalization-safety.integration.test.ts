@@ -516,6 +516,36 @@ describe("Kuali finalization safety", () => {
     });
   });
 
+  it("keeps Kuali's text out of an Action List answer with an unexpected field", async () => {
+    const { driver } = await setupActionList();
+    await context.route(GRAPHQL_URL, route => route.fulfill({
+      json: { data: { actions: { totalCount: 0, edges: [], PRIVATE_KUALI_CANARY: "PRIVATE_KUALI_CANARY" } } },
+    }));
+    await assert.rejects(driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER }), (error: unknown) => {
+      assert.ok(error instanceof Error && error.cause instanceof Error);
+      assert.match(error.cause.message, /does not match the known Action List shape \(1 issue\(s\): unrecognized_keys\)/u);
+      assert.doesNotMatch(JSON.stringify(failureDebugDetails(error)), /PRIVATE_KUALI_CANARY/u);
+      return true;
+    });
+  });
+
+  it("keeps Kuali's text out of a Save answer with an unexpected shape and leaves the outcome unknown", async () => {
+    const fixture = await stageSave(saveVariables());
+    await context.route(GRAPHQL_URL, async route => {
+      const received: unknown = route.request().postDataJSON();
+      if (typeof received === "object" && received !== null && "operationName" in received
+        && received.operationName === "submitDocumentV2") {
+        await route.fulfill({ json: { data: { submitDocumentV2: { status: { PRIVATE_KUALI_CANARY: "PRIVATE_KUALI_CANARY" } } } } });
+      } else await route.fallback();
+    });
+    await assert.rejects(fixture.commit(), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /does not match the known save-response shape .*the outcome is unknown/u);
+      assert.doesNotMatch(JSON.stringify(failureDebugDetails(error)), /PRIVATE_KUALI_CANARY/u);
+      return true;
+    });
+  });
+
   it("reads the internal selects' chosen text and full trimmed options, and refuses an invalid selection", async () => {
     const internalSelects = `
       <title>Form - RRSS Separation Request Form - Kuali</title>

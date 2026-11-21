@@ -580,6 +580,11 @@ async function responseJsonBefore(clock: Clock, deadline: number, response: Resp
   throw new Error(`${what} did not finish its body by the deadline; the outcome is unknown`);
 }
 
+// A ZodError's text quotes response keys and values; keep only zod's fixed issue codes.
+function schemaIssueSummary(error: z.ZodError): string {
+  return `${String(error.issues.length)} issue(s): ${[...new Set(error.issues.map(issue => issue.code))].join(", ")}`;
+}
+
 // GraphQL refusals can return HTTP 200; inspect refusal fields, then verify persisted values separately.
 async function assertSubmitNotRefused(
   assertCurrent: () => void, clock: Clock, deadline: number, response: Response, documentNumber: string,
@@ -601,10 +606,8 @@ async function assertSubmitNotRefused(
   }
   const parsed = SubmitResponseSchema.safeParse(body);
   if (!parsed.success) {
-    throw new Error(
-      `Kuali's answer to the save on document ${documentNumber} does not match the known save-response `
-      + `shape: ${parsed.error.message}`,
-    );
+    throw new Error(`Kuali's answer to the save on document ${documentNumber} does not match the known save-response `
+      + `shape (${schemaIssueSummary(parsed.error)}); the outcome is unknown`);
   }
   // Kuali's messages and validation bodies can quote employee data; a refusal carries only its category and count.
   const errorCount = parsed.data.errors?.length ?? 0;
@@ -745,7 +748,11 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       }
       const body = await responseJsonBefore(clock, deadline, response, "The OldActions answer");
       assertCurrent();
-      return ActionListResultSchema.parse(body).data.actions;
+      const parsed = ActionListResultSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new Error(`The OldActions answer does not match the known Action List shape (${schemaIssueSummary(parsed.error)})`);
+      }
+      return parsed.data.data.actions;
     } finally {
       page.off("request", observeRequest);
     }
