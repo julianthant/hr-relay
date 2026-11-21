@@ -100,7 +100,7 @@ export function CompactSettingsSection({ editor, appearance }: { editor: Editor;
   return <section className="settings-compact-page">
     <PageHeading title="General" />
     <AssistantSettings />
-    {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
+    {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section="general" contentOnly />}
   </section>;
@@ -112,7 +112,7 @@ function CompactSettingsForm({ editor, appearance }: { editor: Editor; appearanc
   const document = editor.editor.document;
   return <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
-      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description="Reopen Settings to refresh." />}
       <div className="ds-body-stack"><GeneralContent editor={editor} year={document.currentFiscalYear} appearance={appearance} /><RunGroups editor={editor} /></div>
     </Form>;
 }
