@@ -11,7 +11,8 @@ import { createKualiRrssDocumentDriver } from "../../../../../src/backend/system
 import { KUALI_RRSS_SPACE_ID } from "../../../../../src/backend/systems/kuali/driver/ui-registry.js";
 import { kualiFinalizationVerdict } from "../../../../../src/backend/systems/kuali/finalization-verdict.js";
 import { KUALI_RRSS_SAVE_BUTTON } from "../../../../../src/models/ui/kuali-rrss-document.js";
-import { KualiFinalizationTargetSchema } from "../../../../../src/models/ui/kuali-separation-finalization.js";
+import { KualiFinalizationTargetSchema, KualiSaveRefusedError } from "../../../../../src/models/ui/kuali-separation-finalization.js";
+import { failureDebugDetails } from "../../../../../src/backend/runtime/execution/run-failure.js";
 import { FingerprintSchema, PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock, type Clock } from "../../../../../src/rules/time/clock.js";
 import { mintMutationCapability } from "../../../../../src/workflow-kit/mutation-capability.js";
@@ -465,6 +466,26 @@ describe("Kuali finalization safety", () => {
     const fixture = await stageSave(variables);
     await assert.rejects(fixture.commit(), /save shape/u);
     assert.deepEqual(fixture.forwarded, []);
+  });
+
+  it.each([
+    ["GraphQL errors", { errors: [{ message: "PRIVATE_KUALI_CANARY" }, { message: "PRIVATE_KUALI_CANARY 2" }] }, "2 GraphQL errors"],
+    ["a status other than Ok", { data: { submitDocumentV2: { status: "PRIVATE_KUALI_CANARY", validations: null } } }, "a status other than Ok"],
+    ["validations", { data: { submitDocumentV2: { status: "Ok", validations: [{ formKeys: ["x"], message: "PRIVATE_KUALI_CANARY" }] } } }, "1 validation"],
+  ])("keeps Kuali's text out of a Save refused with %s", async (_description, answer, category) => {
+    const fixture = await stageSave(saveVariables());
+    await context.route(GRAPHQL_URL, async route => {
+      const received: unknown = route.request().postDataJSON();
+      if (typeof received === "object" && received !== null && "operationName" in received
+        && received.operationName === "submitDocumentV2") await route.fulfill({ json: answer });
+      else await route.fallback();
+    });
+    await assert.rejects(fixture.commit(), (error: unknown) => {
+      assert.ok(error instanceof KualiSaveRefusedError);
+      assert.match(error.refusal, new RegExp(category, "u"));
+      assert.doesNotMatch(JSON.stringify(failureDebugDetails(error)), /PRIVATE_KUALI_CANARY/u);
+      return true;
+    });
   });
 
   it("forwards one valid Save and still requires persisted values after reload", async () => {

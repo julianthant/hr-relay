@@ -600,10 +600,12 @@ async function assertSubmitNotRefused(
       + `shape: ${parsed.error.message}`,
     );
   }
-  if (parsed.data.errors !== undefined && parsed.data.errors.length > 0) {
+  // Kuali's messages and validation bodies can quote employee data; a refusal carries only its category and count.
+  const errorCount = parsed.data.errors?.length ?? 0;
+  if (errorCount > 0) {
     throw new KualiSaveRefusedError({
       documentNumber,
-      refusal: parsed.data.errors.map((entry) => entry.message).join("; "),
+      refusal: `${KUALI_SUBMIT_OPERATION} returned ${String(errorCount)} GraphQL error${errorCount === 1 ? "" : "s"}`,
     });
   }
   const result = parsed.data.data?.submitDocumentV2 ?? undefined;
@@ -615,14 +617,14 @@ async function assertSubmitNotRefused(
   if (result.status !== "Ok") {
     throw new KualiSaveRefusedError({
       documentNumber,
-      refusal: `${KUALI_SUBMIT_OPERATION} reported status ${JSON.stringify(result.status)}`,
+      refusal: `${KUALI_SUBMIT_OPERATION} reported a status other than Ok`,
     });
   }
   if (result.validations !== null && result.validations !== undefined) {
+    const validationCount = Array.isArray(result.validations) ? result.validations.length : 1;
     throw new KualiSaveRefusedError({
       documentNumber,
-      refusal: `${KUALI_SUBMIT_OPERATION} returned validations: `
-        + JSON.stringify(result.validations).slice(0, 400),
+      refusal: `${KUALI_SUBMIT_OPERATION} returned ${String(validationCount)} validation${validationCount === 1 ? "" : "s"}`,
     });
   }
   assertCurrent();
