@@ -197,20 +197,26 @@ describe("workbook payload migration 38", () => {
         assert.equal(readback(upgraded), before);
         assert.deepEqual(upgraded.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
       } finally { upgraded.close(); }
-      const retried = await f.run();
-      assert.equal(retried.state, "already-upgraded");
-      assert.equal(retried.compaction, "compacted");
-      assert.ok(statSync(f.path).size < sizeFailed);
-      const compacted = new DatabaseSync(f.path, { readOnly: true });
+      // An already-current store with free pages is never rewritten: compaction is attempted once, inside the upgrade.
+      let vacuums = 0;
+      const later = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
+        if (sql === "VACUUM") vacuums++;
+        exec.call(this, sql);
+      });
       try {
-        assert.equal(compacted.prepare("PRAGMA freelist_count").get()?.freelist_count, 0);
-        assert.equal(readback(compacted), before);
-        assert.deepEqual(compacted.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
-      } finally { compacted.close(); }
+        const again = await f.run();
+        assert.equal(again.state, "already-upgraded");
+        assert.equal(again.compaction, undefined);
+      } finally { later.mockRestore(); }
+      assert.equal(vacuums, 0);
+      assert.equal(statSync(f.path).size, sizeFailed);
+      const untouched = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.ok(Number(untouched.prepare("PRAGMA freelist_count").get()?.freelist_count) > 0);
+        assert.equal(readback(untouched), before);
+        assert.deepEqual(untouched.prepare("SELECT phase FROM database_upgrades").all().map(row => row.phase), ["settled"]);
+      } finally { untouched.close(); }
       assert.deepEqual(manifests(), backups);
-      const settled = await f.run();
-      assert.equal(settled.state, "already-upgraded");
-      assert.equal(settled.compaction, undefined);
     } finally { await f.dispose(); }
   });
 

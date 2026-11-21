@@ -1745,7 +1745,7 @@ export async function composeStorageCommand(
       return { output: rest.includes("--json") ? JSON.stringify(report, null, 2) : [
         `storage upgrade: ${report.state} (v${String(report.fromSchemaVersion)} → v${String(report.toSchemaVersion)})`,
         "credentials: unchanged",
-        ...(report.compaction === "failed" ? ["compaction: failed; the store is upgraded but larger than needed, run storage upgrade again to retry"] : []),
+        ...(report.compaction === "failed" ? ["compaction: failed; the store is upgraded but larger than needed"] : []),
         ...(report.diagnostics === undefined ? [] : [
           `diagnostic stages: ${String(report.diagnostics.reclaimedStages)} reclaimed, ${String(report.diagnostics.retainedStages)} retained${report.diagnostics.capacityWarning ? "; retained evidence remains budget-accounted" : ""}`,
         ]),

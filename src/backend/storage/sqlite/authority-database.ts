@@ -3340,7 +3340,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   // Returns the pages a committed upgrade freed to the file system. A store with no free pages is left alone (undefined).
-  // A failed compaction leaves a larger file, not an unproved store, so it is reported and the next stopped upgrade retries it.
+  // A failed compaction leaves a larger file, not an unproved store, so it is reported and never retried.
   static compactStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
     expected: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>): "compacted" | "failed" | undefined {
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);

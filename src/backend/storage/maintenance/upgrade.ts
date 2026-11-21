@@ -28,17 +28,12 @@ export const StorageUpgradeReportSchema = z.strictObject({
   fromSchemaVersion: z.literal(BASELINE_FROM_AUTHORITY_SCHEMA_VERSIONS),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
-  compaction: z.enum(["compacted", "failed"]).optional(),
+  compaction: z.literal("failed").optional(),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
 });
 export type StorageUpgradeReport = z.infer<typeof StorageUpgradeReportSchema>;
-// Compaction is part of an ordinary upgrade: the report names it only when it failed, or when a later run retried it.
-// An earlier upgrade whose compaction failed left free pages; an already-upgraded run retries it where store maintenance is available.
-function retryCompaction(...input: Parameters<typeof AuthorityDatabase.compactStopped>): StorageUpgradeReport["compaction"] {
-  try { assertMaintenanceCustodyAvailable("schema-upgrade"); } catch { return undefined; }
-  return AuthorityDatabase.compactStopped(...input);
-}
-const failedCompaction = (outcome: StorageUpgradeReport["compaction"]) => outcome === "failed" ? outcome : undefined;
+// The upgrade compacts the file once. The report names compaction only when it failed; nothing rewrites the store later.
+const failedCompaction = (outcome: ReturnType<typeof AuthorityDatabase.compactStopped>) => outcome === "failed" ? outcome : undefined;
 export interface StorageUpgradeInput {
   readonly stateRoot: string;
   readonly processLockRoot: string;
@@ -124,16 +119,15 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
         const upgraded=inspectAuthorityBackupReadOnly(admission,path);
         return report("upgraded",failedCompaction(AuthorityDatabase.compactStopped(admission,path,input.processLockRoot,clock,upgraded)));
       }
-      const compaction=retryCompaction(admission,path,input.processLockRoot,clock,inspection);
       const pending = pendingDiagnosticArtifacts(admission);
-      if (pending.length === 0) return report("already-upgraded",compaction);
+      if (pending.length === 0) return report("already-upgraded");
       assertMaintenanceCustodyAvailable("schema-upgrade");
       const reclaimedStages = AuthorityDatabase.reclaimStoppedDiagnostics(admission, path, input.processLockRoot, clock, restore);
       requireStopped(admission,input,clock);
       const final = inspectAuthorityBackupReadOnly(admission,path);
       if (final.authorityGeneration !== inspection.authorityGeneration || final.authorityContentFingerprint !== inspection.authorityContentFingerprint) throw new Error("source-changed: diagnostic maintenance authority changed");
       const retainedStages = pendingDiagnosticArtifacts(admission).length;
-      return StorageUpgradeReportSchema.parse({ ...report("already-upgraded",compaction), diagnostics: {
+      return StorageUpgradeReportSchema.parse({ ...report("already-upgraded"), diagnostics: {
         reclaimedStages, retainedStages, capacityWarning: retainedStages > 0,
       } });}
     if(existsSync(path))throw new Error("source-changed: re-plan upgrade");
@@ -262,9 +256,8 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
     fromSchemaVersion: initial.schemaVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged", ...(compaction === undefined ? {} : { compaction }) });
   if (input.plan) return report("planned");
   if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
-    const compaction = retryCompaction(owner, path, processLockRoot, clock, initial);
     await owner.completeStartupUpgradeLogout();
-    return report("already-upgraded", compaction);
+    return report("already-upgraded");
   }
   if (!isUpgradeableAuthoritySchemaVersion(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
