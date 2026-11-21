@@ -57,7 +57,10 @@ identity retains the exact driver contract, including its input/output schemas a
 ## 3 · Files and registration
 
 Keep definitions browser-safe: use shared models, rules and workflow-kit factories. Do not import
-backend task implementations, browser drivers, Playwright or credential access into a definition.
+backend task implementations, browser drivers, Playwright or credential access into a definition. A step
+imports node ids from models or its own module, never from `tasks/`. Native work (Node built-ins,
+archives) for a workflow contract lives in `src/backend/processing/`, whose store backend composition
+adds to the workflow's mini-store; the `browser-safe-steps` guard checks both.
 `src/workflow-kit/validation/source-layout.ts` derives source paths from role.
 
 For a new operator workflow:

@@ -1,11 +1,10 @@
 import { z } from "zod";
-import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
+import { REFERENCE_CHECK_REVIEW_GATE, REFERENCE_STOP_NODE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../models/processing/workbooks/verify-person.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactMemberReadReferenceStop } from "../../../../models/workflows/emergency-contact-member/read-reference-stop.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { REFERENCE_STOP_NODE } from "../../tasks/read-reference-stop.js";
 import { buildContactPlan } from "../contact-plan/step.js";
 
 export const REFERENCE_CHECK_NODE = "reference-check";

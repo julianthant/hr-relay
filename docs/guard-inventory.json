@@ -588,6 +588,14 @@
       "replacementRequired": true
     },
     {
+      "name": "browser-safe-steps",
+      "file": "tests/architecture/workflow-kit/browser-safe-steps.test.ts",
+      "status": "active",
+      "owner": "docs/guides/workflow-authoring.md",
+      "invariant": "No module under src/workflows/<id>/steps/ reaches, through its runtime import graph (type-only imports erased, dynamic imports followed), a module that calls defineTask or imports a Node built-in; no module under src/workflows/ imports a Node built-in, so workflow registration never loads native code. Shared node ids live in browser-safe declarations and native implementations of workflow contracts register from src/backend/processing/. A synthesized indirect task implementation, indirect node:crypto and type-only archive import prove the audit names each path and ignores erased imports.",
+      "replacementRequired": true
+    },
+    {
       "name": "no-workflow-id-branches",
       "file": "tests/architecture/workflow-kit/no-workflow-id-branches.test.ts",
       "status": "active",

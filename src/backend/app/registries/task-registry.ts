@@ -1,8 +1,7 @@
-import {
-  defineTaskStoreRegistry,
-} from "../../../workflow-kit/task-registry.js";
+import { defineTaskStoreRegistry, extendWorkflowStores } from "../../../workflow-kit/task-registry.js";
 import type { RegisteredTaskStore } from "../../../workflow-kit/task-registry.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../../workflow-kit/validation/scenario-execution.js";
+import { archiveWorkflowTasks } from "../../processing/archives/task-registry.js";
 import { crmStore } from "../../systems/crm/task-registry.js";
 import { extractionStore } from "../../processing/extraction/task-registry.js";
 import { i9Store } from "../../systems/i9/task-registry.js";
@@ -37,7 +36,7 @@ export const TASK_STORES: readonly RegisteredTaskStore[] = Object.freeze([
   ocrStore,
   rosterStore,
   workbooksStore,
-  ...WORKFLOW_REGISTRATIONS.map(({ store }) => store),
+  ...extendWorkflowStores(WORKFLOW_REGISTRATIONS.map(({ store }) => store), archiveWorkflowTasks),
 ]);
 
 function corpusFor(stores: readonly RegisteredTaskStore[]) {

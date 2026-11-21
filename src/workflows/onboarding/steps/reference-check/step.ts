@@ -1,12 +1,11 @@
 import { z } from "zod";
-import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
+import { REFERENCE_CHECK_REVIEW_GATE, REFERENCE_STOP_NODE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../models/processing/workbooks/verify-person.js";
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingReadReferenceStop } from "../../../../models/workflows/onboarding/read-reference-stop.js";
 import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../../models/workflows/onboarding/read-write-plan.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { REFERENCE_STOP_NODE } from "../../tasks/read-reference-stop.js";
 import { buildCrmData } from "../crm-data/step.js";
 import { buildHireReview } from "../hire-review/step.js";
 import { buildI9Search } from "../i9-search/step.js";

@@ -1,12 +1,11 @@
 import { z } from "zod";
-import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
+import { REFERENCE_CHECK_REVIEW_GATE, REFERENCE_STOP_NODE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../models/processing/workbooks/verify-person.js";
 import { WorkStudyInput } from "../../../../models/workflows/work-study/input.js";
 import { WorkStudyReadReferenceStop } from "../../../../models/workflows/work-study/read-reference-stop.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { PAYPATH_POSITION_NODE } from "../../tasks/read-paypath-position.js";
-import { REFERENCE_STOP_NODE } from "../../tasks/read-reference-stop.js";
 import { buildUcpathAuth } from "../ucpath-auth/step.js";
 
 export const REFERENCE_CHECK_NODE = "reference-check";

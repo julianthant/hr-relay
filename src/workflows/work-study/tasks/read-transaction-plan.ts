@@ -4,8 +4,6 @@ import { WorkStudyReadTransactionPlan } from "../../../models/workflows/work-stu
 import { planWorkStudyTransaction, WorkStudyPlanRefusedError } from "../../../rules/work-study/plan.js";
 import { defineTask } from "../../../workflow-kit/task.js";
 
-export const TRANSACTION_PLAN_NODE = "transaction-plan";
-
 export const readWorkStudyTransactionPlanTask = defineTask(WorkStudyReadTransactionPlan, {
   sessions: [],
   async run({ input, ctx }) {
