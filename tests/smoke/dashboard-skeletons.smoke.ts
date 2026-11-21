@@ -4,7 +4,7 @@ import { analyticsPeriodLabel, shiftDate } from "../../src/dashboard/surfaces/ac
 import { encodeEditableWorkbook, WorkbookImportResultSchema } from "../../src/models/dashboard/workbooks.js";
 import { importWorkbook } from "../../src/rules/spreadsheets/workbook-io.js";
 import { DESKTOP_VIEWPORTS } from "../support/helpers/dashboard/smoke/dashboard-page.js";
-import { holdDashboardSkeletonRead, SKELETON_READ_HOLD_MS } from "../support/helpers/dashboard/smoke/hold-dashboard-skeleton-read.js";
+import { holdDashboardSkeletonRead, openWithColdSettingsHold, SKELETON_READ_HOLD_MS } from "../support/helpers/dashboard/smoke/hold-dashboard-skeleton-read.js";
 import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
 const SKELETON = '[data-slot="skeleton"]';
@@ -16,6 +16,8 @@ const SETTINGS_FORM = '#dashboard-settings-content .settings-compact-form';
 const RUNS_SECTION = '.ds-body-section:has(> figure[aria-label="Runs per day"])';
 const REPORT = 'section[aria-label="Analytics report"]';
 const REPORT_TOOLBAR = `${REPORT} .ds-toolbar-row`;
+const OPEN_RUNS = { selector: `${REPORT} a`, text: "Open runs" };
+const THEME_FIELD = '[data-settings-path="appearance.theme"]';
 const DATE_FEEDBACK = "Choose a valid date";
 const FILE_NAME = "Synthetic roster.csv";
 const SHEET_NAME = "Synthetic roster";
@@ -34,23 +36,27 @@ type Scene = {
 };
 
 function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHandle"]>> | null, event: string, scene: Scene) {
-  return page.evaluateHandle(({ trigger, event, scene, skeleton, report, toolbar, runs }) => {
+  return page.evaluateHandle(({ trigger, event, scene, skeleton, report, toolbar, runs, openRuns }) => {
     let start: number | undefined;
     let animation = 0;
-    let fixedElement: Element | undefined;
     const visible = (element: Element) => element.getClientRects().length > 0
       && element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
     const find = (selector: string | undefined) => selector === undefined ? undefined
       : [...document.querySelectorAll(selector)].find(visible);
     const findTarget = (target: ElementTarget | undefined) => target === undefined ? undefined
       : [...document.querySelectorAll(target.selector)].find(element => (target.text === undefined || element.textContent?.trim() === target.text) && visible(element));
-    const rect = (selector: string | undefined) => {
-      const bounds = find(selector)?.getBoundingClientRect();
+    const rect = (element: Element | undefined | null, origin?: DOMRect) => {
+      const bounds = element?.getBoundingClientRect();
       if (bounds === undefined) return undefined;
       const { x, y, width, height } = bounds;
-      return { x, y, width, height };
+      return { x: x - (origin?.x ?? 0), y: y - (origin?.y ?? 0), width, height };
     };
-    const initialRuns = scene.analyticsPeriod === undefined ? undefined : rect(runs);
+    const analyticsBoxes = (link: Element | undefined) => {
+      const origin = find(report)?.getBoundingClientRect();
+      return { runs: rect(find(runs), origin), details: rect(link?.closest("tr"), origin), action: rect(link, origin) };
+    };
+    let fixedElement = findTarget(scene.keep);
+    const initialAnalytics = scene.analyticsPeriod === undefined ? undefined : analyticsBoxes(findTarget(openRuns));
     const sample = () => {
       const at = performance.now();
       const skeletons = [...document.querySelectorAll(skeleton)].filter(visible);
@@ -59,10 +65,11 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
       const sessionText = sessions !== null && visible(sessions) ? sessions.textContent?.trim() : undefined;
       const currentFixedElement = findTarget(scene.keep);
       fixedElement ??= currentFixedElement;
+      const drillIn = scene.analyticsPeriod === undefined ? undefined : findTarget(openRuns);
       return {
         at, skeletons: skeletons.length, outside: outside.length,
         outsideRegions: [...new Set(outside.map(element => element.closest('[data-loading-layout], section[aria-label], aside[aria-label]')?.getAttribute('aria-label') ?? 'unnamed'))],
-        pendingBounds: rect(scene.bounds?.pending), settledBounds: rect(scene.bounds?.settled),
+        pendingBounds: rect(find(scene.bounds?.pending)), settledBounds: rect(find(scene.bounds?.settled)),
         kept: currentFixedElement !== undefined && currentFixedElement === fixedElement,
         focused: scene.focus !== undefined && document.activeElement?.matches(scene.focus) === true,
         sessionText,
@@ -71,8 +78,9 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
           period: find(`${runs} figure .text-control`)?.textContent?.trim(),
           updating: findTarget({ selector: `${toolbar} [role="status"]`, text: "Updating" }) !== undefined,
           exportLocked: findTarget({ selector: `${toolbar} button:disabled`, text: "Export" }) !== undefined,
-          drillInAvailable: findTarget({ selector: `${report} a`, text: "Open runs" }) !== undefined,
-          runsBounds: rect(runs),
+          drillInLocked: drillIn instanceof HTMLAnchorElement && drillIn.getAttribute("aria-disabled") === "true"
+            && drillIn.tabIndex === -1 && getComputedStyle(drillIn).pointerEvents === "none",
+          bounds: analyticsBoxes(drillIn),
         },
       };
     };
@@ -87,10 +95,10 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
       async finish() {
         await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
         cancelAnimationFrame(animation);
-        return { start, frames, initialRuns, viewport: { width: innerWidth, height: innerHeight }, theme: document.documentElement.dataset.demoTheme };
+        return { start, frames, initialAnalytics, viewport: { width: innerWidth, height: innerHeight }, theme: document.documentElement.dataset.demoTheme };
       },
     };
-  }, { trigger, event, scene, skeleton: SKELETON, report: REPORT, toolbar: REPORT_TOOLBAR, runs: RUNS_SECTION });
+  }, { trigger, event, scene, skeleton: SKELETON, report: REPORT, toolbar: REPORT_TOOLBAR, runs: RUNS_SECTION, openRuns: OPEN_RUNS });
 }
 
 async function measure(
@@ -101,19 +109,20 @@ async function measure(
   const frames = await startFrames(page, trigger === null ? null : await trigger.elementHandle(), event, scene);
   const stopFrames = () => frames.evaluate(recorder => recorder.finish());
   let result: Awaited<ReturnType<typeof stopFrames>>;
-  const readTiming = () => hold?.evaluate(value => value);
+  const readTiming = () => hold?.evaluate(read => read.timing);
   let timing: Awaited<ReturnType<typeof readTiming>>;
+  let actionEvidence: unknown;
   try {
-    await act();
+    actionEvidence = await act();
     // A held read can settle outside the measured component. Require the hold to actually release.
     if (hold !== undefined && scene.feedback === undefined) {
-      await expect.poll(() => hold.evaluate(value => value.releasedAt), { timeout: 8_000 }).toBeDefined();
+      await expect.poll(() => hold.evaluate(read => read.timing.releasedAt), { timeout: 8_000 }).toBeDefined();
     }
     await settled();
   } finally {
     result = await stopFrames();
     timing = await readTiming();
-    await writeFile(test.info().outputPath("measurements.json"), JSON.stringify({ test: test.info().title, ...result, timing }, null, 2));
+    await writeFile(test.info().outputPath("measurements.json"), JSON.stringify({ test: test.info().title, ...result, timing, actionEvidence }, null, 2));
   }
 
   const { start, frames: samples } = result;
@@ -126,22 +135,26 @@ async function measure(
   if (scene.pendingRegion === undefined) {
     expect.soft(samples.filter(frame => frame.skeletons > 0), "no skeleton frame").toHaveLength(0);
   } else {
-    expect.soft(firstSkeleton?.at, "first skeleton at or after 300 ms").toBeGreaterThanOrEqual(start + 300);
-    expect.soft(firstSkeleton?.at, "first skeleton by 500 ms on the CI runner").toBeLessThanOrEqual(start + 500);
     expect.soft(samples.filter(frame => frame.outside > 0), "skeletons stay inside the waiting region").toHaveLength(0);
   }
   if (scene.feedback !== undefined) {
     expect.soft(samples.find(frame => frame.feedback)?.at, "date feedback within one second").toBeLessThanOrEqual(start + 1_000);
     expect.soft(timing?.requestedAt, "no day stream opened for the refused date").toBeUndefined();
   } else if (hold !== undefined) {
-    const { requestedAt, withheldAt, releasedAt } = timing ?? {};
-    expect(withheldAt, "matched read or snapshot").toBeDefined();
-    expect(releasedAt, "withheld data was released").toBeDefined();
-    if (withheldAt === undefined || releasedAt === undefined) throw new Error("Read hold timing is missing");
-    expect.soft(releasedAt - withheldAt).toBeGreaterThanOrEqual(SKELETON_READ_HOLD_MS);
-    const pendingFrames = samples.filter(frame => frame.at >= (requestedAt ?? withheldAt) && frame.at < releasedAt);
+    const { requestedAt, withheldAt, windowStartedAt, releasedAt } = timing ?? {};
+    if (requestedAt === undefined || withheldAt === undefined || windowStartedAt === undefined || releasedAt === undefined) {
+      throw new Error("Missing timestamps for the matched read, hold window or release");
+    }
+    expect.soft(releasedAt - windowStartedAt, "minimum hold window").toBeGreaterThanOrEqual(SKELETON_READ_HOLD_MS);
+    const pendingAt = Math.max(start, requestedAt);
+    const pendingFrames = samples.filter(frame => frame.at >= pendingAt && frame.at < releasedAt);
     expect.soft(pendingFrames.length, "sampled during the hold").toBeGreaterThan(0);
-    if (scene.pendingRegion !== undefined) expect.soft(firstSkeleton?.at, "skeleton arrives while the read is pending").toBeLessThan(releasedAt);
+    const checkAppearance = (firstAt: number | undefined, indicator: string) => {
+      expect.soft(firstAt, `${indicator} at least 300 ms into the pending state`).toBeGreaterThanOrEqual(pendingAt + 300);
+      expect.soft(firstAt, `${indicator} by 500 ms on the CI runner`).toBeLessThanOrEqual(pendingAt + 500);
+      expect.soft(firstAt, `${indicator} before release`).toBeLessThan(releasedAt);
+    };
+    if (scene.pendingRegion !== undefined) checkAppearance(firstSkeleton?.at, "first skeleton");
     if (scene.bounds !== undefined) {
       const pending = samples.findLast(frame => frame.skeletons > 0 && frame.at < releasedAt)?.pendingBounds;
       const loaded = samples.at(-1)?.settledBounds;
@@ -154,17 +167,18 @@ async function measure(
       }
     }
     if (scene.analyticsPeriod !== undefined) {
-      const updating = pendingFrames.find(frame => frame.analytics?.updating);
-      expect.soft(updating?.at, "Updating appears at or after 300 ms").toBeGreaterThanOrEqual(start + 300);
-      expect.soft(updating?.at, "Updating appears by 500 ms on the CI runner").toBeLessThanOrEqual(start + 500);
+      checkAppearance(samples.find(frame => frame.analytics?.updating)?.at, "Updating");
       expect.soft(pendingFrames.filter(frame => frame.analytics?.period !== scene.analyticsPeriod), "prior report keeps its own period").toHaveLength(0);
-      expect.soft(pendingFrames.filter(frame => !frame.analytics?.exportLocked || frame.analytics.drillInAvailable),
+      expect.soft(pendingFrames.filter(frame => !frame.analytics?.exportLocked || !frame.analytics.drillInLocked),
         "Export and Open runs stay locked during the read").toHaveLength(0);
-      expect.soft(result.initialRuns, "prior Runs section bounds").toBeDefined();
-      for (const key of ["x", "y", "width", "height"] as const) {
-        const before = result.initialRuns?.[key];
-        expect.soft(pendingFrames.filter(frame => Math.abs((frame.analytics?.runsBounds?.[key] ?? Infinity) - (before ?? 0)) > 1),
-          `held Runs section ${key} within one CSS pixel`).toHaveLength(0);
+      for (const part of ["runs", "details", "action"] as const) {
+        const before = result.initialAnalytics?.[part];
+        expect.soft(before, `settled Analytics ${part} bounds`).toBeDefined();
+        if (before === undefined) continue;
+        for (const key of ["x", "y", "width", "height"] as const) {
+          expect.soft(pendingFrames.filter(frame => Math.abs((frame.analytics?.bounds[part]?.[key] ?? Infinity) - before[key]) > 1),
+            `held Analytics ${part} ${key} within one CSS pixel`).toHaveLength(0);
+        }
       }
       expect.soft(samples.at(-1)?.analytics?.updating, "Updating clears on settlement").toBe(false);
     }
@@ -210,141 +224,182 @@ for (const viewport of DESKTOP_VIEWPORTS) {
   test.describe(`dashboard skeletons at ${viewport.width}x${viewport.height}`, () => {
     test.skip(process.env.RELAY_DASHBOARD_SKELETON_EVIDENCE !== "1", "runs in the dedicated dashboard evidence workflow");
     test.use({ viewport, colorScheme: "dark" });
-    test.beforeEach(async ({ dashboard }) => {
-      await dashboard.open();
+
+    test("a held cold Settings read measures the fixed General form", async ({ dashboard, page, seeded }) => {
+      const hold = await openWithColdSettingsHold(page, seeded.baseUrl, () => dashboard.open());
       await expect(dashboard.queue.locator(`[role="button"][data-demo-row-id="${dashboard.runId("doneRun")}"]`)).toBeVisible();
-    });
-
-    for (const surface of ["Settings", "Spreadsheets", "Explorer", "Analytics", "Run logs"] as const) {
-      test(`${surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
-        const runId = dashboard.runId("doneRun");
-        const control = surface === "Run logs" ? dashboard.queue.locator(`[role="button"][data-demo-row-id="${runId}"]`)
-          : (surface === "Settings" ? page : dashboard.workflows).getByRole("button", { name: surface, exact: true });
-        const content = {
-          Settings: page.locator('[data-settings-path="appearance.theme"]'),
-          Spreadsheets: page.getByText("No spreadsheets yet", { exact: true }),
-          Explorer: page.locator("#explorer-step-1"),
-          Analytics: page.getByRole("figure", { name: "Runs per day" }),
-          "Run logs": dashboard.runPanel.getByRole("region", { name: "Run logs" }),
-        }[surface];
-        await measure(page, control, () => control.click(), () => expect(content).toBeVisible());
-      });
-    }
-
-    test("a held Settings read measures the fixed form", async ({ page }) => {
+      await expect.poll(() => hold.evaluate(read => read.timing.withheldAt)).toBeDefined();
       const open = page.getByRole("button", { name: "Settings", exact: true });
-      const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/settings/editable" });
-      await measure(page, open, () => open.click(), () => expect(page.locator('[data-settings-path="appearance.theme"]')).toBeVisible(), {
-        pendingRegion: SETTINGS_FORM, bounds: { pending: SETTINGS_FORM, settled: `form.settings-compact-form` },
+      const themeField = page.locator(THEME_FIELD);
+      await measure(page, open, async () => {
+        await open.click();
+        await expect(dashboard.pageHeading("General")).toBeVisible();
+        await expect(themeField).toBeHidden();
+        await hold.evaluate(read => read.startWindow());
+      }, () => expect(themeField).toBeVisible(), {
+        pendingRegion: SETTINGS_FORM, bounds: { pending: SETTINGS_FORM, settled: "form.settings-compact-form" },
       }, hold);
     });
 
-    test("a held first Explorer read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-      const open = dashboard.workflows.getByRole("button", { name: "Explorer", exact: true });
-      const picker = page.getByRole("combobox", { name: "Explorer workflow" });
-      const pickerSelector = 'button[aria-label="Explorer workflow"]';
-      const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/explorer" });
-      await measure(page, open, async () => {
-        await open.click();
-        await picker.focus();
-      }, async () => {
-        await expect(page.locator("#explorer-step-1")).toBeVisible();
-        await expect(picker).toBeFocused();
-      }, { keep: { selector: pickerSelector }, focus: pickerSelector }, hold);
-    });
+    test.describe("after dashboard boot", () => {
+      test.beforeEach(async ({ dashboard }) => {
+        await dashboard.open();
+        await expect(dashboard.queue.locator(`[role="button"][data-demo-row-id="${dashboard.runId("doneRun")}"]`)).toBeVisible();
+      });
 
-    test("a held first Analytics read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-      const open = dashboard.workflows.getByRole("button", { name: "Analytics", exact: true });
-      const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/reports/activity/population" });
-      await measure(page, open, () => open.click(), () => expect(page.locator(RUNS_SECTION)).toBeVisible(), {}, hold);
-    });
+      for (const surface of ["Settings", "Spreadsheets", "Explorer", "Analytics", "Run logs"] as const) {
+        test(`${surface === "Settings" ? "warm Settings" : surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
+          const runId = dashboard.runId("doneRun");
+          const control = surface === "Run logs" ? dashboard.queue.locator(`[role="button"][data-demo-row-id="${runId}"]`)
+            : (surface === "Settings" ? page : dashboard.workflows).getByRole("button", { name: surface, exact: true });
+          const content = {
+            Settings: page.locator(THEME_FIELD),
+            Spreadsheets: page.getByText("No spreadsheets yet", { exact: true }),
+            Explorer: page.locator("#explorer-step-1"),
+            Analytics: page.getByRole("figure", { name: "Runs per day" }),
+            "Run logs": dashboard.runPanel.getByRole("region", { name: "Run logs" }),
+          }[surface];
+          if (surface === "Settings") {
+            await control.click();
+            await expect(content).toBeVisible();
+            await page.getByRole("button", { name: "Back to dashboard" }).click();
+            await expect(content).toBeHidden();
+          }
+          await measure(page, control, () => control.click(), () => expect(content).toBeVisible());
+        });
+      }
 
-    test("switching to an uncached 90-day report keeps the previous Analytics report visible", async ({ dashboard, page, seeded }) => {
-      await dashboard.openDataPage("Analytics");
-      const chart = page.getByRole("figure", { name: "Runs per day" });
-      const exportButton = page.getByRole("button", { name: "Export", exact: true });
-      const to = seeded.day;
-      const from = shiftDate(to, -89);
-      const priorPeriod = analyticsPeriodLabel({ from: shiftDate(to, -6), to });
-      await expect(chart.getByText(priorPeriod, { exact: true })).toBeVisible();
-      await expect(exportButton).toBeEnabled();
-      await page.getByRole("button", { name: "Show Person Lookup details" }).click();
-      await expect(page.getByRole("link", { name: "Open runs", exact: true })).toBeVisible();
-      const selectRange = page.getByRole("group", { name: "Report period" }).getByText("90d", { exact: true });
-      const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/reports/activity/population", query: { from, to } });
-      await measure(page, selectRange, () => selectRange.click(), async () => {
-        await expect(chart.getByText(analyticsPeriodLabel({ from, to }), { exact: true })).toBeVisible();
+      test("a held first Explorer read uses no guessed-height skeleton", async ({ dashboard, page }) => {
+        const open = dashboard.workflows.getByRole("button", { name: "Explorer", exact: true });
+        const picker = page.getByRole("combobox", { name: "Explorer workflow" });
+        const pickerSelector = 'button[aria-label="Explorer workflow"]';
+        const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/explorer" });
+        await measure(page, open, async () => {
+          await open.click();
+          await picker.focus();
+        }, async () => {
+          await expect(page.locator("#explorer-step-1")).toBeVisible();
+          await expect(picker).toBeFocused();
+        }, { keep: { selector: pickerSelector }, focus: pickerSelector }, hold);
+      });
+
+      test("a held first Analytics read uses no guessed-height skeleton", async ({ dashboard, page }) => {
+        const open = dashboard.workflows.getByRole("button", { name: "Analytics", exact: true });
+        const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/reports/activity/population" });
+        await measure(page, open, () => open.click(), () => expect(page.locator(RUNS_SECTION)).toBeVisible(), {}, hold);
+      });
+
+      test("switching to an uncached 90-day report keeps the previous Analytics report visible", async ({ dashboard, page, seeded }) => {
+        await dashboard.openDataPage("Analytics");
+        const chart = page.getByRole("figure", { name: "Runs per day" });
+        const exportButton = page.getByRole("button", { name: "Export", exact: true });
+        const to = seeded.day;
+        const from = shiftDate(to, -89);
+        const priorPeriod = analyticsPeriodLabel({ from: shiftDate(to, -6), to });
+        await expect(chart.getByText(priorPeriod, { exact: true })).toBeVisible();
         await expect(exportButton).toBeEnabled();
-      }, { analyticsPeriod: priorPeriod }, hold);
-    });
+        await page.getByRole("button", { name: "Show Person Lookup details" }).click();
+        const openRuns = page.getByRole("link", { name: "Open runs", exact: true });
+        const drillIn = page.getByRole("region", { name: "Analytics runs" });
+        await expect(openRuns).toBeVisible();
+        await expect(openRuns).toBeEnabled();
+        const selectRange = page.getByRole("group", { name: "Report period" }).getByText("90d", { exact: true });
+        const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/reports/activity/population", query: { from, to } });
+        await measure(page, selectRange, async () => {
+          await selectRange.click();
+          await expect(openRuns).toBeDisabled({ timeout: 1_500 });
+          // A real pointer cannot reach this link. Dispatch a click to exercise its handler too.
+          const attempt = await openRuns.evaluate(async link => {
+            const url = location.href;
+            const clickedAt = performance.now();
+            link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+            return { clickedAt, stayedOnReport: location.href === url };
+          });
+          const { requestedAt, releasedAt } = await hold.evaluate(read => read.timing);
+          expect.soft(requestedAt, "read began before the disabled click").toBeLessThanOrEqual(attempt.clickedAt);
+          expect.soft(releasedAt, "read still pending after the disabled click").toBeUndefined();
+          expect.soft(attempt.stayedOnReport, "disabled click leaves the report URL intact").toBe(true);
+          await expect.soft(drillIn).toBeHidden();
+          return attempt;
+        }, async () => {
+          await expect(chart.getByText(analyticsPeriodLabel({ from, to }), { exact: true })).toBeVisible();
+          await expect(exportButton).toBeEnabled();
+          await expect(openRuns).toBeEnabled();
+          expect(await openRuns.evaluate(link => link.tabIndex), "restored link is keyboard reachable").toBe(0);
+        }, { analyticsPeriod: priorPeriod, keep: OPEN_RUNS }, hold);
+        await openRuns.click();
+        await expect(drillIn).toBeVisible();
+      });
 
-    test("a held catalog read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-      const open = dashboard.workflows.getByRole("button", { name: "Spreadsheets", exact: true });
-      const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/workbooks/catalog" });
-      await measure(page, open, () => open.click(), () => expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible(), {}, hold);
-    });
+      test("a held catalog read uses no guessed-height skeleton", async ({ dashboard, page }) => {
+        const open = dashboard.workflows.getByRole("button", { name: "Spreadsheets", exact: true });
+        const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/workbooks/catalog" });
+        await measure(page, open, () => open.click(), () => expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible(), {}, hold);
+      });
 
-    test("a held large sheet read reserves the grid and keeps the sheet heading mounted", async ({ dashboard, page, seeded }) => {
-      const libraryId = await seedRoster(page, seeded.baseUrl);
-      await dashboard.openDataPage("Spreadsheets");
-      const open = page.getByRole("listitem", { name: SHEET_NAME });
-      const versions = page.getByRole("button", { name: "Versions, now v1" });
-      const loading = `[aria-label="Opening ${SHEET_NAME}"]`;
-      const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/workbooks/${encodeURIComponent(libraryId)}` });
-      await measure(page, open, async () => {
-        await open.click();
-        await versions.focus();
-      }, async () => {
-        await expect(page.getByRole("searchbox", { name: "Search this sheet" })).toBeVisible();
-        await expect(versions).toBeFocused();
-      }, {
-        pendingRegion: loading, bounds: { pending: loading, settled: `${SHEETS} section[aria-label="Preview"]` },
-        keep: { selector: `${SHEETS} h1`, text: SHEET_NAME }, focus: `${SHEETS} [aria-label="Versions, now v1"]`,
-      }, hold);
-    });
-
-    test("a held file read reserves the picked-file row in the import dialog", async ({ dashboard, page }) => {
-      await dashboard.openDataPage("Spreadsheets");
-      await expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Import", exact: true }).first().click();
-      const dialog = page.getByRole("dialog", { name: "Import a spreadsheet" });
-      const input = dialog.locator('input[type="file"]');
-      const hold = await holdDashboardSkeletonRead(page, { fileName: FILE_NAME });
-      const loading = `${FILE_DIALOG} [data-loading-layout]`;
-      const fileRow = `${FILE_DIALOG} div:has(> button[aria-label="Remove file"])`;
-      await measure(page, input,
-        () => input.setInputFiles({ name: FILE_NAME, mimeType: "text/csv", buffer: Buffer.from(CSV) }),
-        () => expect(dialog.getByRole("button", { name: "Remove file" })).toBeVisible(), {
-          pendingRegion: loading, bounds: { pending: loading, settled: fileRow },
-        }, hold, "change");
-    });
-
-    test("a held run read stays inside the selected run panel", async ({ dashboard, page }) => {
-      const runId = dashboard.runId("doneRun");
-      const row = dashboard.queue.locator(`[role="button"][data-demo-row-id="${runId}"]`);
-      const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/runs/${runId}` });
-      await measure(page, row, () => row.click(), () => expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible(), {
-        pendingRegion: RUN_PANEL, bounds: { pending: RUN_PANEL, settled: RUN_PANEL },
-      }, hold);
-    });
-
-    test("a held day snapshot confines the skeleton to the queue", async ({ dashboard, page, seeded }) => {
-      const day = shiftDate(seeded.day, -1);
-      const hold = await holdDashboardSkeletonRead(page, { day });
-      await measure(page, null, () => navigate(page, { day }), async () => {
-        await expect(page.getByRole("status", { name: "Loading queue" })).toBeHidden();
-        await expect(dashboard.queue).toBeVisible();
-      }, { pendingRegion: QUEUE, bounds: { pending: QUEUE, settled: QUEUE }, checkSessionBar: true }, hold);
-    });
-
-    for (const day of ["2099-01-01", "invalid-date"]) {
-      test(`${day} promptly shows date feedback without loading the rail or Sessions bar`, async ({ page }) => {
-        const hold = await holdDashboardSkeletonRead(page, { day });
-        const feedback = page.getByText(DATE_FEEDBACK, { exact: true });
-        await measure(page, null, () => navigate(page, { day }), () => expect(feedback).toBeVisible(), {
-          feedback: { selector: ".dashboard-queue-column span", text: DATE_FEEDBACK }, checkSessionBar: true,
+      test("a held large sheet read reserves the grid and keeps the sheet heading mounted", async ({ dashboard, page, seeded }) => {
+        const libraryId = await seedRoster(page, seeded.baseUrl);
+        await dashboard.openDataPage("Spreadsheets");
+        const open = page.getByRole("listitem", { name: SHEET_NAME });
+        const versions = page.getByRole("button", { name: "Versions, now v1" });
+        const loading = `[aria-label="Opening ${SHEET_NAME}"]`;
+        const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/workbooks/${encodeURIComponent(libraryId)}` });
+        await measure(page, open, async () => {
+          await open.click();
+          await versions.focus();
+        }, async () => {
+          await expect(page.getByRole("searchbox", { name: "Search this sheet" })).toBeVisible();
+          await expect(versions).toBeFocused();
+        }, {
+          pendingRegion: loading, bounds: { pending: loading, settled: `${SHEETS} section[aria-label="Preview"]` },
+          keep: { selector: `${SHEETS} h1`, text: SHEET_NAME }, focus: `${SHEETS} [aria-label="Versions, now v1"]`,
         }, hold);
       });
-    }
+
+      test("a held file read reserves the picked-file row in the import dialog", async ({ dashboard, page }) => {
+        await dashboard.openDataPage("Spreadsheets");
+        await expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "Import", exact: true }).first().click();
+        const dialog = page.getByRole("dialog", { name: "Import a spreadsheet" });
+        const input = dialog.locator('input[type="file"]');
+        const hold = await holdDashboardSkeletonRead(page, { fileName: FILE_NAME });
+        const loading = `${FILE_DIALOG} [data-loading-layout]`;
+        const fileRow = `${FILE_DIALOG} div:has(> button[aria-label="Remove file"])`;
+        await measure(page, input,
+          () => input.setInputFiles({ name: FILE_NAME, mimeType: "text/csv", buffer: Buffer.from(CSV) }),
+          () => expect(dialog.getByRole("button", { name: "Remove file" })).toBeVisible(), {
+            pendingRegion: loading, bounds: { pending: loading, settled: fileRow },
+          }, hold, "change");
+      });
+
+      test("a held run read stays inside the selected run panel", async ({ dashboard, page }) => {
+        const runId = dashboard.runId("doneRun");
+        const row = dashboard.queue.locator(`[role="button"][data-demo-row-id="${runId}"]`);
+        const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/runs/${runId}` });
+        await measure(page, row, () => row.click(), () => expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible(), {
+          pendingRegion: RUN_PANEL, bounds: { pending: RUN_PANEL, settled: RUN_PANEL },
+        }, hold);
+      });
+
+      test("a held day snapshot confines the skeleton to the queue", async ({ dashboard, page, seeded }) => {
+        const day = shiftDate(seeded.day, -1);
+        const hold = await holdDashboardSkeletonRead(page, { day });
+        await measure(page, null, () => navigate(page, { day }), async () => {
+          await expect(page.getByRole("status", { name: "Loading queue" })).toBeHidden();
+          await expect(dashboard.queue).toBeVisible();
+        }, { pendingRegion: QUEUE, bounds: { pending: QUEUE, settled: QUEUE }, checkSessionBar: true }, hold);
+      });
+
+      for (const day of ["2099-01-01", "invalid-date"]) {
+        test(`${day} promptly shows date feedback without loading the rail or Sessions bar`, async ({ page }) => {
+          const hold = await holdDashboardSkeletonRead(page, { day });
+          const feedback = page.getByText(DATE_FEEDBACK, { exact: true });
+          await measure(page, null, () => navigate(page, { day }), () => expect(feedback).toBeVisible(), {
+            feedback: { selector: ".dashboard-queue-column span", text: DATE_FEEDBACK }, checkSessionBar: true,
+          }, hold);
+        });
+      }
+    });
   });
 }

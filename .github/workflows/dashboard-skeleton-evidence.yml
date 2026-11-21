@@ -1,9 +1,10 @@
 name: Dashboard skeleton evidence
 
-# After review of both changes, combine the dashboard and harness on a dedicated
-# evidence branch. Have the operator or authorized publisher push the reviewed
-# combined SHA to chore/dashboard-skeleton-evidence-<suffix>. Run the normal
-# feature-to-development and development-to-staging PR gates independently.
+# Combine the reviewed harness and the product candidate in a dedicated trial
+# checkout. Have the trial SHA reviewed for the evidence run and obtain publisher
+# authorization, then push that SHA to chore/dashboard-skeleton-evidence-<suffix>.
+# The evidence can inform final product review. The normal feature-to-development
+# and development-to-staging review and checks still apply.
 on:
   push:
     branches: ['chore/dashboard-skeleton-evidence-*']
