@@ -3,7 +3,7 @@ import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
-import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
+import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type PublicProfileState, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
 import { formatDayTime } from "../../../lib/date-format.js";
 import { readBack } from "../../../app/commands/command-readback.js";
 
@@ -15,6 +15,11 @@ export interface AccountValues {
   readonly lastSignedInAt: string;
 }
 export interface AccountPage { readonly values: AccountValues; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; /** The served account now, read back after a details change whose reply was lost. */ readonly readAccount?: () => Promise<AccountValues | undefined>; readonly login: Omit<RelayLogin, "username"> }
+
+/** The served account from a profile read, only while it is still the profile and sign-in that made the change. */
+export function sameSessionAccount(read: PublicProfileState, session: Readonly<{ profileId: string; epoch: number }>): AccountValues | undefined {
+  return read.state === "active" && read.profileId === session.profileId && read.epoch === session.epoch ? read.account : undefined;
+}
 
 /** Whether the served account shows every value the change asked for. */
 function showsChange(request: ProfileDetailsChangeRequest, account: AccountValues | undefined): account is AccountValues {
@@ -29,7 +34,7 @@ function Group({ label, description, children }: { label: string; description?: 
 }
 
 /** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status, and Delete account. */
-export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
+export function AccountSettings({ page, username, readUsername, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; readUsername?: RelayLogin["readUsername"]; ucpath: ReactNode; deleteAccount: ReactNode }) {
   const { onDuoSetup, login } = page;
   const [saved, setSaved] = useState<{ readonly base: string; readonly values: AccountValues } | undefined>();
   const base = JSON.stringify(page.values);
@@ -59,7 +64,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     <PageHeading title="Account" />
     <Group label="Relay account" description="How you sign in to Relay.">
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
-      <RelayLoginRows login={{ ...login, username }} />
+      <RelayLoginRows login={{ ...login, username, readUsername }} />
       {details("Initials", values.initials, initials => ({ initials }))}
       <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>
@@ -129,6 +134,8 @@ export interface RelayLogin {
   readonly username: string | undefined;
   readonly changePassword: (request: { currentPassword: string; newPassword: string }) => Promise<ProfileLoginChangeResult>;
   readonly changeUsername: (request: { currentPassword: string; newUsername: string }) => Promise<ProfileLoginChangeResult>;
+  /** The served Relay username now, read back after a username change whose reply was lost. */
+  readonly readUsername?: () => Promise<string | undefined>;
 }
 
 type Kind = "username" | "password";
@@ -152,6 +159,13 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
       return undefined;
     }
     if (result.state === "refused") return result.code;
+    if (kind === "username" && login.readUsername !== undefined) {
+      // A lost username reply is read back: the served username shows silently, or one failure toast.
+      const read = login.readUsername;
+      if (await readBack(read, served => served === next) === next) { setChangedUsername(next); return undefined; }
+      toast({ key, tone: "danger", title: `${LABEL[kind]} not changed` });
+      return undefined;
+    }
     toast({ key, tone: "warning", title: `${LABEL[kind]} not changed`, description: operatorFailureSentence(result.code) });
     return undefined;
   };

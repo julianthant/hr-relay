@@ -24,8 +24,8 @@ export interface SessionPreviewCommandPort {
   retained?(): readonly SessionPreviewOperation[];
   /** The operation once its in-flight attempt settles; undefined when the attempt is gone or belongs to another scope. */
   afterSettled?(request: SessionPreviewRequest): Promise<SessionPreviewOperation | undefined>;
-  /** Frees the controls a read-back could not prove, so the next click reaches Relay. */
-  abandon?(request: SessionPreviewRequest): void;
+  /** Frees the controls a read-back could not prove, once any check still in flight has ended, so the next click reaches Relay. */
+  abandon?(request: SessionPreviewRequest): Promise<void>;
 }
 
 export interface SessionCommandBinding {
@@ -124,9 +124,12 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : FAILED[request.action], data };
   };
   const port: SessionPreviewCommandPort = {
-    abandon(request) {
+    async abandon(request) {
       const binding = current().binding;
-      for (const command of attempts.get(request.id)?.commands ?? []) binding?.executor.resolve(command.commandId, false, binding.scope);
+      for (const command of attempts.get(request.id)?.commands ?? []) {
+        await binding?.executor.whenSettled(command.commandId);
+        binding?.executor.resolve(command.commandId, false, binding.scope);
+      }
     },
     retained() {
       const binding = current().binding;
@@ -194,7 +197,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
           const retained = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === command.commandId);
           if (retained === undefined) continue;
           if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
-          // The audited outcome, read without resending; a command with no audit stays unproved.
+          // The audited outcome, read without resending; a missing or foreign audit leaves the command unproved, whatever the workers show.
           const checked = retained.outcome !== undefined && commandAttemptView(retained.outcome).view === "unknown";
           const reply = checked ? CommandResultSchema.safeParse(retained.outcome?.reply) : undefined;
           const settled = !checked ? retained.outcome : await binding.executor.check(command.commandId, { ...options(attempt, binding), observe: async sent => {
@@ -204,11 +207,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
             return record.state === "recorded" && canonicalJsonStringify(record.request) === canonicalJsonStringify(sent) ? record.result : undefined;
           } });
           if (settled?.kind === "refused" && settled.reason === undefined) return { id: request.id, state: "refused", message: settled.feedback.text, code: settled.feedback.code };
-          if (settled?.kind !== "confirmed") {
-            // A missing or unproved audit falls back to the served workers.
-            if (!sessionCommandEffect(await read(attempt, binding), command)) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
-            binding.executor.resolve(command.commandId, true, binding.scope);
-          }
+          if (settled?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: FAILED[request.action] };
         }
         await read(attempt, binding);
         if (!valid(attempt, binding)) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
@@ -271,7 +270,7 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     const answered = proves(sent);
     // A lost, malformed or foreign reply is read back from the served workers, never shown.
     const read = answered ? sent : await readBack(() => port.check(request), proves);
-    if (!proves(read)) port.abandon?.(request);
+    if (!proves(read)) await port.abandon?.(request).catch(() => undefined);
     if (!live.current || operationsRef.current[request.target]?.request.id !== request.id) return;
     // A changed scope (another day or sign-in) leaves nothing pending behind.
     if (attemptEpoch !== epoch.current) { drop(request); return; }

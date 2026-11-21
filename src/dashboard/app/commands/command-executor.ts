@@ -6,6 +6,7 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { checkedBulkCommandResult,checkedCommandResult,type SharedCommands } from "../../client/commands/shared-commands.js";
 import { attemptTransition,commandAttemptView,CommandOutcomeInvalidError,uncertainOutcome,type AttemptMove,type AttemptPhase,type AttemptSettlement } from "./command-outcome.js";
 import { beforeEffectRefusal } from "./command-result.js";
+import { withDeadline } from "./command-readback.js";
 
 export interface CommandExecutionScope {
   readonly actorId: string;
@@ -162,10 +163,13 @@ export class CommandExecutor {
     enter(attempt, opened);
     let outcome: CommandOutcome;
     try {
-      const observed = await options.observe(request);
-      if (!sameScope(this.currentScope(), options.scope)) outcome = uncertainOutcome(commandId, "scope-replaced");
-      else outcome = observed === undefined ? uncertainOutcome(commandId, "readback-unavailable")
-        : await this.settle(request, checkedCommandResult(request, observed), options);
+      // The deadline sits here so a stalled audit or read still leaves pending and its lock can be resolved.
+      outcome = await withDeadline((async () => {
+        const observed = await options.observe(request);
+        if (!sameScope(this.currentScope(), options.scope)) return uncertainOutcome(commandId, "scope-replaced");
+        return observed === undefined ? uncertainOutcome(commandId, "readback-unavailable")
+          : await this.settle(request, checkedCommandResult(request, observed), options);
+      })());
     } catch (cause) { outcome = uncertainOutcome(commandId, cause); }
     if (request.type === "remove-worker" && outcome.kind === "conflict" && outcome.feedback.code === "WORKER_TARGET_STALE") {
       outcome = { ...outcome, kind: "refused" };

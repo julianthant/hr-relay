@@ -206,5 +206,5 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const reload = (): void => { void refresh().catch(() => undefined); };
   return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, preflight, protectedEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined,
-    update, reset, clear, discard, submit, reload, rerunPreflight, onFieldBlur });
+    update, reset, clear, discard, submit, reload, rerunPreflight, onFieldBlur, readCurrent: () => refresh() });
 }

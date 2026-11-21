@@ -6,7 +6,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
-import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../../../models/config/protected-settings.js";
+import { PROTECTED_SETTINGS_SET_MARKER, ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../../../models/config/protected-settings.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import { checkedSettingsResult, commandSaveState, settingsScopeRecoveryState, protectedReadbackConfirms, settingsSaveFailure, settingsSaveNotice, settingsSaveProblem, type SettingsSaveListener, type SettingsSaveProblemListener, type ProtectedSettingsAttempt, type SettingsSaveState } from "../editor/settings-attempt-model.js";
 
@@ -15,18 +15,17 @@ type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperat
 function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
   return ProtectedValueSchemas[name].parse(raw);
 }
-/** Whether the served credentials show this save: each set value written at or after it was asked for, each cleared one
- * absent. A save that only clears has no write time to show, so it needs the exact next revision. */
-type ProtectedReadbackAttempt = Pick<ProtectedSettingsAttempt, "commandId" | "requestedAt" | "target"> & { readonly payload: { readonly entries: Readonly<Record<string, { readonly set: unknown } | { readonly clear: true } | undefined>> } };
+/** Whether the served credentials hold exactly what this save asked for: each set value served as sent, each cleared one absent.
+ * A marked attempt holds no values to compare, so it never counts as landed. */
+type ProtectedReadbackAttempt = Pick<ProtectedSettingsAttempt, "commandId" | "target"> & { readonly payload: { readonly entries: Readonly<Record<string, { readonly set: unknown } | { readonly clear: true } | undefined>> } };
 export function protectedSaveLanded(attempt: ProtectedReadbackAttempt, document: EditableSettingsWire | undefined): boolean {
-  const served = document?.protectedSettings.state === "available" ? document.protectedSettings.readback : undefined;
-  if (served === undefined || served.revision <= attempt.target.expectedRevision) return false;
+  const served = document?.protectedSettings.state === "available" ? document.protectedSettings : undefined;
+  if (served === undefined || served.readback.revision <= attempt.target.expectedRevision) return false;
   const entries = Object.entries(attempt.payload.entries);
-  if (!entries.some(([, operation]) => operation !== undefined && "set" in operation) && served.revision !== attempt.target.expectedRevision + 1) return false;
-  return entries.every(([name, operation]) => {
-    const presence = served.entries[name as ProtectedSettingsName];
-    if (operation === undefined || presence === undefined) return false;
-    return "clear" in operation ? !presence.present : presence.present && Date.parse(presence.updatedAt) >= Date.parse(attempt.requestedAt);
+  return entries.length > 0 && entries.every(([name, operation]) => {
+    const entry = served.entries[name as ProtectedSettingsName];
+    if (operation === undefined) return false;
+    return "clear" in operation ? entry === undefined : operation.set !== PROTECTED_SETTINGS_SET_MARKER && entry?.value === operation.set;
   });
 }
 export function useProtectedSettings(input: {
@@ -158,11 +157,21 @@ export function useProtectedSettings(input: {
       if (!landed) input.onSaveProblem?.({ ...settingsSaveFailure(), title: "Credentials weren't saved" });
     });
   }
-  // A save another mount left unknown is read back here once, instead of being adopted and resent.
+  // A save another mount left unknown is read back here once, instead of being adopted and resent;
+  // one still in flight is followed to its end so the editor never stays locked behind it.
   const adopted = useEffectEvent(() => {
-    // A marked-only attempt holds no values, but its entries and time are all a read-back needs.
     const attempt = retained?.request;
-    if (!busy.current && retained?.state === "settled" && attempt?.family === "settings" && attempt.type === "apply-protected-settings") settleUnknown(attempt);
+    if (busy.current || binding === undefined || attempt?.family !== "settings" || attempt.type !== "apply-protected-settings") return;
+    if (retained?.state === "settled") { settleUnknown(attempt); return; }
+    void binding.executor.whenSettled(attempt.commandId).then(() => {
+      const after = binding.executor.retainedAttempts().find(next => next.request.commandId === attempt.commandId);
+      if (after !== undefined && attemptUnresolved(after)) { settleUnknown(attempt); return; }
+      if (!live.current || pending.current !== attempt.commandId) return;
+      pending.current = undefined; setSave({ state: "idle" });
+      void input.readCurrent().then(input.acceptReadback, () => undefined);
+      if (after?.outcome?.kind === "confirmed") { setDraft({}); setErrors({}); }
+      else input.onSaveProblem?.({ ...settingsSaveFailure(), title: "Credentials weren't saved" });
+    });
   });
   useEffect(() => { adopted(); }, [retained?.request.commandId, retained?.state]);
   return { draft, errors, save: shown, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
