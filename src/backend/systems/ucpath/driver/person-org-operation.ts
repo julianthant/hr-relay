@@ -270,8 +270,14 @@ function isAcceptedHdhDepartment(department: string): boolean {
   return ["housing", "dining", "hospitality"].some((keyword) => normalized.includes(keyword));
 }
 
-function isInactiveHrStatus(status: string): boolean {
-  return /inactive|terminated|separated/i.test(status);
+function employeeStatus(hrStatus: string): UcpathCandidate["employeeStatus"] {
+  switch (hrStatus.trim().toLowerCase()) {
+    case "active": return "active";
+    case "inactive": return "inactive";
+    case "terminated":
+    case "separated": return "terminated";
+    default: return "unknown";
+  }
 }
 
 export function deriveAssignmentDetailsFromCells(cells: readonly string[]): PersonOrgAssignmentDetails {
@@ -298,13 +304,19 @@ export function deriveAssignmentDetailsFromCells(cells: readonly string[]): Pers
   });
 }
 
+type ClassifiedAssignment = Readonly<{
+  details: PersonOrgAssignmentDetails;
+  status: UcpathCandidate["employeeStatus"];
+}>;
+
+const ASSIGNMENT_STATUS_RANK = { active: 0, inactive: 1, terminated: 1, unknown: 2 } as const;
+
 function comparePreferredAssignment(
-  left: PersonOrgAssignmentDetails,
-  right: PersonOrgAssignmentDetails,
+  { details: left, status: leftStatus }: ClassifiedAssignment,
+  { details: right, status: rightStatus }: ClassifiedAssignment,
 ): number {
-  const leftActive = !isInactiveHrStatus(left.hrStatus);
-  const rightActive = !isInactiveHrStatus(right.hrStatus);
-  if (leftActive !== rightActive) return leftActive ? -1 : 1;
+  const statusOrder = ASSIGNMENT_STATUS_RANK[leftStatus] - ASSIGNMENT_STATUS_RANK[rightStatus];
+  if (statusOrder !== 0) return statusOrder;
   const leftHdh = isAcceptedHdhDepartment(left.department);
   const rightHdh = isAcceptedHdhDepartment(right.department);
   if (leftHdh !== rightHdh) return leftHdh ? -1 : 1;
@@ -330,16 +342,16 @@ export function assignmentDetailsToCells(
 export function selectPreferredAssignmentDetails(
   assignments: readonly PersonOrgAssignmentDetails[],
 ): PersonOrgAssignmentDetails {
-  const selected = [...assignments].sort(comparePreferredAssignment)[0];
-  if (selected === undefined) throw new Error("Person Org detail has no parsed assignment rows");
-  return selected;
+  return selectPreferredAssignment(assignments).details;
 }
 
-function employeeStatus(hrStatus: string): UcpathCandidate["employeeStatus"] {
-  if (/terminated|separated/i.test(hrStatus)) return "terminated";
-  if (/inactive/i.test(hrStatus)) return "inactive";
-  if (/active/i.test(hrStatus)) return "active";
-  return "unknown";
+function selectPreferredAssignment(
+  assignments: readonly PersonOrgAssignmentDetails[],
+): ClassifiedAssignment {
+  const selected = assignments.map(details => ({ details, status: employeeStatus(details.hrStatus) }))
+    .sort(comparePreferredAssignment)[0];
+  if (selected === undefined) throw new Error("Person Org detail has no parsed assignment rows");
+  return selected;
 }
 
 function toLastFirstName(fullName: string, lastName: string): string {
@@ -360,7 +372,7 @@ function toLastFirstName(fullName: string, lastName: string): string {
 }
 
 function candidateFromDetail(detail: PersonOrgDetail, expectedLastName: string): UcpathCandidate {
-  const assignment = selectPreferredAssignmentDetails(
+  const { details: assignment, status } = selectPreferredAssignment(
     detail.cells.map((cells) => deriveAssignmentDetailsFromCells(cells)),
   );
   return UcpathCandidateSchema.parse({
@@ -368,7 +380,7 @@ function candidateFromDetail(detail: PersonOrgDetail, expectedLastName: string):
     name: toLastFirstName(detail.displayedName, expectedLastName),
     department: assignment.department,
     jobTitle: assignment.jobCodeDescription,
-    employeeStatus: employeeStatus(assignment.hrStatus),
+    employeeStatus: status,
     hdh: isAcceptedHdhDepartment(assignment.department),
     hrStatus: assignment.hrStatus, effectiveDate: assignment.effectiveDate,
     startDate: detail.startDate, terminationDate: detail.terminationDate, terminationReason: detail.terminationReason,
