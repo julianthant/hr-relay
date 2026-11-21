@@ -347,7 +347,10 @@ export function createProfileOnboarding(input: {
       const provider = input.provider, draft = input.read(operationId);
       const receipt = draft.attempts.find(entry => entry.attemptId === attemptId && entry.method === method && entry.generation === draft.generation);
       const lease = leases.get(attemptId);
-      if (provider === undefined || receipt === undefined || lease?.attempt.operationId !== operationId) return unavailable();
+      if (provider === undefined || receipt === undefined) return unavailable();
+      // A repeated cancel of an evicted attempt is answered by its closure receipt.
+      if (lease === undefined && receipt.providerClosedAt !== undefined) return;
+      if (lease?.attempt.operationId !== operationId) return unavailable();
       lease.revoked = true;
       const closure = await provider.cancel(lease.attempt);
       if (closure.state === "closed") lease.closed = true;
@@ -369,8 +372,8 @@ export function createProfileOnboarding(input: {
       assertBrowserAvailable(operationId);
       if (recovery !== undefined) return unavailable();
       const draft = input.read(operationId), provider = input.provider;
-      const pending = draft.attempts.filter(entry => entry.generation === draft.generation
-        && entry.providerClosedAt === undefined && leases.get(entry.attemptId)?.closed !== true);
+      // A closed lease whose receipt write failed stays pending until the receipt is written.
+      const pending = draft.attempts.filter(entry => entry.generation === draft.generation && entry.providerClosedAt === undefined);
       if (pending.length > 0 && provider === undefined) return unavailable();
       // An attempt that fails to close never keeps the setup browser open; its failure is reported after the browser close.
       const attemptFailures: unknown[] = [];
@@ -378,21 +381,25 @@ export function createProfileOnboarding(input: {
       for (const receipt of pending) {
         const lease = leases.get(receipt.attemptId); if (lease === undefined) return unavailable();
         lease.revoked = true;
-        let closure: Awaited<ReturnType<ProfileOnboardingDuoProvider["cancel"]>>;
-        try { closure = await provider!.cancel(lease.attempt); } catch (error) { attemptFailures.push(error); continue; }
-        if (closure.state !== "closed") { attemptsUnproved = true; continue; }
-        lease.closed = true;
-        input.update(operationId, current => {
-          if (current.generation !== draft.generation) return unavailable();
-          return { attempts: current.attempts.map(entry => entry.attemptId === receipt.attemptId
-            ? { ...entry, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) } : entry), result: undefined };
-        });
+        try {
+          if (!lease.closed) {
+            if ((await provider!.cancel(lease.attempt)).state !== "closed") { attemptsUnproved = true; continue; }
+            lease.closed = true;
+          }
+          input.update(operationId, current => {
+            if (current.generation !== draft.generation) return unavailable();
+            return { attempts: current.attempts.map(entry => entry.attemptId === receipt.attemptId
+              ? { ...entry, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) } : entry), result: undefined };
+          });
+        } catch (error) { attemptFailures.push(error); }
       }
       const browser = browsers.get(operationId);
       if (browser !== undefined) {
         if (provider === undefined) return unavailable();
         const recovered = recoveredLeases(browser, provider.browserState?.(operationId).generation ?? -1);
-        const closure = await provider.closeBrowser(browser);
+        const closure = await provider.closeBrowser(browser).catch((error: unknown) => {
+          throw attemptFailures.length === 0 ? error : new AggregateError([...attemptFailures, error], "profile-onboarding-drain-failed");
+        });
         if (closure.state === "uncertain") {
           throw retainBrowserHold(operationId, attemptFailures.length === 0 ? closure.cause
             : new AggregateError([...attemptFailures, closure.cause], "profile-onboarding-drain-unproved"));

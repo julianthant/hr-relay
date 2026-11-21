@@ -25,13 +25,22 @@ export type OwnedViteProbeResult = Readonly<
         | "vite-client-identity-invalid"
         | "probe-response-invalid"
         | "probe-response-too-large";
+      /** Why the refused response could not be released; the refusal stands. */
+      cleanupFailure?: unknown;
     }
 >;
 
-type ProbeTextResult = Readonly<
-  | { state: "available"; text: string }
-  | { state: "unavailable"; reason: Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"] }
->;
+type ProbeUnavailable = Readonly<{
+  state: "unavailable";
+  reason: Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"];
+  cleanupFailure?: unknown;
+}>;
+type ProbeTextResult = Readonly<{ state: "available"; text: string }> | ProbeUnavailable;
+
+function notOwned(result: ProbeUnavailable): OwnedViteProbeResult {
+  return { state: "not-owned", reason: result.reason,
+    ...(result.cleanupFailure === undefined ? {} : { cleanupFailure: result.cleanupFailure }) };
+}
 
 function requestFailureReason(signal: AbortSignal): Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"] {
   return signal.aborted ? "probe-deadline-expired" : "probe-request-failed";
@@ -48,7 +57,7 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
   let open = true;
   const result = await readText(reader, maxBytes, () => { open = false; });
   try { if (open) await reader.cancel("Vite identity probe stopped reading"); }
-  catch (error) { throw cleanupFailure(result, error); }
+  catch (cleanupFailure) { if (result.state === "unavailable") return { ...result, cleanupFailure }; }
   finally { reader.releaseLock(); }
   return result;
 }
@@ -79,18 +88,10 @@ async function readText(
   }
 }
 
-async function refuseUnread(
-  response: Response, reason: Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"],
-): Promise<ProbeTextResult> {
-  const result: ProbeTextResult = { state: "unavailable", reason };
+async function refuseUnread(response: Response, reason: ProbeUnavailable["reason"]): Promise<ProbeUnavailable> {
   try { await response.body?.cancel("Vite identity probe refused the response"); }
-  catch (error) { throw cleanupFailure(result, error); }
-  return result;
-}
-
-function cleanupFailure(result: ProbeTextResult, error: unknown): AggregateError {
-  const outcome = result.state === "unavailable" ? result.reason : "available";
-  return new AggregateError([error], `Vite identity probe (${outcome}) could not release its response`, { cause: error });
+  catch (cleanupFailure) { return { state: "unavailable", reason, cleanupFailure }; }
+  return { state: "unavailable", reason };
 }
 
 async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number): Promise<ProbeTextResult> {
@@ -124,7 +125,7 @@ export async function probeOwnedViteServer(input: Readonly<{
     signal,
     VITE_PROBE_OWNER_MAX_RESPONSE_BYTES,
   );
-  if (owner.state === "unavailable") return { state: "not-owned", reason: owner.reason };
+  if (owner.state === "unavailable") return notOwned(owner);
   const observedNonce = DashboardLaunchNonceSchema.safeParse(owner.text);
   if (!observedNonce.success
     || !timingSafeEqual(Buffer.from(observedNonce.data, "hex"), Buffer.from(input.ownerNonce, "hex"))) {
@@ -132,7 +133,7 @@ export async function probeOwnedViteServer(input: Readonly<{
   }
 
   const index = await fetchProbeText(`${origin}/`, signal, VITE_PROBE_INDEX_MAX_RESPONSE_BYTES);
-  if (index.state === "unavailable") return { state: "not-owned", reason: index.reason };
+  if (index.state === "unavailable") return notOwned(index);
   if (!index.text.includes("<title>Relay</title>")
     // Vite stamps the entry with ?t=<timestamp> after any hot update.
     || !/src="\/app\/main\.tsx(?:\?t=\d+)?"/u.test(index.text)) {
@@ -140,7 +141,7 @@ export async function probeOwnedViteServer(input: Readonly<{
   }
 
   const client = await fetchProbeText(`${origin}/@vite/client`, signal, VITE_PROBE_CLIENT_MAX_RESPONSE_BYTES);
-  if (client.state === "unavailable") return { state: "not-owned", reason: client.reason };
+  if (client.state === "unavailable") return notOwned(client);
   if (!client.text.includes("createHotContext") || !client.text.toLowerCase().includes("vite")) {
     return { state: "not-owned", reason: "vite-client-identity-invalid" };
   }

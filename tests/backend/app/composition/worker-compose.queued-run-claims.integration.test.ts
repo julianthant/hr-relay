@@ -353,22 +353,21 @@ describe("composed worker runtime", () => {
       bindCorrelation: () => "synthetic-correlation",
       subscribe: () => Promise.resolve(() => Promise.reject(stopFailure)),
     };
-    const ipc = { send: Object.getOwnPropertyDescriptor(process, "send"), connected: Object.getOwnPropertyDescriptor(process, "connected"),
-      disconnect: Object.getOwnPropertyDescriptor(process, "disconnect") };
-    const listening = process.listeners("message");
-    let routed = false;
-    Object.defineProperty(process, "send", { configurable: true, writable: true,
-      value: (_message: unknown, _handle: unknown, _options: unknown, callback?: (error: Error | null) => void) => { callback?.(null); return true; } });
-    Object.defineProperty(process, "connected", { configurable: true, get: () => true });
-    Object.defineProperty(process, "disconnect", { configurable: true, writable: true, value: () => undefined });
     const input = composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 });
     const registry = input.admission.readProfileRegistry();
     const slots = reopen(stateRoot, clock);
     const slot = slots.withAuthorityTransaction(repositories => repositories.workerSlots.active(WORKFLOW_ID).find(entry => entry.poolIndex === POOL_INDEX_1));
     slots.close();
     assert.ok(slot && registry.activeProfileId);
-    let reported: unknown;
+    const ipc = { send: Object.getOwnPropertyDescriptor(process, "send"), connected: Object.getOwnPropertyDescriptor(process, "connected"),
+      disconnect: Object.getOwnPropertyDescriptor(process, "disconnect") };
+    const listening = process.listeners("message");
+    let routed = false, reported: unknown;
     try {
+      Object.defineProperty(process, "send", { configurable: true, writable: true,
+        value: (_message: unknown, _handle: unknown, _options: unknown, callback?: (error: Error | null) => void) => { callback?.(null); return true; } });
+      Object.defineProperty(process, "connected", { configurable: true, get: () => true });
+      Object.defineProperty(process, "disconnect", { configurable: true, writable: true, value: () => undefined });
       reported = await composeWorkerRuntime({
         ...input,
         args: [WORKFLOW_ID, "--pool-index", String(POOL_INDEX_1), "--drain", "--worker-id", slot.workerId, "--ordinal", String(slot.ordinal),
