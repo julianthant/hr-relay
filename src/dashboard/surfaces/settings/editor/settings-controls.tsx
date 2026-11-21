@@ -8,13 +8,13 @@ import { providerFieldPresentation } from "./ui-settings-records-labels.js";
 
 export function SettingsValueControl({ leaf, operation, error, disabled, update }: {
   leaf: EditableSettingsLeafWire; operation: SettingsDraftOperation | undefined; error: string | undefined;
-  disabled: boolean; update: (raw: SettingsDraftInput) => void;
+  disabled: boolean; update: (raw: SettingsDraftInput, immediate?: boolean) => void;
 }) {
   const raw = operation?.kind === "set" ? operation.raw : settingInput(leaf, operation?.kind === "clear" ? leaf.defaultValue ?? "" : leaf.effectiveValue);
   if (leaf.control.input === "object") {
     if (typeof raw === "string") throw new Error("settings-object-draft-invalid");
     return <fieldset disabled={disabled} className="settings-object-field flex min-w-0 flex-col gap-[var(--ds-space-base)]">
-      <legend className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>{settingTitle(leaf)}</legend>
+      <legend className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>{settingTitle(leaf)}</legend>
       {settingNote(leaf) !== undefined && <p className={cn(dsText.body, "m-0 text-[color:var(--ds-fg-muted)]")}>{settingNote(leaf)}</p>}
       <div className="settings-object-fields grid grid-cols-2 gap-[var(--ds-space-base)]">
         {leaf.control.fields.map(field => <Field key={field.name} orientation="horizontal" label={settingObjectFieldTitle(field.name)} hint={providerFieldPresentation(field.name).unit} required={field.required} className="settings-object-subfield">
@@ -36,7 +36,7 @@ export function SettingsValueControl({ leaf, operation, error, disabled, update 
   if (leaf.input === "boolean") {
     return <div className="settings-row-field settings-switch-control">
       <Switch name={leaf.path} checked={raw === "true"} label={settingTitle(leaf)} description={settingNote(leaf)} disabled={disabled}
-        onCheckedChange={checked => update(String(checked))} />
+        onCheckedChange={checked => update(String(checked), true)} />
       {error !== undefined && <p role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>{error}</p>}
     </div>;
   }

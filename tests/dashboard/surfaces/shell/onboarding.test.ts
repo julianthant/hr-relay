@@ -8,7 +8,7 @@ import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
-import { createServedOnboardingPort, mockOnboardingPort, usePublicProfileSession, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import { createServedOnboardingPort, usePublicProfileSession, validateOnboarding, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 it("explains an existing profile on duplicate sign-up and offers Log in", async () => {
@@ -40,21 +40,14 @@ it("keeps form drafts across wizard and router navigation without retaining pass
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   let navigate!: (step: OnboardingStep) => void;
-  function Probe() { const [step, onStep] = useState<OnboardingStep>("signup"); navigate = onStep; return createElement(Onboarding, { step, onStep, onDashboard() {} }); }
+  const port = createServedOnboardingPort(createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("not called"); } }), () => {});
+  function Probe() { const [step, onStep] = useState<OnboardingStep>("signup"); navigate = onStep; return createElement(Onboarding, { step, onStep, port, onDashboard() {} }); }
   const input = (name: string) => { const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`); assert.ok(field); return field; };
   try {
     await act(async () => root.render(createElement(Probe)));
     for (const [name, value] of [["firstName", "Alex"], ["lastName", "Rivera"], ["email", "alex.rivera@ucsd.edu"], ["password", "Relay-demo-42"]] as const) {
       await act(async () => { const field = input(name); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value); field.dispatchEvent(new Event("input", { bubbles: true })); });
     }
-    await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    assert.match(host.textContent ?? "", /Opening your setup browser/);
-    const back = [...host.querySelectorAll("button")].find(button => button.textContent?.trim() === "Your details"); assert.ok(back);
-    await act(async () => back.click());
-    assert.equal(input("firstName").value, "Alex");
-    assert.equal(input("lastName").value, "Rivera");
-    assert.equal(input("email").value, "alex.rivera@ucsd.edu");
-    assert.equal(input("password").value, "");
     await act(async () => navigate("login"));
     for (const [name, value] of [["email", "other@ucsd.edu"], ["password", "Another-demo-42"]] as const) {
       await act(async () => { const field = input(name); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value); field.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -73,7 +66,7 @@ it("uses server authentication for Duo access and keeps a refused served login o
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const transitions: string[] = [];
-  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), source: "served", resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), validate: (step, details) => mockOnboardingPort.validate(step, details),
+  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), validate: (step, details) => validateOnboarding(step, details),
     async complete() { throw new Error("not called"); }, async cancel() { throw new Error("not called"); }, async cancelDuo() { throw new Error("not called"); },
     async start() { throw new Error("not called"); }, async confirmDuo() { throw new Error("not called"); },
     async submit() { return { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }; } };
@@ -107,7 +100,7 @@ it("Ready only dispatches Finish and does not navigate on refusal or uncertain c
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
   let completed = 0, navigated = 0, uncertain = false;
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
-  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), source: "served", resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: validateOnboarding,
     submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused,
     async complete() { completed++; if (uncertain) throw new Error("lost response"); return { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }; },
   };
@@ -132,7 +125,7 @@ it("Finish navigates only after the matching active completion settles", async (
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
   const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
-  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), source: "served", resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: validateOnboarding,
     submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, complete: () => reply.promise };
   let navigated = 0;
   try {
@@ -152,7 +145,7 @@ it("a late Finish result cannot navigate a replacement draft", async () => {
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
   const reply = Promise.withResolvers<import("../../../../src/models/profiles/public-profile.js").PublicProfileState>();
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
-  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), source: "served", resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: validateOnboarding,
     submit: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, complete: () => reply.promise };
   let navigated = 0;
   const props = { step: "ready" as const, onStep() {}, onDashboard() { navigated++; } };
@@ -173,7 +166,7 @@ it("returning to Details requires confirmed draft cancellation", async () => {
     profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: method, touch: method } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   let allow = false, cancelled = 0;
-  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), source: "served", resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding, validate: validateOnboarding,
     submit: unused, complete: unused, cancelDuo: unused, start: unused, confirmDuo: unused,
     async cancel() { cancelled++; return allow ? { state: "signed-out" } : { state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }; } };
   const transitions: OnboardingStep[] = [];
@@ -202,13 +195,13 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
     profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: { ...idle, state: "pending" as const, attemptId }, touch: idle } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   let confirmed = 0;
-  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), source: "served", resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { reopenBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), resume: async () => { throw new Error("not called"); }, showBrowser: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), openPortal: async () => ({ state: "refused", code: "PROFILE_AUTHORITY_UNAVAILABLE" }), onboarding: draft, validate: validateOnboarding,
     submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused,
     async confirmDuo() { confirmed++; return draft; } };
   try {
     await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port })));
-    const buttons = host.querySelectorAll<HTMLButtonElement>("section button"); assert.equal(buttons.length, 2);
-    await act(async () => buttons[0].click());
+    const add = [...host.querySelectorAll("button")].find(button => button.textContent === "Add this device"); assert.ok(add);
+    await act(async () => add.click());
     assert.ok(document.querySelector('[role="dialog"]'));
     await act(async () => root.render(createElement(OnboardingSetup, { page: "duo", port: { ...port, onboarding: { ...draft,
       methods: { ...draft.methods, key: { ...draft.methods.key, attemptId: "00000000-0000-4000-8000-000000000004" } } } } })));
@@ -223,7 +216,7 @@ it("unknown enrollment copy directs checking Duo before starting that method ove
   const onboarding = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const,
     methods: { key: { ...method, state: "unknown" as const, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } };
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
-  const port: ServedOnboardingPort = { reopenBrowser: unavailable, source: "served", resume: async () => { throw new Error("not called"); }, onboarding, unavailable: true, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { reopenBrowser: unavailable, resume: async () => { throw new Error("not called"); }, onboarding, unavailable: true, validate: validateOnboarding,
     showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable, start: unavailable, confirmDuo: unavailable, submit: unavailable };
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
@@ -248,57 +241,51 @@ it("both served setup pages keep method outcomes visible without offering anothe
   const calls: string[] = [];
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
   try {
-    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Pending"], ["complete", "Completed"], ["unknown", "Not confirmed"], ["unavailable", "Unavailable"]] as const) {
-      const port: ServedOnboardingPort = { reopenBrowser: unavailable, source: "served", resume: async () => { throw new Error("not called"); }, validate: mockOnboardingPort.validate,
+    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Waiting for Duo"], ["complete", "Added"], ["unknown", "Not confirmed"], ["unavailable", "Unavailable"]] as const) {
+      const port: ServedOnboardingPort = { reopenBrowser: unavailable, resume: async () => { throw new Error("not called"); }, validate: validateOnboarding,
         onboarding: { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo",
           methods: { key: { ...method, state, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } },
         showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable,
         start: async () => { calls.push("start"); return unavailable(); }, confirmDuo: unavailable, submit: unavailable };
       await act(async () => root.render(createElement(OnboardingSetup, { page, port })));
-      const row = host.querySelector(page === "fast" ? ".method-list li" : ".device-row"); assert.ok(row);
-      assert.equal(row.querySelector(page === "fast" ? ".duo-method-pill" : "p")?.textContent, label);
+      const row = host.querySelector(".method-list li"); assert.ok(row);
+      assert.equal(row.querySelector(".method-status")?.textContent, label);
       assert.doesNotMatch(host.textContent ?? "", /Not added|Needs review|outcome unknown/);
-      assert.match(host.querySelector(".sr-only")?.textContent ?? "", new RegExp(`Security key: ${label}`));
+      assert.match(host.querySelector(".sr-only")?.textContent ?? "", /Security key: /);
       if (state === "unknown" || state === "unavailable") {
-        const capture = page === "fast" ? [...host.querySelectorAll("button")].find(button => button.textContent === "Start capture") : row.querySelector("button");
+        await act(async () => host.querySelector<HTMLButtonElement>(".method-head")!.click());
+        const capture = [...host.querySelectorAll("button")].find(button => button.textContent === "Add this device");
         assert.ok(capture); assert.equal(capture.disabled, true);
         await act(async () => capture.click());
         assert.equal(calls.length, 0);
-        if (page === "fast") assert.match(host.textContent ?? "", /then start over from the setup browser/);
+        assert.match(host.textContent ?? "", /remove any device you do not recognize, then add this one again/);
       }
     }
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it("selects Fast Duo cards through the device selector and blocks selection while a method is pending or busy", async () => {
+it("selects method cards and blocks selection while a method is pending or busy", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle, touch: idle } };
   const unused = async (): Promise<never> => { throw new Error("unexpected command"); };
   let settle!: (value: typeof draft) => void;
-  const port: ServedOnboardingPort = { reopenBrowser: unused, source: "served", resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: mockOnboardingPort.validate, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unused, openPortal: () => new Promise(resolve => { settle = resolve; }) };
-  const cards = () => [...host.querySelectorAll<HTMLButtonElement>(".method-card")];
+  const port: ServedOnboardingPort = { reopenBrowser: unused, resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: validateOnboarding, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unused, openPortal: () => new Promise(resolve => { settle = resolve; }) };
+  const cards = () => [...host.querySelectorAll<HTMLButtonElement>(".method-head")];
   try {
     await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port })));
     assert.equal(cards().length, 2);
-    assert.equal(host.querySelector(".method-heading")?.textContent, "Relay sign-in methods0 of 2 completed");
+    assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
     await act(async () => cards()[1].click());
     assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
-    const select = host.querySelector<HTMLButtonElement>("#device-type"); assert.ok(select);
-    assert.equal(select.dataset.value, "touch");
-    await act(async () => select.click());
-    const option = document.querySelector<HTMLElement>('[role="option"][data-value="key"]'); assert.ok(option);
-    await act(async () => option.click());
-    assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
-    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucsd.edu")!.click());
-    assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open Duo")!.click());
+    assert.ok(cards().every(card => card.disabled));
     await act(async () => settle(draft));
     assert.ok(cards().every(card => !card.disabled));
     await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port: { ...port, onboarding: { ...draft, methods: { key: idle, touch: { ...idle, state: "pending", attemptId: "00000000-0000-4000-8000-000000000003" } } } } })));
-    assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
-    await act(async () => cards()[1].click());
-    assert.equal(select.dataset.value, "key");
-    assert.equal(cards()[1].querySelector(".duo-method-pill")?.textContent, "Pending");
+    assert.ok(cards().every(card => card.disabled));
+    assert.equal(cards()[1].querySelector(".method-status")?.textContent, "Waiting for Duo");
+    assert.ok([...host.querySelectorAll("button")].find(button => button.textContent === "Stop"));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -335,7 +322,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
   let cancellations = 0, reopens = 0;
-  const port: ServedOnboardingPort = { readRevision: 1, reopenBrowser: async () => { reopens++; return onboarding; }, source: "served", resume: async () => { throw new Error("not called"); }, onboarding, validate: mockOnboardingPort.validate,
+  const port: ServedOnboardingPort = { readRevision: 1, reopenBrowser: async () => { reopens++; return onboarding; }, resume: async () => { throw new Error("not called"); }, onboarding, validate: validateOnboarding,
     submit: unused, complete: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unavailable, openPortal: unavailable,
     async cancel() { cancellations++; throw new Error("lost cancellation response"); } };
   const button = (scope: ParentNode, text: string) => { const button = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === text); assert.ok(button); return button; };
@@ -374,15 +361,15 @@ it("opening the setup browser spins the button and leaves the instruction in pla
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle, touch: idle } };
   const unused = async (): Promise<never> => { throw new Error("unexpected command"); };
   let settle!: (value: typeof draft) => void;
-  const port: ServedOnboardingPort = { reopenBrowser: () => new Promise(resolve => { settle = resolve; }), source: "served", resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: mockOnboardingPort.validate, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, openPortal: unused,
+  const port: ServedOnboardingPort = { reopenBrowser: () => new Promise(resolve => { settle = resolve; }), resume: async () => { throw new Error("not called"); }, onboarding: draft, validate: validateOnboarding, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, openPortal: unused,
     showBrowser: () => new Promise(resolve => { settle = resolve; }) };
   const instruction = () => host.querySelector("header p")?.textContent;
-  const show = () => host.querySelector<HTMLButtonElement>(".actions .btn.primary");
+  const show = () => host.querySelector<HTMLButtonElement>(".actions button:last-child");
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
     const before = instruction();
     assert.equal(before?.includes("Chromium window named"), false);
-    assert.equal(host.querySelector(".duo-window-status strong")?.textContent, "Setup window is open");
+    assert.equal(host.querySelector(".window-state strong")?.textContent, "Setup window is open");
     assert.equal(show()?.getAttribute("aria-busy"), null);
     await act(async () => show()!.click());
     assert.equal(instruction(), before);

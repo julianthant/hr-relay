@@ -8,9 +8,11 @@ import type { WorkflowBootstrapPrimitive } from "../surfaces/shell/shell-model.j
 import type { DashboardClient } from "../client/index.js";
 import type { NavbarData, NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
-import type { SavedWorkbook } from "../../models/dashboard/workbooks.js";
+import type { WorkbookLibraryEntry } from "../../models/dashboard/workbook-library.js";
+import { sheetOf } from "../surfaces/spreadsheets/design/sheets-v2-model.js";
+import { formatMonthDay } from "../lib/date-format.js";
 
-export const searchMessage = (code: "SEARCH_LOADING" | "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+export const searchMessage = (code: "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 export async function readSearchSnapshot(client: Pick<DashboardClient, "searchRuns">, input: CrossDateSearchQueryInput, signal: AbortSignal) {
   const query = CrossDateSearchQuerySchema.parse(input);
@@ -57,9 +59,10 @@ export function withQueueSubjects(results: readonly NavbarSearchResult[], titles
   return results.map(result => result.subject === missing && titles.has(result.id) ? { ...result, subject: titles.get(result.id)! } : result);
 }
 
-const shortDay = (iso: string) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
-export const paletteSheets = (records: readonly SavedWorkbook[]): readonly PaletteSheet[] =>
-  [...records].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).map(record => ({ id: record.libraryId, name: record.workbook.name, detail: `v${record.version} · Updated ${shortDay(record.savedAt)}` }));
+/** The library the Spreadsheets page lists, each at the version that page shows. */
+export const paletteSheets = (entries: readonly WorkbookLibraryEntry[]): readonly PaletteSheet[] =>
+  entries.filter(entry => entry.state.origin.kind !== "unavailable" && !entry.state.removed).map(sheetOf)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(sheet => ({ id: sheet.id, name: sheet.name, detail: `v${sheet.version} · Updated ${formatMonthDay(sheet.updatedAt, undefined, "short")}` }));
 
 export function workspaceSearchQuery(query: string, workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]): CrossDateSearchQueryInput {
   const normalized = query.trim().toLowerCase();
@@ -72,21 +75,24 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
 }
 
 /** The saved library as palette rows, read while the palette is open. */
-export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, enabled: boolean): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
+export function useLibrarySheets(client: Pick<DashboardClient, "workbookCatalog">, enabled: boolean): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
   const [state, setState] = useState<{ sheets: readonly PaletteSheet[]; read: "pending" | "ready" | "failed" }>({ sheets: [], read: "pending" });
   useEffect(() => {
     if (!enabled) return;
     let live = true;
     setState(previous => ({ ...previous, read: "pending" }));
-    client.workbookList().then(records => { if (live) setState({ sheets: paletteSheets(records), read: "ready" }); }, () => { if (live) setState(previous => ({ ...previous, read: "failed" })); });
+    client.workbookCatalog().then(records => { if (live) setState({ sheets: paletteSheets(records), read: "ready" }); }, () => { if (live) setState(previous => ({ ...previous, read: "failed" })); });
     return () => { live = false; };
   }, [client, enabled]);
   // Loaded rows stay while a re-read is pending or failed; only a settled read is a verified list.
   if (state.read === "ready") return { sheets: state.sheets };
-  return { sheets: state.sheets, unavailable: searchMessage(state.read === "failed" ? "SEARCH_LIBRARY_UNAVAILABLE" : "SEARCH_LOADING") };
+  return state.read === "failed" ? { sheets: state.sheets, unavailable: searchMessage("SEARCH_LIBRARY_UNAVAILABLE") } : { sheets: state.sheets };
 }
 
 const NO_TITLES: ReadonlyMap<string, string> = new Map();
+/** A search is sent once the query has rested this long; typing and reopening send nothing in between. */
+export const SEARCH_PAUSE_MS = 150;
+
 export function useSearchWiring({ client, enabled, query, today, epoch, workflows, titles = NO_TITLES }: { client: DashboardClient; enabled: boolean; query: string; today: string; epoch: object; workflows: readonly Pick<WorkflowBootstrapPrimitive, "id" | "label">[]; titles?: ReadonlyMap<string, string> }): NavbarData {
   const request = useMemo(() => ({ client, enabled, query, epoch, workflows }), [client, enabled, query, epoch, workflows]);
   const active = useRef(request); active.current = request;
@@ -94,16 +100,18 @@ export function useSearchWiring({ client, enabled, query, today, epoch, workflow
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
-    void readSearchSnapshot(client, workspaceSearchQuery(query, workflows), controller.signal).then(snapshot => {
-      if (active.current !== request || controller.signal.aborted) return;
-      setSettled({ request, data: { today, counts: {}, results: searchResults(snapshot), totalMatches: snapshot.totalMatches } });
-    }, () => {
-      if (active.current === request && !controller.signal.aborted) setSettled({ request, data: { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_UNAVAILABLE") } });
-    });
-    return () => controller.abort();
+    const timer = setTimeout(() => {
+      void readSearchSnapshot(client, workspaceSearchQuery(query, workflows), controller.signal).then(snapshot => {
+        if (active.current !== request || controller.signal.aborted) return;
+        setSettled({ request, data: { today, counts: {}, results: searchResults(snapshot), totalMatches: snapshot.totalMatches } });
+      }, () => {
+        if (active.current === request && !controller.signal.aborted) setSettled({ request, data: { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_UNAVAILABLE") } });
+      });
+    }, SEARCH_PAUSE_MS);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [client, enabled, query, today, workflows, request]);
   return useMemo(() => {
-    const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
+    const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], loading: true };
     return { ...data, results: withQueueSubjects(data.results, titles) };
   }, [settled, request, today, titles]);
 }

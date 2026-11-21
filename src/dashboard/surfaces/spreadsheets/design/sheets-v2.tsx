@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { closeDraft, editMapping, importWorkbook, pendingImportName } from './sheets-v2-writes.js';
-import { PageHeading, SearchInput, Skeleton, useToasts } from '../../../ds/ui.js';
+import { EmptyState, FailureNotice, PageHeading, SearchInput, Skeleton, TableToolbar, dsIcon, useToasts } from '../../../ds/ui.js';
 import { LoadingRegion, SkeletonText } from '../../shared/loading/loading.js';
 import { useSpreadsheetWiringAdapter, type LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.js';
@@ -12,7 +13,7 @@ import { fieldsOf, newestFirst, operatorTags, sheetOf, tableOf, tagsOf, workflow
 import { SheetDialog, type DialogKind } from './sheets-v2-dialogs.js';
 import { SheetDetail } from './sheets-v2-detail.js';
 import { ImportDialog } from './sheets-v2-import.js';
-import { SheetTable, type RowActions } from './sheets-v2-list.js';
+import { SheetTable, SheetsSkeleton, type RowActions } from './sheets-v2-list.js';
 import { useNarrow } from './sheets-v2-narrow.js';
 import { Grey, V2Button, type MenuAction } from './sheets-v2-ui.js';
 import '../spreadsheet-library.css';
@@ -21,7 +22,7 @@ const CREATED_ROWS = 8;
 
 /** The Spreadsheets page on the served library. */
 function unusableRowsNote(count: number) {
-  return count > 0 ? `${count.toLocaleString()} ${count === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined;
+  return count > 0 ? `${count} ${count === 1 ? 'row has' : 'rows have'} no usable employee ID and will be read as missing.` : undefined;
 }
 
 export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionDay: string) => void }) {
@@ -38,24 +39,28 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const sheets = useMemo(() => catalog.filter(entry => entry.state.origin.kind !== 'unavailable' && !entry.state.removed).map(sheetOf), [catalog]);
   const fields = useMemo(() => compatibility ? fieldsOf(compatibility) : [], [compatibility]);
   const get = (id: string) => sheets.find(item => item.id === id);
-  const settled = async (work: Promise<LibraryChangeResult>, done?: string) => {
+  const syncing = useRef(new Set<string>());
+  const settled = async (work: Promise<LibraryChangeResult>, done?: string, failed = "Couldn't save the change") => {
     const result = await work;
     if (result.state === 'confirmed') { if (done) toast({ tone: 'success', title: done }); return true; }
-    toast({ tone: 'danger', title: "Couldn't save the change", description: result.message }); return false;
+    toast({ tone: 'danger', key: failed, title: failed, description: result.message }); return false;
   };
-  const change = (id: string, edit: WorkbookLibraryAction['change'], done?: string) => {
+  const change = (id: string, edit: WorkbookLibraryAction['change'], done?: string, failed?: string) => {
     const entry = catalog.find(item => item.libraryId === id);
-    return entry ? settled(adapter.changeLibrary(entry, edit), done) : Promise.resolve(false);
+    if (!entry) return Promise.resolve(false);
+    if (edit.kind !== 'sync') return settled(adapter.changeLibrary(entry, edit), done, failed);
+    syncing.current.add(id);
+    return settled(adapter.changeLibrary(entry, edit), done, failed).finally(() => { if (!adapter.snapshot().pendingLibraries.includes(id)) syncing.current.delete(id); });
   };
   const download = async (id: string) => {
     const sheet = get(id);
     try { if (sheet) saveSpreadsheetDownload(await spreadsheetDownload(decodeEditableWorkbook((await adapter.readNamedVersion(id, sheet.currentVersionId)).workbook))); }
-    catch { toast({ tone: 'danger', title: "Couldn't download the spreadsheet" }); }
+    catch { toast({ tone: 'danger', key: 'sheets-download', title: "Couldn't download the spreadsheet" }); }
   };
   const menu = (id: string, action: MenuAction) => {
     const sheet = get(id);
     if (!sheet) return;
-    if (action === 'sync') void change(id, { kind: 'sync' }, `Synced ${sheet.name}`);
+    if (action === 'sync') void change(id, { kind: 'sync' }, `Synced ${sheet.name}`, `Couldn't sync ${sheet.name}`);
     else if (action === 'download') void download(id);
     else if (action === 'pin') void change(id, { kind: sheet.pinned ? 'unpin' : 'pin' });
     else setDialog({ kind: action, id });
@@ -101,27 +106,31 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   };
   const checkPending = async (id: string) => {
     const result = await adapter.settleLibrary(id);
-    toast(result.state === 'confirmed' ? { tone: 'success', title: 'The change went through' } : { tone: 'danger', title: 'The change is not confirmed yet', description: result.message });
+    const what = syncing.current.has(id) ? 'The sync' : 'The change';
+    if (result.state === 'confirmed') syncing.current.delete(id);
+    toast(result.state === 'confirmed' ? { tone: 'success', title: `${what} went through` } : { tone: 'danger', key: 'sheets-pending', title: `${what} is not confirmed yet`, description: result.message });
   };
 
   const groups = { workflows: workflowTags(sheets), tags: operatorTags(sheets) };
   const visible = useMemo(() => newestFirst(sheets).filter(sheet => (!filter.length || filter.some(tag => tagsOf(sheet).includes(tag))) && sheet.name.toLowerCase().includes(query.trim().toLowerCase())), [sheets, filter, query]);
-  const tables = (['Pinned', 'SharePoint', 'Created'] as const).map(title => ({ title, items: visible.filter(sheet => tableOf(sheet) === title) })).filter(table => table.items.length);
+  const tables = (['Pinned', 'SharePoint', 'Spreadsheets'] as const).map(title => ({ title, items: visible.filter(sheet => tableOf(sheet) === title) })).filter(table => table.items.length);
   const target = dialog && get(dialog.id);
   const open = openId ? get(openId) : undefined;
 
   const pending = pendingLibraries.map(id => catalog.find(item => item.libraryId === id)).filter(Boolean);
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
-    {pending.map(entry => <Grey key={entry!.libraryId} className="mb-3 text-[13px]">A change to {entry!.name} isn't confirmed yet. <V2Button look="plain" onClick={() => void checkPending(entry!.libraryId)}>Check result</V2Button></Grey>)}
     {openId && open ? (draft ? <SheetDetail key={openId} sheet={open} document={draft.document} fields={fields} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'rollback', id: openId })} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} />
-      : openError ? <Grey className="text-[13px]">This spreadsheet couldn't be opened. <V2Button look="plain" onClick={back}>Back</V2Button></Grey>
-      : <LoadingRegion label={`Opening ${open.name}`}><div aria-hidden><SkeletonText className="mb-2 w-48 text-[22px]" /><SkeletonText className="mb-5 w-72 text-[13px]" />{[0, 1, 2, 3].map(index => <Skeleton key={index} className="mb-2 h-9 w-full" />)}</div></LoadingRegion>) : <>
-      <PageHeading title="Spreadsheets" description="Reference lists your runs look people up in." actions={<V2Button disabled={catalogLoading || !!catalogError} onClick={() => setImporting(true)}>Import</V2Button>} />
-      <div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="w-[260px]" />{(groups.workflows.length > 0 || groups.tags.length > 0) && <TagFilter groups={groups} value={filter} onChange={setFilter} />}</div>
-      <div ref={listRef}>{catalogError ? <Grey className="text-[13px]">Spreadsheets couldn't be loaded. <V2Button look="plain" onClick={() => void adapter.refreshCatalog()}>Check again</V2Button></Grey>
-        : catalogLoading ? <LoadingRegion label="Loading spreadsheets"><div aria-hidden>{[0, 1, 2].map(index => <Skeleton key={index} className="mb-2 h-10 w-full" />)}</div></LoadingRegion>
-        : tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} narrow={narrow} actions={rows} limit={table.title === 'Created' ? CREATED_ROWS : undefined} />)
-        : <Grey className="text-[13px]">{sheets.length ? 'No spreadsheets match.' : 'No spreadsheets yet. Choose Import to add one.'}</Grey>}</div>
+      : openError ? <Grey className="ds-text-ui">This spreadsheet couldn't be opened. <V2Button look="plain" onClick={back}>Back</V2Button></Grey>
+      : <LoadingRegion label={`Opening ${open.name}`}><div aria-hidden><SkeletonText className="mb-2 w-48 ds-text-page-title" /><SkeletonText className="mb-5 w-72 ds-text-ui" />{[0, 1, 2, 3].map(index => <Skeleton key={index} className="mb-2 h-9 w-full" />)}</div></LoadingRegion>) : <>
+      <PageHeading title="Spreadsheets" description={pending.length ? <span className="inline-flex min-h-6 items-center gap-2"><Loader2 aria-hidden className={`${dsIcon.md} animate-spin motion-reduce:animate-none`} />{pending.map(entry => <span key={entry!.libraryId} className="inline-flex items-center gap-1">{syncing.current.has(entry!.libraryId) ? `Syncing ${entry!.name} isn't confirmed yet.` : `The change to ${entry!.name} isn't confirmed yet.`}<V2Button look="line" onClick={() => void checkPending(entry!.libraryId)}>Check result</V2Button></span>)}</span> : "Reference lists your runs look people up in."} actions={<V2Button disabled={catalogLoading || !!catalogError} onClick={() => setImporting(true)}>Import</V2Button>} />
+      <div ref={listRef}>{catalogError ? <FailureNotice sentence="Couldn't load spreadsheets." action={{ label: 'Retry', onClick: () => void adapter.refreshCatalog() }} />
+        : catalogLoading ? <SheetsSkeleton narrow={narrow} />
+        : sheets.length === 0 ? <EmptyState title="No spreadsheets yet" action={<V2Button onClick={() => setImporting(true)}>Import</V2Button>} />
+        : <div className="ds-table-list"><TableToolbar search={<SearchInput variant="field" aria-label="Search spreadsheets" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />}
+            controls={groups.workflows.length > 0 || groups.tags.length > 0 ? <TagFilter groups={groups} value={filter} onChange={setFilter} /> : undefined} />
+          {tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} heading={tables.length > 1 ? table.title : undefined} sheets={table.items} narrow={narrow} actions={rows} limit={table.title === 'Spreadsheets' ? CREATED_ROWS : undefined} />)
+            : <Grey className="ds-text-ui">No spreadsheets match.</Grey>}
+        </div>}</div>
     </>}
     {dialog && target && <SheetDialog kind={dialog.kind} sheet={target} onClose={() => setDialog(undefined)} actions={{
       rename: name => void change(target.id, { kind: 'rename', name }),

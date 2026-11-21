@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ActivityFailureTotalSchema, ActivityWorkflowTotalSchema } from "../../../src/models/dashboard/activity.js";
+import { ActivityFailureTotalSchema, ActivityWorkflowTotalSchema, ActivityReportWireSchema } from "../../../src/models/dashboard/activity.js";
+import { createActivityReportFixtures } from "../../support/helpers/dashboard/activity-report-fixtures.js";
 
 const day = { day: "2026-08-03", runs: 3, outcomes: { done: 1, failed: 1, attention: 0 }, typicalTime: { measuredRuns: 1, medianMs: { state: "present", value: 0 } } };
 const workflow = { workflowId: "fixture", registration: { state: "unregistered", reason: "No registry entry" }, runs: 3,
@@ -10,6 +11,29 @@ const workflow = { workflowId: "fixture", registration: { state: "unregistered",
   failedAt: [{ state: "unavailable", reason: "the failed run has no task span that records the step where it failed", runs: 1 }] };
 
 describe("Analytics outcome and failure rows", () => {
+  it("requires assistant series to cover exactly the selected report dates in order", () => {
+    const { EMPTY } = createActivityReportFixtures();
+    expect(ActivityReportWireSchema.safeParse(EMPTY).success).toBe(true);
+    for (const field of ["assistantMessages", "assistantActions"] as const) {
+      const series = EMPTY[field], days = series.days;
+      for (const invalid of [days.slice(1), [...days].reverse(), [...days, days[0]], days.map(() => days[0])]) {
+        expect(ActivityReportWireSchema.safeParse({ ...EMPTY, [field]: { ...series, days: invalid } }).success).toBe(false);
+      }
+    }
+  });
+
+  it("requires nonnegative integer counts and explicit unrecorded tools and approvals", () => {
+    const { EMPTY } = createActivityReportFixtures();
+    for (const count of [-1, 0.5]) {
+      expect(ActivityReportWireSchema.safeParse({ ...EMPTY, assistantMessages: { ...EMPTY.assistantMessages,
+        days: EMPTY.assistantMessages.days.map(row => ({ ...row, count })) } }).success).toBe(false);
+      expect(ActivityReportWireSchema.safeParse({ ...EMPTY, assistantActions: { ...EMPTY.assistantActions,
+        days: EMPTY.assistantActions.days.map(row => ({ ...row, proposed: count })) } }).success).toBe(false);
+    }
+    expect(ActivityReportWireSchema.safeParse({ ...EMPTY, assistantTools: { state: "recorded", count: 0 } }).success).toBe(false);
+    expect(ActivityReportWireSchema.safeParse({ ...EMPTY, assistantActions: { ...EMPTY.assistantActions, approved: 0 } }).success).toBe(false);
+  });
+
   it("requires exact failed attention and explicit successful-root mean coverage", () => {
     expect(ActivityWorkflowTotalSchema.safeParse(workflow).success).toBe(true);
     for (const value of [{ ...workflow, needsAttention: 2 }, { ...workflow, extra: true },

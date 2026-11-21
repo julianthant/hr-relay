@@ -13,7 +13,6 @@ import type {
 } from "../browser-shared/login-contract.js";
 import {
   abortIfCancelled,
-  fillSsoCredentials,
   raceCancellation,
   submitSsoForm,
   verifyUcsdAuthenticatedApplication,
@@ -117,8 +116,6 @@ export const kualiLoginRecipe = defineVerifiedLoginRecipe({
     const { config } = context;
     context.assertCurrent();
     await waitForSsoForm(SYSTEM, context, token);
-    context.assertCurrent();
-    await fillSsoCredentials(SYSTEM, context, token);
     context.assertCurrent();
     await submitSsoForm(SYSTEM, context, token);
     context.assertCurrent();

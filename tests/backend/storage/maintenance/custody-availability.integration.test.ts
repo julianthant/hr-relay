@@ -1,3 +1,4 @@
+import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
@@ -65,6 +66,23 @@ function files(root: string): Record<string, string> {
   visit(root); return result;
 }
 
+function expectOnlyStartupStage(workspace: string, stage: string) {
+  const before = files(workspace);
+  const root = join(workspace, rebuildRuntimeIsolation.stateRoot);
+  const log = join(root, "logs", "boot.jsonl");
+  const previous = readFileSync(log);
+  return () => {
+    const current = readFileSync(log);
+    const appended = current.subarray(previous.length).toString("utf8");
+    assert.deepEqual(current.subarray(0, previous.length), previous);
+    const { payload } = TimelineAppendSchema.parse(JSON.parse(appended));
+    assert.equal(payload.kind, "debug");
+    assert.deepEqual([payload.event.category, payload.event.phase, payload.event.area, payload.event.reason],
+      ["boot", "started", "profile-startup-upgrade", stage]);
+    assert.deepEqual(files(workspace), { ...before, [relative(workspace, log)]: createHash("sha256").update(current).digest("hex") });
+  };
+}
+
 function parkedUnknown(database: AuthorityDatabase, path: string, stateRoot: string) {
   const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, clock,
     { stateRoot, artifactRoot: join(stateRoot, "artifacts") });
@@ -92,7 +110,7 @@ it("refuses a Windows backup before publishing or capturing source data", async 
     const before = files(f.stateRoot), directory = join(f.stateRoot, "backups", "authority");
     const request = new AuthorityBackupService(f.admission, database, { directory }, clock);
     let failure: unknown;
-    try { await request.request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration }); }
+    try { await request.request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration }); }
     catch (error) { failure = error; }
     assert.deepEqual(files(f.stateRoot), before, "unavailable Windows custody must preserve backup/source bytes and membership");
     assert.equal(failure instanceof Error && "code" in failure && failure.code, "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE");
@@ -110,7 +128,7 @@ for (const platform of ["darwin", "linux"]) it(`preserves successful backup beha
   try {
     const directory = join(f.stateRoot, "backups", "authority");
     const result = await new AuthorityBackupService(f.admission, database, { directory }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
     assert.equal(result.manifests.length, 1);
     assert.ok(result.manifests[0]);
     assert.ok(existsSync(join(directory, result.manifests[0].backupFileName)));
@@ -127,7 +145,7 @@ it("refuses a readable Windows restore before retaining suspect copies or changi
     const unknown = parkedUnknown(database, f.path, f.stateRoot);
     const directory = join(f.stateRoot, "backups", "authority");
     const backup = await new AuthorityBackupService(f.admission, database, { directory }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
     database.close();
     const manifest = backup.manifests[0]; assert.ok(manifest);
     operation = f.admission.acquireOfflineMaintenance();
@@ -314,7 +332,7 @@ it("refuses direct Windows account deletion before credential capture and preser
 it.each([14, 19] as const)("refuses a Windows registered-profile schema %s upgrade before a backup or upgrade is published", async sourceVersion => {
   host.platform = "linux";
   const f = await createHistoricalRegisteredProfileFixture({ sourceVersion });
-  const before = files(f.workspace), open = nativeFs.openSync;
+  const checkInventory = expectOnlyStartupStage(f.workspace, "admission"), open = nativeFs.openSync;
   const keyPath = join(f.workspace, rebuildRuntimeIsolation.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   let credentialOpens = 0;
   const observed = vi.spyOn(nativeFs, "openSync").mockImplementation((...args) => {
@@ -329,7 +347,7 @@ it.each([14, 19] as const)("refuses a Windows registered-profile schema %s upgra
     catch (error) { failure = error; }
     assert.equal(credentialOpens, 0, "unavailable schema upgrade must refuse before capturing the credential head");
     observed.mockRestore(); syncBuiltinESMExports();
-    assert.deepEqual(files(f.workspace), before, "Windows schema upgrade must preserve the exact source, credentials and recovery inventory");
+    checkInventory();
     assert.ok(failure instanceof Error && failure.cause instanceof StorageMaintenanceCustodyUnavailableError,
       failure instanceof Error ? String(failure.cause) : String(failure));
   } finally { observed.mockRestore(); syncBuiltinESMExports(); await f.close(); }
@@ -363,23 +381,22 @@ it("refuses authenticated Windows account deletion without logging out and keeps
     isolation: rebuildRuntimeIsolation, repoRoot: process.cwd(), backendPortOverride: 0, frontendPortOverride: 0,
     env: {}, clock, preflightRunnerFactory: healthyRuntimePreflightRunners });
   const base = `http://127.0.0.1:${application.port}`;
-  const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
-    headers: { "content-type": "application/json", origin: base, ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
+  const post = (path: string, body: unknown, credential?: string) => fetch(`${base}${path}`, { method: "POST",
+    headers: { "content-type": "application/json", origin: base, ...(credential === undefined ? {} : { "x-relay-session": credential }) }, body: JSON.stringify(body) });
   try {
     const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     const active = PublicProfileStateSchema.parse(await login.json()); assert.ok(active.state === "active");
-    const header = login.headers.get("set-cookie"); assert.ok(header);
-    const cookie = header.split(";")[0]; assert.ok(cookie);
+    const credential = login.headers.get("x-relay-session"); assert.ok(credential);
     const durableAccountFiles = () => Object.fromEntries(Object.entries(files(f.workspace)).filter(([path]) =>
       path !== ".tracker/data/logs/boot.jsonl" && !path.endsWith("state.db-shm")));
     const before = durableAccountFiles(), profile = f.machine.readProfileRegistry();
-    const deletion = await post("/api/v1/profile/delete-account", { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }, cookie);
+    const deletion = await post("/api/v1/profile/delete-account", { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }, credential);
     assert.equal(deletion.status, 409);
     assert.deepEqual(PublicProfileStateSchema.parse(await deletion.json()), { state: "refused", code: "PROFILE_ACCOUNT_DELETION_REFUSED" });
     assert.deepEqual(f.machine.readProfileRegistry(), profile);
     assert.deepEqual(durableAccountFiles(), before, "refused deletion must not publish logout or erase credentials");
-    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 200);
-    const logout = await post("/api/v1/profile/logout", {}, cookie);
+    assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { "x-relay-session": credential } })).status, 200);
+    const logout = await post("/api/v1/profile/logout", {}, credential);
     assert.deepEqual(PublicProfileStateSchema.parse(await logout.json()), { state: "signed-out", signUpRequired: false });
   } finally {
     await application.stop().catch((error: unknown) => { assert.ok(error instanceof StorageMaintenanceCustodyUnavailableError); });
@@ -387,7 +404,7 @@ it("refuses authenticated Windows account deletion without logging out and keeps
   }
 });
 
-for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-cookie ${replacement} deletion before Windows custody admission`, async () => {
+for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-credential ${replacement} deletion before Windows custody admission`, async () => {
   const f = await createBoundProfileFixture();
   const application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine,
     isolation: rebuildRuntimeIsolation, repoRoot: process.cwd(), backendPortOverride: 0, frontendPortOverride: 0,
@@ -427,7 +444,7 @@ for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses s
 
     assert.equal(deletion.status, 409);
     assert.deepEqual(PublicProfileStateSchema.parse(await deletion.json()), { state: "refused", code: "PROFILE_SESSION_STALE" });
-    assert.equal(deletion.headers.get("set-cookie"), null);
+    assert.equal(deletion.headers.get("x-relay-session"), null);
     assert.deepEqual(snapshot(), before);
     assert.deepEqual(PublicProfileStateSchema.parse(await (await tabB.read()).json()), next);
   } finally {
@@ -483,7 +500,7 @@ it("refuses startup Windows backup retirement before repair admission captures p
   renameSync(join(directory, oldest), join(directory, `${oldest}.retiring`));
   const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${profileId}.json`);
   f.admission.release(); f.machine.release();
-  const before = files(f.workspace), open = nativeFs.openSync;
+  const checkInventory = expectOnlyStartupStage(f.workspace, "inspection"), open = nativeFs.openSync;
   let credentialOpens = 0;
   const observed = vi.spyOn(nativeFs, "openSync").mockImplementation((...args) => {
     if (String(args[0]) === keyPath) credentialOpens++;
@@ -507,7 +524,7 @@ it("refuses startup Windows backup retirement before repair admission captures p
     assert.equal(pendingObserved, true);
     assert.equal(sourceCaptures, 0, "pending retirement must refuse before repair admission captures profile source bytes");
     assert.equal(credentialOpens, 0, "pending retirement must refuse before repair admission reads the credential head");
-    observed.mockRestore(); syncBuiltinESMExports(); assert.deepEqual(files(f.workspace), before);
+    observed.mockRestore(); syncBuiltinESMExports(); checkInventory();
     assert.ok(failure instanceof AutomaticPersonRepairRefusedError && failure.cause instanceof StorageMaintenanceCustodyUnavailableError);
   } finally { observed.mockRestore(); discovery.mockRestore(); capture.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
@@ -517,7 +534,7 @@ it("refuses automatic Windows restore before repair admission captures an unsupp
   const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${profileId}.json`);
   f.admission.release(); f.machine.release();
   const raw = new DatabaseSync(f.path); raw.exec("PRAGMA user_version=999"); raw.close();
-  const before = files(f.workspace), open = nativeFs.openSync;
+  const checkInventory = expectOnlyStartupStage(f.workspace, "inspection"), open = nativeFs.openSync;
   let credentialOpens = 0;
   const observed = vi.spyOn(nativeFs, "openSync").mockImplementation((...args) => {
     if (String(args[0]) === keyPath) credentialOpens++;
@@ -534,7 +551,7 @@ it("refuses automatic Windows restore before repair admission captures an unsupp
     try { await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock); } catch (error) { failure = error; }
     assert.equal(sourceCaptures, 1, "only the initial startup health read may capture source bytes; refused repair must capture none");
     assert.equal(credentialOpens, 0, "automatic restore must refuse before repair admission reads the credential head");
-    observed.mockRestore(); syncBuiltinESMExports(); assert.deepEqual(files(f.workspace), before);
+    observed.mockRestore(); syncBuiltinESMExports(); checkInventory();
     assert.ok(failure instanceof AutomaticPersonRepairRefusedError && failure.cause instanceof AggregateError
       && failure.cause.cause instanceof StorageMaintenanceCustodyUnavailableError);
   } finally { observed.mockRestore(); capture.mockRestore(); syncBuiltinESMExports(); await f.close(); }
@@ -581,7 +598,7 @@ for (const kind of ["newest restore", "stopped backup"] as const) it(`refuses Wi
     undefined, undefined, undefined, boundProfileCredentials(f.admission));
   try {
     await new AuthorityBackupService(f.admission, database, { directory: join(f.stateRoot, "backups", "authority") }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
   } finally { database.close(); }
   const operation = f.admission.acquireOfflineMaintenance();
   const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
@@ -600,7 +617,7 @@ for (const kind of ["newest restore", "stopped backup"] as const) it(`refuses Wi
     let failure: unknown;
     try {
       if (kind === "newest restore") await restore.restoreNewest(operation);
-      else { assert.ok(closure); await backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, processLockRoot, operation); }
+      else { assert.ok(closure); await backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, processLockRoot, operation, "schema-migration"); }
     } catch (error) { failure = error; }
     assert.equal(captures, 0, "refused operation must not derive an owner by capturing source bytes");
     observed.mockRestore(); syncBuiltinESMExports(); assert.deepEqual(files(f.workspace), before);

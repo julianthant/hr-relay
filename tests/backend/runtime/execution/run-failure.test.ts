@@ -69,7 +69,7 @@ describe("node failure code selection", () => {
     const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
       failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
       error: wrapUnhandledTaskError(TASK_ID, new Error("Timeout 30000ms exceeded")), occurredAt: "2026-08-29T08:00:00.000Z" });
-    assert.equal(projectFailureForOperator(failure).summary, "The task stopped with an unclassified failure. Review local diagnostic evidence.");
+    assert.equal(projectFailureForOperator(failure).summary, "This task stopped for a reason Relay does not recognize. Open the run in Logs to see what happened.");
   });
 
   it("records each named secondary cause after the task's own primary cause", () => {
@@ -127,8 +127,11 @@ it.each(["not-attempted", "unknown"] as const)("shows the registered delegation 
   const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
   assert.ok(original.section === "failure" && original.payload.state === "available");
   const source = original.payload.value;
+  // Only an unwritten failure serves a retry; an unknown write drops it and the decision option that names it.
+  const retryable = writeState === "not-attempted" ? source : { ...source, retry: undefined, decision: source.decision === undefined ? undefined
+    : { ...source.decision, options: source.decision.options.filter(option => option.send.via !== "action" || option.send.actionKey !== source.retry?.key) } };
   const section = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
-    ...source, code: "DELEGATION_CONFIG_UNAVAILABLE", writeState, summary: "private retained snapshot details",
+    ...retryable, code: "DELEGATION_CONFIG_UNAVAILABLE", writeState, summary: "private retained snapshot details",
   } } });
   const detail = FIXTURE_RUN_DETAILS[FIXTURE_IDS.failedRun]; assert.ok(detail);
   const logs = NotePageSchema.parse({ runId: detail.runId, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } });

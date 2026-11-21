@@ -1,17 +1,27 @@
+import type { ComponentType } from "react";
 import { z } from "zod";
+import type { BulkBatchOutcome } from "./commands/bulk-dispatch.js";
+import type { CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
+import type { DashboardClient } from "../client/index.js";
+import type { InboxWiring } from "../state/inbox-wiring-adapter.js";
+import type { NotificationTarget } from "../../models/notifications/notification-target.js";
+import type { QueueSurfaceWire } from "../../models/dashboard/projection.js";
+import type { NavbarData } from "../surfaces/shell/search/navbar-view-model.js";
+import type { AppRouteState } from "./navigation/url-state.js";
+import type { RunNavigation } from "./navigation/run-navigation.js";
+import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
+import type { CommandResultFeedEntry } from "../surfaces/shared/actions/actions-model.js";
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
-import type { MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import type { SessionsHarness } from "../surfaces/sessions/session-panel.js";
+import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
+import type { DashboardActionHandler } from "../surfaces/shared/actions/actions.js";
+import type { ActivityReportHook } from "../surfaces/activity/activity.js";
 
-export type SurfaceSource = "mock" | "served";
 /** "hidden" workflows run and serve data for their host but have no catalog, queue or assistant entry. */
-export type WorkflowSource = SurfaceSource | "hidden";
+export type WorkflowSource = "served" | "hidden";
 export type WorkflowSourcePolicy = Readonly<Record<string, WorkflowSource>>;
 
-export const WORKFLOW_SOURCES = Object.freeze(z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources));
-
-export function surfaceSource(id: string, policy: WorkflowSourcePolicy = WORKFLOW_SOURCES): SurfaceSource {
-  return workflowSource(id, policy) === "mock" ? "mock" : "served";
-}
+export const WORKFLOW_SOURCES = Object.freeze(z.record(z.string(), z.enum(["served", "hidden"])).parse(configuredSources));
 
 export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFLOW_SOURCES): WorkflowSource {
   const source = policy[id];
@@ -19,31 +29,47 @@ export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFL
   return source;
 }
 
-/** A mock run stays when its workflow is a mock; a hidden workflow's run stays only as the child of a mock host. */
-export function keepsMockRun(composition: WorkflowComposition, run: MockRun): boolean {
-  const source = composition.sourceForRoute(run.workflowId, true);
-  if (source !== "hidden") return source === "mock";
-  return run.parentId !== undefined && run.parentWorkflowId !== undefined && composition.sourceForRoute(run.parentWorkflowId, true) === "mock";
+export type RunNavigationContext = Readonly<{ client: DashboardClient; day: string; rows: readonly QueueSurfaceWire[]; canSelectWorkflowId: (id: string) => boolean; canOpenRegisteredWorkflow: (id: string, row: QueueSurfaceWire) => boolean }>;
+export interface InboxHarnessInput {
+  readonly day: string; readonly nowIso: string; readonly anchorIso: string; readonly rows?: readonly QueueSurfaceWire[];
+  readonly workflowLabel: (id: string) => string; readonly unavailable?: string;
+}
+export interface SearchHarnessInput {
+  readonly today: string; readonly day: string; readonly unavailable?: string; readonly rows: readonly QueueSurfaceWire[]; readonly workflowLabel: (id: string) => string;
+}
+
+/** Extra frames a design harness mounts beside the app and the first command feedback it seeds; the product leaves it unset. */
+export interface DashboardHarness {
+  readonly Host?: ComponentType;
+  /** Sample logs in place of the served Logs panel, for top-level rows and, with `logsChildRows`, child rows. */
+  readonly LogPreview?: ComponentType<{ selection: LogSelection; onAction?: DashboardActionHandler }>;
+  readonly logsChildRows?: true;
+  readonly commandResults?: readonly CommandResultFeedEntry[];
+  readonly bulkOutcome?: BulkBatchOutcome;
+  readonly unknownCommand?: CommandRecoveryEntry;
+  /** Sample notifications in place of the served inbox, with their local read marks. */
+  readonly useInbox?: (input: InboxHarnessInput) => InboxWiring;
+  /** Sample search results in place of the served search. */
+  readonly useSearch?: (input: SearchHarnessInput) => NavbarData;
+  /** Opens a run from a notification or search result against the harness's own rows; other targets take the served route. */
+  readonly resolveRun?: (target: NotificationTarget, route: AppRouteState, context: RunNavigationContext) => Promise<RunNavigation>;
+  /** Spreadsheets the search palette lists when the served read gives none. */
+  readonly paletteSheets?: readonly PaletteSheet[];
 }
 
 export interface WorkflowComposition {
+  readonly harness?: DashboardHarness;
   readonly sources: WorkflowSourcePolicy;
-  readonly initialMockRuns: () => readonly MockRun[];
-  readonly explorerSources?: WorkflowSourcePolicy;
-  readonly logsSources?: WorkflowSourcePolicy;
   readonly dataSources?: WorkflowSourcePolicy;
-  readonly catalogIncludesMocks?: boolean;
   readonly servedDay?: boolean;
-  readonly sessions?: SurfaceSource;
-  readonly activity?: SurfaceSource;
-  readonly inbox: SurfaceSource;
-  readonly search: SurfaceSource;
-  readonly assistant?: SurfaceSource;
-  readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
+  /** The design-mock harness supplies sample workers and a command port; the product leaves it unset and reads the served day. */
+  readonly sessionsHarness?: SessionsHarness;
+  /** The design-mock harness supplies its own report hook; the product leaves it unset and reads the served population. */
+  readonly useActivityReport?: ActivityReportHook;
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {
-  return Object.freeze({ sources, initialMockRuns: () => [], sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
+  return Object.freeze({ sources });
 }
 
 export const PRODUCT_WORKFLOW_COMPOSITION = workflowComposition(WORKFLOW_SOURCES);

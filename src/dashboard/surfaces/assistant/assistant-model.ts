@@ -20,7 +20,7 @@ export interface AssistantMessage {
   readonly attachments?: readonly { readonly id: string; readonly name: string }[];
 }
 
-export interface AssistantMockProposal {
+export interface AssistantProposal {
   /** The exact served proposal; its digest is the Confirm evidence. */
   readonly issued?: AssistantActionProposal;
   readonly action?: AssistantActionIdentity;
@@ -37,8 +37,8 @@ export interface AssistantMockProposal {
 
 export type AssistantTurn =
   | { readonly state: 'idle' }
-  | { readonly state: 'waiting' | 'failed' | 'cancelled' | 'unknown'; readonly requestId: number; readonly prompt: string }
-  | { readonly state: 'proposal'; readonly proposal: AssistantMockProposal; readonly disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown' };
+  | { readonly state: 'waiting' | 'failed' | 'cancelled' | 'unknown'; readonly requestId: number; readonly prompt: string; readonly staged?: readonly string[] }
+  | { readonly state: 'proposal'; readonly proposal: AssistantProposal; readonly disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown' };
 
 export interface AssistantState {
   readonly draft: string;
@@ -50,10 +50,10 @@ export interface AssistantState {
 
 export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
-  | { readonly type: 'send'; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
+  | { readonly type: 'send'; readonly attachments?: readonly { readonly id: string; readonly name: string }[]; /** Staged attachment ids the request names. */ readonly staged?: readonly string[] }
   | { readonly type: 'retry' | 'cancel' | 'confirm' | 'new-chat' }
-  | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantMockProposal; readonly message: AssistantMessage }
-  | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantMockProposal; readonly disposition?: 'unknown' }
+  | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantProposal; readonly message: AssistantMessage }
+  | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantProposal; readonly disposition?: 'unknown' }
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
   | { readonly type: 'action-state'; readonly id: string; readonly disposition: 'confirming' | 'confirmed' | 'cancelled' | 'stale' | 'unknown'; readonly message?: AssistantMessage };
 
@@ -69,7 +69,7 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
     case 'send': {
       if (!state.draft.trim() || turn.state === 'waiting' || turn.state === 'unknown') return state;
       const requestId = state.sequence + 1;
-      return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft, ...(action.attachments?.length ? { attachments: action.attachments } : {}) }], turn: { state: 'waiting', requestId, prompt: state.draft } };
+      return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft, ...(action.attachments?.length ? { attachments: action.attachments } : {}) }], turn: { state: 'waiting', requestId, prompt: state.draft, ...(action.staged?.length ? { staged: action.staged } : {}) } };
     }
     case 'retry':
       return turn.state === 'failed' && state.draft === turn.prompt

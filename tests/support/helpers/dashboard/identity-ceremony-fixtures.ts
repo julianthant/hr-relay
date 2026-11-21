@@ -1,6 +1,6 @@
 
 
-import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "../ucpath-job-rows.js";
 
 import {
 type IdentityGateDetail
@@ -37,7 +37,7 @@ export function createIdentityCeremonyFixtures(
   runId: (n: number) => string,
 ) {
   function jobRows() {
-    return [deriveJobRowFromCells([
+    return [jobRowFromCells([
       "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
       "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
     ], 0)];
@@ -55,7 +55,7 @@ export function createIdentityCeremonyFixtures(
       emplIdSource: "document-eid",
       documentEidConflicts: false,
       jobSummary: {
-        pageStateId: "ucpath.person-org.detail-ready",
+        pageStateId: "ucpath.workforce-job-summary.detail-ready",
         emplId: CHECKED as never,
         displayedName: "Hernandez, Jose Santos",
         jobRows: rows,

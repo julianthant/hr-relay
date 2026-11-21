@@ -137,17 +137,17 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
       const module = modules.find((candidate) => candidate.descriptor.id === id);
       return module === undefined ? undefined : { ...module.descriptor, dataOrigins: dataOriginViewsOf(module), gateNodes: gateNodeViewsOf(module.descriptor), writeContracts: writeContractViewsOf(module.descriptor) };
     } } };
-    const explorer = composeExplorer({ clock, descriptorSetHash: hash });
+    const explorer = composeExplorer({ clock, descriptorSetHash: hash }, modules);
     const app: DashboardApp = new Hono();
     app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
     app.use("*", async (c, next) => { c.set("requestActorId", LOCAL_OPERATOR_ACTOR_ID); await next(); });
-    registerExplorerRoutes(app, { ...explorer, explorer: { ...explorer.explorer, modules } });
+    registerExplorerRoutes(app, explorer);
     registerRunDetailRoutes(app, { runDetail: detailDeps });
     registerTrustRoutes(app, { runDetail: detailDeps });
     const day = clock.now().toISOString().slice(0, 10);
     const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, descriptorHash: hash, projectionGeneration: projection.generation(),
       serverClock: { now: clock.now().toISOString(), zone: "America/Los_Angeles" }, workflows: modules.map(({ descriptor, role }) => ({
-        id: descriptor.id, code: descriptor.code, label: descriptor.label, categoryId: descriptor.category, descriptorFingerprint: descriptor.contractFingerprint,
+        id: descriptor.id, code: descriptor.code, label: descriptor.label, icon: descriptor.icon, categoryId: descriptor.category, descriptorFingerprint: descriptor.contractFingerprint,
         availability: { state: "available" }, role, start: { readiness: { scope: "workbook-sources", state: "ready" }, enqueue: descriptor.enqueue, version: descriptor.version, steps: projectStartSteps(descriptor).map((step) => ({ key: step.key, label: step.label, includedByDefault: step.includedByDefault, control: startStepWireControl(step.control) })), inputRun: descriptor.surfaces.inputRun, spreadsheetIntake: false, requiredWorkbookFields: [...descriptor.requiredWorkbookFields] } })) });
     const shell = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap, descriptorHash: hash, day: projection.buildDashboardDayWire(day) } });
     held.shell = shell;

@@ -11,7 +11,7 @@ import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapsh
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { preSendShortcutSettingsRow, restorePreSendShortcutSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
-import { regressSchema35SendShortcut } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { regressSchema35SendShortcut, removeSchema36WorkbookSyncStatus } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -54,14 +54,15 @@ async function schema34Store() {
   close(f.database);
   const raw = new DatabaseSync(f.path);
   raw.exec("PRAGMA foreign_keys=ON");
+  removeSchema36WorkbookSyncStatus(raw);
   restorePreSendShortcutSettingsRows(raw);
   regressSchema35SendShortcut(raw);
   return { ...f, raw };
 }
 
-it("converts settings records in migration 35, under the workbook payloads' current 37", () => {
+it("converts settings records in migration 35, under the workbook payloads' current 38", () => {
   assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 35);
-  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 37);
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 38);
   assert.deepEqual(migrationTableNames(35), migrationTableNames(34));
 });
 

@@ -7,16 +7,19 @@ import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { EMERGENCY_CONTACT_SCENARIOS } from "../emergency-contact-member/workflow.js";
+import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
 
 const UNNAMED_PDF_TITLE = "Emergency Contact PDF";
 
 export const emergencyContactWorkflow = defineWorkflow({
   id: "emergency-contact", version: 1, code: "ec", label: "Emergency Contact", icon: "Users", category: "documents",
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
-  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
+  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, workbookCheck: REFERENCE_CHECK, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+  capabilities: { review: false, editData: false, singleAcquisitionPerSystemPerClaim: true },
   surfaces: { uploadRun: { title: { segments: [{ kind: "literal", text: "Emergency Contact PDFs" }] },
-    fields: [{ kind: "select", field: "onbaseFiling", label: "File to OnBase", required: true, options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] }],
+    fields: [{ kind: "select", field: "onbaseFiling", label: "File to OnBase", required: true, options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] },
+      { kind: "boolean", field: "extractWithOcr", label: "Extract with OCR", description: "Turn off to enter records manually in OCR review.", initial: true }],
     pdfInput: { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: { roster: null, reading: { kind: "subscription" } } },
     accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }],
     successMessage: { segments: [{ kind: "literal", text: "PDFs attached for Emergency Contact runs." }] } } }, details: [], role: defineWorkflowRole({ kind: "composition" }),
@@ -28,6 +31,18 @@ export const emergencyContactWorkflow = defineWorkflow({
     { nodeId: "approved-records", purpose: "Read the immutable current approved snapshot through authenticated child lineage." },
     { nodeId: "read-result", purpose: "Retain the exact released reference and settled member outcomes in a schema-owned result." },
     { nodeId: "members", purpose: "Delegate the exact approved record order to Emergency Contact members." },
+  ],
+  rows: [
+    { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: ["read-document"] },
+      { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }] },
+    { key: "match-extracted-people", label: "Match extracted people", members: [{ step: "read-document", nodes: ["approved-records"] },
+      { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }] },
+    { key: "review-extracted-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }] },
+    { key: "read-existing-contacts", label: "Read existing contacts", members: [{ workflow: "emergency-contact-member", step: "contact-plan" },
+      { workflow: "emergency-contact-member", step: "reference-check" }] },
+    { key: "fill-emergency-contact", label: "Fill emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview", phase: "prepare" }] },
+    { key: "save-emergency-contact", label: "Save emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview", phase: "commit" },
+      { workflow: "emergency-contact-member", step: "onbase-filing" }, { step: "members" }] },
   ],
   steps: author => {
     const records = emergencyContactReadDocumentDefinition.build(author), members = emergencyContactMembersDefinition.build(author, records);

@@ -49,4 +49,9 @@ describe("Pause all shows the served application state", () => {
     assert.match(all("pausing"), /disabled=""/u);
     assert.match(all("unavailable"), /Pause all is unavailable/u);
   });
+  it("dims Pause all with its reason when nothing is running", () => {
+    const idle = renderToStaticMarkup(createElement(PauseAllQuitControls, { state: "ready", activeCount: 0, onPauseAll: () => undefined }));
+    assert.match(idle, /title="No runs to pause"/u);
+    assert.match(idle, /disabled=""/u);
+  });
 });

@@ -1,3 +1,4 @@
+import { createNativeRecordReadMemo } from "./run-record-row.js";
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import { PredecessorRunRecordSchema } from "../../../models/run/record.js";
 import { runSettlementContext } from "./run-settlement-row.js";
@@ -5,7 +6,6 @@ import { confirmationPublicationFromRow } from "../../../models/events/confirmed
 import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import { validateNotificationPublicationArray } from "./notification-publications.js";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { RunCheckpointRecordSchema, checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { deriveCheckpointOutputDigest } from "../../../models/run/result.js";
@@ -13,7 +13,10 @@ import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "./storage-records.js";
 import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import { type AuthorityTableName } from "../../../models/config/authority.js";
 
+const FieldValueSchema = z.union([z.string(), z.number()]);
+const readNativeRecord = createNativeRecordReadMemo<unknown>();
 const RowSchema = z.record(z.string(), z.union([z.string(),z.number(),z.null()]));
+const ValueObjectSchema = z.record(z.string(), z.unknown());
 const fields = {
   workflow_workbook_selections: {workflow_id:"workflowId",revision:"revision",accepted_command_id:"acceptedCommandId",used_at:"usedAt"},
   ocr_source_uploads: {id:"artifact.id",created_at:"uploadedAt"},
@@ -50,11 +53,14 @@ function valueAt(record: unknown, path: string): string | number | null {
   for (const part of path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value,part) : undefined;
   if (value === undefined || value === null) return null;
   if (typeof value === "boolean") return Number(value);
-  return z.union([z.string(),z.number()]).parse(value);
+  return FieldValueSchema.parse(value);
 }
 export function isNativeOrdinaryTable(table: AuthorityTableName): table is NativeOrdinaryTable { return Object.hasOwn(fields,table); }
 export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): unknown {
   const row = RowSchema.parse(input);
+  return readNativeRecord(row, () => decodeNativeOrdinaryRecord(table, row, schemaVersion), `${table}:${schemaVersion}:`);
+}
+function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typeof RowSchema>, schemaVersion: number): unknown {
   let record: unknown;
   if (table === "run_results") {
     try { record = AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(JSON.parse(z.string().parse(row.payload_json))); }
@@ -63,7 +69,7 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
   for (const [column,path] of Object.entries(fields[table])) {
     if (row[column] !== valueAt(record,path)) throw new Error(`${table}-row-${column}-mismatch`);
   }
-  const object = z.record(z.string(),z.unknown()).parse(record);
+  const object = ValueObjectSchema.parse(record);
   const extras: Record<string,string | number | null> = {};
   if (schemaVersion >= 20 && table === "run_results") {
     const terminal = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runSettlementContext(row, PredecessorRunRecordSchema) : runSettlementContext(row);
@@ -85,7 +91,7 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
     extras.output_digest = deriveCheckpointOutputDigest(object.output);
   } else if (table === "gate_results") extras.id = `${String(object.runId)}:${String(object.gateId)}`;
   else if (table === "diagnostic_files") {
-    const attachment = z.record(z.string(),z.unknown()).parse(object.attachment);
+    const attachment = ValueObjectSchema.parse(object.attachment);
     extras.id = `${String(object.bundleId)}:${String(attachment.artifactId)}`;
   } else if (table === "run_failures") {
     let resolution;
@@ -101,7 +107,7 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
     extras.run_id = NotificationRecordSchema.parse(record).links.find(link => "runId" in link)?.runId ?? null;
   }
   for (const [key,value] of Object.entries(extras)) if (row[key] !== value) throw new Error(`${table}-row-${key}-mismatch`);
-  const expectedKeys = [...Object.keys(fields[table]),...Object.keys(extras),"payload_json"].sort();
-  if (canonicalJsonStringify(Object.keys(row).sort()) !== canonicalJsonStringify(expectedKeys)) throw new Error(`${table}-row-columns-mismatch`);
+  const expectedKeys = [...Object.keys(fields[table]), ...Object.keys(extras), "payload_json"];
+  if (Object.keys(row).length !== expectedKeys.length || !expectedKeys.every(key => Object.hasOwn(row, key))) throw new Error(`${table}-row-columns-mismatch`);
   return record;
 }

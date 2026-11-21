@@ -33,8 +33,8 @@ export function createEcRetryWorld() {
         persistence.set(input.emplId, backend);
       }
       const session = backend.session();
-      const save = options.failure === "unknown" && input.emplId === "10800001" ? { ...session.save, async save() {
-        await session.save.save(); throw new Error("fixture-unknown-save-reply");
+      const save = options.failure === "unknown" && input.emplId === "10800001" ? { ...session.save, async save(capability: Parameters<typeof session.save.save>[0]) {
+        await session.save.save(capability); throw new Error("fixture-unknown-save-reply");
       } } : session.save;
       active = createDeterministicUcpathPersonOrgDriver(undefined, undefined, session.port, save);
       return active;

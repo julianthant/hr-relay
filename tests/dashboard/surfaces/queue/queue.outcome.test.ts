@@ -6,8 +6,8 @@ import { it } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { QueuePanel, QueueRow } from '../../../../src/dashboard/surfaces/queue/queue.js';
 import { StatusBadge } from '../../../../src/dashboard/surfaces/shared/status/status.js';
-import { seedMockRuns } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
-import { mockQueueSurface } from '../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js';
+import { seedMockRuns } from '../../../mocks/workflows/workflow-mock-model.js';
+import { mockQueueSurface } from '../../../mocks/workflows/workflow-queue-model.js';
 import { QueueSurfaceWireSchema } from '../../../../src/models/dashboard/projection.js';
 import { DS_STATUS, DS_STATUS_ORDER } from '../../../../src/dashboard/ds/ui.js';
 it('renders all eight mounted seed Search and Match outcomes in completed Queue rows', () => {
@@ -41,7 +41,7 @@ it('describes the lifecycle done count as completed without claiming receipt ver
   const selected: string[] = [];
   try {
     await act(async () => root.render(createElement(QueuePanel, { surfaces: [surface], state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect(id) { selected.push(id); } }, workflowLabelOf: () => 'Person Lookup', panelLabel: 'Person Lookup', day: '2026-08-03', isToday: true })));
-    assert.match(host.textContent ?? '', /Today:\s*1 completed/u);
+    assert.match(host.textContent ?? '', /Finished today\s*1\s*1 completed/u);
     assert.doesNotMatch(host.textContent ?? '', /1 verified/u);
     assert.equal(host.querySelectorAll('[data-demo-row-id]').length, 1);
     await act(async () => host.querySelector<HTMLElement>('[data-demo-row-id]')?.click());
@@ -64,4 +64,24 @@ it('updates an outcome-only QueuePanel change and preserves partial warning fact
     const outcome = [...host.querySelectorAll('span')].find(node => node.textContent === 'Undetermined' && node.parentElement?.getAttribute('data-slot') === 'badge');
     assert(outcome); assert(outcome.parentElement?.className.includes('--ds-status-done-warnings-bg'));
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+it('says one thing on an empty day: a title and a Start run button, with no finished-today box', async () => {
+  Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  let started = 0;
+  try {
+    await act(async () => root.render(createElement(QueuePanel, { surfaces: [], state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup', panelLabel: 'Person Lookup', day: '2026-08-03', isToday: true, onStartRun: () => { started += 1; } })));
+    assert.match(host.textContent ?? '', /No runs on this day/u);
+    assert.doesNotMatch(host.textContent ?? '', /simply nothing|Today:/u);
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Start run')?.click());
+    assert.equal(started, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+it('draws the title alone and the status once on a plain run card', () => {
+  const run = seedMockRuns().find(run => run.workflowId === 'person-lookup'); assert(run);
+  const surface = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+  const host = document.createElement('div');
+  host.innerHTML = renderToStaticMarkup(createElement(QueueRow, { surface, state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' }));
+  assert.equal(host.querySelectorAll('table').length, 0);
+  assert.equal(host.querySelector('[data-demo-row-title]')?.parentElement?.querySelectorAll('[data-queue-member-count]').length, 0);
 });

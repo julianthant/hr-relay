@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { analyticsBuckets, analyticsPeriodLabel, shiftRange, type AnalyticsWorkflow } from "../../../../src/dashboard/surfaces/activity/analytics-model.js";
+import { analyticsBuckets, analyticsPeriodLabel, bucketCounts, rankedTimes, rowTypicalSeconds, shiftRange, type AnalyticsWorkflow } from "../../../../src/dashboard/surfaces/activity/analytics-model.js";
 
 const workflow: AnalyticsWorkflow = { id: "w", label: "W", done: 3, failed: 1, attention: 0, typicalSeconds: 60, failedAt: [],
   days: [{ date: "2026-09-20", done: 2, failed: 0, attention: 0, seconds: 50 }, { date: "2026-09-22", done: 1, failed: 1, attention: 0, seconds: 70 }] };
@@ -27,4 +27,21 @@ it("never draws more than 32 buckets, even for the full supported range", () => 
   assert.ok(buckets.length <= 32 && buckets.length > 1);
   assert.equal(buckets.at(-1)?.date.endsWith("9999"), true);
   assert.equal(analyticsBuckets({ from: "2026-01-01", to: "2026-12-31" }, [workflow]).length <= 32, true);
+});
+it("sums a per-day count into the same buckets the run charts draw", () => {
+  const range = { from: "2026-08-01", to: "2026-09-26" };
+  const buckets = analyticsBuckets(range, []);
+  const rows = [{ date: "2026-08-01", count: 2 }, { date: "2026-08-07", count: 3 }, { date: "2026-08-08", count: 4 }, { date: "2026-09-26", count: 5 }];
+  const counts = bucketCounts(buckets, rows);
+  assert.equal(counts.length, buckets.length);
+  assert.deepEqual([counts[0], counts[1], counts.at(-1)], [5, 4, 5]);
+  assert.equal(counts.reduce((n, value) => n + value, 0), 14);
+});
+it("gives a workflow with no run in the period no typical time", () => {
+  assert.equal(rowTypicalSeconds({ ...workflow, done: 0, failed: 0, attention: 0, typicalSeconds: 407 }), null);
+  assert.equal(rowTypicalSeconds(workflow), 60);
+});
+it("ranks typical times longest first with bars scaled to the longest, and an untimed workflow last", () => {
+  const ranked = rankedTimes([{ ...workflow, id: "a", label: "A", typicalSeconds: 30 }, { ...workflow, id: "none", label: "None", done: 0, failed: 0, typicalSeconds: 407 }, { ...workflow, id: "b", label: "B", typicalSeconds: 120 }]);
+  assert.deepEqual(ranked.map(row => [row.id, row.seconds, row.share]), [["b", 120, 1], ["a", 30, 0.25], ["none", null, 0]]);
 });

@@ -123,6 +123,11 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "try",
+        "sha256": "66224d4224fca4fe56950278e4d6f895444af9ace20c173ab3d91af109192cca",
+        "occurrences": 1
+      },
+      {
+        "kind": "try",
         "sha256": "35b15170c232cccf531eed4e1a5ba4823afc7fa9e7302726923291936931ae5c",
         "occurrences": 1
       }
@@ -130,13 +135,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/notification-health.ts",
-    "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read.",
+    "reason": "A failed backup verification sets the failed-backup boolean that triggers an explicit failed health notification; it never claims a healthy read, and an aborted pass rethrows before the boolean is set.",
     "statements": [
-      {
-        "kind": "try",
-        "sha256": "ab17fb3fde0f559f8d5fd8667fc0fe8e8397089a9c9a0e711312d1ad3a5351fa",
-        "occurrences": 1
-      },
       {
         "kind": "try",
         "sha256": "ba28eb28fce3d9dd3921f53b2b6de53c44e456e7bca5cf225e1fe861a3338003",
@@ -282,17 +282,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     ]
   },
   {
-    "path": "src/backend/storage/sqlite/authority-boot.ts",
-    "reason": "A failed open or inspection returns degraded-read-only with mutations blocked; only successful close clears the database handle, and uncertain close preserves the handle and aggregate cause.",
-    "statements": [
-      {
-        "kind": "try",
-        "sha256": "cdcd384cd125be140cfe07817e6623892f7d13d2ee0ad5ea83a188113f061dbe",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
     "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result.",
     "statements": [
@@ -314,18 +303,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "try",
-        "sha256": "a9f46b892ae9f83022af52bae910f774b5d09cc5b542e1672bd5b4f1df1135f1",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
-    "path": "src/dashboard/state/activity-wiring-adapter.ts",
-    "reason": "The population observation consumes a rejection only after createSettingsRead publishes failed with its held selection. useActivityWiring exposes the catalog notice and revokes exports/navigation, preserving a coherent completed report and browse as history; superseded reads cannot publish or replace the current pair.",
-    "statements": [
-      {
-        "kind": "promise",
-        "sha256": "2aeb83d1ee3c28a041cfb4da4cd848df507e08bff34f34478ccf0c6b039692ed",
+        "sha256": "9f252f9116a72867e93e9fa9d2111e3ced5cc76f20ea35c0864ac9b0515c0af0",
         "occurrences": 1
       }
     ]

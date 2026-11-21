@@ -6,7 +6,7 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import {
   EXPLORER_SOURCE_ROOT,
-  buildWorkflowExplorer,
+  nodeShape,
   readScenarioSources,
   type ExplorerModuleView,
 } from "../../../../src/backend/runs/queries/explorer.js";
@@ -31,9 +31,9 @@ import {
   compileWorkflow,
   composeWorkflowModule,
 } from "../../../../src/workflow-kit/workflow-definition.js";
-import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { defineWorkflowDescriptor, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { registration as separationsKualiReadWorkflowRegistration } from "../../../../src/workflows/separations/index.js";
-import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+import { explorerQueryDeps, readFixtureExplorer } from "../../../support/fixtures/explorer-seams.js";
 const separationsKualiReadWorkflow = separationsKualiReadWorkflowRegistration.proofs[1].definition;
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
@@ -41,7 +41,7 @@ const HASH = FingerprintSchema.parse("c".repeat(64));
 
 /** Every task arm of every registered workflow, flattened. */
 function allTasks() {
-  return buildWorkflowExplorer(
+  return readFixtureExplorer(
     explorerQueryDeps(CLOCK, HASH),
   ).workflows.flatMap((workflow) =>
     workflow.nodes.flatMap((node) => node.tasks),
@@ -50,7 +50,7 @@ function allTasks() {
 
 /** The registered separations entry, read through the Explorer's real registry. */
 function separationsExplorerEntry() {
-  const entry = buildWorkflowExplorer(
+  const entry = readFixtureExplorer(
     explorerQueryDeps(CLOCK, HASH),
   ).workflows.find((workflow) => String(workflow.id) === "separations");
   assert.ok(entry, "the Explorer serves no separations workflow");
@@ -91,7 +91,7 @@ describe("compiled Explorer declaration binding", () => {
   });
 
   it("retains the authored onboarding branch in the strict definition preview and graph", () => {
-    const workflow = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(workflow => workflow.id === "onboarding");
+    const workflow = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(workflow => workflow.id === "onboarding");
     assert.ok(workflow?.definitionPreview.state === "compiled");
     const entry = workflow.definitionPreview.groups.flatMap(group => group.entries).find(entry => entry.id === "i9-route");
     assert.deepEqual(entry, { id: "i9-route", kind: "branch", nodeIds: ["i9-route"], dependsOn: ["write-plan"], taskIds: [] });
@@ -114,20 +114,19 @@ describe("compiled Explorer declaration binding", () => {
     assert.equal(ExplorerContractFieldWireSchema.safeParse({ ...signer, options: [null] }).success, false);
   });
 
-  it("refuses a different definition beside the descriptor and names a descriptor without one", () => {
+  it("refuses a different definition beside the descriptor, and a descriptor without one", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
     const first = deps.modules[0];
     const second = deps.modules[1];
     assert.ok(first?.definition && second?.definition);
-    assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [{ ...first, definition: second.definition }, ...deps.modules.slice(1)] }),
+    assert.throws(() => readFixtureExplorer({ ...deps, modules: [{ ...first, definition: second.definition }, ...deps.modules.slice(1)] }),
       /Explorer definition is not the descriptor's compiled source/u);
-    const unavailable = buildWorkflowExplorer({ ...deps, modules: [{ ...first, definition: undefined }, ...deps.modules.slice(1)] });
-    assert.deepEqual(unavailable.workflows[0]?.definitionPreview,
-      { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" });
+    assert.throws(() => readFixtureExplorer({ ...deps, modules: [{ ...first, definition: undefined }, ...deps.modules.slice(1)] }),
+      /workflow person-lookup option search-by has no review row/u);
   });
 });
 
-function syntheticDelegationExplorerWire() {
+function syntheticDelegationModule(): ExplorerModuleView {
   const input = z.strictObject({
     route: z.enum(["single", "batch", "background"]),
   });
@@ -267,12 +266,7 @@ function syntheticDelegationExplorerWire() {
     flow: graph,
   });
   const role = defineWorkflowRole({ kind: "standalone" });
-  const module: ExplorerModuleView = { descriptor, stores: [], role };
-  const deps = explorerQueryDeps(CLOCK, HASH);
-  return buildWorkflowExplorer({
-    ...deps,
-    modules: [module],
-  });
+  return { descriptor, stores: [], role };
 }
 
 describe("the contract field census", () => {
@@ -371,7 +365,7 @@ describe("the contract field census", () => {
 describe("the workflow explorer projection", () => {
   it("serves descriptor presentation without editor authority", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
-    const wire = buildWorkflowExplorer(deps);
+    const wire = readFixtureExplorer(deps);
     for (const entry of wire.workflows) {
       const descriptor = deps.modules.find(module => module.descriptor.id === entry.id)?.descriptor;
       assert.ok(descriptor);
@@ -427,7 +421,7 @@ describe("the workflow explorer projection", () => {
     }
   });
   it("parses through its own wire schema over the real registry", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const wire = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     // `buildWorkflowExplorer` already parses on the way out; re-parsing proves
     // the returned value is the wire, not a structurally similar object.
     assert.doesNotThrow(() => WorkflowExplorerWireSchema.parse(wire));
@@ -436,8 +430,8 @@ describe("the workflow explorer projection", () => {
   });
 
   it("is a pure function of registration state — two builds agree byte for byte", () => {
-    const first = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const second = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const first = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
+    const second = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     assert.equal(JSON.stringify(first), JSON.stringify(second));
   });
 
@@ -507,7 +501,7 @@ describe("the workflow explorer projection", () => {
 
 
   it("serves each module's declared role and refuses a harness with no composition beside it", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const wire = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     const roles = new Map(
       wire.workflows.map((workflow) => [String(workflow.id), workflow.role]),
     );
@@ -559,13 +553,18 @@ describe("the workflow explorer projection", () => {
           nodes: nodes.map(({ id }) => String(id)),
         })),
       );
+      assert.deepEqual(
+        projected.scenarios.map(({ scenarioId }) => String(scenarioId)),
+        workflowProjections(module.descriptor).scenarios.map(String).sort(),
+      );
+      assert.ok(projected.scenarios.length > 0, `${String(module.descriptor.id)} serves no scenario`);
     }
 
     const harness = composeWorkflowModule(
       compileWorkflow(separationsKualiReadWorkflow),
       taskStoreRegistry.stores,
     );
-    const withHarness = buildWorkflowExplorer({
+    const withHarness = readFixtureExplorer({
       ...explorerQueryDeps(CLOCK, HASH),
       modules: [...READABLE_WORKFLOW_MODULES, harness],
     });
@@ -597,7 +596,7 @@ describe("the workflow explorer projection", () => {
   });
 
   it("projects the registered Onboarding delegation and its readable child without a start surface", () => {
-    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const wire = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
     const onboarding = wire.workflows.find(workflow => workflow.id === "onboarding");
     assert.ok(onboarding);
     const lookup = wire.workflows.find(workflow => workflow.id === "i9-lookup"); assert.ok(lookup);
@@ -611,34 +610,11 @@ describe("the workflow explorer projection", () => {
     });
   });
 
-  it("projects typed branch and repeated child-call metadata without fabricating unavailable child detail", () => {
-    const wire = syntheticDelegationExplorerWire();
-    assert.doesNotThrow(() => WorkflowExplorerWireSchema.parse(wire));
-    assert.deepEqual(
-      wire.workflows.map(({ id }) => String(id)),
-      ["explorer-delegation-fixture"],
-    );
-    const entry = wire.workflows[0];
-    assert.ok(entry, "the synthetic workflow is absent from its own wire");
-    assert.deepEqual(
-      entry.timeline.map(({ key, label, nodes }) => ({
-        key,
-        label,
-        nodes: nodes.map(String),
-      })),
-      [
-        { key: "selection", label: "Selection", nodes: ["select-child"] },
-        {
-          key: "delegations",
-          label: "Delegations",
-          nodes: ["call-single", "call-batch", "call-background"],
-        },
-        { key: "completion", label: "Completion", nodes: ["completion"] },
-      ],
-    );
-
-    const branch = entry.nodes.find(({ id }) => String(id) === "select-child");
-    assert.ok(branch, "the synthetic branch is absent from the public wire");
+  it("projects typed branch and repeated child-call metadata, and refuses a delegation to a workflow absent from the catalog", () => {
+    const module = syntheticDelegationModule();
+    const shapes = descriptorRuntimeNodes(module.descriptor).map((node) => ({ id: node.id, shape: nodeShape(node) }));
+    const branch = shapes.find(({ id }) => String(id) === "select-child");
+    assert.ok(branch, "the synthetic branch has no runtime node");
     assert.equal(branch.shape.kind, "branch");
     if (branch.shape.kind !== "branch") return;
     assert.deepEqual(
@@ -652,20 +628,7 @@ describe("the workflow explorer projection", () => {
         { name: "background", nodes: ["call-background"] },
       ],
     );
-    assert.deepEqual(
-      entry.scenarios.map(({ scenarioId }) => String(scenarioId)),
-      ["explorer-delegation-fixture/happy"],
-    );
-    assert.ok(
-      branch.shape.cases.every(
-        ({ name }) =>
-          !entry.scenarios.some(
-            ({ scenarioId }) => String(scenarioId) === name,
-          ),
-      ),
-    );
-
-    const calls = entry.nodes.flatMap((node) =>
+    const calls = shapes.flatMap((node) =>
       node.shape.kind === "child-run"
         ? [{ nodeId: String(node.id), ...node.shape }]
         : [],
@@ -719,12 +682,13 @@ describe("the workflow explorer projection", () => {
         },
       ],
     );
-    assert.equal(
-      wire.workflows.some(({ id }) => String(id) === "unregistered-child"),
-      false,
-      "an absent child target must not gain fabricated workflow detail",
+    assert.throws(
+      () => readFixtureExplorer({ ...explorerQueryDeps(CLOCK, HASH), modules: [module] }),
+      /workflow explorer-delegation-fixture delegates to unregistered-child, which is absent from the catalog/u,
     );
 
+    const entry = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(({ id }) => String(id) === "onboarding");
+    assert.ok(entry);
     const incompleteTimeline = ExplorerWorkflowWireSchema.safeParse({
       ...entry,
       timeline: [entry.timeline[0]],
@@ -738,7 +702,7 @@ describe("the workflow explorer projection", () => {
 
   it("reports a scenario with no executable file as unresolved, naming the path it tried", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
-    const wire = buildWorkflowExplorer({
+    const wire = readFixtureExplorer({
       ...deps,
       listScenarioSources: () => [],
     });
@@ -760,7 +724,7 @@ describe("the workflow explorer projection", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
     assert.throws(
       () =>
-        buildWorkflowExplorer({
+        readFixtureExplorer({
           ...deps,
 
           modules: deps.modules.map((module) => ({ ...module, stores: [] })),
@@ -772,7 +736,7 @@ describe("the workflow explorer projection", () => {
   it("reports the absent scenario corpus without claiming executable sources", () => {
     const sources = readScenarioSources(EXPLORER_SOURCE_ROOT);
     assert.deepEqual(sources, []);
-    const wire = buildWorkflowExplorer({
+    const wire = readFixtureExplorer({
       ...explorerQueryDeps(CLOCK, HASH),
       listScenarioSources: () => sources,
     });

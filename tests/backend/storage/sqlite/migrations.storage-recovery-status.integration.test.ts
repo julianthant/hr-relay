@@ -18,7 +18,7 @@ it("distinguishes byte verification from current release eligibility", async () 
     AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "current-eligibility" }, clock).close();
     const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "current-backup" }, clock);
     try { await new AuthorityBackupService(database, { directory: join(f.stateRoot, "backups", "authority") }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration }); }
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration }); }
     finally { database.close(); }
     const report = await doctorAuthorityStorage(options(f.stateRoot), clock);
     assert.equal(report.recovery.state, "clear");

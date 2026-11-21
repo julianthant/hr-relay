@@ -9,7 +9,7 @@ import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 import { CHANGE_LOG_MIGRATION } from "./authority-change-log.js";
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
-import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
+import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { CapturedWorkbookWriteSourceSchema, RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -133,8 +133,8 @@ export const COMMAND_ROW_STATE_MIGRATION = deepFreeze({ version: COMMAND_ROW_STA
   ...COMMANDS_CHANGE_LOG_OBJECTS,
 ] });
 
-/** Migration 35 indexes the dashboard and worker statements that scanned a table growing with runs. */
-export const QUERY_INDEX_SCHEMA_VERSION = 36;
+/** Migration 37 indexes the dashboard and worker statements that scanned a table growing with runs. */
+export const QUERY_INDEX_SCHEMA_VERSION = 37;
 /** Each index the migration adds, with the statements it serves; the store query plan test proves every one is used. */
 export const QUERY_INDEXES = deepFreeze({
   checkpoints_run_idx: { on: "run_checkpoints(run_id,node_id,attempt,claim_generation)",
@@ -1131,6 +1131,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
   ] },
+  WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION,
   QUERY_INDEX_MIGRATION,
   WORKBOOK_PAYLOAD_MIGRATION,
 ]);

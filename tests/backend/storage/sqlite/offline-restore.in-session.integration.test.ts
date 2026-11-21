@@ -1,11 +1,12 @@
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { createSessionBackups, SESSION_BACKUP_INTERVAL_MS } from "../../../../src/backend/storage/maintenance/session-backups.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import * as snapshots from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
@@ -36,7 +37,12 @@ async function restoredFrom(order: "session-newer" | "shutdown-newer"): Promise<
   database.close();
   const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, bound.admission, { authorityPath: bound.path, suspectDirectory: join(bound.stateRoot, "backups", "suspects"),
     busyTimeoutMs: 250, processLockRoot: join(bound.workspace, rebuildRuntimeIsolation.processLockRoot) }, async () => undefined, clock, undefined, credentials);
-  return (await restore.restoreNewest(bound.admission.acquireOfflineMaintenance())).backupFileName;
+  const reads = vi.spyOn(snapshots, "withReadonlyAuthoritySnapshot");
+  try {
+    const restored = await restore.restoreNewest(bound.admission.acquireOfflineMaintenance());
+    expect(reads.mock.calls.filter(([path]) => path === bound.path)).toHaveLength(3);
+    return restored.backupFileName;
+  } finally { reads.mockRestore(); }
 }
 
 describe("automatic repair with in-session backups", () => {

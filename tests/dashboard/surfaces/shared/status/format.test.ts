@@ -1,7 +1,7 @@
 
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
-import { elapsedSecondsBetween as elapsedSecondsBetween_m0,fmtActionClock as fmtActionClock_m0,fmtClock as fmtClock_m0,fmtElapsed as fmtElapsed_m0 } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
+import { elapsedSecondsBetween as elapsedSecondsBetween_m0 } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
 
 import assert_m1 from "node:assert/strict";
 import { describe as describe_m1,it as it_m1 } from "vitest";
@@ -25,39 +25,12 @@ import { appVersionTag as appVersionTag_m3,fmtAppVersion as fmtAppVersion_m3 } f
 const BOOTSTRAP_INSTANT = "2026-08-20T15:03:32.000Z";
 const RUN_STARTED = "2026-08-20T15:12:17.000Z";
 
-describe_m0("confirmed action timestamps", () => {
-  it_m0("distinguishes successive seconds in the operator's local clock", () => {
-    const at = new Date(2026, 8, 30, 9, 31, 14);
-    assert_m0.equal(fmtActionClock_m0(at.toISOString()), "09:31:14");
-    assert_m0.equal(fmtActionClock_m0(new Date(at.getTime() + 1_000).toISOString()), "09:31:15");
-    assert_m0.equal(fmtClock_m0(at.toISOString()), "9:31 AM");
-  });
-
-  it_m0("keeps midnight and end-of-day readings unambiguous", () => {
-    assert_m0.equal(fmtActionClock_m0(new Date(2026, 8, 30, 0, 0, 0).toISOString()), "00:00:00");
-    assert_m0.equal(fmtActionClock_m0(new Date(2026, 8, 30, 23, 59, 59).toISOString()), "23:59:59");
-  });
-
-  it_m0("refuses an invalid served instant", () => {
-    assert_m0.throws(() => fmtActionClock_m0("after the click"), /fmtActionClock: not an ISO instant/u);
-  });
-});
-
 describe_m0("a backwards elapsed is drawn, not clamped", () => {
   it_m0("returns the SIGNED interval so 'the clock is behind' cannot read as 'just now'", () => {
     assert_m0.equal(elapsedSecondsBetween_m0(RUN_STARTED, BOOTSTRAP_INSTANT), -525);
     assert_m0.equal(elapsedSecondsBetween_m0(BOOTSTRAP_INSTANT, RUN_STARTED), 525);
   });
 
-  it_m0("still renders a sub-second skew as 0s — this arm fires only on a real defect", () => {
-    assert_m0.equal(fmtElapsed_m0(elapsedSecondsBetween_m0("2026-08-20T15:00:00.400Z", "2026-08-20T15:00:00.000Z")), "0s");
-  });
-
-  it_m0("spells a genuinely negative interval with its sign, at every magnitude", () => {
-    assert_m0.equal(fmtElapsed_m0(-9), "-9s");
-    assert_m0.equal(fmtElapsed_m0(-525), "-8m 45s");
-    assert_m0.equal(fmtElapsed_m0(-7_260), "-2h 1m");
-  });
 });
 }
 
@@ -94,7 +67,7 @@ describe_m1("queue row timing", () => {
       "2026-08-04T07:07:26.828Z",
       isTerminalQueueStatus_m1,
     );
-    assert_m1.deepEqual(timing, { text: "1m 0s" });
+    assert_m1.deepEqual(timing, { text: "1m 00s" });
   });
 
   it_m1("keeps counting for a parked run — blocked and awaiting-approval have not ended", () => {
@@ -104,7 +77,7 @@ describe_m1("queue row timing", () => {
         "2026-08-04T07:08:26.828Z",
         isTerminalQueueStatus_m1,
       );
-      assert_m1.deepEqual(timing, { text: "2m 0s" }, status);
+      assert_m1.deepEqual(timing, { text: "2m 00s" }, status);
     }
   });
 

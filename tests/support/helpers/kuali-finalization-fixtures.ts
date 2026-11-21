@@ -85,6 +85,7 @@ export const FINALIZATION_EID = EidSchema.parse("10800000");
 export const FINALIZATION_NAME = "Deterministic Person";
 export const FINALIZATION_OTHER_EID = "10800001";
 export const FINALIZATION_TRANSACTION_NUMBER = "T009000001";
+export const FINALIZATION_EMPL_RECORD = "0";
 export const FINALIZATION_WORKFLOW_ID = "separations-kuali-finalization";
 export const FINALIZATION_NODE = "finalize-kuali";
 export const FINALIZATION_DEPARTMENT_NODE = "department-option";
@@ -184,14 +185,14 @@ hdh: true,
 export const FINALIZATION_JOB_SUMMARY_READ = UcpathJobSummaryReadSchema.parse({
   state: "read",
   summary: {
-    pageStateId: "ucpath.person-org.detail-ready",
+    pageStateId: "ucpath.workforce-job-summary.detail-ready",
     emplId: FINALIZATION_EID,
     displayedName: FINALIZATION_NAME,
     jobRows: [
       {
         rowIndex: 0,
         emplRecord: "0",
-        hrStatus: "Active",
+        hrStatus: { state: "present", value: "Active" },
         businessUnit: "SDCMP",
         effectiveDate: { state: "present", value: "06/01/2026" },
         positionNumber: { state: "present", value: "40012345" },
@@ -424,6 +425,7 @@ export async function finalizationHarness(
     emplId: FINALIZATION_EID,
     displayedName: FINALIZATION_NAME,
     nextTransactionId: FINALIZATION_TRANSACTION_NUMBER,
+    employmentRecords: [{ transactionId: FINALIZATION_TRANSACTION_NUMBER, emplRecord: FINALIZATION_EMPL_RECORD }],
     rows: [
       {
         transactionId: FINALIZATION_TRANSACTION_NUMBER,

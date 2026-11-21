@@ -1,31 +1,4 @@
-import { formatCalendarDate, formatInstantDate } from "../../../lib/date-format.js";
-
-/** A served ISO instant as the operator's wall clock (`3:07 PM`). */
-export function fmtClock(iso: string): string {
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) throw new Error(`fmtClock: not an ISO instant: ${iso}`);
-  const date = new Date(ms);
-  const h = date.getHours();
-  const suffix = h < 12 ? "AM" : "PM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(date.getMinutes()).padStart(2, "0")} ${suffix}`;
-}
-
-/** Confirmed action time in the operator's local wall clock, with seconds. */
-export function fmtActionClock(iso: string): string {
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) throw new Error(`fmtActionClock: not an ISO instant: ${iso}`);
-  const date = new Date(ms);
-  return [date.getHours(), date.getMinutes(), date.getSeconds()].map((part) => String(part).padStart(2, "0")).join(":");
-}
-
-/** Show negative elapsed as clock error; clamping would misreport future evidence as newly started. */
-export function fmtElapsed(sec: number): string {
-  if (sec < 0) return `-${fmtElapsed(-sec)}`;
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
-  return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
-}
+import { formatCalendarDate, formatDuration, formatInstantDate } from "../../../lib/date-format.js";
 
 /** Keep signed served intervals so clock skew cannot masquerade as zero elapsed. */
 export function elapsedSecondsBetween(fromIso: string, toIso: string): number {
@@ -51,12 +24,12 @@ export function runTiming(
   if (surface.endedAt.state === "present") {
     // Bare: the number stands alone. What keeps it from a live elapsed is the row's
     // terminal status beside it, not a word in front of it.
-    return { text: fmtElapsed(elapsedSecondsBetween(surface.startedAt, surface.endedAt.value)) };
+    return { text: formatDuration(elapsedSecondsBetween(surface.startedAt, surface.endedAt.value)) };
   }
   if (isTerminalStatus(surface.status)) {
     return { text: "duration unknown", title: surface.endedAt.reason };
   }
-  return { text: fmtElapsed(elapsedSecondsBetween(surface.startedAt, nowIso)) };
+  return { text: formatDuration(elapsedSecondsBetween(surface.startedAt, nowIso)) };
 }
 
 

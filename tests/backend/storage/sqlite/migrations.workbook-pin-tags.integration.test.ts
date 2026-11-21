@@ -31,9 +31,9 @@ function schema29Store() {
   return database;
 }
 
-it('is schema version 30, under the workbook payloads\' current 37', () => {
+it('is schema version 30, under the workbook payloads\' current 38', () => {
   expect(WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version).toBe(30);
-  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(37);
+  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(38);
 });
 
 it('upgrades every stored state and recorded action to unpinned with no manual tags, keeping actions immutable', () => {

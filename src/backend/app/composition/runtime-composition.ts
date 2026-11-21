@@ -5,6 +5,9 @@ import type { RuntimeIsolation } from "../../../models/config/define-runtime-iso
 import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 import type { WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 
+/** Raised only after the store, admission and backup have completed shutdown. */
+export class DashboardShutdownCompletedWithErrors extends AggregateError {}
+
 export interface RunningDashboard {
   readonly shutdownRequested?: Promise<void>;
   readonly port: number;
@@ -196,7 +199,11 @@ async function ownDashboardUntilShutdown(
     await ready?.();
     await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
   } catch (error) { failures.push(error); }
-  try { await running.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+  try { await running.stop(); }
+  catch (error) {
+    if (error instanceof DashboardShutdownCompletedWithErrors) process.exitCode = 1;
+    else if (!failures.includes(error)) failures.push(error);
+  }
   try { dispose?.(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, "dashboard lifetime and closure failed", { cause: failures[0] });
@@ -250,7 +257,17 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
         "the explain command needs its composition seam; start it through src/cli.ts, which registers composeExplainRuntime",
       );
     }
-    write(compose(input.isolation, args.slice(1)));
+    let output: string;
+    try {
+      output = compose(input.isolation, args.slice(1));
+    } catch (error) {
+      if (args[1] !== "run" || !(error instanceof z.ZodError)) throw error;
+      const issues = error.issues.map(issue => `${JSON.stringify(issue.path.map(String))} (${issue.code})`);
+      process.stderr.write(`explain run: invalid data at ${issues.join(", ")}\n`);
+      process.exitCode = 1;
+      return;
+    }
+    write(output);
     return;
   }
   if (command === "ocr") {

@@ -1,35 +1,35 @@
-import { memo, useMemo, type ReactNode } from "react";
-import { BriefcaseBusiness, Clock3, FileSearch, Folder, GraduationCap, LogOut, Search, UserPlus, Wrench } from "lucide-react";
+import { memo, type ReactNode } from "react";
 import { Tooltip, dsFocus } from "../../ds/ui.js";
 import type { WorkflowCategoryGroup, WorkflowGroupEntry } from "../workflows/workflow-category.js";
-import { workflowInitials, type WorkflowNavigationEntry } from "./workflow-rail-model.js";
-import { WorkflowHarnessTag } from "../workflows/mocks/workflow-harness-tag.js";
-
-const categoryIcons = { Search, Separations: LogOut, Onboarding: UserPlus, "Work Study": GraduationCap, Payroll: BriefcaseBusiness, Utils: Wrench, OnBase: FileSearch, Timekeeping: Clock3 };
+import type { WorkflowNavigationEntry } from "./workflow-rail-model.js";
+import { workflowIcon } from "../workflows/workflow-icons.js";
+import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
 
 const WorkflowNavigationRow = memo(function WorkflowNavigationRow({ node, selected, onSelect, metadata, unavailable, description }: {
   node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; unavailable?: string; description?: string;
 }) {
+  const Icon = workflowIcon(node.entry.icon);
   return <button type="button" aria-current={selected ? "page" : undefined} aria-label={node.entry.label} className={`${dsFocus} disabled:cursor-not-allowed disabled:text-ui-muted`} disabled={unavailable !== undefined} title={unavailable} aria-description={unavailable ?? description} onClick={() => onSelect(node.entry.id)}>
-    <span className="truncate">{node.entry.label}</span>{node.harness && <WorkflowHarnessTag harness={node.harness} />}{metadata}
+    <Icon aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{node.entry.label}</span>{node.harness && <WorkflowHarnessTag harness={node.harness} />}{metadata}
   </button>;
 });
 
-const WorkflowTile = memo(function WorkflowTile({ node, initials, selected, onSelect, metadata, description }: {
-  initials: string; node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; description?: string;
+const WorkflowTile = memo(function WorkflowTile({ node, selected, onSelect, metadata, description }: {
+  node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; description?: string;
 }) {
-  return <Tooltip side="right" content={node.entry.label}>
+  const Icon = workflowIcon(node.entry.icon);
+  return <Tooltip side="right" content={description ? `${node.entry.label} · ${description}` : node.entry.label}>
     <button type="button" aria-current={selected ? "page" : undefined} aria-label={node.entry.label} className={dsFocus} aria-description={description} onClick={() => onSelect(node.entry.id)}>
-      <span aria-hidden>{initials}</span>{metadata}
+      <Icon aria-hidden className="size-4 shrink-0" />{metadata}
     </button>
   </Tooltip>;
 });
 
-function WorkflowNavigationEntries({ nodes, active, onSelect, metadata, unavailable, description, collapsed, initials }: {
-  initials: ReadonlyMap<string, string>; nodes: readonly WorkflowGroupEntry<WorkflowNavigationEntry>[]; active: string; onSelect: (id: string) => void; metadata?: (id: string) => ReactNode; unavailable?: (id: string) => string | undefined; description?: (id: string) => string | undefined; collapsed?: boolean;
+function WorkflowNavigationEntries({ nodes, active, onSelect, metadata, unavailable, description, collapsed }: {
+  nodes: readonly WorkflowGroupEntry<WorkflowNavigationEntry>[]; active: string; onSelect: (id: string) => void; metadata?: (id: string) => ReactNode; unavailable?: (id: string) => string | undefined; description?: (id: string) => string | undefined; collapsed?: boolean;
 }) {
   if (collapsed) return <ul className="m-0 list-none p-0">{nodes.flatMap(node => [node, ...node.members]).map(node => <li key={node.entry.id}>
-    <WorkflowTile node={node} initials={initials.get(node.entry.label) ?? ""} selected={active === node.entry.id} onSelect={onSelect} metadata={metadata?.(node.entry.id)} description={description?.(node.entry.id)} /></li>)}</ul>;
+    <WorkflowTile node={node} selected={active === node.entry.id} onSelect={onSelect} metadata={metadata?.(node.entry.id)} description={description?.(node.entry.id)} /></li>)}</ul>;
   return <ul className="m-0 list-none p-0">{nodes.map(node => <li key={node.entry.id}>
     <WorkflowNavigationRow node={node} selected={active === node.entry.id} onSelect={onSelect} metadata={metadata?.(node.entry.id)} unavailable={unavailable?.(node.entry.id)} description={description?.(node.entry.id)} />
     {node.members.length > 0 && <div className="pl-[var(--ds-space-cozy)]"><ul aria-label={`Proving harnesses of ${node.entry.label}`} className="m-0 list-none p-0">
@@ -38,16 +38,13 @@ function WorkflowNavigationEntries({ nodes, active, onSelect, metadata, unavaila
   </li>)}</ul>;
 }
 
-export const WorkflowNavigation = memo(function WorkflowNavigation({ groups, active, onSelect, label, metadata, unavailable, description, collapsed }: {
-  collapsed?: boolean;
+export const WorkflowNavigation = memo(function WorkflowNavigation({ groups, active, onSelect, label, metadata, unavailable, description, collapsed, footer }: {
+  collapsed?: boolean; footer?: ReactNode;
   description?: (id: string) => string | undefined;
   groups: readonly WorkflowCategoryGroup<WorkflowNavigationEntry>[]; active: string; onSelect: (id: string) => void; label: string; metadata?: (id: string) => ReactNode; unavailable?: (id: string) => string | undefined;
 }) {
-  const initials = useMemo(() => workflowInitials(groups.flatMap(group => group.entries.flatMap(node => [node, ...node.members]).map(node => node.entry.label))), [groups]);
-  return <nav aria-label={label} className="workflow-rail" data-collapsed={collapsed || undefined}><div className="workflow-rail-groups">{groups.map(group => {
-    const Icon = categoryIcons[group.label as keyof typeof categoryIcons] ?? Folder;
-    return <section key={group.label} className="workflow-rail-group">{!collapsed && <h3><Icon aria-hidden className="size-3.5 shrink-0" />{group.label}</h3>}
-      <WorkflowNavigationEntries nodes={group.entries} active={active} onSelect={onSelect} metadata={metadata} unavailable={unavailable} description={description} collapsed={collapsed} initials={initials} />
-    </section>;
-  })}</div></nav>;
+  return <nav aria-label={label} className="workflow-rail" data-collapsed={collapsed || undefined}><div className="workflow-rail-groups">{groups.map(group =>
+    <section key={group.label} className="workflow-rail-group">{!collapsed && group.label !== "" && <h3>{group.label}</h3>}
+      <WorkflowNavigationEntries nodes={group.entries} active={active} onSelect={onSelect} metadata={metadata} unavailable={unavailable} description={description} collapsed={collapsed} />
+    </section>)}{footer}</div></nav>;
 });

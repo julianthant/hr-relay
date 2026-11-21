@@ -6,10 +6,11 @@ import type { RunDecisionWire } from "../../../models/dashboard/run-decision.js"
 import { projectDecision, rowActionOption } from "../decisions/project-decision.js";
 import { availableSections } from "./run-detail/availability.js";
 import { buildRunGate } from "./run-detail/gate-park.js";
+import { projectTypedSteps, type TypedStepView } from "./run-detail/typed-values.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
-import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { ocrChildRetryAvailable } from "../lifecycle/ocr-review-authority.js";
 import { aggregateMemberRetryAvailable } from "./run-retry.js";
-import { hostedOcrRun } from "./ocr-record-members.js";
+import { endedUnfinished, hostedOcrRun, offeredOcrReview } from "./ocr-record-members.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -34,7 +35,7 @@ import {
 } from "../commands/refusals.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { requireCanonicalRun } from "./run-read.js";
-import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
+import { assertRunTimelineCompatible, hasRunDescriptorDrift } from "./run-timeline-compatibility.js";
 import { readDelegationCancellation } from "../../storage/sqlite/delegation-authority.js";
 
 export { availableSections } from "./run-detail/availability.js";
@@ -95,6 +96,22 @@ function spanNotRunReason(
 }
 
 
+/** Nodes whose latest span skipped a branch this run did not take; the served timeline leaves them out of both stages and events. */
+function untakenBranchNodes(row: RunFoldRecord | undefined): ReadonlySet<string> {
+  const latest = new Map<string, RunFoldRecord["taskSpans"][number]>();
+  for (const span of row?.taskSpans ?? []) {
+    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
+    if (nodeId === undefined) continue;
+    const held = latest.get(nodeId);
+    if (held === undefined || (held.startedAt ?? held.endedAt ?? "").localeCompare(span.startedAt ?? span.endedAt ?? "") <= 0) latest.set(nodeId, span);
+  }
+  return new Set([...latest].flatMap(([nodeId, span]) => {
+    const reason = spanNotRunReason(span, nodeId);
+    return reason === "condition-false" || reason === "branch-not-selected" ? [nodeId] : [];
+  }));
+}
+
+
 function replaySourceOf(
   checkpoints: SubjectCheckpointSource,
   authority: RunRecord,
@@ -123,6 +140,8 @@ function buildTimelineSteps(
   runCancelled: boolean,
   replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
   wait: DelegationWaitState | null | undefined,
+  typed: ReadonlyMap<string, TypedStepView>,
+  untaken: ReadonlySet<string>,
 ): TimelineStepWire[] {
   type SpanFold = RunFoldRecord["taskSpans"][number];
   const spansByNode = new Map<string, SpanFold[]>();
@@ -184,12 +203,13 @@ function buildTimelineSteps(
     };
   };
 
-  const steps = timeline.map((category) => {
-    const members = category.nodes.map(memberOf);
+  const steps = timeline.flatMap((category) => {
+    const members = category.nodes.filter(node => !untaken.has(node.id)).map(memberOf);
+    if (members.length === 0) return [];
     const measured = members.filter((member) => member.durationMs !== undefined);
     const totalMs = measured.reduce((sum, member) => sum + (member.durationMs ?? 0), 0);
     const maxExecutions = Math.max(...members.map((member) => member.executions));
-    return TimelineStepWireSchema.parse({
+    return [TimelineStepWireSchema.parse({
       key: category.key,
       label: category.label,
       ...(category.system === undefined ? {} : { system: category.system }),
@@ -206,7 +226,8 @@ function buildTimelineSteps(
         ...(member.replayedFrom === undefined ? {} : { replayedFrom: member.replayedFrom }),
         ...(member.notRunReason === undefined ? {} : { notRunReason: member.notRunReason }),
       })),
-    });
+      ...(category.key === undefined ? {} : typed.get(category.key)),
+    })];
   });
   if (runCancelled) {
     const unfinished = steps.find(step => ["pending", "active", "blocked", "cancelled"].includes(step.state));
@@ -242,7 +263,8 @@ export function buildRunDetail(
       return latestByNode.get(nodeId);
     },
   };
-  if (descriptorView?.timeline?.some(category => category.key === undefined)) {
+  let timeline = descriptorView?.timeline;
+  if (timeline?.some(category => category.key === undefined)) {
     throw new LogIdentityRefusedError("timeline category identity is missing");
   }
   const olderDescriptor = descriptorView?.version !== authority.envelope.descriptorVersion
@@ -251,9 +273,19 @@ export function buildRunDetail(
   const nativeRecords = skipTimeline
     ? []
     : readTimelineRecords(deps.timeline, 0, runId).records;
-  if (olderDescriptor) assertRunTimelineCompatible(authority, descriptorView?.timeline, {
-    timeline: deps.timeline, authority: { listCheckpoints: readCheckpoints, listGateResults: id => deps.authority.listGateResults(id) },
-  }, row, skipTimeline ? undefined : nativeRecords);
+  if (olderDescriptor) {
+    const historicalNodes = assertRunTimelineCompatible(authority, timeline, {
+      timeline: deps.timeline, authority: { listCheckpoints: readCheckpoints, listGateResults: id => deps.authority.listGateResults(id) },
+    }, row, skipTimeline ? undefined : nativeRecords, hasRunDescriptorDrift(authority, descriptorView));
+    if (timeline !== undefined && historicalNodes.size > 0) {
+      const keys = new Set(timeline.map(category => category.key));
+      let key = "historical-steps";
+      for (let suffix = 2; keys.has(key); suffix++) key = `historical-steps-${suffix}`;
+      const labels = new Map(row?.taskSpans.map(span => [nodeIdOfTaskSpanPath(span.spanPath), span.name]));
+      timeline = [...timeline, { key, label: "Historical steps",
+        nodes: [...historicalNodes].map(id => ({ id, label: labels.get(id) ?? id })) }];
+    }
+  }
   const nativeOf = (record: (typeof nativeRecords)[number], nodeId?: string): NativeRunEventWire => {
     if (record.payload.kind !== "span" || !("runId" in record.payload.event)) throw new LogIdentityRefusedError("timeline event has no run identity");
     const event = record.payload.event;
@@ -264,8 +296,8 @@ export function buildRunDetail(
       attempt: event.attempt, spanPath: event.spanPath, ...(nodeId === undefined ? {} : { nodeId }) });
   };
   const categoryOf = (nodeId: string | undefined) => {
-    if (descriptorView?.timeline === undefined) return undefined;
-    const matches = descriptorView.timeline.filter(category => category.nodes.some(node => node.id === nodeId));
+    if (timeline === undefined) return undefined;
+    const matches = timeline.filter(category => category.nodes.some(node => node.id === nodeId));
     if (matches.length !== 1) throw new LogIdentityRefusedError("timeline node has no unique declared category");
     const match = matches[0];
     if (match === undefined) throw new LogIdentityRefusedError("timeline category identity is missing");
@@ -290,10 +322,13 @@ export function buildRunDetail(
     state: "absent",
     reason: "a gate is not a task span; the executor measures no duration for it",
   } as const;
+  const untaken = untakenBranchNodes(row);
   for (const span of row?.taskSpans ?? []) {
+    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
+    if (nodeId !== undefined && untaken.has(nodeId)) continue;
     const state = taskStateOf(span.outcome);
     // A skip without its recorded reason cannot imply a guarded condition or cancellation.
-    const spanReason = spanNotRunReason(span, nodeIdOfTaskSpanPath(span.spanPath));
+    const spanReason = spanNotRunReason(span, nodeId);
     const notRun = state !== "skipped"
       ? { state: "absent", reason: "this step ran" } as const
       : spanReason === undefined
@@ -304,7 +339,6 @@ export function buildRunDetail(
       || record.payload.event.spanPath !== span.spanPath || record.payload.event.attempt !== span.attempt) {
       throw new LogIdentityRefusedError("task span has no exact native event identity");
     }
-    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
     timelineEvents.push({
       native: nativeOf(record, nodeId),
       categoryKey: categoryOf(nodeId),
@@ -372,8 +406,8 @@ export function buildRunDetail(
         : requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled." };
   }
   const review = canonical === undefined ? undefined : canonical.database.withAuthorityReadSnapshot(() => {
-    const ocrRunId = authority.envelope.workflow === "ocr" ? runId : hostedOcrRun(canonical.database.authority, authority)?.envelope.runId;
-    return ocrRunId === undefined ? undefined : readOcrReviewAuthority(canonical.database.authority, canonical.reader, ocrRunId);
+    const ocr = authority.envelope.workflow === "ocr" ? authority : hostedOcrRun(canonical.database.authority, authority);
+    return ocr === undefined || endedUnfinished(authority) ? undefined : offeredOcrReview(canonical.database.authority, canonical.reader, ocr);
   });
   const reviewAvailable = review !== undefined;
   const childRetry = canonical === undefined || !(ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
@@ -415,16 +449,19 @@ export function buildRunDetail(
     timeline: {
       events: timelineWire,
 
-      ...(descriptorView?.timeline === undefined || row === undefined
+      ...(timeline === undefined || row === undefined
         ? {}
         : {
           steps: buildTimelineSteps(
-            descriptorView.timeline,
+            timeline,
             row,
             authority.lifecycle.state === "terminal",
             authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "cancelled",
             (nodeId) => replaySourceOf(checkpoints, authority, nodeId),
             delegationWait,
+            // Canonical-backed like the review read: the typed values are read against the exact descriptor and its graph.
+            canonical === undefined ? new Map() : projectTypedSteps(authority, canonical.descriptors.resolve(authority.envelope.workflow)),
+            untaken,
           ),
         }),
     },

@@ -80,6 +80,8 @@ export class AssistantHistoryRefusal extends Error {
 const refuse = (code: AssistantFailureCode): never => { throw new AssistantHistoryRefusal(code); };
 
 type Delivery = z.infer<typeof AssistantDeliverySchema>;
+/** Only an answered operator turn reaches the provider again; refused, delivery-unknown and sending turns stay local with their attachments. */
+const replayable = (row: Readonly<{ role: string; delivery: Delivery }>) => row.role !== "operator" || row.delivery === "answered";
 type Table = "assistant_conversations" | "assistant_messages" | "assistant_attachments";
 interface Ports {
   database: DatabaseSync;
@@ -230,6 +232,16 @@ export function createAssistantHistoryRepository(ports: Ports) {
 
   return Object.freeze({
     apply,
+    activityMetadata(now: string) {
+      const instant = Iso.parse(now);
+      const { id, kind, delivery, code, actionId, createdAt, updatedAt } = AssistantMessageRecordSchema.shape;
+      const metadata = z.strictObject({ id, kind, delivery, code, actionId, createdAt, updatedAt });
+      return ports.read(() => database.prepare(`SELECT m.id, m.kind, m.delivery, m.code, m.action_id AS actionId,
+        m.created_at AS createdAt, m.updated_at AS updatedAt FROM assistant_messages m
+        JOIN assistant_conversations c ON c.id=m.conversation_id
+        WHERE c.profile_id=? AND c.expires_at>? ORDER BY m.created_at, m.id`)
+        .all(ports.profileId(), instant).map(row => metadata.parse(row)));
+    },
     list(now: string): AssistantHistoryView {
       return ports.read(() => {
         const chats = database.prepare("SELECT * FROM assistant_conversations WHERE profile_id=? AND expires_at>? ORDER BY created_at DESC, id")
@@ -286,9 +298,9 @@ export function createAssistantHistoryRepository(ports: Ports) {
     turnAttachments: (messageId: string) => ports.read(() => files.ofMessage(messageId)),
     /** An accepted attachment of an owned, unexpired chat; undefined when gone, foreign or expired. */
     attachment: (conversationId: string, id: string, now: string) => ports.read(() => owned(conversationId, now) === undefined ? undefined : files.accepted(conversationId, id, now)),
-    /** Earlier rows with replay text, in order; never `inert` rows or the current turn. Operator turns carry their id for their attachments. */
+    /** Earlier rows with replay text, in order; never `inert` rows, the current turn or an operator turn without a definite answer. Operator turns carry their id for their attachments. */
     replay(conversationId: string, beforeOrdinal: number): readonly Readonly<{ role: "operator" | "assistant"; modelText: string; messageId?: string }>[] {
-      return ports.read(() => messages(conversationId).flatMap(row => row.ordinal < beforeOrdinal && row.modelText !== null && row.delivery !== "sending"
+      return ports.read(() => messages(conversationId).flatMap(row => row.ordinal < beforeOrdinal && row.modelText !== null && replayable(row)
         ? [{ role: row.role, modelText: row.modelText, ...(row.kind === "turn" ? { messageId: row.id } : {}) }] : []));
     },
     /** One guarded settlement; returns the new revision, or undefined when the turn is gone, expired or already settled. */
@@ -615,9 +627,9 @@ export function createAssistantM1HistoryRepository(ports: Ports & Readonly<{ epo
     }),
     /** An accepted attachment of an owned, unexpired chat; undefined when gone, foreign or expired. */
     attachment: (conversationId: string, id: string, now: string) => ports.read(() => owned(conversationId, now) === undefined ? undefined : files.accepted(conversationId, id, now)),
-    /** Earlier rows with replay text, in order; never `inert` rows or the current turn. Operator turns carry their id for their attachments. */
+    /** Earlier rows with replay text, in order; never `inert` rows, the current turn or an operator turn without a definite answer. Operator turns carry their id for their attachments. */
     replay(conversationId: string, beforeOrdinal: number, now: string): readonly Readonly<{ role: "operator" | "assistant"; modelText: string; messageId?: string }>[] {
-      return ports.read(() => { requireOwned(conversationId, now); return messages(conversationId).flatMap(row => row.ordinal < beforeOrdinal && row.modelText !== null && row.delivery !== "sending"
+      return ports.read(() => { requireOwned(conversationId, now); return messages(conversationId).flatMap(row => row.ordinal < beforeOrdinal && row.modelText !== null && replayable(row)
         ? [{ role: row.role, modelText: row.modelText, ...(row.kind === "turn" ? { messageId: row.id } : {}) }] : []); });
     },
     /** One guarded settlement; returns the new revision, or undefined when the turn is gone, expired or already settled. */

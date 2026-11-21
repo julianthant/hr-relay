@@ -17,8 +17,8 @@ function corrected(prefill?: string) {
       expectedVersion: 3, retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: 3,
         confirm: { title: "Check again", confirmLabel: "Check again", tone: "neutral" } },
       confirm: { title: "Enter EID", confirmLabel: "Enter EID", tone: "neutral" },
-      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["job-summary"],
-        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["job-summary"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
+      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check"],
+        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
     } });
 }
 
@@ -47,7 +47,7 @@ describe("failureDecision", () => {
       assert.deepEqual(decision.options.map(({ id, label, send, recommended }) => [id, label, send, recommended]), [
         ["mark-as-failed", "Mark as failed", annotate, true],
       ]);
-      assert.equal(decision.options[0]?.hint, "Ends this person's run as failed; files nothing.");
+      assert.equal(decision.options[0]?.hint, "Files nothing.");
       assert.equal(decision.options[0]?.input, undefined);
       assert.equal(decision.options.length, 1, "the approved failure card has no Add note action");
       assert.ok(decision.options.every(({ id }) => id !== "retry" && id !== "check-again"), "nothing after a committed write runs again from this card");

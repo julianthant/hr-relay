@@ -1,10 +1,10 @@
 import type { FormEvent, ReactNode } from "react";
 import { Ban, Check, CircleHelp, RotateCcw, X } from "lucide-react";
-import { Button, ChoicePicker } from "../../../ds/ui.js";
+import { Badge, Button, Card, ChoicePicker } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export type DecisionAnswered = Readonly<{ outcome: string; kind: "done" | "retry" | "rejected" | "cancelled"; time: string; by: string }>;
-export type DecisionChoiceOption = Readonly<{ value: string; label: string; hint: string }>;
+export type DecisionChoiceOption = Readonly<{ value: string; label: string; hint?: string }>;
 
 const answeredGlyph = {
   done: <Check aria-hidden className="size-4 shrink-0 text-ui-positive" />,
@@ -19,9 +19,9 @@ const answeredGlyph = {
  * Answered, the card stays with all its content and the actions become one line: glyph, outcome, then time and who in grey. `preview` (Explorer) shows the card without actions.
  * `inline` drops the box for a pick whose control is the step's own page card: the question follows it as a step line.
  */
-export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", confirmDisabled = false, noConfirm = false, answered, preview = false, inline = false, onConfirm, onCancel, children }: {
+export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", confirmDisabled = false, noConfirm = false, answered, preview = false, inline = false, extra, badge, onConfirm, onCancel, children }: {
   title: string; context?: string; tone?: "danger";
-  confirmLabel?: string; confirmDisabled?: boolean; noConfirm?: boolean; answered?: DecisionAnswered; preview?: boolean; inline?: boolean;
+  confirmLabel?: string; confirmDisabled?: boolean; noConfirm?: boolean; answered?: DecisionAnswered; preview?: boolean; inline?: boolean; extra?: ReactNode; badge?: string;
   onConfirm?: () => void; onCancel?: () => void; children?: ReactNode;
 }) {
   const actions = answered ? <p className="m-0 flex items-center gap-2 text-body text-ui-secondary" data-answered={answered.kind}>
@@ -29,6 +29,7 @@ export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", c
     <span><span className="font-medium text-ui-primary">{answered.outcome}</span> · <span className="tabular-nums">{answered.time}</span> · {answered.by}</span>
   </p> : !preview && <div className="flex flex-wrap gap-2">
     {!noConfirm && <Button type="submit" variant="primary" disabled={confirmDisabled}>{confirmLabel}</Button>}
+    {extra}
     {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>Cancel run</Button>}
   </div>;
   const submit = (event: FormEvent) => { event.preventDefault(); if (!preview && !answered && !confirmDisabled) onConfirm?.(); };
@@ -40,23 +41,25 @@ export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", c
     </p>
     {actions}
   </form>;
-  return <form aria-label={title} onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-ui-stroke bg-ui-panel p-4">
-    <div className="flex flex-col gap-2">
-      <h4 className={cn("m-0 text-heading", tone === "danger" && "text-ui-danger")}>{title}</h4>
-      {context && <p className="m-0 text-body text-ui-secondary">{context}</p>}
-    </div>
-    {children}
-    {actions}
-  </form>;
+  return <Card className="gap-3 p-4">
+    <form aria-label={title} onSubmit={submit} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2"><h4 className={cn("m-0 text-heading", tone === "danger" && "text-ui-danger")}>{title}</h4>{badge && <Badge tone="warning">{badge}</Badge>}</div>
+        {context && <p className="m-0 text-body text-ui-secondary">{context}</p>}
+      </div>
+      {children}
+      {actions}
+    </form>
+  </Card>;
 }
 
-/** A short choice list as a dropdown at a fixed narrow width; every option carries a one-line hint, and the recommended one comes preselected. */
+/** A short choice list as a dropdown at a fixed narrow width; an option may carry a one-line hint, and the recommended one comes preselected. */
 export function DecisionChoice({ label, options, value, onChange, disabled }: {
   label: string; options: readonly DecisionChoiceOption[]; value: string; onChange: (value: string) => void; disabled?: boolean;
 }) {
   const selected = options.find(option => option.value === value);
   return <div className="flex w-80 max-w-full flex-col gap-1 self-start">
     <ChoicePicker label={label} value={value} disabled={disabled} onChange={onChange} options={options.map(option => ({ value: option.value, label: option.label, description: option.hint }))} />
-    {selected && <p className="m-0 text-caption text-ui-muted">{selected.hint}</p>}
+    {selected?.hint && <p className="m-0 text-caption text-ui-muted">{selected.hint}</p>}
   </div>;
 }

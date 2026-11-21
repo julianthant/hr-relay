@@ -25,10 +25,9 @@ export function planWorkStudyTransaction(input: WorkStudyInputValue, read: Ucpat
   };
 }
 
-/** The transaction the Save files: exactly the planned values, for the person PayPath named when the plan was read. */
 export function workStudyTarget(plan: WorkStudyPlan): UcpathPayPathWorkStudyTarget {
   return {
-    emplId: plan.emplId, expectedName: plan.name, effectiveDate: plan.effectiveDate,
+    emplId: plan.emplId, expectedName: plan.name, positionNumber: plan.current.positionNumber, effectiveDate: plan.effectiveDate,
     positionChangeReason: plan.positionChangeReason, positionPool: plan.positionPool, comments: plan.comments,
   };
 }

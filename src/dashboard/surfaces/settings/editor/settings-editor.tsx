@@ -5,7 +5,6 @@ import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { settingsSectionGroups, formatSetting } from "./settings-draft-model.js";
 import { SettingsValueControl } from "./settings-controls.js";
-import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { timeoutReadableValue, timeoutSetting } from "../general/settings-timeouts-model.js";
 import { CompactSettingsSection } from "../general/ui-settings-records-general-paths.js";
 import { PerformanceSettingsSection } from "../general/ui-settings-records-performance.js";
@@ -28,7 +27,6 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
     <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
       {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
-      <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       {settingsSectionGroups(sectionId, leaves).map(group => <section key={group.title} className="settings-editor-group">
         <div className="settings-group-heading"><h2 className={cn(dsText.title, "m-0 font-medium text-[color:var(--ds-fg)]")}>{group.title}</h2></div>
         <FormGroup label={group.title} className="settings-group">
@@ -37,17 +35,13 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
             const operation = editor.draft[leaf.path];
             const custom = leaf.source === "settings";
             const requiredJobEndDate = leaf.path.startsWith("annualDates.") && leaf.path.endsWith(".jobEndDate");
-            const shownCurrent = timeoutSetting(leaf.path) !== undefined && leaf.effectiveValue !== undefined
-              ? timeoutReadableValue(leaf, leaf.effectiveValue)
-              : formatSetting(leaf.effectiveValue);
             const shownDefault = timeoutSetting(leaf.path) !== undefined && leaf.defaultValue !== undefined
               ? timeoutReadableValue(leaf, leaf.defaultValue)
               : formatSetting(leaf.defaultValue);
               return <div key={leaf.path} data-settings-path={leaf.path} className="settings-row">
-                <SettingsValueControl leaf={leaf} operation={operation} error={editor.errors[leaf.path]} disabled={editor.locked} update={raw => editor.update(leaf.path, raw)} />
+                <SettingsValueControl leaf={leaf} operation={operation} error={editor.errors[leaf.path]} disabled={editor.locked} update={(raw, immediate) => editor.update(leaf.path, raw, immediate)} />
               {leaf.validity === "unset" && <span className={cn(dsText.meta, "settings-row-hazard text-[color:var(--ds-status-waiting-fg)]")}>Not set</span>}
               {(custom || operation !== undefined) && <div className="settings-row-actions">
-                {editor.save.state === "conflict" && operation !== undefined && <span className={cn(dsText.meta, "w-full text-[color:var(--ds-fg-muted)]")}>Current value: {shownCurrent}</span>}
                 {custom && !requiredJobEndDate && operation?.kind !== "clear" && <Button size="sm" variant="ghost" title={`Standard value: ${shownDefault}`} onClick={() => editor.clear(leaf.path)} disabled={editor.locked}>Restore standard</Button>}
               </div>}
               {leaf.hazard !== undefined && <span className={cn(dsText.meta, "settings-row-hazard text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</span>}

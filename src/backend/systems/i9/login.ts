@@ -2,7 +2,7 @@ import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { recordBrowserAction } from "../browser-shared/action-notes.js";
 import { defineVerifiedLoginRecipe } from "../browser-shared/authenticated-application.js";
 import { BrowserLoginError, type AuthenticatedApplicationVerifier, type SystemLoginContext, type SystemLoginRecipe } from "../browser-shared/login-contract.js";
-import { fillSsoCredentials, raceCancellation, ssoSubmitButton, submitSsoForm, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForSsoForm } from "../browser-shared/ucsd-sso.js";
+import { raceCancellation, ssoSubmitButton, submitSsoForm, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForSsoForm } from "../browser-shared/ucsd-sso.js";
 import { I9_APP_ORIGIN, I9_UI_REGISTRY as ui } from "./driver/ui-registry.js";
 
 function isI9AppHost(raw: string): boolean {
@@ -99,7 +99,6 @@ const loginRecipe = defineVerifiedLoginRecipe({
         await waitForSsoForm("i9", context, token);
         context.assertCurrent();
         if (new URL(page.url()).origin !== "https://a5.ucsd.edu") throw new BrowserLoginError("i9", "sso-form", "the UCSD SSO form is on an unexpected origin", page.url());
-        await fillSsoCredentials("i9", context, token);
         await submitSsoForm("i9", context, token);
         await waitForAuthenticatedLanding("i9", context, token, isI9AppHost, config.timeouts.duoApprovalSeconds * 1_000);
       }

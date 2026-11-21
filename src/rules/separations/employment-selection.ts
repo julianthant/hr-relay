@@ -1,4 +1,4 @@
-/** Which employment row a separation is filed against: exactly one active row or refuse, computed unconditionally from the grid classification, while the operator still sees every row at the gate. */
+/** Which employment row a separation is filed against: the job the form's Student Title Code names, else exactly one active row or the only record when UCPath shows no status for it, else refuse; computed from the classification while the operator still sees every row at the gate. */
 import { z } from "zod";
 import type { UcpathJobRow } from "../../models/ui/ucpath-job-summary.js";
 import { UcpathJobCellSchema } from "../../models/ui/ucpath-job-summary.js";
@@ -6,6 +6,12 @@ import {
   KualiPayrollTitleCodeSchema,
   KualiPayrollTitleSchema,
 } from "../../models/ui/kuali-separation-finalization.js";
+import {
+  KUALI_BLANK_OPTION_TEXT,
+  KualiOptionFieldSchema,
+  KualiTextFieldSchema,
+} from "../../models/ui/kuali-separation-document.js";
+import type { JobSummaryClassification } from "./job-summary-classification.js";
 import { classifyJobSummary } from "./job-summary-classification.js";
 
 export const EMPLOYMENT_SELECTION_REFUSAL_CODES = [
@@ -19,6 +25,14 @@ export const EMPLOYMENT_SELECTION_REFUSAL_CODES = [
   "payroll-title-code-unreadable",
   /** The active Job Title is blank or cannot be staged. */
   "payroll-title-unreadable",
+  /** The Student Title Code is filled with something that is not a title code. */
+  "requested-title-unreadable",
+  /** The comments and the Student Title Code name different jobs. */
+  "requested-title-conflict",
+  /** The job the form names is no longer active. */
+  "requested-employment-inactive",
+  /** No row carries the title the form names, and no single student job stands in for it. */
+  "requested-title-not-found",
 ] as const;
 export const EmploymentSelectionRefusalCodeSchema = z.enum(EMPLOYMENT_SELECTION_REFUSAL_CODES);
 export type EmploymentSelectionRefusalCode = z.infer<typeof EmploymentSelectionRefusalCodeSchema>;
@@ -28,7 +42,7 @@ export const SelectedEmploymentSchema = z.strictObject({
   rowIndex: z.number().int().nonnegative(),
   /** The `Empl Record` the UCPath termination is filed against. */
   emplRecord: z.string().min(1),
-  /** HR Status, VERBATIM — the word UCPath used, which is what the operator reads. */
+  /** HR Status, VERBATIM — the word UCPath used, which is what the operator reads — or why no status shows. */
   hrStatus: z.string().min(1),
   businessUnit: z.string().min(1),
   /** The Dept ID cell, PASSED THROUGH — `match-department-option` owns its refusal. */
@@ -54,56 +68,169 @@ export const EmploymentSelectionSchema = z.discriminatedUnion("state", [
 ]);
 export type EmploymentSelection = z.infer<typeof EmploymentSelectionSchema>;
 
+/** What the Kuali form says about WHICH job ends: its Student Title Code and the comments that may name a STDT level. */
+export const EmploymentRequestSchema = z.strictObject({
+  studentTitleCode: KualiOptionFieldSchema,
+  additionalComments: KualiTextFieldSchema,
+});
+export type EmploymentRequest = z.infer<typeof EmploymentRequestSchema>;
+
+const STDT_LEVEL_CODES: Readonly<Record<string, string>> = { "2": "004921", "3": "004920", "4": "004919" };
+const STDT_JOB_CODES = new Set(Object.values(STDT_LEVEL_CODES));
+
+type Refusal = Extract<EmploymentSelection, { state: "refused" }>;
+
+function refuse(code: EmploymentSelectionRefusalCode, reason: string): Refusal {
+  return { state: "refused", code, reason };
+}
+
+/** `4920` and `004920` are the same title code; anything else is not one. */
+function normalizeJobCode(code: string): string | undefined {
+  const digits = /^(\d{4,6})$/u.exec(code.trim())?.[1];
+  return digits === undefined ? undefined : digits.padStart(6, "0");
+}
+
+function requestedJobCode(request: EmploymentRequest): { code: string | undefined } | Refusal {
+  let selected: string | undefined;
+  const title = request.studentTitleCode;
+  if (title.state === "present" && title.value.trim() !== KUALI_BLANK_OPTION_TEXT) {
+    const digits = /^(\d{4,6})\s*-/u.exec(title.value.trim())?.[1];
+    if (digits === undefined) {
+      return refuse("requested-title-unreadable", `the form's Student Title Code ${JSON.stringify(title.value)} `
+        + "does not start with a title code, so it cannot say which job ends.");
+    }
+    selected = digits.padStart(6, "0");
+  }
+  const comments = request.additionalComments.state === "present" ? request.additionalComments.value : "";
+  const named = new Set(Array.from(comments.matchAll(/\bSTDT\s*([234])\b/giu), (match) => STDT_LEVEL_CODES[match[1] ?? ""]));
+  if (named.size > 1) {
+    return refuse("requested-title-conflict", `the form's comments name more than one student title (${comments}); `
+      + "correct the form before a job is separated.");
+  }
+  const fromComment = [...named][0];
+  if (fromComment !== undefined && selected !== undefined && fromComment !== selected) {
+    return refuse("requested-title-conflict", `the form's comments name job ${fromComment}, but its Student Title `
+      + `Code names ${selected}; correct the form before a job is separated.`);
+  }
+  return { code: fromComment ?? selected };
+}
+
+function jobKey(row: UcpathJobRow): string {
+  if (row.positionNumber.state === "present") return `${row.emplRecord}|${row.positionNumber.value}`;
+  return `${row.emplRecord}|${row.jobCode.state === "present" ? normalizeJobCode(row.jobCode.value) ?? "" : ""}`;
+}
+
+function isStudentJob(row: UcpathJobRow): boolean {
+  const code = row.jobCode.state === "present" ? normalizeJobCode(row.jobCode.value) : undefined;
+  return (code !== undefined && STDT_JOB_CODES.has(code))
+    || (row.jobTitle.state === "present" && /\bSTDT\b/iu.test(row.jobTitle.value));
+}
+
 function describeRows(rows: readonly UcpathJobRow[]): string {
   return rows
-    .map((row) => `#${String(row.rowIndex)} empl record ${row.emplRecord} — ${row.hrStatus}`)
+    .map((row) => `#${String(row.rowIndex)} empl record ${row.emplRecord} — ${row.hrStatus.state === "present" ? row.hrStatus.value : "status not shown"}`)
     .join("; ");
 }
 
 export function selectSeparationEmployment(
   rows: readonly UcpathJobRow[],
+  request: EmploymentRequest,
 ): EmploymentSelection {
   const classification = classifyJobSummary(rows);
+  const requested = requestedJobCode(request);
+  if ("state" in requested) return EmploymentSelectionSchema.parse(requested);
+  const chosen = requested.code === undefined
+    ? selectWithoutTitle(rows, classification)
+    : selectByTitle(rows, classification, requested.code);
+  if ("state" in chosen) return EmploymentSelectionSchema.parse(chosen);
+  return stageEmployment(chosen.row, classification.rowCount);
+}
+
+function tierOf(classification: JobSummaryClassification, row: UcpathJobRow) {
+  const classified = classification.rows.find((entry) => entry.rowIndex === row.rowIndex);
+  if (classified === undefined) {
+    throw new Error(
+      `the job-summary classification carries no row ${String(row.rowIndex)}; the two are derived from one `
+      + "list, so this is a fabricated classification",
+    );
+  }
+  return classified.tier;
+}
+
+/** The form names a title: it must name the person's one open job; several open jobs refuse, because the termination's pending-transaction sweep and duplicate check are scoped to the person, not to one empl record. */
+function selectByTitle(
+  rows: readonly UcpathJobRow[],
+  classification: JobSummaryClassification,
+  code: string,
+): { row: UcpathJobRow } | Refusal {
+  const openJobs = new Set(rows.filter((row) => tierOf(classification, row) !== "inactive").map(jobKey));
+  if (openJobs.size > 1) {
+    return refuse("concurrent-active-employments", `the form names job ${code}, and UCPath shows `
+      + `${String(openJobs.size)} jobs that are not terminated (${describeRows(rows)}). The termination's `
+      + "pending-transaction and duplicate checks cover the whole person, not one job, so this run separates "
+      + "only a person with one open job.");
+  }
+  const matches = rows.filter((row) => row.jobCode.state === "present" && normalizeJobCode(row.jobCode.value) === code);
+  if (matches.length > 0) {
+    const open = matches.filter((row) => tierOf(classification, row) !== "inactive");
+    const [only] = open;
+    if (only === undefined) {
+      return refuse("requested-employment-inactive", `the form names job ${code}, and UCPath shows that job is no `
+        + `longer active (${describeRows(matches)}). Its termination may already be filed; this run files no second `
+        + "one and ends no other job.");
+    }
+    return statusChecked(only, classification, rows);
+  }
+  if (new Set(rows.map(jobKey)).size === 1) return selectWithoutTitle(rows, classification);
+  const studentJobs = rows.filter((row) => isStudentJob(row) && tierOf(classification, row) !== "inactive");
+  const [studentJob] = studentJobs;
+  if (studentJobs.length === 1 && studentJob !== undefined) return statusChecked(studentJob, classification, rows);
+  return refuse("requested-title-not-found", `the form names job ${code}, but UCPath shows ${describeRows(rows)}. `
+    + "This run ends no job the form did not name.");
+}
+
+function statusChecked(
+  row: UcpathJobRow,
+  classification: JobSummaryClassification,
+  rows: readonly UcpathJobRow[],
+): { row: UcpathJobRow } | Refusal {
+  const tier = tierOf(classification, row);
+  if (tier === "active" || (tier === "not-shown" && rows.length === 1)) return { row };
+  return refuse("indeterminate-employment-status", `UCPath rendered the job the form names with an HR status this `
+    + `system does not recognize (${describeRows([row])}); a termination is filed only against a job known to be active.`);
+}
+
+function selectWithoutTitle(
+  rows: readonly UcpathJobRow[],
+  classification: JobSummaryClassification,
+): { row: UcpathJobRow } | Refusal {
   if (classification.disposition === "indeterminate-status") {
-    return EmploymentSelectionSchema.parse({
-      state: "refused",
-      code: "indeterminate-employment-status",
-      reason: `UCPath rendered ${String(classification.unknownRowCount)} of `
-        + `${String(classification.rowCount)} employment rows with an HR status this system does not `
-        + `recognize (${describeRows(rows)}). "Is this person still employed" has no answer while one of `
-        + "their employments does not, and a termination is filed against ONE of them.",
-    });
+    return refuse("indeterminate-employment-status", `UCPath rendered ${String(classification.unknownRowCount)} of `
+      + `${String(classification.rowCount)} employment rows with an HR status this system does not `
+      + `recognize (${describeRows(rows)}). "Is this person still employed" has no answer while one of `
+      + "their employments does not, and a termination is filed against ONE of them.");
   }
   if (classification.disposition === "no-active-job") {
-    return EmploymentSelectionSchema.parse({
-      state: "refused",
-      code: "no-active-employment",
-      reason: `UCPath shows no active employment for this person (${describeRows(rows)}). They may `
-        + "already be fully separated (S21/S22) — legacy computes this only when the search happened to "
-        + "render a multi-row grid, which is why a single-employment person who was already terminated "
-        + "was never checked at all. There is no employment for this separation to end.",
-    });
+    return refuse("no-active-employment", `UCPath shows no active employment for this person (${describeRows(rows)}). `
+      + "They may already be fully separated. There is no employment for this separation to end.");
   }
   if (classification.disposition === "concurrent-active-jobs") {
-    return EmploymentSelectionSchema.parse({
-      state: "refused",
-      code: "concurrent-active-employments",
-      reason: `UCPath shows ${String(classification.activeRowCount)} concurrent active employments `
-        + `(${describeRows(rows)}). Which job is being separated is not derivable from the separation `
-        + "document, and picking one would end an appointment nobody named (S23). A case that genuinely "
-        + "needs this is a §3.1 recomposition, not a tiebreak invented here.",
-    });
+    return refuse("concurrent-active-employments", `UCPath shows ${String(classification.activeRowCount)} concurrent `
+      + `active employments (${describeRows(rows)}), and the form names no Student Title Code that picks one. `
+      + "Picking one would end an appointment nobody named.");
   }
-
-  const active = rows.find((row) => classification.rows
-    .some((classified) => classified.rowIndex === row.rowIndex && classified.tier === "active"));
-  if (active === undefined) {
+  const selectedTier = classification.disposition === "sole-record" ? "not-shown" : "active";
+  const row = rows.find((candidate) => tierOf(classification, candidate) === selectedTier);
+  if (row === undefined) {
     throw new Error(
-      "the job-summary classification reported exactly one active row and no grid row carries its "
+      "the job-summary classification reported exactly one selectable row and no grid row carries its "
       + "index; the two are derived from one list, so this is a fabricated classification",
     );
   }
+  return { row };
+}
 
+function stageEmployment(active: UcpathJobRow, rowCount: number): EmploymentSelection {
   const payrollTitleCode = KualiPayrollTitleCodeSchema.safeParse(
     active.jobCode.state === "present" ? active.jobCode.value : undefined,
   );
@@ -135,14 +262,14 @@ export function selectSeparationEmployment(
     employment: {
       rowIndex: active.rowIndex,
       emplRecord: active.emplRecord,
-      hrStatus: active.hrStatus,
+      hrStatus: active.hrStatus.state === "present" ? active.hrStatus.value : `Not shown (${active.hrStatus.reason})`,
       businessUnit: active.businessUnit,
       deptId: active.deptId,
       department: active.department,
       payrollTitleCode: payrollTitleCode.data,
       payrollTitle: payrollTitle.data,
       effectiveDate: active.effectiveDate,
-      rowCount: classification.rowCount,
+      rowCount,
     },
   });
 }

@@ -1,6 +1,7 @@
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { testRunService, testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
+import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registry.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { executeClaimedRun, type RunExecutionAuthority, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
@@ -15,15 +16,29 @@ import { SeparationsMatchDepartmentOption } from "../../../../src/models/workflo
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { COMPARISON_NODE, DEPARTMENT_NODE, GATE_NODE, JOB_SUMMARY_NODE, NAME_SEARCH_NODE } from "../../../../src/workflows/separations/workflow.js";
 import { UUID_7 } from "../../fixtures/phase1c-contract-fixtures.js";
-import { FINALIZATION_JOB_SUMMARY_READ, FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_NOW, FINALIZATION_RUN_ID, FINALIZATION_RUN_INPUT, FINALIZATION_SCOPE_OUTPUTS, FINALIZATION_WORKER_ID, finalizationHarness, finalizationQueuedRun, type FinalizationHarness } from "../kuali-finalization-fixtures.js";
+import { FINALIZATION_EMPL_RECORD, FINALIZATION_JOB_SUMMARY_READ, FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_NOW, FINALIZATION_RUN_ID, FINALIZATION_RUN_INPUT, FINALIZATION_SCOPE_OUTPUTS, FINALIZATION_WORKER_ID, finalizationHarness, finalizationQueuedRun, type FinalizationHarness } from "../kuali-finalization-fixtures.js";
 import { ManualScheduler, recordingLogger } from "../phase1f-executor-harness.js";
 import { separationsKualiFinalizationDescriptor } from "../registered-workflows.js";
 
-
-
-
+const filingTask = ucpathStore.tasks.verifyTerminationFilingPresent;
+const fixtureUcpathStore = defineBrowserStore("ucpath", ucpathStore.driver, ucpathStore.session, {
+  ...ucpathStore.tasks,
+  verifyTerminationFilingPresent: defineTask(ucpathStore.driver, filingTask.contract, {
+    ...filingTask.impl,
+    run: ({ input, ctx }) => filingTask.impl.run({
+      input: { ...input, expectedEmplRecord: FINALIZATION_EMPL_RECORD },
+      ctx,
+    }),
+  }),
+});
+const stores = defineTaskStoreRegistry(
+  taskStoreRegistry.stores.map((store) => store === ucpathStore ? fixtureUcpathStore : store),
+  taskStoreRegistry.corpus,
+);
 
 export function createFinalizationTerminalTestWorld(retainedBinding?: import("../../../../src/models/write-safety/protected-input.js").ProtectedInputBinding) {
   const open: FinalizationHarness[] = [];
@@ -43,7 +58,7 @@ export function createFinalizationTerminalTestWorld(retainedBinding?: import("..
     return {
       lifecycle: testRunLifecycle(value.database, value.clock),
       descriptor: separationsKualiFinalizationDescriptor,
-      stores: taskStoreRegistry,
+      stores,
       authority,
       sessions: value.sessions,
       emitter: value.emitter.emitter,

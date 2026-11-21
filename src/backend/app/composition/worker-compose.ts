@@ -66,7 +66,7 @@ import { createDiagnosticCaptureService } from "../../logs/diagnostics/diagnosti
 import { createRunBrowserScreenshotCapture, createRunDiagnosticCapture } from "../../logs/diagnostics/run-diagnostic-capture.js";
 import { withCurrentSettings, readAdmittedProfileIdentity, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
-import { createDebugEventWriter, emitFaultWithCauses } from "../../logs/debug-events.js";
+import { createDebugEventWriter, emitFaultWithCauses, emitOptionalDiagnostic } from "../../logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
 
 
@@ -81,8 +81,16 @@ export { createTimeoutDeadlineScheduler };
 
 // Worker stdout carries ids, states, codes and counts only; every other task field stays in the run log.
 const STDOUT_LOG_FIELDS: ReadonlySet<string> = new Set(["runId", "workerId", "nodeId", "taskId", "requestId", "writeIntentId", "attempt",
-  "state", "status", "code", "capability", "method", "boundary", "errorName", "HDH department",
+  "state", "status", "code", "capability", "method", "boundary", "captureFailure", "errorName", "HDH department",
   "candidates", "rosterRows", "subjects", "eidCellsUnusable", "nameCellsUnusable"]);
+
+export function workerSessionDiagnostics(writer: ReturnType<typeof createDebugEventWriter>): NonNullable<Parameters<typeof createRunResourcesFactory>[0]["onDebug"]> {
+  return (category, workerId, event) => {
+    const emit = () => writer.emit({ category, ...event }, { kind: "worker", workerId });
+    if (event.pinned) emit();
+    else emitOptionalDiagnostic(emit);
+  };
+}
 
 /** Structured stdout logging for the worker CLI process (never `console.*`). */
 export function lineTaskLogger(write: (line: string) => void, clock: Clock): TaskLogger {
@@ -335,7 +343,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const admission = issued;
   const assertCurrent = (): void => withOperationProof(() => admission.assertProfileRuntime());
   const assertBrowserRoot = (root: string): void => { assertCurrent(); assertProfileBrowserRoot(admission, root); };
-  const slowOperations = createSlowOperationEvents("worker");
+  const slowOperations = createSlowOperationEvents("worker", clock);
   let opened: AuthorityDatabase | undefined;
   const bound = (() => {
     try {
@@ -478,9 +486,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const workerNominatim = input.lifetimeLock instanceof RuntimeLifetimeLock ? undefined : createNominatimWorkerAdapter(clock);
   resources = createRunResourcesFactory({runReader:runRecordService,duo,ocr,nominatim:workerNominatim ?? createNominatimGeocodeAdapter({clock}),preflight:runtimePreflight,admission,database,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
-    onDebug: (category, debugWorkerId, event) => {
-      debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
-    },
+    onDebug: workerSessionDiagnostics(debugEvents),
     assertProfileOwner: requestedWorkerId => withOperationProof(() => {
       assertCurrent();
       if (requestedWorkerId !== workerId) throw new Error("browser-profile-worker-owner-mismatch");

@@ -11,7 +11,8 @@ import {
   type ProposedStatus,
 } from "../shared/status/status-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
-import { elapsedSecondsBetween, fmtElapsed } from "../shared/status/format.js";
+import { elapsedSecondsBetween } from "../shared/status/format.js";
+import { formatDuration } from "../../lib/date-format.js";
 
 /** ONE ROW'S ⓘ CONTENT, as a fold rather than as JSX.
  * WHAT THE ⓘ IS FOR, in the operator's own words */
@@ -56,6 +57,20 @@ export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: str
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
+
+/** A queued run that already reports what it is doing has begun starting: the row and panel say Starting, not Queued. */
+export function isStarting(surface: Pick<QueueSurfaceWire, "status" | "liveMessage" | "surfaceKind">): boolean {
+  return surface.surfaceKind !== "operation" && dsStatusOf(surface.status) === "queued" && surface.liveMessage.state === "present";
+}
+
+export const STARTING_LABEL = "Starting";
+
+/** A run held only by the operator's Duo approval; the served `operatorWait` is the sole source, never the live message. */
+export const NEEDS_DUO_LABEL = "Needs Duo";
+export function isNeedsDuo(surface: Pick<QueueSurfaceWire, "operatorWait">): boolean {
+  return surface.operatorWait.state === "present";
+}
+export const NEEDS_DUO_MEANING = "Relay is waiting for your Duo approval. Approve the sign-in on your phone to continue.";
 
 export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 
@@ -243,7 +258,7 @@ export function queueRowTitleTooltip(surface: QueueSurfaceWire): string | undefi
 /** Share gate-age measurement with its accessible name; missing gate instants never become zero. */
 export function queueGateAge(surface: QueueSurfaceWire, nowIso: string): string | undefined {
   return surface.gateOpenedAt.state === "present"
-    ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
+    ? formatDuration(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
     : undefined;
 }
 

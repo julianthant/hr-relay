@@ -452,8 +452,8 @@ the boundary for deliberate loss of protection. The inventory still uses machine
 and activation fields; this prose does not alter their schema or statuses.
 
 The workflow-ID guard (`no-workflow-id-branches`) admits registered ids in generic code only at the
-files, and the one directory prefix `src/dashboard/surfaces/workflows/mocks/`, listed with a reason
-for named ids; a new branch elsewhere, a stale entry or a missing reason fails.
+files listed with a reason for named ids; a new branch elsewhere, a stale entry or a missing reason fails.
+The `src-imports-no-tests` guard fails when a module under `src/` imports from `tests/` or from a path named `mocks`.
 
 ### 5.1 Required source scanners
 

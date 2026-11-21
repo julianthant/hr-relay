@@ -65,7 +65,8 @@ Well, Notice,
 import { cn } from "../../lib/utils.js";
 import { useIntakeClient as useDashboardClient } from "./intake-client.js";
 import { type CommandProblem } from "./intake-command-model.js";
-import { fmtClock,plural,pluralize,shortHash } from "../shared/status/format.js";
+import { plural, pluralize, shortHash } from "../shared/status/format.js";
+import { formatTime } from "../../lib/date-format.js";
 import {
 correctionEditorLabel,
 correctionText,
@@ -169,7 +170,7 @@ function SourceBand({
               `sha ${shortHash(session.artifact.sha256)}`,
               `${plural(session.rowCount, "row")} read`,
               `${String(session.columns.length)} columns`,
-              `uploaded ${fmtClock(session.createdAt)}`,
+              `uploaded ${formatTime(session.createdAt)}`,
             ]}
           />
         </span>
@@ -522,8 +523,8 @@ function ValidationReview({
     <div className="flex flex-col gap-[var(--ds-space-loose)]">
       <MetaLine
         items={[
-          `validated ${fmtClock(validation.validatedAt)}`,
-          `values read as of ${fmtClock(validation.readAt)}`,
+          `validated ${formatTime(validation.validatedAt)}`,
+          `values read as of ${formatTime(validation.readAt)}`,
         ]}
       />
 
@@ -624,7 +625,7 @@ function RejectedRowsTable({
   return (
     <div className="flex flex-col gap-[var(--ds-space-cozy)]">
       <div className="overflow-x-auto">
-        <Table label={INTAKE_REVIEW_COPY.tableLabel} className="min-w-[52rem]">
+        <Table label={INTAKE_REVIEW_COPY.tableLabel}>
           <THead>
             <TR>
               <TH align="right">{INTAKE_REVIEW_COPY.columns[0]}</TH>
@@ -703,7 +704,7 @@ function RejectedRowsTable({
         >
           <span
             id="intake-correction-editor-heading"
-            className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}
+            className={cn(dsText.ui, "font-medium", "text-[color:var(--ds-fg)]")}
           >
             {correctionEditorLabel(correction.sourceRow, labelOf(correction.field))}
           </span>
@@ -743,7 +744,7 @@ function RejectedRowsTable({
         >
           <span
             id="intake-exclusion-editor-heading"
-            className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}
+            className={cn(dsText.ui, "font-medium", "text-[color:var(--ds-fg)]")}
           >
             {exclusionEditorLabel(exclusion.sourceRow)}
           </span>
@@ -802,7 +803,6 @@ function EvidencePager<T>({
         <Button
           size="sm"
           variant="secondary"
-          className="min-h-[44px]"
           disabled={page.pageIndex === 0}
           onClick={() => page.goToPage(page.pageIndex - 1)}
         >
@@ -811,7 +811,6 @@ function EvidencePager<T>({
         <Button
           size="sm"
           variant="secondary"
-          className="min-h-[44px]"
           disabled={page.pageIndex === page.pageCount - 1}
           onClick={() => page.goToPage(page.pageIndex + 1)}
         >
@@ -827,7 +826,7 @@ function ManifestRows({ manifestId, rows }: { manifestId: string; rows: readonly
   return (
     <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
       <div className="max-w-full overflow-x-auto">
-        <Table label="Source row dispositions" className="min-w-[52rem]">
+        <Table label="Source row dispositions">
           <THead>
             <TR>
               <TH align="right">Row</TH>
@@ -953,7 +952,7 @@ function ChangedInputRows({
   return (
     <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
       <div className="max-w-full overflow-x-auto">
-        <Table label="Changed input hashes" className="min-w-[44rem]">
+        <Table label="Changed input hashes">
           <THead>
             <TR><TH>Item</TH><TH>Previous input hash</TH><TH>Current input hash</TH></TR>
           </THead>
@@ -997,7 +996,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
       <section className="flex flex-col gap-[var(--ds-space-cozy)]">
         <Notice sticky tone="warning" title="Already enqueued with this plan" description="Running it again files the same rows twice." />
         <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
-          <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${fmtClock(stage.createdAt)}`]} />
+          <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${formatTime(stage.createdAt)}`]} />
           <IdentifierPopover
             label="Show full prior manifest identifier"
             title="Prior manifest identifier"
@@ -1009,7 +1008,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
   }
   return (
     <section className="flex flex-col gap-[var(--ds-space-cozy)]">
-      <Banner tone="info" title={`Compared with ${shortHash(stage.manifestId)}…, made ${fmtClock(stage.createdAt)}`}>
+      <Banner tone="info" title={`Compared with ${shortHash(stage.manifestId)}…, made ${formatTime(stage.createdAt)}`}>
         This plan differs from the selected earlier import. The changed file, mapping, schema and membership facts are below.
       </Banner>
       <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
@@ -1065,7 +1064,7 @@ function IdentifierPopover({
       <PopoverTrigger asChild>
         <IconButton
           size="xs"
-          className="size-[44px] shrink-0"
+          className="shrink-0"
           label={label}
           icon={<Info aria-hidden className={dsIcon.sm} />}
         />
@@ -1276,20 +1275,19 @@ function IntakeSessionWorkspace({
           onValueChange={(next) => setTab(intakeTab(next))}
         >
           <TabList label="Intake stage">
-            <Tab value="mapping" count={session.bindings.length} className="min-h-[44px]">
+            <Tab value="mapping" count={session.bindings.length}>
               Mapping
             </Tab>
             <Tab
               value="review"
               count={session.validation.state === "validated" ? session.validation.rejected.length : undefined}
-              className="min-h-[44px]"
             >
               Review
             </Tab>
-            <Tab value="manifest" icon={<CheckCircle2 aria-hidden className={dsIcon.sm} />} className="min-h-[44px]">
+            <Tab value="manifest" icon={<CheckCircle2 aria-hidden className={dsIcon.sm} />}>
               Manifest
             </Tab>
-            <Tab value="rerun" icon={<GitCompare aria-hidden className={dsIcon.sm} />} className="min-h-[44px]">
+            <Tab value="rerun" icon={<GitCompare aria-hidden className={dsIcon.sm} />}>
               Rerun diff
             </Tab>
           </TabList>
@@ -1351,7 +1349,7 @@ function IntakeSessionWorkspace({
             <ManifestStageView session={session} />
             {session.state === "enqueued" && (
               <div className="mt-[var(--ds-space-cozy)] flex">
-                <Button size="sm" className="min-h-[44px]" onClick={onEnqueued}>Show the runs</Button>
+                <Button size="sm" onClick={onEnqueued}>Show the runs</Button>
               </div>
             )}
           </TabPanel>

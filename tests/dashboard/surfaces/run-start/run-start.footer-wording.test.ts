@@ -13,7 +13,7 @@ afterEach(h.cleanup);
 
 const PICKER: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows).map((entry): RunStartWorkflow => {
   const start = entry.start;
-  return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId, role: entry.role,
+  return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId, role: entry.role, icon: entry.icon,
     enqueue: start.enqueue, version: start.version, steps: start.steps,
     inputRun: start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] } : { state: "present", surface: start.inputRun },
     spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields, workbookReference: start.workbookReference,

@@ -15,9 +15,8 @@ import { fixtureSettingsDocument } from "../../../mocks/helpers/fixture-settings
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
-const APPROVED_NAV = [
-  ["Personal", ["general", "account", "subscription"]],
-  ["Data", ["spreadsheets", "explorer", "activity"]],
+const APPROVED_NAV: [string, string[]][] = [
+  ["Personal", ["general", "account"]],
   ["Help", ["keyboard"]],
 ];
 const navOf = (groups: ReturnType<typeof buildSettingsNav>) => groups.map(group => [group.heading, group.entries.map(entry => entry.id)]);
@@ -58,7 +57,7 @@ async function mountFailedRead(section: string): Promise<HTMLElement> {
 }
 
 describe("canonical Settings navigation", () => {
-  it("serves Personal, Data and Help while the editable settings projection is unavailable", () => {
+  it("serves Personal and Help while the editable settings projection is unavailable", () => {
     const groups = buildSettingsNav();
     assert.deepEqual(navOf(groups), APPROVED_NAV);
     assert.ok(groups.flatMap(group => group.entries).every(entry => entry.source === "client"));
@@ -68,17 +67,16 @@ describe("canonical Settings navigation", () => {
     assert.deepEqual(navOf(buildSettingsNav(fixtureSettingsDocument())), APPROVED_NAV);
   });
 
-  it("moves Spreadsheets into Data and has no Status group", () => {
+  it("holds preferences only: the data pages and Status have left Settings", () => {
     const groups = buildSettingsNav();
-    assert.ok(!groups.find(group => group.id === "personal")?.entries.some(entry => entry.id === "spreadsheets"));
-    assert.ok(groups.find(group => group.id === "data")?.entries.some(entry => entry.id === "spreadsheets"));
-    assert.ok(!groups.some(group => group.id === "status"));
+    assert.deepEqual(groups.flatMap(group => group.entries.map(entry => entry.id)), ["general", "account", "keyboard"]);
+    assert.deepEqual(groups.map(group => group.id), ["personal", "help"]);
   });
 
   it("folds legacy section URLs to their new page and keeps unknown requests explicit", () => {
     const groups = buildSettingsNav();
     for (const [legacy, canonical] of [
-      ["display", "general"], ["annual-dates", "general"], ["runtime-isolation", "general"],
+      ["display", "general"], ["subscription", "general"], ["annual-dates", "general"], ["runtime-isolation", "general"],
       ["paths", "general"], ["routes", "general"], ["storage", "general"], ["preflight", "general"],
       [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, "general"],
       ["providers", "general"], ["provider-env", "general"], ["protected-store", "account"], ["credentials", "account"],
@@ -110,18 +108,18 @@ describe("canonical Settings navigation", () => {
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 7);
-    assert.ok(page.textContent?.includes("Settings unavailable"), page.textContent ?? "");
-    assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");
+    assert.deepEqual([...page.querySelectorAll('a[href^="?settings="]')].map(link => link.getAttribute("href")),
+      APPROVED_NAV.flatMap(([, ids]) => ids).map(id => `?settings=${id}`));
+    assert.ok(page.textContent?.includes("Couldn't load settings."), page.textContent ?? "");
+    assert.ok([...page.querySelectorAll("button")].some(button => button.textContent === "Retry"));
     assert.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
   });
 
   it("reports a credential read failure instead of leaving its loading spinner", async () => {
     const page = await mountFailedRead("credentials");
     assert.ok(page.textContent?.includes("Credentials unavailable"), page.textContent ?? "");
-    assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");
+    assert.ok(page.textContent?.includes("Relay could not load your settings. Reload the page to try again."), page.textContent ?? "");
+    assert.ok(page.textContent?.includes("Couldn't load settings."), page.textContent ?? "");
     assert.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
   });
@@ -130,7 +128,7 @@ describe("canonical Settings navigation", () => {
     const page = await mountFailedRead("archive");
     assert.match(page.textContent ?? "", /Archive page removed/u);
     assert.match(page.textContent ?? "", /Existing stored run data has not been deleted/u);
-    assert.match(page.textContent ?? "", /Settings unavailable/u);
+    assert.match(page.textContent ?? "", /Couldn't load settings\./u);
     assert.equal(page.querySelector('a[href="?settings=archive"]'), null);
     assert.equal(page.querySelector('[aria-label="Archive"]'), null);
   });

@@ -31,12 +31,16 @@ const throwing = defineTask(ucpathDriver, SearchPersonOrg, {
   async run() { throw Object.assign(new Error("Timeout 30000ms exceeded."), { name: "TimeoutError" }); },
 });
 
-it("serves a run that failed in its first step with its planned steps and the failure card", async () => {
+type Refusal = Readonly<{ reason: "page-closed" | "verification-failed"; detail?: string }>;
+
+/** Runs the throwing step to failure and serves its run logs the way the dashboard reads them. */
+async function serveFailedRun(refusal: Refusal, screenshotCapture?: Readonly<{ capture: () => Promise<void> }>) {
   const base = happySessionHarness();
-  const h = await world.executorHarness({ stores: registryWithUcpathSearch(throwing), sessions: { ...base, factory: { ...base.factory, async open(input) {
-    const resource = await base.factory.open(input);
-    return { ...resource, screenshot: async () => ({ pageVersion: 1, sessionId: resource.sessionId, observedAt: "2026-08-29T08:00:00.000Z", state: "unavailable" as const, reason: "page-closed" as const }) };
-  } } } });
+  const h = await world.executorHarness({ ...(screenshotCapture === undefined ? {} : { screenshotCapture }),
+    stores: registryWithUcpathSearch(throwing), sessions: { ...base, factory: { ...base.factory, async open(input) {
+      const resource = await base.factory.open(input);
+      return { ...resource, screenshot: async () => ({ pageVersion: 1, sessionId: resource.sessionId, observedAt: "2026-08-29T08:00:00.000Z", state: "unavailable" as const, ...refusal }) };
+    } } } });
   const { database, clock, stateRoot } = h.authority;
   const claimed = world.enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
   createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(runQueuedSpanEvent({ run: claimed.run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: personLookupModule.descriptor.label }));
@@ -62,14 +66,29 @@ it("serves a run that failed in its first step with its planned steps and the fa
 
   const snapshot = await readRunLogs(client, { row, workflowLabel: "Person Lookup" }, new AbortController().signal);
   const logs = projectRunLogs(snapshot, { artifactUrl: id => `/artifacts/${id}` });
-
-  assert.deepEqual(logs.timeline.map(stage => stage.state), ["failed", ...logs.timeline.slice(1).map(() => "pending")]);
-  assert.ok(logs.timeline.length > 1, "every planned step is listed");
   const failure = logs.steps.flatMap(step => step.entries).find(entry => entry.kind === "decision" && entry.decision.state === "failed");
   assert.ok(failure?.kind === "decision", "the failed step carries the failure card");
+  return { logs, failure };
+}
+
+it("serves a run that failed in its first step with its planned steps and the failure card", async () => {
+  const { logs, failure } = await serveFailedRun({ reason: "page-closed" });
+  assert.deepEqual(logs.timeline.map(stage => stage.state), ["failed", ...logs.timeline.slice(1).map(() => "pending")]);
+  assert.ok(logs.timeline.length > 1, "every planned step is listed");
+  assert.ok(failure.kind === "decision");
   assert.equal(failure.decision.footer, "No changes were made.");
   assert.doesNotMatch(failure.decision.title, /^[A-Z_]+$/u, "the card is titled in words, not a code");
+  assert.equal(failure.decision.title, "Search for person", "the card is titled with the step's plain name");
+  assert.equal(failure.decision.attemptedAction, "Search for person");
+  assert.deepEqual(failure.decision.served?.options.map(option => option.label), ["Retry step"], "the card offers the served retry");
   // No capture service is wired here, so the browser refuses the screenshot with an Error.
   assert.equal(failure.decision.unavailableCapture, "No screenshot: the browser could not take it.");
   assert.equal(logs.timeline[0]?.stepId !== undefined, true, "the failed stage jumps to its failure card");
+});
+
+it("names the capture stage and browser call on the failure card when the page could not be checked", async () => {
+  const { failure } = await serveFailedRun({ reason: "verification-failed", detail: "page-capture-page-screenshot-timeouterror" }, { capture: async () => undefined });
+  assert.ok(failure.kind === "decision");
+  assert.equal(failure.decision.unavailableCapture,
+    "No screenshot: the captured page could not be checked while capturing the page (page-screenshot-timeouterror).");
 });

@@ -63,6 +63,8 @@ export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCo
 
 export function createSessionPreviewPort(current: () => Readonly<{ binding?: SessionCommandBinding; catalog: readonly WorkflowCatalogEntry[] }>): SessionPreviewCommandPort {
   const attempts = new Map<string, NativeAttempt>();
+  // An attempt keeps the day it read only until it settles; a later check reads again.
+  const release = (attempt: NativeAttempt) => { attempt.snapshot = undefined; };
   const requireBinding = () => {
     const binding = current().binding;
     if (binding === undefined) throw new Error("SESSION_AUTHORITY_UNAVAILABLE");
@@ -96,7 +98,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     readback: async (command, reply) => {
       const day = await read(attempt, binding);
       const matched = "state" in reply && (reply.state === "applied" || reply.state === "already-applied") && sessionCommandEffect(day, command);
-      return { state: matched ? "matched" : "mismatch", evidence: day };
+      return { state: matched ? "matched" : "mismatch", evidence: day.day };
     },
   });
   const envelope = (id: string, binding: SessionCommandBinding) => ({ commandId: id, family: "worker-browser", requestedAt: binding.nowIso, requestedBy: binding.scope.actorId, source: "dashboard-sessions" });
@@ -108,9 +110,10 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     return card;
   };
   const result = (request: SessionPreviewRequest, attempt: NativeAttempt, outcome?: CommandOutcome): SessionPreviewResult => {
-    const all = attempt.commands.length === attempt.expected && attempt.snapshot !== undefined
-      && (outcome === undefined || outcome.kind === "confirmed") && attempt.commands.every(command => sessionCommandEffect(attempt.snapshot!, command));
-    const data = attempt.snapshot === undefined ? undefined : sessionsFromDay(attempt.snapshot, current().catalog, requireBinding().nowIso);
+    const snapshot = attempt.snapshot;
+    const all = attempt.commands.length === attempt.expected && snapshot !== undefined
+      && (outcome === undefined || outcome.kind === "confirmed") && attempt.commands.every(command => sessionCommandEffect(snapshot, command));
+    const data = snapshot === undefined ? undefined : sessionsFromDay(snapshot, current().catalog, requireBinding().nowIso);
     return all ? { id: request.id, state: "confirmed", data } : { id: request.id,
       state: attempt.commands.length === 1 && outcome !== undefined && outcome.kind !== "confirmed" && commandAttemptView(outcome).view !== "unknown" ? "refused" : "uncertain",
       code: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.code : undefined,
@@ -159,8 +162,8 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
           if (lifetimeId === null) throw new Error("SESSION_MEMBER_CHANGED");
           if (card.state !== "idle" || !same(request.browserIds, card.browsers.map(browser => browser.sessionId).sort()) || !card.browsers.every(browser => browser.observation?.state === "present" && browser.observation.health === "authenticated")) throw new Error("SESSION_REFRESH_CHANGED");
           for (const [index, browserSessionId] of request.browserIds.entries()) {
-            const latest = index === 0 ? day : attempt.snapshot!;
-            const next = latest.workerCards.find(next => next.workerId === card.workerId);
+            const latestDay = index === 0 ? day : attempt.snapshot;
+            const next = latestDay?.workerCards.find(next => next.workerId === card.workerId);
             if (next === undefined || !same(next.member, card.member) || next.controls?.basis.state !== "present" || next.controls.basis.value.lifetimeId !== lifetimeId || next.state !== "idle" || !same(next.browsers.map(browser => browser.sessionId).sort(), request.browserIds)) return result(request, attempt);
             const outcome = await dispatch({ ...envelope(request.nativeCommandIds?.[index] ?? (index === 0 ? request.id : crypto.randomUUID()), binding), type: "refresh-browser", target: { workerId: card.workerId, lifetimeId, expectedVersion: next.controls.basis.value.version, browserSessionId } });
             if (outcome.kind !== "confirmed") return result(request, attempt, outcome);
@@ -172,7 +175,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       } catch (cause) {
         attempt.cause = cause;
         return { id: request.id, state: attempt.commands.length === 0 ? "refused" : "uncertain", message: commandFeedback(attempt.commands.length === 0 ? "COMMAND_REFUSED" : "COMMAND_OUTCOME_UNCERTAIN") };
-      }
+      } finally { release(attempt); }
     },
     async check(request) {
       const binding = requireBinding();
@@ -201,7 +204,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       } catch (cause) {
         attempt.cause = cause;
         return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
-      }
+      } finally { release(attempt); }
     },
   };
   return { ...port, audited: request => port.check(request) };
@@ -270,6 +273,7 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     reconciling.current.set(request.id, port.audited(request).then(result => {
       if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
       acceptReadback(snapshot, request, result);
+      if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
       settleProven(request, result);
     }, () => undefined).finally(() => { reconciling.current.delete(request.id); }));
   }, [port, acceptReadback, settleProven]);

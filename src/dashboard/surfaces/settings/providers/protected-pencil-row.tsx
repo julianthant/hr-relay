@@ -25,12 +25,12 @@ export function ProtectedPencilRow({ editor, name, label, thing, description, on
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const close = (): void => { credentials.reset(name); setOpen(false); };
   return <div data-settings-path={`protected.${name}`}>
-    <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3 -mr-0.5">
-      <span className="text-ui-muted">{shown}</span>
+    <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3">
+      <span className="text-ui-primary">{shown}</span>
       <IconButton ref={pencil} type="button" label={`Edit ${thing}`} variant="ghost" size="sm" disabled={disabled} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
     </span>} />
     <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
-      <DialogContent size="sm" hideClose title={`Edit ${thing}`} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
+      <DialogContent size="sm" title={`Edit ${thing}`} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
         <ProtectedSettingField editor={editor} name={name} description={description} onRemove={onRemove} />
         <DialogFooter>
           <Button variant="muted" onClick={close}>Cancel</Button>

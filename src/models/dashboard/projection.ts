@@ -7,7 +7,7 @@ import { z } from "zod";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifications/notifications.js";
-import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../rules/notifications/notification-triggers.js";
+import { NotificationTriggerEventSchema, StorageHealthConcernSchema, projectNotificationTrigger } from "../../rules/notifications/notification-triggers.js";
 /** The two worker vocabularies are IMPORTED, not mirrored; the queue's priority enum is a copy only because the envelope module reaches a checkpoint module. */
 import { ActionDescriptorWireSchema } from "./actions.js";
 import { RunSessionOriginSchema } from "../run/session.js";
@@ -249,6 +249,10 @@ const QueueBaseFields = {
   status: QueueStatusSchema,
     /* Set on a queued row whose workflow has no live worker; absent while one is alive. */
   notStarting: QueueNotStartingWireSchema.optional(),
+  operatorWait: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), kind: z.literal("duo"), system: BrowserSystemIdSchema, since: IsoInstantSchema }),
+    z.strictObject({ state: z.literal("absent") }),
+  ]),
     /* Who cancelled a cancelled run: the operator, or Relay when the profile logged out or the queue went stale. */
   cancelledBy: z.enum(["operator", "logout", "stale-queue"]).optional(),
   outcome: QueueBusinessOutcomeSchema.optional(),
@@ -642,6 +646,7 @@ const NotificationLinkWireSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const NotificationDisplayContextSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("storage"), concern: StorageHealthConcernSchema }),
   z.strictObject({ state: z.literal("available"), workflow: z.string().min(1), subject: z.string().min(1) }),
   z.strictObject({ state: z.literal("workflow-only"), workflow: z.string().min(1) }),
   z.strictObject({ state: z.literal("unavailable") }),
@@ -665,7 +670,13 @@ export function notificationSourceEventOf(record: z.infer<typeof NotificationRec
   return { state: "available", kind: event.kind };
 }
 
+const StorageNotificationGroupSchema = z.strictObject({
+  concern: StorageHealthConcernSchema,
+  members: z.array(z.strictObject({ notificationId: NotificationIdSchema, revision: RowRevisionSchema })).min(2),
+});
+
 const StandardNotificationWireSchema = z.strictObject({
+  group: StorageNotificationGroupSchema.optional(),
   kind: z.literal("notification"),
   channel: z.enum(["ping", "inbox"]),
   count: PositiveIntSchema,
@@ -731,6 +742,14 @@ export const NotificationWireSchema = z.discriminatedUnion("kind", [
   CommandNotificationWireSchema,
   BackfillGapNotificationWireSchema,
 ]).superRefine((row, context) => {
+  if (row.kind === "notification" && row.group !== undefined) {
+    if (row.trigger !== "storage" || row.context.state !== "storage" || row.context.concern !== row.group.concern
+      || row.sourceEvent?.state !== "available" || row.sourceEvent.kind !== "storage-degraded"
+      || !row.group.members.some(member => member.notificationId === row.notificationId && member.revision === row.revision)) {
+      context.addIssue({ code: "custom", path: ["group"], message: "storage group requires proven concern and exact representative membership" });
+    }
+    requireUnique(row.group.members.map(member => member.notificationId), "group.members", context);
+  }
   if (row.kind !== "backfill-gap" && (row.state === "snoozed") !== (row.snoozedUntil !== undefined)) {
     context.addIssue({ code: "custom", path: ["snoozedUntil"], message: "snoozed state requires its server expiry hint" });
   }

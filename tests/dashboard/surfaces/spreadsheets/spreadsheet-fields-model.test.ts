@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach,describe,it } from 'vitest';
 import { spreadsheetEditorField,spreadsheetValueMatches,suggestSpreadsheetField } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js';
 import { SPREADSHEET_FIELDS,fieldForSpreadsheetHeader } from '../../../../src/models/fields/workbook-fields.js';
-import { resetSpreadsheetMocks } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
+import { resetSpreadsheetMocks } from '../../../support/fixtures/dashboard/spreadsheet-mock-model.js';
 import { CANONICAL_FIELD_IDS } from '../../../../src/models/fields/registry.js';
 afterEach(resetSpreadsheetMocks);
 describe('typed spreadsheet field contract', () => {

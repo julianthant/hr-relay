@@ -5,7 +5,6 @@ import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-mode
 import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
 import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
 import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { disposeHttpRouteHarness, harness as backendHarness, type Harness as BackendHarness } from "../../support/helpers/backend/http-route-harness.js";
@@ -49,7 +48,8 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 let root: Root_m0 | undefined;
 let library: BackendHarness | undefined;
 const libraryHeaders = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
-const savedWorkbooks = async () => (await library!.app.request("http://localhost/api/v1/workbooks/list", { headers: libraryHeaders })).json() as Promise<readonly { workbook: { name: string; sheets: readonly { rows: readonly { cells: readonly { value: unknown }[] }[] }[] } }[]>;
+const savedWorkbooks = async () => (await library!.app.request("http://localhost/api/v1/workbooks/list", { headers: libraryHeaders })).json() as Promise<readonly { libraryId: string; name: string }[]>;
+const openedWorkbook = async (libraryId: string) => (await library!.app.request(`http://localhost/api/v1/workbooks/${encodeURIComponent(libraryId)}`, { headers: libraryHeaders })).json() as Promise<{ workbook: { name: string; sheets: readonly { rows: readonly { cells: readonly { value: unknown }[] }[] }[] } }>;
 const _afterEachFixture0 = async () => {
   await act_m0(async () => root?.unmount()); root = undefined;
   await disposeHttpRouteHarness(); library = undefined;
@@ -139,17 +139,15 @@ try {
   assert_m0.equal(launch.querySelectorAll('input[type="file"]').length, 0);
   assert_m0.equal(document.querySelectorAll('#hub-panel-assistant input[type="file"]').length, 1);
   await key("Escape"); assert_m0.ok(document.activeElement === button("Start run"));
-  await click(button("Settings"));
-  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
-  await click(link);
+  await click(button("Spreadsheets"));
   await click(button("Import"));
   await chooseSpreadsheet();
   await click(button("Next"));
   await click(button("Add to library"));
   await settle();
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster"); assert_m0.ok(imported);
-  assert_m0.equal(imported.workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
+  const imported = (await savedWorkbooks()).find(record => record.name === "Focus roster"); assert_m0.ok(imported);
+  assert_m0.equal((await openedWorkbook(imported.libraryId)).workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
   assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
 await _afterEachFixture0();
@@ -158,14 +156,13 @@ await _afterEachFixture0();
 it_m0.each(["Cancel", "Escape"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
 try {
   let starts = 0;
-  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
-  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
-  const before = (await savedWorkbooks()).map(record => record.workbook.name);
+  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Spreadsheets"));
+  const before = (await savedWorkbooks()).map(record => record.name);
   await click(button("Import"));
   await chooseSpreadsheet();
   if (dismissal === "Escape") await key("Escape"); else await click(button("Cancel"));
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
+  assert_m0.deepEqual((await savedWorkbooks()).map(record => record.name), before);
   assert_m0.equal(starts, 0);
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
@@ -338,7 +335,7 @@ afterEach_m1(_afterEachFixture0);
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
-      return { ...composition, inbox: "served" as const, dataSources: { ...composition.dataSources, separations: "served" } };
+      return { ...composition, harness: { ...composition.harness, useInbox: undefined }, dataSources: { ...composition.dataSources, separations: "served" } };
     });
     await editHeadlessPreference();
     if (surface === "search") await click(button("Search"));
@@ -357,7 +354,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
     assert_m1.equal(location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
-    assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+    assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
     if (surface === "notification") {
       const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);
       await click(notifications);
@@ -376,6 +373,33 @@ afterEach_m1(_afterEachFixture0);
     });
     const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`);
     assert_m1.ok(selected, "selected run must belong to the visible queue");
+  });
+  it_m1.each([["?settings=spreadsheets", "Spreadsheets"], ["?settings=explorer", "Explorer"], ["?settings=activity", "Analytics"], ["?spreadsheets=1", "Spreadsheets"]])("opens %s as the %s data page with the rail and Sessions bar still there", async (search, label) => {
+    await mount(search);
+    assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true, "Settings is not open");
+    assert_m1.ok(document.querySelector('[aria-label="Session actions"]'), "the Sessions bar stays");
+    assert_m1.equal(document.querySelector('aside[aria-label="Workspace"] [aria-current="page"]')?.textContent?.trim(), label);
+    assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
+  });
+  it_m1("moves focus to the data page heading on arrival and back to its rail row on leaving", async () => {
+    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day);
+    await click(button("Explorer"));
+    await act_m1(async () => { await new Promise(resolve => requestAnimationFrame(() => resolve(undefined))); });
+    assert_m1.equal(parseRoute_m1(location.search).explore, "");
+    assert_m1.equal(document.activeElement, document.querySelector("h1"), "focus lands on the page heading");
+    await historyMove("back");
+    assert_m1.equal(parseRoute_m1(location.search).explore, undefined);
+    assert_m1.equal(document.activeElement?.id, "rail-data-explorer", "focus returns to the launching row");
+  });
+  it_m1("Back to run closes Settings opened from the Run dialog and keeps the dialog's route", async () => {
+    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day + "&start=1&settings=account&settingsFrom=run");
+    assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"]'));
+    await click(button("Back to run"));
+    const route = parseRoute_m1(location.search);
+    assert_m1.equal(route.settings, undefined);
+    assert_m1.equal(route.settingsFrom, undefined);
+    assert_m1.equal(route.start, true);
+    assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true);
   });
   it_m1("Settings gear opens the surface, Back to dashboard closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
@@ -396,11 +420,14 @@ afterEach_m1(_afterEachFixture0);
   });
 });
 
+/** dd20a218a6: a choice saves at once, so a retained draft needs a typed field; the job end date waits on the autosave timer. */
+const jobEndDate = () => document.querySelector<HTMLInputElement>('[data-settings-path^="annualDates."][data-settings-path$=".jobEndDate"] input[type="date"]');
+let editedJobEndDate = "";
 async function editHeadlessPreference() {
-  const control = document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]'); assert_m1.ok(control);
-  await act_m1(async () => control.click());
-  const option = document.querySelector<HTMLElement>('[role="option"][data-value="Small"]'); assert_m1.ok(option);
-  await act_m1(async () => option.click());
+  const input = jobEndDate(); assert_m1.ok(input);
+  editedJobEndDate = input.value === "2027-06-29" ? "2027-06-28" : "2027-06-29";
+  await act_m1(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, editedJobEndDate); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
 }
 it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
 try {
@@ -411,14 +438,13 @@ try {
   const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(general);
   await click(general);
   await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
-  const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert_m1.ok(analytics);
-  await click(analytics);
-  assert_m1.equal(document.querySelector("h1")?.textContent, "Analytics");
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
-  await historyMove("back");
-  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+  await click(button("Analytics"));
+  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), true);
+  await click(button("Keep editing"));
+  assert_m1.equal(new URLSearchParams(location.search).has("activity"), false);
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   await click(button("Back to dashboard"));
   await click(button("Discard changes"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
@@ -435,8 +461,10 @@ try {
   assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
-  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 7);
-  assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'));
+  // Subscription folded into General (1f9149b4fe); Archive is retired.
+  assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
+    ["general", "account", "keyboard"].map(id => `?settings=${id}`));
+  assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
   await click(button("Return to dashboard"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
@@ -506,11 +534,16 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
       runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.ok(reads > 0);
-    assert_m1.ok(document.body.textContent?.includes("The dashboard could not load this from the local service. Try again."));
-    assert_m1.match(document.body.textContent ?? "", /Could not load logs|Logs unavailable/);
+    assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."));
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
+    const retryLogs = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Retry");
+    assert_m1.ok(retryLogs, "the logs notice offers Retry");
+    const readsBeforeRetry = reads;
+    await act_m1(async () => { retryLogs.click(); });
+    await settle();
+    assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
     const failedReads = reads;
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
@@ -519,12 +552,21 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
     assert_m1.ok(workflow);
     const composition = MOCK_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
-    assert_m1.equal(composition.sources["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["person-lookup"], "mock");
-    assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
+    assert_m1.equal(composition.sources["person-lookup"], "hidden");
+    assert_m1.ok(composition.harness?.LogPreview);
+    assert_m1.equal(composition.sources["generic-served-workflow"], "served");
   } finally { await _afterEachFixture0(); }
 });
-it_m1("passes the app client to a served Explorer read while mocks explicitly retains mock Explorer", async () => {
+it_m1("offers a Skip to run logs link that moves focus to the selected run logs", async () => {
+  try {
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`);
+    const skip = [...document.querySelectorAll("a")].find(link => link.textContent?.trim() === "Skip to run logs");
+    assert_m1.ok(skip, "a run is selected, so the skip link is present");
+    await act_m1(async () => { skip.click(); });
+    assert_m1.equal(document.activeElement?.getAttribute("aria-label"), "Selected run logs");
+  } finally { await _afterEachFixture0(); }
+});
+it_m1("passes the app client to a served Explorer read", async () => {
   try {
     const explorer = structuredClone(FIXTURE_EXPLORER_WIRE);
     let calls = 0;
@@ -533,37 +575,8 @@ it_m1("passes the app client to a served Explorer read while mocks explicitly re
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
     assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
-    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
+    assert_m1.ok(document.body.textContent?.includes("Anything not listed stops the run with a failure card."));
     assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
-    await _afterEachFixture0();
-    calls = 0;
-    const client = await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22fixture-person-lookup%22%7D", {
-      workflowExplorer: async () => { calls++; throw new Error("mock Explorer must not read served definitions"); },
-    });
-    assert_m1.equal(calls, 0);
-    assert_m1.equal(document.body.textContent?.includes("Registered Person Lookup"), false);
-    assert_m1.equal(document.body.textContent?.includes("Purpose from the served definition"), false);
-    assert_m1.ok(document.body.textContent?.includes("Browse workflows, their steps and field sources."));
-    assert_m1.equal(document.body.textContent?.includes("Fictional preview data"), false);
-    assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
-    const select = document.querySelector('[aria-label="Explorer workflow"]');
-    assert_m1.ok(select instanceof HTMLButtonElement);
-    await click(select);
-    const separation = document.querySelector('[role="option"][data-value="fixture-separations"]');
-    assert_m1.ok(separation instanceof HTMLElement);
-    await click(separation);
-    const identity = document.querySelector('[aria-label="Identity check preview"]');
-    assert_m1.ok(identity instanceof HTMLButtonElement);
-    await click(identity);
-    const rejected = document.querySelector('[role="option"][data-value="rejected"]');
-    assert_m1.ok(rejected instanceof HTMLElement);
-    await click(rejected);
-    assert_m1.ok((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden);
-    const replacement = { ...client };
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client: replacement, children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
-    await settle();
-    assert_m1.equal((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden, false);
-    assert_m1.equal(calls, 0);
   } finally { await _afterEachFixture0(); }
 });
 it_m1("failed and delayed day snapshots never render an empty or stale queue",async()=>{
@@ -593,7 +606,7 @@ it_m1("an empty catalog is not a fabricated workflow queue",async()=>{
 try {
 
 
-  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), catalogIncludesMocks: false, servedDay: true }));
+  await mount("?sessionsPreview=empty",{bootstrap:async()=>({...FIXTURE_BOOTSTRAP_m1,workflows:[]})}, "icon", workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m1(workflows), servedDay: true }));
   assert_m1.match(document.body.textContent??"",/No workflows available/);
 
 } finally {
@@ -606,8 +619,9 @@ try {
 
   const {DashboardClientError}=await import("../../../src/dashboard/client/index.js");
   await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`,{subscribeDay(input){input.onState({state:"stopped",error:new DashboardClientError({kind:"network",message:"Queue transport failed"})});return{close(){}};}});
-  assert_m1.match(document.body.textContent??"",/Could not load queue/);
-  assert_m1.ok(document.body.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("TASK_UNHANDLED_FAILURE", {})).text));
+  assert_m1.equal((document.body.textContent??"").split("Couldn't load the queue.").length-1,1,"one queue failure notice");
+  assert_m1.doesNotMatch(document.body.textContent??"",/Run unavailable/);
+  assert_m1.ok([...document.querySelectorAll("button")].some(button => button.textContent?.trim()==="Retry"),"the queue notice offers Retry");
   assert_m1.doesNotMatch(document.body.textContent ?? "", /Queue transport failed/);
   assert_m1.equal(document.querySelector('[aria-label="Filter the queue by status"]') === null, true, "failed authority must not expose zero-count status controls");
 
@@ -633,7 +647,7 @@ try {
   await historyMove("back"); // Settings root retains its editor.
   await historyMove("back");
   await click(button("Keep editing"));
-  assert_m1.equal(document.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Small");
+  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
   assert_m1.equal(new URLSearchParams(location.search).has("settings"), true);
   await historyMove("back"); await click(button("Discard changes")); await settle();
   assert_m1.equal(new URLSearchParams(location.search).get("day"), "2026-08-02");

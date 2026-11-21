@@ -237,7 +237,7 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     const transport = await settingsClient(applied);
     host = await mountSettingsPage(transport.client, "account", undefined, undefined, undefined,
-      { values: { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", timekeeperInitials: "SO", lastSignedInAt: "2026-08-28T08:00:00-08:00" }, duo: "ready", onSignOut: () => undefined,
+      { values: { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", timekeeperInitials: "SO", lastSignedInAt: "2026-08-28T08:00:00-08:00" }, onSignOut: () => undefined,
         details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }), login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) } });
     const open = async (): Promise<HTMLInputElement> => {
       const pencil = host?.querySelector<HTMLButtonElement>('button[aria-label="Edit UCPath username"]');
@@ -298,17 +298,15 @@ it("publishes a failed refresh while retaining the verified document and unsaved
 });
 
 for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {
-  it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
+  it(`renders the one failed-read notice with Retry in the ${section} part after a ${mode} initial read`, async () => {
     vi.useFakeTimers();
     const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
     } as unknown as DashboardClient;
     const dom = await mountSettingsPage(client, section);
     if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Settings unavailable"));
+    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Couldn't load settings."));
     assert.ok(failure);
-    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
+    assert.ok([...failure.querySelectorAll("button")].some(button => button.textContent === "Retry"));
     assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
   });
 }
-
-import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";

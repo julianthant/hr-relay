@@ -45,6 +45,20 @@ it("does not turn a literal in an open union into an operator dropdown", () => {
   assert.deepEqual(contractCollectionFieldLeaves(schema).find(leaf => leaf.path === "status")?.options, ["signed", "unsigned"]);
 });
 
+it("offers complete Boolean and nullable scalar decision vocabularies without changing boundary leaves", () => {
+  const schema = z.strictObject({ required: z.boolean(), approval: z.literal(true).nullable(),
+    explicit: z.union([z.boolean(), z.null()]), status: z.enum(["ready", "waiting"]).nullable(),
+    open: z.string().nullable(), record: z.strictObject({ flag: z.boolean() }).nullable() });
+  assert.deepEqual(contractCollectionFieldOptions(schema, "required", "decision"), ["false", "true"]);
+  assert.deepEqual(contractCollectionFieldOptions(schema, "approval", "decision"), ["null", "true"]);
+  assert.deepEqual(contractCollectionFieldOptions(schema, "explicit", "decision"), ["false", "null", "true"]);
+  assert.deepEqual(contractCollectionFieldOptions(schema, "status", "decision"), ["null", "ready", "waiting"]);
+  assert.equal(contractCollectionFieldOptions(schema, "open", "decision"), undefined);
+  assert.equal(contractCollectionFieldOptions(schema, "record", "decision"), undefined);
+  assert.deepEqual(contractSchemaLeaves(schema).find(leaf => leaf.path === "required"), { path: "required", kind: "boolean", presence: "always" });
+  assert.deepEqual(contractSchemaLeaves(schema).find(leaf => leaf.path === "approval"), { path: "approval", kind: "literal", presence: "sometimes", options: ["true"] });
+});
+
 it("derives control kinds and complete vocabularies from only their declared modes", () => {
   const schema = z.union([
     z.strictObject({ mode: z.literal("search").default("search"), enabled: z.boolean().default(false), choice: z.enum(["active", "paused"]),

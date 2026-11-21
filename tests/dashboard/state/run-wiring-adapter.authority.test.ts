@@ -17,8 +17,8 @@ import { projectRunLogs, readRunLogs, useRunWiring, type RunWiringConfirm } from
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/actions/actions.js";
-import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
-import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
+import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
 import { RunWorkbookReferenceChoiceWireSchema, FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
@@ -808,8 +808,8 @@ function failedAt(selected: LogSelection) {
       expectedVersion: 3, retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: 3,
         confirm: { title: "Check again", confirmLabel: "Check again", tone: "neutral" } },
       confirm: { title: "Enter EID", confirmLabel: "Enter EID", tone: "neutral" },
-      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check", "job-summary"],
-        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check", "job-summary"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
+      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check"],
+        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
     } }));
 }
 function failureClient(selected: LogSelection, sent: DashboardCommandRequest[], planned: unknown[], execute: (command: DashboardCommandRequest) => Promise<unknown>, failed = failedAt(selected)) {

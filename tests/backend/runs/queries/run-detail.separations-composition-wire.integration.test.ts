@@ -256,12 +256,14 @@ describe("separations — the identity-gate wire", () => {
   } catch (error) { throw retainWireFailure(error); }
   });
 
-  it("names EXACTLY ONE gate dependency holding an identity packet, which is what the section requires", () => {
+  it("binds the identity approval to comparison and the reference review to its stop", () => {
     try {
 
     const views = gateNodeViews() as readonly { nodeId: string; dependsOn: readonly string[] }[];
-    assert.equal(views.length, 1);
-    assert.deepEqual(views[0]?.dependsOn, ["comparison"]);
+    assert.deepEqual(views.map(({ nodeId, dependsOn }) => [nodeId, dependsOn]), [
+      ["identity-approval", ["comparison"]],
+      ["reference-check-review", ["reference-stop"]],
+    ]);
   } catch (error) { throw retainWireFailure(error); }
   });
 });

@@ -336,7 +336,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     const aliases = (point.aliases ?? []).map(alias => {
       const target = readObservationPath(point.value, alias.path);
       let source: JsonValue;
-      let originAt: (path: readonly (string | number)[]) => DataObservationOrigin;
+      let originAt: ((path: readonly (string | number)[]) => DataObservationOrigin) | undefined;
       if (alias.source.kind === "local") {
         const local = points.get(alias.source.field);
         if (local === undefined) throw new Error("observation alias source is not a prior local point");
@@ -350,7 +350,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
         const checkpoint = evidence.checkpoints.find(row => row.nodeId === nodeId);
         if (checkpoint === undefined) throw new Error("observation alias source is not an admitted dependency");
         source = readObservationPath(checkpoint.output.value, alias.source.path);
-        originAt = path => {
+        // An operator-typed dependency has no observation to forward; its leaves keep this task's own origin.
+        originAt = checkpoint.assertion !== undefined ? undefined : path => {
           const origin = checkpoint.observationOrigins?.find(entry => canonicalJsonStringify(entry.path) === canonicalJsonStringify(path))?.origin;
           if (origin === undefined) throw new Error(`observation alias source checkpoint ${checkpoint.nodeId} origin unavailable`);
           return origin;
@@ -366,7 +367,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (spanPath === undefined || aliases.length === 0) return undefined;
     const origins = observationLeafPaths(point.value).flatMap(path => {
       const alias = aliases.find(alias => alias.path.every((part, index) => path[index] === part));
-      if (alias === undefined) return [];
+      if (alias?.originAt === undefined) return [];
       const origin = alias.originAt([...alias.source.path, ...path.slice(alias.path.length)]);
       return canonicalJsonStringify(origin) === canonicalJsonStringify(resolveObservationOrigin({ ...execution, spanPath }, point, path))
         ? [] : [{ path: [...path], origin }];

@@ -1,4 +1,4 @@
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDelegatedDescriptor, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import {
@@ -6,9 +6,14 @@ import {
   stepOmissionCascade,
   stepOmissionFactsSchema,
   StepOmissionsSchema,
+  type StartRowKind,
+  type StartRowLockReason,
+  type StartRowMember,
+  type StartRowTarget,
   type StepOmissionForm,
   type StepOmissionGraphView,
   type StepOmissions,
+  type StepOmissionSpec,
 } from "../../../models/workflow/step-omission.js";
 
 // Project the same declared step choices the start planner validates.
@@ -22,7 +27,28 @@ export interface StartStepProjection {
     | Readonly<{ state: "required"; reason: string }>;
 }
 
+/** One Start run row: what it shows, the step it switches, its kind and why it is locked. */
+export interface StartRowProjection {
+  readonly key: string;
+  readonly label: string;
+  readonly includedByDefault: boolean;
+  readonly kind: StartRowKind;
+  readonly lockReason?: StartRowLockReason;
+  readonly members: readonly StartRowMember[];
+  readonly target?: StartRowTarget;
+  readonly manual?: Readonly<{ form: StepOmissionForm; forces: readonly string[] }>;
+  readonly selection?: Readonly<{ inputField: string }>;
+}
+
 const REQUIRED_REASON = "This workflow requires every node in this step.";
+
+/** `switch` when typing the values replaces every node of the step; `locked-manual` when some of its nodes still run. */
+function manualKind(descriptor: AnyWorkflowDescriptor, spec: StepOmissionSpec): "switch" | "locked-manual" {
+  const step = descriptor.timeline.find(({ key }) => key === spec.step);
+  if (step === undefined) throw new Error(`${descriptor.id} manual entry names step ${spec.step}, which is not on its timeline`);
+  const replaced = new Set([...Object.keys(spec.produces), ...spec.skips ?? []]);
+  return step.nodes.every(({ id }) => replaced.has(String(id))) ? "switch" : "locked-manual";
+}
 
 
 export function stepOmissionGraphView(descriptor: AnyWorkflowDescriptor): StepOmissionGraphView {
@@ -98,14 +124,13 @@ export function projectStartSteps(descriptor: AnyWorkflowDescriptor): readonly S
       if (inferredSelection !== undefined && JSON.stringify(inferredSelection) !== JSON.stringify(step.selection)) throw new Error(`${descriptor.id} start step ${key} contradicts its input condition`);
     }
     const spec = specByStep.get(key);
-    if (spec !== undefined) {
-      // A conditional omission and an operator assertion cannot both own the same step.
-      if (selectable !== undefined) {
-        throw new Error(
-          `${descriptor.id} start step ${key} declares both an input condition and a step omission; `
-          + "a step has exactly one way not to run",
-        );
-      }
+    if (spec !== undefined && selectable === undefined && manualKind(descriptor, spec) === "locked-manual") {
+      return Object.freeze({
+        key, label: step.label, includedByDefault: true,
+        control: Object.freeze({ state: "required" as const, reason: REQUIRED_REASON }),
+      });
+    }
+    if (spec !== undefined && selectable === undefined) {
       const row = cascade.get(key);
       if (row === undefined) throw new Error(`${descriptor.id} start step ${key} declares an omission with no cascade row`);
       const forces = Object.freeze(timelineOrder.filter((other) => row.forces.includes(other)));
@@ -158,23 +183,35 @@ export function resolveStartStepOmissions(
   }
   const steps = projectStartSteps(descriptor);
   const byKey = new Map(steps.map((step) => [step.key, step]));
+  const specByStep = new Map(descriptor.stepOmissions.map((spec) => [spec.step, spec]));
   const selected = new Set(selectedStepKeys);
   const submitted = new Map<string, Record<string, unknown>>();
+  const children = new Map<string, Readonly<{ workflow: string; step: string; facts: Record<string, unknown> }>>();
   for (const entry of stepOmissions ?? []) {
+    if (entry.workflow !== undefined) {
+      const { workflow } = entry;
+      if (!descriptor.startRows.some(({ target }) => target?.workflow === workflow && target.step === entry.step)) {
+        throw new StartStepOmissionRefusedError("unknown-step", `${descriptor.id} has no start row for ${workflow}/${entry.step}`);
+      }
+      const key = JSON.stringify([workflow, entry.step]);
+      if (children.has(key)) {
+        throw new StartStepOmissionRefusedError("duplicate-step", `${descriptor.id} start step ${workflow}/${entry.step} is omitted twice`);
+      }
+      children.set(key, { workflow, step: entry.step, facts: entry.facts });
+      continue;
+    }
     const step = byKey.get(entry.step);
     if (step === undefined) {
-      throw new StartStepOmissionRefusedError(
-        "unknown-step",
-        `${descriptor.id} has no start step ${entry.step}`,
-      );
+      throw new StartStepOmissionRefusedError("unknown-step", `${descriptor.id} has no start step ${entry.step}`);
     }
-    if (step.control.state !== "omittable") {
+    const spec = specByStep.get(entry.step);
+    if (spec === undefined || step.control.state === "required" && manualKind(descriptor, spec) === "switch") {
       throw new StartStepOmissionRefusedError(
         "step-not-omittable",
         `${descriptor.id} start step ${entry.step} declares no omission; it must run`,
       );
     }
-    if (selected.has(entry.step)) {
+    if (selected.has(entry.step) && manualKind(descriptor, spec) === "switch") {
       throw new StartStepOmissionRefusedError(
         "step-not-omitted",
         `${descriptor.id} start step ${entry.step} is selected to run; it carries no omission facts`,
@@ -188,31 +225,66 @@ export function resolveStartStepOmissions(
     }
     submitted.set(entry.step, entry.facts);
   }
-  const resolved: { step: string; facts: Record<string, unknown> }[] = [];
+  const resolved: { workflow?: string; step: string; facts: Record<string, unknown>; labels: Record<string, string> }[] = [];
   for (const step of steps) {
-    if (step.control.state !== "omittable" || selected.has(step.key)) continue;
+    const spec = specByStep.get(step.key);
+    if (spec === undefined) continue;
     const facts = submitted.get(step.key);
     if (facts === undefined) {
-      throw new StartStepOmissionRefusedError(
-        "facts-missing",
-        `${descriptor.id} start step ${step.key} is omitted and carries no typed facts`,
-      );
+      // Off with nothing typed: a selection step is skipped by its input; a pure switch has no other way not to run.
+      if (step.control.state === "omittable" && !selected.has(step.key)) {
+        throw new StartStepOmissionRefusedError(
+          "facts-missing",
+          `${descriptor.id} start step ${step.key} is omitted and carries no typed facts`,
+        );
+      }
+      continue;
     }
-    const parsed = stepOmissionFactsSchema(step.control.form).safeParse(facts);
-    if (!parsed.success) {
-      // Field KEYS only: the values are the operator's typed HR facts.
-      const fields = [...new Set(parsed.error.issues.map((issue) => issue.path.map(String).join(".") || "(form)"))];
-      throw new StartStepOmissionRefusedError(
-        "facts-invalid",
-        `${descriptor.id} start step ${step.key} omission facts are invalid at: ${fields.join(", ")}`,
-        { cause: parsed.error },
-      );
-    }
-    resolved.push({ step: step.key, facts: parsed.data });
+    resolved.push(checkedEntry(descriptor, step.key, spec, facts));
+  }
+  const own = resolved.length;
+  // A child entry is checked in the child's descriptor; the parent plans nothing for it.
+  for (const row of descriptor.startRows) {
+    const workflow = row.target?.workflow;
+    if (workflow === undefined || row.target === undefined) continue;
+    const entry = children.get(JSON.stringify([workflow, row.target.step]));
+    if (entry === undefined) continue;
+    const child = workflowDelegatedDescriptor(descriptor, workflow);
+    const spec = child.stepOmissions.find(({ step }) => step === entry.step);
+    if (spec === undefined) throw new Error(`${descriptor.id} start row ${row.key} targets ${workflow}/${entry.step}, which declares no manual entry`);
+    const checked = checkedEntry(child, entry.step, spec, entry.facts);
+    refuseCascade(child, [checked]);
+    resolved.push({ workflow, ...checked });
   }
   if (resolved.length === 0) return undefined;
   const canonical = StepOmissionsSchema.parse(resolved);
-  const plan = planStepOmissions(stepOmissionGraphView(descriptor), canonical);
+  if (own > 0) refuseCascade(descriptor, canonical);
+  return canonical;
+}
+
+/** One step's typed facts, checked against its form and refine rule and stamped with each field's label. */
+function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: StepOmissionSpec, facts: Record<string, unknown>) {
+  const parsed = stepOmissionFactsSchema(spec.form).safeParse(facts);
+  // Field KEYS only: the values are the operator's typed HR facts.
+  const issues = parsed.success
+    ? (spec.refine?.(parsed.data as Record<string, never>) ?? []).map(({ field }) => field)
+    : parsed.error.issues.map((issue) => issue.path.map(String).join(".") || "(form)");
+  if (issues.length > 0) {
+    throw new StartStepOmissionRefusedError(
+      "facts-invalid",
+      `${descriptor.id} start step ${step} omission facts are invalid at: ${[...new Set(issues)].join(", ")}`,
+      parsed.success ? undefined : { cause: parsed.error },
+    );
+  }
+  return {
+    step,
+    facts: parsed.data ?? {},
+    labels: Object.fromEntries(spec.form.fields.map((field) => [field.key, field.label])),
+  };
+}
+
+function refuseCascade(descriptor: AnyWorkflowDescriptor, entries: StepOmissions | readonly ReturnType<typeof checkedEntry>[]): void {
+  const plan = planStepOmissions(stepOmissionGraphView(descriptor), StepOmissionsSchema.parse(entries));
   if (plan.refusals.length > 0) {
     throw new StartStepOmissionRefusedError(
       "cascade-refused",
@@ -220,14 +292,14 @@ export function resolveStartStepOmissions(
       + plan.refusals.map((refusal) => `[${refusal.code}]: ${refusal.message}`).join("; "),
     );
   }
-  return canonical;
 }
 
-/** Apply one explicit, server-validated selection to one raw typed submission. */
+/** Apply one explicit, server-validated selection to one raw typed submission; a step whose values are typed counts as selected. */
 export function applyStartStepSelection(
   descriptor: AnyWorkflowDescriptor,
   rawInput: JsonValue,
   selectedStepKeys: readonly string[] | undefined,
+  stepOmissions?: StepOmissions,
 ): JsonValue {
   if (selectedStepKeys === undefined) return rawInput;
   const steps = projectStartSteps(descriptor);
@@ -247,17 +319,81 @@ export function applyStartStepSelection(
   if (rawInput === null || Array.isArray(rawInput) || typeof rawInput !== "object") {
     throw new StartStepOmissionRefusedError("selection-invalid", `${descriptor.id} step customization requires an object submission`);
   }
+  const typed = new Set((stepOmissions ?? []).filter((entry) => entry.workflow === undefined).map(({ step }) => step));
   const customized: Record<string, JsonValue> = {};
   for (const [key, value] of Object.entries(rawInput)) customized[key] = value;
   for (const step of steps) {
     if (step.control.state !== "selectable") continue;
-    customized[step.control.inputField] = selected.has(step.key)
+    customized[step.control.inputField] = selected.has(step.key) || typed.has(step.key)
       ? step.control.selectedWhen
       : !step.control.selectedWhen;
   }
   return JsonValueSchema.parse(customized);
 }
 
+/** The Start run rows, each with its kind and lock reason, from the declared rows or one per timeline step; a child member or target reads the bound child. */
+export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly StartRowProjection[] {
+  const views = new Map<string | undefined, ReturnType<typeof rowView>>();
+  const viewOf = (workflow: string | undefined) => {
+    const known = views.get(workflow);
+    if (known !== undefined) return known;
+    const view = rowView(workflow === undefined ? descriptor : workflowDelegatedDescriptor(descriptor, workflow));
+    views.set(workflow, view);
+    return view;
+  };
+  const lockReason = (members: readonly StartRowMember[]): StartRowLockReason | undefined => {
+    const declared = members.map(({ workflow, step }) => viewOf(workflow).lockOf.get(step)).find((reason) => reason !== undefined);
+    if (declared !== undefined) return declared;
+    const shown = members.flatMap((member) => {
+      const view = viewOf(member.workflow);
+      const step = view.descriptor.timeline.find(({ key }) => key === member.step);
+      if (step === undefined) throw new Error(`${view.descriptor.id} start row names step ${member.step}, which is not on its timeline`);
+      return (member.nodes ?? step.nodes.map(({ id }) => String(id))).map((id) => {
+        const node = view.nodes.get(id);
+        if (node === undefined) throw new Error(`${view.descriptor.id} start row names missing node ${id}`);
+        return node;
+      });
+    });
+    if (shown.some((node) => node.kind === "transaction" || node.kind === "task" && node.dryRun === "stop-before-publish")) return "form-action";
+    if (shown.some((node) => node.kind === "gate")) return "approval";
+    return undefined;
+  };
+  return Object.freeze(descriptor.startRows.map((row): StartRowProjection => {
+    const view = row.target === undefined ? undefined : viewOf(row.target.workflow);
+    const step = row.target === undefined ? undefined : view?.steps.get(row.target.step);
+    const spec = row.target === undefined ? undefined : view?.specByStep.get(row.target.step);
+    const kind: StartRowKind = step === undefined || view === undefined ? "locked"
+      : step.control.state === "selectable" || step.control.state === "omittable" ? "switch"
+        : spec !== undefined && manualKind(view.descriptor, spec) === "locked-manual" ? "locked-manual" : "locked";
+    const reason = kind === "switch" ? undefined : lockReason(row.members);
+    const forces = step?.control.state === "omittable" ? step.control.forces : Object.freeze([]);
+    // The parent's bind builds a child's input, so a child step's own selection cannot be switched from here.
+    if (row.target?.workflow !== undefined && (step?.control.state === "selectable" || forces.length > 0 || kind === "locked")) {
+      throw new Error(`${descriptor.id} start row ${row.key} targets child step ${row.target.workflow}/${row.target.step}, which only its own typed values can switch`);
+    }
+    return Object.freeze({
+      key: row.key,
+      label: row.label,
+      includedByDefault: step?.includedByDefault ?? true,
+      kind,
+      ...(reason === undefined ? {} : { lockReason: reason }),
+      members: row.members,
+      ...(row.target === undefined ? {} : { target: row.target }),
+      ...(spec === undefined || kind === "locked" ? {} : { manual: Object.freeze({ form: spec.form, forces }) }),
+      ...(step?.control.state === "selectable" ? { selection: Object.freeze({ inputField: step.control.inputField }) } : {}),
+    });
+  }));
+}
+
+function rowView(descriptor: AnyWorkflowDescriptor) {
+  return {
+    descriptor,
+    steps: new Map(projectStartSteps(descriptor).map((step) => [step.key, step])),
+    specByStep: new Map(descriptor.stepOmissions.map((spec) => [spec.step, spec])),
+    nodes: new Map(descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node])),
+    lockOf: new Map(descriptor.stepLocks.map(({ step, reason }) => [step, reason])),
+  };
+}
 
 export function startStepWireControl(
   control: StartStepProjection["control"],
@@ -267,4 +403,15 @@ export function startStepWireControl(
     case "omittable": return { state: "omittable", form: control.form, forces: [...control.forces] };
     case "required": return { state: "required", reason: control.reason };
   }
+}
+
+export function startRowWire(row: StartRowProjection): NonNullable<WorkflowStartWire["rows"]>[number] {
+  return {
+    key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
+    ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
+    members: row.members.map((member) => ({ ...member, ...(member.nodes === undefined ? {} : { nodes: [...member.nodes] }) })),
+    ...(row.target === undefined ? {} : { target: { ...row.target } }),
+    ...(row.manual === undefined ? {} : { manual: { form: row.manual.form, forces: [...row.manual.forces] } }),
+    ...(row.selection === undefined ? {} : { selection: { ...row.selection } }),
+  };
 }

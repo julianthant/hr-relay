@@ -46,7 +46,6 @@ export const intentPill = (intent: ActionIntent, size: "sm" | "md"): string =>
     size === "sm" ? dsText.meta : dsText.body,
     dsFocus,
     dsMotion.fast,
-    "active:translate-y-px",
     INTENT_PILL[intent],
   );
 

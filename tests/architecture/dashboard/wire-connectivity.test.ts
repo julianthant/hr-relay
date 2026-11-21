@@ -17,6 +17,7 @@ import { queueRowActions } from "../../../src/backend/runs/projections/queue-row
 import { availableSections,readRunDetail,readRunSection } from "../../../src/backend/runs/queries/run-detail.js";
 import { ActionCommandKeySchema } from "../../../src/models/dashboard/actions.js";
 import { QueuePrioritySchema,QueueStatusSchema } from "../../../src/models/dashboard/projection.js";
+import { bindRunWorkbookReference } from "../../../src/models/dashboard/workbooks.js";
 import {
 ParkedWriteDetailWireSchema,
 ParkedWriteSubjectEvidenceSchema,
@@ -169,6 +170,16 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     for (const section of availableSections(row, record)) reachable.add(section);
     for (const section of availableSections(row, record, trust)) reachable.add(section);
   }
+
+  const record = runRecordOf({ seed: 1 });
+  const ocr = runRecordOf({ seed: 1, workflow: "ocr" });
+  for (const section of availableSections(row, ocr, trust, undefined, true)) reachable.add(section);
+  const reference = bindRunWorkbookReference({ typeId: "roster", keys: [], fields: [] }, {
+    libraryId: "roster-workbook", version: 1, worksheets: [{ sheetId: "roster-sheet", name: "Roster" }],
+    type: { id: "roster", name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null }, rows: [],
+  });
+  const withWorkbook = RunRecordSchema.parse({ ...record, input: { ...record.input, workbookReferences: [reference] } });
+  for (const section of availableSections(row, withWorkbook, trust)) reachable.add(section);
 
   const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open({ path: profile.path,

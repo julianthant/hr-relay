@@ -89,6 +89,11 @@ function render() {
     sessionStorage.setItem('contact-fixture-saves', String(state.saves));
     if (!fixture.saveResponse) throw new Error('fixture forbids Save');
     if (fixture.saveResponse === 'persist') sessionStorage.setItem('contact-fixture-persisted', JSON.stringify(state.rows));
+    const form = element('form', { method: 'post', action: location.pathname });
+    const action = fixture.savePost === 'different-action' ? '#ICSaveLater' : save.id;
+    form.append(element('input', { type: 'hidden', name: 'ICAction', value: action }));
+    document.body.append(form);
+    form.submit();
   };
   editor.append(add, save);
 }

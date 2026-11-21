@@ -20,6 +20,7 @@ import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
 import { runRecordOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { debugTimelineFixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
@@ -76,7 +77,8 @@ it("serves only the declared durable failure and carries its provenance through 
   // In-memory read ports exercise the actual planner and projection without native admission.
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    timelineEvents: debugTimelineFixture().repository,
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const served = failureRecovery(deps, run, failure);
@@ -107,7 +109,8 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
     rerunSource: { ...priorRequest.rerunSource, failureCorrection: { failureId: failure.failureId, inputField: "documentNumber" } } });
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run, listByItem: () => [] },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    timelineEvents: debugTimelineFixture().repository,
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
@@ -158,7 +161,7 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
     { documentNumber: "4502", actionId: "6a766ae6f0549046f7f0dc06" });
 });
 
-it.each(["subject-not-resolvable", "subject-ambiguous"] as const)("serves %s as the Employee ID lookup correction", code => {
+it.each(["employee-id-absent", "employee-id-no-match"] as const)("refuses a manual lookup correction for %s", code => {
   const { run, failure: employeeAbsent, request } = fixture();
   const subject = descriptorRuntimeNodes(separationsDescriptor).find(node => node.id === "subject");
   assert.ok(subject?.kind === "task");
@@ -166,18 +169,14 @@ it.each(["subject-not-resolvable", "subject-ambiguous"] as const)("serves %s as 
     causeChain: [{ ...employeeAbsent.causeChain[0], code: failureCodeFromTaskCode(code) }] });
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    timelineEvents: debugTimelineFixture().repository,
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
-  const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
-    subject: { state: "absent", reason: "No subject" }, diagnosticBundle: { state: "absent", reason: "None" } });
-  assert.equal(wire.recovery?.correction.code, code);
-  assert.equal(wire.recovery?.prefill, undefined);
-  const decision = failureDecision(wire);
-  assert.equal(decision.type, "correct-value");
-  assert.deepEqual(decision.options[0]?.input, { kind: "text", label: "Employee ID", placeholder: "8 digits", pattern: "^10\\d{6}$" });
+  assert.deepEqual(failureRecovery(deps, run, failure), {});
   const corrected = { ...request, rerunSource: { ...request.rerunSource, failureCorrection: { failureId: failure.failureId, inputField: "operatorEmployeeId" } } };
-  assert.equal((failureCorrectionSubmission(separationsDescriptor, run, failure, StartPlanIngressSchema.parse(corrected)) as Record<string, unknown>).operatorEmployeeId, "10800001");
+  assert.throws(() => failureCorrectionSubmission(separationsDescriptor, run, failure, StartPlanIngressSchema.parse(corrected)),
+    /Failure correction requires exactly its declared input value/u);
 });
 
 it("prefills an entered Employee ID UCPath does not know, and serves it nowhere else", () => {
@@ -186,7 +185,8 @@ it("prefills an entered Employee ID UCPath does not know, and serves it nowhere 
   const run = RunRecordSchema.parse({ ...source, input: { ...source.input, parsed: { ...source.input.parsed, value: { ...original, operatorEmployeeId: typed } } } });
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    timelineEvents: debugTimelineFixture().repository,
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,

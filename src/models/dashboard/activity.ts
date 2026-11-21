@@ -304,11 +304,27 @@ export const ActivityLedgerBlockSchema = z.strictObject({
 });
 export type ActivityLedgerBlock = z.infer<typeof ActivityLedgerBlockSchema>;
 
+const AssistantUnrecordedCountSchema = z.strictObject({ state: z.literal("unavailable"), reason: z.literal("not-recorded") });
+export const ActivityAssistantUsageSchema = z.strictObject({
+  assistantMessages: z.strictObject({
+    state: z.literal("retained-history"),
+    days: z.array(z.strictObject({ day: z.iso.date(), count: z.number().int().nonnegative() })).min(1),
+  }),
+  assistantTools: AssistantUnrecordedCountSchema,
+  assistantActions: z.strictObject({
+    state: z.literal("retained-history"),
+    days: z.array(z.strictObject({ day: z.iso.date(), proposed: z.number().int().nonnegative() })).min(1),
+    approved: AssistantUnrecordedCountSchema,
+  }),
+});
+export type ActivityAssistantUsage = z.infer<typeof ActivityAssistantUsageSchema>;
+
 export const ActivityReportWireSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
   from: z.iso.date(),
   to: z.iso.date(),
   generatedAt: IsoInstantSchema,
+  ...ActivityAssistantUsageSchema.shape,
     /* Top-level runs in range — delegated members are contained in their operation exactly as they are in the Queue Panel, applied once, in the projection. */
   totalRuns: z.number().int().nonnegative(),
   terminalRuns: z.number().int().nonnegative(),
@@ -334,6 +350,13 @@ export const ActivityReportWireSchema = z.strictObject({
 }).superRefine((report, context) => {
   if (report.from > report.to) {
     context.addIssue({ code: "custom", path: ["from"], message: "an activity range starts on or before it ends" });
+  }
+  const firstDay = Date.parse(report.from), dayCount = (Date.parse(report.to) - firstDay) / 86_400_000 + 1;
+  for (const field of ["assistantMessages", "assistantActions"] as const) {
+    const days = report[field].days;
+    if (days.length !== dayCount || days.some((row, index) => Date.parse(row.day) !== firstDay + index * 86_400_000)) {
+      context.addIssue({ code: "custom", path: [field, "days"], message: "assistant usage days must cover the selected report dates in order" });
+    }
   }
   if (report.volume !== undefined && report.volume.coveredRuns !== report.totalRuns) {
     context.addIssue({

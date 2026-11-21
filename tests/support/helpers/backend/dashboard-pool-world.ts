@@ -58,7 +58,7 @@ export function createDashboardPoolTestWorld() {
   /** `real` swaps the scripted children for real processes from the given launch and spawner. */
   async function openControlHarness(behavior: Partial<ScriptedWorkerBehavior> = {},
     real?: (lifetime: RuntimeLifetimeLock) => Readonly<{ launch: WorkerCliLaunchSpec; spawn: WorkerProcessSpawner }>,
-    options: Readonly<{ holdPreflight?: boolean }> = {}): Promise<ControlHarness> {
+    options: Readonly<{ holdPreflight?: boolean; onStopChannelClosed?: (error: Error) => void }> = {}): Promise<ControlHarness> {
     const profile = await createBoundProfileFixture(real === undefined ? {} : { sharedMachine: true }), root = profile.stateRoot;
     const clock = manualClock(new Date(NOW));
     const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
@@ -101,6 +101,7 @@ export function createDashboardPoolTestWorld() {
       },
       onChange: view => { changes.push(view); },
       onFault: error => { faults.push(error); },
+      onStopChannelClosed: options.onStopChannelClosed,
       ...(workerPreflight === undefined ? {} : { preflight: workerPreflight }),
     });
     cleanups.push(async () => { await workers.pool.stopAll("shutdown"); });

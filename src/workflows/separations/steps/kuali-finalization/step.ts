@@ -34,7 +34,6 @@ import { UcpathApprovalStatusSchema } from "../../../../models/ui/ucpath-ss-smar
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { DRY_RUN_TRANSACTION_NUMBER } from "../../../../models/workflow/dry-run.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../../../../models/workflow/step-omission.js";
 import {
   SeparationsMatchDepartmentOption,
 } from "../../../../models/workflows/separations/match-department-option.js";
@@ -117,48 +116,54 @@ const KUALI_FINALIZATION_DISPLAY = {
         title: "Kuali RRSS Separation Request Form",
         mode: "Fill form",
         nodeIds: ["finalize-kuali"],
+        when: [{ "finalize-kuali": ["saved", "dry-run"] }],
         lines: [
           { id: "fill-finalization", kind: "action", text: "Fill the reviewed transaction, dates, department and timekeeper details.", nodeIds: ["finalize-kuali"] },
           { id: "verify-staged", kind: "check", text: "Verify the exact document and staged finalization values.", nodeIds: ["finalize-kuali"] },
-          { id: "save-document", kind: "action", text: "In a live run, save the reviewed Kuali document.", nodeIds: ["finalize-kuali"] }
+          { id: "save-document", kind: "click", target: "Save", nodeIds: ["finalize-kuali"], when: [{ "dry-run": ["false"], "finalize-kuali": ["saved"] }] }
         ],
         fields: [
           {
             id: "kuali-document-department",
+            example: "Campus Dining",
             label: "Department",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.department" }],
             source: {
               origin: "Matched department option",
               detail: "The Kuali option matched to the active UCPath department.",
               chain: [],
-              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Kuali department option" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Kuali department option" }
             }
           },
           {
             id: "kuali-document-payroll-title-code",
+            example: "000001",
             label: "Payroll title code",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.payrollTitleCode" }],
             source: { origin: "UCPath employment", detail: "The payroll title code read from the selected active job.", chain: [] }
           },
           {
             id: "kuali-document-payroll-title",
+            example: "Fictional analyst",
             label: "Payroll title",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.payrollTitle" }],
             source: {
               origin: "UCPath employment",
               detail: "The payroll title read from the selected active job.",
               chain: [],
-              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Payroll title" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Payroll title" }
             }
           },
           {
             id: "kuali-document-timekeeper-name",
+            example: "Synthetic Timekeeper",
             label: "Timekeeper name",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.timekeeperName" }],
-            source: { origin: "Configured timekeeper", detail: "The timekeeper name supplied in the admitted run input.", chain: [] }
+            source: { origin: "Configured timekeeper", detail: "The timekeeper name supplied when the run starts.", chain: [] }
           },
           {
             id: "kuali-document-last-day-worked",
+            example: "4/25/2031",
             label: "Last day worked",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.lastDayWorked" }],
             source: {
@@ -170,6 +175,7 @@ const KUALI_FINALIZATION_DISPLAY = {
           },
           {
             id: "kuali-document-separation-date",
+            example: "4/26/2031",
             label: "Separation date",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.separationDate" }],
             source: {
@@ -181,6 +187,7 @@ const KUALI_FINALIZATION_DISPLAY = {
           },
           {
             id: "kuali-document-termination-effective-date",
+            example: "4/27/2031",
             label: "Termination effective date",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.terminationEffectiveDate" }],
             source: {
@@ -192,6 +199,7 @@ const KUALI_FINALIZATION_DISPLAY = {
           },
           {
             id: "kuali-document-transaction-number",
+            example: "T000000001",
             label: "Transaction number",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.transactionNumber" }],
             source: {
@@ -203,6 +211,7 @@ const KUALI_FINALIZATION_DISPLAY = {
           },
           {
             id: "kuali-document-timekeeper-comments",
+            example: "ST: UCPath transaction T000000001 filed for Kuali document 3000001.",
             label: "Timekeeper comments",
             transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables.timekeeperComments" }],
             source: {
@@ -265,11 +274,6 @@ export const finalizeKualiNode = kualiFinalizationEntries.transaction(FINALIZE_N
   probePolicy: "always",
   probeToFenceMaxMs: 45_000,
 });
-
-export const KUALI_FINALIZATION_OMISSION: StepOmissionDeclaration = {
-  form: { fields: [] },
-  produces: {},
-};
 
 
 const FinalizationInputShape = {
@@ -346,8 +350,10 @@ export const SeparationsKualiFinalizationResultSchema = z.strictObject({
 export function buildFinalization({ task, transaction, group }: Author, extraction: Extraction, jobs: Jobs, timecard: Timecard, identity: Identity, termination: Termination) {
   const { action, document, plan } = extraction, { employment, departmentOption } = jobs;
   const { dates } = timecard, { approval } = identity, { receipt } = termination;
-  const filingPresence = task(filingPresenceNode, [receipt], ({ outputs }) =>
-    outputs["receipt"]);
+  const filingPresence = task(filingPresenceNode, [receipt, employment], ({ outputs }) => ({
+    ...outputs["receipt"],
+    expectedEmplRecord: outputs["employment"].emplRecord,
+  }));
   const finalizationDependencies = [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence] as const;
   const finalizationTarget = (
     { input, outputs, protectedInputBindings }: WorkflowEntryScope<typeof SeparationsCanonicalInput, typeof finalizationDependencies>,
@@ -399,7 +405,7 @@ export function buildFinalization({ task, transaction, group }: Author, extracti
       return { prepare: value, commit: value, samples: [] };
     },
   });
-  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, { ...KUALI_FINALIZATION_DISPLAY, omission: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]]] as const };
+  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, KUALI_FINALIZATION_DISPLAY), [filingPresence, finalizeKuali]]] as const };
 }
 
 export const separationsKualiFinalizationDefinition = defineStep({

@@ -40,6 +40,9 @@ export function suggestSpreadsheetField(header: string, samples: readonly string
   return { fieldId: null, basis: 'unmapped' };
 }
 
+export interface SpreadsheetSheet { readonly name: string; readonly headerRow: number; readonly columns: readonly string[]; readonly mapping: readonly string[]; readonly bindings?: readonly SpreadsheetColumnBinding[] }
+export interface RegisteredSpreadsheet { readonly id: string; readonly name: string; readonly typeId: string; readonly sheets: readonly SpreadsheetSheet[]; readonly addedAt?: string; readonly rowCount?: number; readonly version?: number; readonly status?: "Attached" | "Generated" | "Updated" }
+export const NOT_MAPPED = "Not used";
 export interface SpreadsheetColumnBinding {
   readonly id: string;
   readonly sourceColumn: number | null;

@@ -129,6 +129,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         ? { state: "present", value: at(settledMinute) }
         : { state: "absent", reason: `run is ${input.status} and has not ended` },
       gateOpenedAt,
+      operatorWait: { state: "absent" },
       title: input.title,
       // The fixture corpus renames nothing, so every reference row draws the
       // server-derived title — which is what the demo's un-renamed rows draw too.

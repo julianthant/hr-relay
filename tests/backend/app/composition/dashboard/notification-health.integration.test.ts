@@ -7,8 +7,9 @@ import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/ph
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
-import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import * as authorityInspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
 import * as backupInspection from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { withReadonlyAuthoritySnapshot } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
@@ -24,7 +25,7 @@ describe("canonical notification producers", () => {
       expect((await read()).backupFailed).toBe(false); expect((await read()).integrityFailed).toBe(false);
       const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
       const backup = new AuthorityBackupService(f.db, { directory }, f.clock);
-      await backup.request({ trigger: "operator", requiredGeneration: f.db.getMeta().authorityGeneration });
+      await backup.request({ trigger: "schema-migration", requiredGeneration: f.db.getMeta().authorityGeneration });
       const files = readdirSync(directory);
       f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
       expect((await read()).backupFailed).toBe(false); expect(readdirSync(directory)).toEqual(files);
@@ -50,7 +51,7 @@ describe("canonical notification producers", () => {
 
   it("inspects the store once while its change key is unchanged and again after a write", async () => {
     const f = await fixture();
-    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const inspect = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
     try {
       const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
       await read();
@@ -64,7 +65,7 @@ describe("canonical notification producers", () => {
 
   it("inspects once across idle observations and again after an external commit or a store write", async () => {
     const f = await fixture();
-    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const inspect = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
     const other = new DatabaseSync(f.path);
     try {
       const observe = createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox: f.inbox, read: () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock }) });
@@ -84,7 +85,7 @@ describe("canonical notification producers", () => {
   });
   it("inspects again after a peer connection commits right after the observer's own health write", async () => {
     const f = await fixture();
-    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const inspect = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
     const other = new DatabaseSync(f.path);
     try {
       const observe = createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox: f.inbox, read: () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock }) });
@@ -109,7 +110,7 @@ describe("canonical notification producers", () => {
   });
   it("inspects again after an owner write lands while backup verification is suspended", async () => {
     const f = await fixture();
-    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const inspect = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
     try {
       const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
       writeFileSync(join(directory, "corrupt.manifest.json"), "not a manifest");
@@ -125,7 +126,7 @@ describe("canonical notification producers", () => {
   });
   it("inspects again after an owner write lands while inbox publication is suspended", async () => {
     const f = await fixture();
-    const inspect = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const inspect = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
     const publish = f.inbox.publish.bind(f.inbox);
     let release: () => void = () => undefined;
     const gate = new Promise<void>(resolve => { release = resolve; });
@@ -180,8 +181,13 @@ describe("canonical notification producers", () => {
   });
 });
 
-/** Holds each off-thread backup inspection until the test settles it; the stand-in verdict is the synchronous full inspection. */
+/**
+ * Holds each off-thread backup inspection until the test settles it; the stand-in verdict is the synchronous full inspection.
+ * The store inspection before it gets the same synchronous stand-in, so a pass reaches the backups without waiting on a worker start.
+ */
 function holdBackupInspections() {
+  const store = vi.spyOn(authorityInspection, "inspectAuthorityOffThread").mockImplementation(async (_admission, path) =>
+    withReadonlyAuthoritySnapshot(path, database => backupInspection.inspectOpenDatabase(database)));
   const held: Array<{ settle(outcome: "inspect" | Error): void; signal: AbortSignal | undefined; path: string }> = [];
   const spy = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread").mockImplementation((admission, path, expectedSchemaVersion, options) =>
     new Promise((resolve, reject) => {
@@ -191,11 +197,11 @@ function holdBackupInspections() {
         else resolve(backupInspection.inspectAuthorityBackupReadOnly(admission, path, expectedSchemaVersion));
       } });
     }));
-  return { held, restore: () => spy.mockRestore() };
+  return { held, restore: () => { spy.mockRestore(); store.mockRestore(); } };
 }
 async function withOneBackup(f: Awaited<ReturnType<typeof fixture>>) {
   const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
-  await new AuthorityBackupService(f.db, { directory }, f.clock).request({ trigger: "operator", requiredGeneration: f.db.getMeta().authorityGeneration });
+  await new AuthorityBackupService(f.db, { directory }, f.clock).request({ trigger: "schema-migration", requiredGeneration: f.db.getMeta().authorityGeneration });
 }
 const settledYet = (promise: Promise<unknown>) => { let settled = false; void promise.then(() => { settled = true; }, () => { settled = true; }); return () => settled; };
 

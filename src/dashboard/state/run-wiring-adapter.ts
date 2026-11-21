@@ -11,6 +11,7 @@ import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
 import { answeredRow, decisionAnswerValid, failureCardFacts, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
+import { projectFailureDisplay } from "../../models/dashboard/failure-display.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
@@ -20,8 +21,9 @@ import type { LogEntry, LogScreenshot, LogStep } from "../surfaces/run-detail/lo
 import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/logs/log-timeline-model.js";
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
-import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
+import { formatDuration, formatTimeWithSeconds } from "../lib/date-format.js";
 import { plainStepLabel } from "./log-display.js";
+import { REPLACED_READING, typedValuesEntry, usesTypedEntry } from "../surfaces/run-detail/logs/typed-values-model.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
 import { workbookReferenceChoiceId, workbookReferenceLogDecision, workbookReferenceMatchesReplay, workbookReferenceTimelineEvent, workbookWriteLogStep, workbookWriteMatchesReplay, type WorkbookReferenceChoice, type WorkbookWrite } from "../surfaces/run-detail/logs/workbook-write-model.js";
@@ -30,8 +32,10 @@ class RunLogIdentityError extends Error {
   readonly code = "LOGS_IDENTITY_REFUSED";
 }
 
+/** The run moved past the selected row while it was read; its logs are still the selected run's to show. */
 class RunLogSelectionBehindError extends RunLogIdentityError {
   override name = "RunLogSelectionBehindError";
+  constructor(readonly snapshot: RunLogSnapshot) { super("RUN_DETAIL_REVISION_AHEAD"); }
 }
 
 function requireNative(value: NativeRunEventWire | undefined): NativeRunEventWire {
@@ -74,7 +78,6 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
-  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError("RUN_DETAIL_REVISION_AHEAD");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
   const section = await client.runSection(row.runId, "logs", undefined, signal);
@@ -102,15 +105,15 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   for (const section of sections) {
     if (section.section === "workbook-writes" && section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_WORKBOOK_IDENTITY_MISMATCH");
     if (section.section === "workbook-writes" && section.payload.referenceChoices?.some(choice => choice.resolution.state === "available"
-      && (choice.resolution.target.expectedVersion.valueOf() !== row.rowRevision.valueOf() || detail.gate.state !== "open"
+      && (choice.resolution.target.expectedVersion.valueOf() !== detail.rowRevision.valueOf() || detail.gate.state !== "open"
         || detail.gate.nodeId?.valueOf() !== choice.resolution.target.gateId.valueOf()))) throw new RunLogIdentityError("RUN_GATE_IDENTITY_MISMATCH");
     if (section.section === "captures" && (detail.captures?.state !== "available"
       || detail.captures.artifactCount !== section.payload.artifacts.length)) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
     if (section.section === "identity-gate" && section.payload.state === "available"
-      && (section.payload.value.expectedVersion !== row.rowRevision || detail.gate.state !== "open")) throw new RunLogIdentityError("RUN_GATE_IDENTITY_MISMATCH");
+      && (section.payload.value.expectedVersion !== detail.rowRevision || detail.gate.state !== "open")) throw new RunLogIdentityError("RUN_GATE_IDENTITY_MISMATCH");
     if (section.section === "failure" && section.payload.state === "available" && (section.payload.value.attempt !== row.attempt
       || section.payload.value.traceId !== row.traceId || section.payload.value.workflowId !== row.workflowId
-      || (section.payload.value.recovery !== undefined && section.payload.value.recovery.expectedVersion !== row.rowRevision))) throw new RunLogIdentityError("RUN_FAILURE_IDENTITY_MISMATCH");
+      || (section.payload.value.recovery !== undefined && section.payload.value.recovery.expectedVersion !== detail.rowRevision))) throw new RunLogIdentityError("RUN_FAILURE_IDENTITY_MISMATCH");
     if (section.section === "parked-write" && section.payload.runAttempt !== row.attempt) throw new RunLogIdentityError("RUN_WRITE_IDENTITY_MISMATCH");
   }
   if (sections.some(section => section.section === "identity-gate" && section.payload.state === "available") && detail.gate.state === "open" && detail.gate.nodeId === undefined) {
@@ -118,6 +121,7 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   }
   const snapshot: RunLogSnapshot = { detail, logs, sections, unavailableEvidence };
   validateRunLogSnapshot(snapshot);
+  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
   return snapshot;
 }
 
@@ -259,16 +263,30 @@ const SCREENSHOT_REASON: Readonly<Record<string, string>> = {
   "secret-controls-present": "the page showed a password or other secret field", "authentication-unverified": "the sign-in could not be confirmed",
   "verification-failed": "the captured page could not be checked", "task-aborted": "the step was stopped first",
   "lease-ended": "the browser had already been released", TimeoutError: "the browser did not respond in time",
+  "horizontal-overflow": "the page was wider than the browser could capture", "unpainted-gap": "part of the page could not be scrolled into view",
+  "content-bottom-unreached": "the bottom of the page could not be scrolled into view", "band-limit": "the page was too long to capture",
+  "pixel-limit": "the page was too large to capture", "observer-unavailable": "the secret-field check stopped working during capture",
 };
 
-/** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. */
-function noScreenshotLine(reason: string): string {
-  return `No screenshot: ${Object.hasOwn(SCREENSHOT_REASON, reason) ? SCREENSHOT_REASON[reason] : "the browser could not take it"}.`;
+const SCREENSHOT_STOPPED = "Screenshot capture stopped at ";
+// Longest stage first: "final-sign-in-check" also ends in "sign-in-check".
+const CAPTURE_STAGE: readonly (readonly [string, string])[] = [["final-sign-in-check", "while re-confirming the sign-in"],
+  ["sign-in-check", "while confirming the sign-in"], ["secret-check", "while checking for secret fields"], ["page-capture", "while capturing the page"]];
+
+/** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. A detail names the capture stage and its value-free browser call. */
+function noScreenshotLine(reason: string, detail?: string): string {
+  const text = Object.hasOwn(SCREENSHOT_REASON, reason) ? SCREENSHOT_REASON[reason] : "the browser could not take it";
+  const stage = detail === undefined ? undefined : CAPTURE_STAGE.find(([token]) => detail.startsWith(`${token}-`));
+  const stopped = detail === undefined ? "" : stage === undefined ? ` (${detail})` : ` ${stage[1]} (${detail.slice(stage[0].length + 1)})`;
+  return `No screenshot: ${text}${stopped}.`;
 }
 
 function failureScreenshotReason(failure: Readonly<{ causeChain: readonly Readonly<{ code: string; summary: string }>[] }>): string | undefined {
-  const refused = failure.causeChain.find(cause => cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && cause.summary.startsWith(SCREENSHOT_REFUSED));
-  return refused === undefined ? undefined : noScreenshotLine(refused.summary.slice(SCREENSHOT_REFUSED.length).trim());
+  const causes = failure.causeChain.filter(cause => cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+  const refused = causes.find(cause => cause.summary.startsWith(SCREENSHOT_REFUSED));
+  const stopped = causes.find(cause => cause.summary.startsWith(SCREENSHOT_STOPPED));
+  return refused === undefined ? undefined : noScreenshotLine(refused.summary.slice(SCREENSHOT_REFUSED.length).trim(),
+    stopped?.summary.slice(SCREENSHOT_STOPPED.length).trim());
 }
 
 export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{
@@ -301,7 +319,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const { artifact, capturedAt, origin } = matches[0];
       const boundary = origin.browserCapture?.boundary;
       const label = boundary === "before-submit" ? "Before submit" : boundary === "after-submit" ? "After submit" : undefined;
-      return [{ logId: row.logId, src: client.artifactUrl(artifact.artifactId), alt: label ?? "Browser capture", time: fmtActionClock(capturedAt),
+      return [{ logId: row.logId, src: client.artifactUrl(artifact.artifactId), alt: label ?? "Browser capture", time: formatTimeWithSeconds(capturedAt),
         ...(label === undefined ? {} : { label }), ...(boundary === undefined ? {} : { boundary }), width: artifact.width, height: artifact.height, kind: boundary === "before-submit" ? "form" : "browser" }];
     }
     return [];
@@ -313,7 +331,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     order.set(row.logId, requireNative(row.native).order);
     node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
-    const time = fmtActionClock(at);
+    const time = formatTimeWithSeconds(at);
     const screenshots = screenshotsOf(row);
     let entry: LogEntry | undefined;
     if (row.kind === "observed") {
@@ -345,11 +363,13 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };
       else {
         const reason = row.note.fields.find(field => field.key === "reason" && field.kind === "text")?.value;
+        const captureFailure = row.note.fields.find(field => field.key === "captureFailure" && field.kind === "text")?.value;
         // The failed step's card already says why it has no screenshot.
         const told = sections.some(section => section.section === "failure" && section.payload.state === "available"
           && section.payload.value.nodeId === requireNative(row.native).nodeId && section.payload.value.attempt === requireNative(row.native).attempt
           && failureScreenshotReason(section.payload.value) !== undefined);
-        entry = told ? undefined : typeof reason === "string" ? { ...entry, message: noScreenshotLine(reason) } : entry;
+        entry = told ? undefined : typeof reason === "string"
+          ? { ...entry, message: noScreenshotLine(reason, typeof captureFailure === "string" && captureFailure !== reason ? captureFailure : undefined) } : entry;
       }
     }
     const entries: LogEntry[] = entry === undefined ? [] : [entry];
@@ -365,7 +385,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       for (const operation of section.payload.operations) { order.set(operation.native.eventId, operation.native.order); steps.push(workbookWriteLogStep(operation)); }
       for (const choice of section.payload.referenceChoices ?? []) {
         const id = workbookReferenceChoiceId(choice), event = workbookReferenceTimelineEvent(choice, detail);
-        const time = choice.resolution.state === "resolved" ? fmtActionClock(choice.resolution.resolvedAt) : event === undefined ? "—" : fmtActionClock(event.at);
+        const time = choice.resolution.state === "resolved" ? formatTimeWithSeconds(choice.resolution.resolvedAt) : event === undefined ? "—" : formatTimeWithSeconds(event.at);
         order.set(id, choice.native.order); node.set(id, event?.native?.nodeId ?? choice.native.nodeId);
         steps.push({ id, time, title: "Look up in roster", entries: [{ kind: "decision", id, time, decision: workbookReferenceLogDecision(choice) }] });
       }
@@ -375,16 +395,17 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const message = checked === undefined ? write.parkedMessage
         : formatErrorCatalogFailure(createErrorCatalogFailure(checked.code, {})).text;
       order.set(write.writeIntentId, requireNative(write.native).order); node.set(write.writeIntentId, requireNative(write.native).nodeId);
-      steps.push({ id: write.writeIntentId, time: fmtActionClock(write.parkedAt), title: "Write parked", system: write.system,
-        entries: [{ kind: "decision", id: write.writeIntentId, time: fmtActionClock(write.parkedAt), decision: { title: write.decision?.title ?? "Write parked", state: "parked",
+      steps.push({ id: write.writeIntentId, time: formatTimeWithSeconds(write.parkedAt), title: "Write parked", system: write.system,
+        entries: [{ kind: "decision", id: write.writeIntentId, time: formatTimeWithSeconds(write.parkedAt), decision: { title: write.decision?.title ?? "Write parked", state: "parked",
           message, ...(write.decision === undefined ? {} : { served: write.decision }) } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const message = operatorFailureSentence(failure.code);
+      const failureTitle = failure.display?.title ?? projectFailureDisplay(failure).title;
       const noScreenshot = failureScreenshotReason(failure);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
-      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
-        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
+      steps.push({ id: failure.failureId, time: formatTimeWithSeconds(failure.occurredAt), title: failureTitle,
+        entries: [{ kind: "decision", id: failure.failureId, time: formatTimeWithSeconds(failure.occurredAt), decision: { title: failureTitle,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
@@ -393,8 +414,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const gate = section.payload.value;
       const ceremony = identityCeremonyFor(gate);
       order.set(gate.gateRef, requireOrder(gate.order)); node.set(gate.gateRef, gateTimelineOwner(detail, gate)?.native?.nodeId ?? (detail.gate.state === "open" ? detail.gate.nodeId : undefined));
-      steps.push({ id: gate.gateRef, time: fmtActionClock(gate.parkedAt), title: plainStepLabel(gate.label),
-        entries: [{ kind: "decision", id: gate.gateRef, time: fmtActionClock(gate.parkedAt), decision: { title: gateOpen(detail) && gate.decision !== undefined ? gate.decision.title : plainStepLabel(gate.label), state: "review",
+      steps.push({ id: gate.gateRef, time: formatTimeWithSeconds(gate.parkedAt), title: plainStepLabel(gate.label),
+        entries: [{ kind: "decision", id: gate.gateRef, time: formatTimeWithSeconds(gate.parkedAt), decision: { title: gateOpen(detail) && gate.decision !== undefined ? gate.decision.title : plainStepLabel(gate.label), state: "review",
           message: gate.reason,
           comparison: gate.comparisons.map(comparison => ({ label: comparison.label, expected: comparison.request, observed: comparison.ucpath })),
           ...(ceremony.kind === "confirm" ? { field: { label: "Approving employee", value: `${ceremony.option.displayName} · ${directIdentifierDisplay(ceremony.option.maskedEid)}`,
@@ -417,19 +438,21 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         : gate.state === "resolved" && gate.answer !== undefined ? { title: plainStepLabel(gate.label), answered: gate.answer } : undefined;
     if (gateCard !== undefined && gate.state !== "absent") {
       gateDecisionShown = true;
-      const time = fmtActionClock(event.at);
+      const time = formatTimeWithSeconds(event.at);
       order.set(gate.gateId, requireNative(event.native).order); node.set(gate.gateId, requireNative(event.native).nodeId);
       steps.push({ id: gate.gateId, time, title: plainStepLabel(gate.label), entries: [{ kind: "decision", id: gate.gateId, time, decision: { state: "review", ...gateCard } }] });
       continue;
     }
     // The timeline strip already shows done, pending, running and failed stages; only a skip, wait or cancel adds a log line.
     if (event.state === "done" || event.state === "pending" || event.state === "active" || (event.state === "failed" && failedNodes.has(requireNative(event.native).nodeId))) continue;
-    const time = fmtActionClock(event.at);
+    const time = formatTimeWithSeconds(event.at);
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
     const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
+    const replacedReading = event.state === "skipped" && event.notRun.state === "present" && event.notRun.reason === "operator-asserted"
+      && detail.timeline.steps?.some(category => category.key === event.categoryKey && category.typedValues !== undefined) === true;
     steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
-      message: reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
+      message: replacedReading ? REPLACED_READING : reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {
@@ -452,10 +475,17 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const previous = grouped.at(-1);
     if (previous !== undefined && key === previousKey && groupable.has(previous.id) && groupable.has(step.id)) {
       grouped[grouped.length - 1] = { ...previous, entries: [...previous.entries, ...step.entries] };
-    } else grouped.push({ ...step, title: category?.label ?? step.title, ...(system === undefined ? {} : { system }) });
+    } else grouped.push({ ...step, title: category === undefined ? step.title : plainStepLabel(category.label), ...(system === undefined ? {} : { system }) });
     previousKey = key;
   }
-  const named = grouped.map(({ system: raw, ...step }): LogStep => {
+  const withTyped = grouped.map((step): LogStep => {
+    const category = categoryOf.get(node.get(step.id));
+    if (category?.typedValues === undefined && category?.usesTyped === undefined) return step;
+    const lead = [...category.typedValues === undefined ? [] : [typedValuesEntry(step.id, step.time, category.typedValues)],
+      ...category.usesTyped === undefined ? [] : [usesTypedEntry(step.id, step.time, category.usesTyped)]];
+    return { ...step, entries: [...lead, ...step.entries] };
+  });
+  const named = withTyped.map(({ system: raw, ...step }): LogStep => {
     const system = systemName(raw);
     return system === undefined ? step : { ...step, system, entries: step.entries.map(entry => entryWithSystem(entry, system)) };
   });
@@ -463,14 +493,14 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const members = new Set<string | undefined>(category.members.map(member => member.nodeId));
     const first = grouped.find(step => members.has(node.get(step.id)));
     if (category.key === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
-    return { id: category.key, label: category.label, state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
+    return { id: category.key, label: plainStepLabel(category.label), state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
       ...(first === undefined ? {} : { stepId: first.id, time: first.time }),
-      ...(category.durationSec === undefined ? {} : { durationLabel: fmtElapsed(category.durationSec) }),
+      ...(category.durationSec === undefined ? {} : { durationLabel: formatDuration(category.durationSec) }),
       substeps: category.members.map(member => {
         if (member.nodeId === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_MEMBER_IDENTITY_MISMATCH");
         return { id: member.nodeId, label: plainStepLabel(member.label),
         state: member.state === "replayed" ? "completed" : TIMELINE_STATE[member.state],
-        ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
+        ...(member.durationSec === undefined ? {} : { durationLabel: formatDuration(member.durationSec) }) }; }) };
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
   return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
@@ -484,7 +514,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
 export const RUN_CANCELLED_STEP_ID = "run-cancelled";
 function cancelledEnding(cancellation: RunDetailWire["cancellation"]): readonly LogStep[] {
   if (cancellation === undefined) return [];
-  const time = fmtActionClock(cancellation.at);
+  const time = formatTimeWithSeconds(cancellation.at);
   return [{ id: RUN_CANCELLED_STEP_ID, time, title: cancellation.title, entries: [{ kind: "note", id: RUN_CANCELLED_STEP_ID, time, message: cancellation.outcome }] }];
 }
 
@@ -540,17 +570,17 @@ export function runCommandRefreshesDay(view: CommandAttemptView, type: string): 
 
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
-  // Every day frame re-serves the row as a new object. An equal row that lands while the read is in flight must not
-  // restart it, or frequent frames keep Logs loading forever; one that lands after it settled (a day refresh) reads again.
+  // Every day frame re-serves the row as a new object, and a running run's revision moves with each worker heartbeat.
+  // A row of the same run that lands while the read is in flight must not restart it, or frequent frames keep Logs
+  // loading forever; the read lands, then a newer revision or a row that landed after it settled (a day refresh) reads again.
   const readRow = useRef(row);
   const reading = useRef(false);
   const latestRow = useRef(row);
   const settledRow = useRef(row);
   latestRow.current = row;
   const previous = readRow.current;
-  if (previous.runId !== row.runId || previous.rowRevision !== row.rowRevision || previous.attempt !== row.attempt
-    || previous.traceId !== row.traceId || previous.workflowId !== row.workflowId
-    || !reading.current && row !== settledRow.current && row !== previous) readRow.current = row;
+  if (previous.runId !== row.runId || previous.attempt !== row.attempt || previous.traceId !== row.traceId || previous.workflowId !== row.workflowId
+    || !reading.current && (previous.rowRevision !== row.rowRevision || row !== settledRow.current && row !== previous)) readRow.current = row;
   const servedRow = readRow.current;
   const request = useMemo(() => ({ client, runId: servedRow.runId, revision: servedRow.rowRevision, day: binding?.authority.day, selection: { row: servedRow, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
     epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
@@ -589,6 +619,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       ended();
       if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
         refreshBudget.revisions.add(request.revision);
+        setSettled({ request, value: { state: "loading", snapshot: cause.snapshot } });
         request.refreshDay();
         return;
       }
@@ -600,7 +631,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
       setSettled(current => ({ request, value: { state: "failed", error, diagnostic: cause,
-        ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
+        ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
+          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     return () => { controller.abort(); reading.current = false; };
   }, [client, request, row.runId, refreshBudget]);

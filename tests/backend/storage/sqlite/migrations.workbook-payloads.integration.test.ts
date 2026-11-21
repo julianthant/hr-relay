@@ -10,7 +10,7 @@ import { encodeSavedWorkbook, type SavedWorkbook } from "../../../../src/models/
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { restoreSchema36WorkbookPayloads } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema37WorkbookPayloads } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const CAPTURE = { now: "2026-11-17T00:00:00.000Z", captureFile: () => { throw new Error("no capture expected"); } };
@@ -61,21 +61,21 @@ function currentStore(): DatabaseSync {
   return database;
 }
 
-/** Each schema-36 row's payload, canonical, with its embedded workbook. */
+/** Each schema-37 row's payload, canonical, with its embedded workbook. */
 const embedded = (database: DatabaseSync) => TABLES.map(table => database.prepare(`SELECT payload_json FROM ${table} ORDER BY rowid`).all()
   .map(row => canonicalJsonStringify(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json))));
-/** Each schema-37 row's payload with its stored workbook put back in SQL, canonical. */
+/** Each schema-38 row's payload with its stored workbook put back in SQL, canonical. */
 const reassembled = (database: DatabaseSync) => TABLES.map(table => database.prepare(`SELECT json_set(json_remove(source.payload_json,'$.workbookDigest'),'$.workbook',json(stored.payload_json)) AS payload_json
     FROM ${table} AS source JOIN workbook_payloads AS stored ON stored.digest=json_extract(source.payload_json,'$.workbookDigest') ORDER BY source.rowid`).all()
   .map(row => canonicalJsonStringify(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json))));
 const storedBytes = (database: DatabaseSync, tables: readonly string[]) => tables.reduce((total, table) =>
   total + z.object({ bytes: z.number() }).parse(database.prepare(`SELECT coalesce(sum(length(payload_json)),0) AS bytes FROM ${table}`).get()).bytes, 0);
 
-describe("workbook payload migration 37", () => {
+describe("workbook payload migration 38", () => {
   it("is the current schema and adds only the payload table", () => {
-    assert.equal(WORKBOOK_PAYLOAD_MIGRATION.version, 37);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 37);
-    assert.deepEqual(migrationTableNames(37).filter(table => !migrationTableNames(36).includes(table)), ["workbook_payloads"]);
+    assert.equal(WORKBOOK_PAYLOAD_MIGRATION.version, 38);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 38);
+    assert.deepEqual(migrationTableNames(38).filter(table => !migrationTableNames(37).includes(table)), ["workbook_payloads"]);
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
 
@@ -83,12 +83,12 @@ describe("workbook payload migration 37", () => {
     const database = currentStore();
     seed(database);
     const before = readback(database);
-    restoreSchema36WorkbookPayloads(database);
+    restoreSchema37WorkbookPayloads(database);
     const rows = embedded(database);
     assert.deepEqual(rows.map(table => table.length), [1, 1, 1, 3]);
     const copies = storedBytes(database, TABLES);
     database.exec("BEGIN");
-    applyAuthorityMigrationsAfter(database, 36, CAPTURE);
+    applyAuthorityMigrationsAfter(database, 37, CAPTURE);
     database.exec("COMMIT");
     assert.deepEqual(reassembled(database), rows);
     assert.equal(readback(database), before);
@@ -122,19 +122,19 @@ describe("workbook payload migration 37", () => {
     assert.equal(database.prepare("DELETE FROM workbook_payloads WHERE digest=?").run(sha256Hex("{}")).changes, 1);
   });
 
-  it("refuses a schema-36 workbook row that is not strict schema-36 data, changing nothing", () => {
+  it("refuses a schema-37 workbook row that is not strict schema-37 data, changing nothing", () => {
     const database = currentStore();
     seed(database);
-    restoreSchema36WorkbookPayloads(database);
+    restoreSchema37WorkbookPayloads(database);
     database.exec("UPDATE workbook_library SET payload_json=json_set(payload_json,'$.workbook.libraryId','other')");
     const rows = embedded(database);
     database.exec("BEGIN");
-    assert.throws(() => applyAuthorityMigrationsAfter(database, 36, CAPTURE));
+    assert.throws(() => applyAuthorityMigrationsAfter(database, 37, CAPTURE));
     database.exec("ROLLBACK");
     assert.deepEqual(embedded(database), rows);
   });
 
-  it("upgrades a schema-36 store through the store upgrade and compacts the file", async () => {
+  it("upgrades a schema-37 store through the store upgrade and compacts the file", async () => {
     const f = await storageRecoveryFixture(7);
     try {
       let before: string;
@@ -146,8 +146,8 @@ describe("workbook payload migration 37", () => {
         database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
         seed(database);
         before = readback(database);
-        restoreSchema36WorkbookPayloads(database);
-        assert.equal(inspectNativeAuthority(database, 36).schemaVersion, 36);
+        restoreSchema37WorkbookPayloads(database);
+        assert.equal(inspectNativeAuthority(database, 37).schemaVersion, 37);
       } finally { database.close(); }
       const sizeBefore = statSync(f.path).size;
       assert.equal((await f.run()).state, "upgraded");

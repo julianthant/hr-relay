@@ -20,7 +20,12 @@ export const OCR_PAGE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "read-
           { id: "bind-reading", kind: "check", text: "Check the reading against the exact original page and form type.", nodeIds: ["read-page-reading"] },
           { id: "manual", kind: "read", text: "For a manual reading, use the operator’s reading of this exact original page.", nodeIds: ["manual-reading"] }
         ],
-        fields: []
+        fields: [
+          { id: "page", label: "PDF page", inputField: "page.sourcePage", example: "1",
+            source: { origin: "Original PDF", detail: "The exact original page assigned by the document reading.", chain: [] } },
+          { id: "form", label: "Form", inputField: "page.formType", example: "Emergency Contact",
+            source: { origin: "Document reading", detail: "The form requested by the parent; a reading does not approve the person's identity.", chain: [] } },
+        ]
       }
     ],
     branchLabels: []
