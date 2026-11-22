@@ -50,7 +50,8 @@ export const nameCases: readonly NameCase[] = [
   { label: "accepts the CI cleanup task into development", args: ["--branch", "task/ci-environments/cleanup", "--base", "development", "--title", "CI: enforce workflow rules"], ok: true, offender: "" },
   { label: "accepts cut/staging-cut", args: ["--branch", "cut/staging-cut"], ok: true, offender: "" },
   { label: "accepts a milestone cut into staging", args: ["--branch", "cut/staging-cut", "--base", "staging", "--title", "CI: cut staging"], ok: true, offender: "" },
-  ...["development", "cut/Not-Kebab", "cut/staging-cut/extra", "feature/workspace-conventions", "fix/ci-names", "chore/remove-parity-suite", "dependabot/npm_and_yarn/foo", "main", "staging", "hotfix/duo-window-crash", "task/workspace-conventions/name-check", "design/dashboard-mock"].map(branch => ({
+  { label: "accepts main into staging for the release sync", args: ["--branch", "main", "--base", "staging", "--title", "Release: Sync main into staging after v2026.11.22"], ok: true, offender: "" },
+  ...["development", "cut/Not-Kebab", "cut/staging-cut/extra", "feature/workspace-conventions", "fix/ci-names", "chore/remove-parity-suite", "dependabot/npm_and_yarn/foo", "staging", "hotfix/duo-window-crash", "task/workspace-conventions/name-check", "design/dashboard-mock"].map(branch => ({
     label: `rejects ${branch} into staging`, args: ["--branch", branch, "--base", "staging", "--title", "CI: promote development"], ok: false, offender: branch,
   })),
   ...["development", "main", "staging", "cut/staging-cut", "design/dashboard-mock"].map(branch => ({
