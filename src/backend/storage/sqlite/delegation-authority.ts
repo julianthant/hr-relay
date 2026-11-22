@@ -226,7 +226,7 @@ function authenticateGroup(repositories: AuthorityRepositories, manifest: Delega
 
 function groupForProjection(repositories: AuthorityRepositories, manifest: DelegationManifest) {
   const memo = repositories.dependencies.snapshotMemo(repositories);
-  return memo === undefined ? repositories.dependencies.authenticateGroup(manifest) : authenticateGroup(repositories, manifest, new Set(), memo);
+  return (memo === undefined ? undefined : memoizedDelegationGroup(memo, manifest)) ?? repositories.dependencies.authenticateGroup(manifest);
 }
 
 export function childTerminalSettlement(child: RunRecord, repositories: AuthorityRepositories) {
