@@ -134,7 +134,7 @@ describe("idle authority reconcile", () => {
       const claimedAt = instantOffsetOf(0);
       w.authority.put(runRecordOf({ seed: 1, claimGeneration: 1, lifecycle: { state: "running", workerId, claimedAt, heartbeatAt: claimedAt, currentNodeId: "lookup" } }));
       let flying = false;
-      const key = { authorityGeneration: 1, dataVersion: 1, totalChanges: 1 };
+      let key = 1;
       Object.assign(w.authority, { changeKey: () => key, writeInFlight: () => flying });
       w.projection.reconcileWorkerAuthority();
       lists = 0;
@@ -154,7 +154,7 @@ describe("idle authority reconcile", () => {
       assert.ok(w.changes.length > 0);
       lists = 0;
       w.changes.length = 0;
-      key.totalChanges += 1;
+      key += 1;
       w.authority.put(runRecordOf({ seed: 2 }));
       w.projection.reconcileWorkerAuthority();
       assert.equal(lists, 2, "a changed key reads the live runs, and the notice reads them once more");
@@ -171,7 +171,7 @@ describe("idle authority reconcile", () => {
       const claimedAt = instantOffsetOf(0);
       w.authority.put(runRecordOf({ seed: 1, claimGeneration: 1, lifecycle: { state: "running", workerId, claimedAt, heartbeatAt: claimedAt, currentNodeId: "lookup" } }));
       let flying = false;
-      Object.assign(w.authority, { changeKey: () => ({ authorityGeneration: 1, dataVersion: 1, totalChanges: 1 }), writeInFlight: () => flying });
+      Object.assign(w.authority, { changeKey: () => 1, writeInFlight: () => flying });
       w.projection.reconcileWorkerAuthority();
       const stringify = vi.spyOn(JSON, "stringify");
       try {

@@ -90,8 +90,9 @@ function authenticateOriginalGroup(repositories: AuthorityRepositories, manifest
   const invocation = DelegationInvocationRequestSchema.parse(command.request);
   const expectedCommandId = delegationInvocationCommandId(invocation);
   if ((invocation.revision === undefined) !== (manifest.revision === undefined)) throw new Error("delegation-revision-binding-mismatch");
+  let previousManifest: DelegationManifest | undefined;
   if (invocation.revision !== undefined && manifest.revision !== undefined) {
-    const previousManifest = repositories.delegationManifests.get(manifest.revision.previousManifestId);
+    previousManifest = repositories.delegationManifests.get(manifest.revision.previousManifestId);
     if (previousManifest === undefined) throw new Error("delegation-revision-predecessor-unavailable");
     const previous = authenticateOriginalGroup(repositories,previousManifest,nextScopePath,memo);
     if (previous.parent.envelope.runId !== parent.envelope.runId || previous.invocation.nodeId !== invocation.nodeId
@@ -117,16 +118,24 @@ function authenticateOriginalGroup(repositories: AuthorityRepositories, manifest
     || manifest.children.length !== invocation.children.length) throw new Error("delegation-manifest-binding-mismatch");
   const approvals = readScopeEvidence(repositories, parent, invocation.scopeEvidence, nextScopePath, memo);
   if (sha256Hex(canonicalJsonStringify(valueFreeProtectedData(approvals))) !== invocation.approvalDigest) throw new Error("delegation-approval-binding-mismatch");
+  const previousMembers = new Map<string, number>();
+  let reuseSource: DelegationGroupProof | undefined;
   const children = manifest.children.map((entry, index) => {
     const planned = invocation.children[index], child = repositories.runs.get(entry.childRunId), dependency = repositories.dependencies.get(entry.dependencyId);
     if (canonicalJsonStringify(entry.reuse ?? null) !== canonicalJsonStringify(planned?.reuse ?? null)) throw new Error("delegation-reuse-binding-mismatch");
     if (entry.reuse !== undefined) {
       if (manifest.revision === undefined || entry.reuse.manifestId !== manifest.revision.previousManifestId
         || planned?.sourceRecordIds === undefined || child === undefined || dependency === undefined) throw new Error("delegation-reuse-source-unavailable");
-      const previousManifest = repositories.delegationManifests.get(entry.reuse.manifestId);
       if (previousManifest === undefined) throw new Error("delegation-reuse-source-unavailable");
-      const previous = authenticateGroup(repositories,previousManifest,nextScopePath,memo);
-      const sourceIndex = previous.children.findIndex(member => member.dependency.dependencyId === entry.reuse?.dependencyId);
+      if (reuseSource === undefined) {
+        reuseSource = authenticateGroup(repositories, previousManifest, nextScopePath, memo);
+        for (const [index, member] of reuseSource.children.entries()) {
+          const id = member.dependency.dependencyId;
+          if (!previousMembers.has(id)) previousMembers.set(id, index);
+        }
+      }
+      const previous = reuseSource;
+      const sourceIndex = previousMembers.get(entry.reuse.dependencyId) ?? -1;
       const source = previous.children[sourceIndex], sourcePlan = previous.invocation.children[sourceIndex];
       const terminal = repositories.runResults.getSettlement(entry.reuse.runId,entry.reuse.appliedVersion);
       if (source === undefined || sourcePlan === undefined || !source.history.includes(child.envelope.runId) || terminal?.run.completion?.kind !== "done"
@@ -217,7 +226,7 @@ function authenticateGroup(repositories: AuthorityRepositories, manifest: Delega
 
 function groupForProjection(repositories: AuthorityRepositories, manifest: DelegationManifest) {
   const memo = repositories.dependencies.snapshotMemo(repositories);
-  return memo === undefined ? repositories.dependencies.authenticateGroup(manifest) : authenticateGroup(repositories, manifest, new Set(), memo);
+  return (memo === undefined ? undefined : memoizedDelegationGroup(memo, manifest)) ?? repositories.dependencies.authenticateGroup(manifest);
 }
 
 export function childTerminalSettlement(child: RunRecord, repositories: AuthorityRepositories) {
@@ -345,7 +354,8 @@ function authenticateHome(repositories: AuthorityRepositories, candidate: RunRec
   for (const [index, member] of ancestry.slice(0, -1).entries()) {
     const parent = ancestry[index + 1];
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
-    const selected = delegationGroupForChild(repositories,parent.envelope.runId,member.envelope.runId);
+    const selected = findDelegationGroupForChild(repositories, parent.envelope.runId, member.envelope.runId,
+      manifest => groupForProjection(repositories, manifest));
     if (index === 0 && !selected.group.children.some(entry => entry.child.envelope.runId === member.envelope.runId)) throw new Error("delegation-dispatch-membership-unavailable");
     // A child carrying its own cancel request stays in its home only to settle: queued, it is claimed to end cancelled before any step;
     // claimed, it keeps its claim while this attempt's fenced write settles once (committed, or parked UNKNOWN), then ends at its next boundary.
@@ -362,27 +372,26 @@ export function retainedDelegationManifests(repositories: AuthorityRepositories,
   const invocations = repositories.lifecycleJournal.listDelegationInvocations(parentRunId)
     .map(command => DelegationInvocationRequestSchema.parse(command.request));
   const dependencies = repositories.dependencies.listByParentRun(parentRunId);
-  if (manifests.some(manifest => !invocations.some(invocation => invocation.manifestId === manifest.manifestId))) throw new Error("delegation-invocation-authority-unavailable");
-  if (invocations.length !== manifests.length || dependencies.length !== manifests.reduce((count, manifest) => count + manifest.children.length, 0) || invocations.some(invocation => !manifests.some(manifest => manifest.manifestId === invocation.manifestId))
-    || dependencies.some(dependency => !manifests.some(manifest => manifest.manifestId === dependency.manifestId
-      && manifest.children.some(child => child.dependencyId === dependency.dependencyId)))) throw new Error("delegation-group-incomplete");
+  const invoked = new Set(invocations.map(invocation => invocation.manifestId));
+  if (manifests.some(manifest => !invoked.has(manifest.manifestId))) throw new Error("delegation-invocation-authority-unavailable");
+  const members = new Map(manifests.map(manifest => [manifest.manifestId, new Set(manifest.children.map(child => child.dependencyId))]));
+  if (invocations.length !== manifests.length || dependencies.length !== manifests.reduce((count, manifest) => count + manifest.children.length, 0)
+    || invocations.some(invocation => !members.has(invocation.manifestId))
+    || dependencies.some(dependency => members.get(dependency.manifestId)?.has(dependency.dependencyId) !== true)) throw new Error("delegation-group-incomplete");
   return manifests;
 }
 
 export function currentDelegationManifests(repositories: AuthorityRepositories, parentRunId: string, throughVersion = Number.POSITIVE_INFINITY): readonly DelegationManifest[] {
-  const retained = retainedDelegationManifests(repositories,parentRunId).filter(manifest => {
+  const groups = new Map<string,DelegationManifest[]>();
+  for (const manifest of retainedDelegationManifests(repositories, parentRunId)) {
     const command = repositories.lifecycleJournal.findDelegationInvocation(manifest.manifestId);
     const audit = command === undefined ? undefined : repositories.lifecycleJournal.findAuditByCommand(command.commandId);
-    if (audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.result.kind !== "run") throw new Error("delegation-invocation-authority-unavailable");
-    return audit.result.appliedVersion <= throughVersion;
-  });
-  const groups = new Map<string,DelegationManifest[]>();
-  for (const manifest of retained) {
-    const command = repositories.lifecycleJournal.findDelegationInvocation(manifest.manifestId);
-    if (command === undefined) throw new Error("delegation-invocation-authority-unavailable");
-    const invocation = DelegationInvocationRequestSchema.parse(command.request);
-    const entries = groups.get(invocation.nodeId) ?? [];
-    entries.push(manifest); groups.set(invocation.nodeId,entries);
+    if (command === undefined || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.result.kind !== "run") throw new Error("delegation-invocation-authority-unavailable");
+    if (audit.result.appliedVersion <= throughVersion) {
+      const invocation = DelegationInvocationRequestSchema.parse(command.request);
+      const entries = groups.get(invocation.nodeId) ?? [];
+      entries.push(manifest); groups.set(invocation.nodeId,entries);
+    }
   }
   return [...groups.values()].map(manifests => {
     const referenced = new Set(manifests.flatMap(manifest => manifest.revision === undefined ? [] : [manifest.revision.previousManifestId]));
@@ -413,8 +422,13 @@ export function selectDelegationGroupForChild<Group extends { manifest: Delegati
 }
 
 export function delegationGroupForChild(repositories: AuthorityRepositories, parentRunId: string, childRunId: string) {
+  return findDelegationGroupForChild(repositories, parentRunId, childRunId, manifest => repositories.dependencies.authenticateGroup(manifest));
+}
+
+function findDelegationGroupForChild(repositories: AuthorityRepositories, parentRunId: string, childRunId: string,
+  authenticateGroup: (manifest: DelegationManifest) => DelegationGroupProof) {
   const currentManifests = currentDelegationManifests(repositories,parentRunId), currentIds = new Set(currentManifests.map(manifest => String(manifest.manifestId)));
-  const authenticate = (manifests: readonly DelegationManifest[]) => manifests.map(manifest => ({ manifest, group: repositories.dependencies.authenticateGroup(manifest) }));
+  const authenticate = (manifests: readonly DelegationManifest[]) => manifests.map(manifest => ({ manifest, group: authenticateGroup(manifest) }));
   const current = selectDelegationGroupForChild(authenticate(currentManifests),currentIds,childRunId);
   const selected = current ?? selectDelegationGroupForChild(authenticate(retainedDelegationManifests(repositories,parentRunId).filter(manifest => !currentIds.has(manifest.manifestId))),currentIds,childRunId);
   if (selected === undefined) throw new Error("delegation-child-membership-unavailable");

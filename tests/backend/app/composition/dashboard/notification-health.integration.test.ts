@@ -1,5 +1,6 @@
-import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -9,15 +10,128 @@ import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import * as authorityInspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
 import * as backupInspection from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { nativeOrdinaryRecordFromRow } from "../../../../../src/backend/storage/sqlite/native-record-row.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
+import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { releaseSeededWriteOwners } from "../../../../support/helpers/timeline-write-fixture.js";
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld();
 
 describe("canonical notification producers", () => {
+  it("reports a scratch failure without raising an integrity alert and retries the unchanged store", async () => {
+    const f = await fixture();
+    const inspect = vi.spyOn(authorityInspection, "inspectAuthorityOffThread")
+      .mockRejectedValueOnce(new Error("backup-inspection-scratch-failed"));
+    try {
+      const { observer, inbox } = createTrustNotifications({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock, ids: sequentialIdFactory("b"), reader: f.reader, stateRoot: f.root });
+      await observer.observe();
+      expect(inbox.list("local-operator").filter(row => row.title.includes("integrity-check"))).toEqual([]);
+      expect(f.db.authority.notificationHealth.get("integrity-check")).toBeUndefined();
+      expect(observer.status()).toEqual({ state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 });
+
+      await observer.observe();
+      expect(inspect).toHaveBeenCalledTimes(2);
+      expect(observer.status()).toEqual({ state: "ready", pending: 0 });
+      expect(f.db.authority.notificationHealth.get("integrity-check")?.active).toBe(false);
+    } finally { inspect.mockRestore(); await f.close(); }
+  });
+
+  it("reports an unavailable inspection source without raising an integrity alert", async () => {
+    const f = await fixture();
+    const root = mkdtempSync(join(tmpdir(), "relay-health-verdict-"));
+    try {
+      const { observer, inbox } = createTrustNotifications({ admission: syntheticStateRoot(root), database: f.db, clock: f.clock, ids: sequentialIdFactory("b"), reader: f.reader, stateRoot: root });
+      await observer.observe();
+      expect(inbox.list("local-operator").filter(row => row.title.includes("integrity-check"))).toEqual([]);
+      expect(f.db.authority.notificationHealth.get("integrity-check")).toBeUndefined();
+      expect(observer.status()).toEqual({ state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 });
+    } finally { rmSync(root, { recursive: true, force: true }); await f.close(); }
+  });
+
+  it.each([
+    { failure: "a foreign-key violation", damage: (database: DatabaseSync, at: string) => {
+      database.prepare("INSERT INTO command_audits (id, command_id, payload_json, created_at) VALUES (?, ?, ?, ?)")
+        .run(randomUUID(), randomUUID(), "{}", at);
+    } },
+    { failure: "an invalid authority record", damage: (database: DatabaseSync) => {
+      database.exec("UPDATE database_states SET updated_at='invalid'");
+    } },
+    { failure: "an invalid authority generation", damage: (database: DatabaseSync) => {
+      database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET authority_generation=-1");
+    } },
+    { failure: "missing authority metadata", damage: (database: DatabaseSync) => {
+      database.exec("DELETE FROM database_states WHERE id=1");
+    } },
+    { failure: "an extra run reference", damage: (database: DatabaseSync) => {
+      database.prepare("INSERT INTO run_references (run_id, table_name, row_key) VALUES (?, 'command_audits', json_array(?))")
+        .run(randomUUID(), randomUUID());
+    } },
+    { failure: "an invalid authority schema shape", damage: (database: DatabaseSync) => {
+      database.exec("DROP INDEX run_references_row_idx");
+    } },
+    { failure: "a published search generation that disagrees with authority", damage: (database: DatabaseSync) => {
+      database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET search_state='ready', search_generation=authority_generation+1");
+    } },
+    { failure: "a native run priority that disagrees with its stored envelope",
+      beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => { seedRun(f, RunRecordSchema.parse(QUEUED_RUN)); },
+      damage: (database: DatabaseSync) => {
+        const update = database.prepare("UPDATE runs SET priority='interactive' WHERE priority='bulk'").run();
+        expect(Number(update.changes)).toBe(1);
+      } },
+    { failure: "a native command digest that disagrees with its stored request", damage: (database: DatabaseSync) => {
+      const update = database.prepare("UPDATE commands SET request_digest=? WHERE id=(SELECT min(id) FROM commands WHERE family<>'bulk-parent')")
+        .run("0".repeat(64));
+      expect(Number(update.changes)).toBe(1);
+    } },
+    { failure: "a corrupt retained run result",
+      beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => {
+        const run = seedRun(f, RunRecordSchema.parse(QUEUED_RUN));
+        expect(f.reader.transition({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version,
+          lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }).state).toBe("applied");
+      },
+      damage: (database: DatabaseSync) => {
+        const trigger = database.prepare("SELECT sql FROM sqlite_schema WHERE name='run_results_immutable'").get()?.sql;
+        if (typeof trigger !== "string") throw new Error("missing retained result trigger in fixture");
+        database.exec("DROP TRIGGER run_results_immutable");
+        const update = database.prepare("UPDATE run_results SET payload_json=?").run(JSON.stringify({ privateNote: "synthetic malformed result" }));
+        expect(Number(update.changes)).toBe(1);
+        database.exec(trigger);
+        const result = database.prepare("SELECT * FROM run_results").get();
+        try {
+          nativeOrdinaryRecordFromRow("run_results", result);
+          throw new Error("the malformed retained result decoded successfully");
+        } catch (error) {
+          expect(error).toHaveProperty("message", "run-result-payload-invalid");
+          expect(error).not.toHaveProperty("cause");
+        }
+      } },
+    { failure: "an invalid SQLite file", damage: undefined },
+  ])("raises an integrity alert for $failure", async ({ damage, beforeCopy }) => {
+    const f = await fixture();
+    const root = mkdtempSync(join(tmpdir(), "relay-health-verdict-"));
+    const path = join(root, "state.db");
+    try {
+      if (damage === undefined) {
+        writeFileSync(path, Buffer.alloc(4096, 1), { mode: 0o600 });
+      } else {
+        beforeCopy?.(f);
+        const source = new DatabaseSync(f.path, { readOnly: true });
+        try { source.prepare("VACUUM INTO ?").run(path); } finally { source.close(); }
+        const damaged = new DatabaseSync(path, { enableForeignKeyConstraints: false });
+        try { damage(damaged, f.clock.now().toISOString()); } finally { damaged.close(); }
+      }
+
+      const { observer, inbox } = createTrustNotifications({ admission: syntheticStateRoot(root), database: f.db, clock: f.clock, ids: sequentialIdFactory("b"), reader: f.reader, stateRoot: root });
+      await observer.observe();
+      expect(f.db.authority.notificationHealth.get("integrity-check")?.active).toBe(true);
+      expect(inbox.list("local-operator").filter(row => row.title.includes("integrity-check"))).toHaveLength(1);
+      expect(observer.status()).toEqual({ state: "ready", pending: 0 });
+    } finally { rmSync(root, { recursive: true, force: true }); await f.close(); }
+  });
+
   it("reads actual backup verification, accepts stale generations, and never creates a backup", async () => {
     const f = await fixture();
     try {

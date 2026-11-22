@@ -19,12 +19,11 @@ export function createApplicationLifecycle(input: Readonly<{
   let quitting = false;
   let scheduled: ReturnType<typeof setTimeout> | undefined;
   const snapshot = () => input.database.withAuthorityReadSnapshot(() => {
-    const facts = input.database.readApplicationActivity();
-    const active = facts.runs.filter(run => run.lifecycle.state !== "terminal");
+    const { runs: active, writeIntents, duoLeases, pendingArtifacts } = input.database.readApplicationActivity("non-terminal");
     const admission = input.database.authority.runs.admission();
     const blocked = active.some(run => run.lifecycle.state === "parked-write")
-      || facts.writeIntents.some(intent => !["committed", "observed-present"].includes(intent.status));
-    const busy = active.length > 0 || facts.duoLeases.some(lease => lease.state === "held") || facts.pendingArtifacts.length > 0;
+      || writeIntents.some(intent => !["committed", "observed-present"].includes(intent.status));
+    const busy = active.length > 0 || duoLeases.some(lease => lease.state === "held") || pendingArtifacts.length > 0;
     const runtime = input.database.authority.runtimeConfig.get();
     if (runtime === undefined) throw new ApplicationAdmissionRefusedError("application-runtime-unavailable");
     return ApplicationLifecycleSchema.parse({ runtimeGeneration: runtime.generation,
@@ -40,8 +39,8 @@ export function createApplicationLifecycle(input: Readonly<{
       snapshot();
       // A Resume during the quit released its hold: the quit is over, even if another hold has since closed admission.
       if (input.database.authority.runs.quitAdmission() === undefined) return;
-      const ready = input.database.withAuthorityReadSnapshot(() => input.database.readApplicationActivity().runs
-        .every(run => run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write" || runClaim(run) === undefined && run.pause?.state === "paused"));
+      const ready = input.database.readApplicationActivity("non-terminal-runs")
+        .every(run => run.lifecycle.state === "parked-write" || runClaim(run) === undefined && run.pause?.state === "paused");
       if (!ready) { scheduled = setTimeout(observeQuit, 50); return; }
       quitting = true;
       input.requestQuit();

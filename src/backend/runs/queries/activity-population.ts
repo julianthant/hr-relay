@@ -1,5 +1,4 @@
 import { successfulActivityTiming } from "./activity-timing.js";
-import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { z } from "zod";
 import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -9,7 +8,7 @@ import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
 import { createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
-import { queryActivitySummaries, visitActivitySummaryRange } from "./activity-summaries.js";
+import { queryActivitySummaries } from "./activity-summaries.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
@@ -57,21 +56,23 @@ export function createActivityPopulationService(input: {
   ledger: Parameters<typeof queryActivitySummaries>[2]["ledger"];
 }) {
   const { database, clock } = input;
-  const reports = createActivitySelectionService({ database, clock, read: (from, to, generatedAt) => queryActivitySummaries(database, { from, to, generatedAt }, input) });
+  type VisitSummary = NonNullable<Parameters<typeof queryActivitySummaries>[3]>;
+  const reports = createActivitySelectionService<VisitSummary>({ database, clock,
+    read: (from, to, generatedAt, visit) => queryActivitySummaries(database, { from, to, generatedAt }, input, visit) });
   const signer = createActivitySnapshotSigner(ActivityPopulationIdentitySchema, "ap1", clock);
   const read = (rangeInput: unknown, selected?: z.infer<typeof ActivityPopulationIdentitySchema>): ActivityPopulationSelection => {
     const bounds = ActivityPopulationRangeSchema.safeParse(rangeInput);
     if (!bounds.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     const { from, to } = bounds.data;
     return database.withAuthorityReadSnapshot(() => {
-      const report = selected === undefined ? reports.read(from, to) : reports.readSelected(from, to, selected.reportToken);
       const population: ActivityPopulationRun[] = [];
-      visitActivitySummaryRange(database, from, to, report.volume.timeZone, row => {
-        if (!isQueueTopLevel(row)) return;
+      const addToPopulation: VisitSummary = row => {
         population.push(ActivityPopulationRunSchema.parse({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parent?.runId ?? null, shape: row.shape,
           status: deriveRunStatus(row), terminal: runResultCurrent(row), durationMs: row.durationMs,
           receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" }));
-      });
+      };
+      const report = selected === undefined ? reports.read(from, to, addToPopulation)
+        : reports.readSelected(from, to, selected.reportToken, addToPopulation);
       if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
       const successfulTiming = report.workflows.map(workflow => successfulActivityTiming(workflow.workflowId, population));
       const populationDigest = sha256Hex(canonicalJsonStringify({ population, successfulTiming }));

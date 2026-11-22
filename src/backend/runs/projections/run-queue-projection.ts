@@ -1,11 +1,11 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { activityTypicalTime, successfulActivityTiming } from "../queries/activity-timing.js";
-import { createActivityAnalytics, failureStepOfTaskSpans } from "../queries/activity-analytics.js";
+import { buildActivityReport, failureStepOfTaskSpans, type ActivityReportRow } from "../queries/activity-analytics.js";
 import { isQueueMember, isQueueTopLevel, type QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { workerPoolMember, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { displayScalar } from "../queries/data.js";
 import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
 import { notificationListProjection } from "./notification-list.js";
@@ -13,6 +13,7 @@ import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/evidence-identity.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -29,14 +30,9 @@ import {
   type QueueRecordMembers,
 } from "../../../models/dashboard/projection.js";
 import {
-  ACTIVITY_MEDIAN_ABSENT_REASON,
-  ACTIVITY_SAMPLE_LIMIT,
-  ActivityReportWireSchema,
-  activityMedian,
   type ActivityLedgerBlock,
   type ActivityReportWire,
   type ActivityAssistantUsage,
-  type ActivityWorkflowTotal,
 } from "../../../models/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
@@ -128,12 +124,36 @@ interface WorkerFold {
 // Production summaries share the authority snapshot; fixture readers may omit this port.
 export interface ServedSummaryQueries {
   withSnapshot<T>(read: () => T): T;
-  queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; after?: { localDay: string; runId: string } }): {
+  dayCounts(fromDay: string, toDay: string): ReadonlyMap<string, number>;
+  queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; workflow?: string; after?: { localDay: string; runId: string } }): {
     items: readonly { runId: string; localDay: string; shape: string; parent: QueueParent | null; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
     next: { localDay: string; runId: string } | null;
   };
   itemAttempts(day: string, items: readonly { workflowId: string; itemId: string }[]): readonly RunRecord[];
   activity(from: string, to: string): ActivityReportWire;
+}
+
+type CheckQueueDaySources = AuthorityDatabase["checkQueueDaySources"];
+type QueueDaySources = Exclude<Parameters<CheckQueueDaySources>[1], number | undefined>;
+
+interface CachedQueueDay {
+  wire: DashboardDayWire;
+  sources: QueueDaySources;
+  notificationRecords: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>;
+  workerKey: string;
+  reusable: ReadonlySet<string>;
+  builtAt: number;
+  validUntil: number;
+  cursor: string;
+  refreshedRuns: Set<string>;
+}
+
+interface QueueDayPatch {
+  previous: CachedQueueDay;
+  affected: ReadonlySet<string>;
+  dayRunIds: readonly string[];
+  countDays: readonly string[];
+  sameWorkers: boolean;
 }
 
 export interface RunQueueProjectionDeps {
@@ -174,8 +194,10 @@ export interface RunQueueProjectionDeps {
     heldDuoLeases?(workerId: string): readonly { system: BrowserSystemId; since: IsoInstant }[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
-    /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
-    changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }>;
+    /** An unchanged key skips the live-run read. */
+    changeKey?(): number | undefined;
+    checkDaySources?: CheckQueueDaySources;
+    nextDuoLeaseExpiry?(nowMs: number): number;
 
     listWorkerPools(): readonly WorkerPoolRecord[];
     listRunBatches(): readonly RunSessionRecord[];
@@ -235,6 +257,7 @@ interface CanonicalProjectionSnapshot {
 
 interface QueueReadContext {
   runs: Map<string, RunRecord>;
+  reviewAvailability?: Map<string, boolean>;
   parents: Map<string, QueueParent | null>;
   links: Map<string, LinkedRunView>;
   receipts: Map<string, ReceiptView | undefined>;
@@ -267,43 +290,23 @@ interface SurfaceFold {
 }
 
 
-const ACTIVITY_STATUS_BUCKET = {
-  done: "completion",
-  failed: "failed",
-  cancelled: "cancelled",
-  partial: "partial",
-  queued: "open",
-  running: "open",
-  cancelling: "open",
-  blocked: "open",
-  "awaiting-approval": "open",
-} as const satisfies Record<QueueSurfaceWire["status"], string>;
-
-type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal, "workflowId" | "registration" | "needsAttention" | "typicalTime" | "outcomes" | "days" | "failedAt" | "typicalMedian">;
-
-function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
-  return {
-    runs: 0,
-    completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
-    failed: 0,
-    cancelled: 0,
-    partial: 0,
-    open: 0,
-  };
-}
-
-// Individual pseudonyms and generations stay in authority; publish aggregate evidence only.
-function activityPeopleOf(personRows: readonly RunRecord[], read: ((runId:string)=>RunSummary["person"]) | undefined) {
-  const identities=personRows.map(run=>read?.(run.envelope.runId) ?? {state:"unavailable" as const,reason:"canonical-result-reader-unavailable"});
-  const available=identities.filter(row=>row.state==="available"),unavailableRows=identities.length-available.length;
-  if(unavailableRows!==0)return {state:"absent" as const,evidenceRows:available.length,unavailableRows,
-    reason:`${String(unavailableRows)} of ${String(personRows.length)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
-  return {state:"present" as const,distinct:new Set(available.map(row=>row.identity)).size,evidenceRows:available.length};
-}
-
-
 const MEMBER_PREVIEW_LIMIT = 3;
+const DAY_CACHE_LIMIT = 16;
 
+const PROJECTION_SPAN_TYPES = [
+  "run.queued", "run.claimed", "run.requeued", "span.started", "span.ended",
+  "gate.opened", "gate.resolved", "transaction.fenced", "data.observed",
+] satisfies SpanEventWire["t"][];
+
+function projectionEvents(records: ReturnType<typeof readTimelineRecords>["records"]) {
+  return records.map(record => {
+    if (record.payload.kind !== "span" || record.payload.event.t === "transaction.previewed") {
+      throw new ProjectionDegradedError("unexpected projection timeline kind");
+    }
+    const event = record.payload.event;
+    return { event, line: timelineSpanLocation(record) };
+  });
+}
 
 type LinkedRunView = QueueSurfaceWire["linkedRuns"][number];
 
@@ -317,15 +320,17 @@ export class RunQueueProjection {
   readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedRows = new Map<string, { status: string; surface: string }>();
+  readonly #dayCache = new Map<string, CachedQueueDay>();
 
   #timelineCursor = 0;
 
   #workerAuthorityFingerprint: string;
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
-  #storedCanonical: { key: string; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
+  #storedCanonical: { key: number; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   #cursorValue = 0;
   #generationValue: number;
   #health: RunQueueProjectionHealth = { state: "live" };
+  #rebuildScheduled = false;
 
   constructor(deps: RunQueueProjectionDeps) {
     this.#deps = deps;
@@ -376,9 +381,8 @@ export class RunQueueProjection {
 
   apply(event: SpanEventWire): void {
     try {
-      const affected = this.#fold(event);
-      this.#cursorValue += 1;
-      this.#notify(affected);
+      const affected = this.#foldEvent(event);
+      if (affected !== undefined) this.#notify(affected);
     } catch (error) {
       this.#degrade(`projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -386,26 +390,26 @@ export class RunQueueProjection {
 
 
   ingestFromTimeline(): void {
-    // While degraded, recovery belongs to the scheduled rebuild alone — it
-    // re-reads the whole stream and resets these cursors.
-    if (this.#health.state === "degraded") return;
+    if (this.#health.state === "degraded") {
+      this.#scheduleRebuild();
+      return;
+    }
     try {
-      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor);
+      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor, undefined, PROJECTION_SPAN_TYPES);
       this.#timelineCursor = tail.cursor;
       if (tail.records.length === 0) return;
-      const events = tail.records.filter((record) => record.payload.kind === "span")
-        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }));
-      if (events.length === 0) return;
+      const events = projectionEvents(tail.records);
+      const previousCursor = this.#cursorValue;
       const runIds = new Set<string>();
       let workerChanged = false;
       for (const { event, line } of events) {
-        const affected = this.#fold(event, line);
-        this.#cursorValue += 1;
-        this.#recordRunLog(event, line);
+        const affected = this.#foldEvent(event, line);
+        if (affected === undefined) continue;
         for (const runId of affected.runIds) runIds.add(runId);
         workerChanged ||= affected.workerChanged;
       }
-      this.#notify({ runIds: [...runIds], workerChanged }, events.length > 1);
+      const queueRevisions = this.#cursorValue - previousCursor;
+      if (queueRevisions > 0) this.#notify({ runIds: [...runIds], workerChanged }, queueRevisions > 1);
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -428,35 +432,47 @@ export class RunQueueProjection {
 
   #degrade(lastError: string): void {
     this.#health = { state: "degraded", lastError };
+    this.#scheduleRebuild();
+  }
+
+  #scheduleRebuild(): void {
+    if (this.#rebuildScheduled) return;
+    this.#rebuildScheduled = true;
     const schedule = this.#deps.scheduleRebuild ?? ((rebuild: () => void): void => rebuild());
-    schedule(() => this.rebuildFromTimeline());
+    schedule(() => {
+      try {
+        if (this.#health.state === "degraded") this.rebuildFromTimeline();
+      } finally {
+        this.#rebuildScheduled = false;
+      }
+    });
   }
 
 
-  #recordRunLog(event: SpanEventWire, line: TimelineLine): void {
-    if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
-    const entries = this.#runLogs.get(event.runId) ?? [];
-    if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);
-    entries.push(Object.freeze({ event, line, revision: this.#cursorValue }));
+  #foldEvent(event: SpanEventWire, line?: TimelineLine) {
+    const affected = this.#fold(event, line);
+    if (line !== undefined && (event.t === "data.observed" || event.t === "transaction.fenced")) {
+      const entries = this.#runLogs.get(event.runId) ?? [];
+      if (entries.length === 0) this.#runLogs.set(event.runId, entries);
+      entries.push(Object.freeze({ event, line, revision: entries.length + 1 }));
+    }
+    if (affected.runIds.length === 0 && !affected.workerChanged) return undefined;
+    this.#cursorValue += 1;
+    return affected;
   }
 
   /** Rebuild derived views from a consistent SQLite timeline snapshot. */
   rebuildFromTimeline(): void {
     try {
-      const whole = readTimelineRecords(this.#deps.timeline);
-      const events = whole.records.filter((record) => record.payload.kind === "span")
-        .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }))
+      const whole = readTimelineRecords(this.#deps.timeline, 0, undefined, PROJECTION_SPAN_TYPES);
+      const events = projectionEvents(whole.records)
         .sort((left, right) => left.event.ts.localeCompare(right.event.ts) || left.line.lineNumber - right.line.lineNumber);
       this.#rows.clear();
       this.#workers.clear();
       this.#runLogs.clear();
       this.#notifiedRows.clear();
       this.#cursorValue = 0;
-      for (const { event, line } of events) {
-        this.#fold(event, line);
-        this.#cursorValue += 1;
-        this.#recordRunLog(event, line);
-      }
+      for (const { event, line } of events) this.#foldEvent(event, line);
       // The tail resumes from exactly what this rebuild consumed — set
       // together with `live` so the two ingest paths can never overlap.
       this.#timelineCursor = whole.cursor;
@@ -500,10 +516,11 @@ export class RunQueueProjection {
     });
   }
 
-  #workerLastRun(workerId: string): NonNullable<WorkerCardWire["lastRun"]> {
-    const record = this.#deps.timeline.lastWorkerClaim(workerId);
+  #workerLastRun(workerId: string, readRun: RunQueueProjectionDeps["reader"]["read"],
+    timeline: TimelineRepository): NonNullable<WorkerCardWire["lastRun"]> {
+    const record = timeline.lastWorkerClaim(workerId);
     const claim = record?.payload.kind === "span" && record.payload.event.t === "run.claimed" ? record.payload.event : undefined;
-    const read = claim === undefined ? undefined : this.#deps.reader.read(claim.runId);
+    const read = claim === undefined ? undefined : readRun(claim.runId);
     const run = read?.state === "present" && read.disposition === "live" ? read.run : undefined;
     return lastRunOf({ claim: claim === undefined ? undefined : { runId: claim.runId, attempt: claim.attempt }, run,
       spans: claim === undefined ? undefined : this.#rows.get(claim.runId)?.taskSpans,
@@ -523,14 +540,15 @@ export class RunQueueProjection {
     return contract === undefined ? undefined : "id" in contract ? String(contract.id) : String(contract.taskId);
   }
 
-  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[]): NonNullable<WorkerCardWire["timeline"]> {
-    const read = this.#deps.reader.read(runId);
+  #workerTimeline(runId: string, surfaces: readonly QueueSurfaceWire[], readRun: RunQueueProjectionDeps["reader"]["read"],
+    presentation: RunTimelineEvidenceSource): NonNullable<WorkerCardWire["timeline"]> {
+    const read = readRun(runId);
     if (read.state !== "present" || read.disposition !== "live") return { state: "unavailable", reason: "run-unavailable" };
     const descriptor = this.#deps.descriptors.resolve(read.run.envelope.workflow);
     if (descriptor !== undefined && (descriptor.version !== read.run.envelope.descriptorVersion
       || descriptor.contractFingerprint !== read.run.envelope.contractFingerprint)) {
       try {
-        assertRunTimelineCompatible(read.run, descriptor.timeline, { timeline: this.#deps.timeline, authority: this.#deps.authority }, this.#rows.get(runId));
+        assertRunTimelineCompatible(read.run, descriptor.timeline, presentation, this.#rows.get(runId));
       } catch (error) {
         if (error instanceof LogIdentityRefusedError) return { state: "unavailable", reason: "timeline-incompatible" };
         throw error;
@@ -735,6 +753,13 @@ export class RunQueueProjection {
 
   // Row patches carry no count tuples; count changes require a snapshot.
   #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): void {
+    if (affected.workerChanged) this.#dayCache.clear();
+    else {
+      for (const cached of this.#dayCache.values()) {
+        for (const id of affected.runIds) cached.refreshedRuns.add(id);
+        cached.cursor = this.cursor();
+      }
+    }
     const publications = this.#deps.reader.withRunTreeSnapshot([], () => {
       const changes: RunQueueProjectionChange[] = [];
       let snapshotNeeded = affected.workerChanged;
@@ -826,8 +851,7 @@ export class RunQueueProjection {
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
   #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
     const key = this.#deps.authority.changeKey?.();
-    const keyText = key === undefined ? undefined : `${key.authorityGeneration}:${key.dataVersion}:${key.totalChanges}`;
-    const stored = canonicalRuns === undefined && keyText !== undefined && this.#storedCanonical?.key === keyText ? this.#storedCanonical : undefined;
+    const stored = canonicalRuns === undefined && key !== undefined && this.#storedCanonical?.key === key ? this.#storedCanonical : undefined;
     let built: { storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined = stored;
     if (built === undefined) {
       const source = canonicalRuns ?? listCanonicalRuns(this.#deps.reader, "live");
@@ -849,7 +873,7 @@ export class RunQueueProjection {
         pause: run.pause,
       }));
       built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
-      if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
+      if (canonicalRuns === undefined && key !== undefined) this.#storedCanonical = { key, ...built };
     }
     const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
       duoLeases: this.#deps.authority.heldDuoLeases?.(view.member.workerId) }));
@@ -1127,12 +1151,20 @@ export class RunQueueProjection {
     return parent;
   }
 
+  #reviewAvailable(context: QueueReadContext, runId: string): boolean {
+    const cached = context.reviewAvailability?.get(runId);
+    if (cached !== undefined) return cached;
+    const available = this.#deps.authority.reviewAvailable?.(runId) === true;
+    context.reviewAvailability?.set(runId, available);
+    return available;
+  }
+
   #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
     const known = context.links.get(run.envelope.runId);
     if (known !== undefined) return known;
     const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
-      panelKind: panelKindOf(run.envelope.shape, this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true), status: this.#status(run) };
+      panelKind: panelKindOf(run.envelope.shape, this.#reviewAvailable(context, run.envelope.runId)), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
     return link;
   }
@@ -1281,7 +1313,7 @@ export class RunQueueProjection {
     const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
-    const reviewAvailable = this.#deps.authority.reviewAvailable?.(queued.runId) === true;
+    const reviewAvailable = this.#reviewAvailable(context, queued.runId);
     const recordMembers = this.#deps.authority.recordMembers?.(authority, children);
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
@@ -1412,42 +1444,163 @@ export class RunQueueProjection {
 
 
   buildDashboardDayWire(day: string): DashboardDayWire {
-    const summaries = this.#deps.reader.summaries;
-    return summaries === undefined ? this.#buildDashboardDayWire(day)
-      : summaries.withSnapshot(() => this.#buildDashboardDayWire(day));
-  }
-
-  #buildDashboardDayWire(day: string): DashboardDayWire {
     if (this.#health.state === "degraded") {
       throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }
-    const parsedDay = z.iso.date().parse(day);
+    const parsedDay = LocalDateSchema.parse(day);
+    const summaries = this.#deps.reader.summaries;
+    const saved = this.#dayCache.get(parsedDay);
+    const cursor = this.cursor();
+    const current = saved?.wire.projectionGeneration === this.#generationValue && saved.cursor === cursor ? saved : undefined;
+    if (current !== undefined && current.wire.snapshotCursor === cursor && current.refreshedRuns.size === 0) {
+      // Classify a changed journal only inside the snapshot that will consume it.
+      const revision = this.#deps.authority.checkDaySources?.(parsedDay, current.sources.through);
+      const now = this.#deps.clock.nowMs();
+      if (revision?.kind === "unchanged" && current.builtAt <= now && now < current.validUntil) {
+        return current.wire;
+      }
+    }
+    this.#dayCache.delete(parsedDay);
+    const read = (): { wire: DashboardDayWire; cache?: CachedQueueDay } => {
+      const now = this.#deps.clock.nowMs();
+      // Sample the rebuild position in the same snapshot as its rows.
+      const previous = current !== undefined && current.builtAt <= now && now < current.validUntil ? current : undefined;
+      const revision = summaries === undefined ? undefined : this.#deps.authority.checkDaySources?.(parsedDay, previous?.sources);
+      if (previous !== undefined && revision?.kind === "unchanged" && previous.wire.snapshotCursor === cursor && previous.refreshedRuns.size === 0) {
+        return { wire: previous.wire, cache: { ...previous, sources: { ...previous.sources, through: revision.through } } };
+      }
+      let patch: QueueDayPatch | undefined;
+      if (previous !== undefined && revision?.kind === "runs") {
+        const affected = new Set(revision.runIds);
+        if ([...previous.refreshedRuns].every(id => affected.has(id))) {
+          const sameWorkers = previous.workerKey === this.#workerSurfaceKey(previous.wire.workerAuthority.members);
+          patch = { previous, affected, dayRunIds: revision.dayRunIds, countDays: revision.countDays, sameWorkers };
+        }
+      }
+      const notifications = patch?.previous.notificationRecords ?? this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID);
+      const { wire, sources, reusable } = this.#buildDashboardDayWire(parsedDay, notifications, now, patch);
+      if (revision === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return { wire };
+
+      const workerKey = this.#workerSurfaceKey(wire.workerAuthority.members);
+      if (typeof workerKey !== "string") return { wire };
+      let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
+      for (const notice of notifications) {
+        if (notice.snooze.state !== "snoozed") continue;
+        const until = Date.parse(notice.snooze.until);
+        if (until > now) validUntil = Math.min(validUntil, until);
+      }
+      deepFreeze(wire);
+      return { wire, cache: { wire, notificationRecords: notifications, workerKey,
+        sources: { ...sources, through: revision.through }, reusable, builtAt: now, validUntil,
+        cursor: wire.snapshotCursor, refreshedRuns: new Set() } };
+    };
+    const { wire, cache } = summaries === undefined ? read() : summaries.withSnapshot(read);
+    if (cache !== undefined) {
+      const oldest = this.#dayCache.keys().next().value;
+      if (this.#dayCache.size >= DAY_CACHE_LIMIT && oldest !== undefined) this.#dayCache.delete(oldest);
+      this.#dayCache.set(parsedDay, cache);
+    }
+    return wire;
+  }
+
+  #workerSurfaceKey(members: readonly WorkerSlotRecord[]): string | { state: "unavailable" } {
+    // SQLite certifies the durable slots, writes and leases. Live views and pending starts are process state.
+    try {
+      const views = this.#deps.authority.workerMembers?.();
+      if (views === undefined) return { state: "unavailable" };
+      const pending = [...new Set(members.map(member => member.workflow))]
+        .filter(workflow => this.#deps.authority.workerStartupPending?.(workflow) === true);
+      return JSON.stringify([views, pending]);
+    } catch {
+      // A missing observation disables row reuse. The worker card reader reports its own availability.
+      return { state: "unavailable" };
+    }
+  }
+
+  #selectedDaySurfaces(day: string, summaries: ServedSummaryQueries, context: QueueReadContext, patch?: QueueDayPatch): QueueSurfaceWire[] {
+    const surfaces: QueueSurfaceWire[] = [];
+    const readPage = (afterId: string | undefined, limit: number, workflow?: string) => {
+      const page = summaries.queue({ fromDay: day, toDay: day, topLevel: false, limit, workflow,
+        ...(afterId === undefined ? {} : { after: { localDay: day, runId: afterId } }) });
+      for (const summary of page.items) context.parents.set(summary.runId, summary.parent);
+      for (const summary of page.items) {
+        if (summary.localDay !== day) throw new ProjectionDegradedError("queue-summary-day-mismatch");
+        const authority = this.#readRun(context, summary.runId);
+        const children = summary.children.map(child => this.#readRun(context, child.runId));
+        const surface = this.#surface(this.#rows.get(summary.runId), authority, children, context);
+        if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
+        surfaces.push(surface);
+      }
+      return page;
+    };
+
+    const fullDay = () => {
+      let afterId: string | undefined;
+      do { afterId = readPage(afterId, 500).next?.runId; } while (afterId !== undefined);
+      return surfaces;
+    };
+    if (patch === undefined || !patch.sameWorkers) return fullDay();
+
+    const selected = patch.dayRunIds.map(runId => ({
+      runId, workflowId: this.#readRun(context, runId).envelope.workflow,
+    }));
+    const reusable = new Map<string, QueueSurfaceWire>();
+    for (const surface of patch.previous.wire.queueSurfaces) {
+      if (patch.affected.has(surface.runId) || searchPartitionDay(new Date(surface.startedAt)) !== day) continue;
+      selected.push({ runId: surface.runId, workflowId: surface.workflowId });
+      if (patch.previous.reusable.has(surface.runId)) reusable.set(surface.runId, surface);
+    }
+    // The summary merger uses locale order and SQLite seeks in binary order.
+    selected.sort((a, b) => a.runId.localeCompare(b.runId));
+    if (selected.some((row, index) => index > 0 && selected[index - 1].runId > row.runId)) return fullDay();
+    for (const [workflow, rows] of Map.groupBy(selected, row => row.workflowId)) {
+      for (let start = 0; start < rows.length;) {
+        const cached = reusable.get(rows[start].runId);
+        if (cached !== undefined) {
+          surfaces.push(cached);
+          start += 1;
+          continue;
+        }
+        let end = start + 1;
+        while (end < rows.length && end - start < 500 && !reusable.has(rows[end].runId)) end += 1;
+        const page = readPage(rows[start - 1]?.runId, end - start, workflow);
+        if (page.items.length !== end - start || page.items.some((row, index) => row.runId !== rows[start + index].runId)) {
+          throw new ProjectionDegradedError("queue-summary-membership-mismatch");
+        }
+        start = end;
+      }
+    }
+    return surfaces.sort((a, b) => a.runId.localeCompare(b.runId));
+  }
+
+  #buildDashboardDayWire(parsedDay: string, notifications: ReturnType<RunQueueProjectionDeps["authority"]["listNotifications"]>, now: number,
+    patch?: QueueDayPatch): {
+    wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">; reusable: ReadonlySet<string>;
+  } {
     const surfaces: QueueSurfaceWire[] = [];
     let fixtureRuns: readonly RunRecord[] | undefined;
     const monthPrefix = parsedDay.slice(0, 7);
+    const monthFrom = `${monthPrefix}-01`;
+    const monthEnd = new Date(`${monthFrom}T00:00:00.000Z`);
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+    const monthTo = monthEnd.toISOString().slice(0, 10);
     const monthCounts = new Map<string, number>();
     const summaries = this.#deps.reader.summaries;
     let context: QueueReadContext;
     if (summaries !== undefined) {
-      context = this.#readContext();
-      let after: { localDay: string; runId: string } | undefined;
-      const readLive = (runId: string): RunRecord => {
-        return this.#readRun(context, runId);
-      };
-      do {
-        const page = summaries.queue({ fromDay: `${monthPrefix}-01`, toDay: new Date(Date.UTC(Number(parsedDay.slice(0, 4)), Number(parsedDay.slice(5, 7)), 0)).toISOString().slice(0, 10), limit: 500,
-          topLevel: false, ...(after === undefined ? {} : { after }) });
-        for (const summary of page.items) context.parents.set(summary.runId, summary.parent);
-        for (const summary of page.items) {
-          if (isQueueTopLevel(summary)) monthCounts.set(summary.localDay, (monthCounts.get(summary.localDay) ?? 0) + 1);
-          if (summary.localDay !== parsedDay) continue;
-          const authority = readLive(summary.runId);
-          const surface = this.#surface(this.#rows.get(summary.runId), authority, summary.children.map(child => readLive(child.runId)), context);
-          if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
-          surfaces.push(surface);
+      context = { ...this.#readContext(), reviewAvailability: new Map() };
+      for (const surface of this.#selectedDaySurfaces(parsedDay, summaries, context, patch)) surfaces.push(surface);
+      if (patch === undefined) {
+        for (const [day, count] of summaries.dayCounts(monthFrom, monthTo)) monthCounts.set(day, count);
+      } else {
+        for (const { day, count } of patch.previous.wire.monthCounts) monthCounts.set(day, count);
+        for (const day of patch.countDays) {
+          if (day < monthFrom || day > monthTo) continue;
+          const count = day === parsedDay ? surfaces.filter(isQueueTopLevel).length : summaries.dayCounts(day, day).get(day);
+          if (count === undefined || count === 0) monthCounts.delete(day);
+          else monthCounts.set(day, count);
         }
-        after = page.next ?? undefined;
-      } while (after !== undefined);
+      }
     } else {
       // Explicit fixture-only compatibility. Production composition always supplies summaries.
       const runs = listCanonicalRuns(this.#deps.reader, "live");
@@ -1525,6 +1678,29 @@ export class RunQueueProjection {
 
 
     let members: readonly WorkerSlotRecord[] | undefined;
+    const sharedRuns = new Set<string>();
+    const notificationCommands = new Set<string>();
+    const timelineRunIds = new Set<string>();
+    const lastWorkerClaims: { workerId: string; cursor: number | null }[] = [];
+    const presentation: RunTimelineEvidenceSource = {
+      authority: this.#deps.authority,
+      timeline: {
+        ...this.#deps.timeline,
+        page: input => {
+          if (input.runId !== undefined) timelineRunIds.add(input.runId);
+          return this.#deps.timeline.page(input);
+        },
+        lastWorkerClaim: workerId => {
+          const claim = this.#deps.timeline.lastWorkerClaim(workerId);
+          lastWorkerClaims.push({ workerId, cursor: claim?.cursor ?? null });
+          return claim;
+        },
+      },
+    };
+    const readSharedRun: RunQueueProjectionDeps["reader"]["read"] = runId => {
+      sharedRuns.add(runId);
+      return this.#deps.reader.read(runId);
+    };
     let workerAuthority: DashboardDayWire["workerAuthority"];
     const workerCards: DashboardDayWire["workerCards"] = [];
     const unavailableWorkerCards: NonNullable<DashboardDayWire["unavailableWorkerCards"]> = [];
@@ -1540,17 +1716,18 @@ export class RunQueueProjection {
           const view = views.find(candidate => candidate.member.workerId === member.workerId);
           const runId = view?.activity?.runId;
           const lastRun = runId === undefined && (view === undefined || view.state === "exited"
-            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle")) ? this.#workerLastRun(member.workerId) : undefined;
+            || view.state === "running" && (view.activity === undefined || view.activity.state === "idle"))
+            ? this.#workerLastRun(member.workerId, readSharedRun, presentation.timeline) : undefined;
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
           workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
             startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
             duoSystems: this.#deps.authority.heldDuoLeases?.(member.workerId).map(lease => lease.system),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),
-            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
+            ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces, readSharedRun, presentation) }
               : lastRun?.state === "unavailable" && lastRun.reason === "run-unavailable" ? { timeline: { state: "unavailable", reason: "run-unavailable" } } : {}),
             resolveRun: runId => {
-              const read = this.#deps.reader.read(runId);
+              const read = readSharedRun(runId);
               return read.state === "present" && read.disposition === "live" ? read.run : undefined;
             } }));
         } catch (error) {
@@ -1564,7 +1741,40 @@ export class RunQueueProjection {
         reason: error instanceof Error ? error.message : "Worker authority could not be verified." };
     }
 
-    return DashboardDayWireSchema.parse({
+    const reusedNotices = new Set<string>();
+    const observedTimelines = new Set(patch?.previous.sources.timelineRunIds);
+    const changedNotices = notifications.filter(record => {
+      const link = record.links[0];
+      if (patch === undefined || record.trigger === "storage" || link === undefined || !("runId" in link)
+        || patch.affected.has(link.runId)) return true;
+      reusedNotices.add(record.notificationId);
+      sharedRuns.add(link.runId);
+      if (observedTimelines.has(link.runId)) timelineRunIds.add(link.runId);
+      return false;
+    });
+    const projected = notificationListProjection(changedNotices, now, {
+      display: {
+        read: readSharedRun,
+        descriptor: id => this.#deps.descriptors.resolve(id),
+        receipt: id => this.#deps.authority.getReceipt(id),
+        presentation,
+        checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
+        command: id => {
+          notificationCommands.add(id);
+          return this.#deps.authority.command?.(id);
+        },
+      },
+      source: id => this.#deps.authority.latestNotificationSource?.(id),
+    });
+    const noticesById = new Map(projected.map(notice => [notice.notificationId, notice]));
+    const noticeRows = patch === undefined || reusedNotices.size === 0 ? projected : patch.previous.wire.notifications.map(notice => {
+      if (reusedNotices.has(notice.notificationId)) return notice;
+      const updated = noticesById.get(notice.notificationId);
+      if (updated === undefined) throw new ProjectionDegradedError("queue-notification-membership-mismatch");
+      return updated;
+    });
+
+    const wire = DashboardDayWireSchema.parse({
       day: parsedDay,
       descriptorHash: this.#deps.descriptorSetHash,
       projectionGeneration: this.#generationValue,
@@ -1597,18 +1807,39 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: notificationListProjection(this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID), this.#deps.clock.nowMs(), {
-        display: {
-          read: id => this.#deps.reader.read(id),
-          descriptor: id => this.#deps.descriptors.resolve(id),
-          receipt: id => this.#deps.authority.getReceipt(id),
-          presentation: this.#deps,
-          checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
-          command: id => this.#deps.authority.command?.(id),
-        },
-        source: id => this.#deps.authority.latestNotificationSource?.(id),
-      }),
+      notifications: noticeRows,
     });
+    const relationships = new Map<string, QueueDaySources["relationships"][number]>();
+    if (patch !== undefined) {
+      for (const source of patch.previous.sources.relationships) {
+        if (!patch.affected.has(source.runId)) relationships.set(source.runId, source);
+      }
+    }
+    for (const { envelope } of context.runs.values()) {
+      relationships.set(envelope.runId, { runId: envelope.runId, parentId: envelope.parent?.runId ?? null,
+        workflowId: envelope.workflow, itemId: envelope.itemId, day: searchPartitionDay(new Date(envelope.enqueuedAt)) });
+    }
+    const runIds = new Set([...relationships.keys(), ...sharedRuns]);
+    const reusable = new Set<string>();
+    for (const surface of surfaces) {
+      const run = context.runs.get(surface.runId);
+      if (run === undefined) {
+        if (patch?.previous.reusable.has(surface.runId)) reusable.add(surface.runId);
+      } else {
+        // Review and continuation rows can read retained evidence outside their run tree.
+        const review = this.#deps.descriptors.resolve(surface.workflowId)?.capabilities?.review === true
+          || run.envelope.continuation !== undefined || surface.surfaceKind === "operation" && surface.recordMembers !== undefined;
+        if (!review) reusable.add(surface.runId);
+      }
+      if (surface.surfaceKind !== "operation" || surface.recordMembers === undefined) continue;
+      for (const runId of surface.recordMembers.runIds) runIds.add(runId);
+      for (const member of surface.recordMembers.members) {
+        runIds.add(member.kind === "record" ? member.record.runId : member.ownerRunId);
+      }
+    }
+    return { wire, reusable, sources: { relationships: [...relationships.values()], runIds: [...runIds], timelineRunIds: [...timelineRunIds], lastWorkerClaims,
+      commandIds: [...notificationCommands],
+      month: { from: monthFrom, to: monthTo, counts: wire.monthCounts } } };
   }
 
 
@@ -1623,182 +1854,57 @@ export class RunQueueProjection {
     const end = z.iso.date().parse(to);
     if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
 
-    const inRange: { day: string; fold: SurfaceFold; authority: RunRecord; taskSpans: RunFoldRecord["taskSpans"] }[] = [];
-    const personRows: RunRecord[] = [];
+    const activityRows: ActivityReportRow[] = [];
+    const people: RunSummary["person"][] = [];
     const runs = listCanonicalRuns(this.#deps.reader, "live");
     const context = this.#readContext(runs);
     const children = canonicalRunChildren(runs);
     for (const authority of runs) {
-      const row = this.#rows.get(authority.envelope.runId);
-      const day = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
+      const { envelope, lifecycle } = authority;
+      const { runId, workflow, enqueuedAt } = envelope;
+      const day = searchPartitionDay(new Date(enqueuedAt));
       if (day < start || day > end) continue;
 
-      if (authority.envelope.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
-      // Member containment, applied once: a member counted inside its
-      // operation's rollup is not counted again at top level.
+      if (envelope.shape !== "operation" && workflow === "separations") {
+        people.push(this.#deps.authority.canonicalPerson?.(runId)
+          ?? { state: "unavailable", reason: "canonical-result-reader-unavailable" });
+      }
       if (!isQueueTopLevel({ parent: this.#parentFact(context, authority) })) continue;
-      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? [], context), authority, taskSpans: row?.taskSpans ?? [] });
-    }
-
-    const people = activityPeopleOf(
-      personRows,
-      this.#deps.authority.canonicalPerson === undefined ? undefined : (runId) => this.#deps.authority.canonicalPerson!(runId),
-    );
-
-    const workflows = new Map<string, ActivityWorkflowCounts>();
-    const analytics = createActivityAnalytics();
-    const statuses = new Map<string, { runs: number; sample: string[] }>();
-    const outcomes = new Map<string, number>();
-    const failures = new Map<string, { workflowId: string; code: string; runs: number; transient: number; sample: string[] }>();
-    const measured: { runId: string; ms: number }[] = [];
-
-    const completion = { readBack: 0, warnings: 0, warningsUnknown: 0 };
-    let unmeasured = 0;
-    let terminalRuns = 0;
-
-    for (const { day, fold: { surface, warningVerdict }, authority, taskSpans } of inRange) {
-      const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
-      counts.runs += 1;
-      workflows.set(surface.workflowId, counts);
-
-      const statusBucket = statuses.get(surface.status) ?? { runs: 0, sample: [] };
-      statusBucket.runs += 1;
-      // The Who sample is for work the operator can still act on; a terminal
-      // bucket carries none, which the wire's own refinement then enforces.
-      if (
-        !TERMINAL_QUEUE_STATUSES.has(surface.status)
-        && statusBucket.sample.length < ACTIVITY_SAMPLE_LIMIT
-      ) {
-        statusBucket.sample.push(surface.runId);
-      }
-      statuses.set(surface.status, statusBucket);
-
-      const axis = ACTIVITY_STATUS_BUCKET[surface.status];
-      if (axis !== "completion") {
-        counts[axis] += 1;
-      } else {
-        // An unread receipt remains unread; it cannot count as a receipt with no warnings.
-        const arm = warningVerdict.kind === "present"
-          ? "warnings"
-          : warningVerdict.kind === "none"
-            ? "readBack"
-            : "warningsUnknown";
-        counts.completion[arm] += 1;
-        completion[arm] += 1;
-      }
-
-      const durationMs = authority.lifecycle.state === "terminal" && surface.endedAt.state === "present"
+      const row = this.#rows.get(runId);
+      const { surface, warningVerdict } = this.#surfaceFold(row, authority, children.get(runId) ?? [], context);
+      const durationMs = lifecycle.state === "terminal" && surface.endedAt.state === "present"
         ? Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt))
         : null;
       const failureStep = surface.status === "failed"
-        ? failureStepOfTaskSpans(taskSpans, this.#deps.descriptors.resolve(surface.workflowId)?.timeline)
+        ? failureStepOfTaskSpans(row?.taskSpans ?? [], this.#deps.descriptors.resolve(workflow)?.timeline)
         : undefined;
-      analytics.observe({ workflowId: surface.workflowId, day, status: surface.status, lifecycleState: authority.lifecycle.state, durationMs, ...(failureStep === undefined ? {} : { failureStep }) });
-      if (authority.lifecycle.state !== "terminal") continue;
-      terminalRuns += 1;
-      outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
-      // A terminal row without an end instant has unknown duration, never a growing elapsed value.
-      if (durationMs !== null) measured.push({ runId: surface.runId, ms: durationMs });
-      else unmeasured += 1;
-      const { failureId } = authority.lifecycle;
-      if (failureId === undefined) continue;
-      const failure = this.#deps.authority.getFailure(failureId);
-      if (failure === undefined) {
-        throw new Error(
-          `run ${surface.runId} settled failed against failure ${failureId}, which authority does not hold; `
-          + "refusing to report a failure breakdown with a hole in it",
-        );
+      let terminal: ActivityReportRow["terminal"];
+      if (lifecycle.state === "terminal") {
+        terminal = { outcome: lifecycle.outcome };
+        if (lifecycle.failureId !== undefined) {
+          const failure = this.#deps.authority.getFailure(lifecycle.failureId);
+          if (failure === undefined) {
+            throw new Error(`run ${runId} settled failed against failure ${lifecycle.failureId}, which authority does not hold; `
+              + "refusing to report a failure breakdown with a hole in it");
+          }
+          terminal.failure = failure;
+        }
       }
-      const key = JSON.stringify([surface.workflowId, failure.code]);
-      const bucket = failures.get(key) ?? { workflowId: surface.workflowId, code: failure.code, runs: 0, transient: 0, sample: [] };
-      bucket.runs += 1;
-      if (failure.transient) bucket.transient += 1;
-      if (bucket.sample.length < ACTIVITY_SAMPLE_LIMIT) bucket.sample.push(surface.runId);
-      failures.set(key, bucket);
+      const completion = warningVerdict.kind === "present" ? "warnings"
+        : warningVerdict.kind === "none" ? "readBack" : "warningsUnknown";
+      activityRows.push({ day, enqueuedAt, workflowId: workflow, runId, parentRunId: envelope.parent?.runId ?? null,
+        status: surface.status, lifecycleState: lifecycle.state, durationMs, completion,
+        ...(terminal === undefined ? {} : { terminal }), ...(failureStep === undefined ? {} : { failureStep }) });
     }
 
-    const timingRows = inRange.map(({ fold: { surface }, authority }) => ({ workflowId: surface.workflowId,
-      status: surface.status, parentRunId: authority.envelope.parent?.runId ?? null,
-      durationMs: authority.lifecycle.state === "terminal" && surface.endedAt.state === "present"
-        ? Math.max(0, Date.parse(surface.endedAt.value) - Date.parse(surface.startedAt)) : null }));
-    const categories = new Map<string, number>();
-    let unregisteredCategoryRuns = 0;
-    const workflowTotals = [...workflows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([workflowId, counts]) => {
-      const typicalTime = activityTypicalTime(successfulActivityTiming(workflowId, timingRows));
-      const descriptor = this.#deps.descriptors.resolve(workflowId);
-      if (descriptor === undefined) {
-        unregisteredCategoryRuns += counts.runs;
-        return {
-          ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-          workflowId,
-          registration: {
-            state: "unregistered",
-            reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable`,
-          },
-        };
-      }
-      categories.set(descriptor.category, (categories.get(descriptor.category) ?? 0) + counts.runs);
-      return {
-        ...counts, ...analytics.workflow(workflowId), needsAttention: counts.failed, typicalTime,
-        workflowId,
-        registration: {
-          state: "registered",
-          label: descriptor.label,
-          code: descriptor.code,
-          categoryId: descriptor.category,
-        },
-      };
-    });
-
-    const sorted = [...measured].sort((a, b) => a.ms - b.ms);
-    const longest = sorted.at(-1);
-    const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
-    const typicalMedian = activityMedian(measured.map(entry => entry.ms));
-
-    if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
     const generatedAt = this.#deps.clock.now().toISOString();
-    return ActivityReportWireSchema.parse({
-      wireVersion: 1,
-      from: start,
-      to: end,
-      generatedAt,
-      ...this.#deps.assistantUsage(start, end, generatedAt),
-      totalRuns: inRange.length,
-      terminalRuns,
-      inFlightRuns: inRange.length - terminalRuns,
-      people,
-      completion,
-      outcomeSplit: analytics.outcomeSplit(),
-      typicalMedian,
-      days: analytics.days(),
-      workflows: workflowTotals,
-      categories: [
-        ...[...categories.entries()].sort(([a], [b]) => a.localeCompare(b))
-          .map(([categoryId, runs]) => ({ category: { state: "registered", categoryId }, runs })),
-        ...(unregisteredCategoryRuns === 0 ? [] : [{
-          category: { state: "unregistered", reason: "the workflows behind these runs are no longer registered" },
-          runs: unregisteredCategoryRuns,
-        }]),
-      ],
-      statuses: [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b))
-        .map(([status, bucket]) => ({ status, runs: bucket.runs, sample: bucket.sample })),
-      outcomes: [...outcomes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([outcome, runs]) => ({ outcome, runs })),
-      failures: [...failures.values()].sort((a, b) => a.workflowId.localeCompare(b.workflowId) || a.code.localeCompare(b.code))
-        .map(bucket => ({ ...bucket, sentence: operatorFailureSentence(bucket.code),
-          registration: workflowTotals.find(workflow => workflow.workflowId === bucket.workflowId)!.registration })),
-      durations: {
-        measuredRuns: measured.length,
-        unmeasuredRuns: unmeasured,
-        medianMs: median === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: median.ms },
-        longestMs: longest === undefined
-          ? { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON }
-          : { state: "present", value: longest.ms, runId: longest.runId },
-        totalMs: measured.reduce((total, entry) => total + entry.ms, 0),
+    return buildActivityReport({
+      from: start, to: end, generatedAt, rows: activityRows, people, descriptors: this.#deps.descriptors,
+      assistantUsage: () => {
+        if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
+        return this.#deps.assistantUsage(start, end, generatedAt);
       },
-
-      ledger: this.#deps.ledger.foldActivityRange(start, end),
+      ledger: () => this.#deps.ledger.foldActivityRange(start, end),
     });
   }
 }

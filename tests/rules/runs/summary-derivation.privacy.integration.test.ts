@@ -37,8 +37,8 @@ it("deduplicates people across days and computes the lower selected median, matc
     assert.deepEqual(report.people,{state:"present",distinct:1,evidenceRows:6});
     assert.deepEqual(report.durations.medianMs,{state:"present",value:20});
     assert.equal(report.completion.warningsUnknown,4);
-    const {volume,...reportWithoutVolume}=report;
-    assert.deepEqual(reportWithoutVolume,expected);
+    const {volume}=report;
+    assert.deepEqual(report,expected);
     assert.ok(volume);
     assert.equal(volume.state,"complete");assert.equal(volume.coveredRuns,report.totalRuns);
     assert.equal(volume.buckets.reduce((total,bucket)=>total+bucket.runs,0),report.totalRuns);

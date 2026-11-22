@@ -6,7 +6,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema,
   WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, TraceIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema, GateIdSchema } from "../../rules/identity/ids.js";
 import { LedgerEntryPayloadSchema } from "../../rules/runs/ledger.js";
-import { NoteWireSchema, SpanEventWireSchema } from "./types.js";
+import { NoteWireSchema, SpanEventWireSchema, type SpanEventWire } from "./types.js";
 import { RecoveryActivitySchema } from "../run/recovery-activity.js";
 
 /** A reference preserves the original observation; replay never rewrites its clock. */
@@ -233,12 +233,18 @@ export function timelineAppendContent(record: TimelineEventRecord): string {
   return canonicalJsonStringify(content);
 }
 
+const TimelineSpanTypeSchema = z.enum([
+  "run.queued", "run.claimed", "run.requeued", "span.started", "span.ended",
+  "gate.opened", "gate.resolved", "transaction.previewed", "transaction.fenced", "data.observed",
+] satisfies SpanEventWire["t"][]);
+
 export const TimelinePageRequestSchema = z.strictObject({
   after: z.number().int().nonnegative().default(0),
   through: z.number().int().nonnegative().optional(),
   limit: z.number().int().min(1).max(1000).default(500),
   runId: RunIdSchema.optional(),
   workflow: WorkflowIdSchema.optional(),
+  spanTypes: z.array(TimelineSpanTypeSchema).min(1).max(TimelineSpanTypeSchema.options.length).optional(),
 });
 
 export class TimelineDiagnosticBudgetError extends Error {

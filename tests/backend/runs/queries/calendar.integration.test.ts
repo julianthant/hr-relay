@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createCalendarQuery } from "../../../../src/backend/runs/queries/calendar.js";
+import { createRunSummaries } from "../../../../src/backend/storage/sqlite/run-summaries.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import type { ShellRouteDeps } from "../../../../src/backend/transports/http/routes/shell-types.js";
 import { registerShellRoutes } from "../../../../src/backend/transports/http/routes/shell.js";
@@ -66,6 +67,47 @@ it("reads today as the Pacific day when the machine zone is not Pacific", async 
     assert.equal(query.read({ month: "2026-09", day: "2026-09-08" }).today, "2026-09-08");
     assert.throws(() => query.read({ month: "2026-09", day: "2026-09-09" }), /calendar-future-day/u);
   } finally { if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior; await f.dispose(); }
+});
+
+it("authenticates linked days that can change the month or bounds", async () => {
+  const f = await summaryFixture();
+  try {
+    const enqueue = (key: number, day: string, parentKey?: number) => {
+      const at = `${day}T12:00:00.000Z`;
+      const record = RunRecordSchema.parse({ ...f.run,
+        envelope: { ...f.run.envelope, runId: id(key), itemId: id(key), enqueuedAt: at,
+          ...(parentKey === undefined ? {} : { parent: { runId: id(parentKey), tracePrefix: f.run.envelope.traceId, edgeId: "searching" } }) },
+        lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, createdAt: at, updatedAt: at });
+      f.db.authority.runs.enqueue(record);
+    };
+    enqueue(5001, "2025-01-01");
+    enqueue(5002, "2025-02-01");
+    enqueue(5003, "2026-08-05");
+    enqueue(5004, "2026-08-15");
+    enqueue(5005, "2026-09-08");
+    enqueue(5011, "2024-12-31", 5001);
+    enqueue(5012, "2025-02-02", 5002);
+    enqueue(5013, "2026-08-09", 5003);
+    enqueue(5014, "2026-08-11", 5004);
+    enqueue(5015, "2026-09-09", 5005);
+
+    const raw = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      const inspected: string[] = [];
+      const summary = createRunSummaries(raw, () => { throw new Error("calendar does not read wait state"); }, envelopes => {
+        for (const envelope of envelopes) if (envelope.parent !== undefined) inspected.push(envelope.parent.runId);
+        return f.db.authority.dependencies.parents(envelopes);
+      });
+      const calendar = summary.calendar(f.db.getMeta().authorityGeneration,
+        { month: "2026-08", day: "2026-08-10", today: "2026-09-09" });
+      assert.deepEqual(calendar.monthCounts, ["2026-08-05", "2026-08-09", "2026-08-11", "2026-08-15"].map(day => ({ day, count: 1 })));
+      assert.equal(calendar.firstDay, "2024-12-31");
+      assert.equal(calendar.previousDay, "2026-08-09");
+      assert.equal(calendar.nextDay, "2026-08-11");
+      assert.equal(calendar.lastDay, "2026-09-09");
+      assert.deepEqual(inspected, [5001, 5003, 5004, 5005].map(id));
+    } finally { raw.close(); }
+  } finally { await f.dispose(); }
 });
 
 it("refuses invalid queries and unavailable/corrupt publications instead of reporting empty history", async () => {

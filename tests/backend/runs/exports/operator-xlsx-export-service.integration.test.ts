@@ -161,6 +161,7 @@ function fakeSearchExportService(
     artifacts: harness.artifacts,
     sourceIdentity: harness.database.getSourceDatabaseIdentity(),
     authority: harness.database.authority.operatorXlsxExports,
+    withSearchSnapshot: read => harness.database.withAuthorityReadSnapshot(read),
     search: {
       searchSelected: () => pages.first,
       search: (input) => {
@@ -218,8 +219,13 @@ describe("operator XLSX export service", () => {
       const generation = h.database.getMeta().authorityGeneration;
       h.clock.advanceWall(1);
       assert.equal(h.database.getMeta().authorityGeneration, generation);
+      let captures = 0;
+      const withSearchSnapshot = <Result>(read: () => Result): Result => {
+        captures++;
+        return h.database.withAuthorityReadSnapshot(read);
+      };
       for (const format of ["csv", "diagnostic"] as const) {
-        const response = exportSearchMetadata({ search, sourceIdentity: h.database.getSourceDatabaseIdentity() }, { selection, format });
+        const response = exportSearchMetadata({ search, withSearchSnapshot, sourceIdentity: h.database.getSourceDatabaseIdentity() }, { selection, format });
         const text = await response.text();
         assert.ok(text.includes(page.generatedAt));
         assert.ok(text.includes(page.results[0]?.runId ?? "missing"));
@@ -227,11 +233,12 @@ describe("operator XLSX export service", () => {
       }
       const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => EXPORT_ID },
         artifacts: h.artifacts, sourceIdentity: h.database.getSourceDatabaseIdentity(),
-        authority: h.database.authority.operatorXlsxExports, search,
+        authority: h.database.authority.operatorXlsxExports, search, withSearchSnapshot,
         activityReport: () => { throw new Error("unexpected activity"); } });
       const result = await service.export(LOCAL_OPERATOR_ACTOR_ID, { requestVersion: 3, selection });
       assert.equal(result.evidence.selection.kind, "search");
       assert.ok(result.bytes.length > 0);
+      assert.equal(captures, 3);
     } finally { await h.close(); }
   });
   it("persists content-addressed bytes and exact attachment evidence before returning", async () => {
@@ -244,6 +251,7 @@ describe("operator XLSX export service", () => {
         artifacts,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         authority: database.authority.operatorXlsxExports,
+        withSearchSnapshot: read => database.withAuthorityReadSnapshot(read),
         search: {
           search: () => searchPage(),
           searchSelected: () => searchPage(),
@@ -324,6 +332,7 @@ describe("operator XLSX export service", () => {
         artifacts,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         authority: database.authority.operatorXlsxExports,
+        withSearchSnapshot: read => database.withAuthorityReadSnapshot(read),
         search: {
           search: () => searchPage(),
           searchSelected: () => searchPage(),
@@ -486,6 +495,7 @@ describe("operator XLSX export service", () => {
         artifacts: h.artifacts,
         sourceIdentity: h.database.getSourceDatabaseIdentity(),
         authority: h.database.authority.operatorXlsxExports,
+        withSearchSnapshot: read => h.database.withAuthorityReadSnapshot(read),
         search: restarted,
         activityReport: () => {
           throw new Error("activity must not be read for a search export");
@@ -539,6 +549,7 @@ describe("G explicit export lifecycle", () => {
           if (failing && fault === "settlement") throw new Error("injected-settlement");
           return repository.insert(input);
         } },
+        withSearchSnapshot: read => h.database.withAuthorityReadSnapshot(read),
         search: { search: () => searchPage(), searchSelected: () => searchPage() },
         activityReport: () => { throw new Error("unexpected activity"); },
       });
@@ -566,6 +577,7 @@ describe("G explicit export lifecycle", () => {
           const saved = repository.insert(input);
           return { ...saved, record: { ...saved.record, download: { ...saved.record.download, contentDisposition: "changed receipt" } } };
         } },
+        withSearchSnapshot: read => h.database.withAuthorityReadSnapshot(read),
         search: { search: () => searchPage(), searchSelected: () => searchPage() }, activityReport: () => { throw new Error("unexpected activity"); } });
       await assert.rejects(service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()), /settlement-readback-conflict/u);
       const stored = repository.get(EXPORT_ID); assert.ok(stored);
@@ -602,6 +614,7 @@ describe("G explicit export lifecycle", () => {
       const repository = h.database.authority.operatorXlsxExports;
       const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => secondId },
         sourceIdentity: h.database.getSourceDatabaseIdentity(), artifacts: h.artifacts, authority: repository,
+        withSearchSnapshot: read => h.database.withAuthorityReadSnapshot(read),
         search: { search: () => searchPage(), searchSelected: () => searchPage() }, activityReport: () => { throw new Error("unexpected activity"); } });
       const second = await service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
       assert.notEqual(first.evidence.exportId, second.evidence.exportId);

@@ -75,12 +75,15 @@ export interface RunLogSnapshot {
 
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
+  // The first log page is requested with the detail; the detail's identity and capability checks still gate its use.
+  const firstPage = client.runSection(row.runId, "logs", undefined, signal).catch((error: unknown) => ({ error }));
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
-  const section = await client.runSection(row.runId, "logs", undefined, signal);
+  const section = await firstPage;
+  if ("error" in section) throw section.error;
   if (section.section !== "logs" || section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   let logs = section.payload;
   logRowsOf(logs, "initial");
@@ -123,6 +126,46 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   validateRunLogSnapshot(snapshot);
   if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
   return snapshot;
+}
+
+/** How many runs' loaded logs a page keeps; the least recently used is dropped first. */
+export const KEPT_RUN_LOGS_LIMIT = 20;
+
+/** The authority a kept snapshot was read under: a sign-in, profile or actor change discards everything kept. */
+interface RunLogAuthority { readonly epoch: object | undefined; readonly actorId: string | undefined }
+const keptRunLogs = new WeakMap<object, { authority: RunLogAuthority; runs: Map<string, RunLogSnapshot> }>();
+
+function keptFor(client: object, authority: RunLogAuthority): Map<string, RunLogSnapshot> {
+  let kept = keptRunLogs.get(client);
+  if (kept === undefined || kept.authority.epoch !== authority.epoch || kept.authority.actorId !== authority.actorId) {
+    kept = { authority, runs: new Map() };
+    keptRunLogs.set(client, kept);
+  }
+  return kept.runs;
+}
+
+function keepRunLogs(client: object, authority: RunLogAuthority, snapshot: RunLogSnapshot): void {
+  const runs = keptFor(client, authority);
+  runs.delete(snapshot.detail.runId);
+  runs.set(snapshot.detail.runId, snapshot);
+  for (const oldest of runs.keys()) {
+    if (runs.size <= KEPT_RUN_LOGS_LIMIT) break;
+    runs.delete(oldest);
+  }
+}
+
+/** The last loaded logs of this exact run under this authority. A finished run's logs cannot change, so a kept
+ * snapshot of the same attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
+export function keptRunLogsState(client: object, authority: RunLogAuthority, row: LogSelection["row"]): RunWiringState | undefined {
+  const runs = keptFor(client, authority);
+  const snapshot = runs.get(row.runId);
+  if (snapshot === undefined) return undefined;
+  const { detail } = snapshot;
+  const same = detail.header.traceId === row.traceId && detail.header.attempt === row.attempt && detail.header.workflowId === row.workflowId;
+  if (!same) return undefined;
+  runs.delete(row.runId);
+  runs.set(row.runId, snapshot);
+  return detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision ? { state: "loaded", snapshot } : { state: "loading", snapshot };
 }
 
 function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
@@ -610,18 +653,20 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
     epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
   [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
-  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
+  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>(() => ({ request, value: keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" } }));
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
-    : { state: "loading", ...(sameRun && settled.value.snapshot ? { snapshot: settled.value.snapshot } : {}) }, [settled, request, sameRun]);
+    : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
+    : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
+    if (keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, request.selection.row)?.state === "loaded") return;
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
-    void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) { ended(); setSettled({ request, value: { state: "loaded", snapshot } }); }
+    const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
+      if (active.current === request && !controller.signal.aborted) { ended(); keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot); setSettled({ request, value: { state: "loaded", snapshot } }); }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
       ended();
@@ -643,6 +688,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
           : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
+    // Start after the mount settles: a mount cancelled in the same tick sends nothing.
+    queueMicrotask(() => { if (!controller.signal.aborted) read(); });
     return () => { controller.abort(); reading.current = false; };
   }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
