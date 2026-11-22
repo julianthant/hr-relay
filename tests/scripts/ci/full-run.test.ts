@@ -98,7 +98,7 @@ describe("scheduled full-run decision", () => {
     const recent = scheduled(1, { head_sha: "b".repeat(40), created_at: hours(2) });
     expect(await decide({ runs: [recent], busy: { in_progress: [99] } }))
       .toMatchObject({ start: true, reason: expect.stringContaining("CI is idle") as string });
-    for (const busy of [{ queued: [5] }, { in_progress: [5] }]) {
+    for (const busy of [{ queued: [5] }, { in_progress: [5] }] as Record<string, number[]>[]) {
       expect(await decide({ runs: [recent], busy })).toMatchObject({ start: false });
     }
   });

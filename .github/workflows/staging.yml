@@ -46,6 +46,7 @@ jobs:
   # Passes only on a green scheduled full run of the exact content (scripts/ci/full-run.ts).
   full-proof:
     name: full-proof
+    needs: names
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:

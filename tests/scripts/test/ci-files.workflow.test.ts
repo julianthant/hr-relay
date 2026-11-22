@@ -162,7 +162,7 @@ describe("development fast check", () => {
     const group = header.match(/^ {2}group: (.+)$/mu)?.[1];
     assert.ok(group);
     const key = (event_name: string, number: number | undefined, run_id: number, ref: string) => group.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) =>
-      String(runInNewContext(code, { github: { workflow: "Development", event_name, run_id, ref, event: { pull_request: number === undefined ? undefined : { number } } } })));
+      String(runInNewContext(code, { github: { workflow: "Development", event_name, run_id, ref, event: { pull_request: { number } } } })));
     expect(key("pull_request", 7, 1, "refs/pull/7/merge")).toBe(key("pull_request", 7, 2, "refs/pull/7/merge"));
     expect(key("pull_request", 7, 1, "refs/pull/7/merge")).toBe("ci-Development-7");
     expect(key("push", undefined, 1, "refs/heads/task/a/b")).toBe("ci-Development-refs/heads/task/a/b");

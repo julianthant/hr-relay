@@ -17,14 +17,14 @@ export interface GitHub {
   paginate: <T>(method: (params: Params) => Promise<unknown>, params: Params) => Promise<T[]>;
   rest: {
     actions: {
-      getJobForWorkflowRun(params: Params): Promise<{ data: Job }>;
-      getWorkflowRun(params: Params): Promise<{ data: Run }>;
-      listJobsForWorkflowRun(params: Params): Promise<unknown>;
-      listWorkflowRuns(params: Params): Promise<unknown>;
-      listWorkflowRunsForRepo(params: Params): Promise<unknown>;
+      getJobForWorkflowRun: (params: Params) => Promise<{ data: Job }>;
+      getWorkflowRun: (params: Params) => Promise<{ data: Run }>;
+      listJobsForWorkflowRun: (params: Params) => Promise<unknown>;
+      listWorkflowRuns: (params: Params) => Promise<unknown>;
+      listWorkflowRunsForRepo: (params: Params) => Promise<unknown>;
     };
-    checks: { listForRef(params: Params): Promise<unknown> };
-    repos: { getCommit(params: Params): Promise<{ data: Commit }> };
+    checks: { listForRef: (params: Params) => Promise<unknown> };
+    repos: { getCommit: (params: Params) => Promise<{ data: Commit }> };
   };
 }
 export interface Context { repo: Repo; runId: number; sha: string; payload: { pull_request?: PullRequest } }
