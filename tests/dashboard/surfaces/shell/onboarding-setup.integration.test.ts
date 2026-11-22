@@ -22,9 +22,9 @@ async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedO
 }
 
 it.each([
-  ["DUO_SETUP_OPEN_FAILED", /could not start the setup browser\. Select Reopen to try again/u],
-  ["DUO_SETUP_STOP_FAILED", /could not stop the previous setup browser\. Select Reopen to try again/u],
-  ["DUO_SETUP_FILES_BUSY", /files are still in use\. Select Reopen to check again/u],
+  ["DUO_SETUP_OPEN_FAILED", /The setup browser did not start\. Select Reopen to try again/u],
+  ["DUO_SETUP_STOP_FAILED", /The previous setup browser did not stop\. Select Reopen to try again/u],
+  ["DUO_SETUP_FILES_BUSY", /The setup browser’s files are in use\. Select Reopen to check again/u],
 ] as const)("shows %s with its sentence and a Reopen action that dispatches the reopen command", async (code, sentence) => {
   const calls: string[] = [];
   const f = await mount(draft({ state: "failed", generation: 2, code }), { reopenBrowser: async () => { calls.push("reopen"); return draft({ state: "open", generation: 3 }); } });
