@@ -436,14 +436,7 @@ reaching CI and spending a full run. Allowed branches are `main`, `staging`, `de
 `.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first job; Development combines it with planning in
 `checks.yml`, and every other started job waits on it. `pull_request` includes `edited`, so a
 title change at the same head runs the check again. `--all` lists off-pattern local branches and
-worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`,
-including a detached worktree named by `tasks.worktree`. An open ticket that owns the path, an
-open ticket on the checkout branch, or an open ticket on a branch named by a path owner, keeps
-that worktree unlisted. A closed checkout branch still lists the path when no open ticket owns it
-and no open ticket names a branch recorded on that path. The ledger is
-`~/.concord-ledger/<package.json name>/.concord/concord.db`, or the `--ledger` path.
-A missing ledger adds no ticket rows. An unreadable ledger fails the command. `--all` only lists;
-it never deletes.
+linked worktrees without deleting them.
 
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
