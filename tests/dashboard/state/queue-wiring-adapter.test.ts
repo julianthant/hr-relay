@@ -19,7 +19,7 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
   const input: Parameters<typeof useQueueWiring>[0] = {
     allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces, activeWorkflowId: row.workflowId,
     filter: ["all"] as const, selectedRunId: row.runId, openWells: new Set<string>(),
-    nowIso: row.updatedAt, selectRun: (id: string) => selected.push(id),
+    now: () => row.updatedAt, selectRun: (id: string) => selected.push(id),
     openRelatedRun: target => { scopes.push(target.workflowId); }, onWells: (next: ReadonlySet<string>) => wells.push(next),
     setBatchGrouping: async () => undefined, runQueueAction: () => undefined,
   };
@@ -48,7 +48,7 @@ function mountWiring(overrides: Partial<WiringInput> = {}) {
   let input: WiringInput = {
     allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces.filter(surface => surface.workflowId === row.workflowId), activeWorkflowId: row.workflowId,
     filter: ["all"], selectedRunId: row.runId, openWells: new Set(),
-    nowIso: row.updatedAt, selectRun: () => undefined,
+    now: () => row.updatedAt, selectRun: () => undefined,
     openRelatedRun: () => undefined, onWells: () => undefined,
     setBatchGrouping: async () => undefined,
     runQueueAction: () => undefined,
@@ -86,7 +86,7 @@ it("uses served rows without local overlays or fictional actions and retains sta
     assert.equal(changedPreview.queueHandlers, first.queueHandlers);
     assert.equal(changedPreview.viewState, first.viewState);
     assert.equal(changedPreview.actionsOf, first.actionsOf);
-    const clock = await mounted.draw({ nowIso: "2026-10-14T12:00:00.000Z", selectedRunId: undefined });
+    const clock = await mounted.draw({ now: () => "2026-10-14T12:00:00.000Z", selectedRunId: undefined });
     assert.equal(clock.surfaces, changedPreview.surfaces);
     assert.equal(clock.queueHandlers, first.queueHandlers);
     assert.equal(clock.viewState.selectedRunId, undefined);

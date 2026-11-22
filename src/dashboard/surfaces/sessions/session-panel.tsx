@@ -4,6 +4,7 @@ import { SessionsView } from "./sessions-view.js";
 import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewCommands, type SessionCommandBinding, type SessionPreviewCommandPort } from "./session-preview-command-model.js";
 import { sessionsFromDay, sessionsUnavailable, type SessionsViewState } from "./sessions-view-model.js";
 import { useToasts } from "../../ds/ui.js";
+import { useServedNow } from "../../state/served-clock.js";
 
 /** A harness supplies the first state and the command port in place of the served day and its commands. */
 export type SessionsHarness = (catalog: readonly WorkflowCatalogEntry[]) => Readonly<{ initial: SessionsViewState; port: SessionPreviewCommandPort }>;
@@ -17,15 +18,17 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
   if (day?.state === "loaded" && day.value !== heldDay) setHeldDay(day.value);
   const shownDay = day?.state === "loaded" ? day.value : day?.state === "loading" ? heldDay : undefined;
   const stale = day?.state !== "loaded";
+  // Worker elapsed times tick here; the app above no longer re-renders every second.
+  const nowIso = useServedNow(binding?.nowIso ?? "");
   const initial = useMemo((): SessionsViewState => {
     if (harnessed) return harnessed.initial;
     if (binding === undefined) return sessionsUnavailable();
     if (shownDay !== undefined) {
-      const sessions = sessionsFromDay(shownDay, catalog, binding.nowIso);
+      const sessions = sessionsFromDay(shownDay, catalog, nowIso);
       return stale && sessions.state === "ready" ? { ...sessions, stale: true } : sessions;
     }
     return day?.state === "failed" ? sessionsUnavailable(day.error) : { state: "loading" };
-  }, [harnessed, binding, shownDay, stale, catalog, day]);
+  }, [harnessed, binding, shownDay, stale, catalog, day, nowIso]);
   const current = useMemo(() => ({ binding, catalog }), [binding, catalog]);
   const currentRef = useRef(current); currentRef.current = current;
   const servedPort = useMemo(() => createSessionPreviewPort(() => currentRef.current), []);

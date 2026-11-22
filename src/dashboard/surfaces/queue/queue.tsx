@@ -5,6 +5,7 @@ import { Fragment, memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, RotateCcw, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
+import { useServedNow } from "../../state/served-clock.js";
 import {
   BareButton,
   Button,
@@ -85,8 +86,8 @@ export interface QueueViewState {
   /** The workflow this queue is scoped to. A row of that workflow does not reprint its label —
  * the panel header already said it. */
   panelWorkflowId?: string;
-  /** Display-only "now", from the app's bootstrap-calibrated clock (ref frontend-backend-integration
- * last row). Passed in rather than read here so elapsed values are a pure */
+  /** The instant the rows arrived: sorting and row names measure against it. Elapsed texts tick
+ * from the mounted served clock, and show this instant when none is mounted. */
   nowIso: string;
 }
 
@@ -201,7 +202,7 @@ function HeaderChips({
 }) {
   const testSystems = testInstanceSystems(surface.resolvedInstances);
   /** Share served gate age with accessible naming; updatedAt must not make old gates appear young. */
-  const gateAge = queueGateAge(surface, nowIso);
+  const gateAge = queueGateAge(surface, useServedNow(nowIso, now => queueGateAge(surface, now)));
   return (
     <>
       <StatusBadge
@@ -304,9 +305,10 @@ function RowFooterLine({
   /** One served retry per failed member of a group card. */
   retryFailed?: readonly (() => void)[];
 }) {
+  const liveNow = useServedNow(nowIso, now => runTiming(surface, now, isTerminalQueueStatus)?.text);
   // Settled durations need a served end; never substitute now for an unmeasured terminal run.
   const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
-    ? undefined : runTiming(surface, nowIso, isTerminalQueueStatus);
+    ? undefined : runTiming(surface, liveNow, isTerminalQueueStatus);
   const groupCount = surface.surfaceKind === "operation" ? Math.max(surface.memberRollup.total - surface.memberRollup.terminal, 1) : undefined;
   return (
     <div
@@ -746,7 +748,6 @@ export function QueueRow({
   const retryFailed = surface.surfaceKind === "operation" ? members.flatMap(member => actionsOf(member)
     .filter(action => action.kind === "command" && action.key === "retry-member")
     .map(action => () => onAction?.(action, { runId: member.runId, expectedVersion: member.rowRevision }))) : [];
-  const batchTiming = batch === undefined ? undefined : runTiming(batch, state.nowIso, isTerminalQueueStatus);
   const batchWarnings = batch?.members.flatMap(member => member.warnings.state === "present" ? [member.warnings] : []) ?? [];
   const batchTestSystems = batch === undefined ? [] : [...new Set(batch.members.flatMap(member => testInstanceSystems(member.resolvedInstances)))];
 
@@ -906,7 +907,7 @@ export function QueueRow({
             <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]">
               <span className="shrink-0 whitespace-nowrap">{formatTime(batch.startedAt)}</span>
               <span className="min-w-0 truncate" title={`Batch ${batch.id}`}>Batch {batch.id.slice(0, 8)}</span>
-              <span className="shrink-0 whitespace-nowrap" title={batchTiming?.title}>{batchTiming?.text}</span>
+              <BatchTiming batch={batch} nowIso={state.nowIso} />
             </div>
             <div data-queue-member-actions role="group"
               aria-label={selectedBatchMember === undefined ? "Person actions — no person selected" : `Actions for ${queueRowTitle(selectedBatchMember)}, attempt ${selectedBatchMember.attempt}`}
@@ -936,6 +937,12 @@ export function QueueRow({
         </div>
     </div>
   );
+}
+
+/** The batch's elapsed text ticks here so its row does not re-render every second. */
+function BatchTiming({ batch, nowIso }: { batch: QueueBatch; nowIso: string }) {
+  const timing = runTiming(batch, useServedNow(nowIso, now => runTiming(batch, now, isTerminalQueueStatus)?.text), isTerminalQueueStatus);
+  return <span className="shrink-0 whitespace-nowrap" title={timing?.title}>{timing?.text}</span>;
 }
 
 /** Filter empty states use the status vocabulary, never raw wire keys. */

@@ -13,6 +13,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import type { NotificationControl, NotificationDestination, NotificationItem, NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
 import { formatLocalDay, formatMonthDay, formatWeekday } from "../lib/date-format.js";
+import { useClockNow, type ServedClock } from "./served-clock.js";
 
 const policies = {
   "run-failed": { trigger: "failed", tone: "danger", detail: "Review the failed run before continuing." },
@@ -126,7 +127,7 @@ export interface InboxWiring {
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
-export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
+export function useInboxWiring({ client, enabled, binding, clock }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding; clock?: ServedClock }): InboxWiring {
   const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
   const current = useRef({ request, binding, fresh: false }); current.current = { request, binding, fresh: false };
   const [revision, refresh] = useState(0);
@@ -155,6 +156,12 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   }, [client, enabled, request, read]);
   const rows = settled?.request === request ? settled.rows : undefined;
   const rowsRef = useRef(rows); rowsRef.current = rows;
+  // Ages read in minutes and days, so the inbox re-renders when one of those labels changes, not every tick.
+  const nowIso = useClockNow(clock, binding.authority.nowIso, now => rows?.map(row => {
+    if (row.kind === "backfill-gap") return "";
+    const { age, day } = notificationItem(row, now);
+    return `${age}\u0000${day}`;
+  }).join("\n"));
   const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
   useEffect(() => {
     if (!enabled) return;
@@ -223,7 +230,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     return current.current.request === request && outcome.kind === "confirmed";
   };
   const projection = rows === undefined ? { state: settled?.request === request && settled.failed ? { state: "unavailable" as const, reason: settled.notice } : { state: "loading" as const }, notice: "" }
-    : inboxProjection(rows, binding.authority.nowIso);
+    : inboxProjection(rows, nowIso);
   return { state: projection.state, notice: [rows !== undefined && !current.current.fresh && !settled?.failed ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "", projection.notice, settled?.request === request ? settled.notice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
     onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },
