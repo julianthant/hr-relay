@@ -4,7 +4,7 @@ import { act,createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it,vi } from "vitest";
 import { resolveDateSelection } from "../../../../src/dashboard/app/navigation/date-state-model.js";
-import { useServedNow } from "../../../../src/dashboard/state/served-clock.js";
+import { createServedClock, useClockNow } from "../../../../src/dashboard/state/served-clock.js";
 import { serverLocalDay } from "../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
 
@@ -18,8 +18,9 @@ it("visibility refresh advances only live Today using the one monotonic calibrat
   const spy = vi.spyOn(performance, "now").mockImplementation(() => monotonic);
   const host = document.createElement("div"); const root = createRoot(host);
   let live = "", pinned = "";
+  const clock = createServedClock("2026-03-08T07:59:59.000Z", 60_000);
   function Probe() {
-    const now = useServedNow("2026-03-08T07:59:59.000Z", 60_000);
+    const now = useClockNow(clock, "2026-03-08T07:59:59.000Z", instant => serverLocalDay({ now: instant, zone: "America/Los_Angeles" }));
     const today = serverLocalDay({ now, zone: "America/Los_Angeles" });
     const a = resolveDateSelection(undefined, today), b = resolveDateSelection("2026-03-07", today);
     if (a.state === "valid") live = a.day;
