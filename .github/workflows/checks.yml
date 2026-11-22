@@ -116,6 +116,10 @@ jobs:
             architecture:
               - '**'
               - '!**/*.md'
+            smoke:
+              - '{.github/workflows/checks.yml,playwright.smoke.config.ts,vite.dashboard.config.ts,config/dashboard-workflow-sources.json,package.json,package-lock.json,tsconfig.json,.node-version,scripts/build/**,src/**,tests/smoke/**,tests/support/helpers/dashboard/{smoke,served-fixtures,profiles}/**,tests/support/fixtures/{dashboard/**,dashboard-stream-seams.ts,explorer-seams.ts,intake-kernel-seams.ts,operator-command-fixtures.ts,phase1c-contract-fixtures.ts,phase1f-run-fixtures.ts,preflight-seams.ts,run-lifecycle-fixtures.ts},tests/support/helpers/{credential-keychain-process-preload.mjs,credential-keychain-fake.ts,seeded-dashboard-world.ts,admission-fixture.ts,backend/fake-worker-port.ts,backend/unused-worker-pool.ts,canonical-run-reader.ts,dashboard/static-assets.ts,registered-workflows.ts,run-integration-world.ts,synthetic-database-admission.ts,synthetic-storage-admission.ts,timeline-write-fixture.ts,write-fence-fixture.ts}}'
+              - '!**/*.md'
+              - '!**/*.test.ts'
       - uses: actions/github-script@v9
         id: select
         env:

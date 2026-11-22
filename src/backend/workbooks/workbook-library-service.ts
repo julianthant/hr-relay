@@ -38,6 +38,8 @@ export interface WorkbookLibraryRepository {
   drain(libraryId: string): void;
   operation(libraryId: string, value: unknown): WorkbookOperationReceipt;
   journal(libraryId: string): readonly WorkbookOperationReceipt[];
+  /** Whether an operation for the entry is admitted but not yet settled. */
+  hasQueuedOperation(libraryId: string): boolean;
   snapshot(value: unknown): z.infer<typeof WorkbookSnapshotSchema>;
   runOperations(runId: string): readonly WorkbookOperationRecord[];
   catalog(): readonly WorkbookLibraryEntry[];

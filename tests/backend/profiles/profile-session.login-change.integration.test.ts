@@ -20,7 +20,7 @@ const samFields = { firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", 
  * close; "entries-flush" lets the saved entries' rename land and fails their directory flush.
  */
 function inject(mode: "before" | "stop" | "flush" | "flush-unread" | "close" | "close-unread" | "entries-flush" | "entries-flush-unowned" | "lock-flush" | "lock-close"): { leaked: number[] } {
-  const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync, close = fs.closeSync, read = fs.readFileSync, unlink = fs.unlinkSync, leaked: number[] = [];
+  const rename = fs.renameSync, open = fs.openSync, flush = fs.fsyncSync, close = fs.closeSync, unlink = fs.unlinkSync, leaked: number[] = [];
   let stopped = false, failFlush = false, failClose = false, failRead = false, failNextOpen = false;
   vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
     const target = String(to);
@@ -39,10 +39,6 @@ function inject(mode: "before" | "stop" | "flush" | "flush-unread" | "close" | "
     if (failClose) { failClose = false; failRead = mode === "close-unread"; leaked.push(descriptor); throw new Error("injected close failure"); }
     close(descriptor);
   });
-  vi.spyOn(fs, "readFileSync").mockImplementation(((path: fs.PathOrFileDescriptor, options?: unknown) => {
-    if (failRead && String(path).endsWith("profile-verifiers.json")) { failRead = false; throw new Error("injected readback failure"); }
-    return Reflect.apply(read, fs, options === undefined ? [path] : [path, options]) as unknown;
-  }) as typeof fs.readFileSync);
   vi.spyOn(fs, "unlinkSync").mockImplementation(path => {
     unlink(path);
     if (String(path).endsWith(".profile-ops.lock")) { failFlush = mode === "lock-flush"; failClose = mode === "lock-close"; }
@@ -50,6 +46,8 @@ function inject(mode: "before" | "stop" | "flush" | "flush-unread" | "close" | "
   vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
     if (stopped && String(path).includes("/credentials/")) throw new Error("injected stop");
     if (failNextOpen && String(path).includes("/credentials/")) { failNextOpen = false; throw new Error("injected ownership readback failure"); }
+    // Verifier reads go through a descriptor, so the read-back fault is injected at its open.
+    if (failRead && String(path).endsWith("profile-verifiers.json")) { failRead = false; throw new Error("injected readback failure"); }
     return open(path, flags, mode);
   });
   syncBuiltinESMExports();

@@ -15,7 +15,7 @@ import type { ChildProcess } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
-import { basename,dirname,join } from "node:path";
+import { basename,dirname,join,resolve } from "node:path";
 import { DatabaseSync,backup as sqliteBackup,type SQLInputValue,type SQLTagStore } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -3958,6 +3958,13 @@ export class AuthorityDatabase implements Disposable {
       retainUnprovedSourceOwners(failure, { database: { original: this, temporary: database }, admission: { admission, copyAdmission }, snapshot, restore });
       throw failure;
     }
+  }
+
+  /** Proves this open store is the person's own state.db, opened by exactly this live, exclusive admission. */
+  assertOpenedByExclusive(admission: RuntimeAdmission): void {
+    if (this.#admission !== admission) throw new Error("authority-database-owner-mismatch");
+    this.#assertOpen(); admission.assertExclusive(); admission.assertAuthorityDatabase(this.#path);
+    if (resolve(this.#path) !== join(admission.stateRoot, "state.db")) throw new Error("authority-database-owner-mismatch");
   }
 
   browserWorkerOwner(admission: RuntimeAdmission, workerId: string, stoppedProcess?: ChildProcess) {
