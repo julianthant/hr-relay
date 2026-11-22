@@ -6,7 +6,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 ## What to build
 
-- Work from your ticket in the shared Concord ledger: claim it, read its brief, load the skills on
+- Work from your ticket in the GitHub issue tracker: claim it, read its brief, load the skills on
   its `Skills:` line, and record progress, commits, check results, unrun obligations and open
   decisions on it. Work only on the ticket. Read the codebase map and the
   [roadmap](docs/roadmap/roadmap.md); update the roadmap only when asked.
