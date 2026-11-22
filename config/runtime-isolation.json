@@ -1,5 +1,10 @@
 {
   "schemaVersion": 3,
+  "profiles": {
+    "production": { "namespace": "Relay", "backendPort": 3938, "lockPort": 3939, "frontendPort": 5174 },
+    "staging": { "namespace": "Relay-staging", "backendPort": 3941, "lockPort": 3942, "frontendPort": 5175 },
+    "development": { "namespace": "Relay-development", "backendPort": 3940, "lockPort": 3943, "frontendPort": 5176 }
+  },
   "legacy": {
     "sourceRoot": "src",
     "entrypoint": "src/cli.ts",

@@ -27,11 +27,14 @@ it("removes leaked readonly authority copies only when their owner pid is dead",
   const alive = join(root, `relay-readonly-authority-pid${process.pid}-alive`);
   const unnamed = join(root, "relay-readonly-authority-no-pid");
   const legacy = join(root, `relay-readonly-authority-${String(pid)}-1234-4abc-8abc-0123456789ab`);
+  const staging = join(root, `relay-staging-readonly-authority-pid${pid}-dead`);
+  mkdirSync(staging);
   mkdirSync(dead);
   mkdirSync(alive);
   mkdirSync(unnamed);
   mkdirSync(legacy);
   sweepLeakedReadonlyAuthorityCopies(root);
+  expect(existsSync(staging)).toBe(true);
   expect(existsSync(dead)).toBe(false);
   expect(existsSync(alive)).toBe(true);
   expect(existsSync(unnamed)).toBe(true);

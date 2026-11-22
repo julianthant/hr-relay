@@ -9,6 +9,9 @@
   },
   "scripts": {
     "cli": "tsx scripts/dev/secure-env-bootstrap.ts cli",
+    "dashboard:production": "tsx scripts/dev/dashboard.ts --profile=production",
+    "dashboard:staging": "tsx scripts/dev/dashboard.ts --profile=staging",
+    "dashboard:development": "tsx scripts/dev/dashboard.ts --profile=development",
     "dashboard": "tsx scripts/dev/dashboard.ts",
     "backend": "tsx scripts/dev/dashboard.ts --backend-only",
     "dashboard:prod": "tsx scripts/dev/secure-env-bootstrap.ts cli dashboard --prod",
@@ -17,6 +20,7 @@
     "web:preview": "vite preview --config vite.dashboard.config.ts",
     "smoke:test-target-document-number": "tsx scripts/dev/secure-env-bootstrap.ts test-target-document-number",
     "typecheck": "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit",
+    "release": "tsx scripts/release/cli.ts",
     "names:check": "node scripts/ci/names-check.ts",
     "privacy:check": "tsx scripts/verify/privacy.ts",
     "verify:prelogin": "tsx scripts/verify/prelogin-rehearsal.ts",

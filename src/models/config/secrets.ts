@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RuntimeProfileSchema } from "./define-runtime-isolation.js";
 import { ProfileIdentitySchema } from "../profiles/profile-identity.js";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./catalog.js";
 import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "./protected-settings.js";
@@ -224,6 +225,12 @@ export function developmentDebugMirrorEnabled(env: NodeJS.ProcessEnv = process.e
   return env[DEVELOPMENT_DEBUG_MIRROR_ENV] === "1";
 }
 
+export const RUNTIME_PROFILE_ENV = "RELAY_RUNTIME_PROFILE";
+
+export function readRuntimeProfile(env: NodeJS.ProcessEnv = process.env) {
+  return RuntimeProfileSchema.default("production").parse(env[RUNTIME_PROFILE_ENV]);
+}
+
 export const PARENT_BUILD_ID_ENV = "RELAY_PARENT_BUILD_ID";
 
 export function parentBuildId(env: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -237,6 +244,8 @@ export function workerBootstrapEnvironment(env: NodeJS.ProcessEnv = process.env)
     const value = env[key];
     if (value !== undefined) result[key] = value;
   }
+  const profile = readRuntimeProfile(env);
+  if (profile !== "production") result[RUNTIME_PROFILE_ENV] = profile;
   return Object.freeze(result);
 }
 
