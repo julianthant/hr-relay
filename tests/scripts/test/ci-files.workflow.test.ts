@@ -132,7 +132,7 @@ describe("development fast check", () => {
   });
 
   it("decides on the schedule and starts every full job only on the decision", () => {
-    expect(development).toContain("schedule:\n    - cron: '*/20 * * * *'");
+    expect(development).toContain("schedule:\n    - cron: '7,27,47 * * * *'");
     const decide = job(development, "decide");
     expect(decide).toContain("if: ${{ github.event_name == 'schedule' }}");
     expect(decide).toContain("checks: read");
