@@ -6,7 +6,7 @@ import { createCiPlan, hasTimingArtifact, publishTimings, registeredTimingWorkfl
 const filters = { shared: "true", unit: "false", integration: "false", architecture: "false", smoke: "false" };
 const none = { core: false, shardCount: 0, shards: [] };
 const context = (workflow = "portable", extra: Record<string, unknown> = {}) => ({ workflow, event: "pull_request",
-  base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "cut/m1" : "hotfix/x",
+  base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "development" : "hotfix/x",
   draft: false, filters, ...extra });
 const portableResults = { changes: { result: "success" }, lint: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
@@ -22,7 +22,7 @@ function cli(command: string, input: unknown, results?: unknown) {
 
 describe("flat CI plan", () => {
   it("plans only three unit and two architecture shards for development, with a unit-only draft", () => {
-    const fast = context("fast", { base: "development", head: "feature/test", affected: none });
+    const fast = context("fast", { base: "development", head: "task/ci/test", affected: none });
     const plan = createCiPlan(fast);
     expect(plan.ubuntu.include).toEqual([
       { suite: "unit", shard: 1, shards: 3 }, { suite: "unit", shard: 2, shards: 3 }, { suite: "unit", shard: 3, shards: 3 },
@@ -39,7 +39,7 @@ describe("flat CI plan", () => {
     expect(createCiPlan({ ...fast, event: "push", head: "task/ci/push" })).toEqual(plan);
     expect(() => createCiPlan({ ...fast, affected: undefined })).toThrow("Only fast CI takes the affected integration plan.");
     expect(() => createCiPlan(context("portable", { affected: none }))).toThrow("Only fast CI takes the affected integration plan.");
-    for (const invalid of [{ ...fast, event: "push" }, context("portable", { event: "push", head: "task/ci/push" })]) {
+    for (const invalid of [{ ...fast, event: "push", head: "fix/ci" }, context("portable", { event: "push", head: "task/ci/push" })]) {
       expect(() => createCiPlan(invalid)).toThrow("Push CI runs only fast checks on task branches.");
     }
   });
@@ -53,7 +53,7 @@ describe("flat CI plan", () => {
     expect(plan.ubuntu.include).toEqual(shards.map((files, i) => ({ suite: "integration", shard: i + 1, shards: 2, files })));
     expect(plan).toMatchObject({ integration: true, unit: false, architecture: false, testJobs: 2 });
     expect(createCiPlan({ ...fast, filters }).testJobs).toBe(7);
-    expect(createCiPlan({ ...fast, event: "pull_request", head: "feature/x", draft: true, filters })).toMatchObject({ integration: false, testJobs: 3 });
+    expect(createCiPlan({ ...fast, event: "pull_request", head: "task/ci/x", draft: true, filters })).toMatchObject({ integration: false, testJobs: 3 });
     expect(() => createCiPlan({ ...fast, affected: { ...affected, shards: [[]] } })).toThrow();
     expect(() => createCiPlan({ ...fast, affected: { ...affected, shards: [["src/a.ts"]] } })).toThrow();
   });
@@ -64,7 +64,7 @@ describe("flat CI plan", () => {
     const plan = createCiPlan(matched);
     expect(plan).toMatchObject({ perf: false, smoke: true });
     expect(createCiPlan(push).smoke).toBe(false);
-    expect(createCiPlan({ ...matched, event: "pull_request", head: "feature/x" }).smoke).toBe(false);
+    expect(createCiPlan({ ...matched, event: "pull_request", head: "task/ci/x" }).smoke).toBe(false);
     expect(() => createCiPlan({ ...push, filters: { ...filters, smoke: "invalid" } })).toThrow("Path-filter outputs");
 
     const skipped = { result: "skipped" };
@@ -119,7 +119,7 @@ describe("flat CI plan", () => {
       const plan = createCiPlan(context(workflow, { filters: { ...filters, shared: "false" } }));
       expect(plan.testJobs).toBe(0);
     }
-    const invalid = createCiPlan(context("release", { head: "feature/other" }));
+    const invalid = createCiPlan(context("release", { head: "fix/other" }));
     expect(invalid.fullRelease).toBe(false);
     expect(invalid.macos.include).toEqual([]);
     const hotfix = createCiPlan(context("release", { head: "hotfix/x" }));

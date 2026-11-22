@@ -92,13 +92,17 @@ test("Back, Forward and Reload follow the URL", async ({ dashboard, failures, pa
   await dashboard.openWorkflow("Separations");
   await dashboard.openDataPage("Analytics");
   // Opening Settings lands on General, then the section link adds its own entry.
+  await dashboard.settleReads();
   await page.goBack();
   await expect(dashboard.pageHeading("General")).toBeVisible();
+  await dashboard.settleReads();
   await page.goBack();
   await expect(dashboard.pageHeading("Separations queue")).toBeVisible();
+  await dashboard.settleReads();
   await page.goForward();
   await page.goForward();
   await expect(dashboard.pageHeading("Analytics")).toBeVisible();
+  await dashboard.settleReads();
   await page.reload();
   await expect(dashboard.pageHeading("Analytics")).toBeVisible();
 });

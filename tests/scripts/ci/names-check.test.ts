@@ -70,7 +70,7 @@ describe("names:check", () => {
     try {
       initRepo(root);
       git(root, ["branch", "staging"]);
-      git(root, ["worktree", "add", "-q", "-b", "feature/names", ".worktrees/names"]);
+      git(root, ["worktree", "add", "-q", "-b", "task/names/other", ".worktrees/names"]);
       git(root, ["branch", "task/names/check"]);
       const result = runNamesCheck(["--all"], root);
       expect(result.status).toBe(0);
@@ -82,7 +82,7 @@ describe("names:check", () => {
   });
 
   it("accepts a good title and rejects a conventional title on the same head", () => {
-    const head = ["--branch", "feature/names", "--base", "development"] as const;
+    const head = ["--branch", "task/names/check", "--base", "development"] as const;
     const good = runNamesCheck([...head, "--title", "Workspace: check names"]);
     const bad = runNamesCheck([...head, "--title", "feat(ci): add names check"]);
     expect(good.status).toBe(0);
