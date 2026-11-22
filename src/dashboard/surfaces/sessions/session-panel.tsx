@@ -18,8 +18,8 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
   if (day?.state === "loaded" && day.value !== heldDay) setHeldDay(day.value);
   const shownDay = day?.state === "loaded" ? day.value : day?.state === "loading" ? heldDay : undefined;
   const stale = day?.state !== "loaded";
-  // Worker elapsed times tick here; the app above no longer re-renders every second.
-  const nowIso = useServedNow(binding?.nowIso ?? "");
+  // Worker elapsed times tick here while the panel is open; a collapsed panel shows no time and never re-renders on a tick.
+  const nowIso = useServedNow(binding?.now() ?? "", now => open ? now : "");
   const initial = useMemo((): SessionsViewState => {
     if (harnessed) return harnessed.initial;
     if (binding === undefined) return sessionsUnavailable();

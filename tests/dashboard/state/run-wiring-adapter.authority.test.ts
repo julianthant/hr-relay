@@ -257,7 +257,7 @@ async function harness(client: DashboardClient, confirm?: RunWiringConfirm, rend
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
   const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { h.refreshed++; } };
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: (outcome: CommandOutcome) => { h.outcomes.push(outcome); },
-    authority: { epoch: scope.authority, catalog: [], nowIso: AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
+    authority: { epoch: scope.authority, catalog: [], now: () => AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
   function Probe({ selected }: { selected: LogSelection }) {
     const currentBinding = h.day === undefined ? binding : { ...binding, authority: { ...binding.authority, dayState: { ...binding.authority.dayState, day: h.day } } };
     h.state = useRunWiring(client, selected, currentBinding, confirm);

@@ -81,7 +81,7 @@ function commandBindingFixture() {
   const request = Object.freeze({ client, day, epoch, revision: 0 });
   const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
   const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-    authority: { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: day, day,
+    authority: { epoch, catalog: [], now: () => bootstrap.serverClock.now, today: day, day,
       dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request,
         day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
       selection: { route: { start: false }, workflowId: "launch-proof" } } };

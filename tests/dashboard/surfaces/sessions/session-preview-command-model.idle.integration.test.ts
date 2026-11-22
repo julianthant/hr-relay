@@ -95,7 +95,7 @@ function servedWorld(count: number, gateReads = 0) {
   const client: DashboardClient = { ...inner, dashboardDay: async requested => { const read = await inner.dashboardDay(requested); served.push(new WeakRef(read)); return read; } };
   const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const executor = new CommandExecutor(() => scope);
-  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: base.day, nowIso: FIXTURE_NOW,
+  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: base.day, now: () => FIXTURE_NOW,
     dayState: { subscribePublications: () => { throw new Error("not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog: buildWorkflowCatalog([], servedFixtureSources([])) }));
   const control = (index: number, action: "pause" | "resume") => { const card = day.workerCards[index]; return port.send({ id: crypto.randomUUID(), target: card.workerId, action, authorityKey: sessionWorkerAuthorityKey(card) }); };

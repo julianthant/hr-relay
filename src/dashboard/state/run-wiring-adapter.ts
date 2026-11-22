@@ -659,7 +659,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     return launches;
   }, [binding]);
   const launch = useMemo(() => binding === undefined ? undefined : createRunLaunchService(client, binding.scope.actorId,
-    { uuid: () => crypto.randomUUID(), now: () => binding.authority.nowIso }), [client, binding]);
+    { uuid: () => crypto.randomUUID(), now: () => binding.authority.now() }), [client, binding]);
   const matchesGate = useCallback((envelope: DashboardCommandRequest) => envelope.family === "gate" && envelope.type === "answer-gate-arm"
     ? detailGate?.state === "open" && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf()
       && detailGate.decision?.options.some(({ send }) => send.via === "gate-arm" && send.gateNodeId === envelope.target.gateId.valueOf()
@@ -805,13 +805,13 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const onChildRetry = useCallback(() => {
     if (value.state !== "loaded" || binding === undefined || detail?.childRetry?.kind !== "command") return;
     const composed = composeCommandRequest(detail.childRetry, { runId: row.runId, expectedVersion: row.rowRevision }, {
-      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, childRetry: detail.childRetry });
+      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), childRetry: detail.childRetry });
     if (composed.state === "ready") dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse(composed.request));
   }, [value.state, binding, detail, row.runId, row.rowRevision]);
   const onBatchMemberRetry = useCallback(() => {
     if (value.state !== "loaded" || binding === undefined || batchRetry === undefined) return;
     const composed = composeCommandRequest(batchRetry, { runId: row.runId, expectedVersion: row.rowRevision }, {
-      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, batchMemberRetry: row });
+      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), batchMemberRetry: row });
     if (composed.state === "ready") dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse(composed.request));
   }, [value.state, binding, batchRetry, row]);
   const preparingCorrection = useRef(false);
@@ -830,7 +830,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (choice.state !== "available" || choice.action.kind !== "command" || option === undefined || option.send.via !== "action" || option.send.actionKey !== choice.action.key
         || !decisionAnswerValid(option, answer) || candidate === undefined) return;
       const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
-        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookReferenceChoice: reference,
+        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), workbookReferenceChoice: reference,
         workbookReferenceAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId,
           ...(candidate.referenceDigest === undefined || candidate.workbookVersion === undefined ? {}
             : { referenceDigest: candidate.referenceDigest, workbookVersion: candidate.workbookVersion }) } });
@@ -846,7 +846,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (choice.state !== "available" || choice.action.kind !== "command" || option === undefined || option.send.via !== "action" || option.send.actionKey !== choice.action.key
         || !decisionAnswerValid(option, answer) || candidate === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
-        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookWrite: operation,
+        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), workbookWrite: operation,
         workbookAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId } });
       if (composed.state !== "ready") return;
       const envelope = DashboardCommandRequestSchema.parse(composed.request);
@@ -866,7 +866,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution === undefined
           || !decisionAnswerValid(option, answer)) return;
         dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse({ family: "failure-resolution", type: "annotate-failure", commandId: crypto.randomUUID(),
-          requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail",
+          requestedAt: binding.authority.now(), requestedBy: binding.scope.actorId, source: "run-detail",
           target: { runId: row.runId, failureId: served.failureId, expectedVersion: resolution.capture.resolution.version },
           payload: { action: "resolve" } }));
         return;
@@ -884,7 +884,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
           () => dispatchIfDecisionCurrent.current(envelope));
       };
       if (option.send.via === "action" && option.send.actionKey === retry.key) {
-        const envelope = DashboardCommandRequestSchema.parse({ family: "run", type: "retry", commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
+        const envelope = DashboardCommandRequestSchema.parse({ family: "run", type: "retry", commandId: crypto.randomUUID(), requestedAt: binding.authority.now(),
           requestedBy: binding.scope.actorId, source: "run-detail", target: { runId: row.runId, expectedVersion: row.rowRevision } });
         showConfirm(envelope, false);
       } else if (option.send.via === "start-plan" && launch !== undefined && !preparingCorrection.current) {
@@ -910,7 +910,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       const descriptor = write.payload.actions.find(candidate => candidate.key === key);
       if (descriptor?.kind !== "command" || descriptor.confirm === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: row.rowRevision },
-        { actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, parkedWrite: write.payload,
+        { actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), parkedWrite: write.payload,
           ...(descriptor.command === "recheck-write" && write.payload.acceptsTransactionId && option.input?.kind === "text"
             ? { transactionId: answer.text?.trim() } : {}) });
       if (composed.state !== "ready") return;
@@ -928,7 +928,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       const rowId = answeredRow(option, answer)?.id;
       const target = { runId: row.runId, gateId: option.send.gateNodeId, expectedVersion: option.send.expectedVersion };
       const envelope = DashboardCommandRequestSchema.parse({ family: "gate", type: "answer-gate-arm", commandId: crypto.randomUUID(),
-        requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail", target,
+        requestedAt: binding.authority.now(), requestedBy: binding.scope.actorId, source: "run-detail", target,
         payload: { arm: option.send.arm, ...(rowId === undefined ? {} : { rowId }) } });
       if (option.confirm === undefined) { dispatch(envelope); return; }
       if (confirm === undefined) return;
@@ -972,7 +972,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }
     const optionRef = answeredRow(option, answer)?.id;
     const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: gate.expectedVersion }, { actorId: binding.scope.actorId, source: "run-detail",
-      requestedAt: binding.authority.nowIso, gate: section.payload, gateId: openGate.nodeId,
+      requestedAt: binding.authority.now(), gate: section.payload, gateId: openGate.nodeId,
       ...(optionRef !== undefined ? { gateAnswer: { decision: "approved", optionRef } } : {}) });
     if (composed.state !== "ready") return;
     const envelope = DashboardCommandRequestSchema.parse(composed.request);

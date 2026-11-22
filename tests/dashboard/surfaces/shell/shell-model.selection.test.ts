@@ -78,7 +78,7 @@ it("sends no Settings command for the current workflow and canonically saves a d
   } });
   const epoch = { client, bootstrap: { ...FIXTURE_BOOTSTRAP } };
   const scope: CommandExecutionScope = { client, actorId: "local-operator", authority: epoch, dayRequest: {} };
-  const binding = { scope, executor: new CommandExecutor(() => scope), authority: { epoch, nowIso: FIXTURE_BOOTSTRAP.serverClock.now } };
+  const binding = { scope, executor: new CommandExecutor(() => scope), authority: { epoch, now: () => FIXTURE_BOOTSTRAP.serverClock.now } };
   const initial = await client.editableSettings();
   assert.equal(initial.revision, revision);
   const preferences = createPersonPreferences("person");

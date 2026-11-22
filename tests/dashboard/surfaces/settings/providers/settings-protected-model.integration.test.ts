@@ -101,7 +101,7 @@ it("retains marked-only pseudonym recovery without a render throw or a metadata 
   const document = h.authority.read(); assert.equal(document.protectedSettings.state, "available");
   if (document.protectedSettings.state !== "available") assert.fail("protected authority unavailable");
   const request = MarkedProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings",
-    commandId: "11111111-1111-4111-8111-111111111111", requestedAt: h.binding().authority.nowIso,
+    commandId: "11111111-1111-4111-8111-111111111111", requestedAt: h.binding().authority.now(),
     requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: document.protectedSettings.readback.revision },
     payload: { protectedSchemaHash: document.protectedSettings.protectedSchemaHash, writeId: "22222222-2222-4222-8222-222222222222", entries } });
   const binding = h.binding();

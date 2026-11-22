@@ -36,19 +36,23 @@ it("ten ticks re-render no queue row while the running rows' elapsed text advanc
   const host = document.createElement("div");
   const root = createRoot(host);
   const footers = (): string => [...host.querySelectorAll("[data-queue-row-footer]")].map(footer => footer.textContent).join("\n");
+  const gateNames = (): string => [...host.querySelectorAll("[data-queue-open]")].map(open => open.getAttribute("aria-label")).filter(name => name !== null && /\d+s/.test(name)).join("\n");
   try {
     await act(async () => root.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(Queue))));
     const drawn = rowRenders, parentDrawn = parentRenders;
     assert.ok(drawn > 0);
+    const named = [gateNames()];
+    assert.notEqual(named[0], "", "the fixture day needs a row whose name carries a gate age");
     const seen = [footers()];
     for (let tick = 0; tick < 10; tick += 1) {
       monotonic += 1000;
       await act(async () => { vi.advanceTimersByTime(1000); });
-      seen.push(footers());
+      seen.push(footers()); named.push(gateNames());
     }
     assert.equal(parentRenders - parentDrawn, 10);
     assert.equal(rowRenders, drawn, "a tick re-rendered a queue row whose data did not change");
     assert.equal(new Set(seen).size, seen.length, "the elapsed text did not advance on every tick");
+    assert.equal(new Set(named).size, named.length, "the rows' accessible names did not advance with their gate age");
   } finally {
     await act(async () => root.unmount());
     vi.useRealTimers();

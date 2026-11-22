@@ -223,3 +223,19 @@ it("retains canonical Lookup cohorts across caller/status filters and keeps the 
     assert.deepEqual(unrelated.surfaces, [otherStart]);
   } finally { await mounted.close(); }
 });
+
+it("re-reads the instant when the selection or the order changes, and keeps it on a plain re-render", async () => {
+  let instant = "2026-10-14T12:00:00.000Z";
+  const now = () => instant;
+  const mounted = mountWiring({ now });
+  try {
+    const first = await mounted.draw();
+    assert.equal(first.viewState.nowIso, "2026-10-14T12:00:00.000Z");
+    instant = "2026-10-14T12:05:00.000Z";
+    assert.equal((await mounted.draw()).viewState.nowIso, "2026-10-14T12:00:00.000Z");
+    const selected = await mounted.draw({ selectedRunId: first.surfaces[1]?.runId });
+    assert.equal(selected.viewState.nowIso, "2026-10-14T12:05:00.000Z", "a newly selected row sorts against the old instant");
+    instant = "2026-10-14T12:09:00.000Z";
+    assert.equal((await mounted.draw({ sort: "longest" })).viewState.nowIso, "2026-10-14T12:09:00.000Z");
+  } finally { await mounted.close(); }
+});

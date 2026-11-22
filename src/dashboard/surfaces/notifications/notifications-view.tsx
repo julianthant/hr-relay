@@ -3,7 +3,8 @@ import { forwardRef, useEffect, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
-import { itemContext, itemDay, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { itemContext, itemDay, notificationAge, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { useServedNow } from "../../state/served-clock.js";
 import "./notifications-panel.css";
 
 type Open = (item: NotificationItem) => void;
@@ -14,6 +15,13 @@ function RowActionButton({ label, icon, onClick }: { label: string; icon: ReactN
   return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} /></Tooltip>;
 }
 
+/** The age ticks here, so a minute passing re-renders only this text. */
+function NotificationAge({ item }: { item: NotificationItem }) {
+  const at = item.at;
+  const nowIso = useServedNow("", now => at === undefined ? "" : notificationAge(at, now));
+  return <span className="notification-item-age">{at === undefined || nowIso === "" ? item.age : notificationAge(at, nowIso)}</span>;
+}
+
 /** Codex rows: the unread dot left of the title, the time right of it, the workflow and run, then a two-line grey line below. */
 function NotificationRow({ item, active, onOpen, actions }: { item: NotificationItem; active: boolean; onOpen: Open; actions: RowActions }) {
   return <li className="notification-row">
@@ -22,7 +30,7 @@ function NotificationRow({ item, active, onOpen, actions }: { item: Notification
         {!item.read && <span aria-hidden className="notification-unread-dot" />}
         <span className="notification-item-title">{item.title}</span>
         {item.count !== undefined && <span className="notification-item-count"><span className="sr-only">{item.count} times</span><span aria-hidden>×{item.count}</span></span>}
-        <span className="notification-item-age">{item.age}</span>
+        <NotificationAge item={item} />
         {!item.read && <span className="sr-only">Unread</span>}
       </span>
       {itemContext(item) !== "" && <span className="notification-item-context">{itemContext(item)}</span>}

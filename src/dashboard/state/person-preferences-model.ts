@@ -43,7 +43,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       const active = connection;
       const started = generation;
       const binding = active.current();
-      const command = SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
+      const command = SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.now(),
         requestedBy: binding.scope.actorId, source: "person-preferences", family: "settings", type: "apply-settings",
         target: { expectedRevision: document.revision }, payload: { settingsSchemaHash: document.settingsSchemaHash,
           patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });

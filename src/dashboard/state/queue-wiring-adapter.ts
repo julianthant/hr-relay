@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { DashboardDayWire, QueueBusinessOutcome, QueueMemberSelection } from "../../models/dashboard/projection.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
-import { filterQueueSurfaces, lookupBatchId, queueItemKey, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
+import { filterQueueSurfaces, lookupBatchId, queueItemKey, type QueueSortKey, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import type { QueueHandlers, QueueViewState } from "../surfaces/queue/queue.js";
 import type { StatusBucket } from "../surfaces/shell/shell-model.js";
 
@@ -15,8 +15,9 @@ export function useQueueWiring(input: Readonly<{
   selectedMember?: QueueMemberSelection;
   openMember?: QueueHandlers["onOpenMember"];
   openWells: ReadonlySet<string>;
-  /** Read when the rows change; ticking ages read the clock inside the row's leaves. */
+  /** Read when the view recomputes; ticking ages read the clock inside the row's leaves. */
   now: () => string;
+  sort?: QueueSortKey;
   selectRun: (runId: string, partitionDay?: string) => void;
   openRelatedRun: NonNullable<QueueHandlers["onOpenLinked"]>;
   onWells: (next: ReadonlySet<string>) => void;
@@ -24,7 +25,7 @@ export function useQueueWiring(input: Readonly<{
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
   renameTitle?: QueueHandlers["onRenameTitle"];
 }>) {
-  const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, now,
+  const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, now, sort,
     selectRun, openRelatedRun, selectedMember, openMember, onWells, setBatchGrouping,
     runQueueAction, renameTitle } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
@@ -67,12 +68,13 @@ export function useQueueWiring(input: Readonly<{
     return filterQueueSurfaces(scoped, filter);
   }, [allRows, attemptHistory, rows, activeWorkflowId, filter]);
 
-  // Sorting and row names measure against the instant the rows arrived, so a tick re-sorts and re-renders nothing.
-  const asOf = useMemo(() => ({ surfaces, nowIso: now() }), [surfaces, now]);
-
   const outcomes = useMemo((): ReadonlyMap<string, QueueBusinessOutcome> => new Map(
     surfaces.flatMap(surface => surface.outcome === undefined ? [] : [[surface.runId, surface.outcome] as const]),
   ), [surfaces]);
+
+  // Read whenever the rows, the order or the selection change, never on a tick: rows tick in their own leaves.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- these inputs only decide when to re-read the instant
+  const nowIso = useMemo(() => now(), [surfaces, sort, selectedRunId, selectedMember, openWells, activeWorkflowId, now]);
 
   const viewState = useMemo(
     (): QueueViewState => ({
@@ -80,9 +82,9 @@ export function useQueueWiring(input: Readonly<{
       ...(selectedMember === undefined ? {} : { selectedMember }),
       openWells,
       panelWorkflowId: activeWorkflowId,
-      nowIso: asOf.nowIso,
+      nowIso,
     }),
-    [selectedRunId, selectedMember, openWells, activeWorkflowId, asOf.nowIso],
+    [selectedRunId, selectedMember, openWells, activeWorkflowId, nowIso],
   );
 
   const queueHandlers = useMemo(

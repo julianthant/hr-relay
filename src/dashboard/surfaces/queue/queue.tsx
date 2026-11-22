@@ -2,7 +2,7 @@ import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DryRunMark } from "../run-detail/run-state-chips.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { Fragment, memo, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, RotateCcw, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { useServedNow } from "../../state/served-clock.js";
@@ -753,14 +753,15 @@ export function QueueRow({
 
   return (
     <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
-        <div
+        <QueueRowGroup
           onClick={event => {
             if (event.detail > 1) return;
             if (batch === undefined) handlers.onSelect(surface.runId);
           }}
           role="group"
           // Accessible row names include warning completion and gate age, never hue alone.
-          aria-label={batch === undefined ? queueRowAccessibleName(surface, state.nowIso) : `${title} batch — ${statusText(status).toLowerCase()}`}
+          surface={surface} nowIso={state.nowIso}
+          {...(batch === undefined ? {} : { "aria-label": `${title} batch — ${statusText(status).toLowerCase()}` })}
           data-demo-row-id={batch === undefined ? surface.runId : undefined}
           data-queue-batch-id={batch?.id}
           className={cn(
@@ -776,8 +777,8 @@ export function QueueRow({
             announcing && cn(dsMotion.move, "-translate-y-[var(--ds-travel-sm)]"),
           )}
         >
-          {batch === undefined && <BareButton type="button" data-queue-open
-            aria-label={queueRowAccessibleName(surface, state.nowIso)}
+          {batch === undefined && <QueueRowOpen type="button" data-queue-open
+            surface={surface} nowIso={state.nowIso}
             aria-pressed={selected}
             onClick={event => {
               event.stopPropagation();
@@ -934,9 +935,23 @@ export function QueueRow({
             onSelect={handlers.onSelect}
             retryFailed={retryFailed}
           />}
-        </div>
+        </QueueRowGroup>
     </div>
   );
+}
+
+function useQueueRowName(surface: QueueSurfaceWire, nowIso: string): string {
+  return queueRowAccessibleName(surface, useServedNow(nowIso, now => queueGateAge(surface, now)));
+}
+
+/** The row names carry the gate age, so they tick here; the row inside them keeps its last render. */
+function QueueRowGroup({ surface, nowIso, ...props }: ComponentPropsWithoutRef<"div"> & { surface: QueueSurfaceWire; nowIso: string }) {
+  const name = useQueueRowName(surface, nowIso);
+  return <div aria-label={name} {...props} />;
+}
+
+function QueueRowOpen({ surface, nowIso, ...props }: ComponentPropsWithoutRef<typeof BareButton> & { surface: QueueSurfaceWire; nowIso: string }) {
+  return <BareButton {...props} aria-label={useQueueRowName(surface, nowIso)} />;
 }
 
 /** The batch's elapsed text ticks here so its row does not re-render every second. */
@@ -956,8 +971,9 @@ const MemoQueueRow = memo(QueueRow, (before, after) => {
   };
   const { state: beforeState, handlers: beforeHandlers, ...beforeProps } = before;
   const { state: afterState, handlers: afterHandlers, ...afterProps } = after;
-  const { selectedRunId: beforeSelected, ...beforeView } = beforeState;
-  const { selectedRunId: afterSelected, ...afterView } = afterState;
+  // A row reads nowIso only as its leaves' fallback when no clock is mounted, so a new instant alone does not redraw it.
+  const { selectedRunId: beforeSelected, ...beforeView } = { ...beforeState, nowIso: "" };
+  const { selectedRunId: afterSelected, ...afterView } = { ...afterState, nowIso: "" };
   if (!shallowEqual(beforeProps, afterProps) || !shallowEqual(beforeHandlers, afterHandlers)
     || !shallowEqual(beforeView, afterView)) return false;
   if (beforeSelected === afterSelected) return true;

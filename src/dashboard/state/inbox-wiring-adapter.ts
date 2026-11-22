@@ -11,9 +11,8 @@ import { NotificationCommandRequestSchema } from "../../rules/commands/commands.
 import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
-import type { NotificationControl, NotificationDestination, NotificationItem, NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
+import { notificationAge, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
 import { formatLocalDay, formatMonthDay, formatWeekday } from "../lib/date-format.js";
-import { useClockNow, type ServedClock } from "./served-clock.js";
 
 const policies = {
   "run-failed": { trigger: "failed", tone: "danger", detail: "Review the failed run before continuing." },
@@ -79,7 +78,6 @@ function foldKey(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): stri
 
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
-  const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
   const context = row.context;
   const command = row.kind === "command";
   const tone = policy?.tone ?? (row.severity === "error" ? "danger" : row.severity === "warning" ? "warning" : "info");
@@ -91,7 +89,7 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
       detail: notificationDetail(row) ?? "",
       ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
-      age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
+      age: notificationAge(row.occurredAt, nowIso), at: row.occurredAt,
       day: notificationDay(row.occurredAt, nowIso),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
       destination: { kind: "refused", reason: "target-unavailable" },
@@ -127,7 +125,7 @@ export interface InboxWiring {
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
-export function useInboxWiring({ client, enabled, binding, clock }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding; clock?: ServedClock }): InboxWiring {
+export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
   const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
   const current = useRef({ request, binding, fresh: false }); current.current = { request, binding, fresh: false };
   const [revision, refresh] = useState(0);
@@ -156,12 +154,6 @@ export function useInboxWiring({ client, enabled, binding, clock }: { client: Da
   }, [client, enabled, request, read]);
   const rows = settled?.request === request ? settled.rows : undefined;
   const rowsRef = useRef(rows); rowsRef.current = rows;
-  // Ages read in minutes and days, so the inbox re-renders when one of those labels changes, not every tick.
-  const nowIso = useClockNow(clock, binding.authority.nowIso, now => rows?.map(row => {
-    if (row.kind === "backfill-gap") return "";
-    const { age, day } = notificationItem(row, now);
-    return `${age}\u0000${day}`;
-  }).join("\n"));
   const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
   useEffect(() => {
     if (!enabled) return;
@@ -175,7 +167,7 @@ export function useInboxWiring({ client, enabled, binding, clock }: { client: Da
       const row = publication.notification;
       if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
       if (row.state === "snoozed") return;
-      const arrival = { sourceId: publication.sourceId, item: notificationItem(row, current.current.binding.authority.nowIso) };
+      const arrival = { sourceId: publication.sourceId, item: notificationItem(row, current.current.binding.authority.now()) };
       for (const listener of arrivalListeners.current) listener(arrival);
       void client.notificationTarget(row.notificationId).then(target => {
         if (current.current.request !== request) return;
@@ -202,7 +194,7 @@ export function useInboxWiring({ client, enabled, binding, clock }: { client: Da
     let outcome: Awaited<ReturnType<typeof owner.executor.execute>> | undefined;
     // A group acts on every durable member it holds; the authoritative snapshot is read again afterwards.
     for (const member of members) {
-      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
+      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
         source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: member.notificationId, actorId: request.scope.actorId, expectedVersion: member.revision } });
       outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
         publish: outcome => {
@@ -230,7 +222,7 @@ export function useInboxWiring({ client, enabled, binding, clock }: { client: Da
     return current.current.request === request && outcome.kind === "confirmed";
   };
   const projection = rows === undefined ? { state: settled?.request === request && settled.failed ? { state: "unavailable" as const, reason: settled.notice } : { state: "loading" as const }, notice: "" }
-    : inboxProjection(rows, nowIso);
+    : inboxProjection(rows, binding.authority.now());
   return { state: projection.state, notice: [rows !== undefined && !current.current.fresh && !settled?.failed ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "", projection.notice, settled?.request === request ? settled.notice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
     onPublication: listener => { arrivalListeners.current.add(listener); return () => { arrivalListeners.current.delete(listener); }; },
@@ -244,7 +236,7 @@ export function useInboxWiring({ client, enabled, binding, clock }: { client: Da
       try { target = await client.notificationCollection("read"); }
       catch { if (current.current.request === request) setCommandNotice({ request, text: inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE") }); return; }
       if (current.current.request !== request || !current.current.fresh || held() !== undefined || target.actorId !== request.scope.actorId) return;
-      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso,
+      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(),
         requestedBy: request.scope.actorId, source: "dashboard", family: "notification", type: "notification-read-all", target });
       setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
       await owner.executor.execute(command, { scope: owner.scope,

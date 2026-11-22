@@ -401,7 +401,7 @@ function LoadedApp({
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
     || queueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog,
-    get nowIso() { return clock.now(); }, today, day, dayState,
+    now: clock.now, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, clock, today, day, dayState, route, activeWorkflowId]);
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID, authorityEpoch);
   const assistantIsOpen = useAssistantOpen();
@@ -792,7 +792,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
-    openWells, now: clock.now, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
+    openWells, now: clock.now, sort, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
     setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
 
@@ -898,7 +898,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     workflowLabel: workflowLabelOf,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
-  const servedInbox = useInboxWiring({ client, enabled: harnessInbox === undefined, binding: commandBinding, clock });
+  const servedInbox = useInboxWiring({ client, enabled: harnessInbox === undefined, binding: commandBinding });
   const inbox = harnessInbox ?? servedInbox;
   const shownRecovery: readonly CommandRecoveryEntry[] = workflowComposition.harness?.unknownCommand ? [...recoveryEntries, workflowComposition.harness.unknownCommand] : recoveryEntries;
   const commandNotices: readonly NotificationItem[] = [
@@ -1176,7 +1176,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       {!settingsOpen && (
         <SessionPanel
           harness={workflowComposition.sessionsHarness}
-          binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, get nowIso() { return clock.now(); }, workflowId: activeWorkflowId }}
+          binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, now: clock.now, workflowId: activeWorkflowId }}
           catalog={workflowCatalog}
           open={sessionsOpen}
           onOpenChange={setSessionsOpen}
