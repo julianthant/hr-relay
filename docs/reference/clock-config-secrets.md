@@ -733,13 +733,18 @@ give an isolated copy production data; seed copies only through it.
   after a read through a read-only snapshot. The backup file is never opened or written.
 - It refuses (`IsolatedLibraryImportRefusedError`) when the destination admission, open store and
   named destination differ, when the destination shares the source's installation or lies inside the
-  production workspace, when the source differs from its binding or is not current, and when the
-  destination library already holds workbooks or types. A repeated import therefore refuses.
-- It brings only each local workbook's current content and the workbook types, under new library
-  IDs issued by the destination store, in one store transaction; a failure writes nothing. Version
-  history, journals, tags, workflow outputs, SharePoint links, runs, evidence, settings, assistant
-  state, credentials, sessions and queued work stay behind.
-- To refresh a copy that already holds a library, remove that person and sign up again first.
+  production workspace, when the source differs from its binding or is not current, and when a source
+  workbook type differs from the destination's type of the same ID.
+- It brings only each local workbook's current content and the workbook types. Each source entry
+  lands on a library ID derived from both bindings and the source entry, so a repeated call refreshes
+  the same entries. History, journals, tags, workflow outputs, SharePoint links, runs, evidence,
+  settings, assistant state, credentials, sessions and queued work stay behind.
+- Run it again to update a copy. It creates entries new in the source and refreshes an imported entry
+  only while its journal and library revision show nothing but the import's own writes. Entries the
+  copy created, and imported entries the copy edited, removed or acted on, are left unchanged and
+  counted as `keptLocal`. Entries removed from the source stay in the copy.
+- All writes are one store transaction: a failure part way writes nothing, and a call with nothing
+  new writes nothing.
 
 ## Settings and readiness readback
 

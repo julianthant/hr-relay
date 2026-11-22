@@ -52,7 +52,7 @@ function request(source: World, manifestPath: string, destination: World) {
   return { source: { manifestPath, binding: binding(source) }, destination: binding(destination) };
 }
 
-it("imports the library under new IDs, reopens it through the normal entry point and leaves the source and everything else untouched", async () => {
+it("imports the library under derived IDs, reopens it through the normal entry point and leaves the source and everything else untouched", async () => {
   const { source, backup, rosterId } = await sourceWithLibrary();
   const destination = await openCurrentWorld();
   const backupPath = join(dirname(backup.manifestPath), backup.manifest.backupFileName);
@@ -60,7 +60,7 @@ it("imports the library under new IDs, reopens it through the normal entry point
   const before = nonLibraryCounts(destination);
 
   const report = await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK);
-  assert.deepEqual({ ...report, sourceBackup: { ...report.sourceBackup } }, { importedWorkbooks: 2, importedTypes: 1, skippedWorkflowOutputs: 0,
+  assert.deepEqual({ ...report, sourceBackup: { ...report.sourceBackup } }, { created: 2, refreshed: 0, unchanged: 0, keptLocal: 0, createdTypes: 1, skippedWorkflowOutputs: 0,
     sourceBackup: { backupFileName: backup.manifest.backupFileName, sha256: backup.manifest.sha256, authorityGeneration: backup.manifest.authorityGeneration } });
   assert.deepEqual(nonLibraryCounts(destination), before);
   assert.equal(sha256(backupPath), sourceDigest);
@@ -85,10 +85,71 @@ it("imports the library under new IDs, reopens it through the normal entry point
     assert.equal(dated?.version, 1);
     assert.equal(reopened.authority.workbooks.history(dated.libraryId).length, 0);
 
-    await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, reopened, request(source, backup.manifestPath, destination), CLOCK),
-      (error: unknown) => error instanceof IsolatedLibraryImportRefusedError && error.reason === "destination-library-not-empty");
-    assert.equal(reopened.authority.workbooks.catalog().length, 2);
+    const generation = reopened.getMeta().authorityGeneration;
+    const repeat = await importIsolatedWorkbookLibrary(destination.admission, reopened, request(source, backup.manifestPath, destination), CLOCK);
+    assert.deepEqual([repeat.created, repeat.refreshed, repeat.unchanged, repeat.keptLocal, repeat.createdTypes], [0, 0, 2, 0, 0]);
+    assert.equal(reopened.getMeta().authorityGeneration, generation);
   } finally { reopened.close(); }
+});
+
+it("refreshes only entries nothing but the import changed and keeps the copy's own work", async () => {
+  const { source, backup, rosterId } = await sourceWithLibrary();
+  const destination = await openCurrentWorld();
+  await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK);
+  const copy = service(destination.database);
+  const local = copy.create({ ...dates, name: "Copy only" });
+  const datesCopy = copy.list().find(record => record.workbook.name === "Dates saved");
+  assert.ok(datesCopy !== undefined);
+  copy.save(datesCopy.libraryId, datesCopy.version, { ...datesCopy.workbook, name: "Edited in copy" });
+
+  const production = service(source.database);
+  const rosterNow = production.read(rosterId);
+  production.save(rosterId, rosterNow.version, { ...rosterNow.workbook, name: "Roster v2" });
+  const datesSource = production.list().find(record => record.workbook.name === "Dates saved");
+  assert.ok(datesSource !== undefined);
+  production.save(datesSource.libraryId, datesSource.version, { ...datesSource.workbook, name: "Dates v3" });
+  production.create({ ...dates, name: "New in production" });
+  const later = await takeBackup(source);
+
+  const report = await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, later.manifestPath, destination), CLOCK);
+  assert.deepEqual([report.created, report.refreshed, report.unchanged, report.keptLocal], [1, 1, 0, 1]);
+  const names = destination.database.authority.workbooks.catalog().map(entry => entry.name).sort();
+  assert.deepEqual(names, ["Copy only", "Edited in copy", "New in production", "Roster v2"]);
+  const roster = destination.database.authority.workbooks.catalog().find(entry => entry.name === "Roster v2");
+  assert.equal(roster?.metadata.typeId, "ocr-roster");
+  assert.deepEqual(copy.read(local.libraryId), local);
+});
+
+it("rolls back every write when the import fails part way", async () => {
+  const { source, backup } = await sourceWithLibrary();
+  const destination = await openCurrentWorld();
+  const generation = destination.database.getMeta().authorityGeneration;
+  const real = destination.database.authority.workbooks;
+  let creates = 0;
+  const failing = { ...real, create: (...args: Parameters<typeof real.create>) => {
+    if (++creates === 2) throw new Error("injected-second-create-failure");
+    return real.create(...args);
+  } };
+  const database = new Proxy(destination.database, { get(target, property) {
+    if (property === "authority") return { ...target.authority, workbooks: failing };
+    const value: unknown = Reflect.get(target, property, target);
+    return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+  } });
+  await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, database, request(source, backup.manifestPath, destination), CLOCK),
+    (error: unknown) => error instanceof Error && error.cause instanceof Error && error.cause.message === "injected-second-create-failure");
+  assert.equal(creates, 2);
+  assert.equal(real.catalog().length, 0);
+  assert.deepEqual(real.types().map(type => type.id), ["general"]);
+  assert.equal(destination.database.getMeta().authorityGeneration, generation);
+});
+
+it("refuses a source type that differs from the copy's type of the same ID before writing", async () => {
+  const { source, backup } = await sourceWithLibrary();
+  const destination = await openCurrentWorld();
+  service(destination.database).putType({ id: "ocr-roster", name: "Copy roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null });
+  await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK),
+    (error: unknown) => error instanceof IsolatedLibraryImportRefusedError && error.reason === "destination-type-diverged");
+  assert.equal(destination.database.authority.workbooks.catalog().length, 0);
 });
 
 it("refuses ambiguous identities, the source's own installation, production paths and changed backup bytes without writing", async () => {
