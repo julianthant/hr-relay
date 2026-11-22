@@ -29,12 +29,12 @@ try {
           "6. Start the production dashboard and confirm it is ready for sign-in.",
         ].join("\n"));
       },
-      verifyPromotion: gh.verifyPromotion,
-      stopIdleDashboard: production.stopIdleDashboard,
-      publish: gh.publish,
-      syncStaging: gh.syncStaging,
+      verifyPromotion: () => gh.verifyPromotion(),
+      stopIdleDashboard: () => production.stopIdleDashboard(),
+      publish: () => gh.publish(),
+      syncStaging: () => gh.syncStaging(),
       deploy: () => production.deploy(gh.target()),
-      restartDashboard: production.restartDashboard,
+      restartDashboard: () => production.restartDashboard(),
     });
   } finally {
     await production.close();
