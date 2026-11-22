@@ -21,7 +21,7 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
     if (harnessed) return harnessed.initial;
     if (binding === undefined) return sessionsUnavailable();
     if (shownDay !== undefined) {
-      const sessions = sessionsFromDay(shownDay, catalog, binding.nowIso);
+      const sessions = sessionsFromDay(shownDay, catalog, binding.now());
       return stale && sessions.state === "ready" ? { ...sessions, stale: true } : sessions;
     }
     return day?.state === "failed" ? sessionsUnavailable(day.error) : { state: "loading" };

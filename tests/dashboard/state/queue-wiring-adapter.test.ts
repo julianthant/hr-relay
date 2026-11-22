@@ -19,7 +19,7 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
   const input: Parameters<typeof useQueueWiring>[0] = {
     allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces, activeWorkflowId: row.workflowId,
     filter: ["all"] as const, selectedRunId: row.runId, openWells: new Set<string>(),
-    nowIso: row.updatedAt, selectRun: (id: string) => selected.push(id),
+    now: () => row.updatedAt, selectRun: (id: string) => selected.push(id),
     openRelatedRun: target => { scopes.push(target.workflowId); }, onWells: (next: ReadonlySet<string>) => wells.push(next),
     setBatchGrouping: async () => undefined, runQueueAction: () => undefined,
   };
@@ -48,7 +48,7 @@ function mountWiring(overrides: Partial<WiringInput> = {}) {
   let input: WiringInput = {
     allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces.filter(surface => surface.workflowId === row.workflowId), activeWorkflowId: row.workflowId,
     filter: ["all"], selectedRunId: row.runId, openWells: new Set(),
-    nowIso: row.updatedAt, selectRun: () => undefined,
+    now: () => row.updatedAt, selectRun: () => undefined,
     openRelatedRun: () => undefined, onWells: () => undefined,
     setBatchGrouping: async () => undefined,
     runQueueAction: () => undefined,
@@ -86,7 +86,7 @@ it("uses served rows without local overlays or fictional actions and retains sta
     assert.equal(changedPreview.queueHandlers, first.queueHandlers);
     assert.equal(changedPreview.viewState, first.viewState);
     assert.equal(changedPreview.actionsOf, first.actionsOf);
-    const clock = await mounted.draw({ nowIso: "2026-10-14T12:00:00.000Z", selectedRunId: undefined });
+    const clock = await mounted.draw({ now: () => "2026-10-14T12:00:00.000Z", selectedRunId: undefined });
     assert.equal(clock.surfaces, changedPreview.surfaces);
     assert.equal(clock.queueHandlers, first.queueHandlers);
     assert.equal(clock.viewState.selectedRunId, undefined);
@@ -221,5 +221,22 @@ it("retains canonical Lookup cohorts across caller/status filters and keeps the 
     assert.equal(refreshed.viewState.selectedRunId, rows[1].runId);
     const unrelated = await mounted.draw({ rows: [otherStart] });
     assert.deepEqual(unrelated.surfaces, [otherStart]);
+  } finally { await mounted.close(); }
+});
+
+it("re-reads the sort instant when the selection or the order changes, and keeps it on a plain re-render", async () => {
+  let instant = "2026-10-14T12:00:00.000Z";
+  const now = () => instant;
+  const mounted = mountWiring({ now });
+  try {
+    const first = await mounted.draw();
+    assert.equal(first.sortNowIso, "2026-10-14T12:00:00.000Z");
+    instant = "2026-10-14T12:05:00.000Z";
+    assert.equal((await mounted.draw()).sortNowIso, "2026-10-14T12:00:00.000Z");
+    const selected = await mounted.draw({ selectedRunId: first.surfaces[1]?.runId });
+    assert.equal(selected.sortNowIso, "2026-10-14T12:05:00.000Z", "a newly selected row sorts against the old instant");
+    assert.equal(selected.viewState.nowIso, "2026-10-14T12:00:00.000Z", "a selection alone must not hand every row a new instant");
+    instant = "2026-10-14T12:09:00.000Z";
+    assert.equal((await mounted.draw({ sort: "longest" })).sortNowIso, "2026-10-14T12:09:00.000Z");
   } finally { await mounted.close(); }
 });

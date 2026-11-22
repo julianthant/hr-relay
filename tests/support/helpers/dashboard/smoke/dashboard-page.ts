@@ -1,5 +1,5 @@
 /** Page object for the served dashboard: the shell, queue, run panel and Run dialog as an operator reaches them. */
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, type Request } from "@playwright/test";
 import type { SeededServer } from "../served-fixtures/seeded-bff.js";
 
 export const WORKFLOW_LABELS = ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Work-Study", "Emergency Contact"] as const;
@@ -25,6 +25,16 @@ export class DashboardPage {
     this.dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
+    page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/")) this.reads.add(request); });
+    page.on("requestfinished", request => { this.reads.delete(request); });
+    page.on("requestfailed", request => { this.reads.delete(request); });
+  }
+
+  private readonly reads = new Set<Request>();
+
+  /** Leaving a page aborts its open reads and the browser reports each abort; a test that navigates waits for them to finish first. */
+  async settleReads(): Promise<void> {
+    await expect.poll(() => this.reads.size, { message: "API reads still open" }).toBe(0);
   }
 
   async open(): Promise<void> {
@@ -43,8 +53,11 @@ export class DashboardPage {
     await expect(this.pageHeading(`${label} queue`)).toBeVisible();
   }
 
+  /** Data pages are Settings sections; the Settings button is reachable from every page, the section list only while Settings is open. */
   async openDataPage(label: string): Promise<void> {
-    await this.workflows.getByRole("button", { name: label, exact: true }).click();
+    const sections = this.page.getByRole("navigation", { name: "Settings sections" });
+    if (!(await sections.isVisible())) await this.page.getByRole("button", { name: "Settings", exact: true }).click();
+    await sections.getByRole("link", { name: label, exact: true }).click();
     await expect(this.pageHeading(label)).toBeVisible();
   }
 
@@ -55,7 +68,8 @@ export class DashboardPage {
   }
 
   async openRun(runId: string): Promise<void> {
-    await this.queue.getByRole("button").and(this.page.locator(`[data-demo-row-id="${runId}"]`)).click();
+    const row = this.queue.locator(`[data-demo-row-id="${runId}"]`);
+    await row.getByRole("button").and(row.locator("[data-queue-open]")).press("Enter");
     await this.expectRunOpen(runId);
   }
 

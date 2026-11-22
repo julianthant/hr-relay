@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { etag } from "hono/etag";
+import { createReadResponse } from "../read-reuse.js";
 const DayQuerySchema = z.iso.date();
 
 import type { DashboardApp } from "./api-types.js";
@@ -9,9 +11,10 @@ export function registerQueueRoutes(app: DashboardApp, deps: QueueRouteDeps): vo
     c.header("Cache-Control", "no-store");
     return c.json(deps.startPlans.previewWarnings(await c.req.json()));
   });
-  app.get("/api/v1/dashboard", (c) => {
+  const dayResponse = createReadResponse();
+  app.get("/api/v1/dashboard", etag(), (c) => {
     const day = DayQuerySchema.parse(c.req.query("day"));
-    return c.json(deps.queue.day(day));
+    return dayResponse(deps.queue.day(day));
   });
 
   app.post("/api/v1/start-plans", async (c) => {

@@ -60,6 +60,8 @@ it("acquires scoped selected-day metadata through the production batch summary p
     assert.deepEqual(day.attemptHistory?.map(entry => [entry.runId, entry.startedAt, entry.endedAt.state]), [[uuidOf(5512), "2026-08-03T17:00:00.000Z", "absent"]]);
     assert.equal(day.workflowCounts.find(count => count.workflowId === "person-lookup")?.count, 1);
     assert.equal(f.projection.buildDashboardDayWire("2026-07-31").attemptHistory?.length, 4);
+    assert.equal(f.db.authority.runs.updatePresentation({ runId: uuidOf(5512), expectedVersion: day.queueSurfaces[0].rowRevision,
+      displayName: "Renamed synthetic run", now: f.clock.now().toISOString() }).state, "applied");
     f.summaries.itemAttempts = () => { throw new Error("synthetic-history-read-failed"); };
     assert.throws(() => f.projection.buildDashboardDayWire("2026-08-03"), /synthetic-history-read-failed/u);
   } finally { await f.dispose(); }

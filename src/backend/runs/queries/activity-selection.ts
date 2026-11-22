@@ -38,22 +38,25 @@ export function createActivitySnapshotSigner<Identity extends { expiresAt: strin
 }
 
 /** A process-bound, expiring review token. No cached/latest report substitutes for the selected authority. */
-export function createActivitySelectionService(input: {
-  database: AuthorityDatabase; clock: Clock; read(from:string,to:string,generatedAt:string): ActivityReportWire;
+export function createActivitySelectionService<ReadContext = never>(input: {
+  database: AuthorityDatabase; clock: Clock; read(from:string,to:string,generatedAt:string,context?:ReadContext): ActivityReportWire;
 }) {
   const {database,clock}=input;
   const {encode,decode}=createActivitySnapshotSigner(ActivitySnapshotIdentitySchema,"as1",clock);
-  const read=(from:string,to:string,selected?:z.infer<typeof ActivitySnapshotIdentitySchema>)=>database.withAuthorityReadSnapshot(()=>{
+  const read=(from:string,to:string,selected?:z.infer<typeof ActivitySnapshotIdentitySchema>,context?:ReadContext)=>database.withAuthorityReadSnapshot(()=>{
     RangeSchema.parse({from,to});
     const authorityGeneration=database.getMeta().authorityGeneration,sourceIdentity=database.getSourceDatabaseIdentity();
     if(selected!==undefined&&(selected.from!==from||selected.to!==to||selected.sourceIdentity!==sourceIdentity||selected.authorityGeneration!==authorityGeneration))throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
     const generatedAt=selected?.generatedAt??clock.now().toISOString();
-    const report=ActivityReportWireSchema.parse(input.read(from,to,generatedAt));
+    const report=ActivityReportWireSchema.parse(input.read(from,to,generatedAt,context));
     const identity=ActivitySnapshotIdentitySchema.parse({from,to,generatedAt,sourceIdentity,authorityGeneration,
       expiresAt:selected?.expiresAt??new Date(clock.nowMs()+15*60_000).toISOString(),reportDigest:sha256Hex(canonicalJsonStringify(report))});
     if(selected!==undefined&&identity.reportDigest!==selected.reportDigest)throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_CONTENT_MISMATCH");
     return ActivityReportSelectionSchema.parse({...report,snapshot:{...identity,token:encode(identity)}});
   });
-  return Object.freeze({read:(from:string,to:string)=>read(from,to),readSelected:(from:string,to:string,token:unknown)=>read(from,to,decode(token))});
+  return Object.freeze({
+    read:(from:string,to:string,context?:ReadContext)=>read(from,to,undefined,context),
+    readSelected:(from:string,to:string,token:unknown,context?:ReadContext)=>read(from,to,decode(token),context),
+  });
 }
-export type ActivitySelectionService=ReturnType<typeof createActivitySelectionService>;
+export type ActivitySelectionService=ReturnType<typeof createActivitySelectionService<never>>;

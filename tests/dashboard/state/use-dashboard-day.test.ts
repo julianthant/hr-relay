@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import assert from "node:assert/strict";
-import { act,createElement,type ReactElement } from "react";
+import { act,createElement,StrictMode,type ReactElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it } from "vitest";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
@@ -217,4 +217,15 @@ it("forwards only live publication callbacks belonging to the current day, actor
   subscriptions[4].publications?.onPublication(publication); assert.equal(delivered.length, 2);
   await act(async () => root.unmount()); mounted = undefined;
   subscriptions[5].publications?.onPublication(publication); assert.equal(delivered.length, 2);
+});
+
+it("opens one day stream under StrictMode's double mount", async () => {
+  let opened = 0, closed = 0;
+  const client = { subscribeDay: () => { opened += 1; return { close: () => { closed += 1; } }; } } as unknown as DashboardClient;
+  function Probe() { useDashboardDay(DAY); return null; }
+  const root = createRoot(document.createElement("div"));
+  mounted = root;
+  await act(async () => root.render(createElement(StrictMode, null, createElement(DashboardClientProvider, { client, children: createElement(Probe) }))));
+  assert.equal(opened, 1);
+  assert.equal(closed, 0);
 });

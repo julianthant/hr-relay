@@ -63,9 +63,10 @@ export function useIdleSessionRefresh(data: SessionsViewState, operations: Reado
   const schedule = useRef(new IdleSessionSchedule());
   const latest = useRef({ data, operations, send });
   const [countdowns, setCountdowns] = useState<Readonly<Record<string, IdleSessionCountdown>>>({});
+  const shown = useRef(countdowns);
   useEffect(() => { latest.current = { data, operations, send }; }, [data, operations, send]);
   const operationKey = JSON.stringify(Object.entries(operations).map(([target, operation]) => [target, operation.request.id, operation.request.action, operation.state]));
-  useEffect(() => { const now = clock.nowMs(); schedule.current.sync(data, now, latest.current.operations); setCountdowns(schedule.current.view(now)); }, [data, operationKey, clock]);
+  useEffect(() => { const now = clock.nowMs(); schedule.current.sync(data, now, latest.current.operations); shown.current = schedule.current.view(now); setCountdowns(shown.current); }, [data, operationKey, clock]);
   useEffect(() => {
     const timer = setInterval(() => {
       const now = clock.nowMs();
@@ -74,7 +75,9 @@ export function useIdleSessionRefresh(data: SessionsViewState, operations: Reado
         const operation = latest.current.operations[target];
         return operation !== undefined && ['pending', 'refused'].includes(operation.state);
       })) void latest.current.send(request);
-      setCountdowns(schedule.current.view(now));
+      const next = schedule.current.view(now);
+      // No countdown running: skip the update so the panel does not re-render every second.
+      if (Object.keys(next).length > 0 || Object.keys(shown.current).length > 0) { shown.current = next; setCountdowns(next); }
     }, 1000);
     return () => clearInterval(timer);
   }, [clock]);

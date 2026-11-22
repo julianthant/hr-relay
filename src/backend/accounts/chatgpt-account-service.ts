@@ -911,18 +911,36 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
           connection = ChatGptAccountStatusSchema.shape.connection.parse({ state: !known || code === "CHATGPT_CREDENTIAL_UNCERTAIN" || code === "CHATGPT_RESOURCE_CLOSURE_UNPROVED" ? "uncertain" : "refused",
             checkedAt: clock.now().toISOString(), failureCode: code });
         }
-        const current = statusAuthority();
+        active(); options.admission.assertProfileRuntime(); assertResourceClosure();
+        assertAuthorityAdmission(options.admission);
+        const record = repository.read();
+        let observedAccount: ChatGptAccountState;
+        if (record?.session != null && rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)) {
+          observedAccount = { state: "expired" };
+        } else if (record?.session != null && planFailureToken !== undefined && privateEqual(record.session.accessToken, planFailureToken)) {
+          observedAccount = { state: "unavailable", code: "CHATGPT_PLAN_DISABLED", message: ERROR_CATALOG.CHATGPT_PLAN_DISABLED.text };
+        } else {
+          observedAccount = publicState(record, clock.nowMs());
+        }
+        const availability = lifecycle.phase === "closed" ? "closed" : lifecycle.phase !== "idle" ? "pending" : observedAccount.state === "connected"
+          ? observedAccount.planUsage === "enabled" ? "available" : observedAccount.planUsage === "disabled" ? "disabled" : "limit-reached"
+          : observedAccount.state;
+        const current: ChatGptAccountAuthority = { revision: record?.revision ?? null, attemptGeneration: lifecycle.epoch, availability };
         if (controller.signal.aborted || settled === undefined || current.attemptGeneration !== before.attemptGeneration
           || current.revision !== settled.revision || current.attemptGeneration !== settled.attemptGeneration) throw fault("CHATGPT_CONNECTION_CANCELLED");
         const rejectedAvailability = checked.state === "failed" && checked.error instanceof ChatGptAccountError
           && (checked.error.code === "CHATGPT_ACCOUNT_EXPIRED" && current.availability === "expired"
             || checked.error.code === "CHATGPT_PLAN_DISABLED" && current.availability === "unavailable");
         if (statusKey(current) !== statusKey(settled) && !rejectedAvailability) throw fault("CHATGPT_CONNECTION_CANCELLED");
-        const availability = current.availability;
         const usage: ChatGptAccountStatus["usage"] = availability === "available" || availability === "limit-reached"
           ? { state: availability, resetAt: null } : { state: "unavailable", reason: availability };
-        const account = connection.state !== "completed" && ["CHATGPT_AUTH_UNAVAILABLE", "CHATGPT_AUTH_INVALID", "CHATGPT_CREDENTIAL_UNAVAILABLE", "CHATGPT_CREDENTIAL_UNCERTAIN"].includes(connection.failureCode)
-          ? { state: "unavailable", code: connection.failureCode, message: ERROR_CATALOG[connection.failureCode].text } : readAccount();
+        let account = observedAccount;
+        if (connection.state !== "completed" && ["CHATGPT_AUTH_UNAVAILABLE", "CHATGPT_AUTH_INVALID", "CHATGPT_CREDENTIAL_UNAVAILABLE", "CHATGPT_CREDENTIAL_UNCERTAIN"].includes(connection.failureCode)) {
+          account = { state: "unavailable", code: connection.failureCode, message: ERROR_CATALOG[connection.failureCode].text };
+        } else {
+          active();
+          if (lifecycle.phase === "signing-out") account = { state: "unavailable", code: "CHATGPT_AUTH_BUSY", message: ERROR_CATALOG.CHATGPT_AUTH_BUSY.text };
+        }
         const value = ChatGptAccountStatusSchema.parse({ account, connection, usage });
         cachedStatus = { key: statusKey(current), value };
         return value;

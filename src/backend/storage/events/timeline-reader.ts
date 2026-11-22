@@ -12,14 +12,16 @@ export interface TimelineCursor {
 
 
 /** Shared cursor paging for BFF, scenarios and recovery, under one read snapshot. */
-export function readTimelineRecords(repository: TimelineRepository, after = 0, runId?: string) {
+export function readTimelineRecords(repository: TimelineRepository, after = 0, runId?: string,
+  spanTypes?: Parameters<TimelineRepository["page"]>[0]["spanTypes"]) {
   return repository.withReadSnapshot(() => {
     const through = repository.highWaterMark();
     if (through < after) throw new Error("timeline-cursor-reset-required");
     const records: TimelineEventRecord[] = [];
     let cursor = after;
     for (;;) {
-      const page = repository.page({ after: cursor, through, limit: 500, ...(runId === undefined ? {} : { runId }) });
+      const page = repository.page({ after: cursor, through, limit: 500, ...(runId === undefined ? {} : { runId }),
+        ...(spanTypes === undefined ? {} : { spanTypes }) });
       records.push(...page);
       const last = page.at(-1);
       if (last === undefined || page.length < 500) break;

@@ -8,12 +8,14 @@ import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { createPrivateDirectory, fsyncPath } from "../private-path.js";
+import { isAuthorityInspectionIntegrityFailure } from "./authority-database.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
 import { backupReadOnlyDatabase, readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { BackupCopyInspectionSchema } from "./recovery-contracts.js";
 
 const PROTOCOL = "relay.backup-inspection.v1";
 const COPY_PROTOCOL = "relay.backup-copy.v1";
+const INTEGRITY_FAILURE_CODE = "authority-inspection-integrity-failed";
 const InspectionRequestSchema = z.strictObject({ protocol: z.literal(PROTOCOL), path: z.string().min(1), expectedSchemaVersion: z.number().int().positive().optional(),
   busyTimeoutMs: z.number().int().nonnegative() });
 const CopyRequestSchema = z.strictObject({ protocol: z.literal(COPY_PROTOCOL), source: z.string().min(1), destination: z.string().min(1),
@@ -37,6 +39,10 @@ export function backupThreadIdle(): Promise<void> { return previousThread; }
 
 function failureError(reply: z.infer<typeof FailedReplySchema>): Error {
   return Object.assign(new Error(reply.message), reply.code === undefined ? {} : { code: reply.code });
+}
+
+export function hasInspectionIntegrityFailureCode(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === INTEGRITY_FAILURE_CODE;
 }
 
 /**
@@ -191,7 +197,11 @@ function failedReply(error: unknown): z.infer<typeof FailedReplySchema> {
 function runInspection(request: InspectionRequest): WorkerReply {
   try {
     return { kind: "inspected", inspection: BackupCopyInspectionSchema.parse(withReadonlyAuthoritySnapshot(request.path, database => inspectOpenDatabase(database, request.expectedSchemaVersion), request.busyTimeoutMs)) };
-  } catch (error) { return failedReply(error); }
+  } catch (error) {
+    const failure = failedReply(error);
+    return request.expectedSchemaVersion === undefined && isAuthorityInspectionIntegrityFailure(error)
+      ? { ...failure, code: INTEGRITY_FAILURE_CODE } : failure;
+  }
 }
 
 async function runCopy(request: CopyRequest): Promise<WorkerReply> {

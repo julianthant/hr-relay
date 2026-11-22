@@ -21,17 +21,22 @@ const HISTORY_TABS = [{ value: "chats", label: "Chats" }, { value: "activity", l
 type HubShellProps = { authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string, target?: string) => void; settingsOpen: boolean; onLogout: () => void; logoutOpen: boolean; onLogoutOpenChange: (open: boolean) => void; chatsPort?: HubChatsPort; commands?: DashboardCommandBinding };
 export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
-  const history = useAssistantHistory(client, true, props.authority);
-  return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
-    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyLoading={history.pending} historyNotice={history.notice} />;
-}
-function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyLoading, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyLoading: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
-  const client = useDashboardClient();
-  const panelPosition = useHubPanelPosition(4);
   useState(() => { assistantOpen.init(false); });
-  // The assistant opens closed on every startup and Ctrl+J waits for the reveal, so its chat history never holds the first screen.
   const revealed = useContext(FirstScreenRevealedContext);
   useLayoutEffect(() => { if (!revealed && mockParam("assistantOpen") !== "1") assistantOpen.set(false); }, [revealed]);
+  const opened = useAssistantOpen();
+  const canRead = opened && (revealed || mockParam("assistantOpen") === "1");
+  const [everOpened, setEverOpened] = useState(canRead);
+  if (canRead && !everOpened) setEverOpened(true);
+  // History loads with the dashboard because its notices show on the closed panel; only the model catalog waits for the first open.
+  const history = useAssistantHistory(client, true, props.authority);
+  return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
+    preferenceChanged={history.preferenceChanged} assistantOpened={everOpened} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyLoading={history.pending} historyNotice={history.notice} />;
+}
+function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyLoading, historyNotice, modelPreference, preferenceChanged, assistantOpened }: HubShellProps & { assistantOpened: boolean; history?: AssistantHistory; historyPending: boolean; historyLoading: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+  const client = useDashboardClient();
+  const panelPosition = useHubPanelPosition(4);
+  const revealed = useContext(FirstScreenRevealedContext);
   const opened = useAssistantOpen();
   useLogsTop(opened && !settingsOpen);
   useEffect(() => {
@@ -53,7 +58,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const localChats = useMemo(() => history?.chats ?? createLocalHubChatsPort(), [history]);
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant((id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
-  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels: assistantOpened });
   const { models: catalog, chooseModel } = servedController;
   const choose = useRef(chooseModel);
   choose.current = chooseModel;

@@ -22,7 +22,7 @@ import { profileBrowserClosure } from "../../runtime/browser/profile-browser-clo
 import { activeSettingsConfig,activeSettingsRuntimeIdentity,readBootSettings } from "../../runtime/settings/settings-runtime.js";
 import { isOfflineMaintenanceOperationActive,OfflineMaintenanceOperationUnavailableError,offlineMaintenanceWorkspace,RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../../storage/admission/lifetime-lock.js";
 import { appendLocalDebug } from "../../storage/events/local-debug-log.js";
-import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
+import { readPrivateFile,withOperationProof } from "../../storage/configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import { prepareStoppedBackupClosure,probeRestoreProfileBrowsersClosed,ProfileRestoreBrowserCustodyUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { assertStoppedProfileResourcesClosed } from "../../storage/maintenance/profile-custody.js";
@@ -1247,14 +1247,15 @@ export function composeProfileRuntime(input: Readonly<{
       }
     },
   });
-  const assertCurrent = (token: string): void => {
+  const assertCurrent = (token: string): void => withOperationProof(() => {
     const available = session.prepareCurrentStorage(token);
     if (available.state !== "available") throw new ProfileSessionRefusedError(available.code);
-    const selected = captureSelectedProfileStorage(machine), entry = resources.get(selected.profileId)?.ordinary;
+    const entry = resources.get(available.profileId)?.ordinary;
     if (entry === undefined || entry.state !== "open" || entry.preparation !== undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     entry.admission.assertProfileRuntime();
-    selected.assertCurrent();
-  };
+    const selected = captureSelectedProfileStorage(machine);
+    if (selected.profileId !== available.profileId || selected.epoch !== available.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+  });
   const beginClose = (purpose: "logout" | "shutdown" = "logout"): void => {
     closePurpose = purpose;
     let initializationFailure: { error: unknown } | undefined;

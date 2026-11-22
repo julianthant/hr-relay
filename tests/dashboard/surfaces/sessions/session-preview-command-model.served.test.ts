@@ -87,7 +87,7 @@ function harness(initial = dayWith()) {
   } });
   let scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const executor = new CommandExecutor(() => scope);
-  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: day.day, nowIso: now,
+  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: day.day, now: () => now,
     dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog }));
   return { port, client, executor, sent, gets, binding, day: () => day, setDay: (next: DashboardDayWire) => { day = next; }, setRead: (next: typeof read) => { read = next; },

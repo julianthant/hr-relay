@@ -102,7 +102,7 @@ it("shows a running run's logs while worker heartbeats move its revision, and ke
   let refreshed = 0;
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-    authority: { epoch: scope.authority, catalog: [], nowIso: clock.now().toISOString(), today: "2026-08-03", day: "2026-08-03",
+    authority: { epoch: scope.authority, catalog: [], now: () => clock.now().toISOString(), today: "2026-08-03", day: "2026-08-03",
       dayState: { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { refreshed++; } },
       selection: { route: { start: false }, workflowId: personLookupModule.descriptor.id } } } as unknown as DashboardCommandBinding;
   function Panel({ row }: { row: QueueSurfaceWire }) {

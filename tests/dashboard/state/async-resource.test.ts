@@ -36,8 +36,23 @@ describe("effect-owned resource settlement", () => {
 
     const fault = new Error("programming failure");
     observeResource(() => Promise.reject(fault), value => calls.push(value), error => calls.push(error));
-    await Promise.resolve();
-    assert.deepEqual(calls, [fault]);
-    assert.throws(() => observeResource(() => { throw fault; }, () => undefined, () => undefined), error => error === fault);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0], fault);
+    observeResource(() => { throw fault; }, value => calls.push(value), error => calls.push(error));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(calls, [fault, fault]);
+  });
+
+  it("a read whose observer is closed in the same tick is never started", async () => {
+    let started = 0;
+    const cancel = observeResource(() => { started += 1; return Promise.resolve(1); }, () => undefined, () => undefined);
+    cancel();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(started, 0);
+
+    observeResource(() => { started += 1; return Promise.resolve(1); }, () => undefined, () => undefined);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(started, 1);
   });
 });

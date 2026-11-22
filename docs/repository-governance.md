@@ -34,8 +34,7 @@ CodeQL only. Pull request runs are titled with their pull request title.
 
 A Development run for a `task/**` push or a non-task pull request runs plan, lint, static
 (typecheck and build), privacy, three unit shards, two architecture shards, the integration
-shards `scripts/test/affected-tests.ts` selects (at most eight five-minute shards; every affected
-shard for `feature/*` pull requests), `proof` and the `development` gate. It starts no perf, smoke
+shards `scripts/test/affected-tests.ts` selects (at most eight five-minute shards), `proof` and the `development` gate. It starts no perf, smoke
 or macOS job. Drafts keep plan, static, privacy and selected unit shards only. Path filters may
 omit unit and architecture suites, including all suites for Markdown-only changes. `proof` folds
 the shard results into one result; it requires successful selected shards, exactly skipped
@@ -62,8 +61,11 @@ Draft Staging and Production pull requests run lint, static, privacy and affecte
 Manual releases omit perf and smoke and select all routine and native suites.
 No workflow runs coverage; `npm run test:coverage` stays local with unchanged floors.
 
-Staging pull requests from `cut/*` pass `full-proof` only when their head commit has a green
-full run. A staging-to-main release passes `full-proof` only when the staging head, or one of its
+Staging pull requests from `development` pass `full-proof` only when their head commit has a green
+full run. Task pull requests merge straight into `development`; unfinished work merges unwired (no
+nav entry or route until the feature's last task) and no flag framework exists. When the full run
+on `development` is red, nothing else merges into it until the failing task is reverted or fixed
+forward. A staging-to-main release passes `full-proof` only when the staging head, or one of its
 parents, has a green full run and carries exactly the staging head's tree. The main-to-staging
 sync passes without a full run because main moves only through the production gate.
 

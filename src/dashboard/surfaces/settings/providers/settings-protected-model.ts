@@ -127,7 +127,7 @@ export function useProtectedSettings(input: {
       const entries = ProtectedSettingsPatchSchema.parse(Object.fromEntries(Object.entries(draft).map(([name, operation]) => [name,
         operation.kind === "clear" ? { clear: true } : { set: protectedValue(name as ProtectedSettingsName, operation.raw) },
       ])));
-      const command = deepFreeze(ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "settings-surface",
+      const command = deepFreeze(ProtectedSettingsCommandRequestSchema.parse({ family: "settings", type: "apply-protected-settings", commandId: crypto.randomUUID(), requestedAt: binding.authority.now(), requestedBy: binding.scope.actorId, source: "settings-surface",
         target: { expectedRevision: available.readback.revision }, payload: { protectedSchemaHash: available.protectedSchemaHash, writeId: crypto.randomUUID(), entries } }));
       void perform(command);
     } catch { setSave({ state: "refused", code: "PROTECTED_SETTINGS_DRAFT_INVALID", message: formatErrorCatalogFailure(createErrorCatalogFailure("PROTECTED_SETTINGS_DRAFT_INVALID", {})).text }); }
@@ -145,7 +145,7 @@ export function useProtectedSettings(input: {
   function settleUnknown(attempt: ProtectedReadbackAttempt): void {
     if (readingBack.current === attempt.commandId) return;
     readingBack.current = attempt.commandId;
-    setSave({ state: "saving" });
+    setSave({ state: "unconfirmed", code: "COMMAND_OUTCOME_UNCERTAIN", message: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text });
     void readBack(input.readCurrent, document => protectedSaveLanded(attempt, document)).then(document => {
       const landed = protectedSaveLanded(attempt, document);
       if (binding !== undefined) binding.executor.resolve(attempt.commandId, landed, binding.scope);

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
@@ -81,7 +81,7 @@ function commandBindingFixture() {
   const request = Object.freeze({ client, day, epoch, revision: 0 });
   const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
   const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-    authority: { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: day, day,
+    authority: { epoch, catalog: [], now: () => bootstrap.serverClock.now, today: day, day,
       dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request,
         day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
       selection: { route: { start: false }, workflowId: "launch-proof" } } };
@@ -152,6 +152,17 @@ describe("served Logs wiring", () => {
     const projection = projectRunLogs(snapshot, client);
     assert.equal(projection.timeline.find(stage => stage.id === "first")?.stepId, NOTE);
     assert.deepEqual(projection.steps.map(step => step.entries[0].id), [NOTE]);
+  });
+  it("requests the first log page together with the run detail", async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const client = { runDetail: async () => { order.push("detail"); await held; return detail(); }, artifactUrl: (id: string) => `/artifacts/${id}`,
+      runSection: async () => { order.push("logs"); return RunDetailSectionResponseSchema.parse({ section: "logs", payload: page() }); } };
+    const read = readRunLogs(client, selection(), new AbortController().signal);
+    assert.deepEqual(order, ["logs", "detail"]);
+    release();
+    await read;
   });
   it("refuses wrong run/revision/attempt", async () => {
     for (const changed of [detail(selection(OTHER)), { ...detail(), header: { ...detail().header, attempt: 2 } }]) {
@@ -760,6 +771,13 @@ describe("served Logs wiring", () => {
     assert.equal([...document.querySelectorAll("button")].some(button => button.textContent === "Retry"), false);
     assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
   });
+  it("opens the detail and logs reads once under StrictMode", async () => {
+    const paths: string[] = [];
+    const client = clientFor(path => { paths.push(path); return path.endsWith("/logs") ? { section: "logs", payload: page() } : detail(); });
+    await mount(createElement(StrictMode, null, createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) })));
+    assert.equal(paths.filter(path => path.endsWith("/logs")).length, 1);
+    assert.equal(paths.filter(path => /\/runs\/[^/]+$/.test(path)).length, 1);
+  });
   it("does not turn a failed served read into a mock or a verified empty result", async () => {
     const client = clientFor(() => { throw new Error("offline"); });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
@@ -814,20 +832,21 @@ describe("served Logs wiring", () => {
   it("revokes both stale A responses across A to B to A and client replacement", async () => {
     const pending: { path: string; signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];
     const client = clientFor((path, signal) => new Promise(resolve => pending.push({ path, signal, resolve })));
+    const details = () => pending.filter(request => !request.path.endsWith("/logs"));
     let current: ReturnType<typeof useRunWiring> | undefined;
     function Probe({ client: activeClient, selected }: { client: DashboardClient; selected: LogSelection }) { current = useRunWiring(activeClient, selected, undefined); return null; }
     const a = selection(), b = selection(OTHER);
     await mount(createElement(Probe, { client, selected: a }));
     await act(async () => root?.render(createElement(Probe, { client, selected: b })));
     await act(async () => root?.render(createElement(Probe, { client, selected: a })));
-    assert.equal(pending.length, 3); assert.equal(pending[0].signal?.aborted, true); assert.equal(pending[1].signal?.aborted, true);
-    await act(async () => pending[0].resolve(detail()));
-    assert.equal(current?.state, "loading"); assert.equal(pending.length, 3);
+    assert.equal(details().length, 3); assert.equal(details()[0].signal?.aborted, true); assert.equal(details()[1].signal?.aborted, true);
+    await act(async () => details()[0].resolve(detail()));
+    assert.equal(current?.state, "loading"); assert.equal(details().length, 3);
     const replacement = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), rows: [], notes: [] } } : detail());
     await act(async () => root?.render(createElement(Probe, { client: replacement, selected: a })));
     assert.equal(current?.state, "loaded"); assert.equal(current?.snapshot?.logs.rows?.length, 0);
-    await act(async () => pending[2].resolve(detail()));
-    assert.equal(current?.snapshot?.logs.rows?.length, 0); assert.equal(pending[2].signal?.aborted, true);
+    await act(async () => details()[2].resolve(detail()));
+    assert.equal(current?.snapshot?.logs.rows?.length, 0); assert.equal(details()[2].signal?.aborted, true);
   });
 });
 

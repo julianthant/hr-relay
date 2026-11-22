@@ -5,7 +5,7 @@ run-name: ${{ github.event_name == 'schedule' && format('Full run {0}', github.s
 on:
   # The full run checks every 20 minutes and starts only when development changed (scripts/ci/full-run.ts).
   schedule:
-    - cron: '*/20 * * * *'
+    - cron: '7,27,47 * * * *'
   pull_request:
     branches: [development]
     types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]
@@ -104,6 +104,14 @@ jobs:
         run: npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE"
       - run: npm ci
         if: github.event_name == 'pull_request'
+      - name: Fetch the pull request base
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git cat-file -e "$PR_BASE_SHA^{commit}" 2>/dev/null \
+            || git fetch --no-tags --depth=1 origin "$PR_BASE_SHA" \
+            || { echo "::error::The pull request base $PR_BASE_SHA is not available to fetch"; exit 1; }
       - name: Check added workflow files
         if: github.event_name == 'pull_request'
         env:

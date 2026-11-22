@@ -173,6 +173,10 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         if (request.through !== undefined) { predicates.push("cursor <= ?"); bindings.push(request.through); }
         if (request.runId !== undefined) { predicates.push("run_id = ?"); bindings.push(request.runId); }
         if (request.workflow !== undefined) { predicates.push("workflow = ?"); bindings.push(request.workflow); }
+        if (request.spanTypes !== undefined) {
+          predicates.push(`kind IN (${request.spanTypes.map(() => "?").join(",")})`);
+          bindings.push(...request.spanTypes);
+        }
         const rows = prepare(`SELECT * FROM timeline_events WHERE ${predicates.join(" AND ")} ORDER BY cursor LIMIT ?`)
           .all(...bindings, request.limit);
         return Object.freeze(rows.map(timelineEventFromRow));

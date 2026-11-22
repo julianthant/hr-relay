@@ -125,7 +125,7 @@ Project/file/suite and full behavior or refusal titles remain visible. Short uni
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 `development.yml` (`Development`) calls `checks.yml` with kind `fast` on `task/**` pushes and
 non-task pull requests: plan, lint, static, privacy, three unit shards, two architecture shards
-and the affected integration shards (at most eight; uncapped for `feature/*`). It starts no perf,
+and the affected integration shards (at most eight). It starts no perf,
 smoke or macOS job. `proof` folds the shard results and fails failed or cancelled dependencies.
 The `development` gate checks names and the workflow allowlist on pull requests, then requires
 this run's `proof` or, for `task/**` and edited pull requests, the `proof` of another run at the
@@ -289,7 +289,7 @@ dispatches bypass the draft limit.
 | Local or perf test files only | Architecture; local remains machine-only. Ready Staging/Production PRs also run perf and smoke. |
 
 Select the union for mixed changes. Development selects unit and architecture only; drafts select
-unit only. Staging PRs from `cut/<milestone>` execute the portable plan plus perf and smoke.
+unit only. Staging PRs from `development` execute the portable plan plus perf and smoke.
 Valid `staging` or `hotfix/*` → `main` releases also select native work. Other heads into main omit
 native work and fail the required source-head check. Operator manual releases select all routine
 native suites. Machine-readable docs count as configuration. Release authorization belongs to the
@@ -297,8 +297,7 @@ root check rules. Protected branch pushes do not repeat CI.
 
 All three event entries use per-PR/manual-branch workflow concurrency with cancellation enabled;
 a Development edited event queues instead of cancelling. New pushes supersede older runs for the
-same key. Development has no shared admission lane; a run uses at most nineteen job slots, more
-on `feature/*` pull requests. Staging admits one complete reusable call
+same key. Development has no shared admission lane; a run uses at most nineteen job slots. Staging admits one complete reusable call
 through the `ci-runners` FIFO; Production uses `release-runners`. Both use `queue: max` and
 `cancel-in-progress: false`; no callee reacquires admission.
 
@@ -433,8 +432,8 @@ executable enforcement.
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `development`, `dependabot/*`,
-`feature/<kebab>`, `cut/<milestone>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `feature/*`, `fix/*`, `chore/*`,
-`dependabot/*`, or `task/<kebab>/<kebab>`. Only `cut/<milestone>` targets `staging`. A pull request title must be `<Area>: <text>`. A conventional title such as
+`task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `fix/*`, `chore/*`,
+`dependabot/*`, or `task/<kebab>/<kebab>`. Only `development` (or `main`, the release sync) targets `staging`. A pull request title must be `<Area>: <text>`. A conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
 `.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first job; Development combines it with planning in

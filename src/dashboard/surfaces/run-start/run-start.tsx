@@ -198,7 +198,7 @@ export function RunStartDialog({
   const launchService = useMemo(() => createRunLaunchService(client, actorId, { uuid: () => crypto.randomUUID(), now: () => {
     const binding = commandBindingRef.current;
     if (binding === undefined || binding.scope.client !== client || binding.scope.actorId !== actorId) throw new Error("RUN_LAUNCH_AUTHORITY_UNAVAILABLE");
-    return binding.authority.nowIso;
+    return binding.authority.now();
   } }), [client, actorId]);
   const { toast } = useToasts();
   const isRerun = rerunSource !== undefined;

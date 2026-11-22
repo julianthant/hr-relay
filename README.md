@@ -94,11 +94,13 @@ is mostly here to read. To start the dashboard locally:
 
 ```bash
 npm install
-npm run dashboard
+npm run dashboard:prod
 ```
 
-`npm run backend` and `npm run web` start the two halves in separate terminals. Windows setup is in
-[docs/guides/windows.md](docs/guides/windows.md).
+Open http://127.0.0.1:3938 after the server starts. The command builds and serves the production bundle.
+For development in a feature checkout, run `npm run dashboard` and open http://127.0.0.1:5174.
+`npm run backend` and `npm run web` start the development servers in separate terminals.
+See the [Windows setup guide](docs/guides/windows.md).
 
 ## Learn more
 
