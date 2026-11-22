@@ -84,14 +84,14 @@ function pack(files: readonly string[], durations: Readonly<Record<string, numbe
   let load = 0;
   for (const file of files) {
     const seconds = Math.max(0.1, durations[file] ?? fallback);
-    if (seconds > shardSeconds) throw new Error(`Integration test exceeds ${shardSeconds}s shard budget: ${file} (${seconds}s)`);
-    if (shard === undefined || load + seconds > shardSeconds) {
+    if (shard === undefined || load + seconds > shardSeconds || seconds > shardSeconds) {
       shard = [];
       shards.push(shard);
       load = 0;
     }
     shard.push(file);
     load += seconds;
+    if (seconds > shardSeconds) shard = undefined;
   }
   return shards;
 }
