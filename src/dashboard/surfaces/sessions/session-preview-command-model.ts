@@ -273,15 +273,18 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
       && (result.state === 'confirmed' || result.state === 'refused' && typeof result.message === 'string');
     const answered = proves(sent);
     // A lost, malformed or foreign reply is read back from the served workers, never shown.
-    const read = answered ? sent : await readBack(() => port.check(request), proves);
-    if (!proves(read)) await port.abandon?.(request).catch((cause: unknown) => {
+    const checked = answered ? { result: sent, snapshot } : await readBack(async () => {
+      const readSnapshot = latestSource.current;
+      return { result: await port.check(request), snapshot: readSnapshot };
+    }, ({ result }) => proves(result));
+    if (!proves(checked?.result)) await port.abandon?.(request).catch((cause: unknown) => {
       if (attemptEpoch === epoch.current) window.reportError(cause);
     });
     if (!live.current || operationsRef.current[request.target]?.request.id !== request.id) return;
     // A changed scope (another day or sign-in) leaves nothing pending behind.
     if (attemptEpoch !== epoch.current) { drop(request); return; }
-    const proven = proves(read) ? read : undefined;
-    if (proven !== undefined) acceptReadback(snapshot, request, proven);
+    const proven = checked !== undefined && proves(checked.result) ? checked.result : undefined;
+    if (proven !== undefined && checked !== undefined) acceptReadback(checked.snapshot, request, proven);
     if (proven?.state === 'confirmed') {
       if (request.action === 'refresh') idle.current?.(request, proven.data);
       // A result found only by reading back shows as the new state alone, with no note or toast.

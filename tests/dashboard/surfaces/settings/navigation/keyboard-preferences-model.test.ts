@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import { afterEach,describe,it,vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ZodError } from 'zod';
-import { DEFAULT_SHORTCUT_PREFERENCES,shortcutActionForEvent,shortcutChord,validateShortcutPreferences } from '../../../../../src/dashboard/surfaces/settings/navigation/keyboard-preferences-model.js';
+import { DEFAULT_SHORTCUT_PREFERENCES,ShortcutRefusedError,shortcutActionForEvent,shortcutChord,validateShortcutPreferences } from '../../../../../src/dashboard/surfaces/settings/navigation/keyboard-preferences-model.js';
 
 describe('Relay presentation models', () => {
   it('uses customized bindings and rejects collisions and reserved number shortcuts', () => {
@@ -20,8 +19,8 @@ describe('Relay presentation models', () => {
   });
   it('rejects retired menu bindings instead of silently stripping them', () => {
     assert.throws(() => validateShortcutPreferences({ ...DEFAULT_SHORTCUT_PREFERENCES, bindings: { ...DEFAULT_SHORTCUT_PREFERENCES.bindings, menu: ['m'] } }), error => {
-      assert.ok(error instanceof ZodError);
-      assert.deepEqual(error.issues, [{ code: 'unrecognized_keys', keys: ['menu'], path: ['bindings'], message: 'Unrecognized key: "menu"' }]);
+      assert.ok(error instanceof ShortcutRefusedError);
+      assert.equal(error.sentence, 'Unrecognized key: "menu"');
       return true;
     });
   });

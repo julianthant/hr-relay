@@ -655,7 +655,7 @@ afterEach_m1(_afterEachFixture0);
     await act_m1(async () => { keyboard.focus(); keyboard.click(); });
     await press(buttonNamed("Keep editing"));
     assert_m1.match(window.location.search, /settings=general/u);
-    assert_m1.equal(document.activeElement, keyboard);
+    assert_m1.equal(document.activeElement?.isSameNode(keyboard), true);
     assert_m1.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
     const dashboard = buttonNamed("Close settings");
     await press(dashboard);

@@ -4,9 +4,10 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, it, vi } from 'vitest';
 import { WorkbookLibraryEntrySchema } from '../../../../../src/models/dashboard/workbook-library.js';
+import type { EditableWorkbook } from '../../../../../src/rules/spreadsheets/workbook-io.js';
 import { ToastProvider, TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
 
-const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[], loading: false, error: undefined as string | undefined, pending: [] as string[], draft: undefined }));
+const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[], loading: false, error: undefined as string | undefined, pending: [] as string[], draft: undefined as { document: EditableWorkbook } | undefined }));
 const LINK = 'https://contoso.sharepoint.com/sites/hr/roster.xlsx';
 const version = (id: string, n: number) => ({ id, name: `v${n}`, snapshotId: id, version: n, savedAt: `2026-11-0${n}T00:00:00Z`, source: 'operator' });
 const make = (libraryId: string, name: string, options: { pinned?: boolean; linked?: boolean } = {}) => WorkbookLibraryEntrySchema.parse({ libraryId, version: 2, name, updatedAt: '2026-11-02T00:00:00Z', rowCount: 1,

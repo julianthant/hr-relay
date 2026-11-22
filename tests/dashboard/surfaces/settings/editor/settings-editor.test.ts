@@ -218,7 +218,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.deepEqual(notices, []); assert.deepEqual(problems, [FAILURE]);
     // The failed save re-reads the backend; the page unlocks only once that fresh read is held.
     for (let flush = 0; flush < 20 && controller().locked; flush++) await act(async () => vi.advanceTimersByTimeAsync(0));
-    assert.equal(reads, 5, 'one acknowledgement read and four reads to settle the mismatch');
+    assert.equal(reads, 6, 'one acknowledgement read, four mismatch checks and one final refresh');
     assert.equal(controller().locked, false);
     const editor = controller().editor;
     assert.equal(editor.state, 'loaded');

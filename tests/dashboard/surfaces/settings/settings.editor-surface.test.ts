@@ -117,6 +117,7 @@ describe("editable Settings surface", () => {
     let exited = 0;
     const applied: unknown[] = [];
     const transport = await settingsClient(applied, "lost");
+    const initialRevision = transport.authority.credentials.read().revision;
     host = await mountSettingsPage(transport.client, "credentials", next => { guard = next; });
     const input = host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
     assert.ok(input);
@@ -133,7 +134,8 @@ describe("editable Settings surface", () => {
     // The lost reply is read back by itself, never resent; the stored write ends as saved with no message.
     await vi.waitFor(async () => {
       await act(async () => undefined);
-      assert.equal(transport.authority.credentials.read().revision, 2);
+      assert.equal(applied.length, 1);
+      assert.equal(transport.authority.credentials.read().revision, initialRevision + 1);
       assert.equal(input.disabled, false);
       assert.equal(input.value, "synthetic-local", "the served username replaces the draft");
     }, { timeout: 8000, interval: 100 });

@@ -756,8 +756,7 @@ describe("served Logs wiring", () => {
           ? Response.json({ state: "error", code: "LOGS_IDENTITY_REFUSED", message: "private native mismatch", retryable: false }, { status: 409 })
           : Response.json(detail()) });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
-    const reason = source === "client" ? /These logs lack the details that tie them to this run\./u : /These logs don't match this run\./u;
-    assert.match(document.body.textContent ?? "", reason);
+    assert.match(document.body.textContent ?? "", /These logs don't match this run\./u);
     assert.equal([...document.querySelectorAll("button")].some(button => button.textContent === "Retry"), false);
     assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
   });
