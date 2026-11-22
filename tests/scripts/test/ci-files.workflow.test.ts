@@ -254,8 +254,6 @@ describe("separate event and admitted proof workflows", () => {
     expect(checks).not.toMatch(/uses: \.\/\.github\/workflows\//u);
     expect(checks).not.toMatch(/windows/iu);
     expect(checks.split("\njobs:\n")[0]).toContain("value: ${{ toJSON(jobs) }}");
-    expect(readdirSync(new URL("../../../.github/workflows", import.meta.url)).sort())
-      .toEqual(["checks.yml", "dashboard-skeleton-evidence.yml", "development.yml", "production.yml", "staging.yml"]);
     const evidence = load("dashboard-skeleton-evidence");
     expect(evidence.split("\npermissions:\n")[0]).toMatch(/\non:\n {2}push:\n {4}branches: \['chore\/dashboard-skeleton-evidence-\*'\]\n$/u);
     expect(jobNames(evidence)).toEqual(["dashboard-skeleton-evidence"]);
@@ -298,8 +296,10 @@ describe("separate event and admitted proof workflows", () => {
   });
 
   it("keeps coverage local in every workflow", () => {
-    for (const file of readdirSync(new URL("../../../.github/workflows", import.meta.url))) {
-      expect(load(file.replace(/\.yml$/u, ""))).not.toMatch(/test:coverage|--coverage/u);
+    const directory = new URL("../../../.github/workflows/", import.meta.url);
+    for (const file of readdirSync(directory, { withFileTypes: true })) {
+      if (!file.isFile() || !/\.ya?ml$/u.test(file.name)) continue;
+      expect(readFileSync(new URL(file.name, directory), "utf8")).not.toMatch(/test:coverage|--coverage/u);
     }
     expect(jobNames(checks)).not.toContain("release-batch");
   });
