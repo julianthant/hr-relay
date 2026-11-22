@@ -55,7 +55,8 @@ export class DashboardPage {
   }
 
   async openRun(runId: string): Promise<void> {
-    await this.queue.getByRole("button").and(this.page.locator(`[data-demo-row-id="${runId}"]`)).click();
+    const row = this.queue.locator(`[data-demo-row-id="${runId}"]`);
+    await row.getByRole("button").and(row.locator("[data-queue-open]")).press("Enter");
     await this.expectRunOpen(runId);
   }
 
