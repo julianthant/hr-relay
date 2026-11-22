@@ -86,7 +86,7 @@ describe("development fast check", () => {
     expect(jobNames(development)).toEqual(["checks", "proof", "development"]);
     expect(job(development, "checks")).toContain("uses: ./.github/workflows/checks.yml");
     expect(job(development, "checks")).toContain("kind: fast");
-    const runsChecks = (event_name: string, action: string | undefined, head_ref: string) => runInNewContext(
+    const runsChecks = (event_name: string, action: string | undefined, head_ref: string): unknown => runInNewContext(
       job(development, "checks").match(/^ {4}if: \$\{\{ (.+) \}\}$/mu)?.[1] ?? "",
       { github: { event_name, event: { action }, head_ref }, startsWith: (value: string, prefix: string) => value.startsWith(prefix) });
     expect(runsChecks("push", undefined, "")).toBe(true);
@@ -118,7 +118,7 @@ describe("development fast check", () => {
     expect(header).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}");
     const cancel = header.match(/^ {2}cancel-in-progress: \$\{\{ (.+) \}\}$/mu)?.[1];
     assert.ok(cancel);
-    const cancels = (action?: string) => runInNewContext(cancel, { github: { event: { action } } });
+    const cancels = (action?: string): unknown => runInNewContext(cancel, { github: { event: { action } } });
     expect(cancels("edited")).toBe(false);
     for (const action of ["synchronize", "opened", undefined]) expect(cancels(action)).toBe(true);
   });
