@@ -4267,7 +4267,7 @@ export class AuthorityDatabase implements Disposable {
 
   readApplicationActivity(runScope: "non-terminal-runs"): RunRecord[];
   readApplicationActivity(runScope?: "all" | "non-terminal"): Readonly<{
-    runs: RunRecord[];
+    runs: PredecessorRunRecord[];
     writeIntents: WriteIntentRecord[];
     duoLeases: DuoCeremonyLeaseRecord[];
     pendingArtifacts: readonly ArtifactOutboxStorageRecord[];
@@ -4275,10 +4275,10 @@ export class AuthorityDatabase implements Disposable {
   readApplicationActivity(runScope: "all" | "non-terminal" | "non-terminal-runs" = "all") {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
-      const runs = runScope === "all"
+      if (runScope === "non-terminal-runs") return this.#readActiveRuns();
+      const runs: PredecessorRunRecord[] = runScope === "all"
         ? this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow)
         : this.#readActiveRuns();
-      if (runScope === "non-terminal-runs") return runs;
       return Object.freeze({
         runs,
         writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
