@@ -1,3 +1,4 @@
+import type { DashboardBackgroundReadRequest } from "./dashboard-background-read-worker.js";
 import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
 import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
@@ -1666,6 +1667,40 @@ function changeLogBaseline(database: DatabaseSync): ChangeLogReader {
     wholeStore: false, failed: undefined, settled: undefined };
 }
 
+function admitChanges(database: DatabaseSync, reader: ChangeLogReader, search: "all" | "progress" | "none", observed: number): void {
+  const cookie = readIntPragma(database, "schema_version"), schemaMoved = cookie !== reader.schemaCookie;
+  // Entries may be missing while the schema differed, so a schema move is checked whole.
+  if (schemaMoved) reader.wholeStore = true;
+  const high = changeLogHighWater(database);
+  const closure = reader.wholeStore ? undefined : readAuthorityChangeClosure(database, reader.cursor, high);
+  if (closure === undefined) reader.wholeStore = true;
+  const singleton = readSingletonImage(database);
+  const check = closure === undefined
+    ? (value: typeof search) => { validateAuthorityStore(database, value); }
+    : (value: typeof search) => { validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value); };
+  try { check(search); }
+  catch (error) {
+    // The refusal is rethrown either way; this only names which half failed.
+    reader.failed = "authority";
+    if (search !== "none") { try { check("none"); reader.failed = "projection-only"; } catch { /* the authority rows fail on their own */ } }
+    throw error;
+  }
+  if (schemaMoved) {
+    // After the rows: a bad row reports its own refusal. Any schema difference refuses even when every row is valid, now and on
+    // every later read, since the cookie is recorded only once the whole schema matches.
+    try { assertNativeSchema(database, CURRENT_AUTHORITY_SCHEMA_VERSION); }
+    catch (error) { reader.failed = "authority"; throw error; }
+    reader.schemaCookie = cookie;
+  }
+  if (search === "none") {
+    if (reader.failed === "authority") reader.failed = "projection-only";
+    reader.settled = { cursor: high, dataVersion: observed };
+    return;
+  }
+  if (search === "progress") return;
+  Object.assign(reader, { cursor: high, singleton, wholeStore: false, failed: undefined, settled: undefined });
+}
+
 /**
  * How a reader re-validated a set of changes: `scoped` checked only their closure; `whole` ran the whole-store check because a
  * change reaches every row of a kind (a completed search publication or a profile change).
@@ -1750,6 +1785,76 @@ export function validateAuthorityStore(database: DatabaseSync, search: "all" | "
     if (violations.length > 0) throw new Error("current composite authority is invalid");
     if (search !== "none") createRunSearchIndex(database).validateCoverage();
   });
+}
+
+/** One worker connection validates peer commits and captures a page and its reconciliation facts together. */
+export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.infer<typeof ProfileDatabaseBindingSchema>) {
+  const timeline = createTimelineRepository({ database, read: read => read(),
+    mutate: () => { throw new Error("dashboard-background-read-only"); }, assertOwner: record => assertTimelineOwner(database, record) });
+  let baseline: ChangeLogReader | undefined;
+  let validatedVersion: number | undefined;
+  return (request: DashboardBackgroundReadRequest) => {
+    database.exec("BEGIN");
+    try {
+      const meta = readMetaRow(database);
+      if (meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("profile-database-binding-mismatch");
+      if (meta.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION || readIntPragma(database, "user_version") !== meta.schema_version
+        || readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("dashboard-background-schema-mismatch");
+      const version = readIntPragma(database, "data_version");
+      if (baseline === undefined) {
+        assertNativeSchema(database);
+        validateAuthorityStore(database);
+        baseline = changeLogBaseline(database);
+      } else if (validatedVersion !== version) admitChanges(database, baseline, "all", version);
+      validatedVersion = version;
+
+      const head = timeline.highWaterMark(), through = request.through ?? head;
+      if (through > head || request.after > through) throw new Error("timeline-cursor-reset-required");
+      const records = timeline.page({ after: request.after, through, limit: request.limit, spanTypes: request.spanTypes });
+      const cursor = records.length === request.limit ? records[records.length - 1].cursor : through;
+      const workers = dashboardWorkerFacts(database, request);
+      database.exec("COMMIT");
+      return { records, cursor, through, workers };
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  };
+}
+
+function dashboardWorkerFacts(database: DatabaseSync, { nowMs, limit, workerCursor }: DashboardBackgroundReadRequest) {
+  // Keep comparison work and run payloads on the worker. A heartbeat alone changes no served worker fact.
+  const digest = createHash("sha256");
+  const attempting = database.prepare("SELECT 1 FROM write_intents WHERE run_id=? AND status='attempting' LIMIT 1");
+  for (const row of database.prepare("SELECT * FROM runs ORDER BY id").iterate()) {
+    const run = runRecordFromRow(row);
+    const claimed = runClaim(run) !== undefined;
+    const lifecycle = claimed ? { ...run.lifecycle, heartbeatAt: undefined } : run.lifecycle;
+    digest.update(JSON.stringify([run.envelope, run.displayName, run.runNumber, run.sessionId, run.appVersion,
+      lifecycle, run.cancelRequested, run.pause, claimed && attempting.get(run.envelope.runId) !== undefined]));
+  }
+  const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
+  const pools = database.prepare("SELECT * FROM worker_pools ORDER BY workflow").all()
+    .map(row => WorkerPoolRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_pools", row)));
+  const batchVersions = database.prepare("SELECT * FROM run_batches ORDER BY id").all().map(row => {
+    const { sessionId, version } = RunSessionRecordSchema.parse(nativeOrdinaryRecordFromRow("run_batches", row));
+    return { sessionId, version };
+  });
+  digest.update(JSON.stringify([slots, pools, batchVersions]));
+  const heldDuoLeases = database.prepare("SELECT * FROM auth_leases WHERE state='held' AND holder_worker_id IS NOT NULL ORDER BY credential_key").all()
+    .map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)))
+    .filter(lease => isDuoCeremonyLeaseLive(lease, nowMs))
+    .map(lease => ({ workerId: lease.holder.workerId, system: lease.holder.system, since: lease.acquiredAt, expiresAt: lease.expiresAt }));
+  const fingerprint = digest.digest("hex");
+  const slotWorkflows = [...new Set(slots.map(slot => slot.workflow))];
+  const offset = workerCursor?.offset ?? 0, end = offset + limit;
+  const more = Math.max(batchVersions.length, slotWorkflows.length, heldDuoLeases.length) > end;
+  // A continuation can span transactions only while all returned facts (including timed leases) still agree.
+  const pageDigest = sha256Hex(JSON.stringify([fingerprint, heldDuoLeases]));
+  if (workerCursor !== undefined && workerCursor.digest !== pageDigest) throw new Error("dashboard-background-worker-cursor-stale");
+  const next = more ? { offset: end, digest: pageDigest } : null;
+  return { fingerprint, next, batchVersions: batchVersions.slice(offset, end), slotWorkflows: slotWorkflows.slice(offset, end),
+    heldDuoLeases: heldDuoLeases.slice(offset, end) };
 }
 
 function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
@@ -5520,47 +5625,13 @@ export class AuthorityDatabase implements Disposable {
     this.#validatedExternalDataVersion = undefined;
     try {
       if (reader === undefined) validateAuthorityStore(this.#database, searchValidation);
-      else this.#admitChanges(reader, searchValidation, observed);
+      else admitChanges(this.#database, reader, searchValidation, observed);
     } catch (error) {
       if (mode === "mutation") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
     const stable = observed === this.#snapshotExternalDataVersion && readIntPragma(this.#database, "data_version") === observed;
     if (stable && (reader === undefined ? searchValidation !== "none" : searchValidation === "all")) this.#validatedExternalDataVersion = observed;
-  }
-
-  #admitChanges(reader: ChangeLogReader, search: "all" | "progress" | "none", observed: number): void {
-    const database = this.#database, cookie = readIntPragma(database, "schema_version"), schemaMoved = cookie !== reader.schemaCookie;
-    // Entries may be missing while the schema differed, so a schema move is checked whole.
-    if (schemaMoved) reader.wholeStore = true;
-    const high = changeLogHighWater(database);
-    const closure = reader.wholeStore ? undefined : readAuthorityChangeClosure(database, reader.cursor, high);
-    if (closure === undefined) reader.wholeStore = true;
-    const singleton = readSingletonImage(database);
-    const check = closure === undefined
-      ? (value: typeof search) => { validateAuthorityStore(database, value); }
-      : (value: typeof search) => { validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value); };
-    try { check(search); }
-    catch (error) {
-      // The refusal is rethrown either way; this only names which half failed.
-      reader.failed = "authority";
-      if (search !== "none") { try { check("none"); reader.failed = "projection-only"; } catch { /* the authority rows fail on their own */ } }
-      throw error;
-    }
-    if (schemaMoved) {
-      // After the rows: a bad row reports its own refusal. Any schema difference refuses even when every row is valid, now and on
-      // every later read, since the cookie is recorded only once the whole schema matches.
-      try { assertNativeSchema(database, CURRENT_AUTHORITY_SCHEMA_VERSION); }
-      catch (error) { reader.failed = "authority"; throw error; }
-      reader.schemaCookie = cookie;
-    }
-    if (search === "none") {
-      if (reader.failed === "authority") reader.failed = "projection-only";
-      reader.settled = { cursor: high, dataVersion: observed };
-      return;
-    }
-    if (search === "progress") return;
-    Object.assign(reader, { cursor: high, singleton, wholeStore: false, failed: undefined, settled: undefined });
   }
 
   /**
