@@ -70,7 +70,7 @@ it('shows each served sync state under the SharePoint link and offers Retry sync
     await act(async () => { await new Promise(done => setTimeout(done, 700)); });
     return document.body.querySelector('[role="tooltip"]')?.textContent ?? '';
   };
-  assert.match(await why('Bad.xlsx'), /^The saved workbook changed\. Read its current version before saving\. \(Nov 2/u);
+  assert.match(await why('Bad.xlsx'), /^The saved workbook changed\. Load its current version before saving\. \(Nov 2/u);
   assert.match(await why('Odd.xlsx'), /^Sync did not finish\. Start Sync again\. \(Nov 2/u);
   assert.doesNotMatch(host.textContent ?? '', /WORKBOOK_/u);
   assert.equal(status('New.xlsx'), 'Not synced yet');
