@@ -58,14 +58,14 @@ describe("affected integration tests", () => {
 
   it("packs in dependency order using the median and caps the returned shards at eight", () => {
     const { root, write, commit } = fixture({
-      "tests/a.integration.test.ts": 120,
-      "tests/b.integration.test.ts": 120,
-      "tests/c.integration.test.ts": 240,
-      "tests/unaffected.integration.test.ts": 240,
+      "tests/a.integration.test.ts": 100,
+      "tests/b.integration.test.ts": 200,
+      "tests/c.integration.test.ts": 190,
+      "tests/unaffected.integration.test.ts": 110,
     });
     write("src/source.ts", "export const value = 1;");
-    const names = [..."abcdefghijk"].map(name => `tests/${name}.integration.test.ts`);
-    for (const name of names) write(name, 'import "../src/source.js";');
+    const name = (letter: string) => `tests/${letter}.integration.test.ts`;
+    for (const letter of "abcdefghijklmnopqr") write(name(letter), 'import "../src/source.js";');
     const base = commit();
     write("src/source.ts", "export const value = 2;");
     const head = commit();
@@ -73,7 +73,7 @@ describe("affected integration tests", () => {
     expect(createAffectedTestsPlanner(root)(base, head)).toEqual({
       core: true,
       shardCount: 10,
-      shards: [[names[0], names[1]], ...names.slice(2, 9).map(name => [name])],
+      shards: ["ab", "c", "de", "fg", "hi", "jk", "lm", "no"].map(group => [...group].map(name)),
     });
   });
 
@@ -82,6 +82,7 @@ describe("affected integration tests", () => {
     const { root, write, commit } = fixture();
     write("tests/portable.integration.test.ts", "");
     write("tests/perf/bench.integration.test.ts", "");
+    write("tests/backend/app/composition/storage-compose.integration.test.ts", "");
     write("tests/backend/storage/browser-roots.native.integration.test.ts", "");
     write("tests/support/private-temp-setup.ts", 'import "./setup-helper.js";');
     write("tests/support/setup-helper.ts", "export const setup = 1;");
