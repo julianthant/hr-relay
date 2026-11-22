@@ -14,10 +14,10 @@ const catalog = buildWorkflowCatalog(served, WORKFLOW_SOURCES);
 const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(child => child.entry.id)]));
 
 describe("shared run catalog", () => {
-  it("refuses a missing compatibility projection for a workflow that requires a workbook", () => {
+  it("keeps a workflow that requires a workbook when its compatibility projection is missing", () => {
     const required = parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows).find(entry => entry.start.workbookReference !== undefined);
     expect(required).toBeDefined();
-    expect(() => launchWorkflows([required!], { workflows: [], libraries: [] })).toThrow(/WORKBOOK_COMPATIBILITY_UNAVAILABLE/u);
+    expect(launchWorkflows([required!], { workflows: [], libraries: [] }).map(entry => entry.workflowId)).toEqual([String(required!.id)]);
   });
   it("keeps hidden children and removed workflows out of the picker and catalog", () => {
     const visible = ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"];
@@ -44,7 +44,7 @@ describe("shared run catalog", () => {
     expect(runPickerGroups(buildWorkflowCatalog([{ ...served[0], code: "zz" }], servedFixtureSources([served[0]])), "zz")[0].entries[0].entry.id).toBe(served[0].workflowId);
   });
   it("shares sidebar category order and retains subordinate proving harnesses", () => {
-    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Lookup", "Separations", "Onboarding", "Work Study", "Documents"]);
+    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Lookup", "Separations", "Onboarding", "Work-Study", "Documents"]);
     const composition: RunStartWorkflow = { ...served[0], workflowId: "test-composition", role: defineWorkflowRole({ kind: "composition" }) };
     const harness: RunStartWorkflow = { ...served[0], workflowId: "test-harness", role: defineWorkflowRole({ kind: "chunk-harness", of: "test-composition", step: composition.steps[0].key }) };
     const groups = runPickerGroups(buildWorkflowCatalog([composition, harness], servedFixtureSources([composition, harness])), "");

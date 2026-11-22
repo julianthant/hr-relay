@@ -62,7 +62,7 @@ it("shows skeleton title, model chip and transcript while history loads, never t
     await shell.render(); await act(async () => assistantOpen.set(true)); await settle();
     const panel = shell.host.querySelector("#hub-panel-assistant"); assert.ok(panel);
     assert.ok(panel.querySelector(".hub-chat-title [data-slot='skeleton']"), "skeleton title");
-    assert.ok(panel.querySelector("#hub-model-trigger [data-slot='skeleton']"), "skeleton model chip");
+    assert.ok(panel.querySelector(".hub-model-text [data-slot='skeleton']"), "skeleton model chip");
     assert.ok(panel.querySelector('[aria-label="Loading chat"] [data-slot="skeleton"]'), "skeleton transcript");
     assert.doesNotMatch(panel.textContent ?? "", /Loading chat history|Loading ChatGPT account|How can I help\?|Model unavailable/u);
     release(); await settle(); await settle();

@@ -9,10 +9,36 @@ import { z } from "zod";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
-import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type EditableWorkbookWire, type SavedWorkbook, type WorkbookOperation, type WorkbookOperationReceipt, type WorkbookType } from "../../../models/dashboard/workbooks.js";
+import { decodeSavedWorkbook, encodeSavedWorkbook, EditableWorkbookWireSchema, SavedWorkbookSchema, SavedWorkbookWireSchema, type EditableWorkbookWire, type SavedWorkbook, type WorkbookOperation, type WorkbookOperationReceipt, type WorkbookType } from "../../../models/dashboard/workbooks.js";
 import { WorkbookOperationRecordSchema } from "../../../models/dashboard/workbooks.js";
 import { IsoInstantSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
-const serializeSavedWorkbook = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
+import { changeLogTriggers } from "./authority-change-log.js";
+
+const WorkbookDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
+/** Stores one workbook once, as canonical JSON addressed by its sha256; returns the digest. */
+function storeWorkbook(database: DatabaseSync, value: unknown): string {
+  // Absent optionals are dropped as the stored JSON has always dropped them.
+  const json = canonicalJsonStringify(JSON.parse(JSON.stringify(EditableWorkbookWireSchema.parse(value)))), digest = sha256Hex(json);
+  database.prepare('INSERT INTO workbook_payloads(digest,payload_json) VALUES(?,?) ON CONFLICT(digest) DO NOTHING').run(digest, json);
+  return digest;
+}
+/** A stored row's payload: the record it was written from, with its workbook stored once and named by digest. */
+function payloadJson(database: DatabaseSync, record: Readonly<{ workbook: unknown }>): string {
+  const { workbook, ...envelope } = record;
+  return JSON.stringify({ ...envelope, workbookDigest: storeWorkbook(database, workbook) });
+}
+/** Reads a stored row's payload back into the record it was written from; the caller parses it strictly. */
+function withWorkbook(database: DatabaseSync, json: string): Record<string, unknown> {
+  const { workbookDigest, ...envelope } = z.looseObject({ workbookDigest: WorkbookDigestSchema }).parse(JSON.parse(json));
+  const row = database.prepare('SELECT payload_json FROM workbook_payloads WHERE digest=?').get(workbookDigest);
+  if (row === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+  return { ...envelope, workbook: JSON.parse(z.strictObject({ payload_json: z.string() }).parse(row).payload_json) };
+}
+const savedPayloadJson = (database: DatabaseSync, record: SavedWorkbook) => payloadJson(database, encodeSavedWorkbook(record));
+/** Reads a stored row's payload into the record it was written from. */
+type PayloadReader = (json: string) => Record<string, unknown>;
+/** Before schema 38 each row embeds its workbook. */
+const embeddedPayload: PayloadReader = json => z.record(z.string(), z.unknown()).parse(JSON.parse(json));
 
 type KeyedWorkbookChange = Extract<WorkbookOperation['change'], { kind: 'patch' | 'add' }>;
 type SettledWorkbookOperation = { operation: WorkbookOperation; settled: WorkbookOperationReceipt };
@@ -230,7 +256,7 @@ export function hasOnlyInitialWorkbookType(database: DatabaseSync): boolean {
   return row.id === INITIAL_WORKBOOK_TYPE.id && canonicalJsonStringify(value) === canonicalJsonStringify(INITIAL_WORKBOOK_TYPE);
 }
 
-export const WORKBOOK_MASTER_MIGRATION = Object.freeze({ statements: [
+export const WORKBOOK_MASTER_MIGRATION = Object.freeze({ version: 13, statements: [
   `ALTER TABLE workbook_library ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{"typeId":"general","sharePoint":null}' CHECK(json_valid(metadata_json))`,
   `ALTER TABLE workbook_library ADD COLUMN ownership_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(ownership_json))`,
   `CREATE TABLE workbook_creations (id TEXT PRIMARY KEY REFERENCES workbook_library(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json))) STRICT`,
@@ -273,8 +299,14 @@ export const WORKBOOK_LIBRARY_CATALOG_MIGRATION = Object.freeze({ statements: [
 ] });
 
 const ACTION_UPDATE_GUARD = `CREATE TRIGGER workbook_library_actions_update BEFORE UPDATE ON workbook_library_actions BEGIN SELECT RAISE(ABORT,'workbook-library-action-immutable'); END`;
-/** Schema 30: every library state and recorded action result starts unpinned with no manual tags. */
+/** Schema 30: every library state and recorded action result starts unpinned with no manual tags; a stored pin or tag is not schema-29 data and refuses the upgrade. */
 export const WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION = Object.freeze({ version: 30, statements: Object.freeze([
+  `CREATE TABLE workbook_pin_tags_upgrade_guard (refused INTEGER CONSTRAINT workbook_pin_tags_already_stored CHECK(refused=0)) STRICT`,
+  `INSERT INTO workbook_pin_tags_upgrade_guard SELECT 1 FROM workbook_library_state
+    WHERE json_type(payload_json,'$.pinned') IS NOT NULL OR json_type(payload_json,'$.tags') IS NOT NULL LIMIT 1`,
+  `INSERT INTO workbook_pin_tags_upgrade_guard SELECT 1 FROM workbook_library_actions
+    WHERE json_type(payload_json,'$.result.pinned') IS NOT NULL OR json_type(payload_json,'$.result.tags') IS NOT NULL LIMIT 1`,
+  'DROP TABLE workbook_pin_tags_upgrade_guard',
   `UPDATE workbook_library_state SET payload_json=json_set(payload_json,'$.pinned',json('false'),'$.tags',json('[]'))`,
   'DROP TRIGGER workbook_library_actions_update',
   `UPDATE workbook_library_actions SET payload_json=json_set(payload_json,'$.result.pinned',json('false'),'$.result.tags',json('[]'))`,
@@ -286,6 +318,70 @@ export const WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION = Object.freeze({ version: 3
   `ALTER TABLE workbook_library_state ADD COLUMN sync_json TEXT CHECK(sync_json IS NULL OR json_valid(sync_json))`,
 ]) });
 
+/**
+ * Before schema 13 each library row has one history row for every version 1 to its own, and the latest is the live record.
+ * Migration 13 builds the creation record and named versions from that history, so a gap or a differing latest record refuses the upgrade first.
+ */
+export function assertPreMasterWorkbookHistory(database: DatabaseSync): void {
+  const saved = (value: unknown) => stored(() => {
+    const row = RowSchema.parse(value), record = decodeSavedWorkbook(SavedWorkbookWireSchema.parse(JSON.parse(row.payload_json)));
+    if (record.libraryId !== row.id || record.version !== row.version || record.createdAt !== row.created_at || record.savedAt !== row.saved_at) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return record;
+  });
+  const serialized = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
+  for (const raw of database.prepare('SELECT id,version,created_at,saved_at,payload_json FROM workbook_library ORDER BY id').all()) {
+    const record = saved(raw);
+    const history = database.prepare('SELECT workbook_id AS id,version,created_at,saved_at,payload_json FROM workbook_library_history WHERE workbook_id=? ORDER BY version').all(record.libraryId).map(saved);
+    const latest = history.at(-1);
+    if (latest === undefined || history.length !== record.version || history.some((entry, index) => entry.version !== index + 1) || serialized(latest) !== serialized(record)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+  }
+}
+
+/** The tables whose payload names a stored workbook by digest, with the strict schema each stored before schema 38. */
+const PAYLOAD_TABLES = Object.freeze([
+  { table: 'workbook_library', schema: SavedWorkbookWireSchema },
+  { table: 'workbook_creations', schema: SavedWorkbookWireSchema },
+  { table: 'workbook_library_history', schema: SavedWorkbookWireSchema },
+  { table: 'workbook_library_snapshots', schema: WorkbookLibrarySnapshotSchema },
+] as const);
+/** The guards that refuse rewriting retained evidence; migration 38 drops them while it moves each workbook out and recreates them unchanged. */
+const RETAINED_UPDATE_GUARDS = ['workbook_creations_immutable', 'workbook_library_history_immutable', 'workbook_library_snapshots_update'].map(name => {
+  const statement = [...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements].find(candidate => candidate.startsWith(`CREATE TRIGGER ${name} `));
+  if (statement === undefined) throw new Error(`workbook-retained-guard-missing:${name}`);
+  return { name, statement };
+});
+export const WORKBOOK_PAYLOAD_CONVERSION_ID = 'workbook-payload-forward-conversion:v1';
+/**
+ * Schema 38: each distinct workbook is stored once in workbook_payloads as canonical JSON addressed by its sha256. The library,
+ * its creation record, its named versions and its snapshots keep their payload without the workbook and name it by `workbookDigest`.
+ */
+/** The payload table with its guards: a payload is never rewritten, and never removed while a row still names it. */
+export const WORKBOOK_PAYLOAD_TABLE = deepFreeze({ statements: [
+  `CREATE TABLE workbook_payloads (digest TEXT PRIMARY KEY CHECK(length(digest)=64), payload_json TEXT NOT NULL CHECK(json_valid(payload_json))) STRICT`,
+  `CREATE TRIGGER workbook_payloads_immutable BEFORE UPDATE ON workbook_payloads BEGIN SELECT RAISE(ABORT,'workbook-evidence-immutable'); END`,
+  `CREATE TRIGGER workbook_payloads_retained BEFORE DELETE ON workbook_payloads WHEN ${PAYLOAD_TABLES.map(({ table }) =>
+    `EXISTS(SELECT 1 FROM ${table} WHERE json_extract(payload_json,'$.workbookDigest')=OLD.digest)`).join(' OR ')} BEGIN SELECT RAISE(ABORT,'workbook-payload-referenced'); END`,
+] });
+export const WORKBOOK_PAYLOAD_MIGRATION = deepFreeze({ version: 38, statements: [
+  ...WORKBOOK_PAYLOAD_TABLE.statements,
+  ...changeLogTriggers('workbook_payloads'),
+  ...RETAINED_UPDATE_GUARDS.map(({ name }) => `DROP TRIGGER ${name}`),
+  `SELECT '${WORKBOOK_PAYLOAD_CONVERSION_ID}'`,
+  ...RETAINED_UPDATE_GUARDS.map(({ statement }) => statement),
+] });
+/** The forward conversion inside migration 38: every stored workbook row is parsed strictly, its workbook stored once, and its payload rewritten. */
+export function migrateWorkbookPayloads(database: DatabaseSync): void {
+  for (const { table, schema } of PAYLOAD_TABLES) {
+    for (const raw of database.prepare(`SELECT rowid AS row_id,payload_json FROM ${table} ORDER BY rowid`).all()) {
+      const row = z.strictObject({ row_id: z.number().int(), payload_json: z.string() }).parse(raw);
+      const record = schema.parse(JSON.parse(row.payload_json));
+      database.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`).run(payloadJson(database, record), row.row_id);
+    }
+  }
+}
+
 const RowSchema = z.object({ id: z.string(), version: z.number().int().positive(), created_at: z.string(), saved_at: z.string(), payload_json: z.string() });
 const SnapshotRowSchema = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() });
 function selectionFromRow(value: unknown) {
@@ -295,9 +391,9 @@ function selectionFromRow(value: unknown) {
   for (const [column, expected] of Object.entries(columns)) if (row[column as keyof typeof columns] !== expected) throw new Error(`workflow_workbook_selections-row-${column}-mismatch`);
   return record;
 }
-function fromRow(value: unknown): SavedWorkbook {
+function fromRow(read: PayloadReader, value: unknown): SavedWorkbook {
   try {
-    const row = RowSchema.parse(value), record = decodeSavedWorkbook(JSON.parse(row.payload_json));
+    const row = RowSchema.parse(value), record = decodeSavedWorkbook(read(row.payload_json));
     if (record.libraryId !== row.id || record.version !== row.version || record.createdAt !== row.created_at || record.savedAt !== row.saved_at) throw new Error('workbook-column-conflict');
     return record;
   } catch (cause) { throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT', { cause }); }
@@ -334,17 +430,60 @@ for (const phase of ['absent', 'queued', 'applied', 'resolve-required', 'refused
   if (WORKBOOK_OPERATION_TRANSITIONS[phase] === undefined) throw new Error(`workbook-operation-table-incomplete:${phase}`);
 }
 
+/** A stored row's JSON characters, counting the workbook payload its digest names. */
+function storedCharacters(database: DatabaseSync, json: string): number {
+  const { workbookDigest } = z.looseObject({ workbookDigest: WorkbookDigestSchema }).parse(JSON.parse(json));
+  const row = z.strictObject({ size: z.number().int() }).parse(database.prepare('SELECT length(payload_json) AS size FROM workbook_payloads WHERE digest=?').get(workbookDigest));
+  return json.length + row.size;
+}
+/** Least recently used entries, kept while their stored JSON totals at most `limit` characters. */
+function storedSizeCache<Value extends Readonly<{ characters: number }>>(limit: number) {
+  const entries = new Map<string, Value>();
+  let size = 0;
+  const drop = (key: string) => {
+    const value = entries.get(key);
+    if (value === undefined) return;
+    entries.delete(key);
+    size -= value.characters;
+  };
+  return {
+    get(key: string) {
+      const value = entries.get(key);
+      if (value !== undefined) { entries.delete(key); entries.set(key, value); }
+      return value;
+    },
+    set(key: string, value: Value) {
+      drop(key);
+      entries.set(key, value);
+      size += value.characters;
+      for (const oldest of entries.keys()) { if (size <= limit) break; drop(oldest); }
+    },
+  };
+}
+
 export function createWorkbookLibraryRepository(deps: Readonly<{
   database: DatabaseSync;
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
   read<T>(work: () => T): T;
   changeKey?(): Readonly<{ authorityGeneration: number; dataVersion: number; totalChanges: number }> | undefined;
+  /** Stored JSON characters each decode cache keeps across change keys; 32 MiB by default. */
+  decodedCacheCharacters?: number;
   /** Reads a store from before schema 30, whose states carry no pin or tags yet. */
   beforePinTags?: boolean;
+  /** Reads a store from before schema 38, whose rows embed their workbooks. */
+  embeddedWorkbooks?: boolean;
 }>): WorkbookLibraryRepository {
   const { database } = deps;
-  const decodedRecords = new Map<string, { row: z.infer<typeof RowSchema>; record: SavedWorkbook }>();
-  const decodedSnapshots = new Map<string, { row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema> }>();
+  const payload: PayloadReader = deps.embeddedWorkbooks === true ? embeddedPayload : json => withWorkbook(database, json);
+  const withPinTags = (state: unknown) => {
+    if (deps.beforePinTags !== true) return state;
+    // A predecessor state is strict: a pin or tags already present is not schema-29 data.
+    if (typeof state !== 'object' || state === null || 'pinned' in state || 'tags' in state) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return { ...state, pinned: false, tags: [] };
+  };
+  const decodedCacheCharacters = deps.decodedCacheCharacters ?? 32 * 1024 * 1024;
+  const decodedRecords = storedSizeCache<{ row: z.infer<typeof RowSchema>; record: SavedWorkbook; characters: number }>(decodedCacheCharacters);
+  const decodedSnapshots = storedSizeCache<{ row: z.infer<typeof SnapshotRowSchema>; snapshot: z.infer<typeof WorkbookLibrarySnapshotSchema>; characters: number }>(decodedCacheCharacters);
   let cache: {
     key: string;
     records: Map<string, SavedWorkbook>;
@@ -369,7 +508,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       entry.records.set(row.id, previous.record);
       return previous.record;
     }
-    const record = fromRow(row);
+    const record = fromRow(payload, row);
     if (entry === undefined) return record;
     // Frozen Dates still have setters; each cell read gets its own Date.
     const frozen = deepFreeze({ ...record, workbook: { ...record.workbook,
@@ -383,15 +522,9 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       })) })),
     } });
     entry.records.set(row.id, frozen);
-    decodedRecords.set(row.id, { row, record: frozen });
+    decodedRecords.set(row.id, { row, record: frozen, characters: storedCharacters(database, row.payload_json) });
     return frozen;
   });
-  const withPinTags = (state: unknown) => {
-    if (deps.beforePinTags !== true) return state;
-    // A predecessor state is strict: a pin or tags already present is not schema-29 data.
-    if (typeof state !== 'object' || state === null || 'pinned' in state || 'tags' in state) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-    return { ...state, pinned: false, tags: [] };
-  };
   const lastUsed = (workflowId: string) => stored(() => {
     const id = WorkflowIdSchema.parse(workflowId);
     const row = database.prepare('SELECT * FROM workflow_workbook_selections WHERE workflow_id=?').get(id);
@@ -440,18 +573,18 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     const row = SnapshotRowSchema.parse(database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE id=?').get(snapshotId));
     const previous = entry === undefined ? undefined : decodedSnapshots.get(id);
     const snapshot = previous !== undefined && row.id === previous.row.id && row.workbook_id === previous.row.workbook_id && row.payload_json === previous.row.payload_json
-      ? previous.snapshot : WorkbookLibrarySnapshotSchema.parse(JSON.parse(row.payload_json));
+      ? previous.snapshot : WorkbookLibrarySnapshotSchema.parse(payload(row.payload_json));
     if (row.id !== snapshot.id || row.workbook_id !== id || snapshot.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     if (entry === undefined) return snapshot;
     const frozen = deepFreeze(snapshot);
     entry.snapshots.set(snapshotId, frozen);
-    decodedSnapshots.set(id, { row, snapshot: frozen });
+    decodedSnapshots.set(id, { row, snapshot: frozen, characters: storedCharacters(database, row.payload_json) });
     return frozen;
   });
   const putLibrarySnapshot = (id: string, versionId: string, workbook: z.infer<typeof WorkbookLibrarySnapshotSchema>["workbook"]) => {
     const snapshotId = JSON.stringify([id, versionId]);
     const snapshot = WorkbookLibrarySnapshotSchema.parse({ id: snapshotId, libraryId: id, workbook });
-    database.prepare('INSERT INTO workbook_library_snapshots(id,workbook_id,payload_json) VALUES(?,?,?)').run(snapshotId, id, JSON.stringify(snapshot));
+    database.prepare('INSERT INTO workbook_library_snapshots(id,workbook_id,payload_json) VALUES(?,?,?)').run(snapshotId, id, payloadJson(database, snapshot));
     return snapshotId;
   };
   const libraryVersion = (id: string, versionId?: string) => {
@@ -542,7 +675,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
           if (database.prepare('SELECT 1 FROM workbook_library_history WHERE workbook_id=? AND name=?').get(id, operation.change.name))
             result = { ...result, state: 'refused', reason: 'invalid' };
           else {
-            database.prepare('INSERT INTO workbook_library_history(workbook_id,name,provenance,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?,?,?)').run(id, operation.change.name, 'operator', before.version, before.createdAt, before.savedAt, serializeSavedWorkbook(before)); changes++;
+            database.prepare('INSERT INTO workbook_library_history(workbook_id,name,provenance,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?,?,?)').run(id, operation.change.name, 'operator', before.version, before.createdAt, before.savedAt, savedPayloadJson(database, before)); changes++;
           }
         } else {
           let nextMeta = meta;
@@ -560,7 +693,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
             const updated = SavedWorkbookSchema.parse({ ...before, version: before.version + 1, savedAt: operation.at,
               workbook: decodeEditableWorkbook(applied.workbook) });
             result = { ...result, version: updated.version };
-            database.prepare('UPDATE workbook_library SET version=?,saved_at=?,payload_json=?,metadata_json=?,ownership_json=? WHERE id=?').run(updated.version, updated.savedAt, serializeSavedWorkbook(updated), canonicalJsonStringify(nextMeta), canonicalJsonStringify(applied.ownership), id); changes++;
+            database.prepare('UPDATE workbook_library SET version=?,saved_at=?,payload_json=?,metadata_json=?,ownership_json=? WHERE id=?').run(updated.version, updated.savedAt, savedPayloadJson(database, updated), canonicalJsonStringify(nextMeta), canonicalJsonStringify(applied.ownership), id); changes++;
             const state = libraryState(id);
             if (state.removed) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
             const versionId = `revision:${updated.version}`;
@@ -589,10 +722,10 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   };
   const revisionBaseline = (id: string, version: number, live: SavedWorkbook) => {
     const creationRow = database.prepare('SELECT payload_json FROM workbook_creations WHERE id=?').get(id);
-    const creation = decodeSavedWorkbook(JSON.parse(z.object({ payload_json: z.string() }).parse(creationRow).payload_json));
+    const creation = decodeSavedWorkbook(payload(z.object({ payload_json: z.string() }).parse(creationRow).payload_json));
     if (creation.libraryId !== id || creation.version !== 1 || creation.createdAt !== live.createdAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     const migration = database.prepare("SELECT * FROM workbook_library_history WHERE workbook_id=? AND provenance='migration' AND version<=? ORDER BY version DESC LIMIT 1").get(id, version);
-    const baseline = migration === undefined ? creation : fromRow({ ...migration, id });
+    const baseline = migration === undefined ? creation : fromRow(payload, { ...migration, id });
     if (baseline.createdAt !== live.createdAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return baseline;
   };
@@ -656,7 +789,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     }
     const named = database.prepare('SELECT * FROM workbook_library_history WHERE workbook_id=? AND version=? ORDER BY name LIMIT 1').get(id, version);
     if (named === undefined) return undefined;
-    const proof = fromRow({ ...named, id });
+    const proof = fromRow(payload, { ...named, id });
     if (proof.createdAt !== createdAt || proof.savedAt !== savedAt) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return encodeSavedWorkbook(proof).workbook;
   };
@@ -809,8 +942,8 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     if (raw === undefined) return undefined;
     return stored(() => {
       const row = z.strictObject({ id: z.string(), workbook_id: z.string(), operation_id: z.string(), digest: z.string(), payload_json: z.string() }).parse(raw);
-      const payload = z.looseObject({ result: z.looseObject({}) }).parse(JSON.parse(row.payload_json));
-      const record = WorkbookLibraryActionRecordSchema.parse({ ...payload, result: withPinTags(payload.result) });
+      const parsed = z.looseObject({ result: z.looseObject({}) }).parse(JSON.parse(row.payload_json));
+      const record = WorkbookLibraryActionRecordSchema.parse({ ...parsed, result: withPinTags(parsed.result) });
       if (record.libraryId !== row.workbook_id || record.action.operationId !== row.operation_id
         || row.id !== JSON.stringify([record.libraryId, record.action.operationId])
         || sha256Hex(canonicalJsonStringify(record.action)) !== row.digest) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
@@ -871,6 +1004,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       return cached.catalog;
     })),
     libraryState: id => storage(() => deps.read(() => libraryState(id))),
+    atomically: work => storage(() => deps.mutate(() => ({ result: work(), changes: 0 }))),
     recordSync: (id, value) => storage(() => deps.mutate(() => {
       const record = WorkbookLibrarySyncRecordSchema.parse(value);
       const changes = Number(database.prepare('UPDATE workbook_library_state SET sync_json=? WHERE id=?').run(canonicalJsonStringify(record), id).changes);
@@ -991,7 +1125,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     create: (recordValue, origin = { kind: 'local' }) => storage(() => deps.mutate(() => {
       const record = SavedWorkbookSchema.parse(recordValue);
       if (record.version !== 1 || current(record.libraryId)) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
-      const json = serializeSavedWorkbook(record);
+      const json = savedPayloadJson(database, record);
       database.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, record.createdAt, record.savedAt, json);
       database.prepare('INSERT INTO workbook_creations(id,payload_json) VALUES(?,?)').run(record.libraryId, json);
       const state = WorkbookLibraryStateSchema.parse({ libraryId: record.libraryId, revision: 1, selectedVersionId: 'original', removed: false, pinned: false, tags: [], origin,
@@ -1007,7 +1141,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     revision,
     creation: id => storage(() => deps.read(() => {
       const row = database.prepare('SELECT payload_json FROM workbook_creations WHERE id=?').get(id);
-      return row === undefined ? undefined : stored(() => decodeSavedWorkbook(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json)));
+      return row === undefined ? undefined : stored(() => decodeSavedWorkbook(payload(z.object({ payload_json: z.string() }).parse(row).payload_json)));
     })),
     list: () => storage(() => deps.read(listCurrent)),
     listWithType: () => storage(() => deps.read(() =>
@@ -1023,7 +1157,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       required(id);
       return database.prepare('SELECT * FROM workbook_library_history WHERE workbook_id=? ORDER BY version,name').all(id).map(raw => {
         const row = z.object({ name: z.string(), provenance: z.string() }).parse(raw);
-        return stored(() => WorkbookNamedVersionSchema.parse({ ...row, snapshot: encodeSavedWorkbook(fromRow({ ...raw, id })) }));
+        return stored(() => WorkbookNamedVersionSchema.parse({ ...row, snapshot: encodeSavedWorkbook(fromRow(payload, { ...raw, id })) }));
       });
     })),
     types: () => storage(() => deps.read(() => database.prepare('SELECT payload_json FROM workbook_types ORDER BY id').all().map(row => WorkbookTypeSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json))))),
@@ -1077,18 +1211,25 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   return repository;
 }
 
-export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true, syncStatus = pinTags): number {
+/** Validates the whole library in the layout of its schema: master (13), catalog (18), pin and tags (30), sync status (36), payloads (38). */
+export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true, syncStatus = pinTags, payloads = syncStatus): number {
+  const read: PayloadReader = payloads ? json => withWorkbook(database, json) : embeddedPayload;
   if (!master) {
-    const records = database.prepare('SELECT * FROM workbook_library').all().map(fromRow);
+    const records = database.prepare('SELECT * FROM workbook_library').all().map(raw => fromRow(read, raw));
     return records.reduce((total, record) => {
-      const history = database.prepare('SELECT workbook_id AS id,version,created_at,saved_at,payload_json FROM workbook_library_history WHERE workbook_id=? ORDER BY version').all(record.libraryId).map(fromRow);
-      if (history.length !== record.version || history.some((entry, index) => entry.version !== index + 1) || serializeSavedWorkbook(history[history.length - 1]) !== serializeSavedWorkbook(record)) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      const history = database.prepare('SELECT workbook_id AS id,version,created_at,saved_at,payload_json FROM workbook_library_history WHERE workbook_id=? ORDER BY version').all(record.libraryId).map(raw => fromRow(read, raw));
+      if (history.length !== record.version || history.some((entry, index) => entry.version !== index + 1) || canonicalJsonStringify(encodeSavedWorkbook(history[history.length - 1])) !== canonicalJsonStringify(encodeSavedWorkbook(record))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       return total + 1 + history.length;
     }, 0);
   }
-  const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('workbook-validation-read-only'); }, beforePinTags: !pinTags });
+  const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('workbook-validation-read-only'); }, beforePinTags: !pinTags, embeddedWorkbooks: !payloads });
   let count = repository.types().length;
-  const records = database.prepare('SELECT * FROM workbook_library ORDER BY id').all().map(fromRow);
+  if (payloads) for (const raw of database.prepare('SELECT digest,payload_json FROM workbook_payloads ORDER BY digest').iterate()) {
+    const row = z.strictObject({ digest: WorkbookDigestSchema, payload_json: z.string() }).parse(raw);
+    if (sha256Hex(row.payload_json) !== row.digest || canonicalJsonStringify(EditableWorkbookWireSchema.parse(JSON.parse(row.payload_json))) !== row.payload_json) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    count++;
+  }
+  const records = database.prepare('SELECT * FROM workbook_library ORDER BY id').all().map(raw => fromRow(read, raw));
   for (const record of records) {
     const creation = repository.creation(record.libraryId), metadata = repository.metadata(record.libraryId);
     if (!creation || creation.version !== 1 || creation.createdAt !== record.createdAt || (!repository.types().some(type => type.id === metadata.typeId))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
@@ -1103,30 +1244,29 @@ export function validateWorkbookLibrary(database: DatabaseSync, master = true, c
         if (receipt.sequence !== row.sequence || receipt.libraryId !== record.libraryId || receipt.operationId !== row.operation_id || receipt.version > record.version) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
       }
     }
-    if (catalog) {
-      const state = repository.libraryState(record.libraryId);
-      const snapshots = database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE workbook_id=? ORDER BY id').all(record.libraryId);
-      const ids = new Set<string>();
-      for (const raw of snapshots) {
-        const row = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() }).parse(raw);
-        const snapshot = WorkbookLibrarySnapshotSchema.parse(JSON.parse(row.payload_json));
-        if (snapshot.id !== row.id || snapshot.libraryId !== row.workbook_id || snapshot.libraryId !== record.libraryId) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-        ids.add(snapshot.id);
-      }
-      if (state.versions.some(version => !ids.has(version.snapshotId))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      if (syncStatus) {
-        const sync = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(record.libraryId)).sync_json;
-        if (sync !== null) WorkbookLibrarySyncRecordSchema.parse(JSON.parse(sync));
-      }
-      count += snapshots.length;
-      const actions = database.prepare('SELECT operation_id FROM workbook_library_actions WHERE workbook_id=? ORDER BY id').all(record.libraryId);
-      for (const raw of actions) {
-        const operationId = z.strictObject({ operation_id: z.string() }).parse(raw).operation_id;
-        const action = repository.libraryActionRecord(record.libraryId, operationId);
-        if (action === undefined || action.result.revision > state.revision) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      }
-      count += 1 + actions.length;
+    if (!catalog) continue;
+    const state = repository.libraryState(record.libraryId);
+    const snapshots = database.prepare('SELECT id,workbook_id,payload_json FROM workbook_library_snapshots WHERE workbook_id=? ORDER BY id').all(record.libraryId);
+    const ids = new Set<string>();
+    for (const raw of snapshots) {
+      const row = z.strictObject({ id: z.string(), workbook_id: z.string(), payload_json: z.string() }).parse(raw);
+      const snapshot = stored(() => WorkbookLibrarySnapshotSchema.parse(read(row.payload_json)));
+      if (snapshot.id !== row.id || snapshot.libraryId !== row.workbook_id || snapshot.libraryId !== record.libraryId) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+      ids.add(snapshot.id);
     }
+    if (state.versions.some(version => !ids.has(version.snapshotId))) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    if (syncStatus) {
+      const sync = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(record.libraryId)).sync_json;
+      if (sync !== null) WorkbookLibrarySyncRecordSchema.parse(JSON.parse(sync));
+    }
+    count += snapshots.length;
+    const actions = database.prepare('SELECT operation_id FROM workbook_library_actions WHERE workbook_id=? ORDER BY id').all(record.libraryId);
+    for (const raw of actions) {
+      const operationId = z.strictObject({ operation_id: z.string() }).parse(raw).operation_id;
+      const action = repository.libraryActionRecord(record.libraryId, operationId);
+      if (action === undefined || action.result.revision > state.revision) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    count += 1 + actions.length;
   }
   return count;
 }

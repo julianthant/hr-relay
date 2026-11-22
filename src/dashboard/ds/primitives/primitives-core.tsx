@@ -13,6 +13,7 @@ import { Loader2, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { ShadcnButton } from "./shadcn-button.js";
 import { ShadcnBadge } from "./shadcn-badge.js";
+import { useSkeletonWait } from "./skeleton-wait-model.js";
 import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
 
 /** Core interactive primitives.
@@ -23,9 +24,12 @@ import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/to
 /** Button variants, and the choice is semantic, not decorative
  * primary — the ONE affirmative action on a surface (Approve, Run, Save) */
 const BUTTON_TEXT = "text-[13px]";
+/** Press is one step darker than hover; nothing moves or scales. */
+const PRESS = "active:bg-[color-mix(in_srgb,var(--ds-fg)_14%,transparent)]";
 const SOFT = cn(
   "rounded-[8px] bg-[var(--ds-soft-bg)] text-[color:var(--ds-fg)] border-transparent",
   "hover:bg-[var(--ds-soft-bg-hover)]",
+  PRESS,
 );
 const buttonVariants = cva(
   cn(
@@ -34,7 +38,6 @@ const buttonVariants = cva(
     dsRadius.md,
     dsFocus,
     dsMotion.fast,
-    "active:translate-y-px",
     "disabled:pointer-events-none disabled:opacity-45",
   ),
   {
@@ -42,11 +45,11 @@ const buttonVariants = cva(
       variant: {
         primary: cn(
           "bg-[var(--ds-accent)] text-[color:var(--ds-accent-fg)] border-transparent",
-          "hover:bg-[var(--ds-accent-hover)]",
+          "hover:bg-[var(--ds-accent-hover)] active:bg-[color-mix(in_srgb,var(--ds-accent)_82%,black)]",
         ),
         brand: cn(
           "bg-[var(--ds-brand-solid-bg)] text-[color:var(--ds-brand-solid-fg)] border-transparent",
-          "hover:bg-[var(--ds-brand-solid-hover)]",
+          "hover:bg-[var(--ds-brand-solid-hover)] active:bg-[color-mix(in_srgb,var(--ds-brand-solid-bg)_82%,black)]",
         ),
         /** Soft: grey fill, no border. Most actions. */
         secondary: SOFT,
@@ -56,27 +59,29 @@ const buttonVariants = cva(
           "bg-transparent text-[color:var(--ds-fg)]",
           "border-[color:var(--ds-border)]",
           "hover:bg-[var(--ds-surface-3)]",
+          PRESS,
         ),
         ghost: cn(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+          PRESS,
         ),
         /** Soft red: a red-tinted fill with red text; never solid red. */
         danger: cn(
           "bg-[color-mix(in_srgb,var(--ds-danger)_14%,transparent)] text-[color:var(--ds-danger)] border-transparent",
-          "hover:bg-[color-mix(in_srgb,var(--ds-danger)_22%,transparent)]",
+          "hover:bg-[color-mix(in_srgb,var(--ds-danger)_22%,transparent)] active:bg-[color-mix(in_srgb,var(--ds-danger)_30%,transparent)]",
         ),
         dangerGhost: cn(
           "bg-transparent text-[color:var(--ds-danger)]",
           "border-[color:var(--ds-danger-border)]",
-          "hover:bg-[var(--ds-danger-quiet)]",
+          "hover:bg-[var(--ds-danger-quiet)] active:bg-[color-mix(in_srgb,var(--ds-danger)_20%,transparent)]",
         ),
       },
       size: {
-        // Every button label is 13px; md, lg and toolbar share the 28px height.
+        // Every button label is 13px: md is 28px, lg is 32px, both with the 8px corner.
         sm: cn("h-[var(--ds-h-sm)] px-[var(--ds-space-snug)] gap-[var(--ds-space-tight)]", BUTTON_TEXT, dsText.flush),
         md: cn("h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-cozy)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
-        lg: cn("h-[var(--ds-h-md)] rounded-[8px] px-[var(--ds-space-loose)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
+        lg: cn("h-[var(--ds-h-lg)] rounded-[8px] px-[var(--ds-space-loose)] gap-[var(--ds-space-snug)]", BUTTON_TEXT, dsText.flush),
         /** A control in an ACTION BAR. The same box as `toolbarControl` — same
  * height token, same inset, same gap, same type — because the one */
         toolbar: cn(
@@ -174,7 +179,6 @@ const iconButtonVariants = cva(
     dsRadius.md,
     dsFocus,
     dsMotion.fast,
-    "active:translate-y-px",
     "disabled:pointer-events-none disabled:opacity-45",
   ),
   {
@@ -183,30 +187,34 @@ const iconButtonVariants = cva(
         ghost: cn(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+          PRESS,
         ),
         input: cn(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+          PRESS,
         ),
         outline: cn(
           "bg-transparent text-[color:var(--ds-fg-secondary)]",
           "border-[color:var(--ds-border-strong)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+          PRESS,
         ),
         danger: cn(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-danger-quiet)] hover:text-[color:var(--ds-danger)]",
+          "active:bg-[color-mix(in_srgb,var(--ds-danger)_20%,transparent)]",
         ),
         "danger-outline": cn(
           "bg-transparent border-[color:var(--ds-border-strong)] text-[color:var(--ds-fg-secondary)]",
           "hover:bg-[var(--ds-danger-quiet)] hover:text-[color:var(--ds-danger)]",
+          "active:bg-[color-mix(in_srgb,var(--ds-danger)_20%,transparent)]",
         ),
       },
       size: {
         xs: "size-6 rounded-[6px]",
         sm: "size-[var(--ds-h-sm)] rounded-[6px]",
         md: "size-[var(--ds-h-md)] rounded-[8px]",
-        lg: "size-[var(--ds-h-lg)] rounded-[8px]",
       },
     },
     defaultVariants: { variant: "ghost", size: "md" },
@@ -407,9 +415,7 @@ export function Chip({
           dsFocus,
           dsMotion.fast,
           "hover:bg-[var(--ds-surface-3)]",
-          // The same 1px dip Button uses. A filter chip is a button; without
-          // this it is a pressable that ignores a press.
-          "active:translate-y-px",
+          "active:bg-[color-mix(in_srgb,var(--ds-fg)_14%,transparent)]",
         )}
       >
         {body}
@@ -473,14 +479,16 @@ export function Spinner({ className, label = "Loading" }: { className?: string; 
   );
 }
 
-/** Match the incoming content’s dimensions so loading does not shift layout. */
+/** Match the incoming content’s dimensions so loading does not shift layout. Invisible until the read is slow. */
 export function Skeleton({ className }: { className?: string }) {
+  const waiting = useSkeletonWait();
   return (
     <span
       data-slot="skeleton"
       aria-hidden
       className={cn(
         "block animate-pulse motion-reduce:animate-none bg-[var(--ds-surface-3)]",
+        waiting && "invisible",
         dsRadius.sm,
         "h-3 w-full",
         className,

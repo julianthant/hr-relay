@@ -23,7 +23,6 @@ import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/lo
 import { RunWorkbookReferenceChoiceWireSchema, FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { DashboardCommandRequestSchema, CommandResultSchema, ParkedWriteCheckTargetSchema, type DashboardCommandRequest } from "../../../src/rules/commands/commands.js";
 import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
@@ -482,7 +481,7 @@ describe("served Logs decision authority", () => {
     assert.equal(h.refreshed, 1);
     await h.render(selectionAt(3));
     assert.equal(h.state?.state, "failed");
-    assert.equal(h.state?.error, formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text);
+    assert.equal(h.state?.error, "These logs don't match this run.");
     assert.equal(h.refreshed, 1);
   });
 
@@ -492,7 +491,7 @@ describe("served Logs decision authority", () => {
     const h = await harness(client);
     await h.render(selectionAt(4));
     assert.equal(h.state?.state, "failed");
-    assert.equal(h.state?.error, formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text);
+    assert.equal(h.state?.error, "These logs don't match this run.");
     assert.equal(h.refreshed, 0);
   });
 });

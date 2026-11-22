@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { systemClock } from "../../rules/time/clock.js";
 
-/** One second: `fmtElapsed`'s smallest unit, so nothing finer would be visible. */
+/** One second: `formatDuration`'s smallest unit, so nothing finer would be visible. */
 const SERVED_CLOCK_TICK_MS = 1000;
 
 interface ServedClockOrigin {

@@ -1,4 +1,4 @@
-import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
+import { LAUNCH_CLEARED, useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StartCommandRequestSchema, CommandIdentityConflictError, type DashboardCommandRequest, type BulkRunCommandOutcome, type CommandResult } from "../../../rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
@@ -26,7 +26,13 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
   const [localOpen, setLocalOpen] = useState(initialOpen);
   const open = navigation?.start ?? localOpen;
   const routeSetStart = navigation?.setStart;
-  const setOpen = useCallback((next: boolean) => routeSetStart ? routeSetStart(next) : setLocalOpen(next), [routeSetStart]);
+  const routeUpdate = navigation?.update;
+  /** Closing also drops the dialog's coordinates, so the URL keeps nothing of it. */
+  const setOpen = useCallback((next: boolean) => {
+    if (routeSetStart === undefined || routeUpdate === undefined) { setLocalOpen(next); return; }
+    if (!next) routeUpdate(LAUNCH_CLEARED, "replace");
+    routeSetStart(next);
+  }, [routeSetStart, routeUpdate]);
   const [routedRerunSource, setRerunSource] = useViewState("launchRerun", undefined);
   const [rerunDraft, setRerunDraft] = useState<{ source: RerunLaunchSource; text: string; authority: object | undefined }>();
   // Route updates re-parse the whole view, so keep the source's identity while its value is unchanged.
@@ -62,9 +68,8 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authori
 export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[], compatibility: WorkbookCompatibility): readonly RunStartWorkflow[] {
   return workflows.map((entry) => {
     const projection = compatibility.workflows.find(workflow => workflow.workflowId === entry.id);
-    if (entry.start.workbookReference !== undefined && projection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${entry.id}`);
     return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
-    role: entry.role, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
+    role: entry.role, icon: entry.icon, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,
     ...(entry.start.rows === undefined ? {} : { rows: entry.start.rows }),
     spreadsheetIntake: entry.start.spreadsheetIntake,

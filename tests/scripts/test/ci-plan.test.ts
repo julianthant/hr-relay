@@ -35,6 +35,10 @@ describe("flat CI plan", () => {
     for (const invalid of [{ ...fast, base: "staging" }, { ...fast, event: "workflow_dispatch" }]) {
       expect(() => createCiPlan(invalid)).toThrow("Fast CI requires a development pull request.");
     }
+    expect(createCiPlan({ ...fast, event: "push", head: "task/ci/push" })).toEqual(plan);
+    for (const invalid of [{ ...fast, event: "push" }, context("portable", { event: "push", head: "task/ci/push" })]) {
+      expect(() => createCiPlan(invalid)).toThrow("Push CI runs only fast checks on task branches.");
+    }
   });
 
   it.each(["portable", "release"])("selects perf and smoke on ready %s pull requests only", workflow => {

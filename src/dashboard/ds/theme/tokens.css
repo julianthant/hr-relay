@@ -4,7 +4,7 @@
    The single source of every color, size, radius, shadow, focus ring and */
 
 :root {
-  --ds-sidebar-width: 312px; /* Settings sidebar and workflow rail: one width, never shrinks */
+  --ds-sidebar-width: 264px; /* Settings sidebar and workflow rail: one width, never shrinks */
   --ds-layer-bar: 20; /* Sessions bar < floating assistant < drawer 30 < dialog and scrim 40 < menu 45 < toast 50 < tooltip 60 */
   --ds-layer-assistant: 25;
   --ds-layer-menu: 45;
@@ -26,15 +26,15 @@
   --ds-picker-bg: color-mix(in srgb, var(--ds-fg) 3%, transparent); /* pickers and bordered buttons: the Codex +6 */
   --ds-picker-bg-hover: color-mix(in srgb, var(--ds-fg) 6%, transparent);
   --ds-field-focus-edge: color-mix(in srgb, var(--ds-fg) 55%, transparent); /* text fields: no ring, the edge steps up */
-  --ds-surface-page: var(--background); /* app background, behind everything */
-  --ds-surface-1: var(--card); /* panels, cards, bars — the default plane */
-  --ds-surface-2: var(--muted); /* inset wells, table headers, code blocks */
-  --ds-surface-3: var(--accent); /* hover / pressed / selected fill */
-  --ds-surface-overlay: var(--popover); /* dialogs, drawers, menus, tooltips */
+  --ds-surface-page: var(--ui-canvas); /* app background, behind everything */
+  --ds-surface-1: var(--ui-panel); /* panels, cards, bars — the default plane */
+  --ds-surface-2: var(--ui-table); /* inset wells, table headers, code blocks */
+  --ds-surface-3: var(--ui-hover); /* hover / pressed / selected fill */
+  --ds-surface-overlay: var(--ui-field); /* dialogs, drawers, menus, tooltips */
   --ds-surface-scrim: color-mix(in srgb, hsl(0 0% 0%) 66%, transparent);
   /* SELECTION — one shade off the card it sits on, and no more. It mixes toward
    the FOREGROUND rather than the accent, which keeps it hueless on either */
-  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 4%, var(--ds-surface-1));
+  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 60%, transparent);
 
   /* THE RECESSED PLANE — the ONE treatment for "this sits back from the card".
@@ -68,7 +68,7 @@
   --ds-fg: var(--foreground); /* primary text, values, names */
   --ds-fg-secondary: var(--secondary-foreground); /* supporting text */
   --ds-fg-muted: var(--muted-foreground); /* labels, meta, units */
-  --ds-fg-faint: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  --ds-fg-faint: var(--muted-foreground);
   --ds-fg-inverse: var(--primary-foreground); /* on a solid accent fill */
   --ds-fg-link: var(--info);
 
@@ -79,17 +79,16 @@
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, var(--background));
   --ds-control-fg: var(--foreground);
 
-  --ds-accent: var(--primary); /* the product's "primary" */
+  --ds-accent: var(--ui-info); /* the one blue: main action and selection */
   --ds-accent-mark: var(--primary); /* the raw swatch — bars, dots, fills */
-  --ds-accent-fg: var(--primary-foreground);
-  --ds-accent-hover: color-mix(in srgb, var(--primary) 88%, hsl(0 0% 100%));
-  --ds-accent-quiet: color-mix(in srgb, var(--primary) 12%, transparent);
+  --ds-accent-fg: var(--ui-canvas);
+  --ds-accent-hover: color-mix(in srgb, var(--ui-info) 88%, var(--ui-primary));
+  --ds-accent-quiet: color-mix(in srgb, var(--ui-info) 12%, transparent);
 
-  /* BRAND — the product-level launch CTA (`Start a run`). Deliberately a
-   NEUTRAL solid, not a hue. It stays a filled control so it still ends the */
-  --ds-brand-solid-bg: var(--ds-surface-3);
-  --ds-brand-solid-fg: var(--ds-fg);
-  --ds-brand-solid-hover: color-mix(in srgb, var(--ds-fg) 12%, var(--ds-surface-3));
+  /* BRAND — the launch CTA (`Start run`) is a primary: the same blue and hover. */
+  --ds-brand-solid-bg: var(--ds-accent);
+  --ds-brand-solid-fg: var(--ds-accent-fg);
+  --ds-brand-solid-hover: var(--ds-accent-hover);
 
   --ds-danger: var(--destructive); /* danger as TEXT */
   --ds-danger-solid: var(--destructive); /* danger as a solid FILL */
@@ -145,8 +144,8 @@
          a deliberate stop is neither a warning nor a failure) */
   --ds-status-cancelled-fg: var(--ds-fg-muted);
   --ds-status-cancelled-mark: var(--ds-fg-muted);
-  --ds-status-cancelled-bg: color-mix(in srgb, var(--muted-foreground) 14%, transparent);
-  --ds-status-cancelled-border: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  --ds-status-cancelled-bg: color-mix(in srgb, var(--ds-fg-muted) 14%, transparent);
+  --ds-status-cancelled-border: color-mix(in srgb, var(--ds-fg-muted) 40%, transparent);
   --ds-status-cancelled-solid-bg: #737373;
   --ds-status-cancelled-solid-fg: #fafafa;
 
@@ -176,11 +175,10 @@
 
   /* REHEARSAL — a run that read every system and wrote to none.
    The one hue no status owns, because a rehearsal is not a status: a dry run */
-  --rehearsal: #a78bfa;
-  --ds-rehearsal-fg: var(--rehearsal);
-  --ds-rehearsal-mark: var(--rehearsal);
-  --ds-rehearsal-bg: color-mix(in srgb, var(--rehearsal) 13%, transparent);
-  --ds-rehearsal-border: color-mix(in srgb, var(--rehearsal) 55%, transparent);
+  --ds-rehearsal-fg: var(--ds-fg-muted);
+  --ds-rehearsal-mark: var(--ds-fg-muted);
+  --ds-rehearsal-bg: transparent;
+  --ds-rehearsal-border: transparent;
 
   /* DIRECTION — which way a value moved. ONE axis, TWO tones.
    This is a deliberate, narrow exception to the "one accent + four semantic */
@@ -196,7 +194,7 @@
   /* TYPE — a seven-step scale. Half-pixel drift is what makes twenty
    surfaces look like twenty products. These are the only sizes. */
   --ds-font-sans: var(--font-sans);
-  --ds-font-mono: var(--font-mono);
+  --ds-font-mono: var(--font-data);
   --ds-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --ds-text-micro: 10px; /* count badges, kbd, uppercase group labels */
@@ -213,8 +211,8 @@
   --ds-lh-section: 22px;
   --ds-text-display: 20px; /* the one big number on a summary surface */
   --ds-lh-display: 26px;
-  --ds-text-body-page: 28px;
-  --ds-lh-body-page: 34px;
+  --ds-text-body-page: var(--ds-text-display);
+  --ds-lh-body-page: var(--ds-lh-display);
   --ds-text-body-section: 16px;
   --ds-lh-body-section: 22px;
   --ds-text-body-row: var(--ds-row-title);
@@ -224,11 +222,11 @@
   --ds-text-body-value: 14px;
   --ds-lh-body-value: 20px;
   --ds-h-body-control: 28px;
-  --ds-h-body-row: 62.5px;
-  --ds-h-body-ranked-row: 48.6px;
-  --ds-size-body-choice: 14.4px;
+  --ds-h-body-row: 60px;
+  --ds-h-body-ranked-row: 48px;
+  --ds-size-body-choice: 16px;
   --ds-space-body-copy-gap: var(--ds-row-gap);
-  --ds-radius-body-control: 8.1px;
+  --ds-radius-body-control: 8px;
   /* ROWS — the one default size for card rows and data-table rows. Two-line row 60px, one-line 52px, table head 32px. */
   --ds-row-pad-x: 16px;
   --ds-row-pad-y: 11px; /* a row with a grey line */
@@ -242,7 +240,7 @@
   --ds-card-bg: var(--ui-panel); /* light: the page fill, the card is drawn by its border */
   --ds-menu-item-h: 28px; /* one-line menu item; a two-line item grows to fit */
   --ds-row-head-h: 32px;
-  --ds-row-heading: 15px;
+  --ds-row-heading: 16px;
   --ds-row-heading-lh: 22px;
   --ds-row-title: 13px;
   --ds-row-title-lh: 18px;
@@ -253,7 +251,7 @@
   --ds-row-control-h: 28px;
   --ds-toolbar-control-h: 32px; /* a search field; the filter dropdowns beside it stay 28px */
   --ds-radius-body-group: var(--ds-row-radius);
-  --ds-radius-body-dialog: 14.4px;
+  --ds-radius-body-dialog: 16px;
   --ds-w-body-switch: 36px;
   --ds-h-body-switch: 20px;
   --ds-size-body-switch-thumb: 14px;
@@ -262,7 +260,7 @@
   --ds-body-switch-thumb-bg: #ffffff;
   --ds-body-switch-checked-bg: var(--ds-switch-on);
 
-  --ds-tracking-caps: 0.14em; /* uppercase micro labels only */
+  --ds-tracking-caps: 0; /* group labels carry no tracking */
   --ds-tracking-tight: -0.006em; /* section/display sizes only */
 
   /* SPACE — an 8px rhythm with 2/4/6 available for dense interiors.
@@ -276,7 +274,7 @@
   --ds-queue-info-border: color-mix(in srgb, var(--ui-info) 28%, transparent);
   --ds-queue-danger-bg: color-mix(in srgb, var(--ui-danger) 12%, transparent);
   --ds-queue-danger-border: color-mix(in srgb, var(--ui-danger) 28%, transparent);
-  --ds-space-queue-top: 14px;
+  --ds-space-queue-top: 12px;
   --ds-tracking-brand: 0.035em;
   --ds-w-queue-counter: 30px;
   --ds-h-queue-member-head: 28px;
@@ -294,34 +292,32 @@
   --ds-w-body-control-standard: 237px;
   --ds-w-body-control-medium: 288px;
   --ds-w-body-control-wide: 378px;
-  --ds-w-body-unit: 147.6px;
+  --ds-w-body-unit: 148px;
   --ds-w-body-control: 280px;
-  --ds-w-body-catalog-rail: 229.5px;
-  --ds-w-body-catalog-label: 103.5px;
+  --ds-w-body-catalog-rail: 228px;
+  --ds-w-body-catalog-label: 104px;
   --ds-h-body-catalog-search: 36px;
-  --ds-h-body-catalog-min: 499.5px;
+  --ds-h-body-catalog-min: 500px;
   --ds-h-settings-nav-row: 32px;
   --ds-radius-settings-nav: 10px;
   --ds-lh-settings-sidebar-title: 28px;
-  --ds-space-body-catalog-record: 22.5px;
-  --ds-space-body-catalog-option-gap: 5.4px;
-  --ds-space-body-catalog-search-gap: 9px;
-  --ds-space-body-catalog-group-top: 16.2px;
-  --ds-space-body-catalog-group-inline: 7.2px;
-  --ds-space-body-catalog-row-gap: 13.5px;
-  --ds-space-body-catalog-row-block: 9px;
-  --ds-space-body-catalog-title-bottom: 6.3px;
-  --ds-space-body-catalog-section-gap: 25.2px;
-  --ds-text-body-catalog-small: 10.8px;
+  --ds-space-body-catalog-record: 24px;
+  --ds-space-body-catalog-option-gap: 6px;
+  --ds-space-body-catalog-search-gap: 8px;
+  --ds-space-body-catalog-group-top: 16px;
+  --ds-space-body-catalog-group-inline: 8px;
+  --ds-space-body-catalog-row-gap: 12px;
+  --ds-space-body-catalog-row-block: 8px;
+  --ds-space-body-catalog-title-bottom: 6px;
+  --ds-space-body-catalog-section-gap: 24px;
+  --ds-text-body-catalog-small: 11px;
   --ds-space-body-group-inline: var(--ds-row-pad-x);
-  --ds-space-body-section-gap: 32.4px;
-  --ds-space-body-section-heading-gap: 9.9px;
-  --ds-space-body-caption-gap: 10px;
-  --ds-space-body-toolbar-inline: 9.9px;
+  --ds-space-body-section-gap: 32px;
+  --ds-space-body-section-heading-gap: 8px;
+  --ds-space-body-caption-gap: 8px;
+  --ds-space-body-toolbar-inline: 8px;
   --ds-text-body-caption: 13px;
   --ds-lh-body-caption: 18px;
-  --ds-text-body-section: 16.2px;
-  --ds-lh-body-section: 21px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
    region all hang off this one inset, so the three bands' content starts on */
   --ds-shell-inset: var(--ds-space-cozy);
@@ -453,6 +449,10 @@
   --ds-radius-lg: var(--radius); /* 8px — cards, panels */
   --ds-radius-xl: calc(var(--radius) + 4px); /* 12px — dialogs, drawers */
   --ds-radius-search: calc(var(--radius) + 4px);
+  --ds-radius-dialog: 24px; /* every dialog: soft card, no border */
+  --ds-dialog-title-size: 20px;
+  --ds-dialog-title-lh: 28px;
+  --ds-dialog-pad: var(--ds-space-section); /* 24px: header, body and footer inset */
   --ds-radius-pill: 9999px;
 
   /* ELEVATION — three steps, and only floating things get them.
@@ -468,7 +468,7 @@
   /* THE RING — one ink for "the system is pointing at this".
    Focus and selection are the same statement at two volumes, so they read */
   --ds-ring: color-mix(in srgb, var(--foreground) 46%, transparent);
-  --ds-focus-ring: var(--ds-ring);
+  --ds-focus-ring: var(--ui-info);
   --ds-focus-ring-w: 2px;
   --ds-focus-ring-offset: 1px;
 
@@ -540,18 +540,18 @@ body[data-demo-theme="dark"] {
   --secondary: #1f1f23;
   --secondary-foreground: #9d9ea2;
   --muted: #131316;
-  --muted-foreground: #808085;
+  --muted-foreground: #95959b;
   --accent: #222226;
   --accent-foreground: #e3e4e6;
-  /* #f04438 is the swatch; as TEXT it drops to 3.96:1 on the raised surface,
+  /* var(--ui-danger) is the swatch; as TEXT it drops to 3.96:1 on the raised surface,
    so the token every `text-destructive` reads is the lifted red and the */
-  --destructive: #f97066;
+  --destructive: var(--ui-danger);
   --destructive-foreground: #2a0806;
-  --info: #4ea1f3;
+  --info: var(--ui-info);
   --info-foreground: #06182b;
-  --success: #12b76a;
+  --success: var(--ui-positive);
   --success-foreground: #04140c;
-  --warning: #f79009;
+  --warning: var(--ui-warning);
   --warning-foreground: #1a1204;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.16);
@@ -559,14 +559,6 @@ body[data-demo-theme="dark"] {
 
   --ds-settings-canvas: #0f0f11;
   --ds-settings-sidebar: #0f0f11;
-  --ds-settings-card: #18181b;
-  --ds-settings-control: #1f1f23;
-  --ds-settings-hover: #222226;
-  --ds-settings-border: #26262a;
-  --ds-settings-control-border: #52525a;
-  --ds-settings-fg: #e3e4e6;
-  --ds-settings-fg-secondary: #b5b6bb;
-  --ds-settings-fg-muted: #9d9ea4;
 
   /* Shared content-body surfaces. The app shell keeps its own palette. */
   --ds-body-surface-page: #0f0f11;
@@ -579,29 +571,29 @@ body[data-demo-theme="dark"] {
   --ds-body-control-border: #4a4a52;
   --ds-body-fg: #e3e4e6;
   --ds-body-fg-secondary: #b0b1b6;
-  --ds-body-fg-muted: #9a9ba1;
+  --ds-body-fg-muted: #95959b;
 
   /* The categorical log accents sit at a neutral ramp: hue-per-category painted
    on top of four status hues made the noisiest surface in the product. Reads */
   --log-teal: #fafafa; /* a WRITE — the load-bearing direction */
   --log-cyan: #d4d4d8; /* a READ */
   --log-slate: #a1a1aa; /* navigation, search, inert chrome */
-  --log-violet: #f79009; /* unconfirmed / parked — warning, not a category */
+  --log-parked: var(--ui-warning); /* unconfirmed / parked — warning, not a category */
   --chart-1: #fafafa;
   --chart-2: #a1a1aa;
-  --chart-3: #4ea1f3;
-  --chart-4: #12b76a;
-  --chart-5: #f79009;
+  --chart-3: var(--ui-info);
+  --chart-4: var(--ui-positive);
+  --chart-5: var(--ui-warning);
 
   /* --- surface ---------------------------------------------------------- */
-  --ds-surface-page: var(--background);
-  --ds-surface-1: var(--card);
-  --ds-surface-2: var(--muted);
-  --ds-surface-3: var(--accent);
-  --ds-surface-overlay: var(--popover);
+  --ds-surface-page: var(--ui-canvas);
+  --ds-surface-1: var(--ui-panel);
+  --ds-surface-2: var(--ui-table);
+  --ds-surface-3: var(--ui-hover);
+  --ds-surface-overlay: var(--ui-field);
   --ds-surface-scrim: rgba(0, 0, 0, 0.66);
   /* Body-only lift — see :root. Footer stays on --ds-recess-bg. */
-  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 4%, var(--ds-surface-1));
+  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 60%, transparent);
 
   /* --- border ----------------------------------------------------------- */
@@ -615,7 +607,7 @@ body[data-demo-theme="dark"] {
   --ds-fg: var(--foreground);
   --ds-fg-secondary: var(--secondary-foreground);
   --ds-fg-muted: var(--muted-foreground);
-  --ds-fg-faint: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  --ds-fg-faint: var(--muted-foreground);
   --ds-fg-inverse: var(--primary-foreground);
   --ds-fg-link: var(--info);
 
@@ -625,48 +617,38 @@ body[data-demo-theme="dark"] {
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, var(--background));
   --ds-control-fg: var(--foreground);
 
-  --ds-accent: #fafafa; /* the primary action's fill */
   --ds-accent-mark: #f5a623; /* the identity note — a mark, never a verb */
-  --ds-accent-fg: #09090b;
-  --ds-accent-hover: #ffffff;
-  --ds-accent-quiet: color-mix(in srgb, #fafafa 12%, transparent);
 
-  /* Neutral launch CTA — see :root. Zinc 700, a full step above the toolbar's
-     transparent outline peers without borrowing a status hue. */
-  --ds-brand-solid-bg: #3f3f46;
-  --ds-brand-solid-fg: #fafafa;
-  --ds-brand-solid-hover: #52525b;
-
-  --ds-danger: #f97066;
-  --ds-danger-solid: #f04438;
+  --ds-danger: var(--ui-danger);
+  --ds-danger-solid: var(--ui-danger);
   --ds-danger-fg: #2a0806;
-  --ds-danger-quiet: color-mix(in srgb, #f04438 12%, transparent);
-  --ds-danger-border: color-mix(in srgb, #f04438 45%, transparent);
+  --ds-danger-quiet: color-mix(in srgb, var(--ui-danger) 12%, transparent);
+  --ds-danger-border: color-mix(in srgb, var(--ui-danger) 45%, transparent);
 
   /* --- status ----------------------------------------------------------- */
-  --ds-status-waiting-fg: #f79009;
-  --ds-status-waiting-mark: #f79009;
-  --ds-status-waiting-bg: color-mix(in srgb, #f79009 14%, transparent);
-  --ds-status-waiting-border: color-mix(in srgb, #f79009 55%, transparent);
-  --ds-status-waiting-solid-bg: #f79009;
+  --ds-status-waiting-fg: var(--ui-warning);
+  --ds-status-waiting-mark: var(--ui-warning);
+  --ds-status-waiting-bg: color-mix(in srgb, var(--ui-warning) 14%, transparent);
+  --ds-status-waiting-border: color-mix(in srgb, var(--ui-warning) 55%, transparent);
+  --ds-status-waiting-solid-bg: var(--ui-warning);
   --ds-status-waiting-solid-fg: #1a1204;
 
-  --ds-status-failed-fg: #f97066;
-  --ds-status-failed-mark: #f04438;
-  --ds-status-failed-bg: color-mix(in srgb, #f04438 14%, transparent);
-  --ds-status-failed-border: color-mix(in srgb, #f04438 55%, transparent);
-  --ds-status-failed-solid-bg: #f04438;
+  --ds-status-failed-fg: var(--ui-danger);
+  --ds-status-failed-mark: var(--ui-danger);
+  --ds-status-failed-bg: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+  --ds-status-failed-border: color-mix(in srgb, var(--ui-danger) 55%, transparent);
+  --ds-status-failed-solid-bg: var(--ui-danger);
   --ds-status-failed-solid-fg: #2a0806;
 
-  --ds-status-parked-fg: #f79009;
-  --ds-status-parked-mark: #f79009;
-  --ds-status-parked-bg: color-mix(in srgb, #f79009 13%, transparent);
-  --ds-status-parked-border: color-mix(in srgb, #f79009 60%, transparent);
+  --ds-status-parked-fg: var(--ui-warning);
+  --ds-status-parked-mark: var(--ui-warning);
+  --ds-status-parked-bg: color-mix(in srgb, var(--ui-warning) 13%, transparent);
+  --ds-status-parked-border: color-mix(in srgb, var(--ui-warning) 60%, transparent);
 
-  --ds-status-done-warnings-fg: #f79009;
-  --ds-status-done-warnings-mark: #f79009;
-  --ds-status-done-warnings-bg: color-mix(in srgb, #f79009 9%, transparent);
-  --ds-status-done-warnings-border: color-mix(in srgb, #f79009 30%, transparent);
+  --ds-status-done-warnings-fg: var(--ui-warning);
+  --ds-status-done-warnings-mark: var(--ui-warning);
+  --ds-status-done-warnings-bg: color-mix(in srgb, var(--ui-warning) 9%, transparent);
+  --ds-status-done-warnings-border: color-mix(in srgb, var(--ui-warning) 30%, transparent);
 
   --ds-status-running-fg: var(--ds-fg-muted);
   --ds-status-running-mark: var(--ds-fg-muted);
@@ -680,37 +662,36 @@ body[data-demo-theme="dark"] {
 
   --ds-status-cancelled-fg: var(--ds-fg-muted);
   --ds-status-cancelled-mark: var(--ds-fg-muted);
-  --ds-status-cancelled-bg: color-mix(in srgb, #a3a3a3 14%, transparent);
-  --ds-status-cancelled-border: color-mix(in srgb, #a3a3a3 40%, transparent);
+  --ds-status-cancelled-bg: color-mix(in srgb, var(--ds-fg-muted) 14%, transparent);
+  --ds-status-cancelled-border: color-mix(in srgb, var(--ds-fg-muted) 40%, transparent);
   --ds-status-cancelled-solid-bg: #737373;
   --ds-status-cancelled-solid-fg: #fafafa;
 
-  --ds-status-verified-done-fg: #12b76a;
-  --ds-status-verified-done-mark: #12b76a;
-  --ds-status-verified-done-bg: color-mix(in srgb, #12b76a 14%, transparent);
-  --ds-status-verified-done-border: color-mix(in srgb, #12b76a 40%, transparent);
-  --ds-status-verified-done-solid-bg: #12b76a;
+  --ds-status-verified-done-fg: var(--ui-positive);
+  --ds-status-verified-done-mark: var(--ui-positive);
+  --ds-status-verified-done-bg: color-mix(in srgb, var(--ui-positive) 14%, transparent);
+  --ds-status-verified-done-border: color-mix(in srgb, var(--ui-positive) 40%, transparent);
+  --ds-status-verified-done-solid-bg: var(--ui-positive);
   --ds-status-verified-done-solid-fg: #052e1c;
 
-  --ds-info-fg: #4ea1f3;
-  --ds-info-mark: #4ea1f3;
-  --ds-info-bg: color-mix(in srgb, #4ea1f3 12%, transparent);
-  --ds-info-border: color-mix(in srgb, #4ea1f3 40%, transparent);
-  --ds-info-solid-bg: #4ea1f3;
+  --ds-info-fg: var(--ui-info);
+  --ds-info-mark: var(--ui-info);
+  --ds-info-bg: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  --ds-info-border: color-mix(in srgb, var(--ui-info) 40%, transparent);
+  --ds-info-solid-bg: var(--ui-info);
   --ds-info-solid-fg: #06182b;
-  --ds-info-solid-hover: #6eb4f5;
-  --ds-success-fg: #12b76a;
-  --ds-success-mark: #12b76a;
-  --ds-success-bg: color-mix(in srgb, #12b76a 12%, transparent);
-  --ds-success-border: color-mix(in srgb, #12b76a 38%, transparent);
+  --ds-info-solid-hover: color-mix(in srgb, var(--ui-info) 88%, #ffffff);
+  --ds-success-fg: var(--ui-positive);
+  --ds-success-mark: var(--ui-positive);
+  --ds-success-bg: color-mix(in srgb, var(--ui-positive) 12%, transparent);
+  --ds-success-border: color-mix(in srgb, var(--ui-positive) 38%, transparent);
 
   /* Rehearsal. #a78bfa measures 6.5:1 as text on this theme's card plane
    (#18181b), so the swatch and the text step are one value here — the same */
-  --rehearsal: #a78bfa;
-  --ds-rehearsal-fg: #a78bfa;
-  --ds-rehearsal-mark: #a78bfa;
-  --ds-rehearsal-bg: color-mix(in srgb, #a78bfa 13%, transparent);
-  --ds-rehearsal-border: color-mix(in srgb, #a78bfa 55%, transparent);
+  --ds-rehearsal-fg: var(--ds-fg-muted);
+  --ds-rehearsal-mark: var(--ds-fg-muted);
+  --ds-rehearsal-bg: transparent;
+  --ds-rehearsal-border: transparent;
 
   /* --- direction (read / write) ------------------------------------------
    Measured on the card plane (#18181b): read text 8.1:1, write text 10.0:1, */
@@ -727,7 +708,6 @@ body[data-demo-theme="dark"] {
   /* 4.6:1 on the card plane (#18181b), 3.9:1 on the raised one (#27272a) —
      both clear WCAG 2.2's 3:1 focus-appearance floor with headroom. */
   --ds-ring: rgba(255, 255, 255, 0.46);
-  --ds-focus-ring: var(--ds-ring);
   --ds-elev-1: 0 1px 2px hsl(0 0% 0% / 0.35);
   --ds-elev-2:
     0 4px 12px -2px hsl(0 0% 0% / 0.45), 0 1px 3px hsl(0 0% 0% / 0.32);
@@ -756,16 +736,16 @@ body[data-demo-theme="light"] {
   --secondary: #ffffff;
   --secondary-foreground: #555555;
   --muted: #f3f3f3;
-  --muted-foreground: #737373;
+  --muted-foreground: #666666;
   --accent: #efefef;
   --accent-foreground: #1b1b1b;
-  --destructive: #b42318;
+  --destructive: var(--ui-danger);
   --destructive-foreground: #ffffff;
-  --info: #0369a1; /* swatch #0ba5ec — 2.8:1 as text, so text steps down */
+  --info: var(--ui-info); /* swatch var(--ui-info) — 2.8:1 as text, so text steps down */
   --info-foreground: #ffffff;
-  --success: #065f46; /* swatch #059669 — 3.8:1 as text, so text steps down */
+  --success: var(--ui-positive); /* swatch var(--ui-positive) — 3.8:1 as text, so text steps down */
   --success-foreground: #ffffff;
-  --warning: #b54708;
+  --warning: var(--ui-warning);
   --warning-foreground: #ffffff;
   --border: #e6e6e6;
   --input: #d4d4d4;
@@ -773,14 +753,6 @@ body[data-demo-theme="light"] {
 
   --ds-settings-canvas: #f9f9f9;
   --ds-settings-sidebar: #f9f9f9;
-  --ds-settings-card: #f9f9f9;
-  --ds-settings-control: #ffffff;
-  --ds-settings-hover: #efefef;
-  --ds-settings-border: #e6e6e6;
-  --ds-settings-control-border: #8a8a8a;
-  --ds-settings-fg: #1b1b1b;
-  --ds-settings-fg-secondary: #4d4d4d;
-  --ds-settings-fg-muted: #666666;
 
   --ds-body-surface-page: #f9f9f9;
   --ds-body-surface-group: #f9f9f9;
@@ -797,22 +769,22 @@ body[data-demo-theme="light"] {
   --log-teal: #0b0f19; /* a WRITE */
   --log-cyan: #334155; /* a READ */
   --log-slate: #475569; /* navigation, search, inert chrome */
-  --log-violet: #b54708; /* unconfirmed / parked */
+  --log-parked: var(--ui-warning); /* unconfirmed / parked */
   --chart-1: #0b0f19;
   --chart-2: #475569;
-  --chart-3: #0369a1;
-  --chart-4: #065f46;
-  --chart-5: #b54708;
+  --chart-3: var(--ui-info);
+  --chart-4: var(--ui-positive);
+  --chart-5: var(--ui-warning);
 
   /* --- surface ---------------------------------------------------------- */
-  --ds-surface-page: var(--background);
-  --ds-surface-1: var(--card);
-  --ds-surface-2: var(--muted);
-  --ds-surface-3: var(--accent);
-  --ds-surface-overlay: var(--popover);
+  --ds-surface-page: var(--ui-canvas);
+  --ds-surface-1: var(--ui-panel);
+  --ds-surface-2: var(--ui-table);
+  --ds-surface-3: var(--ui-hover);
+  --ds-surface-overlay: var(--ui-field);
   --ds-surface-scrim: rgba(16, 24, 40, 0.45);
   /* Paper needs a hair more mix than Graphite Warm's 4% for the same read. */
-  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 5%, var(--ds-surface-1));
+  --ds-surface-selected: color-mix(in srgb, var(--ds-fg) 8%, var(--ds-surface-1));
   --ds-surface-disabled: color-mix(in srgb, var(--muted) 70%, transparent);
 
   /* --- border ----------------------------------------------------------- */
@@ -827,7 +799,7 @@ body[data-demo-theme="light"] {
   --ds-fg: var(--foreground);
   --ds-fg-secondary: var(--secondary-foreground);
   --ds-fg-muted: var(--muted-foreground);
-  --ds-fg-faint: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  --ds-fg-faint: var(--muted-foreground);
   --ds-fg-inverse: var(--primary-foreground);
   --ds-fg-link: var(--info);
 
@@ -837,50 +809,40 @@ body[data-demo-theme="light"] {
   --ds-control-bg-active: color-mix(in srgb, var(--accent) 70%, #d5dbe4);
   --ds-control-fg: var(--foreground);
 
-  --ds-accent: #4338ca;
   --ds-accent-mark: #4f46e5;
-  --ds-accent-fg: #ffffff;
-  --ds-accent-hover: #3730a3; /* light hovers DARKEN; dark hovers lighten */
-  --ds-accent-quiet: color-mix(in srgb, #4f46e5 12%, transparent);
 
-  /* Neutral launch CTA — see :root. Zinc 600 on paper: dark ink-grey fill,
-     white type, no hue competing with the indigo primary. */
-  --ds-brand-solid-bg: #52525b;
-  --ds-brand-solid-fg: #ffffff;
-  --ds-brand-solid-hover: #3f3f46; /* light hovers DARKEN */
-
-  --ds-danger: #b42318;
-  --ds-danger-solid: #b42318;
+  --ds-danger: var(--ui-danger);
+  --ds-danger-solid: var(--ui-danger);
   --ds-danger-fg: #ffffff;
-  --ds-danger-quiet: color-mix(in srgb, #b42318 10%, transparent);
-  --ds-danger-border: color-mix(in srgb, #b42318 40%, transparent);
+  --ds-danger-quiet: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+  --ds-danger-border: color-mix(in srgb, var(--ui-danger) 40%, transparent);
 
   /* --- status ----------------------------------------------------------- */
   /* The amber family sits on an OPAQUE warm tint rather than an alpha wash:
    on paper a 14% amber over white reads as dirty grey, and the measured */
-  --ds-status-waiting-fg: #b54708;
-  --ds-status-waiting-mark: #f79009;
+  --ds-status-waiting-fg: var(--ui-warning);
+  --ds-status-waiting-mark: var(--ui-warning);
   --ds-status-waiting-bg: #fffaeb;
-  --ds-status-waiting-border: color-mix(in srgb, #b54708 40%, transparent);
-  --ds-status-waiting-solid-bg: #b54708;
+  --ds-status-waiting-border: color-mix(in srgb, var(--ui-warning) 40%, transparent);
+  --ds-status-waiting-solid-bg: var(--ui-warning);
   --ds-status-waiting-solid-fg: #ffffff;
 
-  --ds-status-failed-fg: #b42318;
-  --ds-status-failed-mark: #b42318;
-  --ds-status-failed-bg: color-mix(in srgb, #b42318 10%, transparent);
-  --ds-status-failed-border: color-mix(in srgb, #b42318 40%, transparent);
-  --ds-status-failed-solid-bg: #b42318;
+  --ds-status-failed-fg: var(--ui-danger);
+  --ds-status-failed-mark: var(--ui-danger);
+  --ds-status-failed-bg: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+  --ds-status-failed-border: color-mix(in srgb, var(--ui-danger) 40%, transparent);
+  --ds-status-failed-solid-bg: var(--ui-danger);
   --ds-status-failed-solid-fg: #ffffff;
 
-  --ds-status-parked-fg: #b54708;
-  --ds-status-parked-mark: #f79009;
+  --ds-status-parked-fg: var(--ui-warning);
+  --ds-status-parked-mark: var(--ui-warning);
   --ds-status-parked-bg: #fffaeb;
-  --ds-status-parked-border: color-mix(in srgb, #b54708 50%, transparent);
+  --ds-status-parked-border: color-mix(in srgb, var(--ui-warning) 50%, transparent);
 
-  --ds-status-done-warnings-fg: #b54708;
-  --ds-status-done-warnings-mark: #f79009;
+  --ds-status-done-warnings-fg: var(--ui-warning);
+  --ds-status-done-warnings-mark: var(--ui-warning);
   --ds-status-done-warnings-bg: #fffaeb;
-  --ds-status-done-warnings-border: color-mix(in srgb, #b54708 24%, transparent);
+  --ds-status-done-warnings-border: color-mix(in srgb, var(--ui-warning) 24%, transparent);
 
   --ds-status-running-fg: var(--ds-fg-muted);
   --ds-status-running-mark: var(--ds-fg-muted);
@@ -894,37 +856,36 @@ body[data-demo-theme="light"] {
 
   --ds-status-cancelled-fg: var(--ds-fg-muted);
   --ds-status-cancelled-mark: var(--ds-fg-muted);
-  --ds-status-cancelled-bg: color-mix(in srgb, #737373 12%, transparent);
-  --ds-status-cancelled-border: color-mix(in srgb, #737373 28%, transparent);
+  --ds-status-cancelled-bg: color-mix(in srgb, var(--ds-fg-muted) 14%, transparent);
+  --ds-status-cancelled-border: color-mix(in srgb, var(--ds-fg-muted) 40%, transparent);
   --ds-status-cancelled-solid-bg: #a3a3a3;
   --ds-status-cancelled-solid-fg: #171717;
 
-  --ds-status-verified-done-fg: #065f46;
-  --ds-status-verified-done-mark: #059669;
-  --ds-status-verified-done-bg: color-mix(in srgb, #059669 12%, transparent);
-  --ds-status-verified-done-border: color-mix(in srgb, #065f46 28%, transparent);
-  --ds-status-verified-done-solid-bg: #059669;
+  --ds-status-verified-done-fg: var(--ui-positive);
+  --ds-status-verified-done-mark: var(--ui-positive);
+  --ds-status-verified-done-bg: color-mix(in srgb, var(--ui-positive) 12%, transparent);
+  --ds-status-verified-done-border: color-mix(in srgb, var(--ui-positive) 28%, transparent);
+  --ds-status-verified-done-solid-bg: var(--ui-positive);
   --ds-status-verified-done-solid-fg: #ffffff;
 
-  --ds-info-fg: #0369a1;
-  --ds-info-mark: #0ba5ec;
-  --ds-info-bg: color-mix(in srgb, #0ba5ec 12%, transparent);
-  --ds-info-border: color-mix(in srgb, #0369a1 40%, transparent);
-  --ds-info-solid-bg: #0ba5ec;
+  --ds-info-fg: var(--ui-info);
+  --ds-info-mark: var(--ui-info);
+  --ds-info-bg: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  --ds-info-border: color-mix(in srgb, var(--ui-info) 40%, transparent);
+  --ds-info-solid-bg: var(--ui-info);
   --ds-info-solid-fg: #ffffff;
-  --ds-info-solid-hover: #0284c7;
-  --ds-success-fg: #065f46;
-  --ds-success-mark: #059669;
-  --ds-success-bg: color-mix(in srgb, #059669 12%, transparent);
-  --ds-success-border: color-mix(in srgb, #065f46 38%, transparent);
+  --ds-info-solid-hover: color-mix(in srgb, var(--ui-info) 88%, #000000);
+  --ds-success-fg: var(--ui-positive);
+  --ds-success-mark: var(--ui-positive);
+  --ds-success-bg: color-mix(in srgb, var(--ui-positive) 12%, transparent);
+  --ds-success-border: color-mix(in srgb, var(--ui-positive) 38%, transparent);
 
   /* Rehearsal. This is the theme the `-fg` / `-mark` split exists for:
    violet-600 (#7c3aed) is 5.5:1 on white as a mark but the chip's ink is read */
-  --rehearsal: #6d28d9;
-  --ds-rehearsal-fg: #6d28d9;
-  --ds-rehearsal-mark: #7c3aed;
-  --ds-rehearsal-bg: color-mix(in srgb, #7c3aed 10%, transparent);
-  --ds-rehearsal-border: color-mix(in srgb, #6d28d9 40%, transparent);
+  --ds-rehearsal-fg: var(--ds-fg-muted);
+  --ds-rehearsal-mark: var(--ds-fg-muted);
+  --ds-rehearsal-bg: transparent;
+  --ds-rehearsal-border: transparent;
 
   /* --- direction (read / write) ------------------------------------------
    This is the theme the `-fg` / `-mark` split exists for. Sky-600 (#0284c7) */
@@ -941,7 +902,6 @@ body[data-demo-theme="light"] {
   /* 4.2:1 on white, 3.9:1 on the tinted page — the same statement as the dark
      theme's ring at the same volume, re-picked rather than inverted. */
   --ds-ring: #737d8f;
-  --ds-focus-ring: var(--ds-ring);
   /* White on white cannot be separated by a hairline alone, so this is the one
      theme where a resting card is allowed a shadow. */
   --ds-elev-1: 0 1px 3px rgba(16, 24, 40, 0.1);
@@ -992,13 +952,14 @@ body[data-demo-theme="light"] {
   letter-spacing: var(--ds-tracking-tight);
   font-weight: 400;
 }
-/* Uppercase micro label — group headers, table column heads, tile captions. */
-.ds-text-caps {
-  font-size: var(--ds-text-micro);
-  line-height: var(--ds-lh-micro);
-  text-transform: uppercase;
-  letter-spacing: var(--ds-tracking-caps);
-  font-weight: 600;
+/* Sentence-case group label — group headers, table column heads, tile captions. */
+.ds-text-group-label {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ds-fg-muted);
 }
 /* Two-way switch: the selected side is white in light and lighter than the track in dark. */
 
@@ -1059,9 +1020,6 @@ body[data-demo-theme="light"] {
   --ds-settings-section-gap: 48px;
   --ds-settings-card-gap: 40px;
 }
-[data-demo-theme="dark"] {
-  --ds-switch-on: #3b82f6;
-}
 .ds-segment {
   --ds-segment-track: color-mix(in srgb, var(--ds-fg) 8%, var(--ui-canvas));
   --ds-segment-thumb: #fff;
@@ -1069,11 +1027,6 @@ body[data-demo-theme="light"] {
 [data-demo-theme="dark"] .ds-segment {
   --ds-segment-track: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-panel));
   --ds-segment-thumb: color-mix(in srgb, var(--ds-fg) 26%, var(--ui-panel));
-}
-/* Small table headings are 11px. */
-th.ds-text-caps {
-  font-size: var(--ds-text-meta);
-  line-height: var(--ds-lh-meta);
 }
 /* Collapse the line box to the em. Compose AFTER a `ds-text-*` size class on a
    single-line label that shares a flex/grid row with an icon or a taller */
@@ -1104,7 +1057,7 @@ th.ds-text-caps {
   --ds-fg: var(--ds-body-fg);
   --ds-fg-secondary: var(--ds-body-fg-secondary);
   --ds-fg-muted: var(--ds-body-fg-muted);
-  --ds-fg-faint: color-mix(in srgb, var(--ds-body-fg-muted) 70%, transparent);
+  --ds-fg-faint: var(--ds-body-fg-muted);
   --ds-control-bg: var(--ds-body-surface-control);
   --ds-control-bg-hover: var(--ds-body-surface-hover);
   --ds-control-bg-active: var(--ds-body-surface-selected);
@@ -1136,14 +1089,14 @@ th.ds-text-caps {
   --ds-size-switch-thumb: var(--ds-size-body-switch-thumb);
   --ds-switch-thumb-off-x: var(--ds-body-switch-thumb-off-x);
   --ds-switch-thumb-on-x: var(--ds-body-switch-thumb-on-x);
-  --ds-space-hair: 1.8px;
-  --ds-space-tight: 3.6px;
-  --ds-space-snug: 5.4px;
-  --ds-space-base: 7.2px;
-  --ds-space-cozy: 10.8px;
-  --ds-space-loose: 14.4px;
-  --ds-space-section: 21.6px;
-  --ds-space-page: 25.2px;
+  --ds-space-hair: 2px;
+  --ds-space-tight: 4px;
+  --ds-space-snug: 6px;
+  --ds-space-base: 8px;
+  --ds-space-cozy: 12px;
+  --ds-space-loose: 16px;
+  --ds-space-section: 24px;
+  --ds-space-page: 32px;
   font-family: var(--ds-font-body);
   color: var(--ds-fg);
 }
@@ -1435,18 +1388,15 @@ th.ds-text-caps {
   --field-shadow: none;
 }
 /* Toolbar search edge: a step stronger than the faint field border (Codex). */
-.ds-search-field:not(.ds-search-field--menu) { --field-border: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-canvas)); }
-[data-demo-theme="dark"] .ds-search-field:not(.ds-search-field--menu) { --field-border: color-mix(in srgb, var(--ds-fg) 23%, var(--ui-canvas)); }
-/* The one search field: a pill, 32px, a faint border, filled one step above its surface, a 16px magnifier inset on the left, 14px text. */
-.ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-toolbar-control-h); min-height: var(--ds-toolbar-control-h); box-sizing: border-box; gap: 8px; padding-inline: 12px 6px; border-radius: 9999px; background: var(--field); color: var(--field-foreground); }
-.ds-search-field [data-slot="search-field-search-icon"] { width: 16px; height: 16px; flex-shrink: 0; color: var(--field-placeholder); }
-.ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 14px; font-weight: 400; line-height: 20px; }
+
+.ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-canvas)); }
+[data-demo-theme="dark"] 
+.ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 23%, var(--ui-canvas)); }
+/* `field`: the 8px bordered 28px field inside a page or menu, a 14px magnifier, 13px text. `sidebar` (below) is the filled pill above a list. */
+.ds-search-field [data-slot="search-field-group"] { width: 100%; height: var(--ds-h-md); min-height: var(--ds-h-md); max-height: var(--ds-h-md); box-sizing: border-box; gap: 8px; padding-inline: 10px 4px; border-radius: 8px; background: var(--field); color: var(--field-foreground); }
+.ds-search-field [data-slot="search-field-search-icon"] { width: 14px; height: 14px; flex-shrink: 0; color: var(--field-placeholder); }
+.ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 13px; font-weight: 400; line-height: 18px; }
 .ds-search-field [data-slot="search-field-input"]::placeholder { color: var(--field-placeholder); opacity: 1; }
-/* Inside a dropdown menu the same look at 28px. */
-.ds-search-field--menu { --field-border: var(--ds-soft-border); --field-border-hover: var(--ds-soft-border); --field-border-focus: var(--ds-soft-border); }
-.ds-search-field--menu [data-slot="search-field-group"] { height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box; padding-inline: 10px 4px; }
-.ds-search-field--menu [data-slot="search-field-search-icon"] { width: 14px; height: 14px; }
-.ds-search-field--menu [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
 /* A menu's flat search row (search palette look): 36px, a 16px magnifier, 13px text, a hairline under it, no field fill or focus edge. */
 .ds-menu-search-row { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 36px; margin: -4px -4px 4px; padding: 0 12px; border-bottom: 1px solid var(--ui-stroke); border-radius: 16px 16px 0 0; background: var(--ui-field); color: var(--ui-muted); }
 .ds-menu-search-row svg { width: 16px; height: 16px; flex: none; }
@@ -1457,9 +1407,8 @@ th.ds-text-caps {
 [data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: transparent; }
 .ds-search-field--sidebar [data-slot="search-field-group"] { height: 36px; min-height: 36px; max-height: 36px; padding-inline: 12px 6px; border-radius: 9999px; border: 0; }
 .ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 16px; height: 16px; margin: 0; }
+.ds-search-field--sidebar [data-slot="search-field-input"] { font-size: 14px; line-height: 20px; }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
-
-
 
 .ds-body-scope .ds-date-picker--inline {
   display: flex;
@@ -1919,18 +1868,6 @@ th.ds-text-caps {
   height: var(--ds-h-md);
 }
 
-.ds-date-navigation {
-  background: var(--ds-control-bg);
-  border-color: var(--ds-border-strong);
-  border-radius: var(--ds-radius-md);
-}
-
-.ds-date-picker--embedded {
-  --field: transparent;
-  --field-hover: transparent;
-  --field-border-width: 0px;
-}
-
 .ds-calendar {
   --accent: var(--ui-info);
   --accent-foreground: var(--ds-accent-fg);
@@ -1971,6 +1908,8 @@ th.ds-text-caps {
 .ds-calendar .calendar__cell[data-today="true"]:not([data-selected="true"]) { background: transparent; box-shadow: inset 0 0 0 1px var(--ui-stroke-control); color: var(--ui-primary); }
 .ds-calendar .calendar__cell[data-selected="true"] { font-weight: 500; }
 .ds-calendar .calendar__cell[data-outside-month="true"] { opacity: 0.4; }
+/* Days that cannot be picked are dimmed, never struck through. */
+.ds-calendar .calendar__cell:is(:disabled, [data-disabled="true"], [data-unavailable="true"]) { text-decoration: none; }
 @media (hover: hover) {
   .ds-calendar .calendar__cell:hover:not([data-selected="true"]) { background: color-mix(in srgb, var(--ds-fg) 8%, transparent); }
   .ds-calendar .calendar__nav-button:hover,
@@ -1980,14 +1919,6 @@ th.ds-text-caps {
 .ds-range-calendar {
   width: 34rem;
   max-width: none;
-}
-
-.ds-date-popover {
-  width: var(--ds-w-popover-md);
-  max-width: var(--ds-w-popover-md);
-  background: var(--ds-surface-1);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-xl);
 }
 
 .ds-date-picker--inline {
@@ -2009,30 +1940,8 @@ th.ds-text-caps {
   --ds-activity-chart-bar: #849db7;
 }
 
-.activity-report-period [data-slot="native-select-wrapper"] {
-  width: var(--ds-activity-period-width);
-  flex: none;
-}
-
 .ds-body-scope.activity-report-body {
   max-width: none;
-}
-
-.activity-report-period [data-slot="native-select-wrapper"] select {
-  width: 100%;
-}
-
-.activity-workflow-table th {
-  font-family: var(--ds-font-body);
-  font-size: var(--ds-text-meta);
-  line-height: var(--ds-lh-meta);
-  font-weight: 500;
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-.activity-workflow-table td {
-  font-variant-numeric: tabular-nums;
 }
 
 /* REDUCED MOTION
@@ -2104,7 +2013,7 @@ body[data-demo-theme],
   --ds-body-surface-group: var(--ui-panel);
   --ds-body-surface-control: var(--ui-table);
   --ds-body-surface-hover: var(--ui-hover);
-  --ds-body-surface-selected: var(--ui-hover);
+  --ds-body-surface-selected: color-mix(in srgb, var(--ui-primary) 8%, var(--ui-panel));
   --ds-body-border: var(--ui-stroke);
   --ds-body-border-subtle: var(--ui-stroke);
   --ds-body-control-border: var(--ui-stroke-control);

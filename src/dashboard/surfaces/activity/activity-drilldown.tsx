@@ -1,9 +1,8 @@
-import { useDelayedLoading } from "../shared/loading/loading-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../shared/loading/loading.js";
 import { dsStatusOf } from "../shared/status/status-model.js";
 import { useEffect, useMemo, useRef } from 'react';
 import { ArrowDownUp } from 'lucide-react';
-import { Button, PageBreadcrumbs, SearchInput, Select, dsFocus, dsIcon } from '../../ds/ui.js';
+import { Button, ButtonLink, PageBreadcrumbs, SearchInput, Select, TBody, TD, TH, THead, TR, Table, dsFocus, dsIcon } from '../../ds/ui.js';
 import { LogPanel } from '../run-detail/log-panel.js';
 import { StatusBadge } from '../shared/status/status.js';
 import { activityDuration, type ActivitySummary } from './activity-view-model.js';
@@ -24,7 +23,6 @@ export function ActivityBreadcrumbs({ report, selection, onSelection, browse }: 
 
 export function ActivityDrilldown({ report, selection, onSelection, browse, pending = false, blocked = false }: { report: ActivitySummary; selection: ActivityBrowse; onSelection: ActivitySelectionHandler; browse?: ActivityDrilldownData; pending?: boolean; blocked?: boolean }) {
   const missing = pending && browse === undefined;
-  const show = useDelayedLoading(missing);
   const heading = useRef<HTMLHeadingElement>(null);
   const filterKey = JSON.stringify([selection.sort, selection.query]);
   const focusContext = `${selection.metric}:${selection.workflow ?? ''}:${selection.run ?? ''}`;
@@ -43,7 +41,7 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
   const showStatus = selection.metric === 'outstanding';
   return <section aria-label="Analytics runs" className="min-w-0">
     <h2 ref={heading} tabIndex={-1} className={`mb-1 mt-0 w-fit rounded-sm text-section ${dsFocus} ${result.state === 'loaded' && result.run ? 'sr-only' : ''}`}>{result.state === 'loaded' && result.run ? `${result.run.subject} logs` : title}</h2>
-    {missing ? show && <LoadingRegion label="Loading Analytics runs"><SettingsRowsSkeleton rows={3} presentation="result" /></LoadingRegion> : result.state === 'unavailable' || result.run && (result.run.steps === undefined || result.run.timeline === undefined) ? <p role="alert" className="text-body text-ui-secondary">{result.state === 'unavailable' ? result.reason : 'Run details are unavailable for this report.'}</p> : result.run && steps !== undefined && timeline !== undefined ?
+    {missing ? <LoadingRegion label="Loading Analytics runs"><SettingsRowsSkeleton rows={3} presentation="result" /></LoadingRegion> : result.state === 'unavailable' || result.run && (result.run.steps === undefined || result.run.timeline === undefined) ? <p role="alert" className="text-body text-ui-secondary">{result.state === 'unavailable' ? result.reason : 'Run details are unavailable for this report.'}</p> : result.run && steps !== undefined && timeline !== undefined ?
       <div className="mt-3 flex h-[calc(var(--ds-space-base)*72)] min-w-0 flex-col"><LogPanel key={result.run.id} title={result.run.subject}
         steps={steps} timeline={timeline} /></div>
       : <>
@@ -58,14 +56,14 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
           </Select>
         </div>
         <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-panel">
-          <table aria-label={title} className="w-full table-fixed border-collapse text-body">
+          <Table label={title} layout="fixed">
             <colgroup><col />{showWorkflow && <col className="w-[27%]" />}{showStatus && <col className="w-[20%]" />}<col className="w-[18%]" /></colgroup>
-            <thead className="bg-ui-table text-caption text-ui-secondary"><tr>{['Name', ...(showWorkflow ? ['Workflow'] : []), ...(showStatus ? ['Status'] : []), 'Duration'].map(label => <th key={label} scope="col" className="px-4 py-3 text-left font-normal last:text-right">{label}</th>)}</tr></thead>
-            <tbody>{result.rows.map(run => <tr key={run.id} className="border-t border-ui-stroke even:bg-ui-table">
-              <td className="px-4 py-3"><button type="button" aria-label={`Open logs for ${run.subject}, ${run.displayId}`} disabled={pending || blocked} onClick={() => onSelection({ ...selection, run: run.id })} className={`block max-w-full rounded-sm text-left text-ui-info hover:underline ${dsFocus}`}><span className="block text-control">{run.subject}</span><span className="block text-caption tabular-nums text-ui-muted">{run.displayId}</span></button></td>
-              {showWorkflow && <td className="px-4 py-3">{run.workflowLabel}</td>}{showStatus && <td className="px-4 py-3"><RunStatus run={run} /></td>}<td className="px-4 py-3 text-right tabular-nums">{activityDuration(run.seconds)}</td>
-            </tr>)}</tbody>
-          </table>
+            <THead><TR>{['Name', ...(showWorkflow ? ['Workflow'] : []), ...(showStatus ? ['Status'] : []), 'Duration'].map(label => <TH key={label} align={label === 'Duration' ? 'right' : 'left'}>{label}</TH>)}</TR></THead>
+            <TBody>{result.rows.map(run => <TR key={run.id}>
+              <TD><ButtonLink href="#" variant="ghost" aria-label={`Open logs for ${run.subject}, ${run.displayId}`} aria-disabled={pending || blocked || undefined} className="!h-auto max-w-full !justify-start !p-0 text-left text-ui-info hover:underline" onClick={event => { event.preventDefault(); if (!pending && !blocked) onSelection({ ...selection, run: run.id }); }}><span className="flex min-w-0 flex-col"><span className="text-control">{run.subject}</span><span className="text-caption tabular-nums text-ui-muted">{run.displayId}</span></span></ButtonLink></TD>
+              {showWorkflow && <TD>{run.workflowLabel}</TD>}{showStatus && <TD><RunStatus run={run} /></TD>}<TD align="right" className="tabular-nums">{activityDuration(run.seconds)}</TD>
+            </TR>)}</TBody>
+          </Table>
           {!result.rows.length && <p className="m-0 px-4 py-6 text-center text-body text-ui-secondary">{selection.query?.trim() ? 'No runs match your search.' : 'No matching runs in this period.'}</p>}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ui-stroke px-4 py-2 text-caption text-ui-muted">
             <span>{result.totalMatches ? `${result.start + 1}–${Math.min(result.totalMatches, result.start + ACTIVITY_RUN_PAGE_SIZE)} of ${result.totalMatches}` : '0 runs'}</span>

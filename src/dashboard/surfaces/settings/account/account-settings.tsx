@@ -4,6 +4,8 @@ import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { isRelayUsername, RELAY_SIGN_IN_FIELD_MAX, type ProfileDetailsChangeRequestSchema, type ProfileDetailsChangeResultSchema, type ProfileLoginChangeResultSchema } from "../../../../models/profiles/public-profile.js";
+import { formatDayTime } from "../../../lib/date-format.js";
+import { readBack } from "../../../app/commands/command-readback.js";
 
 export interface AccountValues {
   readonly name: string;
@@ -12,15 +14,23 @@ export interface AccountValues {
   readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
 }
-export interface AccountPage { readonly values: AccountValues; readonly onSignOut: () => void; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
+export interface AccountPage { readonly values: AccountValues; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; /** The served account now, read back after a details change whose reply was lost. */ readonly readAccount?: () => Promise<AccountValues | undefined>; readonly login: Omit<RelayLogin, "username"> }
+
+/** Whether the served account shows every value the change asked for. */
+function showsChange(request: ProfileDetailsChangeRequest, account: AccountValues | undefined): account is AccountValues {
+  return account !== undefined && (request.name === undefined || account.name === `${request.name.firstName} ${request.name.lastName}`)
+    && (request.initials === undefined || account.initials === request.initials)
+    && (request.timekeeperName === undefined || account.timekeeper === request.timekeeperName)
+    && (request.timekeeperInitials === undefined || account.timekeeperInitials === request.timekeeperInitials);
+}
 
 function Group({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return <BodySection title={label} description={description}><FormGroup label={label}>{children}</FormGroup></BodySection>;
 }
 
-/** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status with Sign out, and Delete account. */
+/** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status, and Delete account. */
 export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
-  const { onSignOut, onDuoSetup, login } = page;
+  const { onDuoSetup, login } = page;
   const [saved, setSaved] = useState<{ readonly base: string; readonly values: AccountValues } | undefined>();
   const base = JSON.stringify(page.values);
   // A saved result overrides the served values only until the served account itself changes.
@@ -32,7 +42,11 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     try { result = await page.details(request); } catch { result = { state: "refused", code: "PROFILE_DETAILS_CHANGE_UNKNOWN" }; }
     if (result.state === "changed") { setSaved({ base, values: { ...values, ...result.account } }); return undefined; }
     if (result.code !== "PROFILE_DETAILS_CHANGE_UNKNOWN") return operatorFailureSentence(result.code);
-    toast({ key: `account-details-${title}`, tone: "warning", title: `${title} not confirmed`, description: operatorFailureSentence(result.code) });
+    // A lost reply is read back: the served value shows silently, or one failure toast.
+    const read = page.readAccount;
+    const served = read === undefined ? undefined : await readBack(read, account => showsChange(request, account));
+    if (showsChange(request, served)) { setSaved({ base, values: { ...values, ...served } }); return undefined; }
+    toast({ key: `account-details-${title}`, tone: "danger", title: `${title} not saved` });
     return undefined;
   };
   const details = (label: string, shown: string, request: (next: string) => ProfileDetailsChangeRequest, settingsPath?: string) => {
@@ -47,7 +61,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Name", values.name, next => { const [firstName = "", ...rest] = next.split(/\s+/u); return { name: { firstName, lastName: rest.join(" ") } }; })}
       <RelayLoginRows login={{ ...login, username }} />
       {details("Initials", values.initials, initials => ({ initials }))}
-      <ResultRow label="Last signed in" value={new Date(values.lastSignedInAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} />
+      <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-6" /></span>} />
     </Group>
     {ucpath}
     <Group label="Workflow configuration">
@@ -55,8 +69,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>
     <Group label="Security">
-      <ResultRow label="Duo" className="!min-h-[52px]" value={<span className="inline-flex items-center justify-end gap-3"><span>Ready</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />
-      <ResultRow label="Sign out" className="!min-h-[52px]" value={<Button variant="secondary" onClick={onSignOut}>Sign out</Button>} />
+      <ResultRow label="Duo" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">Ready</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />
     </Group>
     {deleteAccount}
   </section>;
@@ -66,20 +79,20 @@ export type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeReq
 export type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
 
 /** A value row whose pencil opens a dialog; Cancel and Escape close it and return focus to the pencil. */
-export function PencilRow({ label, description, shown, pencilLabel, title, disabled, dialog }: {
-  label: string; description?: string; shown: string; pencilLabel: string; title: string; disabled?: boolean;
+export function PencilRow({ label, description, shown, pencilLabel, title, editable = true, dialog }: {
+  label: string; description?: string; shown: string; pencilLabel: string; title: string; editable?: boolean;
   dialog: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const pencil = useRef<HTMLButtonElement>(null);
   const close = (): void => setOpen(false);
   return <>
-    <ResultRow label={label} description={description} value={<span className="inline-flex items-center justify-end gap-3 -mr-0.5">
-      <span className="text-ui-muted">{shown}</span>
-      <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" disabled={disabled === true} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
+    <ResultRow label={label} description={description} value={<span className="inline-flex items-center justify-end gap-3">
+      <span className="text-ui-primary">{shown}</span>
+      {editable ? <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} /> : <span aria-hidden className="size-6" />}
     </span>} />
     {open && <Dialog open onOpenChange={next => { if (!next) close(); }}>
-      <DialogContent size="sm" hideClose title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
+      <DialogContent size="sm" title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
         {dialog(close)}
       </DialogContent>
     </Dialog>}
@@ -104,7 +117,7 @@ function EditTextDialog({ label, value, close, onSave }: { label: string; value:
   return <form onSubmit={event => { void submit(event); }} className="flex min-h-0 flex-col">
     <DialogBody><Field label={label} error={problem}><Input autoFocus aria-label={label} autoComplete="off" spellCheck={false} value={draft} onChange={event => { setDraft(event.target.value); setProblem(undefined); }} /></Field></DialogBody>
     <DialogFooter>
-      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
       <Button type="submit" variant="primary" disabled={next === "" || saving}>Save</Button>
     </DialogFooter>
   </form>;
@@ -116,6 +129,8 @@ export interface RelayLogin {
   readonly username: string | undefined;
   readonly changePassword: (request: { currentPassword: string; newPassword: string }) => Promise<ProfileLoginChangeResult>;
   readonly changeUsername: (request: { currentPassword: string; newUsername: string }) => Promise<ProfileLoginChangeResult>;
+  /** The served Relay username now, read back after a username change whose reply was lost. */
+  readonly readUsername?: () => Promise<string | undefined>;
 }
 
 type Kind = "username" | "password";
@@ -139,11 +154,19 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
       return undefined;
     }
     if (result.state === "refused") return result.code;
-    toast({ key, tone: "warning", title: `${LABEL[kind]} not changed`, description: operatorFailureSentence(result.code) });
+    if (kind === "username" && login.readUsername !== undefined) {
+      // A lost username reply is read back: the served username shows silently, or one failure toast.
+      const read = login.readUsername;
+      if (await readBack(read, served => served === next) === next) { setChangedUsername(next); return undefined; }
+      toast({ key, tone: "danger", title: `${LABEL[kind]} not changed` });
+      return undefined;
+    }
+    // A password can't be read back, so a lost reply ends in one short line and no instructions.
+    toast({ key, tone: "danger", title: `${LABEL[kind]} change not confirmed` });
     return undefined;
   };
   return <>
-    <PencilRow label="Username" description={username === undefined ? "Not set yet. Relay uses your UCPath username, which you set under UCPath sign-in below. Workflows cannot run without a UCPath username and password." : undefined} shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
+    <PencilRow label="Username" shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" editable={username !== undefined}
       dialog={close => <UsernameDialog close={close} onSave={(current, next) => apply("username", current, next)} />} />
     <PencilRow label="Password" shown="••••••••" pencilLabel="Change Relay password" title="Change password"
       dialog={close => <PasswordDialog close={close} onSave={(current, next) => apply("password", current, next)} />} />
@@ -183,7 +206,7 @@ function UsernameDialog({ close, onSave }: { close: () => void; onSave: Save }) 
       <Field label="New username" orientation="horizontal" error={problem ?? saved.onNew}><Input type="text" name="newUsername" required maxLength={RELAY_SIGN_IN_FIELD_MAX} spellCheck={false} autoComplete="username" value={next} onChange={event => { setNext(event.target.value); setProblem(undefined); saved.clear(); }} /></Field>
     </DialogBody>
     <DialogFooter>
-      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
       <Button type="submit" variant="primary" disabled={current === "" || next.trim() === "" || saved.saving}>Save</Button>
     </DialogFooter>
   </form>;
@@ -207,7 +230,7 @@ function PasswordDialog({ close, onSave }: { close: () => void; onSave: Save }) 
       <Field label="Confirm new password" orientation="horizontal" error={mismatch ? "The passwords don’t match." : undefined}><SecretField label="Confirm new password" name="confirmPassword" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" value={again} onChange={event => setAgain(event.target.value)} /></Field>
     </DialogBody>
     <DialogFooter>
-      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
       <Button type="submit" variant="primary" disabled={current === "" || next === "" || next !== again || saved.saving}>Save</Button>
     </DialogFooter>
   </form>;

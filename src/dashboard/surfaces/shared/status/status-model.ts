@@ -12,6 +12,9 @@ import type { OutcomeWireSchema } from "../../../../models/dashboard/run-detail.
 
 export type QueueStatus = z.infer<typeof QueueStatusSchema>;
 
+/** One grouping for the queue's Needs you header and its Needs you filter: runs stopped on a decision, a parked write or an error. */
+export const NEEDS_YOU_STATUSES: readonly QueueStatus[] = ["awaiting-approval", "blocked", "failed"];
+
 export type OutcomeWire = z.infer<typeof OutcomeWireSchema>;
 
 export type TerminalOutcomeResult = Extract<OutcomeWire, { state: "terminal" }>["result"];

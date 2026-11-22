@@ -7,7 +7,7 @@ import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../mocks/helpers/fixture-da
 import { runLaunchAppliedToast } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import type { RunWorkerStartupFailure } from "../../../../src/rules/commands/commands.js";
 
-const MESSAGE = "Your run is queued. Worker startup did not complete; review this run and Sessions. Do not start the run again.";
+const MESSAGE = "Your run is queued, but its worker did not start. Don’t start it again.";
 
 function startup(state: "refused" | "unknown", message = MESSAGE): RunWorkerStartupFailure {
   return { state, code: "RUN_QUEUED_WORKER_UNAVAILABLE", message, detail: "spawn" };
@@ -15,14 +15,14 @@ function startup(state: "refused" | "unknown", message = MESSAGE): RunWorkerStar
 
 const refused = startup("refused");
 const unknown = startup("unknown");
-const refusedToast = { tone: "warning", title: "Run queued; worker unavailable", description: MESSAGE };
+const refusedToast = { tone: "warning", title: "Run queued, but no worker is available." };
 
 describe("applied worker startup toast", () => {
   it("uses Start's warning for an applied Resume, Retry or Recover", () => {
     for (const type of ["resume", "retry", "recover-run"]) {
       assert.deepEqual(appliedWorkerStartupToast({ family: "run", type }, { state: "applied", workerStartup: refused }), refusedToast);
       assert.deepEqual(appliedWorkerStartupToast({ family: "run", type }, { state: "applied", workerStartup: unknown }), {
-        tone: "warning", title: "Run queued; worker status unknown", description: MESSAGE,
+        tone: "warning", title: "Run queued; worker not confirmed yet.",
       });
     }
   });
@@ -47,10 +47,10 @@ describe("applied worker startup toast", () => {
       { outcome: "refused" },
     ];
     assert.deepEqual(appliedWorkerStartupToast({ family: "run", type: "resume", targets: [{}, {}, {}, {}] }, { state: "vector", results }), {
-      tone: "warning", title: "2 runs queued; worker unavailable", description: MESSAGE,
+      tone: "warning", title: "2 runs queued, but no worker is available.",
     });
     assert.deepEqual(appliedWorkerStartupToast({ family: "run", type: "resume", targets: [{}] }, { state: "vector", results: [{ outcome: "applied", workerStartup: unknown }] }), {
-      tone: "warning", title: "1 run queued; worker status unknown", description: MESSAGE,
+      tone: "warning", title: "1 run queued; worker not confirmed yet.",
     });
     assert.equal(appliedWorkerStartupToast({ family: "run", type: "resume", targets: [{}, {}] }, { state: "vector", results: [{ outcome: "applied" }, { outcome: "applied" }] }), undefined);
     assert.equal(appliedWorkerStartupToast({ family: "run", type: "cancel", targets: [{}] }, { state: "vector", results: [{ outcome: "applied", workerStartup: refused }] }), undefined);
@@ -59,7 +59,7 @@ describe("applied worker startup toast", () => {
   it("warns for applied Resume all runs when another run keeps the batch unconfirmed", () => {
     const request = { family: "run", type: "resume", targets: [{}, {}] };
     const reply = { state: "vector", results: [{ outcome: "applied", workerStartup: refused }, { outcome: "refused" }] };
-    const warning = { tone: "warning" as const, title: "1 run queued; worker unavailable", description: MESSAGE };
+    const warning = { tone: "warning" as const, title: "1 run queued, but no worker is available." };
     assert.deepEqual(unconfirmedBulkWorkerToast(request, reply, false), warning);
     assert.equal(unconfirmedBulkWorkerToast(request, reply, true), undefined);
     assert.deepEqual(appliedWorkerStartupToast(request, reply), warning);
@@ -71,7 +71,7 @@ describe("applied worker startup toast", () => {
       { outcome: "applied", workerStartup: startup("unknown", "Worker unknown.") },
     ];
     assert.deepEqual(appliedWorkerStartupToast({ family: "run", type: "retry", targets: [{}, {}] }, { state: "vector", results }), {
-      tone: "warning", title: "2 runs queued; worker status unknown",
+      tone: "warning", title: "2 runs queued; worker not confirmed yet.",
     });
   });
 });
@@ -86,10 +86,8 @@ describe("stopped worker toast", () => {
 
   it("names the stopped worker while its workflow has queued runs no worker can take", () => {
     assert.ok(topLevel.length > 1 && children.length > 0);
-    assert.deepEqual(stoppedWorkerToasts(day("crashed"), label), [{ tone: "warning", title: `${String(topLevel.length)} runs queued; worker unavailable`,
-      description: "Person Lookup worker crashed. Retry it in Sessions." }]);
-    assert.deepEqual(stoppedWorkerToasts(day("operator", queued.slice(0, 1)), label), [{ tone: "warning", title: "Run queued; worker unavailable",
-      description: "Person Lookup worker stopped by you. Retry it in Sessions." }]);
+    assert.deepEqual(stoppedWorkerToasts(day("crashed"), label), [{ tone: "warning", title: "Person Lookup worker crashed. Retry it in Sessions." }]);
+    assert.deepEqual(stoppedWorkerToasts(day("operator", queued.slice(0, 1)), label), [{ tone: "warning", title: "Person Lookup worker stopped by you. Retry it in Sessions." }]);
   });
 
   it("stays quiet while a worker can still take the run, or nothing waits", () => {
@@ -106,8 +104,7 @@ describe("stopped worker toast", () => {
       workerCards: FIXTURE_DAY_WIRE.workerCards.filter(card => card.workflowId !== "person-lookup"),
       workerAuthority: { ...FIXTURE_DAY_WIRE.workerAuthority, state: authority, members: FIXTURE_DAY_WIRE.workerAuthority.members.filter(member => member.workflow !== "person-lookup"),
         ...(authority === "present" ? {} : { reason: "Worker membership is unavailable." }) } });
-    assert.deepEqual(stoppedWorkerToasts(none(), label), [{ tone: "warning", title: singles.length === 1 ? "Run queued; worker unavailable" : `${String(singles.length)} runs queued; worker unavailable`,
-      description: "Person Lookup has no worker. Add one in Sessions." }]);
+    assert.deepEqual(stoppedWorkerToasts(none(), label), [{ tone: "warning", title: "Person Lookup has no worker. Add one in Sessions." }]);
     // A preview plan asks for no worker, and unread membership proves nothing.
     assert.deepEqual(stoppedWorkerToasts(none(queued.filter(row => row.surfaceKind === "preview")), label), []);
     assert.deepEqual(stoppedWorkerToasts(none(queued, "unavailable"), label), []);

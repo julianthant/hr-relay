@@ -25,12 +25,12 @@ beforeEach(() => { vi.stubGlobal('ResizeObserver', class { observe() {} unobserv
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; host.remove(); vi.unstubAllGlobals(); });
 const render = () => act(async () => root?.render(createElement(ToastProvider, null, createElement(TooltipProvider, null, createElement(SheetsV2)))));
 
-it('shows a skeleton while the spreadsheet list loads', async () => {
+it('shows a busy region and no guessed rows while the spreadsheet list loads', async () => {
   wiring.catalogLoading = true;
   await render();
   const loading = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading spreadsheets"]');
   assert.ok(loading, 'a labelled loading region');
-  assert.ok(loading.querySelector('[data-slot="skeleton"]'), 'skeleton rows');
+  assert.equal(loading.querySelector('[data-slot="skeleton"]'), null, 'no guessed rows');
   assert.doesNotMatch(host.textContent ?? '', /Loading spreadsheets…/u);
 });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
-import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
+import { Select, Button, Dialog, DialogBody, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { useAuthenticatedImage } from "../../shared/authenticated-image.js";
 import type { LogScreenshot } from "./log-feed-model.js";
@@ -35,11 +35,12 @@ function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: 
   const onFailure = useCallback(() => setFailed(true), []);
   return <figure className={cn("log-capture", submit && "log-capture--submit")} data-kind={screenshot.kind} data-log-capture-id={screenshot.logId}>
     {!submit && <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>}
-    <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-open" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
-      <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={onFailure} /></div>
-      {!failed && <span className="log-capture-expand"><Expand aria-hidden className="size-3.5" /></span>}
-      {screenshot.kind === "form" && !failed && <span className="log-form-hint">Full form · open to scroll</span>}
-    </button></DialogTrigger>
+    <div className="log-capture-open">
+      <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-hit" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
+        <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={onFailure} /></div>
+      </button></DialogTrigger>
+      {!failed && <DialogTrigger asChild><IconButton label="Expand capture" className="log-capture-expand" icon={<Expand aria-hidden className="size-4" />} onClick={event => onChoose(event.currentTarget)} /></DialogTrigger>}
+    </div>
     <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? screenshot.time}</span>{submit && !failed && <time className="tabular-nums text-ui-muted">{screenshot.time}</time>}{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
   </figure>;
 }
@@ -101,7 +102,7 @@ export function LogScreenshots({ screenshots, presentation }: { screenshots: rea
   if (!capture) throw new Error("log-screenshot-selection-missing");
   const browsers = screenshots.length > 1 && screenshots.every(item => item.kind === "browser");
   return <Dialog><div className={cn("log-capture-group", browsers && "log-capture-group--browsers", screenshots.length === 1 && "log-capture-group--single", presentation === "submit" && "log-capture-group--submit")} aria-label="Screenshots">{screenshots.map((item, index) => <CapturePreview key={`${item.src}-${item.width}-${item.height}-${index}`} screenshot={item} submit={presentation === "submit"} onChoose={button => { opener.current = button; setSelected(index); }} />)}</div>
-    <DialogContent className="ui-theme-scope log-viewer-dialog font-ui text-ui-primary" title={`${capture.system ?? "Capture"} · ${capture.label ?? captureKindLabel(capture.kind)}`} description={<span className="sr-only">Captured screenshot viewer</span>} size="xl" onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><CaptureWorkspace screenshots={screenshots} selected={selected} choose={setSelected} /></DialogContent>
+    <DialogContent className="ui-theme-scope log-viewer-dialog font-ui text-ui-primary" title={`${capture.system ?? "Capture"} · ${capture.label ?? captureKindLabel(capture.kind)}`} description={<span className="sr-only">Captured screenshot viewer</span>} size="xl" onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><DialogBody><CaptureWorkspace screenshots={screenshots} selected={selected} choose={setSelected} /></DialogBody></DialogContent>
   </Dialog>;
 }
 

@@ -35,10 +35,11 @@ describe("development fast check", () => {
   it("uses one shared check definition and a plain development gate without runner admission", () => {
     const development = load("development");
     expect(development).toContain("name: Development");
-    expect(development).toContain("run-name: ${{ github.event.pull_request.title }}");
+    expect(development).toContain("run-name: ${{ github.event.pull_request.title || github.ref_name }}");
     expect(development).toContain("branches: [development]");
-    expect(development).not.toMatch(/\n {2}push:|workflow_dispatch:|ci-runners/u);
-    expect(development).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}");
+    expect(development).toContain("push:\n    branches: ['task/**']");
+    expect(development).not.toMatch(/workflow_dispatch:|ci-runners/u);
+    expect(development).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}");
     expect(development).toContain("cancel-in-progress: true");
     expect(jobNames(development)).toEqual(["checks", "development"]);
     expect(job(development, "checks")).toContain("uses: ./.github/workflows/checks.yml");
@@ -51,6 +52,13 @@ describe("development fast check", () => {
     expect(checks).toContain("value: ${{ jobs.changes.outputs.plan }}");
     expect(checks).toContain("value: ${{ toJSON(jobs) }}");
     expect(job(checks, "changes")).toContain("npm run names:check");
+    expect(job(checks, "changes")).toContain("if: inputs.kind == 'fast' && github.event_name == 'pull_request'");
+  });
+
+  it("plans task-branch pushes like a development pull request and refuses other pushes", () => {
+    expect(selectUsingAdapter("fast", "push", "", "task/ci/push", filters))
+      .toEqual(selectUsingAdapter("fast", "pull_request", "development", "feature/test", filters));
+    expect(() => selectUsingAdapter("fast", "push", "", "feature/ci", filters)).toThrow("Push CI runs only fast checks on task branches.");
   });
 
   it.each([
@@ -132,7 +140,7 @@ function selectUsingAdapter(kind: "fast" | "portable" | "release", event: string
   const outputs: Record<string, string> = {};
   runInNewContext(source.replace(/^ {12}/gmu, ""), {
     require: () => ({ execFileSync: (_node: string, args: string[]) => JSON.stringify(createCiPlan(JSON.parse(args[4] ?? ""))) }),
-    context: { eventName: event, payload: event === "pull_request" ? { pull_request: { base: { ref: base }, head: { ref: head }, draft } } : {} },
+    context: { eventName: event, ref: `refs/heads/${head || "main"}`, payload: event === "pull_request" ? { pull_request: { base: { ref: base }, head: { ref: head }, draft } } : {} },
     process: { env: { FILTERS: JSON.stringify(selectedFilters), KIND: kind } },
     core: { setOutput: (key: string, value: string) => { outputs[key] = value; } },
   });
@@ -226,7 +234,7 @@ describe("separate event and admitted proof workflows", () => {
     }
   });
 
-  it("defines three triggered workflows, each ending in one gate job", () => {
+  it("keeps the three gated workflows and a separate opt-in evidence run", () => {
     const stagingTrigger = staging.split("\npermissions:\n")[0];
     const productionTrigger = production.split("\npermissions:\n")[0];
     expect(stagingTrigger).toContain("run-name: ${{ github.event.pull_request.title || github.event.head_commit.message }}");
@@ -247,7 +255,11 @@ describe("separate event and admitted proof workflows", () => {
     expect(checks).not.toMatch(/windows/iu);
     expect(checks.split("\njobs:\n")[0]).toContain("value: ${{ toJSON(jobs) }}");
     expect(readdirSync(new URL("../../../.github/workflows", import.meta.url)).sort())
-      .toEqual(["checks.yml", "development.yml", "production.yml", "staging.yml"]);
+      .toEqual(["checks.yml", "dashboard-skeleton-evidence.yml", "development.yml", "production.yml", "staging.yml"]);
+    const evidence = load("dashboard-skeleton-evidence");
+    expect(evidence.split("\npermissions:\n")[0]).toMatch(/\non:\n {2}push:\n {4}branches: \['chore\/dashboard-skeleton-evidence-\*'\]\n$/u);
+    expect(jobNames(evidence)).toEqual(["dashboard-skeleton-evidence"]);
+    expect(evidence).toContain("npm run test:smoke -- dashboard-skeletons.smoke.ts");
     expect(jobNames(staging)).toEqual(["names", "checks", "staging"]);
     expect(jobNames(production)).toEqual(["checks", "codeql", "dependencies", "production"]);
     expect(jobNames(checks)).toEqual(["changes", "lint", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "perf", "smoke", "unit"]);

@@ -36,7 +36,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - name: Check the development pull request name
-        if: inputs.kind == 'fast'
+        if: inputs.kind == 'fast' && github.event_name == 'pull_request'
         env:
           NAMES_BASE: ${{ github.base_ref }}
           NAMES_HEAD: ${{ github.head_ref }}
@@ -85,8 +85,9 @@ jobs:
           retention-days: 14
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'workflow_dispatch'
         with:
+          base: ${{ github.event_name == 'push' && 'development' || '' }}
           predicate-quantifier: every
           filters: |
             shared:
@@ -115,7 +116,8 @@ jobs:
             const { execFileSync } = require('node:child_process');
             const input = {
               workflow: process.env.KIND, event: context.eventName,
-              base: context.payload.pull_request?.base.ref ?? '', head: context.payload.pull_request?.head.ref ?? '',
+              base: context.payload.pull_request?.base.ref ?? (context.eventName === 'push' ? 'development' : ''),
+              head: context.payload.pull_request?.head.ref ?? context.ref.replace(/^refs\/heads\//u, ''),
               draft: context.payload.pull_request?.draft ?? false, filters: JSON.parse(process.env.FILTERS),
             };
             core.setOutput('plan', execFileSync('node', [
@@ -157,7 +159,6 @@ jobs:
       - run: npm test
         working-directory: fast-duo
       - run: npm run build:observer-policy
-      - run: npm run roadmap:check
 
   privacy:
     name: privacy

@@ -114,13 +114,6 @@ export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
 export const DASHBOARD_LOGS_REGION_ID = "dashboard-logs-region";
 
 
-/** Which id to focus when the takeover closes: the gear it was opened from, or
- * if the gear is not mounted — the main region the takeover was covering. */
-export function settingsCloseFocusTargetId(gearMounted: boolean): string {
-  return gearMounted ? SETTINGS_GEAR_ID : DASHBOARD_MAIN_REGION_ID;
-}
-
-
 /** The approved Settings page list stays available while the current editor
  * projection loads or fails. Each page still reads its values and edit */
 export function buildSettingsNav(
@@ -172,12 +165,8 @@ export function resolveSettingsSection(
   const found = entries.find((entry) => entry.id === requested) ?? entries.find((entry) => entry.id === SETTINGS_ALIASES[requested]);
   return found === undefined ? { state: "unknown", requested } : { state: "open", entry: found };
 }
-export { CAPABILITY_SPECS,capabilityAvailableCount,capabilityMatrix,dryRunPostureSentence } from "./preflight/settings-capabilities-model.js";
-export type { CapabilityCell,CapabilityKey,CapabilityRow,CapabilitySpec } from "./preflight/settings-capabilities-model.js";
 export { useEditableSettings } from "./editor/settings-editor-model.js";
-export type { EditableSettingsState,PreflightRerunState,SettingsSaveState } from "./editor/settings-editor-model.js";
-export { useSettingsFacts } from "./editor/settings-facts-model.js";
-export type { SettingsFactsState } from "./editor/settings-facts-model.js";
+export type { EditableSettingsState,SettingsSaveState } from "./editor/settings-editor-model.js";
 export { SYSTEM_HOST_PRESENTATION } from "./general/settings-hosts-model.js";
 export type { SystemHostPresentation } from "./general/settings-hosts-model.js";
 export { storageNeedsAttention } from "./storage/storage-settings-model.js";

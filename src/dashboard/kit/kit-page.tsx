@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Camera,
   ChevronDown,
+  ChevronRight,
   ChevronsUp,
   ClipboardList,
   Inbox,
@@ -14,10 +15,12 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Settings,
   ShieldCheck,
   Trash2,
   TriangleAlert,
   Upload,
+  Users,
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
@@ -65,6 +68,7 @@ import {
   PathControl,
   Kbd,
   KeyValueList,
+  NavRow,
   Panel,
   PanelBody,
   PanelFooter,
@@ -145,7 +149,7 @@ export function KitPage() {
   return (
     <TooltipProvider delayDuration={250}>
       <ToastProvider>
-        <div className={cn("flex min-h-screen flex-col bg-[var(--ds-surface-page)] [--ds-accent:var(--ui-info)] [--ds-accent-fg:var(--ui-canvas)] [--ds-accent-hover:var(--ui-info)] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]", dsFg.base)}>
+        <div className={cn("flex min-h-screen flex-col bg-[var(--ds-surface-page)]", dsFg.base)}>
           <KitHeader />
           <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[var(--ds-space-page)] px-[var(--ds-space-section)] py-[var(--ds-space-section)]">
             <StatusSection />
@@ -436,16 +440,28 @@ function DisplaySection() {
         <Chip tone="danger" label="page">
           4 rejected
         </Chip>
-        <Chip onRemove={() => undefined}>Separations</Chip>
         <Chip selected onSelect={() => undefined}>
           Needs you
         </Chip>
       </Row>
-      <Row label="Keys">
+      <Row label="Chip, removable">
+        <Chip onRemove={() => undefined}>Separations</Chip>
+        <Chip tone="info" label="system" onRemove={() => undefined}>UCPath</Chip>
+        <Chip tone="warning" onRemove={() => undefined}>Needs a password</Chip>
+      </Row>
+      <Row label="Kbd, a keycap">
         <Kbd>j</Kbd>
         <Kbd>k</Kbd>
         <Kbd>⌘K</Kbd>
         <Kbd>Esc</Kbd>
+      </Row>
+      <Row label="NavRow">
+        <div className="flex w-[264px] flex-col gap-px rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] p-[var(--ds-space-snug)]">
+          <NavRow icon={<Inbox aria-hidden />} label="Separations" trailing={<Badge tone="success">2</Badge>} selected />
+          <NavRow icon={<Users aria-hidden />} label="Emergency Contact" />
+          <NavRow icon={<Settings aria-hidden />} label="Settings" href="?settings=general" trailing={<ChevronRight aria-hidden className={dsIcon.md} />} />
+          <NavRow icon={<Inbox aria-hidden />} label="Not available yet" disabled />
+        </div>
       </Row>
       <Row label="Loading">
         <Spinner />
@@ -845,14 +861,35 @@ function FormsSection() {
           )}
         />
 
-        <SearchInput
-          aria-label="Search form specimens"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          onClear={() => setSearch("")}
-          placeholder="Search people, files, trace ids…"
-          shortcut={<Kbd>/</Kbd>}
-        />
+        <div className="flex flex-col gap-[var(--ds-space-base)]">
+          <SectionLabel>Search, field: the 28px bordered field inside a page, toolbar or menu</SectionLabel>
+          <SearchInput
+            aria-label="Search form specimens"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onClear={() => setSearch("")}
+            placeholder="Search people, files, trace ids…"
+            shortcut={<Kbd>/</Kbd>}
+          />
+          <SectionLabel>Search, sidebar: the filled pill above a list of rows</SectionLabel>
+          <div className="w-[264px]"><SearchInput variant="sidebar" aria-label="Search the list" placeholder="Search" /></div>
+          <SectionLabel>Input and SecretField, 28px and 32px; the eye icon reveals</SectionLabel>
+          <div className="flex flex-wrap items-start gap-[var(--ds-space-base)]">
+            <div className="w-64"><Input aria-label="Name, 28px" placeholder="Name · 28px" /></div>
+            <div className="w-64"><Input size="lg" aria-label="Name, 32px" placeholder="Name · 32px" /></div>
+            <div className="w-64"><SecretField label="Password, 28px" defaultValue="relay-password" /></div>
+            <div className="w-64"><SecretField size="lg" label="Password, 32px" defaultValue="relay-password" /></div>
+          </div>
+          <SectionLabel>Button, 28px and 32px</SectionLabel>
+          <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
+            <Button variant="primary">Save · 28px</Button>
+            <Button variant="primary" size="lg">Save · 32px</Button>
+            <Button variant="secondary">Cancel · 28px</Button>
+            <Button variant="secondary" size="lg">Cancel · 32px</Button>
+            <IconButton label="More, 28px" icon={<MoreHorizontal aria-hidden className={dsIcon.md} />} />
+            <IconButton label="More, 24px" size="xs" icon={<MoreHorizontal aria-hidden className={dsIcon.md} />} />
+          </div>
+        </div>
 
         <BodySection title="Connection settings">
           <FormGroup label="Connection settings">
@@ -902,8 +939,8 @@ function FormsSection() {
             <Field label="Note for the receipt" description="Why this run was started" orientation="horizontal">
               <Textarea rows={2} placeholder="Add a note…" />
             </Field>
-            <DateInput label="Start date" value={date} onChange={setDate} className="w-64" />
-            <DateRangeInput label="Choose specimen date range" value={dateRange} onChange={setDateRange} className="w-90" />
+            <Field label="Start date" orientation="horizontal"><DateInput label="Start date" value={date} onChange={setDate} className="w-64" /></Field>
+            <Field label="Date range" orientation="horizontal"><DateRangeInput label="Choose specimen date range" value={dateRange} onChange={setDateRange} className="w-90" /></Field>
           </FormGroup>
         </BodySection>
 
@@ -1038,7 +1075,7 @@ function FormsSection() {
           description="This key will no longer be available to use."
         >
           <DialogFooter>
-            <Button variant="muted" onClick={() => setPendingKey(null)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setPendingKey(null)}>Cancel</Button>
             <Button variant="danger" onClick={() => {
               setKeys((current) => current.filter((key) => key.id !== pendingKey));
               setPendingKey(null);
@@ -1054,6 +1091,7 @@ function FormsSection() {
 
 function OverlaysSection() {
   const [dialog, setDialog] = useState(false);
+  const [sized, setSized] = useState<"sm" | "md" | "lg" | null>(null);
   const [danger, setDanger] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [drawer, setDrawer] = useState(false);
@@ -1065,6 +1103,13 @@ function OverlaysSection() {
       title="Overlays"
       note="Radix owns focus: focus moves in on open and returns to the trigger on close, Escape dismisses, the rest of the page is hidden from assistive tech. A danger toast never auto-dismisses."
     >
+      <Row label="Dialog sizes">
+        {(["sm", "md", "lg"] as const).map((size) => (
+          <Button key={size} variant="secondary" onClick={() => setSized(size)}>
+            {size} · {{ sm: 400, md: 560, lg: 880 }[size]}px
+          </Button>
+        ))}
+      </Row>
       <Row label="Dialog">
         <Button variant="secondary" onClick={() => setDialog(true)}>
           Open dialog
@@ -1157,7 +1202,7 @@ function OverlaysSection() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="outline" className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden className="size-3.5" />}>Tags</Button></DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[240px]">
-            <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a tag" placeholder="Find a tag" /></div>
+            <div className="p-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput aria-label="Find a tag" placeholder="Find a tag" /></div>
             <DropdownMenuItem>Contact roster</DropdownMenuItem>
             <DropdownMenuItem>Pinned</DropdownMenuItem>
             <DropdownMenuItem>SharePoint</DropdownMenuItem>
@@ -1197,6 +1242,18 @@ function OverlaysSection() {
         </Popover>
       </Row>
 
+      <Dialog open={sized !== null} onOpenChange={(open) => { if (!open) setSized(null); }}>
+        <DialogContent size={sized ?? "md"} title={sized === "lg" ? "Start run" : "Add a note"} description={sized === "lg" ? "Separations · Workflow preview" : undefined}>
+          <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
+            <Field label="Note"><Input placeholder="Why this run was started" /></Field>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setSized(null)}>Cancel</Button>
+            <Button variant="primary" onClick={() => setSized(null)}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={dialog} onOpenChange={setDialog}>
         <DialogContent
           title="Approve 12 records"
@@ -1227,10 +1284,10 @@ function OverlaysSection() {
       </Dialog>
 
       <ConfirmDialog open={danger} onOpenChange={setDanger} destructive title="Delete this spreadsheet?"
-        description="Its saved versions and column mapping are removed. This cannot be undone." detail="Contact roster · 6 versions"
+        description="Its saved versions and column mapping are removed."
         confirmLabel="Delete spreadsheet" onConfirm={() => setDanger(false)} />
       <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Start a live run?"
-        description="Relay will submit real transactions to UCPath for 3 people." detail="Separations · Kuali 48216, 48220, 48224"
+        description="Relay will submit real transactions to UCPath for 3 people."
         confirmLabel="Start live run" onConfirm={() => setConfirm(false)} />
 
       <Drawer open={drawer} onOpenChange={setDrawer}>
@@ -1330,7 +1387,7 @@ function FoundationsSection() {
             </CardHeader>
             {/* on the darkest surface — a black shadow is invisible on the
                 plane it is cast from */}
-            <CardBody className="m-[var(--ds-space-cozy)] mt-0 flex items-end gap-[var(--ds-space-cozy)] rounded-[var(--ds-radius-md)] bg-[var(--ds-surface-page)]">
+            <CardBody className="m-[var(--ds-space-cozy)] mt-0 flex flex-row flex-wrap items-end gap-[var(--ds-space-cozy)] rounded-[var(--ds-radius-md)] bg-[var(--ds-surface-page)]">
               {ELEVATIONS.map((item) => (
                 <span key={item.name} className="flex flex-col items-center gap-[var(--ds-space-snug)]">
                   <span
@@ -1376,7 +1433,7 @@ function KitMenus() {
     </DropdownMenu>
     <DropdownMenu>{trigger("With sections")}
       <DropdownMenuContent align="start" className="w-[240px]">
-        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find an option" placeholder="Find an option" /></div>
+        <div className="px-0.5 pb-1" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}><SearchInput aria-label="Find an option" placeholder="Find an option" /></div>
         <DropdownMenuGroup><DropdownMenuLabel>Type</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={type} onValueChange={setType}>
             <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>

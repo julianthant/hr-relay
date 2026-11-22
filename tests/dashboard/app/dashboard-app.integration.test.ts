@@ -353,7 +353,7 @@ afterEach_m1(_afterEachFixture0);
       : [...document.querySelectorAll<HTMLButtonElement>('.notification-item')].find(item => item.querySelector(".notification-item-title")?.textContent === title);
     assert_m1.ok(target);
     await click(target);
-    assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+    assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
     assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
     assert_m1.equal(location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
@@ -377,12 +377,22 @@ afterEach_m1(_afterEachFixture0);
     const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`);
     assert_m1.ok(selected, "selected run must belong to the visible queue");
   });
-  it_m1("Settings gear opens the surface, Back to dashboard closes it and competing keys resolve one takeover", async () => {
+  it_m1("Close settings closes Settings opened from the Run dialog and keeps the dialog's route", async () => {
+    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day + "&start=1&settings=account&settingsFrom=run");
+    assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"]'));
+    await click(button("Close settings"));
+    const route = parseRoute_m1(location.search);
+    assert_m1.equal(route.settings, undefined);
+    assert_m1.equal(route.settingsFrom, undefined);
+    assert_m1.equal(route.start, true);
+    assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true);
+  });
+  it_m1("Settings gear opens the surface, Close settings closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert_m1.ok(document.querySelector('[aria-label="Settings"]'));
     assert_m1.equal(document.querySelector('[aria-label="Session actions"]'), null);
     const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
-    await click(button("Back to dashboard"));
+    await click(button("Close settings"));
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
     assert_m1.equal(new URLSearchParams(location.search).has("archive"),false);
     assert_m1.equal(new URLSearchParams(location.search).has("explore"),false);
@@ -405,44 +415,41 @@ async function editHeadlessPreference() {
   await act_m1(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, editedJobEndDate); input.dispatchEvent(new Event("input", { bubbles: true })); });
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
 }
-it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
+it_m1("asks before a sidebar section switch with an unsaved draft, and both answers work", async () => {
 try {
 
 
   await mount("?settings=general");
   await editHeadlessPreference();
-  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(general);
-  await click(general);
-  await historyMove("back");
+  const account = () => [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(account());
+  await click(account()!);
+  assert_m1.equal(document.body.textContent?.includes("Discard changes?"), true);
+  await click(button("Keep editing"));
+  assert_m1.equal(new URLSearchParams(location.search).get("settings"), "general");
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
-  const analytics = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=activity"]'); assert_m1.ok(analytics);
-  await click(analytics);
-  assert_m1.equal(document.querySelector("h1")?.textContent, "Analytics");
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
-  await historyMove("back");
-  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
-  await click(button("Back to dashboard"));
+  await click(account()!);
   await click(button("Discard changes"));
+  assert_m1.equal(new URLSearchParams(location.search).get("settings"), "account");
+  await click(button("Close settings"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
 
 } finally {
 await _afterEachFixture0();
 }
 });
-it_m1.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("keeps retired Archive URL %s explicit and returns to the queue", async search => {
+it_m1.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("opens the first Settings section for retired Archive URL %s", async search => {
 try {
 
 
   await mount(search);
-  assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
+  assert_m1.doesNotMatch(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
   // Subscription folded into General (1f9149b4fe); Archive is retired.
   assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
     ["general", "account", "spreadsheets", "explorer", "activity", "keyboard"].map(id => `?settings=${id}`));
   assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
-  await click(button("Return to dashboard"));
+  await click(button("Close settings"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
   assert_m1.ok(document.querySelector('[data-demo-row-id]'));

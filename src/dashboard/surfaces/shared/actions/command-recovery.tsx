@@ -21,7 +21,7 @@ export function CommandRecovery({ entries, pendingKey, onReview, onReplay }: {
         <div className={cn(dsText.meta, "max-h-40 overflow-y-auto px-[var(--ds-space-loose)] pt-[var(--ds-space-cozy)] text-[color:var(--ds-fg-secondary)]")}>
           {pending.detail !== undefined && <p>{pending.detail}</p>}
           <ul>{pending.targets.map(target => <li key={target.runId}>
-            {target.title} · {target.runId} · row rev {target.expectedVersion}
+            {target.title} · {target.runId}
           </li>)}</ul>
         </div>
         <DialogFooter>

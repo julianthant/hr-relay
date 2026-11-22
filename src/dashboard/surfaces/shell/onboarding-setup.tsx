@@ -1,18 +1,21 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
-import { useEffect, useState } from "react";
-import { Check, Fingerprint, KeyRound } from "lucide-react";
-import { Badge, Button, Dialog, DialogContent, DialogFooter, Select } from "../../ds/ui.js";
-import { duoMethodLabels, duoMethodPresentation, duoSummary, useServedDuoSetup, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
-import { DuoMethodPill } from "./onboarding.js";
+import { useEffect, useRef, useState } from "react";
+import { Check, Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
+import { Button, Card, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
+import { duoSummary, useServedDuoSetup, useWaitStage, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
+import { AppLockup } from "./app-lockup.js";
 import "./onboarding-setup.css";
 
+const methods = [["key", "Security key", "Use a security key or passkey with Duo."], ["touch", "Touch ID", "Use Touch ID on this computer."]] as const;
+const statusLabels = { idle: "Not started", pending: "Waiting for Duo", complete: "Added", unknown: "Not confirmed", unavailable: "Unavailable" } as const;
+
 export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: ServedOnboardingPort }) {
+  const duo = page === "duo";
   const setup = useServedDuoSetup(port);
   const draft = port.onboarding;
   const methodState = draft?.methods[setup.method].state;
   const failedMethod = methodState === "unknown" || methodState === "unavailable";
   const summary = duoSummary(setup.methods, draft);
-  const readiness = setup.unavailable && !failedMethod ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE") : summary;
   const [confirmation, setConfirmation] = useState<DuoConfirmationScope>();
   const confirming = confirmation !== undefined && setup.matchesConfirmation(confirmation);
   useEffect(() => { if (confirmation !== undefined && !confirming) setConfirmation(undefined); }, [confirmation, confirming]);
@@ -20,17 +23,18 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
     if (confirmation !== undefined) setup.dismissConfirmation(confirmation);
     setConfirmation(undefined);
   };
-  const duo = page === "duo";
-  const [closing, setClosing] = useState(false);
+  const [closing, setClosing] = useState<"complete" | "cancel">();
+  /** Shared by both close actions and set at dispatch, so a second press before React re-renders sends nothing. */
+  const closeLatch = useRef(false);
   const [closeFailure, setCloseFailure] = useState<string>();
   const closeReenrol = async (action: "complete" | "cancel") => {
-    if (closing) return;
-    setClosing(true); setCloseFailure(undefined);
+    if (closeLatch.current) return;
+    closeLatch.current = true; setClosing(action); setCloseFailure(undefined);
     try { await port[action](); }
     catch (error) {
       const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "PROFILE_DUO_REENROL_UNCERTAIN";
       setCloseFailure(`${action === "complete" ? "Duo setup not switched" : "Duo setup not cancelled"}. ${operatorFailureSentence(code)}`);
-    } finally { setClosing(false); }
+    } finally { closeLatch.current = false; setClosing(undefined); }
   };
   const browser = draft?.browser;
   const reenrol = port.reenrol === true;
@@ -45,52 +49,66 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
       setReopenFailure(operatorFailureSentence(code));
     } finally { setReopening(false); }
   };
+  const preparing = browser?.state === "opening" || browser?.state === "reopening" || browser?.state === "checking";
+  const preparingStage = useWaitStage(preparing && browser !== undefined ? `${draft?.operationId}:${browser.state}:${browser.generation}` : undefined);
   const browserNotice = browser?.state === "failed" ? operatorFailureSentence(browser.code)
     : browser?.state === "closed" ? "The setup browser was closed. Select Reopen to continue."
-    : browser?.state === "opening" || browser?.state === "reopening" || browser?.state === "checking" ? "Relay is preparing the setup browser." : undefined;
+    : preparing ? preparingStage === "still" ? "Still preparing the setup browser…" : "Relay is preparing the setup browser." : undefined;
   const canReopen = browser?.state === "failed" || browser?.state === "closed";
   const statusReadFailed = port.unavailable === true && !failedMethod;
   const both = setup.methods.key && setup.methods.touch;
-  const methods = [["key", "Security key"], ["touch", "Touch ID"]] as const;
   const selectionDisabled = setup.listening || draft !== undefined && Object.values(draft.methods).some(method => method.state === "pending");
   const selectMethod = (method: "key" | "touch") => { setup.cancel(); setup.setMethod(method); };
-  const icon = (method: "key" | "touch") => setup.methods[method] ? <Check className="icon" /> : method === "key" ? <KeyRound className="icon" /> : <Fingerprint className="icon" />;
-  return <div className={`hub-duo-setup ${duo ? "duo-page" : "fast-page"}`}>
+  useEffect(() => {
+    if (setup.methods[setup.method] && !both) setup.setMethod(setup.method === "key" ? "touch" : "key");
+  }, [both, setup]);
+  const instruction = failedMethod ? "In Duo, open Manage devices and remove any device you do not recognize, then add this one again."
+    : both ? "Both devices are added. Go back to Relay to finish."
+    : setup.listening ? "In Duo, add the matching device. Relay moves on once it sees it."
+    : "In Duo, approve with your current method, then choose Other options and Manage devices.";
+  const waitingAttempt = methodState === "pending" ? draft?.methods[setup.method].attemptId ?? setup.method : setup.listening ? setup.method : undefined;
+  const waitStage = useWaitStage(waitingAttempt === undefined ? undefined : `${draft?.operationId}:${waitingAttempt}`);
+  const status = statusReadFailed ? "Relay could not read the setup status. It keeps trying."
+    : !setup.connected ? "Open this window from Relay to continue."
+    : setup.unavailable && !failedMethod ? "The Duo tab is closed. Reopen it to continue."
+    : waitStage === "still" ? "Still waiting for Duo." : undefined;
+  return <div className="hub-duo-setup">
     <a tabIndex={0} href="#setup-main" className="skip-link">Skip to setup</a>
-    <header className="setup-brand">{!duo && <svg aria-hidden width="32" height="32" viewBox="0 0 128 128"><rect width="128" height="128" rx="34" fill="var(--hub-fast-duo-brand)" /><path fill="var(--hub-fast-duo-ink)" fillRule="evenodd" d="M53 47a25 25 0 1 0 0 50 25 25 0 0 0 0-50Zm0 14a11 11 0 1 1 0 22 11 11 0 0 1 0-22Z" /><rect x="67" y="28" width="14" height="69" rx="7" fill="var(--hub-fast-duo-ink)" /><circle cx="96" cy="90" r="7" fill="var(--hub-fast-duo-ink)" /></svg>}<strong>{duo ? "UC San Diego" : "Fast Duo"}<small>{duo ? "Duo device management" : reenrol ? "Duo re-enrolment" : "Relay setup"}</small></strong><span>{reenrol ? "Security · Duo re-enrolment" : `${duo ? "duo.ucsd.edu" : "Onboarding 1"} · Relay setup`}</span></header>
-    <main id="setup-main"><header className="page-heading"><h1>{duo ? "Manage your devices" : "Set up Duo for Relay"}</h1><p>{draft ? "Review your sign-in methods in your Duo device-management tab." : duo ? "Add your security key and Touch ID for Relay." : "Confirm a security key and Touch ID in your Duo device-management tab."}</p></header>
-      {duo ? <><div className="device-list">{methods.map(([method, label]) => <section className="device-row" key={method}><div><strong>{icon(method)}{label}</strong><p>{draft ? duoMethodLabels[draft.methods[method].state] : setup.methods[method] ? "Ready for Relay" : "Not added"}</p></div><button tabIndex={0} className={`btn ${setup.methods[method] ? "" : "primary"}`} disabled={!setup.connected || setup.methods[method] || port.onboarding?.methods[method].state === "unknown" || port.onboarding?.methods[method].state === "unavailable"} onClick={async () => {
-        setup.setMethod(method);
-        const scope = await setup.start(method);
-        if (scope) setConfirmation(scope);
-      }}>{draft && draft.methods[method].state !== "idle" ? duoMethodLabels[draft.methods[method].state] : setup.methods[method] ? "Added" : method === "key" ? "Add security key" : "Add Touch ID"}</button></section>)}</div><p className="readiness">{readiness}</p><footer className="setup-footer"><p>{both ? "Both devices are added. Continue in Relay." : "Fast Duo stays open in its own tab."}</p><button tabIndex={0} className="btn" onClick={() => setup.returnToParent()}>Show Fast Duo</button></footer></> : <><div className="setup-grid"><section aria-label="Your sign-in methods"><div className="method-heading"><h2>Relay sign-in methods</h2><span>{Number(setup.methods.key) + Number(setup.methods.touch)} of 2 completed</span></div><div className="method-progress" aria-hidden>{methods.map(([method]) => <span key={method} data-state={draft?.methods[method].state ?? (setup.methods[method] ? "complete" : setup.listening && setup.method === method ? "pending" : "idle")} />)}</div><ul className="method-list">{methods.map(([method]) => {
+    <header className="setup-brand"><AppLockup /><span>Duo setup</span></header>
+    <main id="setup-main"><header className="heading"><h1>{reenrol ? "Set up Duo again" : "Set up Duo"}</h1><p>{instruction}</p></header>
+      <ul className="method-list">{methods.map(([method, label, help]) => {
         const state = draft?.methods[method].state ?? (setup.methods[method] ? "complete" : setup.listening && setup.method === method ? "pending" : "idle");
-        const presentation = duoMethodPresentation(method, state);
-        const label = method === "key" ? "Security key" : "Touch ID";
-        return <li key={method}><button type="button" className="method-card" data-state={state} aria-pressed={setup.method === method} disabled={selectionDisabled || setup.methods[method]} onClick={() => selectMethod(method)}><span className="method-head"><span className="method-icon">{method === "key" ? <KeyRound className="icon" aria-hidden /> : <Fingerprint className="icon" aria-hidden />}</span><span className="method-identity"><strong>{label}</strong><span>{method === "key" ? "Software key in this browser" : "Touch ID on this computer"}</span></span><DuoMethodPill state={state} /></span><ol className="method-track" aria-label={`${label} progress`}>{presentation.track.map(step => <li key={step.label} data-state={step.tone}>{step.label}</li>)}</ol><span className="method-note">{presentation.note}</span></button></li>;
-      })}</ul><p className="method-sync">{reenrol ? "Updated every second." : "Same status as the Relay sign-up step. Updated every second."}</p><p className="readiness">{statusReadFailed ? undefined : readiness}</p></section><section className="setup-task"><h2>{methodState ? duoMethodLabels[methodState] : both ? "Both methods are ready" : setup.unavailable ? "Reconnect your Duo tab" : setup.listening ? "Waiting for Duo…" : `Add ${setup.method === "key" ? "a security key" : "Touch ID"}`}</h2><p>{failedMethod ? "Relay could not confirm this attempt. In Duo, open Manage devices and remove any device you do not recognize, then start over from the setup browser." : both ? "Return to Relay to finish your profile." : setup.listening ? "In Duo, select the matching device and confirm that it was added." : "Open Duo, approve with an existing method, then choose Other options → Manage devices."}</p>{statusReadFailed && <p role="alert" className="setup-notice" data-tone="failure">Relay could not read the setup status. It keeps trying every second; capture is off until it can.</p>}{!statusReadFailed && browserNotice !== undefined && <p role={canReopen ? "alert" : "status"} className="setup-notice" data-tone={canReopen ? "failure" : "info"}>{browserNotice}</p>}{reopenFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{reopenFailure}</p>}{canReopen && !statusReadFailed && <div className="action-row"><button tabIndex={0} className="btn primary" disabled={reopening} onClick={() => void reopen()}>{reopening ? "Reopening…" : "Reopen"}</button></div>}{!both && <><div className="field"><label htmlFor="device-type">Device type</label><Select disabled={selectionDisabled} id="device-type" value={setup.method} onChange={event => selectMethod(event.target.value === "key" ? "key" : "touch")}>{methods.map(([method, label]) => <option key={method} value={method} disabled={setup.methods[method]}>{label}</option>)}</Select></div><div className="action-row"><button tabIndex={0} className="btn" disabled={!setup.connected || canReopen} onClick={() => setup.open(false)}>Open duo.ucsd.edu</button><button tabIndex={0} className="btn primary" disabled={!setup.connected || statusReadFailed || canReopen || draft !== undefined && !setup.listening && methodState !== "idle"} onClick={() => setup.listening ? setup.cancel() : setup.open(true)}>{setup.listening ? "Cancel capture" : "Start capture"}</button></div></>}<p className="status-line" role="status">{failedMethod ? "Not confirmed. Check your Duo devices." : statusReadFailed ? "Setup status is unavailable." : !setup.connected ? "Setup is unavailable. Open this tab from Relay." : setup.unavailable ? "The Duo tab is unavailable. Reopen it to continue." : setup.listening ? "Listening for the selected device." : both ? "Security key and Touch ID ready" : "Capture alone does not mean the device is added."}</p></section></div><footer className="setup-footer"><p>Enrollment is verified by Relay. Capture alone does not complete setup.</p>{closeFailure !== undefined && <p role="alert" className="readiness">{closeFailure}</p>}{port.reenrol ? <div className="action-row"><button tabIndex={0} className="btn" disabled={closing} onClick={() => void closeReenrol("cancel")}>Cancel setup</button><button tabIndex={0} className="btn primary" disabled={!both || closing} onClick={() => void closeReenrol("complete")}>Use new devices</button></div> : <div className="action-row"><button tabIndex={0} className="btn" onClick={() => window.close()}>Close setup tab</button><button tabIndex={0} className="btn primary" onClick={() => setup.returnToParent()}>Return to Relay</button></div>}</footer></>}
-    </main><span className="sr-only" role="status">{summary}</span>
-    <Dialog open={confirming} onOpenChange={open => { if (!open) dismissConfirmation(); }}><DialogContent hideClose className="hub-duo-dialog" title={(confirmation?.method ?? setup.method) === "key" ? "Add security key?" : "Add Touch ID?"} description="Confirm only after Duo reports the device was added. Relay still requires the observed enrollment proof."><DialogFooter><button tabIndex={0} className="btn" onClick={dismissConfirmation}>Cancel</button><button tabIndex={0} className="btn primary" onClick={() => {
+        const added = state === "complete";
+        const selected = setup.method === method && !added;
+        const Icon = method === "key" ? KeyRound : Fingerprint;
+        return <li key={method}><Card selected={selected} tone={state === "unknown" || state === "unavailable" ? "danger" : "default"}>
+          <button type="button" className="method-head" aria-pressed={selected} disabled={selectionDisabled || added} onClick={() => selectMethod(method)}>
+            <Icon className="icon" aria-hidden /><span className="method-name"><strong>{label}</strong><span>{help}</span></span>
+            <span className="method-status" data-state={state}>{added && <Check className="icon" aria-hidden />}{statusLabels[state]}</span>
+          </button>
+          {selected && <div className="method-actions">
+            {canReopen && !statusReadFailed && <Button variant="secondary" size="lg" disabled={reopening} onClick={() => void reopen()}>{reopening ? "Reopening…" : "Reopen"}</Button>}
+            <Button variant="secondary" size="lg" disabled={!setup.connected || canReopen} onClick={() => setup.open(false)}>Open Duo</Button>
+            <Button variant="primary" size="lg" disabled={!setup.connected || statusReadFailed || failedMethod || canReopen || draft !== undefined && !setup.listening && methodState !== "idle"} onClick={async () => {
+              if (duo) { const scope = await setup.start(method); if (scope) setConfirmation(scope); }
+              else if (setup.listening) setup.cancel(); else setup.open(true);
+            }}>{setup.listening && !duo ? "Stop" : "Add this device"}</Button>
+          </div>}
+        </Card></li>;
+      })}</ul>
+      {statusReadFailed && <p role="alert" className="setup-notice" data-tone="failure">{status}</p>}
+      {!statusReadFailed && browserNotice !== undefined && <p role={canReopen ? "alert" : "status"} className="setup-notice" data-tone={canReopen ? "failure" : "info"}>{browserNotice}</p>}
+      {reopenFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{reopenFailure}</p>}
+      {!statusReadFailed && status !== undefined && browserNotice === undefined && <p role="status" className="setup-notice" data-tone="info">{status}</p>}
+    </main>
+    <footer className="setup-footer">{closeFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{closeFailure}</p>}
+      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing !== undefined} aria-busy={closing === "cancel" || undefined} onClick={() => void closeReenrol("cancel")}>{closing === "cancel" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "cancel" ? "Cancelling…" : "Cancel setup"}</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing !== undefined} aria-busy={closing === "complete" || undefined} onClick={() => void closeReenrol("complete")}>{closing === "complete" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "complete" ? "Switching…" : "Use new devices"}</Button></div>
+        : <div className="action-row"><Button variant="secondary" size="lg" onClick={() => window.close()}>Close</Button><Button variant={both ? "primary" : "secondary"} size="lg" onClick={() => setup.returnToParent()}>Back to Relay</Button></div>}
+    </footer>
+    <span className="sr-only" role="status">{summary}</span>
+    <Dialog open={confirming} onOpenChange={open => { if (!open) dismissConfirmation(); }}><DialogContent size="sm" title={(confirmation?.method ?? setup.method) === "key" ? "Add security key?" : "Add Touch ID?"} description="Confirm once Duo shows the device as added."><DialogFooter><Button variant="secondary" onClick={dismissConfirmation}>Cancel</Button><Button variant="primary" onClick={() => {
         if (confirmation !== undefined) setup.confirm(confirmation);
         dismissConfirmation();
-      }}>Confirm device added</button></DialogFooter></DialogContent></Dialog>
+      }}>Device added</Button></DialogFooter></DialogContent></Dialog>
   </div>;
-}
-
-export function DuoSignupSteps({ methods, platformAuthenticator, state, onEnroll, onFinish, onCancel, onShowSetup }: {
-  methods: Readonly<Record<"key" | "touch", "idle" | "pending" | "complete" | "unknown" | "unavailable">>;
-  platformAuthenticator: "hardware" | "virtual";
-  state: "enrolling" | "finishing" | "cancelling";
-  onEnroll?: (method: "key" | "touch") => void;
-  onFinish?: () => void;
-  onCancel?: () => void;
-  onShowSetup?: () => void;
-}) {
-  const busy = state !== "enrolling" || methods.key === "pending" || methods.touch === "pending";
-  const ready = methods.key === "complete" && methods.touch === "complete";
-  return <section aria-label="Required Duo methods" className="duo-signup-methods">
-    <div className="duo-signup-cards">{(["touch", "key"] as const).map(method => <section key={method} className="duo-signup-card"><div className="flex items-center justify-between gap-3"><span className="duo-signup-icon">{methods[method] === "complete" ? <Check aria-hidden /> : method === "touch" ? <Fingerprint aria-hidden /> : <KeyRound aria-hidden />}</span><Badge tone={methods[method] === "complete" ? "success" : "neutral"}>{methods[method] === "complete" ? "Added" : methods[method] === "pending" ? "Waiting for Duo" : methods[method] === "unknown" ? "Unknown" : methods[method] === "unavailable" ? "Unavailable" : "Not added"}</Badge></div><h2>{method === "touch" ? "Touch ID" : "Security key"}</h2><p>{methods[method] === "complete" ? method === "touch" && platformAuthenticator === "virtual" ? "Verified in Duo on this computer." : "Verified in Duo." : methods[method] === "pending" ? "Finish adding it in the setup browser." : methods[method] === "unknown" ? "Enrollment is unverified. Review your Duo devices." : methods[method] === "unavailable" ? "Enrollment is unavailable. Reopen the setup browser." : method === "touch" ? platformAuthenticator === "virtual" ? "Touch ID on this computer, managed by Relay." : "Use Touch ID on this computer." : "Use Fast Duo in Relay’s setup browser."}</p>{methods[method] === "idle" && <Button variant="secondary" disabled={busy || !onEnroll} onClick={() => onEnroll?.(method)}>Add {method === "touch" ? "Touch ID" : "Security key"}</Button>}{(methods[method] === "pending" || methods[method] === "unknown" || methods[method] === "unavailable") && <Button variant="secondary" disabled={state !== "enrolling" || !onShowSetup} onClick={onShowSetup}>Show setup browser</Button>}</section>)}</div>
-    {state !== "enrolling" && <p role="status">{state === "finishing" ? "Finishing sign-up; your account is not published yet." : "Cancelling sign-up; resource closure is not complete."}</p>}
-    <footer className="flex items-center justify-between border-t border-ui-stroke pt-[var(--ds-space-loose)]"><Button variant="ghost" disabled={state !== "enrolling" || !onCancel} onClick={onCancel}>Back to login</Button><Button disabled={!ready || busy || !onFinish} onClick={onFinish}>Finish</Button></footer>
-  </section>;
 }

@@ -11,6 +11,7 @@ import { WorkflowExplorer } from "../surfaces/explorer/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake/intake.js";
 import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
 import type { DemoTheme } from "../ds/ui.js";
+import { PanelBoundary } from "../surfaces/shared/panel-boundary.js";
 import { SettingsPage } from "../surfaces/settings/settings.js";
 import {
 RUN_START_DOOR_ID,
@@ -45,6 +46,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
  : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
+            <PanelBoundary resetKey={route.settings ?? takeover} sentence="Couldn't open Settings." className="m-4">
             <SettingsPage
               onOpenRun={onOpenRun}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
@@ -65,6 +67,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
               onSaved={onSettingsSaved}
               onSaveProblem={onSettingsSaveProblem}
             />
+            </PanelBoundary>
           ) : takeover === "intake" && route.intake !== undefined ? (
              /** The surface owns the same full-bleed `TakeoverFrame` as every other
  * window-replacing view; no shell gutter may sit between frame and column. */

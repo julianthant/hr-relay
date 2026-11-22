@@ -164,7 +164,7 @@ describe("served failure card facts", () => {
     const failure = h.read();
     assert.deepEqual(failure.display, {
       title: "Open PayPath Actions for the employee",
-      observation: "The system did not show the expected page. Review the current page before continuing.",
+      observation: "The expected page did not appear. Review the current page.",
       attemptedAction: "Open PayPath Actions for the employee",
       lastCompleted: "Read Employee ID",
       field: { label: "Employee ID", value: "10000001", outcome: "Read" },
@@ -184,7 +184,7 @@ describe("served failure card facts", () => {
     const h = await fixture("i9");
     const failure = h.read();
     assert.equal(failure.display?.title, "Retain delegated I-9 lookup");
-    assert.equal(failure.display?.observation, "The delegated I-9 lookup did not establish a result for this hire. No profile will be created.");
+    assert.equal(failure.display?.observation, "The I-9 lookup found nothing for this hire. No profile was created.");
     assert.equal(failure.display?.attemptedAction, "Retain delegated I-9 lookup");
     assert.equal(failure.display?.lastCompleted, "Check UCPath duplicate identity");
     assert.equal(failure.display?.field, undefined, "the preceding tasks declare no operator field for the retained gesture value");
@@ -211,7 +211,7 @@ describe("served failure card facts", () => {
       summary: "[ucpath/read-paypath-position] UNEXPECTED_PAGE_STATE: raw detail — write state at failure: not-attempted" }));
     const row = h.world.projection.queueSurface(h.failure.runId);
     assert.ok(row);
-    assert.deepEqual(row.liveMessage, { state: "present", value: "The system did not show the expected page. Review the current page before continuing." });
+    assert.deepEqual(row.liveMessage, { state: "present", value: "The expected page did not appear. Review the current page." });
   });
 
   it("does not serve retry when a descriptor is unavailable or another run for the item is active", async () => {

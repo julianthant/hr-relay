@@ -1,13 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { WORKFLOW_SOURCES } from "../../app/workflow-sources.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
+import type { IconName } from "../../../models/workflow/presentation.js";
 import { groupWorkflowsByCategory, type WorkflowCategoryGroup } from "../workflows/workflow-category.js";
 
 export interface WorkflowNavigationEntry {
-  readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole;
+  readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole; readonly icon: IconName;
 }
 
-const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
+const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work-Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
 
 const WORKFLOW_ORDER: readonly string[] = Object.keys(WORKFLOW_SOURCES);
 
@@ -23,30 +24,21 @@ export function workflowNavigationGroups<Entry extends WorkflowNavigationEntry>(
   return groupWorkflowsByCategory(ordered).sort((left, right) => rank(left.label) - rank(right.label));
 }
 
-const words = (label: string) => label.split(/[\s-]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean);
+const NARROW_QUERY = "(max-width: 1199px)";
 
-/** Two characters per workflow for the minimized rail: the first letters of the first two words ("I-9 Check" → I9, "OnBase" → OB) or the first two letters of one word.
- * A label whose initials are already taken uses its first and last word instead ("I-9 Check" → IC). */
-export function workflowInitials(labels: readonly string[]): ReadonlyMap<string, string> {
-  const taken = new Set<string>();
-  return new Map(labels.map(label => {
-    const parts = words(label);
-    const base = (parts.length > 1 ? parts[0][0] + parts[1][0] : label.slice(0, 2)).toUpperCase();
-    const initials = taken.has(base) && parts.length > 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : base;
-    taken.add(initials);
-    return [label, initials];
-  }));
+function subscribeNarrow(notify: () => void): () => void {
+  if (typeof window.matchMedia !== "function") return () => undefined;
+  const query = window.matchMedia(NARROW_QUERY);
+  query.addEventListener("change", notify);
+  return () => query.removeEventListener("change", notify);
 }
+const isNarrow = () => typeof window.matchMedia === "function" && window.matchMedia(NARROW_QUERY).matches;
 
-const COLLAPSED_KEY = "relay.workflow-rail.collapsed";
-const STARTS_EXPANDED = false;
-
-/** The minimized rail is remembered per viewer in this browser; storage that is blocked just means it starts expanded. */
+/** The rail starts collapsed below 1200px window width and expanded above it. The toggle overrides that at any width; the choice holds until the width crosses 1200px again. */
 export function useRailCollapsed(): readonly [boolean, (next: boolean) => void] {
-  const [collapsed, setState] = useState(() => { try { return window.localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { return STARTS_EXPANDED; } });
-  const set = useCallback((next: boolean) => {
-    setState(next);
-    try { window.localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0"); } catch { /* not remembered */ }
-  }, []);
-  return [collapsed, set];
+  const narrow = useSyncExternalStore(subscribeNarrow, isNarrow, () => false);
+  const [state, setState] = useState<{ readonly narrow: boolean; readonly choice: boolean | undefined }>({ narrow, choice: undefined });
+  if (state.narrow !== narrow) setState({ narrow, choice: undefined });
+  const set = useCallback((next: boolean) => setState({ narrow, choice: next }), [narrow]);
+  return [state.narrow === narrow && state.choice !== undefined ? state.choice : narrow, set];
 }

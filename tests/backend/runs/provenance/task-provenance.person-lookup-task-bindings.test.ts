@@ -99,7 +99,7 @@ describe("Person Lookup task implementations", () => {
     assert.ok(result.identity.crmRecord);
     const recorded: unknown[] = [];
     await assert.rejects(readActiveStatusTask.impl.run({ input: { input, identity: { ...result.identity, crmRecord: { ...result.identity.crmRecord, emplId: EidSchema.parse("10101010") } } },
-      ctx: { ...commonCtx, recordData: (point) => { recorded.push(point); } } }), /inconsistent UCPath and CRM identities/);
+      ctx: { ...commonCtx, recordData: (point) => { recorded.push(point); } } }), /The UCPath and CRM records are for different people/);
     assert.deepEqual(recorded, []);
   });
 });

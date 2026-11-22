@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { CURRENT_FISCAL_TARGET,preflightRemedy,preflightRemedyLabel,RUN_CHECK_FIXES,RUN_CHECK_HINTS,runCheckFix,runCheckForTarget,runCheckHint } from '../../../../../src/dashboard/surfaces/settings/preflight/preflight-remedy-model.js';
+import { CURRENT_FISCAL_TARGET,preflightRemedy,RUN_CHECK_FIXES,runCheckFix,runCheckForTarget } from '../../../../../src/dashboard/surfaces/settings/preflight/preflight-remedy-model.js';
 import { CHECK_COPY } from '../../../../../src/dashboard/surfaces/settings/preflight/preflight-check-copy.js';
 import { buildSettingsNav,resolveSettingsSection } from '../../../../../src/dashboard/surfaces/settings/settings-model.js';
 import { settingsSearchIndex } from '../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js';
@@ -8,17 +8,16 @@ import { fixtureSettingsDocument } from '../../../../mocks/helpers/fixture-setti
 import { PREFLIGHT_CHECKS } from '../../../../../src/models/runtime/runtime-dependencies.js';
 
 it('maps known checks to available Settings sections and preserves a general destination for new checks', () => {
-  for (const [id, destination, label] of [
-    ['secrets.ucpath-sso', 'credentials', 'Configure credentials'],
-    ['profile.identity', 'settings', 'Open Settings'],
-    ['secrets.sharepoint-roster', 'routes', 'Configure SharePoint route'],
-    ['authority.health', 'storage', 'Open Storage'],
-    ['filesystem.health', 'storage', 'Open Storage'],
-    ['fiscal.current', 'settings', 'Open Settings'],
-    ['new.check', 'settings', 'Open Settings'],
+  for (const [id, destination] of [
+    ['secrets.ucpath-sso', 'credentials'],
+    ['profile.identity', 'settings'],
+    ['secrets.sharepoint-roster', 'routes'],
+    ['authority.health', 'storage'],
+    ['filesystem.health', 'storage'],
+    ['fiscal.current', 'settings'],
+    ['new.check', 'settings'],
   ] as const) {
     assert.equal(preflightRemedy(id), destination);
-    assert.equal(preflightRemedyLabel(preflightRemedy(id)), label);
   }
 });
 
@@ -64,12 +63,7 @@ describe('the Run dialog Fix mapping', () => {
     for (const id of ids) if (runCheckFix(id) !== null) assert.ok(CHECK_COPY[id]?.name, `${id} has a Fix but no readiness copy`);
   });
 
-  it('gives every check without a Fix a plain hint, and none to a check that has one', () => {
-    for (const id of ids) {
-      if (runCheckFix(id) === null) assert.match(runCheckHint(id), /^Cannot be fixed in Settings\. /u, id);
-      else assert.ok(!Object.hasOwn(RUN_CHECK_HINTS, id), `${id} has a Fix and a hint`);
-    }
-    assert.throws(() => runCheckHint('new.check'), /no cannot-fix-here hint/u);
+  it('maps no Settings row for an unknown target', () => {
     assert.equal(runCheckForTarget(undefined), undefined);
   });
 

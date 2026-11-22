@@ -595,6 +595,7 @@ export async function verifyUcsdAuthenticatedApplication(
   page: Page,
   input: Readonly<{
     assertCurrent: () => void;
+    signal?: AbortSignal;
     urlIsApplication: (url: string) => boolean;
     urlRefusal: string;
     positive: () => Promise<ObservedFact>;
@@ -603,18 +604,18 @@ export async function verifyUcsdAuthenticatedApplication(
 ): Promise<AuthenticationProbe> {
   input.assertCurrent();
   const url = page.url();
-  if (!input.urlIsApplication(url)) return { authenticated: false, reason: input.urlRefusal, check: "application-route" };
+  if (!input.urlIsApplication(url)) return { authenticated: false, observedUrl: url, reason: input.urlRefusal, check: "application-route" };
 
   let navigated = false;
   const onNavigation = (frame: Frame): void => {
     if (frame === page.mainFrame()) navigated = true;
   };
   page.on("framenavigated", onNavigation);
-  try {
+  const verifyDocument = async (): Promise<AuthenticationProbe> => {
     input.assertCurrent();
     const positive = await input.positive();
     input.assertCurrent();
-    if (!positive.holds) return { authenticated: false, reason: positive.detail, check: "positive-evidence" };
+    if (!positive.holds) return { authenticated: false, observedUrl: url, reason: positive.detail, check: "positive-evidence" };
 
     const absences = [await probeSsoFormAbsent(page, input.assertCurrent)];
     for (const absence of input.additionalAbsences ?? []) {
@@ -623,10 +624,10 @@ export async function verifyUcsdAuthenticatedApplication(
     }
     input.assertCurrent();
     if (navigated || page.url() !== url) {
-      return { authenticated: false, reason: "the application page navigated during verification", check: "application-route" };
+      return { authenticated: false, observedUrl: url, reason: "the application page navigated during verification", check: "application-route" };
     }
     const present = absences.find((fact) => !fact.holds);
-    if (present !== undefined) return { authenticated: false, reason: present.detail, check: "sign-in-form-absent" };
+    if (present !== undefined) return { authenticated: false, observedUrl: url, reason: present.detail, check: "sign-in-form-absent" };
 
     return {
       authenticated: true,
@@ -637,6 +638,12 @@ export async function verifyUcsdAuthenticatedApplication(
         negative: absences.map((fact) => fact.detail).join("; "),
       },
     };
+  };
+  try {
+    if (input.signal === undefined) return await verifyDocument();
+    return await raceCancellation(verifyDocument, system, "verify-landing", {
+      page, signal: input.signal, assertCurrent: input.assertCurrent,
+    });
   } finally {
     page.off("framenavigated", onNavigation);
   }

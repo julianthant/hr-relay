@@ -21,7 +21,7 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        "pointer-events-none fixed top-3 left-1/2 w-[320px] max-w-[calc(100vw-2rem)] -translate-x-1/2 outline-none",
+        "pointer-events-none fixed bottom-[var(--ds-toast-inset-bottom,0.75rem)] left-1/2 w-[320px] max-w-[calc(100vw-2rem)] -translate-x-1/2 outline-none",
         dsLayer.toastViewport,
         className
       )}

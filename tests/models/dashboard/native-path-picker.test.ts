@@ -56,7 +56,7 @@ describe("native Paths picker control", () => {
     button.click();
     assert.equal(calls, 1);
     await act(async () => release?.({ state: "unavailable", field: "paths.i9CheckTrackerPath", reason: "busy" }));
-    assert.match(surface.querySelector('[role="alert"]')?.textContent ?? "", /Another path picker is already open/u);
+    assert.match(surface.querySelector('[role="alert"]')?.textContent ?? "", /A folder picker is already open/u);
     assert.deepEqual(selected, []);
   });
 

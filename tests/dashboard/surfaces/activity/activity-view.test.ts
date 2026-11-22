@@ -8,6 +8,7 @@ import { ActivityView } from '../../../../src/dashboard/surfaces/activity/activi
 import { activityRangeValue } from '../../../../src/dashboard/surfaces/activity/activity-model.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample, useActivitySampleReport } from '../../../support/fixtures/dashboard/activity-sample.js';
+import { analyticsPeriodLabel } from '../../../../src/dashboard/surfaces/activity/analytics-model.js';
 import type { ActivityViewState } from '../../../../src/dashboard/surfaces/activity/activity-view-model.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -137,4 +138,79 @@ it('a bad range keeps the period control and never echoes the raw value', async 
   assert.doesNotMatch(document.body.textContent, /not-a-range/);
   assert.match(document.body.textContent, /That date range is not valid/);
   assert(['7d', '30d', '90d'].every(value => document.querySelector(`fieldset input[type="radio"][value="${value}"]`)));
+});
+
+it('shows a dash for the time of a workflow with no run in the period, and ranks the rest', async () => {
+  if (data.state !== 'loaded') throw new Error('sample not loaded');
+  const [first, second] = data.report.analytics.workflows; assert(first && second);
+  const empty = { ...first, id: 'empty', label: 'Empty workflow', done: 0, failed: 0, attention: 0, typicalSeconds: 407 };
+  await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, workflows: [empty, { ...second, typicalSeconds: 90 }] } } });
+  const row = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr')].find(item => item.textContent?.includes('Empty workflow')); assert(row);
+  assert.equal(row.lastElementChild?.textContent, '—');
+  const ranked = [...document.querySelectorAll('ol[aria-label="Typical time per workflow"] li')];
+  assert.equal(ranked.length, 2); assert.match(ranked[0]?.textContent ?? '', new RegExp(second.label)); assert.match(ranked[1]?.textContent ?? '', /Empty workflow.*—/);
+});
+
+it('while the report loads, shows a busy region and no guessed sections', async () => {
+  await render({ state: 'loading' });
+  const frame = document.querySelector('[role="status"][aria-busy="true"][aria-label="Loading analytics report"]');
+  assert(frame);
+  assert.equal(frame.childElementCount, 0);
+  assert.equal(document.querySelector('[data-slot="skeleton"]'), null);
+});
+
+const openRuns = () => [...document.querySelectorAll('a')].filter(link => link.textContent?.includes('Open runs'));
+
+it('while another range loads, keeps the last report under its own period with Export and Open runs locked', async () => {
+  if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
+  const next = { from: '2026-01-01', to: '2026-01-07' };
+  const opened: unknown[] = [];
+  const props = { data, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onExport() {}, selection: null, onSelection(browse: unknown) { opened.push(browse); } };
+  await act(async () => root?.render(createElement(ActivityView, { ...props, range: ACTIVITY_SAMPLE_RANGE })));
+  const expand = document.querySelector<HTMLButtonElement>('table[aria-label="Workflows"] button[aria-expanded="false"]'); assert(expand);
+  await act(async () => expand.click());
+  const [link] = openRuns(); assert(link);
+  assert.equal(link.getAttribute('aria-disabled'), null);
+  await act(async () => link.click());
+  assert.equal(opened.length, 1);
+  assert.equal(document.querySelector('[data-analytics-stale]'), null);
+  assert.equal(button().disabled, false);
+  await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true })));
+  assert(document.querySelector('table[aria-label="Workflows"] button[aria-expanded="true"]'));
+  assert.deepEqual(openRuns(), [link]);
+  assert.equal(link.getAttribute('aria-disabled'), 'true');
+  assert.equal(link.tabIndex, -1);
+  await act(async () => link.click());
+  assert.equal(opened.length, 1);
+  assert.equal(button().disabled, true);
+  const mark = document.querySelector('[data-analytics-stale]'); assert(mark);
+  assert.equal(mark.textContent, 'Updating');
+  assert(mark.classList.contains('invisible'));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+  assert.equal(mark.classList.contains('invisible'), false);
+  assert.match(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
+  assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(next)));
+  assert.equal(document.querySelector('[aria-label="Loading analytics report"]'), null);
+  await act(async () => root?.render(createElement(ActivityView, { ...props, range: ACTIVITY_SAMPLE_RANGE })));
+  assert.deepEqual(openRuns(), [link]);
+  assert.equal(link.getAttribute('aria-disabled'), null);
+  await act(async () => link.click());
+  assert.equal(opened.length, 2);
+});
+
+it('a held empty report names its own period until the chosen period arrives', async () => {
+  if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
+  const next = { from: '2026-09-01', to: '2026-09-07' };
+  const props = { today: ACTIVITY_SAMPLE_TODAY, onRange() {} };
+  const empty = activitySample(ACTIVITY_SAMPLE_RANGE, 'empty');
+  await act(async () => root?.render(createElement(ActivityView, { ...props, data: empty, range: ACTIVITY_SAMPLE_RANGE })));
+  assert.match(document.body.textContent, /No runs in this period/);
+  assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
+  await act(async () => root?.render(createElement(ActivityView, { ...props, data: empty, range: next, blocked: true })));
+  assert.match(document.body.textContent, new RegExp(`No runs in this period.*${analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)}`));
+  assert(document.querySelector('[data-analytics-stale]'));
+  await act(async () => root?.render(createElement(ActivityView, { ...props, data: activitySample(next, 'empty'), range: next })));
+  assert.match(document.body.textContent, /No runs in this period/);
+  assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
+  assert.equal(document.querySelector('[data-analytics-stale]'), null);
 });

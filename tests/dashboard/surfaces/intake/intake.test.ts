@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { act,createElement,type ReactNode } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it } from "vitest";
@@ -78,6 +79,15 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
     const frame = frameOf("Spreadsheet intake");
     assert.equal(document.activeElement, frame);
     const first = takeFirstTab(frame);
-    assert.equal(first.textContent?.trim(), "Close");
+    assert.equal(first.getAttribute("aria-label"), "Close");
+  });
+});
+
+describe("Intake uses the desktop control sizes", () => {
+  it("forces no touch-size control, no semibold weight and no fixed table width", () => {
+    const source = readFileSync("src/dashboard/surfaces/intake/intake.tsx", "utf8");
+    assert.doesNotMatch(source, /\b(?:min-h|size)-\[44px\]/);
+    assert.doesNotMatch(source, /font-semibold/);
+    assert.doesNotMatch(source, /min-w-\[\d+rem\]/);
   });
 });

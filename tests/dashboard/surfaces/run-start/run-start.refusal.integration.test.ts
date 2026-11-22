@@ -36,7 +36,7 @@ for (const rerun of [false, true]) {
   it(`${rerun ? "Rerun" : "Run"} re-previews an expired plan and requires another Start`, async () => {
     const h = await setup(); await review(h);
     await press("Start dry run");
-    assert.ok(text().includes("This plan expired, so it was checked again. Review it and press Start again."));
+    assert.ok(text().includes("The plan expired and was rebuilt. Review it again."));
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
     assert.equal(text().includes("Run not started"), false);
     assert.equal(h.submissions.length, 2);

@@ -10,14 +10,6 @@ rowMatchesLogQuery as rowMatchesLogQuery_m0,tabsFor as tabsFor_m0
 import { LogRowWireSchema as LogRowWireSchema_m0,NotePageSchema as NotePageSchema_m0 } from "../../../../src/models/dashboard/run-detail.js";
 import { IsoInstantSchema as IsoInstantSchema_m0 } from "../../../../src/rules/identity/ids.js";
 
-import assert_m1 from "node:assert/strict";
-import { describe as describe_m1,it as it_m1 } from "vitest";
-import {
-timelineAxisTotals as timelineAxisTotals_m1,
-timelineHasOrphanGate as timelineHasOrphanGate_m1,
-timelineSegmentUnmeasured as timelineSegmentUnmeasured_m1
-} from "../../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
-import { GateDecisionWireSchema as GateDecisionWireSchema_m1 } from "../../../../src/models/dashboard/run-detail.js";
 
 
 {
@@ -320,110 +312,6 @@ describe_m0("retired run inspection surfaces", () => {
   it_m0("omits receipt and opens terminal runs on Logs, including old advertised receipt", () => {
     assert_m0.deepEqual(tabsFor_m0({ availableSections: ["logs", "receipt", "context-data", "context-attempts"] }), ["logs"]);
     assert_m0.equal(defaultTabFor_m0({ availableSections: ["logs", "receipt"], outcome: { state: "terminal", result: "verified-done", completedAt: IsoInstantSchema_m0.parse("2026-09-29T12:00:00.000Z") } }), "logs");
-  });
-});
-}
-
-{
-
-
-const GATE_ID = "e1b8ae3e-0000-4000-8000-0000000000a1";
-const OPENED_AT = "2026-08-25T12:00:00.000Z";
-const NOW = "2026-08-25T12:04:30.000Z";
-
-const OPEN_GATE = GateDecisionWireSchema_m1.parse({
-  state: "open",
-  gateId: GATE_ID,
-  label: "Confirm this is the right person",
-  openedAt: OPENED_AT,
-  revision: 3,
-});
-
-const NO_GATE = GateDecisionWireSchema_m1.parse({
-  state: "absent",
-  reason: "this run declares no gate",
-});
-
-const RESOLVED_GATE = GateDecisionWireSchema_m1.parse({
-  state: "resolved",
-  gateId: GATE_ID,
-  label: "Confirm this is the right person",
-  resolution: "approved",
-  resolvedBy: "julian",
-  resolvedAt: NOW,
-  revision: 4,
-});
-
-describe_m1("the untimed segment dims only where a measurement is missing", () => {
-  it_m1("dims a segment that ran and recorded no duration", () => {
-    for (const state of ["active", "done", "failed", "cancelled"] as const) {
-      assert_m1.equal(timelineSegmentUnmeasured_m1(state, undefined), true, state);
-    }
-  });
-
-  it_m1("does not dim a measured segment", () => {
-    assert_m1.equal(timelineSegmentUnmeasured_m1("done", 12), false);
-    // Zero is a MEASUREMENT, not an absence: a step the executor timed at under
-    // a second is not a step it failed to time.
-    assert_m1.equal(timelineSegmentUnmeasured_m1("done", 0), false);
-  });
-
-  it_m1("does not dim a state that already says why it has no duration", () => {
-
-    assert_m1.equal(timelineSegmentUnmeasured_m1("pending", undefined), false);
-    assert_m1.equal(timelineSegmentUnmeasured_m1("skipped", undefined), false);
-    assert_m1.equal(timelineSegmentUnmeasured_m1("replayed", undefined), false);
-    assert_m1.equal(timelineSegmentUnmeasured_m1("blocked", undefined), false);
-  });
-});
-
-describe_m1("an open gate that no segment carries still gets a segment", () => {
-  it_m1("reports the orphan when no segment records the wait", () => {
-    assert_m1.equal(timelineHasOrphanGate_m1(["done", "done", "pending"], OPEN_GATE), true);
-  });
-
-  it_m1("reports no orphan when a segment IS blocked", () => {
-    assert_m1.equal(timelineHasOrphanGate_m1(["done", "blocked", "pending"], OPEN_GATE), false);
-  });
-
-  it_m1("reports no orphan when there is no open gate", () => {
-    assert_m1.equal(timelineHasOrphanGate_m1(["done", "done"], NO_GATE), false);
-    assert_m1.equal(timelineHasOrphanGate_m1(["done", "done"], RESOLVED_GATE), false);
-  });
-
-  it_m1("reports the orphan for a gated run with no segments at all", () => {
-
-    assert_m1.equal(timelineHasOrphanGate_m1([], OPEN_GATE), true);
-  });
-});
-
-describe_m1("the axis names the working half and the waiting half", () => {
-  it_m1("sums the measured durations rather than spanning first to last", () => {
-    const totals = timelineAxisTotals_m1([4, 6, undefined, 2], NO_GATE, NOW);
-    assert_m1.equal(totals.workingSec, 12);
-    assert_m1.equal(totals.waitingSec, undefined);
-  });
-
-  it_m1("reports no working time when NOTHING was measured", () => {
-    // Not `0`. A run whose steps recorded no duration did not work for zero
-    // seconds — nothing measured it, and the axis must be able to say so.
-    const totals = timelineAxisTotals_m1([undefined, undefined], NO_GATE, NOW);
-    assert_m1.equal(totals.workingSec, undefined);
-  });
-
-  it_m1("reports no working time for a run with no segments", () => {
-    assert_m1.equal(timelineAxisTotals_m1([], NO_GATE, NOW).workingSec, undefined);
-  });
-
-  it_m1("carries the open gate's age against the served clock", () => {
-    const totals = timelineAxisTotals_m1([4], OPEN_GATE, NOW);
-    assert_m1.equal(totals.waitingSec, 270);
-    assert_m1.equal(totals.workingSec, 4);
-  });
-
-  it_m1("carries no wait for a resolved or absent gate", () => {
-    assert_m1.equal(timelineAxisTotals_m1([4], RESOLVED_GATE, NOW).waitingSec, undefined);
-    assert_m1.equal(timelineAxisTotals_m1([4], NO_GATE, NOW).waitingSec, undefined);
   });
 });
 }

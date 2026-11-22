@@ -10,7 +10,7 @@ const id = (n: number) => `${String(n).padStart(8, "0")}-1111-4111-8111-11111111
 const RUN = id(1);
 const COMMAND = id(10);
 const fb = (code: ErrorCatalogCode) => formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
-const UNCERTAIN = fb("COMMAND_OUTCOME_UNCERTAIN");
+const UNCERTAIN = { ...fb("COMMAND_OUTCOME_UNCERTAIN"), text: "Not confirmed yet." };
 
 const applied = CommandResultSchema.parse({ state: "applied", commandId: COMMAND, affectedTargets: [{ family: "run", runId: RUN }] });
 const replayed = CommandResultSchema.parse({ ...applied, state: "already-applied" });

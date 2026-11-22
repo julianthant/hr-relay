@@ -6,15 +6,7 @@ import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-pr
 import { ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
-import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
-import { useDashboardCommandBinding } from "../../../src/dashboard/state/client-context.js";
-import { QueueToolbar, ConfirmBulkCommandDialog, type PendingBulkCommand } from "../../../src/dashboard/surfaces/queue/queue-toolbar.js";
-import { CommandRecovery } from "../../../src/dashboard/surfaces/shared/actions/command-recovery.js";
-import { composeBulkRunCommand, planBulkVerb } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
-import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
-import type { CommandOutcome, CommandExecutionOptions } from "../../../src/dashboard/app/commands/command-executor.js";
-import { CommandRequestSchema, BulkRunCommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
-import { deriveBulkChildCommandId } from "../../../src/rules/commands/command-groups.js";
+import { CommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
 import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../mocks/helpers/fixture-settings.js";
@@ -40,7 +32,7 @@ import { DashboardDayWireSchema as DashboardDayWireSchema_m1 } from "../../../sr
 // @vitest-environment jsdom
 import { default as assert_m2,default as assert_m3 } from 'node:assert/strict';
 import { readFileSync as readFileSync_m3 } from "node:fs";
-import { act as act_m2,createElement as createElement_m2, useState, Fragment } from 'react';
+import { act as act_m2,createElement as createElement_m2 } from 'react';
 import { createRoot as createRoot_m2,type Root as Root_m2 } from 'react-dom/client';
 import { afterEach as afterEach_m2,describe as describe_m2,describe as describe_m3,it as it_m2,it as it_m3 } from 'vitest';
 import { DashboardApp as DashboardApp_m2 } from '../../../src/dashboard/app/dashboard-app.js';
@@ -82,6 +74,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
     id: "fixture-workflow",
     code: "fw",
     label: "Fixture workflow",
+    icon: "ClipboardCheck",
     categoryId: "operations",
     descriptorFingerprint: FIXTURE_FINGERPRINT,
     availability: { state: "available" },
@@ -486,7 +479,7 @@ describe_m1("served sign-up Finish", () => {
     else {
       const settled = reads;
       await vi_m1.waitFor(() => { assert_m1.equal(reads >= settled + 1, true); }, { timeout: 3000 });
-      assert_m1.equal(document.querySelector(".form-error")?.textContent, operatorFailureSentence("PROFILE_SIGN_IN_REFUSED"));
+      assert_m1.equal(document.querySelector(".form-error")?.textContent, "Wrong email or password");
     }
   });
 
@@ -586,7 +579,7 @@ describe_m1("the two remaining takeovers use the shared focus boundary (UF-FU-1)
 afterEach_m1(_afterEachFixture0);
 
 
-  it_m1("the retired UI catalog URL shows an explicit removal notice without mounting its reader", async () => {
+  it_m1("the retired UI catalog URL opens the first section without mounting its reader", async () => {
     await mountDashboard("?settings=ui-catalog");
 
     const frame = frameOf("Settings");
@@ -596,9 +589,10 @@ afterEach_m1(_afterEachFixture0);
       null,
       "the catalog must no longer mount a frame of its own",
     );
-    assert_m1.match(frame.textContent ?? "", /UI catalog removed/u);
+    assert_m1.doesNotMatch(frame.textContent ?? "", /UI catalog|No such settings section/u);
+    assert_m1.match(frame.textContent ?? "", /General/u);
     assert_m1.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
-    assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Back to dashboard");
+    assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Close settings");
     assert_m1.equal(
       document.querySelector('[aria-label="Close the UI catalog"]'),
       null,
@@ -615,8 +609,9 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?intake=e1f2a3b4-0000-4000-8000-000000000001");
     await press(buttonNamed("Close"));
 
-    const door = buttonNamed("Start run");
-    assert_m1.equal(door.id, RUN_START_DOOR_ID_m1);
+    const door = document.getElementById(RUN_START_DOOR_ID_m1);
+    assert_m1.ok(door instanceof HTMLButtonElement, "the toolbar Start run door is missing");
+    assert_m1.equal(door.getAttribute("aria-label"), "Start run");
     assert_m1.equal(document.activeElement === door, true);
     assert_m1.equal(
       [...document.querySelectorAll("button")].find(
@@ -631,7 +626,7 @@ afterEach_m1(_afterEachFixture0);
 describe_m1("Settings exits share the page-owned draft guard", () => {
 afterEach_m1(_afterEachFixture0);
 
-  it_m1("retains the same draft across catalog subroutes, restores cancelled-dialog focus and exits to gear", async () => {
+  it_m1("retains the draft when a Settings section switch is declined and restores focus after cancelled exits", async () => {
     await mountDashboard("?settings=general");
     const { input, value } = await dirtyBrowserSettings();
     const frame = frameOf("Settings");
@@ -656,14 +651,17 @@ afterEach_m1(_afterEachFixture0);
     };
     const editorLabel = sectionLink("General").textContent?.trim();
     assert_m1.equal(editorLabel, "General");
-    await act_m1(async () => sectionLink("Keyboard").click());
-    assert_m1.match(window.location.search, /settings=keyboard/u);
+    const keyboard = sectionLink("Keyboard");
+    await act_m1(async () => { keyboard.focus(); keyboard.click(); });
+    await press(buttonNamed("Keep editing"));
+    assert_m1.match(window.location.search, /settings=general/u);
+    assert_m1.equal(document.activeElement?.isSameNode(keyboard), true);
     assert_m1.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
-    const dashboard = buttonNamed("Back to dashboard");
+    const dashboard = buttonNamed("Close settings");
     await press(dashboard);
     await press(buttonNamed("Keep editing"));
     assert_m1.equal(document.activeElement === dashboard, true, "cancelling the shell exit restores focus to its persistent navigation control");
-    assert_m1.match(window.location.search, /settings=keyboard/u);
+    assert_m1.match(window.location.search, /settings=general/u);
     await press(dashboard);
     await act_m1(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -671,11 +669,10 @@ afterEach_m1(_afterEachFixture0);
     });
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
-    await act_m1(async () => sectionLink("General").click());
     const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
     assert_m1.ok(restored instanceof HTMLButtonElement);
     assert_m1.equal(restored.dataset.value, value);
-    await press(buttonNamed("Back to dashboard"));
+    await press(buttonNamed("Close settings"));
     await press(buttonNamed("Discard changes"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     assert_m1.equal(window.location.search.includes("catalog"), false);
@@ -686,9 +683,9 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?settings=display");
     await dirtyBrowserSettings();
 
-    await press(buttonNamed("Back to dashboard"));
+    await press(buttonNamed("Close settings"));
     assert_m1.ok(frameOf("Settings"), "a dirty rail navigation must leave Settings mounted for confirmation");
-    assert_m1.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    assert_m1.match(document.body.textContent ?? "", /Discard changes\?/u);
     const discard = buttonNamed("Discard changes");
     await press(discard);
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
@@ -697,9 +694,9 @@ afterEach_m1(_afterEachFixture0);
 
   it_m1("allows persistent rail navigation immediately when the Settings draft is clean", async () => {
     await mountDashboard("?settings=display");
-    await press(buttonNamed("Back to dashboard"));
+    await press(buttonNamed("Close settings"));
     assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
-    assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+    assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
     assert_m1.ok(document.getElementById("dashboard-main-region"));
   });
 
@@ -772,6 +769,9 @@ const _afterEachFixture0 = async () => {
 };
 afterEach_m2(_afterEachFixture0);
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
+const liveToasts = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
+/** Waits for the read-back that settles an unknown outcome; nothing is shown before it ends. */
+async function settledToast(text: RegExp) { await vi_m1.waitFor(async () => { await settle(); assert_m2.ok(liveToasts().some(node => text.test(node.textContent ?? "")), `no toast ${text}`); }, { timeout: 8000, interval: 50 }); }
 
 function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION_m2>[0]) {
   const composition = MOCK_WORKFLOW_COMPOSITION_m2(workflows);
@@ -832,7 +832,8 @@ it_m2("renders an authenticated child workflow without a public launch source", 
   assert_m2.ok(parent?.surfaceKind === "operation");
   const member = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.runId === parent.memberRunIds[0]);
   assert_m2.ok(member);
-  const rows = [parent, { ...member, workflowId: "ocr-page" }];
+  // A lone member that repeats its parent's status draws no row of its own, so this child differs from it.
+  const rows = [parent, { ...member, workflowId: "ocr-page", status: member.status === "queued" ? "blocked" as const : "queued" as const }];
   const day = DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: "pc:201",
     queueSurfaces: rows, attemptHistory: undefined });
   const h = await mount();
@@ -846,76 +847,6 @@ it_m2("renders an authenticated child workflow without a public launch source", 
   assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${parent.runId}"]`));
   assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${member.runId}"]`));
 });
-describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () => {
-  it_m2("preserves uncertainty from a post-dispatch throw", async () => {
-    const bytes: string[] = [];
-    let day = FIXTURE_DAY_WIRE_m2;
-    const client = createDashboardClient_m2({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
-      if (url.includes("/dashboard?day=")) return Response.json(day);
-      if (typeof init?.body !== "string") throw new Error("missing bulk body");
-      const body = init.body; bytes.push(body);
-      const request = BulkRunCommandRequestSchema.parse(JSON.parse(body));
-      if (bytes.length === 1) throw new Error("private transport sentinel");
-      const ids = new Set(request.targets.map(target => target.runId));
-      day = DashboardDayWireSchema_m2.parse({ ...day, queueSurfaces: day.queueSurfaces.map(row => ids.has(row.runId)
-        ? { ...row, status: "cancelled", rowRevision: row.rowRevision + 1, actions: [], endedAt: { state: "present", value: row.updatedAt }, gateOpenedAt: { state: "absent", reason: "No open gate after cancellation" } } : row) });
-      return Response.json({ state: "vector", bulkCommandId: request.bulkCommandId, type: request.type, requestedCount: request.targets.length,
-        results: request.targets.map(target => ({ outcome: "applied", commandId: deriveBulkChildCommandId(request.bulkCommandId, target.runId), runId: target.runId, replayed: true, detail: "private server sentinel" })) });
-    } });
-    const published: CommandOutcome[] = [];
-    function BulkHarness() {
-      const binding = useDashboardCommandBinding();
-      if (binding === undefined) throw new Error("missing fixture binding");
-      const [selectMode, setSelectMode] = useState(false);
-      const [selected, setSelected] = useState(false);
-      const [pending, setPending] = useState<PendingBulkCommand | null>(null);
-      const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
-      const [, update] = useState(0);
-      const candidates = FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(row => row.parent === null).map(row => ({ runId: row.runId, title: row.title, actions: row.actions }));
-      const plan = planBulkVerb(candidates, "cancel", candidates.map(row => row.runId));
-      const options: CommandExecutionOptions = { scope: binding.scope, readback: (request, reply) => verifyShellCommandEffect(client, FIXTURE_DAY_WIRE_m2.day, request, reply),
-        publish: outcome => { published.push(outcome); binding.feedback(outcome); update(value => value + 1); } };
-      const entries = binding.executor.retainedAttempts().flatMap(attempt => attempt.outcome?.kind === "uncertain" && "targets" in attempt.request
-        ? [{ inFlightKey: attempt.request.commandId, label: "cancel", targets: plan.eligible }] : []);
-      return createElement_m2(Fragment, null,
-        createElement_m2(QueueToolbar, { sort: "attention", onSort: () => undefined, selectMode, onSelectMode: setSelectMode, selectedCount: selected ? candidates.length : 0,
-          visibleIds: candidates.map(row => row.runId), onSelectAll: () => setSelected(true), onClearSelection: () => setSelected(false), bulkPlans: selected ? [plan] : [], bulkUnavailable: [],
-          onBulk: next => setPending({ plan: next }), bulkOutcome: null, onDismissBulkOutcome: () => undefined, onSelectRun: () => undefined }),
-        createElement_m2(ConfirmBulkCommandDialog, { pending, onCancel: () => setPending(null), onConfirm: confirmed => {
-          setPending(null);
-          const composed = composeBulkRunCommand(confirmed.plan, { actorId: binding.scope.actorId, source: "queue", requestedAt: binding.authority.nowIso });
-          if (composed.state !== "ready") throw new Error("bulk fixture composition refused");
-          void binding.executor.execute(composed.request, options);
-        } }),
-        entries.map(entry => createElement_m2("button", { key: entry.inFlightKey, onClick: () => setRecoveryKey(entry.inFlightKey) }, `Review ${entry.label}`)), // stands in for the Priority notification's Review action
-        createElement_m2(CommandRecovery, { entries, pendingKey: recoveryKey, onReview: setRecoveryKey, onReplay: entry => { setRecoveryKey(null); void binding.executor.replay(entry.inFlightKey, options); } }),
-      );
-    }
-    const host = document.createElement("div"); document.body.append(host); root = createRoot_m2(host);
-    await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(FixtureCommandBinding, { actorId: "local-operator", children: createElement_m2(BulkHarness) }) })));
-    const click = async (name: string) => {
-      const button = [...document.querySelectorAll("button")].find(candidate => candidate.textContent?.trim() === name || candidate.textContent?.startsWith(name));
-      assert_m2.ok(button, `missing ${name} action`);
-      await act_m2(async () => button.click()); await settle();
-    };
-    await click("Select"); await click("Select all"); await click("Cancel");
-    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent?.startsWith("Cancel"));
-    assert_m2.equal(confirm instanceof HTMLButtonElement, true, "missing bulk confirmation action");
-    if (!(confirm instanceof HTMLButtonElement)) throw new Error("missing bulk confirmation action");
-    await act_m2(async () => confirm.click()); await settle();
-    assert_m2.equal(bytes.length, 1);
-    assert_m2.match(document.body.textContent ?? "", /cancel: outcome unknown/u);
-    assert_m2.doesNotMatch(document.body.textContent ?? "", /private transport sentinel|Command confirmed/u);
-    await settle(); assert_m2.equal(bytes.length, 1, "uncertainty never automatically retries");
-    await click("Review cancel"); await click("Resend original request");
-    assert_m2.deepEqual(bytes, [bytes[0], bytes[0]], "recovery preserves the full parent envelope bytes");
-    assert_m2.doesNotMatch(document.body.textContent ?? "", /cancel: outcome unknown/u, "confirmed replay clears recovery");
-    assert_m2.doesNotMatch(document.body.textContent ?? "", /private server sentinel/u);
-    assert_m2.equal(published[0]?.kind, "uncertain");
-    assert_m2.equal(published.at(-1)?.kind, "confirmed", "success requires matching authoritative readback");
-  });
-});
-
 function withTitle(title: string, cursor: string, revision: number): DashboardDayWire_m2 {
   return DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: cursor,
     queueSurfaces: FIXTURE_DAY_WIRE_m2.queueSurfaces.map(row => row.surfaceKind === 'single' ? { ...row, title, rowRevision: revision, actions: row.actions.map(action => action.kind === "command" ? { ...action, expectedVersion: revision } : action) } : row) });
@@ -923,11 +854,12 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 
 describe_m2('real mounted dashboard through the typed mock transport', () => {
 
-  it_m2("reverts an ordinary save whose reply was lost with one failure toast and no retry", async () => {
+  for (const stored of [false, true]) it_m2(`settles an ordinary save whose reply was lost from its read-back (${stored ? "stored" : "not stored"})`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
       commands.push(body);
+      if (stored) authority.execute(CommandRequestSchema.parse(body));
       return Promise.reject(new Error("private-transport-sentinel"));
     } });
     const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "Task");
@@ -944,15 +876,17 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act_m2(async () => input.blur()); await settle();
-    assert_m2.equal(commands.length, 1);
-    const toasts = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
-    assert_m2.equal(toasts.length, 1);
-    assert_m2.match(toasts[0]?.textContent ?? "", /Settings weren't saved/u);
-    assert_m2.match(toasts[0]?.textContent ?? "", /The previous value is back\./u);
-    assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /save unconfirmed|Command result|private-transport-sentinel/u);
+    assert_m2.equal(liveToasts().length, 0, "nothing is shown while the save is read back");
+    if (stored) await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 3000)); });
+    else await settledToast(/Settings weren't saved/u);
+    const toasts = liveToasts();
+    assert_m2.equal(toasts.length, stored ? 0 : 1, stored ? "a save found by reading back shows no message" : "one failure toast");
+    if (!stored) assert_m2.match(toasts[0]?.textContent ?? "", /The previous value is back\./u);
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|outcome is uncertain|Command result|private-transport-sentinel/u);
     assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
-    assert_m2.equal(input.value, original);
-    await settle(); assert_m2.equal(commands.length, 1, "a lost reply must not retry automatically");
+    assert_m2.equal(input.value, stored ? "240" : original);
+    assert_m2.equal(input.disabled, false, "the field works again without a reload");
+    await settle(); assert_m2.equal(commands.length, 1, "a lost reply is read back, never resent");
   });
 
   for (const settlement of ["confirmed", "conflict", "refused"] as const) it_m2(`settles an ordinary Settings save on a ${settlement} reply with one toast`, async () => {
@@ -996,16 +930,13 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     await settle(); assert_m2.equal(commands.length, 1, "a settled save is never retried");
   });
 
-  for (const save of [
-    { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed" },
-  ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
+  for (const landed of [true, false]) it_m2(`reads a lost credentials save back without resending it (${landed ? "landed" : "not landed"}) and the next save reaches Relay`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
-    const h = await mount({ accountless: true, search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
+    const h = await mount({ accountless: true, search: "settings=credentials", settingsRead: authority.read, command: body => {
       commands.push(body);
       const command = ProtectedSettingsCommandRequestSchema.parse(body);
-      if (replacement === "confirmed" && commands.length === 1) {
-        // An older build could commit this write before losing the reply.
+      if (landed || commands.length > 1) {
         const applied = authority.credentials.apply(ProtectedSettingsApplyInputSchema.parse({
           ...command.payload,
           commandId: command.commandId,
@@ -1015,50 +946,36 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
         }));
         assert_m2.equal(applied.state, "applied");
       }
-      if (commands.length <= 2) return Promise.reject(new Error("private-transport-sentinel"));
-      return Promise.resolve(replacement === "confirmed" ? Response.json(authority.execute(command)) : Response.json(replacement === "conflict"
-        ? { state: "conflict", commandId: command.commandId, currentVersion: 0, message: "Synthetic conflict" }
-        : { state: "rejected", commandId: command.commandId, code: "invalid-value", message: "Synthetic refusal" }));
+      if (commands.length > 1) return Promise.resolve(Response.json(authority.execute(command)));
+      return Promise.reject(new Error("private-transport-sentinel"));
     } });
-    const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === save.field);
-    assert_m2.ok(label, `missing ${save.field} label`);
-    const input = document.getElementById(label.htmlFor);
-    assert_m2.ok(input instanceof HTMLInputElement);
-    await act_m2(async () => {
-      input.focus();
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-      if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
-      descriptor.set.call(input, save.value);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act_m2(async () => input.blur()); await settle();
-    assert_m2.equal(commands.length, 1);
-    const toasts = document.querySelectorAll('[data-slot="toast"]');
-    assert_m2.equal(toasts.length, 1);
-    assert_m2.equal(toasts[0]?.getAttribute("role"), "status");
-    assert_m2.match(toasts[0]?.textContent ?? "", new RegExp(save.title, "u"));
-    assert_m2.match(toasts[0]?.textContent ?? "", /Your draft is retained\. Retry the exact attempt to confirm the result\./u);
-    assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /Command result|private-credential-sentinel|private-transport-sentinel/u);
-    assert_m2.equal(input.value, save.value);
-    await settle(); assert_m2.equal(commands.length, 1, "uncertainty must not retry automatically");
-    const retry = async () => {
-      const button = [...document.querySelectorAll("button")].find(candidate => candidate.textContent === "Retry exact attempt");
-      assert_m2.ok(button, "missing exact retry");
-      await act_m2(async () => button.click()); await settle();
+    const type = async (value: string) => {
+      const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === "UCPath username");
+      assert_m2.ok(label, "missing UCPath username label");
+      const input = document.getElementById(label.htmlFor);
+      assert_m2.ok(input instanceof HTMLInputElement);
+      await act_m2(async () => {
+        input.focus();
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+        if (typeof descriptor?.set !== "function") throw new Error("fixture input setter missing");
+        descriptor.set.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act_m2(async () => input.blur()); await settle();
     };
-    await retry();
-    assert_m2.equal(commands.length, 2);
-    assert_m2.equal([...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style")).length, 1, "repeated uncertainty shows one warning");
-    await retry();
-    assert_m2.equal(commands.length, 3);
-    assert_m2.deepEqual(commands, [commands[0], commands[0], commands[0]], "all retries keep the original command identity and bytes");
-    assert_m2.equal(toasts[0]?.isConnected === false || toasts[0]?.hasAttribute("data-ending-style"), true, "known replacement dismisses the exact original warning");
-    const activeToasts = [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
-    assert_m2.equal(activeToasts.length, 1);
-    assert_m2.doesNotMatch(activeToasts[0]?.textContent ?? "", /save unconfirmed/u);
-    assert_m2.match(activeToasts[0]?.textContent ?? "", replacement === "confirmed" ? /Saved|Already saved/u : replacement === "conflict" ? /changed/u : /weren't saved/u);
+    await type("private-credential-sentinel");
+    assert_m2.equal(liveToasts().length, 0, "nothing is shown while the save is read back");
+    if (landed) await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 3000)); });
+    else await settledToast(/Credentials weren't saved/u);
+    assert_m2.equal(liveToasts().length, landed ? 0 : 1, landed ? "a save found by reading back shows no message" : "one failure toast");
+    assert_m2.equal(commands.length, 1, "a lost reply is read back, never resent");
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|outcome is uncertain|Command result|private-credential-sentinel|private-transport-sentinel/u);
+    assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
+    await type("Synthetic credential");
+    await settledToast(/Saved UCPath username/u);
+    assert_m2.equal(commands.length, 2, "the read-back freed the lock: the next save reaches Relay");
   });
-  it_m2("keeps an ordinary failure toast apart from the credentials warning and dismisses a replayed command's own warning", async () => {
+  it_m2("settles a lost ordinary save and a lost credentials save independently, each with its own result", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ accountless: true, search: "settings=performance", settingsRead: authority.read, command: body => {
@@ -1082,20 +999,14 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       await act_m2(async () => input.blur()); await settle();
     };
     await edit("Task", "240");
-    assert_m2.match(document.querySelector('[data-slot="toast"]')?.textContent ?? "", /Settings weren't saved/u);
+    await settledToast(/Settings weren't saved/u);
     const credentials = [...h.host.querySelectorAll<HTMLAnchorElement>("a")].find(button => button.textContent?.trim() === "Account");
     assert_m2.ok(credentials); await act_m2(async () => credentials.click()); await settle();
     await edit("UCPath username", "Synthetic credential");
-    assert_m2.equal(commands.length, 2);
+    await settledToast(/Credentials weren't saved/u);
+    assert_m2.equal(commands.length, 2, "each lost save is read back, never resent");
     assert_m2.notEqual(commands[0]?.commandId, commands[1]?.commandId);
-    const shown = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(node => !node.hasAttribute("data-ending-style"));
-    const unconfirmed = () => shown().filter(node => /save unconfirmed/u.test(node.textContent ?? ""));
-    assert_m2.equal(unconfirmed().length, 1, "only the credentials save is left unconfirmed");
-    assert_m2.match(unconfirmed()[0]?.textContent ?? "", /Credentials save unconfirmed/u);
-    const retry = [...document.querySelectorAll("button")].find(button => button.textContent === "Retry exact attempt"); assert_m2.ok(retry);
-    await act_m2(async () => retry.click()); await settle();
-    assert_m2.equal(commands.length, 3); assert_m2.deepEqual(commands[2], commands[1]);
-    assert_m2.equal(shown().filter(node => node.textContent?.includes("Credentials save unconfirmed")).length, 0, "the replayed command's warning is dismissed");
+    assert_m2.doesNotMatch(document.body.textContent ?? "", /unconfirmed|Retry exact attempt|outcome is uncertain/u);
   });
   it_m2("retains the served Delete run label when its original row disappears", async () => {
     const candidate = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.surfaceKind === "single" && row.actions.some(action => action.kind === "command" && action.command === "delete"));
@@ -1110,7 +1021,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const button = [...row.querySelectorAll("button")].find(entry => entry.getAttribute("aria-label")?.startsWith(action.label));
     assert_m2.ok(button);
     await act_m2(async () => button.click());
-    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(entry => entry.textContent?.trim() === "Delete");
+    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(entry => entry.textContent?.trim() === action.label);
     assert_m2.ok(confirm instanceof HTMLButtonElement);
     await act_m2(async () => confirm.click()); await settle();
     assert_m2.equal(commands.length, 1);
@@ -1221,8 +1132,8 @@ describe_m3("shell and queue structural fidelity", () => {
     );
     assert_m3.match(
       OVERLAY,
-      /fixed top-3 left-1\/2/u,
-      "the fixed toast viewport is top-centred, so it sits clear of the Sessions bar floor",
+      /fixed bottom-\[var\(--ds-toast-inset-bottom,0\.75rem\)\] left-1\/2/u,
+      "the fixed toast viewport is bottom-centred on the Sessions bar floor, clear of the toolbar and page title",
     );
     assert_m3.match(
       LAUNCHER_MODEL,

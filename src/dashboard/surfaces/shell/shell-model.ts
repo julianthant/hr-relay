@@ -9,7 +9,7 @@ WorkflowCountWireSchema
 import { dsFocus,dsMotion,dsRadius,dsText } from "../../ds/ui.js";
 import { usePersonPreferences } from "../../lib/person-preferences.js";
 import { cn } from "../../lib/utils.js";
-import { type QueueStatus } from "../shared/status/status-model.js";
+import { NEEDS_YOU_STATUSES, type QueueStatus } from "../shared/status/status-model.js";
 import {
 groupWorkflowsByCategory,
 type WorkflowCategoryGroup,
@@ -198,12 +198,8 @@ export function statusPillOrder(counts: readonly StatusCountWire[], active: Stat
 }
 
 
-/** The two statuses that are stuck on a decision from the operator. */
-const NEEDS_YOU_STATUSES: QueueStatus[] = ["awaiting-approval", "blocked"];
-
-
 /** The `Needs you` composite, over the SERVED counts.
- * This adds two numbers the projection served; it does not count rows. The risk */
+ * This adds the numbers the projection served; it does not count rows. The risk */
 export function needsYouCount(counts: readonly StatusCountWire[]): number {
   return NEEDS_YOU_STATUSES.reduce((total, status) => total + statusCount(counts, status), 0);
 }

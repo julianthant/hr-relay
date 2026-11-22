@@ -1,6 +1,7 @@
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
 import { useWorkbookRows, useWorkbookVersionSources, useCheckVersionSheets, checkVersionKey, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
+import type { IconName } from "../../../models/workflow/presentation.js";
 import { RunList, RunListRow, RunListSkeleton } from "../../ds/primitives/run-list.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
@@ -63,6 +64,8 @@ export interface RunStartWorkflow {
   readonly categoryId: string;
   // Use the served role; never infer it from an ID prefix.
   readonly role: WorkflowModuleRole;
+  /** The definition's own icon name; the dashboard names no workflow to choose one. */
+  readonly icon: IconName;
   readonly code?: string;
   /** the descriptor's own sentence about what this workflow does */
   readonly summary?: string;
@@ -225,7 +228,8 @@ export function RunStartDialog({
   const selectedLibrary = library.catalog.find(entry => entry.libraryId === selectedDraft?.libraryId && entry.state.origin.kind === 'local' && !entry.state.removed);
   const selectedVersion = selectedLibrary?.state.versions.find(version => version.id === selectedDraft?.versionId);
   const sourceProjection = library.compatibility?.workflows.find(entry => entry.workflowId === workflowId);
-  if (library.compatibility !== undefined && workbookReference !== undefined && sourceProjection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${workflowId}`);
+  /** Relay answered but has no reference-spreadsheet check for this workflow: the input stage says so, the rest of the dialog keeps working. */
+  const compatibilityMissing = library.compatibility !== undefined && workbookReference !== undefined && sourceProjection === undefined;
   if (sourceProjection !== undefined && selectedWorkflow !== undefined && (canonicalJsonStringify(sourceProjection.requiredWorkbookFields) !== canonicalJsonStringify(selectedWorkflow.requiredWorkbookFields)
     || canonicalJsonStringify(sourceProjection.workbookReference ?? null) !== canonicalJsonStringify(workbookReference ?? null)))
     throw new Error(`WORKBOOK_COMPATIBILITY_DECLARATION_MISMATCH: ${workflowId}`);
@@ -237,7 +241,7 @@ export function RunStartDialog({
     const worksheets = source.sheets.filter(sheet => sheet.mappings.some(mapping => mapping.fieldId === workbookCheck.keyFieldId)).map(sheet => ({ sheetId: sheet.sheetId, sheetName: sheet.sheetName }));
     return entry === undefined || worksheets.length === 0 || entry.libraryId === referenceDrafts[workbookReference?.id ?? ""]?.libraryId ? []
       : [{ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned, currentVersionId: source.versionId, currentSheets: worksheets,
-        versions: entry.state.versions.map((version, index) => ({ id: version.id, name: version.name || `v${entry.state.versions.length - index}` })) }];
+        versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })) }];
   }).toSorted((a, b) => a.name.localeCompare(b.name)), [workbookCheck, library.compatibility, library.catalog, referenceDrafts, workbookReference?.id]);
   const historicalChecks = useMemo(() => checkLibraries.flatMap(entry => {
     const pick = checkPicks[entry.libraryId];
@@ -454,8 +458,9 @@ export function RunStartDialog({
     if (!next && rerunSource === undefined) {
       keptPending.current = JSON.stringify(draftRef.current) !== JSON.stringify(launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today));
     }
-    onOpenChange(next);
+    // The close event resets the routed stage, so it goes first and closing the route then drops every launch coordinate.
     if (!next) send({ type: "close" });
+    onOpenChange(next);
   }, [onOpenChange, send, rerunSource, workflows, workflowId, commandBinding?.authority.today]);
   useEffect(() => {
     if (!open) return;
@@ -467,7 +472,7 @@ export function RunStartDialog({
   }, [open]);
   useEffect(() => { if (!open) setDraftKept(false); }, [open]);
 
-  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden);
+  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Checks", open);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
   const fixCheck = (item: RunCheckRow) => {
@@ -495,9 +500,9 @@ export function RunStartDialog({
     if (rowCapability !== undefined) {
       const selected = selectedWorkbookRows?.choices ?? [];
       const value = previewWorkbookRows(inputRun.surface, selected, selected, typedValues);
-      if (!rowSelectionFresh) return { ...value, submissions: [], problem: "The selected rows belong to earlier spreadsheet data. Clear the previous selection and choose rows again." };
+      if (!rowSelectionFresh) return { ...value, submissions: [], problem: "Selected rows are out of date. Choose them again." };
       if (rowReference === undefined) return { ...value, submissions: [], problem: null };
-      if (workbookRows.state !== "ready") return { ...value, submissions: [], problem: workbookRows.error ?? (workbookRows.state === "loading" ? "Loading saved spreadsheet rows." : "Saved spreadsheet rows are unavailable. Choose an available spreadsheet and version.") };
+      if (workbookRows.state !== "ready") return { ...value, submissions: [], problem: workbookRows.error ?? (workbookRows.state === "loading" ? "Loading saved spreadsheet rows." : "Saved rows are unavailable. Choose another version.") };
       return value;
     }
     return previewRunInput(inputRun.surface, text, typedValues,
@@ -543,7 +548,7 @@ export function RunStartDialog({
   const blockedReason = pdfSurface !== undefined ? pdfInput.loading ? "Reading PDFs…" : pdfInput.error !== null ? "Fix the refused PDF selection first." : preview.entries.length === 0 ? "Choose at least one PDF." : referenceMissing ? MISSING_REFERENCE_REASON : null : inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null
-      ? "Fix the refused entry first."
+      ? preview.dateProblems === undefined ? "Fix the refused entry first." : "Fix the date first."
       : preview.entries.length === 0
         ? rowCapability === undefined ? "Type at least one value." : "Select at least one saved row."
         : referenceMissing
@@ -558,7 +563,7 @@ export function RunStartDialog({
   /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
   const subjectCount = preview.entries.length;
   const multiSubject = subjectCount > 1;
-  const multiSubjectOmissionReason = `Typed values describe one person, and ${String(subjectCount)} people are entered. Enter one person, or turn every step back on.`;
+  const multiSubjectOmissionReason = `Typed values fit one person; ${String(subjectCount)} are entered.`;
   /** The first thing wrong on the Steps stage: more than one person entered with typed values, else the first missing or invalid field. */
   const stepsFailure = !customizeSteps ? null : multiSubject && openRows.length > 0
     ? { text: multiSubjectOmissionReason, rowKey: "", fieldKey: "" } : firstStepsFailure(openRows);
@@ -621,8 +626,8 @@ export function RunStartDialog({
     const draft = referenceDrafts[typeId];
     const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
     const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
-    const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name,
-      versions: entry.state.versions, currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
+    const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned,
+      versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
     return <RunReferenceRows key={typeId} checkRows={withCheck && workbookCheck !== undefined && checkSheets.length > 0 ? checkRows : undefined} requiredLabel={requiredLabelOf(requiredFields)}
       sheets={sheets} chosenLibraryId={draft?.libraryId} chosenVersionId={draft?.versionId} chosenSheetId={selectedReferences[typeId]?.sheetId ?? ''}
       worksheets={sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName }))} worksheetsState={versionSources.state} worksheetsError={versionSources.error}
@@ -640,8 +645,6 @@ export function RunStartDialog({
   const planRefusal = onLastStage && plan !== null ? planRefusalNotice(plan.refused, preview.entries) : null;
   const notice: { sentence: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
     ? { sentence: planRefusal.sentence, ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
-    : currentStage === "Checks" && checks.state.state === "unavailable"
-    ? { sentence: checks.state.message, action: { label: "Check again", onClick: checks.recheck } }
     : currentStage === "Input" && pdfSurface !== undefined && pdfInput.error !== null
     ? { sentence: pdfInput.error, ...(pdfInput.retryable ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
     : null;
@@ -649,7 +652,7 @@ export function RunStartDialog({
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
     rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
     checksBlocked: runChecksBlocked(checks.state),
-    referencesUnavailable: checkPending || requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
+    referencesUnavailable: checkPending || compatibilityMissing || requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
     path: launchStages.map(stage => stage.label),
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };
@@ -694,15 +697,20 @@ export function RunStartDialog({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, hidden]);
+  /** The one thing stopping Continue or Start on this stage, as its own line beside the buttons. */
+  const stageHint = currentStage === "Input" ? (compatibilityMissing ? null : blockedReason)
+    : currentStage === "Options" ? optionsBlockedReason
+    : currentStage === "Steps" ? stepsBlockedReason
+    : currentStage === "Checks" && gates.checksBlocked ? (checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : null)
+    : planRefusal === null ? null : planRefusal.sentence.replace(/\. .*$/u, ".");
   return (
     <Dialog open={open && !hidden} onOpenChange={closeAndReset}>
       <DialogContent
         onOpenAutoFocus={event => { if (isRerun) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>('button[aria-label="Close"]')?.focus(); } }}
         onCloseAutoFocus={event => { if (hidden) event.preventDefault(); else onCloseAutoFocus?.(event); }}
-        size="xl"
-        band
+        size="lg"
         title={isRerun ? "Rerun" : "Start run"}
-        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
+        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? workflow.label : "Choose a workflow to begin"}
         className={cn("launch-design launch-dialog", isRerun && "launch-rerun")}
       >
           {!isRerun && picker}
@@ -715,8 +723,8 @@ export function RunStartDialog({
                 const current = index === activeIndex;
                 return <li key={stage.label} aria-current={current ? "step" : undefined}>
                   <BareButton disabled={index > activeIndex || busy || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, via: "stage-bar" })}>
-                  <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check className="size-3" /> : stage.number}</span>
-                  <span className={cn("text-body", current ? "font-semibold" : "text-ui-secondary")}>{stage.label}</span>
+                  <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check aria-hidden className={dsIcon.sm} /> : stage.number}</span>
+                  <span className={cn("text-body", current ? "font-medium" : "text-ui-secondary")}>{stage.label}</span>
                   </BareButton>
                 </li>;
               })}
@@ -740,16 +748,17 @@ export function RunStartDialog({
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
               <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[calc(var(--ds-row-pad-x)+1px)]">
-              <h3 className="text-heading font-semibold">Steps</h3>
-              {workflow && <span className="text-[13px] text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
+              <h3 className="text-control font-medium">Steps</h3>
+              {workflow && <span className="text-control text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
               </div>
-              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included."}</p>
+              <p className="text-body text-ui-secondary">{isRerun ? "Choose steps. Status shows the earlier result." : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
 
-            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} />}
+            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
-              {(currentStage === "Input" || currentStage === "Values") && (
+              {currentStage === "Input" && compatibilityMissing && <FailureNotice sentence="Reference spreadsheets can't be checked." action={{ label: "Retry", onClick: () => void library.adapter.refreshCatalog() }} />}
+              {(currentStage === "Input" && !compatibilityMissing || currentStage === "Values") && (
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {pdfSurface !== undefined ? <>
                     <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
@@ -769,8 +778,8 @@ export function RunStartDialog({
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}
                         {workbookRows.state === "loading" && <div role="status" aria-label="Loading saved rows"><Skeleton className="h-9 w-full" /></div>}
                         {workbookRows.state === "error" && <Banner tone="danger" title="Saved rows unavailable">{workbookRows.error}<Button variant="secondary" onClick={() => void library.adapter.refreshCatalog()}>Refresh reference data</Button></Banner>}
-                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>The selected rows are from earlier spreadsheet data and cannot be planned.</p><Button variant="secondary" onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
-                        {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version contains no rows after the worksheet headers." />}
+                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>Selected rows are out of date.</p><Button variant="secondary" onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
+                        {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version has only headers." />}
                         {rowChoices.length > 0 && <Table label="Saved spreadsheet rows"><THead><TR><TH>Select</TH><TH>Source row</TH><TH>Lookup key</TH></TR></THead><TBody>{rowChoices.map(choice => {
                           const selected = selectedWorkbookRows?.choices.some(row => row.sheetId === choice.sheetId && row.rowId === choice.rowId) ?? false;
                           const label = `${choice.sourceLabel}: ${choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}`;
@@ -837,8 +846,8 @@ export function RunStartDialog({
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {launchFields.map(field => field.kind === "boolean"
                       ? <RunListRow key={field.field} title={field.label} {...(field.description === undefined ? {} : { description: field.description })}><Switch hideLabel label={field.label} checked={pdfRunSwitchValue(field, pdfInput.picks)} onCheckedChange={next => pdfInput.pick(field.field, next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>
-                      : <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
-                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="text-[12px] text-ui-secondary">Always on</span></RunListRow>
+                      : <RunListRow key={field.field} title={field.label}><div className="w-[var(--ds-w-body-control)]"><SegmentedChoice hideLabel label={field.label} value={pdfRunSelectValue(field, pdfInput.picks)} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
+                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="text-body text-ui-secondary">Always on</span></RunListRow>
                   </>} />
               )}
 
@@ -854,15 +863,15 @@ export function RunStartDialog({
                       const oneSubjectOnly = multiSubject && row.form !== undefined && included;
                       const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows) || oneSubjectOnly;
                       const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
-                        : oneSubjectOnly ? `Typed values describe one person; this run would create ${String(subjectCount)}.` : row.note;
+                        : oneSubjectOnly ? "One person only." : row.note;
                       const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
                       return <RunListRow key={row.key} title={row.label} description={note}
                         {...(row.kind === "switch" ? { check: { checked: included, disabled, onChange: next => toggleRow(row, next) } } : { locked: true })}
                         below={open === undefined ? undefined : <StepOmissionFactsForm step={row.label} form={open.form} draft={open.draft} errors={failure}
                           copied={copiedFields(row)} onChange={(field, next) => changeFact(row, open.form, field, next)} disabled={sending} />}>
                         {badge !== undefined && <Badge tone={badge === "completed" ? "success" : badge === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={badge}>{badge === "completed" ? "Completed" : badge === "skipped" ? "Skipped" : badge === "failed" ? "Failed" : "Not started"}</Badge>}
-                        {row.kind === "locked-manual" && <><span aria-hidden className="cursor-pointer text-[12px] text-ui-secondary" onClick={() => { if (!sending) toggleManual(row, !manualRows.includes(row.key)); }}>Enter manually</span>
-                          <Switch hideLabel label={`Enter manually for ${row.label}`} checked={manualRows.includes(row.key)} disabled={sending || multiSubject && !manualRows.includes(row.key)} onCheckedChange={next => toggleManual(row, next)} className="!min-h-0 !w-auto !py-0" /></>}
+                        {row.kind === "locked-manual" && <>
+                          <Switch label={<>Enter manually<span className="sr-only"> for {row.label}</span></>} checked={manualRows.includes(row.key)} disabled={sending || multiSubject && !manualRows.includes(row.key)} onCheckedChange={next => toggleManual(row, next)} className="!min-h-0 !w-auto !py-0" /></>}
                       </RunListRow>;
                     })}
                   </RunList>
@@ -874,12 +883,12 @@ export function RunStartDialog({
 
               {onLastStage && plan !== null && (
                 <section id="run-start-plan" aria-label="Plan" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  {expiredPlan && <p className="text-body text-ui-secondary">This plan expired, so it was checked again. Review it and press Start again.</p>}
+                  {expiredPlan && <p className="text-body text-ui-secondary">The plan expired and was rebuilt. Review it again.</p>}
                   {omissionMismatch && (
                     <Banner tone="danger" title="This plan does not describe the steps you omitted">
                       {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
                         + `${planOmittedSteps.length === 0 ? "no steps" : planOmittedSteps.join(", ")}. `
-                        + "Go back and plan the run again — this plan would start a different run."}
+                        + "Go back and plan again."}
                     </Banner>
                   )}
                 </section>
@@ -897,23 +906,13 @@ export function RunStartDialog({
                 workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows)} of ${rows.length} steps`,
                 pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
-                currentStage === "Input"
-                  ? blockedReason ?? undefined
-                  : currentStage === "Options"
-                  ? optionsBlockedReason ?? undefined
-                  : currentStage === "Steps"
-                  ? stepsBlockedReason ?? undefined
-                  : currentStage === "Checks" && gates.checksBlocked
-                  ? checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : "Checks are unavailable."
-                  : undefined,
-                planRefusal === null ? undefined : planRefusal.sentence.replace(/\. .*$/u, "."),
               ].filter((item): item is string => item !== undefined)}
             />
           }
         >
-          {controls.hint !== null && <span className="text-[12px] text-ui-muted">{controls.hint}</span>}
+          {(controls.hint ?? stageHint) !== null && <span className="launch-hint">{controls.hint ?? stageHint}</span>}
           {controls.back !== null && (
-            <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back", path: gates.path })}>Back</Button>
+            <Button variant="ghost" icon={<ArrowLeft aria-hidden className={dsIcon.sm} />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back", path: gates.path })}>Back</Button>
           )}
           <Button variant="secondary" onClick={() => controls.cancel.type === "close" ? closeAndReset(false) : send(controls.cancel)}>
             Cancel
@@ -923,7 +922,7 @@ export function RunStartDialog({
           ) : (
             <Button
               variant="primary"
-              {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className="size-[14px]" /> })}
+              {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className={dsIcon.md} /> })}
               loading={controls.primary.loading}
               disabled={!controls.primary.enabled || planRefusal !== null}
               onClick={() => press(controls.primary.event)}

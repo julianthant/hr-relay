@@ -21,7 +21,6 @@ Read this reference for runtime commands and environment behavior. The
 | Backend alone | `npm run backend` |
 | Vite alone, with an existing backend | `npm run web` |
 | Windows observer preparation | `npm run build:observer-policy` |
-| Roadmap generation and freshness | `npm run roadmap`, then `npm run roadmap:check` |
 
 The CLI exposes help, phase, dashboard, worker, explain, storage, OCR and test-data commands.
 Workflow execution starts from the signed-in dashboard Run surface. The daily command builds the

@@ -58,6 +58,7 @@ export function currentRowKey(table: AuthorityTableName): readonly string[] {
     case "workflow_workbook_selections": return ["workflow_id"];
     case "workbook_library_history": return ["workbook_id", "version", "name"];
     case "workbook_operations": return ["sequence"];
+    case "workbook_payloads": return ["digest"];
     case "auth_leases": return ["credential_key"];
     case "timeline_events": return ["cursor"];
     default: return ["id"];
@@ -136,6 +137,7 @@ const TABLE_KEYS = deepFreeze<Record<Exclude<AuthorityTableName, "database_state
   workbook_library_state: constant("family:workbook"),
   workbook_library_actions: constant("family:workbook"),
   workbook_library_snapshots: constant("family:workbook"),
+  workbook_payloads: constant("family:workbook"),
 });
 
 /** The JSON columns whose `runId` members, at any depth, `run_references` indexes: the journal names runs only inside JSON. */
@@ -175,7 +177,8 @@ export function sourceRowWhere(table: RunReferenceSource): string {
   return currentRowKey(table).map(column => `source.${column}=?`).join(" AND ");
 }
 
-function captureTriggers(table: Exclude<AuthorityTableName, "database_states">): string[] {
+/** The capture triggers one authority table carries; a table created after migration 31 adds its own with its migration. */
+export function changeLogTriggers(table: Exclude<AuthorityTableName, "database_states">): string[] {
   const keys = (image: Image) => [...TABLE_KEYS[table](image), ...(isRunReferenceSource(table) ? [sourceKey(table, image)] : [])];
   const entry = (op: "insert" | "update" | "delete", image: Image, keySql: readonly string[]) =>
     `INSERT INTO ${CHANGE_LOG_TABLE}(table_name,row_key,op,keys_json) VALUES('${table}',${rowKey(table, image)},'${op}',json_array(${keySql.join(",")}))`;
@@ -209,6 +212,8 @@ function runReferenceCaptureTriggers(): string[] {
 }
 
 const SOURCES = RunReferenceSourceSchema.options;
+/** Authority tables created after migration 31. */
+const TABLES_AFTER_CHANGE_LOG: ReadonlySet<AuthorityTableName> = new Set(["workbook_payloads"]);
 
 /**
  * Migration 31. Adds the change log and the run references with their backfill, the capture and reference triggers, and
@@ -236,7 +241,7 @@ export const CHANGE_LOG_MIGRATION = deepFreeze({ version: CHANGE_LOG_SCHEMA_VERS
   "CREATE INDEX workbook_library_snapshots_workbook_idx ON workbook_library_snapshots(workbook_id,id)",
   "CREATE INDEX commands_request_family_idx ON commands(json_extract(request_json,'$.family'))",
   "CREATE INDEX run_search_build_idx ON run_search(json_extract(metadata_json,'$.buildGeneration'),run_id)",
-  ...AuthorityTableNameSchema.options.flatMap(table => table === "database_states" ? [] : captureTriggers(table)),
+  ...AuthorityTableNameSchema.options.flatMap(table => table === "database_states" || TABLES_AFTER_CHANGE_LOG.has(table) ? [] : changeLogTriggers(table)),
   ...runReferenceCaptureTriggers(),
   ...SOURCES.flatMap(runReferenceTriggers),
 ] });

@@ -48,9 +48,9 @@ describe("cancelled attribution", () => {
   it("shows the served Relay reason instead of crediting the operator", () => {
     const relay = renderToStaticMarkup(createElement(StatusBadge, { status: "cancelled", presentation: "queue",
       cancelledBy: "logout" }));
-    assert.match(relay, /title="Relay cancelled this run when the profile logged out\."/u);
-    assert.doesNotMatch(relay, /You stopped it/u);
+    assert.match(relay, /title="This run was cancelled when the profile logged out\."/u);
+    assert.doesNotMatch(relay, /Stopped by you/u);
     const operator = renderToStaticMarkup(createElement(StatusBadge, { status: "cancelled", presentation: "queue", cancelledBy: "operator" }));
-    assert.match(operator, /title="You stopped it\./u);
+    assert.match(operator, /title="Stopped by you\./u);
   });
 });

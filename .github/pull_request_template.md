@@ -8,7 +8,7 @@ Package ID / linked brief or issue:
 
 - [ ] `npm run test:pc`
 - [ ] Typecheck and lint
-- [ ] Manifest, store catalog and roadmap checks
+- [ ] Manifest and store catalog checks
 - [ ] Unit, integration and architecture CI checks
 - [ ] Privacy check: no real employee data, rosters, private PDFs, .env or credentials
 - [ ] Ready pull requests: performance and smoke; release checks: selected native proofs

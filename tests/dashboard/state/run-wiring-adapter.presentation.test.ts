@@ -57,7 +57,7 @@ describe("served Person Lookup Logs operator presentation", () => {
     const logs = NotePageSchema.parse({ ...original.logs, rows: [...(original.logs.rows ?? []), repeated] });
     const fields = projectRunLogs({ ...original, logs }, client).steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
     assert.deepEqual(fields.filter(field => field.label === "Name").map(field => [field.id, field.time, field.value]),
-      [[`${id(104)}:0`, "10:00:00", "Quillan, Petra A."], [`${id(106)}:0`, "10:01:00", "Quillan, Petra A."]]);
+      [[`${id(104)}:0`, "10:00:00 AM", "Quillan, Petra A."], [`${id(106)}:0`, "10:01:00 AM", "Quillan, Petra A."]]);
     assert.equal(logs.rows?.filter(row => row.kind === "observed").length, 3);
     assert.deepEqual(logs.rows?.at(-1), repeated);
   });
@@ -189,7 +189,7 @@ it("renders capture failure from structured boundary facts and preserves indepen
       const failureId = failure.payload.value.failureId;
       const decision = result.steps.flatMap(step => step.entries).find(entry => entry.id === failureId);
       assert.ok(decision?.kind === "decision");
-      assert.equal(decision.decision.message, "The browser screenshot could not be captured or saved.");
+      assert.equal(decision.decision.message, "The browser screenshot could not be saved.");
       assert.equal(decision.decision.caution, "The change was saved and read back.");
       const laterFailure = RunDetailSectionResponseSchema.parse({ ...failure, payload: { ...failure.payload, value: { ...failure.payload.value,
         attempt: 2, native: { ...failure.payload.value.native, attempt: 2 } } } });

@@ -1,6 +1,5 @@
-import { useRef, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  AlertTriangle,
   ArrowUpRight,
   ChevronsUp,
   ClipboardList,
@@ -14,11 +13,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { runDisplayId } from "../status/run-display-model.js";
 import { cn } from "../../../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
-  commandResultDetail,
   commandResultTitle,
   type CommandResultFeedEntry,
   intentPill,
@@ -26,10 +23,7 @@ import {
 } from "./actions-model.js";
 import {
   BareButton,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
+  ConfirmDialog,
   Notice,
   dsFocus,
   dsIcon,
@@ -50,15 +44,18 @@ export interface ActionTarget {
 }
 
 /** Every control calls this. */
-export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => void;
+export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => Promise<void> | void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
+/** Pending ends when the command's reply arrives; this backstop ends it if no reply ever does. */
+const PENDING_LIMIT_MS = 15_000;
 
-/** Persistent refusal context: sticky toasts that only notify; each has a Priority notification item that opens the run. */
+
+/** A refused command toasts one line; its Priority notification item opens the run. */
 export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {
-  return <>{results.map(entry => <Notice key={entry.id} sticky tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
-    title={commandResultTitle(entry)} description={commandResultDetail(entry)} />)}</>;
+  return <>{results.map(entry => <Notice key={entry.id} tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
+    title={commandResultTitle(entry)} />)}</>;
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
@@ -116,6 +113,13 @@ export function FooterActions({
   groupCount?: number;
 }) {
   const footer = actionsAt(actions, "footer");
+  // Pending runs from press until the row's revision moves; a confirmed action has its own dialog.
+  const [pressed, setPressed] = useState<{ key: string; version: number } | null>(null);
+  useEffect(() => {
+    if (pressed === null) return undefined;
+    const timer = setTimeout(() => setPressed(null), PENDING_LIMIT_MS);
+    return () => clearTimeout(timer);
+  }, [pressed]);
   if (footer.length === 0 && !onPreviewAction) return null;
   // No `Cancel group` caption beside the ✕: an icon that already means cancel,
   // captioned "cancel", is the same word twice; the warning lives in the ✕'s own `title`.
@@ -131,6 +135,7 @@ export function FooterActions({
         return (
         <IconActionButton
           key={a.key}
+          pending={pressed?.key === a.key && pressed.version === target.expectedVersion}
           tone={INTENT_TONE[a.intent]}
           icon={KEY_ICONS[a.key] ?? ICONS[a.icon ?? "external"]}
           label={label}
@@ -143,8 +148,15 @@ export function FooterActions({
           }
           onClick={(e) => {
             e.stopPropagation();
-            const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id][role="button"]');
-            onAction(a, target);
+            const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
+            if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
+            const press = { key: a.key, version: target.expectedVersion };
+            const settled = onAction(a, target);
+            if (a.kind === "command" && !a.confirm) {
+              if (settled === undefined) setPressed(null);
+              else void settled.catch((cause: unknown) => { window.reportError(cause); })
+                .finally(() => setPressed(now => now?.key === press.key && now.version === press.version ? null : now));
+            }
             if (a.kind === "command" && (a.command === "pause" || a.command === "resume")) row?.focus({ preventScroll: true });
           }}
         />
@@ -180,7 +192,7 @@ export function OutcomeActionButton({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          onAction(action, target);
+          void onAction(action, target);
         }}
         title={action.label}
         aria-label={action.label}
@@ -192,7 +204,6 @@ export function OutcomeActionButton({
           dsRadius.sm,
           dsFocus,
           dsMotion.fast,
-          "active:translate-y-px",
           className,
         )}
       >
@@ -206,7 +217,7 @@ export function OutcomeActionButton({
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onAction(action, target);
+        void onAction(action, target);
       }}
       className={cn(intentPill(action.intent, "sm"), "font-sans", className)}
     >
@@ -240,57 +251,28 @@ export function ConfirmCommandDialog({
   onCancel: () => void;
   onConfirm: (pending: PendingCommand) => void;
 }) {
-  const safeAction = useRef<HTMLButtonElement>(null);
   const confirm = pending?.action.confirm;
+  if (pending === null || confirm === undefined) return null;
+  const destructive = confirm.tone === "destructive";
+  const isDelete = pending.action.command === "delete";
+  const group = pending.action.label === "Delete group";
   return (
-    <Dialog open={Boolean(pending && confirm)} onOpenChange={(open) => !open && onCancel()}>
-      {pending && confirm && (
-        <DialogContent
-          size="sm"
-          className="command-confirm-dialog ui-theme-scope"
-          onOpenAutoFocus={event => { event.preventDefault(); safeAction.current?.focus(); }}
-          onCloseAutoFocus={(e) => {
-            if (pending.triggerElement?.isConnected) {
-              e.preventDefault();
-              pending.triggerElement.focus();
-            }
-          }}
-          title={
-            // Use the dialog primitive’s title typography; nested title classes would create a different heading scale.
-            <span className="flex items-center gap-[var(--ds-space-base)]">
-              <AlertTriangle
-                aria-hidden
-                className={cn(
-                  dsIcon.lg,
-                  "shrink-0",
-                  confirm.tone === "destructive"
-                    ? "text-[color:var(--ds-danger)]"
-                    : "text-[color:var(--ds-status-waiting-fg)]",
-                )}
-              />
-              {confirm.title}
-            </span>
-          }
-          description={confirm.body}
-        >
-          <div className="command-confirm-target">
-            <span className="text-caption text-ui-muted">Selected run</span>
-            <strong className="text-heading font-medium text-ui-primary">{pending.subject}</strong>
-            <span className="text-body text-ui-secondary">{pending.workflowLabel}</span>
-            <span className="command-confirm-reference font-data text-caption text-ui-muted">{pending.action.command === "delete" ? runDisplayId(pending.target.runId, pending.traceId) : pending.traceId} · revision {pending.action.expectedVersion}</span>
-          </div>
-          <DialogFooter>
-            {/* The safe exit is `secondary` and it comes FIRST; the surface's one
-                committing action is last, so the eye ends on the verb. */}
-            <Button ref={safeAction} variant="secondary" onClick={onCancel}>
-              Keep it as it is
-            </Button>
-            <Button variant={confirm.tone === "destructive" ? "danger" : "primary"} onClick={() => onConfirm(pending)}>
-              {confirm.confirmLabel}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      )}
-    </Dialog>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onCancel()}
+      destructive={destructive}
+      title={`${confirm.title.replace(/\?+$/, "")}?`}
+      description={confirm.body ?? (isDelete
+        ? (group ? `Removes ${pending.subject}, its people and their logs from the queue.` : `Removes ${pending.subject} and its logs from the queue.`)
+        : undefined)}
+      confirmLabel={isDelete ? pending.action.label : confirm.confirmLabel}
+      onConfirm={() => onConfirm(pending)}
+      onCloseAutoFocus={(e) => {
+        if (pending.triggerElement?.isConnected) {
+          e.preventDefault();
+          pending.triggerElement.focus();
+        }
+      }}
+    />
   );
 }

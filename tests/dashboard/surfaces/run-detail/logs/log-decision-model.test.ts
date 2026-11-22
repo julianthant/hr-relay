@@ -135,7 +135,7 @@ describe("served log decisions", () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const base = example("failure-no-write").decision;
     await act(async () => root?.render(createElement(LogDecisionBlock, { decision: { ...base, answered: { optionId: "check-again", label: "Check again", at: "2026-08-03T16:41:05.000Z" as never, actor: { kind: "assistant", onBehalfOf: { name: "Alex Rivera" } } } } })));
-    assert.match(host.querySelector("p[data-answered]")?.textContent ?? "", /^Retried · \d\d:\d\d · assistant on behalf of Alex Rivera$/u);
+    assert.match(host.querySelector("p[data-answered]")?.textContent ?? "", /^Retried · \d{1,2}:\d\d [AP]M · assistant on behalf of Alex Rivera$/u);
     assert.ok(host.querySelector("h4"));
     assert.deepEqual([...host.querySelectorAll("button")].map(button => button.textContent).filter(text => /Confirm|Cancel run|Retry|Check again/u.test(text ?? "")), []);
   });
@@ -146,6 +146,6 @@ describe("served log decisions", () => {
     assert.deepEqual(answeredOutcome({ answered: answered("cancel-run") }), { outcome: "Run cancelled", kind: "cancelled" });
     assert.deepEqual(answeredOutcome({ answered: answered("retry-crm") }), { outcome: "Retried", kind: "retry" });
     assert.deepEqual(answeredOutcome({ answered: answered("saved"), answerNoun: "Transaction", answeredInput: "T0001" }), { outcome: "Transaction confirmed · T0001", kind: "done" });
-    assert.deepEqual(answeredOutcome({ answered: answered("resolve-write-absent") }), { outcome: "Resolved", kind: "done" });
+    assert.deepEqual(answeredOutcome({ answered: { ...answered("resolve-write-absent"), label: "Write is absent" } }), { outcome: "Write is absent", kind: "done" });
   });
 });

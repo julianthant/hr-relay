@@ -452,7 +452,9 @@ describe("Queue consumes the served day boundary", () => {
       assert.deepEqual(calls[0]?.[1], { runId: queued.runId, expectedVersion: queued.rowRevision });
       const row = host.querySelector<HTMLElement>(`[data-demo-row-id="${queued.runId}"]`);
       assert.ok(row);
-      await act(async () => { row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+      const open = row.querySelector<HTMLButtonElement>("button[data-queue-open]");
+      assert.ok(open);
+      await act(async () => { open.click(); });
       assert.deepEqual(selections, [queued.runId]);
       await act(async () => { root.render(draw(QueueSurfaceWireSchema.parse({ ...queued, actions: [] }))); });
       assert.equal(host.querySelector('button[aria-label^="Cancel run"]'), null);
@@ -518,8 +520,8 @@ describe("queue and run panel loading and status", () => {
 
   it("marks a dry run in the panel header", () => {
     const dry = QueueSurfaceWireSchema.parse({ ...single(), dryRun: true });
-    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: dry })), /dry run/);
+    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: dry })), /Dry run/);
     const real = QueueSurfaceWireSchema.parse({ ...single(), dryRun: false });
-    assert.doesNotMatch(renderToStaticMarkup(createElement(RunStateChips, { row: real })), /dry run/);
+    assert.doesNotMatch(renderToStaticMarkup(createElement(RunStateChips, { row: real })), /Dry run/);
   });
 });

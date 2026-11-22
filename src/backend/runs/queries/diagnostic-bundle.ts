@@ -239,6 +239,10 @@ export async function readDiagnosticBundle(
   requireTrustRun(deps.runReader, bundle.runId);
   const current = deps.authority.get(bundleId);
   if (current === undefined) throw new TargetNotFoundError(`diagnostic bundle ${bundleId} was removed during verification`);
+  const { availability: marker, ...retained } = current;
+  if (marker?.state === "purged" && canonicalJsonStringify(retained) === canonicalJsonStringify(bundle)) {
+    throw new SectionUnavailableError(`Diagnostic capture bytes were purged by retention at ${marker.at}.`);
+  }
   if (canonicalJsonStringify(current) !== canonicalJsonStringify(bundle)) corrupt(bundleId, "authority changed during verification");
   let byteSize = 0;
   for (const attachment of bundle.attachments) {
@@ -345,6 +349,7 @@ export async function prepareLiveDiagnosticArtifactLease(
     const indexed = deps.authority.findByArtifact(artifactId);
     const live: typeof indexed[number][] = [];
     let sharedRef: ArtifactRef | undefined;
+    let purgedAt: string | undefined, purgedCount = 0;
     for (const input of indexed) {
       const member = DiagnosticAttachmentStorageRecordSchema.parse(input);
       const bundle = deps.authority.get(member.bundleId);
@@ -355,6 +360,7 @@ export async function prepareLiveDiagnosticArtifactLease(
       const attachment = parsed.attachments.find(candidate => candidate.artifactId === artifactId);
       if (attachment === undefined || canonicalJsonStringify(attachment) !== canonicalJsonStringify(member.attachment)
         || member.createdAt !== parsed.createdAt) corrupt(member.bundleId, "artifact membership disagrees with its bundle");
+      if (parsed.availability?.state === "purged") { purgedAt = parsed.availability.at; purgedCount += 1; continue; }
       const ref = ArtifactRefSchema.parse({ id: attachment.artifactId, sha256: attachment.digest,
         bytes: attachment.byteLength, mediaType: attachment.mediaType });
       if (sharedRef !== undefined && canonicalJsonStringify(sharedRef) !== canonicalJsonStringify(ref)) {
@@ -367,6 +373,9 @@ export async function prepareLiveDiagnosticArtifactLease(
       }
       if (existence.run.envelope.runId !== parsed.runId) throw new Error(`TRUST_RUN_IDENTITY_MISMATCH: ${parsed.runId}`);
       if (existence.disposition === "live") live.push(member);
+    }
+    if (purgedAt !== undefined && purgedCount === indexed.length) {
+      throw new SectionUnavailableError(`Diagnostic capture bytes were purged by retention at ${purgedAt}.`);
     }
     if (indexed.length > 0 && live.length === 0) {
       throw new SectionUnavailableError(`diagnostic artifact ${artifactId} belongs only to archived runs; use its immutable Archive resource`);

@@ -1,10 +1,10 @@
 import { CURRENT_FISCAL_TARGET, runCheckForTarget } from "./preflight/preflight-remedy-model.js";
 import { CHECK_COPY } from "./preflight/preflight-check-copy.js";
-import { ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2,X } from "lucide-react";
+import { ArrowUp,ChartNoAxesColumn,Check,CircleAlert,Folder,Gauge,Keyboard,ListTree,Monitor,SlidersHorizontal,Table2,User,X } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,NavRow,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
@@ -34,9 +34,9 @@ const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
 ]);
 
 
-const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
-  general: Sparkles,
-  credentials: UserRound,
+const NAV_ICON: Record<SettingsNavIcon, typeof Folder> = {
+  general: SlidersHorizontal,
+  credentials: User,
   display: Monitor,
   performance: Gauge,
   paths: Folder,
@@ -44,15 +44,15 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   preflight: Check,
   routes: ArrowUp,
   capabilities: Table2,
-  keyboard: MessagesSquare,
+  keyboard: Keyboard,
   unrendered: CircleAlert,
-  spreadsheets: Folder,
-  explorer: Search,
-  activity: History,
+  spreadsheets: Table2,
+  explorer: ListTree,
+  activity: ChartNoAxesColumn,
 };
 
 
-/** One nav entry. */
+/** One nav entry: a real link, so middle-click and Cmd/Ctrl-click open it in a new tab. */
 function SectionButton({
   entry,
   active,
@@ -64,31 +64,20 @@ function SectionButton({
 }) {
   const Icon = NAV_ICON[entry.icon];
   return (
-    <a tabIndex={0}
-            // A real href — not a `button` — so middle-click and Cmd/Ctrl-click work as usual.
-      // new tab" all work the way any other in-page navigation does.
+    <NavRow
       href={`?settings=${encodeURIComponent(entry.id)}`}
-      aria-current={active ? "page" : undefined}
+      selected={active}
+      icon={<Icon className={dsIcon.md} />}
+      label={entry.label}
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         onClick();
       }}
-      className={cn(
-        "flex h-[var(--ds-h-settings-nav-row)] min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-settings-nav)]",
-        "px-[var(--ds-space-cozy)] text-[length:var(--ds-text-body-row)] text-left text-[color:var(--ds-fg)]",
-        dsFocus,
-        dsMotion.base,
-        active
-          ? "bg-[var(--ds-surface-selected)] font-normal"
-          : "font-normal hover:bg-[var(--ds-surface-3)]",
-      )}
-    >
-      <Icon aria-hidden className={cn(dsIcon.md, "shrink-0")} />
-      <span className="truncate">{entry.label}</span>
-    </a>
+    />
   );
 }
+
 
 function SearchResultLink({ result, active, onSelect }: { result: SettingsSearchResult; active: boolean; onSelect: () => void }) {
   const Icon = NAV_ICON[result.entry.icon];
@@ -137,7 +126,7 @@ export function SettingsPage({
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
-  /** Settings was opened by a Run dialog Fix button: the way out reads "Back to run" and focus moves in on open. */
+  /** Settings was opened by a Run dialog Fix button: focus moves in on open. */
   backToRun?: boolean;
   onSaved?: SettingsSaveListener;
   onSaveProblem?: SettingsSaveProblemListener;
@@ -148,7 +137,9 @@ export function SettingsPage({
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const settingsDocument = editor.editor.state === "loaded" ? editor.editor.document : undefined;
   const groups = useMemo(() => buildSettingsNav(settingsDocument), [settingsDocument]);
-  const resolution = resolveSettingsSection(groups, section);
+  const requested = resolveSettingsSection(groups, section);
+  // An unknown section opens the first one; it never leaves the body blank.
+  const resolution = requested.state === "unknown" ? resolveSettingsSection(groups, "") : requested;
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
   const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
   if (isDataSection && dataContent === undefined) throw new Error("SETTINGS_DATA_CONTENT_UNAVAILABLE");
@@ -175,7 +166,7 @@ export function SettingsPage({
     element.addEventListener("scroll", remember, { passive: true });
     return () => { element.removeEventListener("scroll", remember); };
   }, [activeId, searchTarget, searchVisit]);
-  useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
+  useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label, openedForCheck !== undefined);
   useEffect(() => { if (backToRun && requestedTarget === undefined) content.current?.focus(); }, [backToRun, requestedTarget]);
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
   const hasDirtyDraft = totalDirty > 0;
@@ -217,6 +208,11 @@ export function SettingsPage({
     return () => onExitGuardChange?.(undefined);
   }, [onExitGuardChange, requestExit]);
 
+  /** Switching section asks first when a draft is unsaved; re-opening the open section does not. */
+  const openSection = (id: string, searchTargetId?: string): void => {
+    if (id === activeId) onSection(id, searchTargetId); else requestExit(() => onSection(id, searchTargetId));
+  };
+
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     exitFocusTarget.current = null;
@@ -229,13 +225,13 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><h2>Settings</h2><IconButton label={backToRun ? "Back to run" : "Back to dashboard"} size="sm" icon={<X className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <header className="settings-nav-header"><h2>Settings</h2><IconButton label="Close settings" size="sm" icon={<X className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
         <SearchInput ref={navSearch} variant="sidebar" aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing) return;
             if (event.key === "ArrowDown" && results.length > 0) { event.preventDefault(); searchResults.current?.querySelector<HTMLElement>("a")?.focus(); }
-            if (event.key === "Enter" && results[0]) { event.preventDefault(); setSearchVisit(visit => visit + 1); onSection(results[0].entry.id, results[0].target); }
+            if (event.key === "Enter" && results[0]) { event.preventDefault(); setSearchVisit(visit => visit + 1); openSection(results[0].entry.id, results[0].target); }
           }} />
         {navQuery.trim() ? <div id="settings-search-results" ref={searchResults} className="settings-search-results" onKeyDown={event => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -247,24 +243,18 @@ export function SettingsPage({
           else links[Math.min(links.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))]?.focus();
         }}>
           {results.length > 0 && <span className="sr-only" role="status">{plural(results.length, "setting")} found</span>}
-          {results.map(result => <SearchResultLink key={result.id} result={result} active={result.entry.id === activeId && result.target === searchTarget} onSelect={() => { setSearchVisit(visit => visit + 1); onSection(result.entry.id, result.target); }} />)}
+          {results.map(result => <SearchResultLink key={result.id} result={result} active={result.entry.id === activeId && result.target === searchTarget} onSelect={() => { setSearchVisit(visit => visit + 1); openSection(result.entry.id, result.target); }} />)}
           {results.length === 0 && <p role="status" className="text-caption text-ui-muted px-3">{editor.editor.state === "loading" ? "Reading settings…" : editor.editor.state === "failed" ? "Settings fields unavailable" : "No settings found"}</p>}
-        </div> : groups.map(group => <div key={group.id} className="settings-nav-group"><span>{group.heading}</span>{group.entries.map(entry => <SectionButton key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => onSection(entry.id)} />)}</div>)}
+        </div> : groups.map(group => <div key={group.id} className="settings-nav-group"><span>{group.heading}</span>{group.entries.map(entry => <SectionButton key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => openSection(entry.id)} />)}</div>)}
       </nav>
 
       <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
-        {openedForCheckName !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then press Back to run.</Banner>}
+        {openedForCheckName !== undefined && <div className="settings-fix-banner"><Banner tone="info" title={`${openedForCheckName}: change the highlighted setting`} /></div>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
         {editor.editor.state === "failed" && !isDataSection && activeId !== "spreadsheets" && (
           <FailureNotice sentence="Couldn't load settings."
             action={{ label: "Retry", onClick: editor.reload }} />
-        )}
-        {/* Refuse unknown settings destinations; redirecting would label the wrong page as the requested one. */}
-        {resolution.state === "unknown" && (
-          resolution.requested === "ui-catalog" ? <Banner tone="info" title="UI catalog removed">Use the Settings navigation to return to a dashboard page.</Banner> : resolution.requested === "archive" ? <Banner tone="info" title="Archive page removed">
-            Existing stored run data has not been deleted. <Button variant="ghost" onClick={() => requestExit(onClose)}>Return to dashboard</Button>
-          </Banner> : <Notice tone="danger" title="No such settings section" description={resolution.requested} />
         )}
         {resolution.state === "empty" && (
           <Notice tone="warning" title="No settings sections" />
@@ -305,8 +295,8 @@ export function SettingsPage({
               target.focus();
             }
           }}
-          title="Discard unsaved settings?"
-          description={`You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards local drafts and any pending retry identity. A write already submitted may still be stored.`}
+          title="Discard changes?"
+          description={`${plural(totalDirty, "unsaved change")} will be lost.`}
         >
           <DialogFooter>
             <Button variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>

@@ -133,7 +133,7 @@ describe("selected Analytics population", () => {
       { workflowId: "person-lookup", needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 2, unmeasuredRuns: 1, meanMs: { state: "present", value: 600 } } },
       { workflowId: "separations", needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } } },
     ]);
-    expect(selected.report.failures[0].sentence).toBe("This failure code is not in the current catalog. Review the recorded local evidence.");
+    expect(selected.report.failures[0].sentence).toBe("Relay did not recognize this failure. Open the run in Logs.");
     expect(selected.report.durations.totalMs).toBe(106200);
     expect(selected.report.durations.measuredRuns).toBe(5);
     expect(selected.report.durations.unmeasuredRuns).toBe(2);
@@ -286,7 +286,7 @@ describe("selected Analytics population", () => {
     f.publish();
     const report = createActivityPopulationService({ ...f.input, descriptors: { resolve: workflow => workflow === "person-lookup" ? personLookupDescriptor : undefined } }).read(range).report;
     expect(report.failures).toEqual(["person-lookup", "retired-workflow"].map((workflowId, index) => ({ workflowId,
-      code: "INTERNAL_FAILURE", sentence: "Relay could not complete this request. Review the recorded local evidence before trying again.", runs: 1, transient: 0,
+      code: "INTERNAL_FAILURE", sentence: "Relay could not complete this request. Try again.", runs: 1, transient: 0,
       sample: [uuidOf(index + 20)], registration: workflowId === "person-lookup"
         ? { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" }
         : { state: "unregistered", reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable` } })));

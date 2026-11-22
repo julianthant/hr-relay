@@ -40,8 +40,8 @@ describe("actual factory and recipe signing scope", () => {
         async sign(input) { signs++; return { credentialId: input.credentialId, authenticatorData: "AQID", clientDataJSON: "AQID",
           signature: "AQID", transport: "usb", userHandle: null, signCount: signs }; } });
       const recipe = defineVerifiedLoginRecipe({ system: "ucpath", navigate: async () => undefined,
-        verify: async () => authenticated ? { authenticated: true, evidence: { system: "ucpath", url: "https://fixture.invalid/app", positive: "fixture ready", negative: "fixture no sign-in" } }
-          : { authenticated: false, reason: "fixture login required", check: "application-route" },
+        verify: async context => authenticated ? { authenticated: true, evidence: { system: "ucpath", url: "https://fixture.invalid/app", positive: "fixture ready", negative: "fixture no sign-in" } }
+          : { authenticated: false, observedUrl: context.page.url(), reason: "fixture login required", check: "application-route" },
         ceremony: async () => { await request(); authenticated = true; },
       });
       const baseBindings = recordingBindings();
