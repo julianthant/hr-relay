@@ -186,8 +186,8 @@ function main(): void {
       const head = developmentHeadProblem(branch);
       if (head) reject(head);
     }
-    if (request.base === "staging" && !matches(`cut/${KEBAB}`, branch)) {
-      reject(report(branch, "a staging pull request head must be cut/<milestone>"));
+    if (request.base === "staging" && branch !== "main" && !matches(`cut/${KEBAB}`, branch)) {
+      reject(report(branch, "a staging pull request head must be cut/<milestone> or main"));
     }
   }
   if (request.titleSet) {
