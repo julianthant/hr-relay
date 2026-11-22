@@ -145,7 +145,7 @@ export function useProtectedSettings(input: {
   function settleUnknown(attempt: ProtectedReadbackAttempt): void {
     if (readingBack.current === attempt.commandId) return;
     readingBack.current = attempt.commandId;
-    setSave({ state: "saving" });
+    setSave({ state: "unconfirmed", code: "COMMAND_OUTCOME_UNCERTAIN", message: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text });
     void readBack(input.readCurrent, document => protectedSaveLanded(attempt, document)).then(document => {
       const landed = protectedSaveLanded(attempt, document);
       if (binding !== undefined) binding.executor.resolve(attempt.commandId, landed, binding.scope);

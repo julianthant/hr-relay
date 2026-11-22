@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createCiPlan, hasTimingArtifact, publishTimings, registeredTimingWorkflows, timingRunIds, verifyCiResults, verifyProofs, verifyUnitProof } from "../../../scripts/test/ci-plan.js";
 
-const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
+const filters = { shared: "true", unit: "false", integration: "false", architecture: "false", smoke: "false" };
 const none = { core: false, shardCount: 0, shards: [] };
 const context = (workflow = "portable", extra: Record<string, unknown> = {}) => ({ workflow, event: "pull_request",
   base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "cut/m1" : "hotfix/x",
@@ -56,6 +56,24 @@ describe("flat CI plan", () => {
     expect(createCiPlan({ ...fast, event: "pull_request", head: "feature/x", draft: true, filters })).toMatchObject({ integration: false, testJobs: 3 });
     expect(() => createCiPlan({ ...fast, affected: { ...affected, shards: [[]] } })).toThrow();
     expect(() => createCiPlan({ ...fast, affected: { ...affected, shards: [["src/a.ts"]] } })).toThrow();
+  });
+
+  it("selects smoke for matching task pushes and requires it in their proof", () => {
+    const push = context("fast", { event: "push", base: "development", head: "task/ci/push", affected: none });
+    const matched = { ...push, filters: { ...filters, smoke: "true" } };
+    const plan = createCiPlan(matched);
+    expect(plan).toMatchObject({ perf: false, smoke: true });
+    expect(createCiPlan(push).smoke).toBe(false);
+    expect(createCiPlan({ ...matched, event: "pull_request", head: "feature/x" }).smoke).toBe(false);
+    expect(() => createCiPlan({ ...push, filters: { ...filters, smoke: "invalid" } })).toThrow("Path-filter outputs");
+
+    const skipped = { result: "skipped" };
+    const results = { ...portableResults, integration: skipped, architecture: skipped, macos: skipped,
+      "unit-proofs": skipped, unit: skipped, perf: skipped };
+    expect(() => verifyCiResults(plan, results)).not.toThrow();
+    for (const result of ["failure", "cancelled", "skipped"]) {
+      expect(() => verifyCiResults(plan, { ...results, smoke: { result } })).toThrow("CI smoke must be success.");
+    }
   });
 
   it.each(["portable", "release"])("selects perf and smoke on ready %s pull requests only", workflow => {

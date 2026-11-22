@@ -108,17 +108,18 @@ it("answers an unknown outcome when a landed swap's flush and read-back both fai
     assert.equal(PublicProfileStateSchema.parse(await finished.json()).state, "active");
     const credential = finished.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
 
-    const rename = fs.renameSync, flush = fs.fsyncSync, read = fs.readFileSync;
+    const rename = fs.renameSync, flush = fs.fsyncSync, open = fs.openSync;
     let failFlush = false, failRead = false;
     vi.spyOn(fs, "renameSync").mockImplementation((from, to) => { rename(from, to); if (String(to).endsWith("profile-verifiers.json")) failFlush = true; });
     vi.spyOn(fs, "fsyncSync").mockImplementation(descriptor => {
       if (failFlush) { failFlush = false; failRead = true; throw new Error("injected flush failure"); }
       flush(descriptor);
     });
-    vi.spyOn(fs, "readFileSync").mockImplementation(((path: fs.PathOrFileDescriptor, options?: unknown) => {
+    // Verifier reads go through a descriptor, so the read-back fault is injected at its open.
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
       if (failRead && String(path).endsWith("profile-verifiers.json")) { failRead = false; throw new Error("injected readback failure"); }
-      return Reflect.apply(read, fs, options === undefined ? [path] : [path, options]) as unknown;
-    }) as typeof fs.readFileSync);
+      return open(path, flags, mode);
+    });
     syncBuiltinESMExports();
     const unknown = await post("/api/v1/profile/account/password", { currentPassword: "disposable-fixture-password", newPassword: "changed-fixture-password" }, credential);
     vi.restoreAllMocks(); syncBuiltinESMExports();
