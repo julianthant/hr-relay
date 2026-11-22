@@ -1,19 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 import { applicationDataWorkspace } from "../../app/config/runtime-isolation.js";
+import { runtimeProfiles } from "../../../models/config/define-runtime-isolation.js";
 import { ProfileDatabaseBindingSchema, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { encodeSavedWorkbook, type SavedWorkbook, type WorkbookOperation, type WorkbookType } from "../../../models/dashboard/workbooks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import { type AuthorityDatabase } from "../sqlite/authority-database.js";
-import { inspectOpenDatabase } from "../sqlite/backup-inspection.js";
-import { assertBackupInspection, parseBackupManifestFile, verifyBackupBytesAtPath } from "../sqlite/backup-service.js";
+import { parseBackupManifestFile, readVerifiedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { authoritySourceDatabaseIdentity } from "../sqlite/database-identity.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
-import { withReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { createWorkbookLibraryRepository, INITIAL_WORKBOOK_TYPE } from "../sqlite/workbook-library-repository.js";
 
 export const IsolatedLibraryImportRequestSchema = z.strictObject({
@@ -56,18 +56,31 @@ function inside(root: string, path: string): boolean {
   return offset === "" || (!offset.startsWith("..") && !isAbsolute(offset));
 }
 
-/** Reads the verified backup's local library through a read-only snapshot; the backup file itself is never opened. */
-async function readVerifiedSourceLibrary(manifestPath: string, expected: ProfileDatabaseBinding) {
+/**
+ * Proves the open store is the destination person's own state.db under its exclusive admission, whose controller holds a non-production
+ * lifetime lock on a workspace outside the production application data. Nothing here comes from the caller.
+ */
+function assertIsolatedDestination(admission: RuntimeAdmission, database: AuthorityDatabase): void {
+  try { database.assertOpenedByExclusive(admission); }
+  catch (cause) { throw new IsolatedLibraryImportRefusedError("destination-store-unbound", { cause }); }
+  const lifetime = admission.lifetime, context = admission.readInstallationContext();
+  if (!(lifetime instanceof RuntimeLifetimeLock) || lifetime.port === runtimeProfiles.production.lockPort || context === undefined) {
+    throw new IsolatedLibraryImportRefusedError("destination-not-isolated");
+  }
+  lifetime.assertWorkspace(context.workspace);
+  const production = applicationDataWorkspace(undefined, "production");
+  if (inside(production, context.workspace) || inside(production, admission.stateRoot)) throw new IsolatedLibraryImportRefusedError("destination-not-isolated");
+}
+
+/** Reads the backup's local library through the supported verifier, from the same read-only snapshot its inspection checks. */
+async function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: string, expected: ProfileDatabaseBinding) {
   const manifest = parseBackupManifestFile(manifestPath);
   if (manifest.installationId !== expected.installationId || manifest.profileId !== expected.profileId
     || manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity({ kind: "profile", binding: expected })) {
     throw new IsolatedLibraryImportRefusedError("source-binding-mismatch");
   }
   if (manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new IsolatedLibraryImportRefusedError("source-schema-not-current");
-  const backupPath = join(dirname(manifestPath), manifest.backupFileName);
-  await verifyBackupBytesAtPath(backupPath, manifest);
-  const library = withReadonlyAuthoritySnapshot(backupPath, (database): SourceLibrary => {
-    assertBackupInspection(manifest, inspectOpenDatabase(database, manifest.schemaVersion), { kind: "profile", binding: expected });
+  const verified = await readVerifiedBackupManifestAtPath(admission, manifestPath, { kind: "profile", binding: expected }, (database): SourceLibrary => {
     const repository = createWorkbookLibraryRepository({ database, read: work => work(),
       mutate: () => { throw new Error("isolated-library-import-source-read-only"); } });
     const entries = repository.catalog();
@@ -82,33 +95,30 @@ async function readVerifiedSourceLibrary(manifestPath: string, expected: Profile
       skippedWorkflowOutputs: entries.length - local.length,
     };
   });
-  // The snapshot proved the file unchanged while read; this proves it is still the manifest's bytes.
-  await verifyBackupBytesAtPath(backupPath, manifest);
-  return { manifest, library };
+  return { manifest: verified.manifest, library: verified.value };
 }
 
 /**
  * Imports or refreshes the Spreadsheets library of a verified production person backup in an already signed-up staging or development
  * person. Each local workbook's current content and the workbook types come across under IDs derived from the source entry; history,
  * journals, workflow outputs, SharePoint links, runs, settings, assistant state, credentials and sessions stay behind. Entries the copy
- * created or changed are never written. All writes are one store transaction.
+ * created, changed or still has pending operations on are never written, and their pending operations stay queued. All writes are one
+ * store transaction.
  */
 export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmission, database: AuthorityDatabase, requestInput: unknown,
-  clock: Clock = systemClock, productionWorkspace: string = applicationDataWorkspace(undefined, "production")): Promise<IsolatedLibraryImportReport> {
+  clock: Clock = systemClock): Promise<IsolatedLibraryImportReport> {
   const admission = requireRuntimeAdmission(admissionInput);
   const request = IsolatedLibraryImportRequestSchema.parse(requestInput);
   admission.assertProfileRuntime();
-  const meta = database.getMeta();
-  if (!sameBinding(admission.profileBinding, request.destination) || !sameBinding(meta, request.destination)) {
+  assertIsolatedDestination(admission, database);
+  if (!sameBinding(admission.profileBinding, request.destination) || !sameBinding(database.getMeta(), request.destination)) {
     throw new IsolatedLibraryImportRefusedError("destination-binding-mismatch");
   }
-  if (request.destination.installationId === request.source.binding.installationId || inside(productionWorkspace, admission.stateRoot)) {
-    throw new IsolatedLibraryImportRefusedError("destination-not-isolated");
-  }
+  if (request.destination.installationId === request.source.binding.installationId) throw new IsolatedLibraryImportRefusedError("destination-not-isolated");
   const manifestPath = resolve(request.source.manifestPath);
   if (inside(admission.stateRoot, manifestPath)) throw new IsolatedLibraryImportRefusedError("source-inside-destination");
 
-  const { manifest, library } = await readVerifiedSourceLibrary(manifestPath, request.source.binding);
+  const { manifest, library } = await readVerifiedSourceLibrary(admission, manifestPath, request.source.binding);
   const target = database.authority.workbooks;
   const at = clock.now().toISOString();
   const issued = (sourceLibraryId: string) => importedLibraryId(request.source.binding, request.destination, sourceLibraryId);
@@ -117,6 +127,7 @@ export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmis
     if (receipt.state !== "applied") throw new Error(`isolated-library-import-write-${receipt.state}`);
   };
   const outcome = target.atomically(() => {
+    assertIsolatedDestination(admission, database);
     const types = new Map(target.types().map(type => [type.id, type]));
     const diverged = library.types.find(type => {
       const existing = types.get(type.id);
@@ -138,7 +149,7 @@ export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmis
       // Only an entry that nothing but this import ever changed is refreshed; anything touched in the copy stays as it is.
       const journal = target.journal(libraryId);
       // Each applied write and each library action advances the revision once; any revision beyond the import's own writes is the copy's.
-      if (current === undefined || journal.some(receipt => !receipt.operationId.startsWith(IMPORT_OPERATION_PREFIX))
+      if (current === undefined || target.hasQueuedOperation(libraryId) || journal.some(receipt => !receipt.operationId.startsWith(IMPORT_OPERATION_PREFIX))
         || target.libraryState(libraryId).revision !== 1 + journal.filter(receipt => receipt.state === "applied").length) { counts.keptLocal++; continue; }
       const content = encodeSavedWorkbook({ ...current, workbook }).workbook;
       const changed = canonicalJsonStringify(encodeSavedWorkbook(current).workbook) !== canonicalJsonStringify(content);

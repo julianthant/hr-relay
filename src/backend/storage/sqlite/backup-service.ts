@@ -22,13 +22,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { noSymlinkAncestry, readPrivateFile, removeExactPath, statDirectory } from "../configuration/credential-safe-file.js";
-import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { createReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
+import type { DatabaseSync } from "node:sqlite";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type Clock, systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
+import { inspectAuthorityBackupReadOnly, inspectOpenDatabase, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
 import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -133,15 +134,33 @@ export function verifyBackupManifestOffThread(admissionInput: RuntimeAdmission, 
   return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupOffThread(copy, backupPath, schemaVersion, options));
 }
 
+/**
+ * verifyBackupManifestAtPath for another person's backup, checked against `source` instead of the admission's own person. `read` runs
+ * inside the same read-only snapshot the inspection checks, while the verified copy admission still proves the manifest's bytes.
+ */
+export async function readVerifiedBackupManifestAtPath<T>(admissionInput: RuntimeAdmission, manifestPathInput: string,
+  source: Extract<AuthorityBackupExpectedSource, { kind: "profile" }>, read: (database: DatabaseSync) => T): Promise<VerifiedBackup & Readonly<{ value: T }>> {
+  let result: { value: T } | undefined;
+  const verified = await verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => withAuthorityDatabaseReadOnly(copy, backupPath, database => {
+    const inspection = inspectOpenDatabase(database, schemaVersion);
+    result = { value: read(database) };
+    copy.assertLive();
+    return inspection;
+  }), source);
+  if (result === undefined) throw new Error("authority-backup-read-missing");
+  return Object.freeze({ ...verified, value: result.value });
+}
+
 async function verifyManifest(
   admissionInput: RuntimeAdmission,
   manifestPathInput: string,
   inspect: BackupCopyInspector,
+  source?: AuthorityBackupExpectedSource,
 ): Promise<VerifiedBackup> {
   const admission = requireRuntimeAdmission(admissionInput);
   const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
   if (!existsSync(manifestPath)) throw new Error(`backup manifest ${manifestPath} does not exist`);
-  const expected = admission.authorityBackupExpectedSource();
+  const expected = source ?? admission.authorityBackupExpectedSource();
   if (expected.kind !== "profile") throw new Error("profile-backup-binding-required");
   const manifest = parseBackupManifestFile(manifestPath);
   if (manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(expected)) {
@@ -175,7 +194,7 @@ function assertExpectedBackupSource(expected: AuthorityBackupExpectedSource,
   }
 }
 
-export function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>,
+function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>,
   expected: AuthorityBackupExpectedSource): void {
   assertExpectedBackupSource(expected, manifest);
   assertExpectedBackupSource(expected, inspection);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, it } from "vitest";
 import { importIsolatedWorkbookLibrary, IsolatedLibraryImportRefusedError } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
@@ -10,6 +11,10 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBackupFixtures } from "../../../support/helpers/storage/backup-fixtures.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
+import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { WorkbookLibraryOriginSchema } from "../../../../src/models/dashboard/workbook-library.js";
 
 const CLOCK = manualClock(new Date("2026-11-22T12:00:00.000Z"));
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -152,20 +157,24 @@ it("refuses a source type that differs from the copy's type of the same ID befor
   assert.equal(destination.database.authority.workbooks.catalog().length, 0);
 });
 
-it("refuses ambiguous identities, the source's own installation, production paths and changed backup bytes without writing", async () => {
+it("refuses ambiguous identities, unbound stores, the source's own installation and changed or shared backup bytes without writing", async () => {
   const { source, backup } = await sourceWithLibrary();
   const destination = await openCurrentWorld();
   const valid = request(source, backup.manifestPath, destination);
-  const refuses = (reason: string, input: unknown, world: World = destination, productionWorkspace?: string) => assert.rejects(
-    importIsolatedWorkbookLibrary(world.admission, world.database, input, CLOCK, productionWorkspace),
+  const refuses = (reason: string, input: unknown, world: World = destination, database: AuthorityDatabase = world.database) => assert.rejects(
+    importIsolatedWorkbookLibrary(world.admission, database, input, CLOCK),
     (error: unknown) => error instanceof IsolatedLibraryImportRefusedError && error.reason === reason);
 
   await refuses("source-binding-mismatch", { ...valid, source: { ...valid.source, binding: { ...binding(source), installationId: randomUUID() } } });
   await refuses("source-binding-mismatch", { ...valid, source: { ...valid.source, binding: { ...binding(source), profileId: randomUUID() } } });
   await refuses("destination-binding-mismatch", { ...valid, destination: binding(source) });
   await refuses("destination-not-isolated", request(source, backup.manifestPath, source), source);
-  await refuses("destination-not-isolated", valid, destination, destination.workspace);
   await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, { ...valid, extra: true }, CLOCK));
+  // Another person's open store, even with matching request identities, is not this admission's store.
+  await refuses("destination-store-unbound", valid, destination, source.database);
+  const shared = await openCurrentWorld({ sharedMachine: true });
+  await refuses("destination-store-unbound", request(source, backup.manifestPath, shared), shared);
+  assert.equal(shared.database.authority.workbooks.catalog().length, 0);
 
   const backupPath = join(dirname(backup.manifestPath), backup.manifest.backupFileName);
   const bytes = readFileSync(backupPath);
@@ -173,4 +182,75 @@ it("refuses ambiguous identities, the source's own installation, production path
   writeFileSync(backupPath, bytes);
   await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, valid, CLOCK), /checksum does not match/u);
   assert.equal(destination.database.authority.workbooks.catalog().length, 0);
+  writeFileSync(backupPath, readFileSync(backupPath).map((byte, index) => index === bytes.length - 1 ? byte ^ 0xff : byte));
+  assert.equal(sha256(backupPath), backup.manifest.sha256);
+
+  // A second name for the backup file means its bytes can change behind the verifier; the read-only copy admission refuses it.
+  const elsewhere = mkdtempSync(join(tmpdir(), "relay-import-link-"));
+  cleanups.push(() => { rmSync(elsewhere, { recursive: true, force: true }); });
+  linkSync(backupPath, join(elsewhere, "linked.sqlite"));
+  await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, valid, CLOCK), /unsafe shape/u);
+  rmSync(join(elsewhere, "linked.sqlite"));
+  assert.equal(destination.database.authority.workbooks.catalog().length, 0);
+  assert.equal((await importIsolatedWorkbookLibrary(destination.admission, destination.database, valid, CLOCK)).created, 2);
+});
+
+it("keeps an imported entry with a pending local operation as it is and leaves the operation queued", async () => {
+  const { source, backup, rosterId } = await sourceWithLibrary();
+  const destination = await openCurrentWorld();
+  await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK);
+  const target = destination.database.authority.workbooks;
+  const imported = target.list().find(record => record.workbook.name === "Roster");
+  assert.ok(imported !== undefined);
+  target.enqueue(imported.libraryId, { operationId: "copy-pending-save", source: { kind: "operator" }, at: CLOCK.now().toISOString(),
+    change: { kind: "save", expectedVersion: imported.version, workbook: { ...imported.workbook, name: "Pending in copy" } } });
+
+  const production = service(source.database);
+  const current = production.read(rosterId);
+  production.save(rosterId, current.version, { ...current.workbook, name: "Roster v2" });
+  const later = await takeBackup(source);
+  const report = await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, later.manifestPath, destination), CLOCK);
+  assert.deepEqual([report.created, report.refreshed, report.unchanged, report.keptLocal], [0, 0, 1, 1]);
+  assert.equal(target.hasQueuedOperation(imported.libraryId), true);
+  assert.deepEqual(target.read(imported.libraryId), imported);
+
+  // The copy's own intent still applies afterwards, unchanged by the import.
+  target.drain(imported.libraryId);
+  assert.equal(target.hasQueuedOperation(imported.libraryId), false);
+  assert.equal(target.read(imported.libraryId)?.workbook.name, "Pending in copy");
+});
+
+it("leaves the source's credentials, queued runs and workflow outputs behind when a fresh person reopens its import", async () => {
+  const { source } = await sourceWithLibrary();
+  const credentialsDirectory = join(source.stateRoot, "credentials");
+  assert.ok(existsSync(credentialsDirectory) && readdirSync(credentialsDirectory).length > 0, "signed-up source holds synthetic credentials");
+  const run = runRecordOf({ seed: 1, enqueuedAt: CLOCK.now().toISOString(), descriptor: personLookupDescriptor });
+  if (source.database.authority.runtimeConfig.get() === undefined) source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  source.database.authority.runs.enqueue(run);
+  const origin = WorkbookLibraryOriginSchema.parse({ kind: "workflow", runId: run.envelope.runId, partitionDay: "2026-11-22",
+    workflowId: run.envelope.workflow, workflowLabel: "Person lookup", rowCount: 1, rowSubject: "person" });
+  const local = service(source.database).create({ ...dates, name: "Local dates" });
+  source.database.authority.workbooks.create({ ...local, libraryId: "workflow-result", workbook: { ...local.workbook, name: "Workflow output", libraryId: "workflow-result" } }, origin);
+  assert.ok(nonLibraryCounts(source).runs > 0);
+  const backup = await takeBackup(source);
+
+  const destination = await openCurrentWorld();
+  const before = nonLibraryCounts(destination);
+  const destinationCredentials = join(destination.stateRoot, "credentials");
+  const credentialFiles = () => readdirSync(destinationCredentials, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile())
+    .map(entry => [join(entry.parentPath, entry.name), sha256(join(entry.parentPath, entry.name))]).sort();
+  const credentialsBefore = credentialFiles();
+  const report = await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK);
+  assert.deepEqual([report.created, report.skippedWorkflowOutputs], [3, 1]);
+
+  destination.closeDatabase();
+  const reopened = AuthorityDatabase.open(destination.admission, { path: destination.authorityPath, busyTimeoutMs: 250, migrationOwner: "import-test" },
+    CLOCK, undefined, undefined, undefined, destination.credentials);
+  try {
+    const catalog = reopened.authority.workbooks.catalog();
+    assert.deepEqual(catalog.map(entry => entry.name).sort(), ["Dates saved", "Local dates", "Roster"]);
+    assert.ok(catalog.every(entry => entry.state.origin.kind === "local"));
+  } finally { reopened.close(); }
+  assert.deepEqual(nonLibraryCounts(destination), before);
+  assert.deepEqual(credentialFiles(), credentialsBefore);
 });

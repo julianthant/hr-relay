@@ -724,25 +724,32 @@ give an isolated copy production data; seed copies only through it.
 - Sign up first. The person signs up in the isolated copy (Relay login and Duo), which issues that
   installation's own installation and profile IDs and its own credentials. The import never creates
   a person and never changes either identity.
-- Call it with the copy's lifetime lock held, after stopping its dashboard: acquire the copy's
-  entrypoint admission, admit the signed-up person and open its store through `AuthorityDatabase.open`.
-  Pass that admission and database with
+- Call it from the copy's own staging or development controller with its lifetime lock held, after
+  stopping its dashboard: acquire the copy's exclusive entrypoint admission, admit the signed-up person
+  and open its `state.db` through `AuthorityDatabase.open` with that admission. Pass that admission and
+  database with
   `{ source: { manifestPath, binding: { installationId, profileId } }, destination: { installationId, profileId } }`.
-- The source is a current-schema backup manifest (version 4). Its manifest, database identity and
-  contents must match the named source binding, and its bytes must match the manifest before and
-  after a read through a read-only snapshot. The backup file is never opened or written.
-- It refuses (`IsolatedLibraryImportRefusedError`) when the destination admission, open store and
-  named destination differ, when the destination shares the source's installation or lies inside the
-  production workspace, when the source differs from its binding or is not current, and when a source
-  workbook type differs from the destination's type of the same ID.
+- The source is a current-schema backup manifest (version 4), checked by the same verifier restore
+  uses (`verifyBackupManifestAtPath`) against the named source binding. Its bytes must match the
+  manifest through the verified read-only copy admission, which refuses a backup file with a second
+  link, and the library is read from the same snapshot the inspection checks. The backup file is never
+  opened for writing.
+- It refuses (`IsolatedLibraryImportRefusedError`) when the store was not opened by this exclusive
+  admission or is not its `state.db` (`destination-store-unbound`), when the admission, open store and
+  named destination differ, when the controller holds the production lifetime lock, its workspace lies
+  inside the production application data or the destination shares the source's installation
+  (`destination-not-isolated`), when the source differs from its binding or is not current, and when a
+  source workbook type differs from the destination's type of the same ID. These checks run again
+  inside the write transaction.
 - It brings only each local workbook's current content and the workbook types. Each source entry
   lands on a library ID derived from both bindings and the source entry, so a repeated call refreshes
   the same entries. History, journals, tags, workflow outputs, SharePoint links, runs, evidence,
   settings, assistant state, credentials, sessions and queued work stay behind.
 - Run it again to update a copy. It creates entries new in the source and refreshes an imported entry
-  only while its journal and library revision show nothing but the import's own writes. Entries the
-  copy created, and imported entries the copy edited, removed or acted on, are left unchanged and
-  counted as `keptLocal`. Entries removed from the source stay in the copy.
+  only while its journal and library revision show nothing but the import's own writes and it has no
+  pending operation. Entries the copy created, and imported entries the copy edited, removed, acted on
+  or still has pending operations on, are left unchanged and counted as `keptLocal`; their pending
+  operations stay queued. Entries removed from the source stay in the copy.
 - All writes are one store transaction: a failure part way writes nothing, and a call with nothing
   new writes nothing.
 
