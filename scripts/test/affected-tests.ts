@@ -194,9 +194,9 @@ export function createAffectedTestsPlanner(root: string): (base: string, head: s
 }
 
 if (isDirectExecution(import.meta.url)) {
-  const [base, head, scope, ...extra] = process.argv.slice(2);
-  if (!base || !head || (scope !== undefined && scope !== "--all") || extra.length > 0) {
-    throw new Error("Usage: affected-tests <base-ref> <head-ref> [--all]");
+  const [base, head, ...extra] = process.argv.slice(2);
+  if (!base || !head || extra.length > 0) {
+    throw new Error("Usage: affected-tests <base-ref> <head-ref>");
   }
-  process.stdout.write(JSON.stringify(createAffectedTestsPlanner(process.cwd())(base, head, scope ? Infinity : undefined)) + "\n");
+  process.stdout.write(JSON.stringify(createAffectedTestsPlanner(process.cwd())(base, head)) + "\n");
 }

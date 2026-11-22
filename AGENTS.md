@@ -56,8 +56,8 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
   helpers belong in `tests/support/`.
 - CI plans:
   - Task pushes and other development PRs run the fast Ubuntu plan: plan, lint, static, privacy,
-    three unit shards, two architecture shards, the affected integration shards (at most eight;
-    every affected shard on `feature/*` PRs), `proof` and the `development` gate. Drafts run
+    three unit shards, two architecture shards, the affected integration shards (at most eight),
+    `proof` and the `development` gate. Drafts run
     static, privacy and selected unit shards. A `task/**` PR runs only the `development` gate:
     names, the workflow allowlist and the push run's `proof` at the PR head SHA. Edited PRs rerun
     the gate only.
@@ -65,9 +65,11 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
     development head: all suites, 30 integration shards, perf, smoke, native macOS, CodeQL and
     npm audit. It starts only when that head has no green full run and CI is idle or no full run
     started in the last six hours.
-  - Staging PRs from `cut/*` and staging-to-main releases run the portable Ubuntu suites plus
-    static, privacy, perf and smoke, and pass only on the green full run of the cut's exact
+  - Staging PRs from `development` and staging-to-main releases run the portable Ubuntu suites plus
+    static, privacy, perf and smoke, and pass only on the green full run of the head's exact
     content. The main-to-staging sync needs no full run.
+  - A red full run on `development` blocks every other merge into it until the failing task is
+    reverted or fixed forward.
   - Hotfix and manual release checks run the selected suites, including native proofs and
     CodeQL on hotfixes; ready pull requests also build the web bundle for perf and smoke, while
     manual releases skip those jobs. Only the operator starts full-release CI; agents never dispatch or
@@ -87,8 +89,7 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
 
 | Thing | Name |
 | --- | --- |
-| Feature branch | `feature/<feature>`: from `origin/development`, one PR into `development` |
-| Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
+| Ticket branch | `task/<feature>/<lane>`: from `origin/development`, one PR straight into `development`; unfinished work merges unwired (no nav entry or route until the feature's last task) |
 | Standalone fix | `fix/<area>-<symptom>`: from `origin/development`, one issue, one PR into `development` |
 | Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; from `origin/development`, one PR into `development` |
 | Hotfix | `hotfix/<area>-<symptom>`: from `main`, one PR into `main` titled `Hotfix: <what it fixes>`; the same commits reach `development` through a `fix/*` PR |
@@ -101,11 +102,11 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
 - Use no other branch prefix. Keep the main checkout on a clean `development` and work only in
   worktrees. A ticket lives on one machine with its tests; work moves between machines only as
   pushed branches. Leave no stash behind: commit to the ticket branch.
-- Push your `task/**` branch without asking. Merge it into its feature branch only after the
-  reviewer clears its SHA, then remove its worktree and branch in the same step.
+- Push your `task/**` branch without asking. Open its PR into `development` only after the
+  reviewer clears its SHA; remove its worktree and branch in the same step.
 - Separate backend and UI lanes for one area; merge the backend first.
 - `main` is released production, `staging` operator-preview integration, `development` the
-  feature integration base. Feature, fix and chore branches reach `development` through a PR whose
+  feature integration base. Task, fix and chore branches reach `development` through a PR whose
   body says `Closes #<issue>`, with auto-merge on the required checks. `staging` receives PRs from
   `development` only, one coherent batch at a time. Never push directly to `main` or `staging`.
   Merge the latest base into your branch; never rebase or force-push. Never merge a PR by hand.

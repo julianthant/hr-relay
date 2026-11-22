@@ -77,9 +77,9 @@ export async function fullRunProof({ github, context }: { github: GitHub; contex
   if (pr.head.repo?.full_name !== `${repo.owner}/${repo.repo}`) throw new Error(`Pull request head ${pr.head.repo?.full_name} is not ${repo.owner}/${repo.repo}.`);
   const { ref, sha } = pr.head;
   if (pr.base.ref === "staging" && ref === "main") return `Main-to-staging sync ${sha} needs no full run: main moves only through the production gate.`;
-  if (pr.base.ref === "staging" && ref.startsWith("cut/")) {
+  if (pr.base.ref === "staging" && ref === "development") {
     const run = await greenFullRun(github, repo, sha);
-    if (!run) throw new Error(`No green full run proves ${sha}; cut from a development commit whose full run passed.`);
+    if (!run) throw new Error(`No green full run proves ${sha}; merge only a development commit whose full run passed.`);
     return `Full run ${run.html_url} proves ${sha}.`;
   }
   if (pr.base.ref === "main" && ref === "staging") {
