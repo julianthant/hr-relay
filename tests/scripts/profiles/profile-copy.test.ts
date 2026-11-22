@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authoritySourceDatabaseIdentity } from "../../../src/backend/storage/sqlite/database-identity.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
-import { RuntimeAlreadyRunningError, acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { copyVerifiedBackups, resolveSourceRef, runProfileCopy, withProfileLock } from "../../../scripts/profiles/profile-copy.js";
 
 const installationId = "00000000-0000-4000-8000-000000000001";

@@ -108,7 +108,7 @@ export function resolveSourceRef(profile: CopyProfile, git: Git, requested?: str
   }
   if (cuts.length === 0) throw new ProfileCopyRefusedError("cut-branch-missing", "no origin/cut/* branch exists to stage");
   if (cuts.length > 1) throw new ProfileCopyRefusedError("cut-branch-ambiguous", `pick one with --ref: ${cuts.join(", ")}`);
-  return cuts[0] as string;
+  return cuts[0];
 }
 
 /** Creates or moves the copy's detached worktree; a dirty copy is refused. */
