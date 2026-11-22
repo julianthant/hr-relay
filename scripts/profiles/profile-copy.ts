@@ -96,13 +96,13 @@ export function resolveSourceRef(profile: CopyProfile, git: Git): string {
 }
 
 /** Creates or moves the copy's detached worktree; a dirty copy is refused. */
-export function syncWorktree(path: string, ref: string, mainGit: Git): string {
+export function syncWorktree(path: string, ref: string, mainGit: Git, gitFor: (directory: string) => Git = gitIn): string {
   if (existsSync(join(path, ".git"))) {
-    const copy = gitIn(path);
+    const copy = gitFor(path);
     if (copy(["status", "--porcelain"]) !== "") throw new ProfileCopyRefusedError("worktree-dirty", `${path} has local changes`);
     copy(["checkout", "--detach", ref]);
   } else mainGit(["worktree", "add", "--detach", path, ref]);
-  return gitIn(path)(["rev-parse", "HEAD"]);
+  return gitFor(path)(["rev-parse", "HEAD"]);
 }
 
 export interface ProfileCopyOptions {
@@ -113,6 +113,7 @@ export interface ProfileCopyOptions {
   readonly targetWorkspace: string;
   readonly today: string;
   readonly git?: Git;
+  readonly gitFor?: (directory: string) => Git;
   readonly get?: FetchJson;
 }
 
@@ -121,7 +122,7 @@ export async function runProfileCopy(options: ProfileCopyOptions): Promise<strin
   await assertNoActiveRun(profile, options.today, options.get);
   const git = options.git ?? gitIn(options.repository);
   const ref = resolveSourceRef(profile, git);
-  const sha = syncWorktree(options.copyPath, ref, git);
+  const sha = syncWorktree(options.copyPath, ref, git, options.gitFor);
   const backups = copyVerifiedBackups(options.sourceWorkspace, options.targetWorkspace);
   return [
     `profile: ${profile}`,

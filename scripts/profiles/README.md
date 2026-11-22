@@ -14,5 +14,5 @@ Each run:
 1. Production must have taken a verified backup (it does so hourly while running).
 2. `npm run profile:staging`, then `npm run profile:development`.
 3. In each copy's worktree: `npm ci && npm run dashboard:<profile>`.
-4. **Operator:** sign in with Duo in each copy, and restore the copied backup from Settings storage. Credentials are never copied, so each copy needs its own sign-in.
+4. **Operator:** sign in with Duo in each copy, and load the copied backup through the dashboard's storage restore (the first live setup confirms the exact step). Credentials are never copied, so each copy needs its own sign-in.
 5. **Operator:** repeat step 2 to refresh a copy; stop that copy's dashboard first if it reports an active run.

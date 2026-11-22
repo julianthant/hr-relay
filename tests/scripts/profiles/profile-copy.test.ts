@@ -75,13 +75,13 @@ describe("runProfileCopy", () => {
     writeBackup(source, "authority-g1-1-aaaa.sqlite", "2026-11-01T00:00:00.000Z");
     const calls: string[] = [];
     const git = (args: readonly string[]) => { calls.push(args.join(" ")); return args[0] === "for-each-ref" ? "origin/cut/2026-11-22" : ""; };
-    const options = { profile: "staging" as const, repository: root, copyPath: join(root, "copy"), sourceWorkspace: source, targetWorkspace: join(root, "staging"), today: "2026-11-22", git };
+    const options = { profile: "staging" as const, repository: root, copyPath: join(root, "copy"), sourceWorkspace: source, targetWorkspace: join(root, "staging"), today: "2026-11-22", git, gitFor: () => () => "0123abc" };
     await expect(runProfileCopy({ ...options, get: async () => ({ statusCounts: [{ status: "running", count: 1 }], workerCards: [] }) })).rejects.toThrow("active-run");
     expect(calls).toEqual([]);
     expect(existsSync(join(root, "staging"))).toBe(false);
     const report = await runProfileCopy({ ...options, get: async () => ({ statusCounts: [], workerCards: [] }) });
     expect(report).toContain("profile: staging");
-    expect(report).toContain("origin/cut/2026-11-22");
+    expect(report).toContain("origin/cut/2026-11-22 @ 0123abc");
     expect(report).toContain("backend 3941, frontend 5175");
     expect(calls).toContain(`worktree add --detach ${join(root, "copy")} origin/cut/2026-11-22`);
   });
