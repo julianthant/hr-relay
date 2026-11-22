@@ -12,6 +12,8 @@
     "dashboard:production": "tsx scripts/dev/dashboard.ts --profile=production",
     "dashboard:staging": "tsx scripts/dev/dashboard.ts --profile=staging",
     "dashboard:development": "tsx scripts/dev/dashboard.ts --profile=development",
+    "profile:staging": "tsx scripts/profiles/profile-copy.ts staging",
+    "profile:development": "tsx scripts/profiles/profile-copy.ts development",
     "dashboard": "tsx scripts/dev/dashboard.ts",
     "backend": "tsx scripts/dev/dashboard.ts --backend-only",
     "dashboard:prod": "tsx scripts/dev/secure-env-bootstrap.ts cli dashboard --prod",
