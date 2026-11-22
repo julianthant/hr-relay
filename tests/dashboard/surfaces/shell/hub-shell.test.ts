@@ -53,8 +53,8 @@ it("reads an existing chat history and the model preference at load, and the mod
     paths.push(`${init?.method ?? "GET"} ${path}`);
     return path === "/api/v1/assistant/models" ? Response.json({ models: [{ slug: ASSISTANT_DEFAULT_MODEL, displayName: "Sol" }] }) : app.request(url, init);
   } });
-  assert.ok(client.assistantHistoryWrite);
-  await client.assistantHistoryWrite({ operation: "create", conversationId: "00000000-0000-4000-8000-0000000000c1", title: "Earlier chat" });
+  const seed = client.assistantHistoryWrite?.bind(client); assert.ok(seed);
+  await seed({ operation: "create", conversationId: "00000000-0000-4000-8000-0000000000c1", title: "Earlier chat" });
   paths.splice(0);
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const count = (request: string) => paths.filter(path => path === request).length;
