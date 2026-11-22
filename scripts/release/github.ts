@@ -44,9 +44,7 @@ export function githubRelease(number: string, run: Run, report: (message: string
     validateBranches(pr);
     if (pr.merged) {
       if (pr.merge_commit_sha !== main()) throw new Error("This promotion is no longer the main tip.");
-      return;
-    }
-    if (pr.state !== "open" || pr.draft || pr.mergeable_state !== "clean") {
+    } else if (pr.state !== "open" || pr.draft || pr.mergeable_state !== "clean") {
       throw new Error("The staging promotion must be open, ready, and clear of GitHub merge requirements.");
     }
     const checks = z.array(z.object({ name: z.string(), bucket: z.string() })).parse(JSON.parse(
@@ -78,7 +76,7 @@ export function githubRelease(number: string, run: Run, report: (message: string
     },
     publish() {
       const pr = pull();
-      if (pr.head.sha !== approvedHead && !pr.merged) throw new Error("The staging head changed after approval. Review the updated promotion.");
+      if (pr.head.sha !== approvedHead) throw new Error("The staging head changed after approval. Review the updated promotion.");
       verify(pr);
       if (pr.merged) commit = shaSchema.parse(pr.merge_commit_sha);
       else {
@@ -108,10 +106,8 @@ export function githubRelease(number: string, run: Run, report: (message: string
       if (commit === undefined || commit !== main()) throw new Error("Main changed before the staging sync.");
       const comparison = read(`compare/staging...${commit}`, z.object({ ahead_by: z.number().int().nonnegative() }));
       if (comparison.ahead_by === 0) return;
-      const existing = z.array(z.object({ url: z.url() })).parse(JSON.parse(
-        gh("pr", "list", "--repo", repository, "--base", "staging", "--head", "main", "--json", "url"),
-      ));
-      report(existing[0]?.url ?? gh("pr", "create", "--repo", repository, "--base", "staging", "--head", "main",
+      const existing = read("pulls?state=open&base=staging&head=julianthant%3Amain", z.array(z.object({ html_url: z.url() })));
+      report(existing[0]?.html_url ?? gh("pr", "create", "--repo", repository, "--base", "staging", "--head", "main",
         "--title", `Release: Sync main into staging after ${tag}`, "--body", `Sync the merge commit for release ${tag} back into staging.`));
     },
     target() {

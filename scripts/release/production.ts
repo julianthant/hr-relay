@@ -43,7 +43,7 @@ export function productionRelease(report: (message: string) => void) {
       throw new Error("Could not prove exclusive dashboard listener ownership.");
     }
     const cwd = execFileSync("lsof", ["-a", "-p", pid, "-d", "cwd", "-Fn"], { encoding: "utf8" }).trim().split("\n").at(-1);
-    const command = execFileSync("ps", ["-p", pid, "-o", "command="], { encoding: "utf8" }).trim();
+    const command = execFileSync("ps", ["-ww", "-p", pid, "-o", "command="], { encoding: "utf8" }).trim();
     if (cwd !== `n${checkout}` || !command.endsWith("scripts/dev/secure-env-bootstrap.ts cli dashboard --prod")) {
       throw new Error("The dashboard listener is not the production dashboard in the production checkout.");
     }

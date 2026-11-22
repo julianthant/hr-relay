@@ -11,15 +11,18 @@ const pull = { head: branch("staging", sha), base: branch("main", base), state: 
   merged: false, merge_commit_sha: null, mergeable_state: "clean" };
 
 describe("GitHub promotion", () => {
-  it("refuses a staging promotion without a passing production check", () => {
+  it.each([false, true])("refuses an unapproved promotion when merged is %s", (alreadyMerged) => {
     const run = vi.fn((program: string, [command, route]: string[]) => {
-      if (program === "gh" && command === "api" && route === prRoute) return JSON.stringify(pull);
+      if (program === "gh" && command === "api" && route === prRoute) {
+        return JSON.stringify(alreadyMerged ? { ...pull, state: "closed", merged: true, merge_commit_sha: merged } : pull);
+      }
+      if (program === "gh" && command === "api" && route === `${api}/branches/main`) return JSON.stringify({ commit: { sha: merged } });
       if (program === "gh" && command === "pr" && route === "checks") return JSON.stringify([{ name: "other", bucket: "pass" }]);
       throw new Error("Unexpected command.");
     });
     const release = githubRelease("42", run, vi.fn());
     expect(() => release.verifyPromotion()).toThrow("The production check");
-    expect(run).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledTimes(alreadyMerged ? 3 : 2);
   });
 
   it("refuses to merge if staging changed after the preflight", () => {
