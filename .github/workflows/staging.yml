@@ -43,9 +43,29 @@ jobs:
     with:
       kind: portable
 
+  # Passes only on a green scheduled full run of the exact content (scripts/ci/full-run.ts).
+  full-proof:
+    name: full-proof
+    needs: names
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const { fullRunProof } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci/full-run.ts`);
+            core.info(await fullRunProof({ github, context }));
+
   staging:
     name: staging
-    needs: [names, checks]
+    needs: [names, checks, full-proof]
     if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:

@@ -354,7 +354,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.ok(target);
     await click(target);
     assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
-    assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
+    assert_m1.match(document.body.textContent ?? "", /This workflow is not available to select\./);
     assert_m1.equal(location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
     assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
@@ -515,7 +515,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     let reads = 0;
     const search = `?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`;
     const client = await mount(search, {
-      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
+      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", retryable: true, message: "private transport detail" }); },
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.ok(reads > 0);
     assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."));

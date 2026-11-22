@@ -6,7 +6,7 @@ import { createCiPlan, hasTimingArtifact, publishTimings, registeredTimingWorkfl
 const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
 const none = { core: false, shardCount: 0, shards: [] };
 const context = (workflow = "portable", extra: Record<string, unknown> = {}) => ({ workflow, event: "pull_request",
-  base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "development" : "staging",
+  base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "cut/m1" : "hotfix/x",
   draft: false, filters, ...extra });
 const portableResults = { changes: { result: "success" }, lint: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
@@ -108,6 +108,32 @@ describe("flat CI plan", () => {
     expect(hotfix.fullRelease).toBe(true);
     expect(hotfix.macos.include).toEqual(createCiPlan(context("release")).macos.include);
     expect(createCiPlan(context("release", { head: "hotfix" })).fullRelease).toBe(false);
+  });
+
+  it("plans the scheduled full run with every suite, perf, smoke and native shards", () => {
+    const full = { workflow: "full", event: "schedule", base: "", head: "development", draft: false, filters: {} };
+    const plan = createCiPlan(full);
+    expect(plan).toMatchObject({ workflow: "full", fullRelease: true, lint: true, perf: true, smoke: true,
+      unit: true, integration: true, architecture: true, testJobs: 40 });
+    expect(plan.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(30);
+    expect(plan.macos.include).toEqual(createCiPlan(context("release")).macos.include);
+    expect(() => verifyCiResults(plan, releaseResults)).not.toThrow();
+    expect(publishTimings(plan, releaseResults)).toBe(true);
+    for (const job of ["macos", "unit-proofs", "perf", "smoke"]) {
+      expect(() => verifyCiResults(plan, { ...releaseResults, [job]: { result: "skipped" } })).toThrow();
+    }
+    for (const invalid of [{ ...full, head: "task/ci/x" }, { ...full, event: "push" }, { ...full, workflow: "release" },
+      context("portable", { event: "schedule" })]) {
+      expect(() => createCiPlan(invalid)).toThrow();
+    }
+  });
+
+  it("runs staging-to-main releases on the portable suite without native shards", () => {
+    const release = createCiPlan(context("portable", { base: "main", head: "staging" }));
+    expect(release).toEqual(createCiPlan(context()));
+    expect(release).toMatchObject({ fullRelease: false, macos: { include: [] }, testJobs: 35 });
+    expect(createCiPlan(context("release", { head: "staging" })).fullRelease).toBe(false);
+    expect(() => createCiPlan(context("portable", { base: "main", head: "hotfix/x" }))).toThrow();
   });
 
   it("refuses incorrect entry contexts and incomplete filters", () => {
