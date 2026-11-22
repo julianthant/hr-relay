@@ -21,7 +21,7 @@ const catalog = buildWorkflowCatalog(served, servedFixtureSources(served));
 const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async () => { throw new Error("no request is expected"); } });
 const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
 const executor = new CommandExecutor(() => scope);
-const binding = (day: SessionCommandBinding["dayState"]["day"]): SessionCommandBinding => ({ client, executor, scope, day: FIXTURE_DAY_WIRE.day, nowIso: FIXTURE_NOW,
+const binding = (day: SessionCommandBinding["dayState"]["day"]): SessionCommandBinding => ({ client, executor, scope, day: FIXTURE_DAY_WIRE.day, now: () => FIXTURE_NOW,
   dayState: { subscribePublications: () => () => {}, request: scope.dayRequest, day, connection: { state: "connecting" }, refresh() {} } });
 
 let root: Root | undefined;

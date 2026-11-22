@@ -50,7 +50,7 @@ type FrontendBootstrapWire,
 import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
-import { useServedNow } from "../state/served-clock.js";
+import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import {
@@ -356,8 +356,12 @@ function LoadedApp({
   const lifecycle = useApplicationLifecycle(client, authorityEpoch);
   const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
   const [quitRequested, setQuitRequested] = useState(false);
-  const nowIso = useServedNow(boot.serverClock.now);
-  const today = serverLocalDay({ ...boot.serverClock, now: nowIso });
+  const clock = useMemo(() => createServedClock(boot.serverClock.now), [boot.serverClock.now]);
+  const snoozes = useRef<readonly string[]>([]);
+  // The app renders on a new day or a passed snooze expiry, never on a plain tick; leaves tick on their own.
+  const today = useClockView(clock, boot.serverClock.now, now => serverLocalDay({ ...boot.serverClock, now }));
+  useClockView(clock, boot.serverClock.now, now => snoozes.current.filter(until => until <= now).length);
+  const nowIso = clock.now();
   const dateSelection = resolveDateSelection(route.day, today);
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
@@ -370,6 +374,8 @@ function LoadedApp({
   const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
   const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id);
   const dayResource = dayState.day;
+  snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
+    .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
   const [logsAttempt, setLogsAttempt] = useState(0);
   const streamDown = dayState.connection.state === "stopped" || dayState.connection.state === "reconnecting";
   const dayFailureText = useMemo(() => {
@@ -394,8 +400,9 @@ function LoadedApp({
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
     || queueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
-  const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog, nowIso, today, day, dayState,
-    selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
+  const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog,
+    now: clock.now, today, day, dayState,
+    selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, clock, today, day, dayState, route, activeWorkflowId]);
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID, authorityEpoch);
   const assistantIsOpen = useAssistantOpen();
   const servedOpenStart = launch.openStart;
@@ -640,7 +647,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               const entry = commandResultFeedEntry({ settlement: { ...folded, problem: outcome.feedback.text },
                 targetRunId: request.target.runId, expectedVersion: request.target.expectedVersion, commandId: request.commandId,
                 subject: surface?.title ?? `run ${request.target.runId}`, workflowLabel: workflowLabelOf(surface?.workflowId ?? activeWorkflowId),
-                actionLabel: label, clock: formatTime(nowIso), actorId: request.requestedBy });
+                actionLabel: label, clock: formatTime(clock.now()), actorId: request.requestedBy });
               if (entry !== undefined) setCommandResults(previous => [entry, ...previous].slice(0, 4));
             }
           }
@@ -655,11 +662,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const execution = replay ? executor.replay(request.commandId, options) : executor.execute(request, options);
     refreshCommandRecovery(value => value + 1);
     await execution;
-  }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, nowIso, toast, setRoute]);
+  }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, clock, toast, setRoute]);
 
   const applicationAction = (action: "pause-all" | "pause-all-and-quit" | "resume") => {
     if (application === undefined || application.state !== "ready" || applicationBusy || quitting) return;
-    const envelope = { commandId: crypto.randomUUID(), requestedAt: nowIso, requestedBy: boot.actor.id, source: "dashboard" };
+    const envelope = { commandId: crypto.randomUUID(), requestedAt: clock.now(), requestedBy: boot.actor.id, source: "dashboard" };
     const targets = application.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
     if (action === "resume") {
       if (application.pause !== "paused") return;
@@ -681,13 +688,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       && attempt.request.target.runId === target.runId && attempt.request.type === action.command);
     if (retained !== undefined) { setPendingRecovery(retained.request.commandId); return Promise.resolve(); }
     const composed = composeCommandRequest(action, target, { actorId: commandScope.actorId, source: answers.source ?? "queue",
-      commandId: answers.commandId ?? crypto.randomUUID(), requestedAt: answers.requestedAt ?? nowIso,
+      commandId: answers.commandId ?? crypto.randomUUID(), requestedAt: answers.requestedAt ?? clock.now(),
       ...(answers.renameAnswer === undefined ? {} : { renameAnswer: answers.renameAnswer }) });
     if (composed.state === "refused") { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text }); return Promise.resolve(); }
     const request = CommandRequestSchema.safeParse(composed.request);
     if (!request.success) { toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})).text }); return Promise.resolve(); }
     return executeShell(request.data, action.label);
-  }, [commandScope.actorId, nowIso, executor, executeShell, toast]);
+  }, [commandScope.actorId, clock, executor, executeShell, toast]);
 
   const runAction = useCallback(
     (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): Promise<void> | void => {
@@ -713,9 +720,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           return;
         }
         const commandId = crypto.randomUUID();
-        const requestedAt = nowIso;
+        const requestedAt = clock.now();
         const triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        setPendingRename({ scope: commandScope, action, target, surface, nowIso, source, commandId, requestedAt, triggerElement });
+        setPendingRename({ scope: commandScope, action, target, surface, nowIso: requestedAt, source, commandId, requestedAt, triggerElement });
         return;
       }
       if (action.confirm !== undefined) {
@@ -726,7 +733,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           return;
         }
         const commandId = crypto.randomUUID();
-        const requestedAt = nowIso;
+        const requestedAt = clock.now();
         const triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         setPendingCommand({
           scope: commandScope,
@@ -745,7 +752,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       }
       return dispatchCommand(action, target, { source });
     },
-    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, nowIso, openRerun, unresolvedRunAction, commandScope],
+    [dayWire, workflowLabelOf, activeWorkflowId, dispatchCommand, selectRun, toast, clock, openRerun, unresolvedRunAction, commandScope],
   );
 
   const confirmLogDecision = useCallback<RunWiringConfirm>((pending, onConfirmed) => setPendingCommand({ ...pending, scope: commandScope, onConfirmed }), [commandScope]);
@@ -762,11 +769,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const retained = executor.retainedAttempts().find(attempt => attempt.scope.actorId === commandScope.actorId && attemptUnresolved(attempt)
       && !("targets" in attempt.request) && attempt.request.family === "workflow-batch" && attempt.request.target.batchId === batch.id);
     if (retained !== undefined) { setPendingRecovery(retained.request.commandId); return; }
-    const request = WorkflowBatchCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: nowIso,
+    const request = WorkflowBatchCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: clock.now(),
       requestedBy: boot.actor.id, source: "dashboard", family: "workflow-batch", type: "set-batch-grouping",
       target: { batchId: batch.id, expectedVersion: batch.version }, payload: { groupInQueue } });
     await executeShell(request, "Queue grouping");
-  }, [boot.actor.id, nowIso, executeShell, executor, commandScope.actorId]);
+  }, [boot.actor.id, clock, executeShell, executor, commandScope.actorId]);
 
   const renameQueueTitle = useCallback((runId: string, name: string) => {
     const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === runId);
@@ -783,13 +790,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     void dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
   }, [dayWire, dispatchCommand, toast]);
-  const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
+  const { surfaces, outcomes, viewState, sortNowIso, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
-    openWells, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
+    openWells, now: clock.now, sort, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
     setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
 
-  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, nowIso).map(entry => [entry.key, entry])), [surfaces, sort, nowIso]);
+  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, sortNowIso).map(entry => [entry.key, entry])), [surfaces, sort, sortNowIso]);
   const selectQueueKey = useCallback((key: string) => {
     const entry = keyboardEntries.get(key);
     if (entry === undefined) throw new Error("queue-keyboard-target-unavailable");
@@ -798,12 +805,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [keyboardEntries, openQueueMember, selectRun]);
   const selectedQueueKey = route.view?.queueMember === undefined ? route.run : queueMemberKey(route.view.queueMember);
   const keyboardOrder = useMemo(
-    () => visibleQueueKeys(surfaces, sort, nowIso),
-    [surfaces, sort, nowIso],
+    () => visibleQueueKeys(surfaces, sort, sortNowIso),
+    [surfaces, sort, sortNowIso],
   );
   const keyboardAttention = useMemo(
-    () => attentionQueueKeys(surfaces, sort, nowIso),
-    [surfaces, sort, nowIso],
+    () => attentionQueueKeys(surfaces, sort, sortNowIso),
+    [surfaces, sort, sortNowIso],
   );
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
@@ -1004,6 +1011,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   if (destinationError) return <EmptyState title="Destination unavailable" description={destinationError} action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />;
 
   return (
+    <ServedClockContext.Provider value={clock}>
     <DashboardCommandBindingProvider binding={commandBinding}>
     <div
       data-mock-ready={ready ? "true" : "loading"}
@@ -1098,6 +1106,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 surfaces={surfaces}
                 outcomes={outcomes}
                 state={viewState}
+                sortNowIso={sortNowIso}
                 handlers={queueHandlers}
                 actionsOf={actionsOf}
                 workflowLabelOf={workflowLabelOf}
@@ -1168,7 +1177,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       {!settingsOpen && (
         <SessionPanel
           harness={workflowComposition.sessionsHarness}
-          binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, nowIso, workflowId: activeWorkflowId }}
+          binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, now: clock.now, workflowId: activeWorkflowId }}
           catalog={workflowCatalog}
           open={sessionsOpen}
           onOpenChange={setSessionsOpen}
@@ -1233,5 +1242,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       />
     </div>
     </DashboardCommandBindingProvider>
+    </ServedClockContext.Provider>
   );
 }

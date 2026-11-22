@@ -2,9 +2,10 @@ import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DryRunMark } from "../run-detail/run-state-chips.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { Fragment, memo, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, RotateCcw, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
+import { useServedView } from "../../state/served-clock.js";
 import {
   BareButton,
   Button,
@@ -85,8 +86,8 @@ export interface QueueViewState {
   /** The workflow this queue is scoped to. A row of that workflow does not reprint its label —
  * the panel header already said it. */
   panelWorkflowId?: string;
-  /** Display-only "now", from the app's bootstrap-calibrated clock (ref frontend-backend-integration
- * last row). Passed in rather than read here so elapsed values are a pure */
+  /** The instant the rows arrived: sorting and row names measure against it. Elapsed texts tick
+ * from the mounted served clock, and show this instant when none is mounted. */
   nowIso: string;
 }
 
@@ -200,11 +201,11 @@ function HeaderChips({
   nowIso: string;
 }) {
   const testSystems = testInstanceSystems(surface.resolvedInstances);
-  /** Share served gate age with accessible naming; updatedAt must not make old gates appear young. */
-  const gateAge = queueGateAge(surface, nowIso);
   return (
     <>
-      <StatusBadge
+      <QueueStatusBadge
+        surface={surface}
+        nowIso={nowIso}
         status={status}
         pauseControl={surface.pauseControl}
         interrupt={surface.interrupt}
@@ -213,7 +214,6 @@ function HeaderChips({
         presentation="queue"
         {...(isNeedsDuo(surface) ? { label: NEEDS_DUO_LABEL, meaning: NEEDS_DUO_MEANING } : isStarting(surface) ? { label: STARTING_LABEL } : {})}
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
-        {...(gateAge === undefined ? {} : { age: gateAge })}
       />
       {/* A run against a TEST instance can never be mistaken for a real filing,
           and a rehearsal says so before you read its receipt. */}
@@ -305,8 +305,8 @@ function RowFooterLine({
   retryFailed?: readonly (() => void)[];
 }) {
   // Settled durations need a served end; never substitute now for an unmeasured terminal run.
-  const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
-    ? undefined : runTiming(surface, nowIso, isTerminalQueueStatus);
+  const timed = !(isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent")
+    && runTiming(surface, nowIso, isTerminalQueueStatus) !== undefined;
   const groupCount = surface.surfaceKind === "operation" ? Math.max(surface.memberRollup.total - surface.memberRollup.terminal, 1) : undefined;
   return (
     <div
@@ -338,11 +338,7 @@ function RowFooterLine({
         <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)] max-[1099px]:hidden" title={surface.traceId}>
           {runDisplayId(surface.runId, surface.traceId)}
         </span>
-        {timing !== undefined && (
-          <span className="shrink-0 whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
-            {timing.text}
-          </span>
-        )}
+        {timed && <RunTimingText surface={surface} nowIso={nowIso} />}
       </div>
       <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         {retryFailed.length > 0 && <IconActionButton tone="primary" icon={<RotateCcw aria-hidden className={dsIcon.md} />}
@@ -746,20 +742,20 @@ export function QueueRow({
   const retryFailed = surface.surfaceKind === "operation" ? members.flatMap(member => actionsOf(member)
     .filter(action => action.kind === "command" && action.key === "retry-member")
     .map(action => () => onAction?.(action, { runId: member.runId, expectedVersion: member.rowRevision }))) : [];
-  const batchTiming = batch === undefined ? undefined : runTiming(batch, state.nowIso, isTerminalQueueStatus);
   const batchWarnings = batch?.members.flatMap(member => member.warnings.state === "present" ? [member.warnings] : []) ?? [];
   const batchTestSystems = batch === undefined ? [] : [...new Set(batch.members.flatMap(member => testInstanceSystems(member.resolvedInstances)))];
 
   return (
     <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
-        <div
+        <QueueRowGroup
           onClick={event => {
             if (event.detail > 1) return;
             if (batch === undefined) handlers.onSelect(surface.runId);
           }}
           role="group"
           // Accessible row names include warning completion and gate age, never hue alone.
-          aria-label={batch === undefined ? queueRowAccessibleName(surface, state.nowIso) : `${title} batch — ${statusText(status).toLowerCase()}`}
+          surface={surface} nowIso={state.nowIso}
+          {...(batch === undefined ? {} : { "aria-label": `${title} batch — ${statusText(status).toLowerCase()}` })}
           data-demo-row-id={batch === undefined ? surface.runId : undefined}
           data-queue-batch-id={batch?.id}
           className={cn(
@@ -775,8 +771,8 @@ export function QueueRow({
             announcing && cn(dsMotion.move, "-translate-y-[var(--ds-travel-sm)]"),
           )}
         >
-          {batch === undefined && <BareButton type="button" data-queue-open
-            aria-label={queueRowAccessibleName(surface, state.nowIso)}
+          {batch === undefined && <QueueRowOpen type="button" data-queue-open
+            surface={surface} nowIso={state.nowIso}
             aria-pressed={selected}
             onClick={event => {
               event.stopPropagation();
@@ -906,7 +902,7 @@ export function QueueRow({
             <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]">
               <span className="shrink-0 whitespace-nowrap">{formatTime(batch.startedAt)}</span>
               <span className="min-w-0 truncate" title={`Batch ${batch.id}`}>Batch {batch.id.slice(0, 8)}</span>
-              <span className="shrink-0 whitespace-nowrap" title={batchTiming?.title}>{batchTiming?.text}</span>
+              <RunTimingText surface={batch} nowIso={state.nowIso} />
             </div>
             <div data-queue-member-actions role="group"
               aria-label={selectedBatchMember === undefined ? "Person actions — no person selected" : `Actions for ${queueRowTitle(selectedBatchMember)}, attempt ${selectedBatchMember.attempt}`}
@@ -933,9 +929,36 @@ export function QueueRow({
             onSelect={handlers.onSelect}
             retryFailed={retryFailed}
           />}
-        </div>
+        </QueueRowGroup>
     </div>
   );
+}
+
+function useQueueRowName(surface: QueueSurfaceWire, nowIso: string): string {
+  return useServedView(nowIso, now => queueRowAccessibleName(surface, now));
+}
+
+/** The row names carry the gate age, so they tick here; the row inside them keeps its last render. */
+function QueueRowGroup({ surface, nowIso, ...props }: ComponentPropsWithoutRef<"div"> & { surface: QueueSurfaceWire; nowIso: string }) {
+  const name = useQueueRowName(surface, nowIso);
+  return <div aria-label={name} {...props} />;
+}
+
+function QueueRowOpen({ surface, nowIso, ...props }: ComponentPropsWithoutRef<typeof BareButton> & { surface: QueueSurfaceWire; nowIso: string }) {
+  return <BareButton {...props} aria-label={useQueueRowName(surface, nowIso)} />;
+}
+
+/** A run's elapsed or settled duration ticks here so its row does not re-render every second. */
+function RunTimingText({ surface, nowIso }: { surface: Parameters<typeof runTiming>[0]; nowIso: string }) {
+  const text = useServedView(nowIso, now => runTiming(surface, now, isTerminalQueueStatus)?.text);
+  return <span className="shrink-0 whitespace-nowrap" title={runTiming(surface, nowIso, isTerminalQueueStatus)?.title}>{text}</span>;
+}
+
+/** The badge carries the gate age, so it ticks here and the chips beside it do not. */
+function QueueStatusBadge({ surface, nowIso, ...props }: ComponentPropsWithoutRef<typeof StatusBadge> & { surface: QueueSurfaceWire; nowIso: string }) {
+  /** Share served gate age with accessible naming; updatedAt must not make old gates appear young. */
+  const age = useServedView(nowIso, now => queueGateAge(surface, now));
+  return <StatusBadge {...props} {...(age === undefined ? {} : { age })} />;
 }
 
 /** Filter empty states use the status vocabulary, never raw wire keys. */
@@ -982,6 +1005,7 @@ export const QueuePanel = memo(function QueuePanel({
   onStartRun,
   filter,
   sort = "attention",
+  sortNowIso = state.nowIso,
   header,
   renderBody,
 }: {
@@ -1004,12 +1028,14 @@ export const QueuePanel = memo(function QueuePanel({
   filter?: QueueFilterScope;
   /** the toolbar's ordering control; the default passes the projection through */
   sort?: QueueSortKey;
+  /** The instant the order measures against; the keyboard order reads the same one. */
+  sortNowIso?: string;
   header?: ReactNode;
   renderBody?: (body: ReactNode) => ReactNode;
 }) {
   const { top, membersOf } = useMemo(() => partition(surfaces), [surfaces]);
   const { displayTop, itemByRunId } = useMemo(() => queueItemLayout(top), [top]);
-  const bands = queueDisplayGroups(displayTop, sort, state.nowIso);
+  const bands = queueDisplayGroups(displayTop, sort, sortNowIso);
   const grouped = displayTop.some(row => "kind" in row);
 
   /** The digest counts drawn finished rows; it cannot replace authoritative day totals. */

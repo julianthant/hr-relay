@@ -34,7 +34,7 @@ export interface SessionCommandBinding {
   readonly scope: CommandExecutionScope;
   readonly dayState: DashboardDayState;
   readonly day: string;
-  readonly nowIso: string;
+  readonly now: () => string;
   /** The selected workflow; switching it clears every pending control. */
   readonly workflowId?: string;
 }
@@ -109,7 +109,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       return { state: matched ? "matched" : "mismatch", evidence: day.day };
     },
   });
-  const envelope = (id: string, binding: SessionCommandBinding) => ({ commandId: id, family: "worker-browser", requestedAt: binding.nowIso, requestedBy: binding.scope.actorId, source: "dashboard-sessions" });
+  const envelope = (id: string, binding: SessionCommandBinding) => ({ commandId: id, family: "worker-browser", requestedAt: binding.now(), requestedBy: binding.scope.actorId, source: "dashboard-sessions" });
   const cardFor = (day: DashboardDayWire, request: SessionPreviewRequest) => {
     if (day.workerAuthority.state !== "present") throw new Error("SESSION_AUTHORITY_UNAVAILABLE");
     const card = day.workerCards.find(card => card.workerId === request.target);
@@ -121,7 +121,7 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     const snapshot = attempt.snapshot;
     const all = attempt.commands.length === attempt.expected && snapshot !== undefined
       && (outcome === undefined || outcome.kind === "confirmed") && attempt.commands.every(command => sessionCommandEffect(snapshot, command));
-    const data = snapshot === undefined ? undefined : sessionsFromDay(snapshot, current().catalog, requireBinding().nowIso);
+    const data = snapshot === undefined ? undefined : sessionsFromDay(snapshot, current().catalog, requireBinding().now());
     return all ? { id: request.id, state: "confirmed", data } : { id: request.id,
       state: attempt.commands.length === 1 && outcome !== undefined && outcome.kind !== "confirmed" && commandAttemptView(outcome).view !== "unknown" ? "refused" : "uncertain",
       code: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.code : undefined,

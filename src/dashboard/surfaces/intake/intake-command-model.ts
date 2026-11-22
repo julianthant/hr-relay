@@ -187,7 +187,7 @@ export function useIntakeCommands(client: DashboardClient, sessionId: string, ad
     if (binding === undefined || binding.scope.client !== client || session.intakeSessionId !== sessionId) {
       setProblem({ kind: "transport", message: intakeFailureMessage() }); return;
     }
-    const parsed = IntakeCommandRequestSchema.safeParse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
+    const parsed = IntakeCommandRequestSchema.safeParse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.now(),
       requestedBy: binding.scope.actorId, source: "dashboard", family: "intake", target: { intakeSessionId: sessionId, expectedVersion: session.expectedVersion }, ...command });
     if (!parsed.success) { setProblem({ kind: "transport", message: intakeFailureMessage(), cause: parsed.error }); return; }
     let evidence = intakeEvidence.get(binding.executor);

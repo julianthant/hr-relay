@@ -43,7 +43,7 @@ function world() {
     const epoch = { client, bootstrap: { ...FIXTURE_BOOTSTRAP } };
     const scope = { client, actorId: "local-operator", authority: epoch, dayRequest: {} };
     currentScope = scope;
-    const binding = { scope, executor, authority: { epoch, nowIso: FIXTURE_BOOTSTRAP.serverClock.now } };
+    const binding = { scope, executor, authority: { epoch, now: () => FIXTURE_BOOTSTRAP.serverClock.now } };
     const close = owner.connect(client, binding, () => binding);
     return { owner, close };
   }

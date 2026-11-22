@@ -34,7 +34,7 @@ it("keeps attempts within the selected day and selects the exact run", async () 
   function Probe() {
     wiring = useQueueWiring({ allRows: current, attemptHistory: day.attemptHistory, rows: current.filter(row => row.attempt === 7),
       activeWorkflowId: "person-lookup", filter: ["all"], selectedRunId: uuidOf(87), openWells: new Set(),
-      nowIso: "2026-08-03T18:00:00.000Z",
+      now: () => "2026-08-03T18:00:00.000Z",
       selectRun: (runId, partitionDay) => { selected.push([runId, partitionDay]); }, openRelatedRun: target => { selected.push([target.runId,target.partitionDay]); },
       onWells: () => undefined, setBatchGrouping: async () => undefined,
       runQueueAction: () => undefined });
@@ -76,7 +76,7 @@ it("mounts a real multi-submission Lookup start as one presentation without chan
   function MountedQueue() {
     current = useQueueWiring({ allRows: snapshot.queueSurfaces, attemptHistory: snapshot.attemptHistory, rows: snapshot.queueSurfaces,
       activeWorkflowId: "person-lookup", filter: ["all"], selectedRunId: selected.at(-1), openWells: new Set(),
-      nowIso: h.clock.now().toISOString(), selectRun: id => { selected.push(id); }, openRelatedRun: () => undefined,
+      now: () => h.clock.now().toISOString(), selectRun: id => { selected.push(id); }, openRelatedRun: () => undefined,
       onWells: () => undefined, setBatchGrouping: async () => undefined,
       runQueueAction: () => undefined });
     return createElement(QueuePanel, { surfaces: current.surfaces, state: current.viewState, handlers: current.queueHandlers,
