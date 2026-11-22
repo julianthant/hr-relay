@@ -1,3 +1,5 @@
+import { runtimeProfile } from "../../app/config/runtime-isolation.js";
+import type { RuntimeProfile } from "../../../models/config/define-runtime-isolation.js";
 import { Entry } from "@napi-rs/keyring";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
@@ -21,7 +23,6 @@ type KeyCustodyCode = "CREDENTIAL_KEYCHAIN_UNAVAILABLE" | "CREDENTIAL_KEYCHAIN_M
 export class CredentialKeyCustodyError extends Error {
   constructor(readonly code: KeyCustodyCode, options?: ErrorOptions) { super(ERROR_CATALOG[code].text, options); this.name = "CredentialKeyCustodyError"; }
 }
-const account = (binding: Binding) => `${binding.installationId}:${binding.profileId}`;
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 function keyBytes(secret: string): Buffer {
   const bytes = Buffer.from(secret, "base64");
@@ -33,7 +34,8 @@ export function createCredentialKeyCustody(store: CredentialSecretStore = {
   get: name => new Entry("Relay", name).getPassword(),
   set: (name, secret) => { new Entry("Relay", name).setPassword(secret); },
   delete: name => { new Entry("Relay", name).deletePassword(); },
-}) {
+}, profile: RuntimeProfile = runtimeProfile) {
+  const account = (binding: Binding) => `${profile === "production" ? "" : profile + ":"}${binding.installationId}:${binding.profileId}`;
   function get(binding: Binding): string | null {
     try { return store.get(account(binding)); }
     catch (cause) { throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_UNAVAILABLE", hasUnprovedSourceClosure(cause) ? { cause } : undefined); }
