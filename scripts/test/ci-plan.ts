@@ -3,7 +3,7 @@ import { isDirectExecution } from "./scope-files.js";
 
 const suiteNames = ["unit", "integration", "architecture"] as const;
 const contextSchema = z.object({
-  workflow: z.enum(["fast", "portable", "release"]), event: z.enum(["pull_request", "push", "workflow_dispatch"]),
+  workflow: z.enum(["fast", "portable", "release", "full"]), event: z.enum(["pull_request", "push", "workflow_dispatch", "schedule"]),
   base: z.string(), head: z.string(), draft: z.boolean(), filters: z.record(z.string(), z.string()),
   affected: z.object({ core: z.boolean(), shardCount: z.number().int().nonnegative(),
     shards: z.array(z.array(z.string().startsWith("tests/")).min(1)) }).optional(),
@@ -14,7 +14,7 @@ const matrixSchema = z.object({ include: z.array(z.object({
   files: z.array(z.string().startsWith("tests/")).min(1).optional(),
 })) });
 export const ciPlanSchema = z.object({
-  workflow: z.enum(["fast", "portable", "release"]), fullRelease: z.boolean(),
+  workflow: z.enum(["fast", "portable", "release", "full"]), fullRelease: z.boolean(),
   lint: z.boolean(), perf: z.boolean(), smoke: z.boolean(),
   unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(),
   ubuntu: matrixSchema, macos: matrixSchema,
@@ -27,6 +27,10 @@ export function createCiPlan(input: unknown): CiPlan {
   const context = contextSchema.parse(input);
   const manual = context.event === "workflow_dispatch";
   const fast = context.workflow === "fast";
+  const full = context.workflow === "full";
+  if (full !== (context.event === "schedule") || (full && context.head !== "development")) {
+    throw new Error("Full CI runs only on the development schedule.");
+  }
   if (context.event === "push" && !(fast && context.head.startsWith("task/"))) {
     throw new Error("Push CI runs only fast checks on task branches.");
   }
@@ -36,18 +40,18 @@ export function createCiPlan(input: unknown): CiPlan {
   if (fast !== (context.affected !== undefined)) {
     throw new Error("Only fast CI takes the affected integration plan.");
   }
-  if (context.workflow === "portable" && (manual || context.base !== "staging")) {
-    throw new Error("Portable CI requires a staging pull request.");
+  if (context.workflow === "portable" && (manual || (context.base !== "staging" && !(context.base === "main" && context.head === "staging")))) {
+    throw new Error("Portable CI requires a staging or staging-to-main pull request.");
   }
   if (context.workflow === "release" && !manual && context.base !== "main") {
     throw new Error("Release CI requires a main pull request or manual release.");
   }
-  if (!manual && ["shared", ...suiteNames].some(name => !["true", "false"].includes(context.filters[name]))) {
+  if (!manual && !full && ["shared", ...suiteNames].some(name => !["true", "false"].includes(context.filters[name]))) {
     throw new Error("Path-filter outputs are incomplete or invalid.");
   }
-  const fullRelease = context.workflow === "release" && (manual || context.head === "staging" || context.head.startsWith("hotfix/"));
+  const fullRelease = full || (context.workflow === "release" && (manual || context.head.startsWith("hotfix/")));
   const enabled = (suite: typeof suiteNames[number]) =>
-    manual || context.filters.shared === "true" || context.filters[suite] === "true";
+    manual || full || context.filters.shared === "true" || context.filters[suite] === "true";
   const selected = { unit: enabled("unit"), integration: enabled("integration"), architecture: enabled("architecture") };
   const affected = context.draft ? [] : context.affected?.shards ?? [];
   if (fast) selected.integration = affected.length > 0;
@@ -85,7 +89,7 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
   requireResult(results, "changes", "success");
   if (plan.unit) {
     requireResult(results, "ubuntu", "success");
-    if (plan.workflow === "release") {
+    if (plan.workflow === "release" || plan.workflow === "full") {
       requireResult(results, "macos", plan.fullRelease ? "success" : "skipped");
     }
   }
@@ -101,7 +105,7 @@ export function verifyProofs(input: unknown, outcomes: unknown): void {
     for (const job of ["macos", "unit-proofs", "unit"]) requireResult(results, job, "skipped");
   }
   requireResult(results, "ubuntu", plan.unit || plan.integration || plan.architecture ? "success" : "skipped");
-  if (plan.workflow === "release") {
+  if (plan.workflow === "release" || plan.workflow === "full") {
     requireResult(results, "unit-proofs", "success");
     requireResult(results, "macos", plan.fullRelease && (plan.unit || plan.integration) ? "success" : "skipped");
   }
