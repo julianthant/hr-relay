@@ -50,7 +50,7 @@ type FrontendBootstrapWire,
 import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
-import { createServedClock, ServedClockContext, useClockNow } from "../state/served-clock.js";
+import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
 import {
@@ -359,9 +359,9 @@ function LoadedApp({
   const clock = useMemo(() => createServedClock(boot.serverClock.now), [boot.serverClock.now]);
   const snoozes = useRef<readonly string[]>([]);
   // The app renders on a new day or a passed snooze expiry, never on a plain tick; leaves tick on their own.
-  const nowIso = useClockNow(clock, boot.serverClock.now,
-    now => `${serverLocalDay({ ...boot.serverClock, now })}|${String(snoozes.current.filter(until => until <= now).length)}`);
-  const today = serverLocalDay({ ...boot.serverClock, now: nowIso });
+  const today = useClockView(clock, boot.serverClock.now, now => serverLocalDay({ ...boot.serverClock, now }));
+  useClockView(clock, boot.serverClock.now, now => snoozes.current.filter(until => until <= now).length);
+  const nowIso = clock.now();
   const dateSelection = resolveDateSelection(route.day, today);
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"

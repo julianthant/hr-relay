@@ -3,10 +3,21 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
-import { createServedClock, ServedClockContext, useServedNow } from "../../../src/dashboard/state/served-clock.js";
+import { createServedClock, ServedClockContext, useServedView } from "../../../src/dashboard/state/served-clock.js";
 import { useQueueWiring } from "../../../src/dashboard/state/queue-wiring-adapter.js";
 import { QueuePanel } from "../../../src/dashboard/surfaces/queue/queue.js";
 import { FIXTURE_DAY, FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../support/fixtures/dashboard/fixture-day.js";
+
+// Footer controls and header chips count their renders: the header reads the test-instance systems once per render.
+const controlRenders = vi.hoisted(() => ({ footer: 0, header: 0 }));
+vi.mock("../../../src/dashboard/surfaces/shared/actions/actions.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../src/dashboard/surfaces/shared/actions/actions.js")>();
+  return { ...actual, FooterActions: (props: Parameters<typeof actual.FooterActions>[0]) => { controlRenders.footer += 1; return actual.FooterActions(props); } };
+});
+vi.mock("../../../src/dashboard/surfaces/shared/status/test-instance-hazard.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../src/dashboard/surfaces/shared/status/test-instance-hazard.js")>();
+  return { ...actual, testInstanceSystems: (...args: Parameters<typeof actual.testInstanceSystems>) => { controlRenders.header += 1; return actual.testInstanceSystems(...args); } };
+});
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -27,7 +38,7 @@ it("ten ticks re-render no queue row while the running rows' elapsed text advanc
   let parentRenders = 0;
   function Queue() {
     // The parent ticks as the whole app once did; the rows must still stay put.
-    useServedNow(FIXTURE_NOW);
+    useServedView(FIXTURE_NOW, now => now);
     parentRenders += 1;
     const wiring = useQueueWiring(input);
     return createElement(QueuePanel, { surfaces: wiring.surfaces, state: wiring.viewState, handlers: wiring.queueHandlers,
@@ -39,7 +50,8 @@ it("ten ticks re-render no queue row while the running rows' elapsed text advanc
   const gateNames = (): string => [...host.querySelectorAll("[data-queue-open]")].map(open => open.getAttribute("aria-label")).filter(name => name !== null && /\d+s/.test(name)).join("\n");
   try {
     await act(async () => root.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(Queue))));
-    const drawn = rowRenders, parentDrawn = parentRenders;
+    const drawn = rowRenders, parentDrawn = parentRenders, footers0 = controlRenders.footer, headers0 = controlRenders.header;
+    assert.ok(footers0 > 0 && headers0 > 0);
     assert.ok(drawn > 0);
     const named = [gateNames()];
     assert.notEqual(named[0], "", "the fixture day needs a row whose name carries a gate age");
@@ -51,6 +63,8 @@ it("ten ticks re-render no queue row while the running rows' elapsed text advanc
     }
     assert.equal(parentRenders - parentDrawn, 10);
     assert.equal(rowRenders, drawn, "a tick re-rendered a queue row whose data did not change");
+    assert.equal(controlRenders.footer, footers0, "a tick re-rendered a row's footer controls");
+    assert.equal(controlRenders.header, headers0, "a tick re-rendered a row's header chips");
     assert.equal(new Set(seen).size, seen.length, "the elapsed text did not advance on every tick");
     assert.equal(new Set(named).size, named.length, "the rows' accessible names did not advance with their gate age");
   } finally {

@@ -4,7 +4,6 @@ import { SessionsView } from "./sessions-view.js";
 import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewCommands, type SessionCommandBinding, type SessionPreviewCommandPort } from "./session-preview-command-model.js";
 import { sessionsFromDay, sessionsUnavailable, type SessionsViewState } from "./sessions-view-model.js";
 import { useToasts } from "../../ds/ui.js";
-import { useServedNow } from "../../state/served-clock.js";
 
 /** A harness supplies the first state and the command port in place of the served day and its commands. */
 export type SessionsHarness = (catalog: readonly WorkflowCatalogEntry[]) => Readonly<{ initial: SessionsViewState; port: SessionPreviewCommandPort }>;
@@ -18,17 +17,15 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
   if (day?.state === "loaded" && day.value !== heldDay) setHeldDay(day.value);
   const shownDay = day?.state === "loaded" ? day.value : day?.state === "loading" ? heldDay : undefined;
   const stale = day?.state !== "loaded";
-  // Worker elapsed times tick here while the panel is open; a collapsed panel shows no time and never re-renders on a tick.
-  const nowIso = useServedNow(binding?.now() ?? "", now => open ? now : "");
   const initial = useMemo((): SessionsViewState => {
     if (harnessed) return harnessed.initial;
     if (binding === undefined) return sessionsUnavailable();
     if (shownDay !== undefined) {
-      const sessions = sessionsFromDay(shownDay, catalog, nowIso);
+      const sessions = sessionsFromDay(shownDay, catalog, binding.now());
       return stale && sessions.state === "ready" ? { ...sessions, stale: true } : sessions;
     }
     return day?.state === "failed" ? sessionsUnavailable(day.error) : { state: "loading" };
-  }, [harnessed, binding, shownDay, stale, catalog, day, nowIso]);
+  }, [harnessed, binding, shownDay, stale, catalog, day]);
   const current = useMemo(() => ({ binding, catalog }), [binding, catalog]);
   const currentRef = useRef(current); currentRef.current = current;
   const servedPort = useMemo(() => createSessionPreviewPort(() => currentRef.current), []);

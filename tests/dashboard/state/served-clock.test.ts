@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe,it,vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { createServedClock, deriveServedNow, ServedClockContext, useServedNow } from "../../../src/dashboard/state/served-clock.js";
+import { createServedClock, deriveServedNow, ServedClockContext, useServedView } from "../../../src/dashboard/state/served-clock.js";
 import { runTiming } from "../../../src/dashboard/surfaces/shared/status/format.js";
 import { isTerminalQueueStatus } from "../../../src/models/dashboard/projection.js";
 
@@ -67,7 +67,7 @@ it("starts a clock for a new served instant at that instant and ticks subscriber
   const performanceNow = vi.spyOn(performance, "now").mockImplementation(() => monotonic);
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const seen: string[] = [];
-  function Probe() { seen.push(useServedNow(BOOTSTRAP_INSTANT)); return null; }
+  function Probe() { seen.push(useServedView(BOOTSTRAP_INSTANT, now => now)); return null; }
   const root = createRoot(document.createElement("div"));
   try {
     monotonic = 5000;
@@ -83,7 +83,7 @@ it("starts a clock for a new served instant at that instant and ticks subscriber
 it("shows the frozen instant when no clock is mounted", async () => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
   const seen: string[] = [];
-  function Probe() { seen.push(useServedNow(BOOTSTRAP_INSTANT)); return null; }
+  function Probe() { seen.push(useServedView(BOOTSTRAP_INSTANT, now => now)); return null; }
   const root = createRoot(document.createElement("div"));
   try {
     await act(async () => root.render(createElement(Probe)));

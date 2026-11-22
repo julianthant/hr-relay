@@ -5,7 +5,7 @@ import { Fragment, memo, useMemo, useState } from "react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, RotateCcw, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import { useServedNow } from "../../state/served-clock.js";
+import { useServedView } from "../../state/served-clock.js";
 import {
   BareButton,
   Button,
@@ -201,11 +201,11 @@ function HeaderChips({
   nowIso: string;
 }) {
   const testSystems = testInstanceSystems(surface.resolvedInstances);
-  /** Share served gate age with accessible naming; updatedAt must not make old gates appear young. */
-  const gateAge = queueGateAge(surface, useServedNow(nowIso, now => queueGateAge(surface, now)));
   return (
     <>
-      <StatusBadge
+      <QueueStatusBadge
+        surface={surface}
+        nowIso={nowIso}
         status={status}
         pauseControl={surface.pauseControl}
         interrupt={surface.interrupt}
@@ -214,7 +214,6 @@ function HeaderChips({
         presentation="queue"
         {...(isNeedsDuo(surface) ? { label: NEEDS_DUO_LABEL, meaning: NEEDS_DUO_MEANING } : isStarting(surface) ? { label: STARTING_LABEL } : {})}
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
-        {...(gateAge === undefined ? {} : { age: gateAge })}
       />
       {/* A run against a TEST instance can never be mistaken for a real filing,
           and a rehearsal says so before you read its receipt. */}
@@ -305,10 +304,9 @@ function RowFooterLine({
   /** One served retry per failed member of a group card. */
   retryFailed?: readonly (() => void)[];
 }) {
-  const liveNow = useServedNow(nowIso, now => runTiming(surface, now, isTerminalQueueStatus)?.text);
   // Settled durations need a served end; never substitute now for an unmeasured terminal run.
-  const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
-    ? undefined : runTiming(surface, liveNow, isTerminalQueueStatus);
+  const timed = !(isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent")
+    && runTiming(surface, nowIso, isTerminalQueueStatus) !== undefined;
   const groupCount = surface.surfaceKind === "operation" ? Math.max(surface.memberRollup.total - surface.memberRollup.terminal, 1) : undefined;
   return (
     <div
@@ -340,11 +338,7 @@ function RowFooterLine({
         <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)] max-[1099px]:hidden" title={surface.traceId}>
           {runDisplayId(surface.runId, surface.traceId)}
         </span>
-        {timing !== undefined && (
-          <span className="shrink-0 whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
-            {timing.text}
-          </span>
-        )}
+        {timed && <RunTimingText surface={surface} nowIso={nowIso} />}
       </div>
       <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
         {retryFailed.length > 0 && <IconActionButton tone="primary" icon={<RotateCcw aria-hidden className={dsIcon.md} />}
@@ -908,7 +902,7 @@ export function QueueRow({
             <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]">
               <span className="shrink-0 whitespace-nowrap">{formatTime(batch.startedAt)}</span>
               <span className="min-w-0 truncate" title={`Batch ${batch.id}`}>Batch {batch.id.slice(0, 8)}</span>
-              <BatchTiming batch={batch} nowIso={state.nowIso} />
+              <RunTimingText surface={batch} nowIso={state.nowIso} />
             </div>
             <div data-queue-member-actions role="group"
               aria-label={selectedBatchMember === undefined ? "Person actions — no person selected" : `Actions for ${queueRowTitle(selectedBatchMember)}, attempt ${selectedBatchMember.attempt}`}
@@ -941,7 +935,7 @@ export function QueueRow({
 }
 
 function useQueueRowName(surface: QueueSurfaceWire, nowIso: string): string {
-  return queueRowAccessibleName(surface, useServedNow(nowIso, now => queueGateAge(surface, now)));
+  return useServedView(nowIso, now => queueRowAccessibleName(surface, now));
 }
 
 /** The row names carry the gate age, so they tick here; the row inside them keeps its last render. */
@@ -954,10 +948,17 @@ function QueueRowOpen({ surface, nowIso, ...props }: ComponentPropsWithoutRef<ty
   return <BareButton {...props} aria-label={useQueueRowName(surface, nowIso)} />;
 }
 
-/** The batch's elapsed text ticks here so its row does not re-render every second. */
-function BatchTiming({ batch, nowIso }: { batch: QueueBatch; nowIso: string }) {
-  const timing = runTiming(batch, useServedNow(nowIso, now => runTiming(batch, now, isTerminalQueueStatus)?.text), isTerminalQueueStatus);
-  return <span className="shrink-0 whitespace-nowrap" title={timing?.title}>{timing?.text}</span>;
+/** A run's elapsed or settled duration ticks here so its row does not re-render every second. */
+function RunTimingText({ surface, nowIso }: { surface: Parameters<typeof runTiming>[0]; nowIso: string }) {
+  const text = useServedView(nowIso, now => runTiming(surface, now, isTerminalQueueStatus)?.text);
+  return <span className="shrink-0 whitespace-nowrap" title={runTiming(surface, nowIso, isTerminalQueueStatus)?.title}>{text}</span>;
+}
+
+/** The badge carries the gate age, so it ticks here and the chips beside it do not. */
+function QueueStatusBadge({ surface, nowIso, ...props }: ComponentPropsWithoutRef<typeof StatusBadge> & { surface: QueueSurfaceWire; nowIso: string }) {
+  /** Share served gate age with accessible naming; updatedAt must not make old gates appear young. */
+  const age = useServedView(nowIso, now => queueGateAge(surface, now));
+  return <StatusBadge {...props} {...(age === undefined ? {} : { age })} />;
 }
 
 /** Filter empty states use the status vocabulary, never raw wire keys. */

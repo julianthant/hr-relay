@@ -5,6 +5,9 @@ import { cn } from "../../lib/utils.js";
 import { IDLE_REFRESH_MS, type IdleSessionCountdown } from "./session-idle-model.js";
 import { SESSION_STATE_LABELS, sessionStateColor, type SessionControl, type SessionWorker } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
+import { workerElapsedSeconds } from "./session-panel-model.js";
+import { formatDuration } from "../../lib/date-format.js";
+import { useServedView } from "../../state/served-clock.js";
 
 type WorkerBrowser = SessionWorker["browsers"][number];
 const BROWSER_WORD: Record<WorkerBrowser["state"], string> = { ready: "Ready", active: "In use", starting: "Opening", unopened: "Not opened", closed: "Closed", unavailable: "Unavailable", failed: "Failed", "needs-duo": "Needs Duo", "signed-out": "Signed out" };
@@ -48,6 +51,13 @@ export function IdleWorkerRow({ worker, countdown, operation, disabled = false, 
   </li>;
 }
 
+/** The elapsed time ticks here, so the card around it does not re-render every second. */
+function WorkerElapsed({ worker }: { worker: SessionWorker }) {
+  const card = worker.authority;
+  const elapsed = useServedView("", now => card === undefined || card.state === "idle" || now === "" ? worker.elapsed : formatDuration(workerElapsedSeconds(card, now)));
+  return <span className="flex h-7 items-center text-caption tabular-nums text-ui-muted">{elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span>;
+}
+
 export function WorkerCard({ worker, countdown, operation, disabled = false, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; disabled?: boolean; onControl: (id: string, control: SessionControl) => void }) {
   const locked = disabled || operation?.state === "pending";
   const settled = worker.state === "failed" || worker.state === "stopped";
@@ -59,7 +69,7 @@ export function WorkerCard({ worker, countdown, operation, disabled = false, onC
     <p className="mb-0 mt-1 truncate text-caption text-ui-secondary" title={worker.subject}>{worker.subject ?? "No run assigned"}</p>
     <Browsers worker={worker} wide={wide} />
     <WorkerOperationNote operation={operation} />
-    <footer className="flex items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="flex h-7 items-center text-caption tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : worker.state === "unavailable" ? "" : "Not measured")}</span><span className="flex h-7 items-center gap-1">
+    <footer className="flex items-center justify-between gap-2 border-t border-ui-stroke pt-2"><WorkerElapsed worker={worker} /><span className="flex h-7 items-center gap-1">
       {settled ? <Button size="sm" variant="secondary" className="h-6 gap-1 px-2" disabled={locked} aria-label="Retry" title="Retry" icon={<RotateCw aria-hidden className="size-3.5" />} onClick={() => onControl(worker.id, "retry")}>Retry</Button>
         : <>{worker.state === "running" && icon("Pause", "pause", Pause)}{worker.state === "paused" && icon("Resume", "resume", Play)}
           {worker.state === "unavailable" ? null : worker.state !== "idle" ? icon("Stop", "stop", Square) : icon("Remove worker", "remove", Trash2)}</>}

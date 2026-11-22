@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useSyncExternalStore } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 import { systemClock } from "../../rules/time/clock.js";
 
 /** One second: `formatDuration`'s smallest unit, so nothing finer would be visible. */
@@ -63,20 +63,14 @@ export const ServedClockContext = createContext<ServedClock | undefined>(undefin
 
 const NO_TICKS = (): (() => void) => () => {};
 
-/** The clock's instant, re-rendering only when `view` of it changes; `frozenIso` without a clock (tests, mocks). */
-export function useClockNow(clock: ServedClock | undefined, frozenIso: string, view: (nowIso: string) => unknown = nowIso => nowIso): string {
-  const last = useRef<{ key: unknown; nowIso: string } | undefined>(undefined);
-  const snapshot = (): string => {
-    const nowIso = clock?.current() ?? frozenIso;
-    const key = view(nowIso);
-    if (last.current !== undefined && Object.is(last.current.key, key)) return last.current.nowIso;
-    last.current = { key, nowIso };
-    return nowIso;
-  };
+/** What `view` shows at the clock's instant (at `frozenIso` without a clock: tests, mocks). A tick re-renders only when
+ * that value changes, so `view` returns a primitive: the text on screen, never a key for it. */
+export function useClockView<T extends string | number | boolean | undefined>(clock: ServedClock | undefined, frozenIso: string, view: (nowIso: string) => T): T {
+  const snapshot = (): T => view(clock?.current() ?? frozenIso);
   return useSyncExternalStore(clock?.subscribe ?? NO_TICKS, snapshot, snapshot);
 }
 
 /** For the small components that show an age or elapsed time: they tick, their parents do not. */
-export function useServedNow(frozenIso: string, view?: (nowIso: string) => unknown): string {
-  return useClockNow(useContext(ServedClockContext), frozenIso, view);
+export function useServedView<T extends string | number | boolean | undefined>(frozenIso: string, view: (nowIso: string) => T): T {
+  return useClockView(useContext(ServedClockContext), frozenIso, view);
 }
