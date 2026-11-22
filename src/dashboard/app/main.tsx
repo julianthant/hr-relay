@@ -6,6 +6,7 @@ import { DashboardClientError, DashboardReportDeliveryError } from "../client/er
 import { serializeErrorCauses } from "../../models/failures/error-origins.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { DashboardClientProvider } from "../state/client-context.js";
+import { profileForDashboardPort } from "../../models/config/define-runtime-isolation.js";
 import { DashboardApp } from "./dashboard-app.js";
 import { activeTakeover, parseRoute, shellViewOf } from "./navigation/url-state.js";
 import "./index.css";
@@ -59,6 +60,9 @@ hot?.dispose(() => { disposeErrorReports(); });
 
 createRoot(container).render(
   <StrictMode>
+    <small className="pointer-events-none fixed right-2 bottom-1 z-50 rounded bg-background px-1 text-xs capitalize text-muted-foreground" aria-label="Runtime profile">
+      {profileForDashboardPort(window.location.port) ?? "Unknown environment"}
+    </small>
     <DashboardClientProvider client={client}>
       <DashboardApp />
     </DashboardClientProvider>

@@ -29,7 +29,7 @@ import { assertStoppedProfileResourcesClosed } from "../../storage/maintenance/p
 import { fsyncPath,writePrivateStage } from "../../storage/private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
-import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
+import { rebuildRuntimeIsolation, runtimeProfile } from "../config/runtime-isolation.js";
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
@@ -658,6 +658,8 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
   if (sourceWorkspace === targetWorkspace) throw new Error("fixed-layout-source-target-equal");
   lifetime.assertHeld();
   const journal = readFixedLayoutIntent(targetWorkspace);
+  const isolated = runtimeProfile !== "production";
+  if (isolated && journal !== undefined) throw new Error("runtime-profile-foreign-layout-journal");
   const unfinished = fixedLayoutUnfinished(journal?.phase ?? "absent");
   if (unfinished && journal?.sourceWorkspace !== sourceWorkspace) throw new Error("fixed-layout-recovery-source-foreign");
   let publication: FixedLayoutPublication | undefined;
@@ -667,8 +669,8 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
   }
   else {
     const targetControl = lstatSync(join(targetWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
-    const sourceControl = lstatSync(join(sourceWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
-    const sourceData = lstatSync(join(sourceWorkspace, rebuildRuntimeIsolation.stateRoot), { throwIfNoEntry: false });
+    const sourceControl = isolated ? undefined : lstatSync(join(sourceWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
+    const sourceData = isolated ? undefined : lstatSync(join(sourceWorkspace, rebuildRuntimeIsolation.stateRoot), { throwIfNoEntry: false });
     if (journal?.phase === "complete" || targetControl !== undefined) {
       if (targetControl === undefined || !existsSync(join(targetWorkspace, ".tracker", "control", "installation.json"))
         || !existsSync(join(targetWorkspace, ".tracker", "control", "locator.json"))

@@ -265,7 +265,8 @@ function executableRuntimeBinding(
         || !declaration.initializer || !ts.isCallExpression(declaration.initializer)
         || !ts.isIdentifier(declaration.initializer.expression)
         || declaration.initializer.expression.text !== config.factory
-        || declaration.initializer.arguments.length !== 1) continue;
+        || declaration.initializer.arguments.length !== 2
+        || declaration.initializer.arguments[1]?.getText(source) !== "runtimeProfile") continue;
       const argument = declaration.initializer.arguments[0];
       if (!argument || !ts.isObjectLiteralExpression(argument)) continue;
       bound = {};

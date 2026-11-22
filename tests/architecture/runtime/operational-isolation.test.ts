@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import isolationJson from "../../../config/runtime-isolation.json" with { type: "json" };
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import {
@@ -45,7 +46,7 @@ function seedValidRuntime(root: string): void {
     `  processLockRoot: ${JSON.stringify(side.processLockRoot)},`,
     `  browserProfileRoot: ${JSON.stringify(side.browserProfileRoot)},`,
     `  browserSessionNamespace: ${JSON.stringify(side.browserSessionNamespace)},`,
-    "});",
+    "}, runtimeProfile);",
     "",
   ].join("\n"));
   write(root, "src/backend/app/composition/runtime-composition.ts",
@@ -78,6 +79,9 @@ function fixtureViolations(root: string): string[] {
 describe("operational isolation", () => {
   it("pins two runtimes that share no resource on this machine", () => {
     assert.equal(isolation.schemaVersion, 3);
+    assert.deepEqual(runtimeProfiles, isolationJson.profiles);
+    const ports = Object.values(runtimeProfiles).flatMap(profile => [profile.backendPort, profile.frontendPort, profile.lockPort]);
+    assert.equal(new Set([...ports, isolation.legacy.backendPort, isolation.legacy.frontendPort]).size, ports.length + 2);
     for (const key of DISTINCT_RESOURCE_KEYS) {
       assert.notEqual(isolation.legacy[key], isolation.rebuild[key], `${key} must differ`);
     }
