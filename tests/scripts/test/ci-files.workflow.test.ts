@@ -261,7 +261,8 @@ describe("development fast check", () => {
       "playwright.smoke.config.ts", ".github/workflows/checks.yml", "tests/support/helpers/dashboard/smoke/stories/catalogue.ts",
       "tests/support/helpers/dashboard/served-fixtures/seeded-bff.ts", "tests/support/fixtures/dashboard/fixture-day.ts",
       "tests/support/fixtures/operator-command-fixtures.ts", "tests/support/helpers/synthetic-storage-admission.ts",
-      "tsconfig.json", ".node-version", "scripts/build/windows-observer-policy.ts", "vite.dashboard.config.ts", "src/dashboard/index.html"]) {
+      "tsconfig.json", ".node-version", "scripts/build/windows-observer-policy.ts", "vite.dashboard.config.ts", "src/dashboard/index.html",
+      "tests/support/helpers/credential-keychain-fake.ts"]) {
       expect(matches(file), file).toBe(true);
     }
     for (const file of ["README.md", "tests/smoke/README.md", "tests/scripts/test/ci-plan.test.ts", "playwright.mocks.config.ts"]) {
