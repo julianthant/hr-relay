@@ -23,7 +23,6 @@ import {
 } from "node:fs";
 import { noSymlinkAncestry, readPrivateFile, removeExactPath, statDirectory } from "../configuration/credential-safe-file.js";
 import { createReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
-import type { DatabaseSync } from "node:sqlite";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
@@ -139,7 +138,7 @@ export function verifyBackupManifestOffThread(admissionInput: RuntimeAdmission, 
  * inside the same read-only snapshot the inspection checks, while the verified copy admission still proves the manifest's bytes.
  */
 export async function readVerifiedBackupManifestAtPath<T>(admissionInput: RuntimeAdmission, manifestPathInput: string,
-  source: Extract<AuthorityBackupExpectedSource, { kind: "profile" }>, read: (database: DatabaseSync) => T): Promise<VerifiedBackup & Readonly<{ value: T }>> {
+  source: Extract<AuthorityBackupExpectedSource, { kind: "profile" }>, read: (database: Parameters<typeof inspectOpenDatabase>[0]) => T): Promise<VerifiedBackup & Readonly<{ value: T }>> {
   let result: { value: T } | undefined;
   const verified = await verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => withAuthorityDatabaseReadOnly(copy, backupPath, database => {
     const inspection = inspectOpenDatabase(database, schemaVersion);
