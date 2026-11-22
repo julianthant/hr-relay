@@ -4,15 +4,11 @@
 
 Each run:
 
-1. Refuses while the profile's own dashboard (staging 3941/5175, development 3940/5176) has an active run.
-2. Fetches, then moves the copy's worktree to the newest `origin/cut/*` (`~/Projects/hr-relay-staging`) or `origin/development` (`~/Projects/hr-relay-dev`); creates it first when missing; refuses a dirty worktree.
-3. Copies each person's newest verified authority backup (database and manifest, checked against the manifest's size and SHA-256) into the profile's data folder. Backups hold no credentials or tokens; nothing else is copied.
+1. Takes the profile's lifetime lock (staging 3942, development 3943) and holds it until done. A running copy dashboard, or another update, holds it, so the command refuses.
+2. Fetches, then moves the copy's worktree to the one `origin/cut/*` (`~/Projects/hr-relay-staging`; several cuts need `--ref origin/cut/<name>`) or `origin/development` (`~/Projects/hr-relay-dev`). It creates the worktree when missing and refuses a dirty one.
+3. Clears leftovers of an interrupted earlier copy, then copies each person's newest verified authority backup (database and manifest, checked against the manifest's size and SHA-256) into the profile's data folder. A person with no verified backup refuses the run. If production prunes a backup mid-copy the person's backups are re-listed; repeated pruning refuses. Backups hold no credentials or tokens; nothing else is copied.
 4. Prints the profile, ref and SHA, ports, backups copied and the start command.
 
-## Live setup after merge (operator steps marked)
+## Known gap: the copied backup cannot yet become the copy's store
 
-1. Production must have taken a verified backup (it does so hourly while running).
-2. `npm run profile:staging`, then `npm run profile:development`.
-3. In each copy's worktree: `npm ci && npm run dashboard:<profile>`.
-4. **Operator:** sign in with Duo in each copy, and load the copied backup through the dashboard's storage restore (the first live setup confirms the exact step). Credentials are never copied, so each copy needs its own sign-in.
-5. **Operator:** repeat step 2 to refresh a copy; stop that copy's dashboard first if it reports an active run.
+A restore accepts a backup only when its installation and profile IDs equal the target's issued binding (`same-person-restore-candidate.ts`), and the manifest's source identity derives from those IDs. A fresh isolated installation mints new IDs, so the store refuses these backups; the only workarounds (copying production's installation files, or rewriting manifests) break custody and are not done. The copy therefore starts with its own empty store until a store-owned prerequisite exists: an offline "fork backup into a new installation" maintenance operation in the storage lane, which verifies the backup, mints the target's IDs inside the store's own transaction, drops credential, session and queued-run state, and writes a fresh verified manifest. Operator steps today: Duo sign-in in each copy.
