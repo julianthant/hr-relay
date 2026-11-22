@@ -790,13 +790,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     void dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
   }, [dayWire, dispatchCommand, toast]);
-  const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
+  const { surfaces, outcomes, viewState, sortNowIso, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
     openWells, now: clock.now, sort, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
     setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
 
-  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, viewState.nowIso).map(entry => [entry.key, entry])), [surfaces, sort, viewState.nowIso]);
+  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, sortNowIso).map(entry => [entry.key, entry])), [surfaces, sort, sortNowIso]);
   const selectQueueKey = useCallback((key: string) => {
     const entry = keyboardEntries.get(key);
     if (entry === undefined) throw new Error("queue-keyboard-target-unavailable");
@@ -805,12 +805,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [keyboardEntries, openQueueMember, selectRun]);
   const selectedQueueKey = route.view?.queueMember === undefined ? route.run : queueMemberKey(route.view.queueMember);
   const keyboardOrder = useMemo(
-    () => visibleQueueKeys(surfaces, sort, viewState.nowIso),
-    [surfaces, sort, viewState.nowIso],
+    () => visibleQueueKeys(surfaces, sort, sortNowIso),
+    [surfaces, sort, sortNowIso],
   );
   const keyboardAttention = useMemo(
-    () => attentionQueueKeys(surfaces, sort, viewState.nowIso),
-    [surfaces, sort, viewState.nowIso],
+    () => attentionQueueKeys(surfaces, sort, sortNowIso),
+    [surfaces, sort, sortNowIso],
   );
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
@@ -1106,6 +1106,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 surfaces={surfaces}
                 outcomes={outcomes}
                 state={viewState}
+                sortNowIso={sortNowIso}
                 handlers={queueHandlers}
                 actionsOf={actionsOf}
                 workflowLabelOf={workflowLabelOf}

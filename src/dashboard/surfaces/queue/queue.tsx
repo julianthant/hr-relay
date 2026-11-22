@@ -971,9 +971,8 @@ const MemoQueueRow = memo(QueueRow, (before, after) => {
   };
   const { state: beforeState, handlers: beforeHandlers, ...beforeProps } = before;
   const { state: afterState, handlers: afterHandlers, ...afterProps } = after;
-  // A row reads nowIso only as its leaves' fallback when no clock is mounted, so a new instant alone does not redraw it.
-  const { selectedRunId: beforeSelected, ...beforeView } = { ...beforeState, nowIso: "" };
-  const { selectedRunId: afterSelected, ...afterView } = { ...afterState, nowIso: "" };
+  const { selectedRunId: beforeSelected, ...beforeView } = beforeState;
+  const { selectedRunId: afterSelected, ...afterView } = afterState;
   if (!shallowEqual(beforeProps, afterProps) || !shallowEqual(beforeHandlers, afterHandlers)
     || !shallowEqual(beforeView, afterView)) return false;
   if (beforeSelected === afterSelected) return true;
@@ -1005,6 +1004,7 @@ export const QueuePanel = memo(function QueuePanel({
   onStartRun,
   filter,
   sort = "attention",
+  sortNowIso = state.nowIso,
   header,
   renderBody,
 }: {
@@ -1027,12 +1027,14 @@ export const QueuePanel = memo(function QueuePanel({
   filter?: QueueFilterScope;
   /** the toolbar's ordering control; the default passes the projection through */
   sort?: QueueSortKey;
+  /** The instant the order measures against; the keyboard order reads the same one. */
+  sortNowIso?: string;
   header?: ReactNode;
   renderBody?: (body: ReactNode) => ReactNode;
 }) {
   const { top, membersOf } = useMemo(() => partition(surfaces), [surfaces]);
   const { displayTop, itemByRunId } = useMemo(() => queueItemLayout(top), [top]);
-  const bands = queueDisplayGroups(displayTop, sort, state.nowIso);
+  const bands = queueDisplayGroups(displayTop, sort, sortNowIso);
   const grouped = displayTop.some(row => "kind" in row);
 
   /** The digest counts drawn finished rows; it cannot replace authoritative day totals. */

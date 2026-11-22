@@ -13,7 +13,7 @@ import { ordinaryReadbackConfirms } from "../surfaces/settings/editor/settings-d
 import { readBack } from "../app/commands/command-readback.js";
 import { clearSettingsReads, settingsReadResource } from "./settings-read-model.js";
 
-type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "nowIso"> };
+type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "now"> };
 
 export function preferencesFromSettings(document: EditableSettingsWire) {
   const patch = Object.fromEntries(document.sections.flatMap(section => section.leaves)

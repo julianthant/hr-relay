@@ -72,9 +72,12 @@ export function useQueueWiring(input: Readonly<{
     surfaces.flatMap(surface => surface.outcome === undefined ? [] : [[surface.runId, surface.outcome] as const]),
   ), [surfaces]);
 
-  // Read whenever the rows, the order or the selection change, never on a tick: rows tick in their own leaves.
+  // Rows measure against the instant they arrived; their elapsed texts and names tick from the clock.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- surfaces only decides when to re-read the instant
+  const nowIso = useMemo(() => now(), [surfaces, now]);
+  // The order re-reads the instant whenever the rows, the order or the selection change, never on a tick.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- these inputs only decide when to re-read the instant
-  const nowIso = useMemo(() => now(), [surfaces, sort, selectedRunId, selectedMember, openWells, activeWorkflowId, now]);
+  const sortNowIso = useMemo(() => now(), [surfaces, sort, selectedRunId, selectedMember, openWells, activeWorkflowId, now]);
 
   const viewState = useMemo(
     (): QueueViewState => ({
@@ -107,5 +110,5 @@ export function useQueueWiring(input: Readonly<{
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);
-  return { surfaces, outcomes, viewState, queueHandlers, actionsOf };
+  return { surfaces, outcomes, viewState, sortNowIso, queueHandlers, actionsOf };
 }
