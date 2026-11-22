@@ -82,6 +82,24 @@ describe("affected integration tests", () => {
     });
   });
 
+  it("gives a test over the 300s target its own shard in task and full selection", () => {
+    const { root, write, commit } = fixture({
+      "tests/a.integration.test.ts": 100,
+      "tests/b.integration.test.ts": 326.4,
+      "tests/c.integration.test.ts": 100,
+    });
+    write("src/source.ts", "export const value = 1;");
+    const name = (letter: string) => `tests/${letter}.integration.test.ts`;
+    for (const letter of "abc") write(name(letter), 'import "../src/source.js";');
+    const base = commit();
+    write("src/source.ts", "export const value = 2;");
+    const head = commit();
+
+    const expected = [["a"], ["b"], ["c"]].map(group => group.map(name));
+    expect(createAffectedTestsPlanner(root)(base, head).shards).toEqual(expected);
+    expect(createAffectedTestsPlanner(root)(base, head, Infinity)).toEqual({ core: false, shardCount: 3, shards: expected });
+  });
+
   it.each(["package.json", "package-lock.json", "vitest.config.ts", "tsconfig.json",
     "tests/support/private-temp-setup.ts", "tests/support/setup-helper.ts"])("marks %s as core", path => {
     const { root, write, commit } = fixture();
