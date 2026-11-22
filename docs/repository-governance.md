@@ -18,7 +18,6 @@ force pushes and deletion; squash and rebase merging are disabled. Drafts cannot
 | `staging` | `staging` |
 | `main` | `production` |
 
-Push roadmap-only commits (`docs/roadmap/**`) straight to `development`.
 The [release instructions](../AGENTS.md#pr-and-release-flow) own production promotion and synchronization.
 Cursor Bugbot reviews pushes and only comments. The [PR flow](../AGENTS.md#pr-and-release-flow)
 owns reviewer/coder responsibility, repairs and escalation. `needs-human` identifies work requiring

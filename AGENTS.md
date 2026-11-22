@@ -1,20 +1,29 @@
-# Relay
+# AGENTS.md
 
-Read [README.md](README.md) for the product, [architecture](docs/ARCHITECTURE.md) for its design,
-the [codebase map](docs/reference/codebase-structure.md) for owners, and the
+## Project overview
+
+Relay runs HR workflows for internal staff from one local dashboard. Read [README.md](README.md)
+for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
+[codebase map](docs/reference/codebase-structure.md) for owners, and the
 [terminology reference](docs/reference/terminology.md) for project vocabulary.
 
-## What to build
-
-- Work from your ticket in the shared Concord ledger: claim it, read its brief, load the skills on
-  its `Skills:` line, and record progress, commits, check results, unrun obligations and open
-  decisions on it. Work only on the ticket. Read the codebase map and the
-  [roadmap](docs/roadmap/roadmap.md); update the roadmap only when asked.
+- Planned work is a GitHub issue in the "HR Relay Roadmap" Project. Work only on the issue your
+  spec names; report progress, commits, check results, unrun obligations and open decisions to the
+  coordinator, which records them on the issue's item.
 - Treat the main checkout's ignored `.work/` as scratch: per-task evidence at absolute paths from
-  worktrees, deleted when the task merges. Never commit it. Read `.work/operations.md` there
-  for machine constraints.
+  worktrees, deleted when the task merges. Never commit it. Read `.work/operations.md` there for
+  machine roles, slots and ports.
+- Keep instructions in `AGENTS.md` only. Do not create `CLAUDE.md`.
 
-## Codebase
+## Setup commands
+
+- Install: `npm ci`
+- Dashboard (backend and web): `npm run dashboard`; backend only `npm run backend`; web only `npm run web`
+- CLI: `npm run cli`
+- Names: `npm run names:check` before the first push and before opening a PR
+- Privacy: `npm run privacy:check` before publication
+
+## Code style
 
 - Keep one home per concept. Update the codebase map in the same commit as a move.
 - Keep only current code and current documentation. Delete replaced code and obsolete tests.
@@ -22,10 +31,6 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   compatibility readers, shims, old-code backups, history comments or change ledgers.
 - Add a layer only for a second real use. Prefer one cohesive module to many tiny files.
 - Add a guard only for a real recurring mistake, with its reason in `docs/guard-inventory.json`.
-- Mirror source once under `tests/`: drop `src/`, retain `scripts/`, `fast-duo/` and root paths.
-  Put `<module>.test.ts` beside `<module>.integration.test.ts`; split files over about 800 lines
-  by topic. Keep architecture, mocks, perf and types in their own trees; shared fixtures and
-  helpers belong in `tests/support/`.
 - Use kebab-case filenames, named exports, `.js` relative imports and `.tsx` only in the dashboard.
   Use recursively strict Zod schemas at durable, wire and config boundaries; no unchecked casts
   or `any`. Read time through `src/rules/time/clock.ts`; keep `manualClock` test-only.
@@ -34,9 +39,39 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 - Freeze registry exports recursively at module load. Use structured errors rather than
   `console.*` in `src/`. Add failure codes and display text together in
   `src/models/failures/error-catalog.ts`.
-- Keep instructions in `AGENTS.md` only. Do not create `CLAUDE.md`.
+- Generate derived files through their source, never by hand.
 
-## Conventions
+## Testing instructions
+
+- Tests, typecheck and lint run in GitHub Actions. Locally, run only the integration test files
+  your issue names or you add or change, by name, one at a time. `npm run privacy:check` is light
+  and may run.
+- Pushing a `task/**` branch runs the Development fast plan on that commit. Wait on it with
+  `gh run watch <run-id> --exit-status`; the green run at your SHA is the reviewer's evidence.
+- Never commit a failure caused by the change; a demonstrated base failure may proceed with its
+  evidence recorded. Report unrun tests for the reviewer and CI.
+- Mirror source once under `tests/`: drop `src/`, retain `scripts/`, `fast-duo/` and root paths.
+  Put `<module>.test.ts` beside `<module>.integration.test.ts`; split files over about 800 lines
+  by topic. Keep architecture, mocks, perf and types in their own trees; shared fixtures and
+  helpers belong in `tests/support/`.
+- CI plans:
+  - Task pushes and development PRs run the fast Ubuntu plan: names (PRs only) and plan, lint,
+    static, privacy, three unit shards, two architecture shards and the `development` gate, at
+    most ten jobs. Drafts run static, privacy and selected unit shards, with names, plan and gate.
+  - Staging PRs from `development` run portable Ubuntu unit, integration and architecture suites
+    plus static, privacy, perf and smoke.
+  - Release checks run the selected unit, integration and architecture suites, including native
+    proofs; ready pull requests also build the web bundle for perf and smoke, while manual
+    releases skip those jobs. Only the operator starts full-release CI; agents never dispatch or
+    rerun CI workflows.
+- Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards, retaining
+  release coverage. Local integration runs skip those files unless `RELAY_TEST_NATIVE=1`. Add new
+  native proofs to `scripts/test/ci-files.ts`. Never run macOS-native proofs on the PC.
+- Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute.
+- Docs-only changes need link, whitespace and affected generated-output checks and any tests that
+  parse the edited documents; prose alone needs no runtime suite.
+
+## PR instructions
 
 - Give each piece of work one name and use it everywhere. A feature is `<area>-<deliverable>`; the
   area is a screen name, a workflow ID, or a non-screen area such as `storage`, `workers` or `ci`.
@@ -44,10 +79,9 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 | Thing | Name |
 | --- | --- |
-| Ticket ID | `<feature>-NN` |
 | Feature branch | `feature/<feature>`: from `origin/development`, one PR into `development` |
 | Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
-| Standalone fix | `fix/<area>-<symptom>`: from `origin/development`, one ticket, one PR into `development` |
+| Standalone fix | `fix/<area>-<symptom>`: from `origin/development`, one issue, one PR into `development` |
 | Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; from `origin/development`, one PR into `development` |
 | Hotfix | `hotfix/<area>-<symptom>`: from `main`, one PR into `main` titled `Hotfix: <what it fixes>`; the same commits reach `development` through a `fix/*` PR |
 | Design | `design/<area>`: mock with real components for operator approval, never merged |
@@ -56,75 +90,30 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 | Spec | `.work/specs/<feature>.md` |
 | Evidence | `.work/evidence/<feature>/<lane>/`, deleted when the ticket merges |
 
-- Use no other branch prefix. Run `npm run names:check` before the first push and before opening a
-  PR.
-- Keep the main checkout on a clean `development` and work only in `.worktrees/`. A ticket lives on one
-  machine with its tests; work moves between machines only as pushed branches.
-- Leave no stash behind at the end of a session: commit to the ticket branch.
-- Merge a ticket branch into its feature branch only after the reviewer clears its SHA, then remove
-  its worktree and branch in the same step.
+- Use no other branch prefix. Keep the main checkout on a clean `development` and work only in
+  worktrees. A ticket lives on one machine with its tests; work moves between machines only as
+  pushed branches. Leave no stash behind: commit to the ticket branch.
+- Push your `task/**` branch without asking. Merge it into its feature branch only after the
+  reviewer clears its SHA, then remove its worktree and branch in the same step.
 - Separate backend and UI lanes for one area; merge the backend first.
-- Read `.work/operations.md` in the main checkout for machine roles, slots and ports.
-
-## Git
-
-- Keep `main` as released production, `staging` as operator-preview integration, and `development`
-  as the feature integration base.
-
-### PR and release flow
-
-- The `dev-auto` (orchestrator), `duo` (coder and reviewer pair) and `ship` (publish to merge)
-  skills hold the lane, review-loop and PR procedure. Load the one your ticket names.
-- Feature, fix and chore branches start from `origin/development` and reach `development` through a PR.
-  Push `docs/roadmap/**` straight to `development`. `staging` receives PRs from `development` only,
-  one coherent batch at a time. Never push directly to `main` or `staging`. Merge the latest base
-  into your branch; never rebase or force-push. Never merge a PR by hand.
+- `main` is released production, `staging` operator-preview integration, `development` the
+  feature integration base. Feature, fix and chore branches reach `development` through a PR whose
+  body says `Closes #<issue>`, with auto-merge on the required checks. `staging` receives PRs from
+  `development` only, one coherent batch at a time. Never push directly to `main` or `staging`.
+  Merge the latest base into your branch; never rebase or force-push. Never merge a PR by hand.
 - Workflow behavior PRs wait for a live dry run and operator sign-off. Required check names live
   in [repository governance](docs/repository-governance.md).
 - Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards
-  or expanded scope to the operator with `needs-human`.
-- The main checkout owns runtime state, credentials and ports.
+  or expanded scope to the operator.
 - Release only on the operator's explicit go: merge `staging` into `main` with a merge commit,
   then sync `main` back into `staging`.
 
-## Checks
+## Security considerations
 
-- Run tests only in an orchestrator-granted local slot. CI-path lanes run typecheck and lint
-  serially. Pause local tests during operator live runs. Run full suites only in a granted slot; PR
-  CI supplies the feature's full run. Run native proofs on platform-matching machines.
-- Before clearing a push, pass the whole architecture suite and the unit and integration tests
-  affected by the diff against `origin/development`. On the main Mac, run `npm run test:pc` without
-  file arguments. On a backend host, run `npx vitest run --project architecture`, then
-  `npx vitest run --project unit --project integration --changed=origin/development` in the ticket's
-  checkout under its assigned test slot.
-- Before review/push, complete typecheck, lint/static checks and source generators whose inputs
-  changed; report unrun tests for the reviewer and CI. Never commit a failure caused by the change;
-  a demonstrated base failure may proceed with its evidence recorded.
-- Docs-only changes need link, whitespace and affected generated-output checks and any tests that
-  parse the edited documents; prose alone needs no runtime suite.
-- Development PRs run the fast Ubuntu plan: names and plan, lint, static, privacy, three unit
-  shards, two architecture shards and the `development` gate, at most ten jobs. Drafts run static,
-  privacy and selected unit shards, with names, plan and gate. Staging PRs from `development` run
-  portable Ubuntu unit, integration and architecture suites plus static, privacy, perf and smoke.
-  Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards,
-  retaining release coverage. Local unit and integration runs skip those files unless
-  `RELAY_TEST_NATIVE=1`. Add new native proofs to `scripts/test/ci-files.ts`.
-- Only the operator starts full-release CI; agents never dispatch or rerun CI workflows.
-- Native proofs run in CI only for operator-started releases. Release checks run the selected
-  unit, integration and architecture suites, including native proofs; ready pull requests also
-  build the web bundle for perf and smoke, while manual releases skip those jobs.
-- Keep the published head's PR CI as the merge proof. Never run macOS-native proofs
-  on the PC. Keep machine slot details in `.work/operations.md`.
-- Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
-  derived files through their source, never by hand.
-- Before local coverage, verify free memory, no swap pressure and no listener on the runtime
-  backend port; a resource refusal leaves the gate unrun.
 - Before publication, stage the exact candidate and run `npm run privacy:check`; inspect its prose
-  and images too. Keep public instructions free of local paths, machine/account identities,
-  terminal handles, secrets and employee identifiers.
-
-## Runtime safety
-
+  and images too. This repository is public: keep instructions, issues and PRs free of local
+  paths, machine/account identities, terminal handles, secrets and employee identifiers.
+- The main checkout owns runtime state, credentials and ports.
 - Fail loud on missing or corrupt data and failed checks: throw a named error naming the offending
   field or value, or propagate a distinct unknown that the caller checks. A fallback needs a valid
   expected case and recorded verification (live evidence for selectors or page state, tests for

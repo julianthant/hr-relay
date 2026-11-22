@@ -2,7 +2,7 @@
 
 Start with the assigned brief, its README and the [codebase map](../reference/codebase-structure.md).
 Activation order and operator acceptance are in
-[Dashboard ready on the Mac](../roadmap/roadmap.md#dashboard-ready-on-the-mac).
+[Dashboard ready on the Mac](https://github.com/users/julianthant/projects/5).
 
 Read [workflow-model](../reference/workflow-model.md),
 [task-contract](../reference/task-contract.md), [write-safety](../reference/write-safety.md) and

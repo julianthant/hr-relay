@@ -21,7 +21,6 @@ Read this reference for runtime commands and environment behavior. The
 | Vite alone, with an existing backend | `npm run web` |
 | Production dashboard | `npm run web:build`, then `npm run dashboard:prod` |
 | Windows observer preparation | `npm run build:observer-policy` |
-| Roadmap generation and freshness | `npm run roadmap`, then `npm run roadmap:check` |
 
 The CLI exposes help, phase, dashboard, worker, explain, storage, OCR and test-data commands.
 Workflow execution starts from the signed-in dashboard Run surface. Ctrl+C on the combined dev

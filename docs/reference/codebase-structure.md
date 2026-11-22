@@ -14,12 +14,9 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/guides/` | Workflow authoring guide. |
 | `docs/guides/windows.md` | Windows launcher steps. |
 | `docs/guard-inventory.json` | Guard owners and reasons. |
-| `docs/roadmap/roadmap.md` | Roadmap content. |
-| `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Dashboard-owned Chromium enrollment and backend-signed workflow login runtimes. |
 | `scripts/build/` | Source-tool preparation and independent checks. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. `relay.ts` owns the Windows production launcher and private loopback stop broker; `relay-backend.ts` reports shutdown only after bootstrap releases its lifetime. Root `relay.cmd` selects portable Node. `tests/support/processes/relay-drain-child.ts` supplies the controlled write-drain proof. |
-| `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
 | `scripts/test/` | Shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
 | `.github/workflows/development.yml`, `staging.yml`, `production.yml`, `checks.yml` | `Development`, `Staging` and `Production` call the one `checks.yml` with fast, portable or release kinds. Their required gates are `development`, `staging` and `production`; Development starts at most ten jobs per PR, Staging runs the full portable plan, and release adds macOS native proofs. Each PR supersedes its own older runs. |
 | `scripts/verify/` | Repository privacy and test-target verification. |
@@ -29,7 +26,6 @@ This map names the current source, test, and documentation owners. Relay runs lo
 `npm run build:observer-policy` prepares the ignored Windows observer policy artifact under
 `node_modules/.cache/relay/`; runtime package prehooks and the Vitest/Vite configs call it. [Guards and tests](guards-and-tests.md#contract-fingerprints-and-build-id)
 owns the contract fingerprint and build id.
-`npm run roadmap` generates the roadmap site; `npm run roadmap:check` checks it.
 `npm run web:build` produces the dashboard bundle in `dist/`.
 Briefs, receipts, and task evidence live in the main checkout's gitignored `.work/` folder. The [Conventions](../../AGENTS.md#conventions) own worktree naming and lifecycle.
 
@@ -318,7 +314,6 @@ and persisted-read path.
 
 `tests/mocks/` holds `/ui-mock` scenes, the mock dashboard build entry and `workflows/`, the mock workflow runs, queue, review and Records model that scenes and fixture tests build on. Nothing under `src/` imports it.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
-`tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared
 in `config/runtime-isolation.json`; test fixtures are separate from that operator state.
 
