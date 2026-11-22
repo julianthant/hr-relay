@@ -233,7 +233,7 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     owner: "src/models/config/secrets.ts",
     documented: true,
   },
-  { key: RUNTIME_PROFILE_ENV, classification: "non-secret-config", disposition: "active", channel: "config",
+  { key: RUNTIME_PROFILE_ENV, classification: "non-secret-config", disposition: "active", channel: "host-storage",
     owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER, documented: true },
   {
     key: DEVELOPMENT_DEBUG_MIRROR_ENV,
@@ -431,7 +431,7 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
     if (spec.channel === "process-mechanics" && (spec.key === "SystemRoot" || spec.key === PARENT_BUILD_ID_ENV)) continue;
-    const expectedOwner = spec.channel === "config" && spec.key === RUNTIME_PROFILE_ENV && spec.classification === "non-secret-config"
+    const expectedOwner = spec.channel === "host-storage" && spec.key === RUNTIME_PROFILE_ENV && spec.classification === "non-secret-config"
       ? PROCESS_MECHANICS_ENVIRONMENT_OWNER
       : spec.channel === "host-programs" && ["ProgramFiles", "ProgramFiles(x86)"].includes(spec.key) && spec.classification === "non-secret-config"
       ? PROCESS_MECHANICS_ENVIRONMENT_OWNER

@@ -2,6 +2,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -154,6 +155,11 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
 
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  const profileArg = process.argv.slice(2).find(arg => arg.startsWith("--profile="));
-  process.exitCode = await runDevDashboard({ profile: profileArg === undefined ? undefined : RuntimeProfileSchema.parse(profileArg.slice("--profile=".length)), mode: process.argv.includes("--backend-only") ? "backend" : process.argv.includes("--web-only") ? "web" : "dashboard" });
+  const { values } = parseArgs({ options: {
+    profile: { type: "string" }, "backend-only": { type: "boolean" }, "web-only": { type: "boolean" },
+  } });
+  process.exitCode = await runDevDashboard({
+    profile: RuntimeProfileSchema.optional().parse(values.profile),
+    mode: values["backend-only"] ? "backend" : values["web-only"] ? "web" : "dashboard",
+  });
 }

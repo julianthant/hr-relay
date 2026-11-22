@@ -251,6 +251,16 @@ function executableRuntimeBinding(
     config.factoryExport,
     config.factory,
   );
+  const profileAccessor = "readRuntimeProfile";
+  const selectsProfile = hasExactNamedImport(source, configFile, resolve(repoRoot, "src/models/config/secrets.ts"), profileAccessor, profileAccessor)
+    && !hasTopLevelValueDeclaration(source, profileAccessor)
+    && source.statements.some(statement => ts.isVariableStatement(statement)
+      && (statement.declarationList.flags & ts.NodeFlags.Const) !== 0
+      && statement.declarationList.declarations.some(declaration =>
+        ts.isIdentifier(declaration.name) && declaration.name.text === "runtimeProfile"
+        && declaration.initializer !== undefined && ts.isCallExpression(declaration.initializer)
+        && ts.isIdentifier(declaration.initializer.expression) && declaration.initializer.expression.text === profileAccessor
+        && declaration.initializer.arguments.length === 0));
   const factoryIsShadowed = hasTopLevelValueDeclaration(source, config.factory);
   let bound: Record<string, string | number> | undefined;
   let boundShapeExact = false;
@@ -296,7 +306,7 @@ function executableRuntimeBinding(
   };
   const boundKeys = Object.keys(bound ?? {}).sort();
   const expectedKeys = Object.keys(expected).sort();
-  const exactBinding = importsFactory && !factoryIsShadowed && boundShapeExact
+  const exactBinding = selectsProfile && importsFactory && !factoryIsShadowed && boundShapeExact
     && boundPropertyCount === expectedKeys.length
     && JSON.stringify(boundKeys) === JSON.stringify(expectedKeys)
     && expectedKeys.every((key) => bound?.[key] === expected[key as keyof typeof expected]);

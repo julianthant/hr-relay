@@ -34,7 +34,10 @@ function seedValidRuntime(root: string): void {
   assert.ok(config);
   write(root, "src/models/config/define-runtime-isolation.ts",
     "export function defineRuntimeIsolation<T>(value: T): T { return value; }\n");
+  write(root, "src/models/config/secrets.ts", 'export function readRuntimeProfile() { return "production"; }');
   write(root, config.module, [
+    'import { readRuntimeProfile } from "../../../models/config/secrets.js";',
+    "export const runtimeProfile = readRuntimeProfile();",
     `import { ${config.factory} } from "../../../models/config/define-runtime-isolation.js";`,
     `export const ${config.exportName} = ${config.factory}({`,
     `  stateRoot: ${JSON.stringify(side.stateRoot)},`,
@@ -116,6 +119,11 @@ describe("operational isolation", () => {
       // A drifted literal is not the declared runtime.
       write(root, config.module, readFileSync(join(root, config.module), "utf8")
         .replace(JSON.stringify(isolation.rebuild.stateRoot), JSON.stringify(".tracker-drift")));
+      assert.match(fixtureViolations(root).join("\n"), /exact isolated values/);
+      seedValidRuntime(root);
+
+      write(root, config.module, readFileSync(join(root, config.module), "utf8")
+        .replace("runtimeProfile = readRuntimeProfile()", 'runtimeProfile = "production"'));
       assert.match(fixtureViolations(root).join("\n"), /exact isolated values/);
       seedValidRuntime(root);
 
