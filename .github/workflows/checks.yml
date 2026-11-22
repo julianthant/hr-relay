@@ -83,14 +83,10 @@ jobs:
       - name: Select affected integration tests
         id: affected
         if: inputs.kind == 'fast'
-        env:
-          HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           base=HEAD^1
           if [ "$GITHUB_EVENT_NAME" = push ]; then base=$(git merge-base origin/development HEAD); fi
-          scope=()
-          if [[ "$HEAD_REF" == feature/* ]]; then scope=(--all); fi
-          plan=$(node --import tsx scripts/test/affected-tests.ts "$base" HEAD "${scope[@]}")
+          plan=$(node --import tsx scripts/test/affected-tests.ts "$base" HEAD)
           node -e 'const p = JSON.parse(process.argv[1]); console.log(`core=${p.core} shards=${p.shards.length}/${p.shardCount}`); p.shards.forEach((s, i) => console.log(`shard ${i + 1}: ${s.join(" ")}`))' "$plan"
           echo "plan=$plan" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3

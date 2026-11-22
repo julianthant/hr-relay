@@ -144,17 +144,17 @@ describe("staging and release full-run proof", () => {
     fullRunProof({ github: fake(fixture).github, context: context({ base: { ref: base }, head: prHead }) });
 
   it("passes a cut only on a green full run of its exact head", async () => {
-    await expect(prove({ runs: [scheduled(1)] }, "staging", head("cut/m1"))).resolves.toBe(`Full run https://example.test/runs/1 proves ${sha}.`);
+    await expect(prove({ runs: [scheduled(1)] }, "staging", head("development"))).resolves.toBe(`Full run https://example.test/runs/1 proves ${sha}.`);
     for (const full of ["failure", "cancelled", "skipped"]) {
-      await expect(prove({ runs: [scheduled(1, { full })] }, "staging", head("cut/m1"))).rejects.toThrow("No green full run proves");
+      await expect(prove({ runs: [scheduled(1, { full })] }, "staging", head("development"))).rejects.toThrow("No green full run proves");
     }
-    await expect(prove({ runs: [scheduled(1, { head_sha: "b".repeat(40) })] }, "staging", head("cut/m1"))).rejects.toThrow("No green full run proves");
+    await expect(prove({ runs: [scheduled(1, { head_sha: "b".repeat(40) })] }, "staging", head("development"))).rejects.toThrow("No green full run proves");
   });
 
   it("passes the main-to-staging sync without a full run and refuses other heads", async () => {
     await expect(prove({}, "staging", head("main"))).resolves.toContain("Main-to-staging sync");
-    await expect(prove({ runs: [scheduled(1)] }, "staging", head("feature/x"))).rejects.toThrow("No full-run proof rule");
-    await expect(prove({ runs: [scheduled(1)] }, "staging", head("cut/m1", sha, "fork/relay"))).rejects.toThrow("is not owner/relay");
+    await expect(prove({ runs: [scheduled(1)] }, "staging", head("cut/x"))).rejects.toThrow("No full-run proof rule");
+    await expect(prove({ runs: [scheduled(1)] }, "staging", head("development", sha, "fork/relay"))).rejects.toThrow("is not owner/relay");
     await expect(fullRunProof({ github: fake({}).github, context: context() })).rejects.toThrow("needs a pull request");
   });
 
