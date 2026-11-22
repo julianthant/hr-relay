@@ -63,8 +63,8 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
     the gate only.
   - Every 20 minutes Development decides in seconds whether to start the full run on the
     development head: all suites, 30 integration shards, perf, smoke, native macOS, CodeQL and
-    npm audit. It starts only when that head has no green full run, did not start one in the last
-    six hours, and CI is idle or no full run started in six hours.
+    npm audit. It starts only when that head has no green full run and CI is idle or no full run
+    started in the last six hours.
   - Staging PRs from `cut/*` and staging-to-main releases run the portable Ubuntu suites plus
     static, privacy, perf and smoke, and pass only on the green full run of the cut's exact
     content. The main-to-staging sync needs no full run.

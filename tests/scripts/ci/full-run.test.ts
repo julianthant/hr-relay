@@ -91,7 +91,7 @@ describe("scheduled full-run decision", () => {
     const old = scheduled(1, { head_sha: "b".repeat(40), created_at: hours(7) });
     const skipOnly = scheduled(2, { head_sha: "b".repeat(40), started: false, full: "skipped" });
     expect(await decide({ runs: [old, skipOnly], busy: { in_progress: [5], queued: [6] } }))
-      .toMatchObject({ start: true, reason: expect.stringContaining("none started in the last 6 hours") as string });
+      .toMatchObject({ start: true, reason: expect.stringContaining("no full run started in the last 6 hours") as string });
   });
 
   it("starts a changed head after a recent full run only when CI is idle", async () => {
@@ -103,12 +103,19 @@ describe("scheduled full-run decision", () => {
     }
   });
 
-  it("does not repeat a red or running full run of the same head within six hours", async () => {
-    for (const full of ["failure", "cancelled", undefined]) {
-      expect(await decide({ runs: [scheduled(1, { full, created_at: hours(5) })] }))
-        .toMatchObject({ start: false, reason: expect.stringContaining("already started a full run") as string });
+  it("retries a failed same head on the next idle tick and waits six hours while CI is busy", async () => {
+    for (const full of ["failure", "cancelled"]) {
+      const failed = scheduled(1, { full, created_at: hours(1) });
+      expect(await decide({ runs: [failed] })).toMatchObject({ start: true, reason: expect.stringContaining("CI is idle") as string });
+      expect(await decide({ runs: [failed], busy: { in_progress: [5] } }))
+        .toMatchObject({ start: false, reason: expect.stringContaining("started in the last 6 hours") as string });
+      expect(await decide({ runs: [{ ...failed, created_at: hours(7) }], busy: { in_progress: [5] } })).toMatchObject({ start: true });
     }
-    expect(await decide({ runs: [scheduled(1, { full: "failure", created_at: hours(7) })] })).toMatchObject({ start: true });
+  });
+
+  it("never overlaps a running full run, which keeps CI busy", async () => {
+    const running = scheduled(1, { full: undefined, created_at: hours(1) });
+    expect(await decide({ runs: [running], busy: { in_progress: [1] } })).toMatchObject({ start: false });
   });
 
   it("ignores success claims that are not the scheduled development full job at this commit", async () => {

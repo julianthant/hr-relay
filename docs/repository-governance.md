@@ -45,9 +45,10 @@ waits up to twenty minutes for a running proof and fails after a minute when no 
 edited pull request reruns only that gate and reuses the last proof at its head SHA.
 
 Every 20 minutes Development's `decide` job reads GitHub through `scripts/ci/full-run.ts` and
-starts the full run only when the development head has no green full run, has not started one in
-the last six hours, and either no other run is queued or in progress or no full run started in
-the last six hours. Otherwise nothing else runs. The full run, titled `Full run <sha>`, runs the
+starts the full run only when the development head has no green full run and either no other run
+is queued or in progress or no full run started in the last six hours. A running full run keeps CI
+busy, so full runs never overlap; a failed head retries on the next idle tick. Otherwise nothing
+else runs. The full run, titled `Full run <sha>`, runs the
 `full` plan (every unit, architecture and integration shard, lint, static, privacy, perf, smoke
 and five macOS native shards), CodeQL and `npm audit --omit=dev --audit-level=high`. Its `full`
 job folds those results and writes the SHA and verdict to the run summary. A green full run is

@@ -49,28 +49,24 @@ export async function decideFullRun({ github, context, now }: { github: GitHub; 
   const { repo, sha } = context;
   const green = await greenFullRun(github, repo, sha);
   if (green) return { start: false, reason: `Development ${sha} already passed its full run ${green.html_url}.` };
-  const recent = (await github.paginate<Run>(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: "development.yml",
-    event: "schedule", created: `>=${new Date(now - SIX_HOURS).toISOString()}`, per_page: 100 }))
-    .filter(run => run.id !== context.runId);
-  const started: Run[] = [];
-  for (const run of recent) {
-    const jobs = await github.paginate<Job>(github.rest.actions.listJobsForWorkflowRun,
-      { ...repo, run_id: run.id, filter: "latest", per_page: 100 });
-    if (jobs.some(job => job.name === "decide" && job.steps?.some(step => step.name === START_STEP && step.conclusion === "success"))) {
-      started.push(run);
-    }
-  }
-  // A red or running full run of this same commit is not repeated within six hours.
-  const sameHead = started.find(run => run.head_sha === sha);
-  if (sameHead) return { start: false, reason: `Development ${sha} already started a full run in the last 6 hours: ${sameHead.html_url}.` };
-  if (started.length === 0) return { start: true, reason: `Development ${sha} has no green full run and none started in the last 6 hours.` };
+  // A running full run keeps CI busy, so an idle tick never overlaps one.
   const busy: Run[] = [];
   for (const status of ["queued", "in_progress"]) {
     busy.push(...(await github.paginate<Run>(github.rest.actions.listWorkflowRunsForRepo, { ...repo, status, per_page: 100 }))
       .filter(run => run.id !== context.runId));
   }
   if (busy.length === 0) return { start: true, reason: `Development ${sha} has no green full run and CI is idle.` };
-  return { start: false, reason: `CI has ${busy.length} queued or running runs and a full run started in the last 6 hours.` };
+  const recent = (await github.paginate<Run>(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: "development.yml",
+    event: "schedule", created: `>=${new Date(now - SIX_HOURS).toISOString()}`, per_page: 100 }))
+    .filter(run => run.id !== context.runId);
+  for (const run of recent) {
+    const jobs = await github.paginate<Job>(github.rest.actions.listJobsForWorkflowRun,
+      { ...repo, run_id: run.id, filter: "latest", per_page: 100 });
+    if (jobs.some(job => job.name === "decide" && job.steps?.some(step => step.name === START_STEP && step.conclusion === "success"))) {
+      return { start: false, reason: `CI has ${busy.length} queued or running runs and full run ${run.html_url} started in the last 6 hours.` };
+    }
+  }
+  return { start: true, reason: `Development ${sha} has no green full run and no full run started in the last 6 hours.` };
 }
 
 // Staging and release pull requests pass only on a green full run of the exact content they carry.
