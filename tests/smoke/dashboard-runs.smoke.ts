@@ -33,7 +33,7 @@ for (const key of REFUSED_RUNS) {
     }
     await dashboard.open();
     await dashboard.openRun(runId);
-    const refusal = dashboard.runPanel.getByText("Couldn't load logs.", { exact: true });
+    const refusal = dashboard.runPanel.getByText("These logs don't match this run.", { exact: true });
     await expect(refusal, "known refusal; move this run to OPENABLE_RUNS once its logs load").toBeVisible();
     await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeHidden();
   });
@@ -43,6 +43,8 @@ test("an open run survives Reload and closes on Back", async ({ dashboard, page 
   await dashboard.open();
   const runId = dashboard.runId("doneRun");
   await dashboard.openRun(runId);
+  // Reload only after the run read settles, or the reload aborts it mid-flight.
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
   await page.reload();
   await dashboard.expectRunOpen(runId);
   await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
@@ -54,6 +56,8 @@ test("switching runs replaces the panel with the newly chosen run", async ({ das
   await dashboard.open();
   await dashboard.openRun(dashboard.runId("doneRun"));
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  // Switch only after the first run's reads settle, or the switch aborts them mid-flight.
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
   await dashboard.openRun(dashboard.runId("cancelledRun"));
   await expect(dashboard.runPanel.getByText("Cancelled", { exact: true }).first()).toBeVisible();
   await expect(dashboard.runPanel.getByText("Done", { exact: true })).toHaveCount(0);

@@ -28,6 +28,7 @@ test("the collapsed sidebar still opens a workflow and a data page", async ({ da
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
   await dashboard.openWorkflow("Separations");
   await dashboard.openDataPage("Explorer");
+  await page.getByRole("button", { name: "Close settings" }).click();
   await page.getByRole("button", { name: "Expand sidebar" }).click();
   await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
 });
@@ -90,8 +91,12 @@ test("Back, Forward and Reload follow the URL", async ({ dashboard, failures, pa
   await dashboard.open();
   await dashboard.openWorkflow("Separations");
   await dashboard.openDataPage("Analytics");
+  // Opening Settings lands on General, then the section link adds its own entry.
+  await page.goBack();
+  await expect(dashboard.pageHeading("General")).toBeVisible();
   await page.goBack();
   await expect(dashboard.pageHeading("Separations queue")).toBeVisible();
+  await page.goForward();
   await page.goForward();
   await expect(dashboard.pageHeading("Analytics")).toBeVisible();
   await page.reload();

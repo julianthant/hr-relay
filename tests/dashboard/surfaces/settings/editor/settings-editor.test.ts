@@ -259,7 +259,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.equal(problems[0]?.title, 'Credentials changed. Your draft is kept.');
     ports.read = () => { throw new Error('synthetic-readback-unavailable'); };
     await act(async () => controller().protectedEditor.submit());
-    assert.equal(controller().protectedEditor.save.state, 'saving', 'an unknown save is read back, not shown');
+    assert.equal(controller().protectedEditor.save.state, 'unconfirmed', 'an unknown save is read back, not shown');
     assert.deepEqual(notices, []);
     assert.equal(problems.length, 1, 'an unconfirmed save is read back, not shown');
     const sent = commands.length;

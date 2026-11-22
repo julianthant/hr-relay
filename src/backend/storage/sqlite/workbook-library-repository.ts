@@ -1204,6 +1204,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         }) }));
     })),
     enqueue, drain, operation,
+    hasQueuedOperation: (id: string) => storage(() => deps.read(() => { required(id); return database.prepare('SELECT 1 FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NULL LIMIT 1').get(id) !== undefined; })),
     journal: id => storage(() => deps.read(() => { required(id); return database.prepare('SELECT receipt_json FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NOT NULL ORDER BY sequence').all(id).map(row => receipt(row.receipt_json)); })),
     runOperations: runId => storage(() => deps.read(() => database.prepare("SELECT * FROM workbook_operations WHERE json_extract(request_json,'$.source.kind') IN ('run','run-reference') AND json_extract(request_json,'$.source.runId')=? ORDER BY sequence").all(runId)
       .map(raw => { const row = z.object({ workbook_id: z.string() }).parse(raw); return operationRecord(row.workbook_id, raw); }))),
