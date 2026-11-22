@@ -3,7 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { analyticsPeriodLabel, shiftDate } from "../../src/dashboard/surfaces/activity/analytics-model.js";
 import { encodeEditableWorkbook, WorkbookImportResultSchema } from "../../src/models/dashboard/workbooks.js";
 import { importWorkbook } from "../../src/rules/spreadsheets/workbook-io.js";
-import { DESKTOP_VIEWPORTS } from "../support/helpers/dashboard/smoke/dashboard-page.js";
+import { DESKTOP_VIEWPORTS, type DashboardPage } from "../support/helpers/dashboard/smoke/dashboard-page.js";
 import { holdDashboardSkeletonRead, openWithColdSettingsHold, SKELETON_READ_HOLD_MS } from "../support/helpers/dashboard/smoke/hold-dashboard-skeleton-read.js";
 import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
@@ -220,6 +220,10 @@ async function seedRoster(page: Page, baseUrl: string) {
   return WorkbookImportResultSchema.parse(await response.json()).workbook.libraryId;
 }
 
+function seededQueueCard(dashboard: DashboardPage, runId: string) {
+  return dashboard.queue.locator(`[role="group"][data-demo-row-id="${runId}"]`);
+}
+
 for (const viewport of DESKTOP_VIEWPORTS) {
   test.describe(`dashboard skeletons at ${viewport.width}x${viewport.height}`, () => {
     test.skip(process.env.RELAY_DASHBOARD_SKELETON_EVIDENCE !== "1", "runs in the dedicated dashboard evidence workflow");
@@ -227,7 +231,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 
     test("a held cold Settings read measures the fixed General form", async ({ dashboard, page, seeded }) => {
       const hold = await openWithColdSettingsHold(page, seeded.baseUrl, () => dashboard.open());
-      await expect(dashboard.queue.locator(`[role="button"][data-demo-row-id="${dashboard.runId("doneRun")}"]`)).toBeVisible();
+      await expect(seededQueueCard(dashboard, dashboard.runId("doneRun"))).toBeVisible();
       await expect.poll(() => hold.evaluate(read => read.timing.withheldAt)).toBeDefined();
       const open = page.getByRole("button", { name: "Settings", exact: true });
       const themeField = page.locator(THEME_FIELD);
@@ -244,13 +248,13 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     test.describe("after dashboard boot", () => {
       test.beforeEach(async ({ dashboard }) => {
         await dashboard.open();
-        await expect(dashboard.queue.locator(`[role="button"][data-demo-row-id="${dashboard.runId("doneRun")}"]`)).toBeVisible();
+        await expect(seededQueueCard(dashboard, dashboard.runId("doneRun"))).toBeVisible();
       });
 
       for (const surface of ["Settings", "Spreadsheets", "Explorer", "Analytics", "Run logs"] as const) {
         test(`${surface === "Settings" ? "warm Settings" : surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
           const runId = dashboard.runId("doneRun");
-          const control = surface === "Run logs" ? dashboard.queue.locator(`[role="button"][data-demo-row-id="${runId}"]`)
+          const control = surface === "Run logs" ? seededQueueCard(dashboard, runId).locator("button[data-queue-open]")
             : (surface === "Settings" ? page : dashboard.workflows).getByRole("button", { name: surface, exact: true });
           const content = {
             Settings: page.locator(THEME_FIELD),
@@ -262,10 +266,11 @@ for (const viewport of DESKTOP_VIEWPORTS) {
           if (surface === "Settings") {
             await control.click();
             await expect(content).toBeVisible();
-            await page.getByRole("button", { name: "Back to dashboard" }).click();
+            await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/ }).click();
             await expect(content).toBeHidden();
           }
-          await measure(page, control, () => control.click(), () => expect(content).toBeVisible());
+          const activate = () => surface === "Run logs" ? control.press("Enter") : control.click();
+          await measure(page, control, activate, () => expect(content).toBeVisible());
         });
       }
 
@@ -375,9 +380,9 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 
       test("a held run read stays inside the selected run panel", async ({ dashboard, page }) => {
         const runId = dashboard.runId("doneRun");
-        const row = dashboard.queue.locator(`[role="button"][data-demo-row-id="${runId}"]`);
+        const open = seededQueueCard(dashboard, runId).locator("button[data-queue-open]");
         const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/runs/${runId}` });
-        await measure(page, row, () => row.click(), () => expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible(), {
+        await measure(page, open, () => open.press("Enter"), () => expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible(), {
           pendingRegion: RUN_PANEL, bounds: { pending: RUN_PANEL, settled: RUN_PANEL },
         }, hold);
       });

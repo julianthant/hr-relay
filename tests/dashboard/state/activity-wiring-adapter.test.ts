@@ -18,8 +18,11 @@ import { createActivityReportFixtures } from "../../support/helpers/dashboard/ac
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => vi.unstubAllGlobals());
 const sources = Object.freeze({ fixture: "hidden" as const });
-function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ status: "done", durationMs: 0 }, { status: "failed", durationMs: 42000 }, { status: "queued" }]): ActivityPopulationSelection {
-  const empty = createActivityReportFixtures().EMPTY;
+function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ status: "done", durationMs: 0 }, { status: "failed", durationMs: 42000 }, { status: "queued" }], from?: string): ActivityPopulationSelection {
+  const fixture = createActivityReportFixtures().EMPTY;
+  const empty = from === undefined ? fixture : { ...fixture, from,
+    assistantMessages: { ...fixture.assistantMessages, days: fixture.assistantMessages.days.filter(row => row.day >= from) },
+    assistantActions: { ...fixture.assistantActions, days: fixture.assistantActions.days.filter(row => row.day >= from) } };
   const population = rowsInput.map((row, index) => ({ runId: RunIdSchema.parse(`00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`), workflowId: "fixture", title: `Person ${index + 1}`, attempt: 1, parentRunId: null, shape: "single" as const, day: "2026-08-03", status: "queued" as const, terminal: ["done", "failed", "cancelled", "partial"].includes(row.status ?? "queued"), durationMs: null, readback: null, receiptResult: null, warningCount: null, ...row }));
   const count = (status: string) => population.filter(row => row.status === status).length;
   const terminal = population.filter(row => row.terminal);
@@ -173,6 +176,51 @@ it("keeps initial loading, read refusal, empty success and client replacement se
     await act(async () => root.render(createElement(Scene, { current: failing })));
     await assert.rejects(oldExport(), /no longer matches/u);
     assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("holds the settled report, with export refused, while another range loads, and blanks only on a cold read", async () => {
+  const first = selection();
+  const requested = { from: "2026-08-02", to: "2026-08-07" };
+  const second = selection([{ status: "done", durationMs: 0 }], requested.from);
+  const range = () => { const data = current().data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.range; };
+  const client = clientOf(first);
+  const resolvers: ((value: ActivityPopulationSelection) => void)[] = [];
+  client.activityPopulation = vi.fn(() => new Promise<ActivityPopulationSelection>(resolve => resolvers.push(resolve)));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  const current = (): ReturnType<typeof useActivityWiring> => state;
+  const total = () => { const data = current().data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.total; };
+  function Scene({ range }: { range: { from: string; to: string } }) { state = useActivityWiring(client, range, null, sources, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Scene, { range: first.report })));
+    assert.equal(current().data.state, "loading");
+    await act(async () => resolvers[0](first));
+    assert.equal(total(), 3);
+    assert.equal(current().exportReady, true);
+    await act(async () => root.render(createElement(Scene, { range: requested })));
+    assert.equal(total(), 3);
+    assert.deepEqual(range(), { from: first.report.from, to: first.report.to });
+    assert.equal(current().exportReady, false);
+    await assert.rejects(current().exportCsv(), /no longer matches/u);
+    assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
+    await act(async () => resolvers[1](second));
+    assert.equal(total(), 1);
+    assert.deepEqual(range(), requested);
+    assert.equal(current().exportReady, true);
+    await current().exportCsv();
+    assert.deepEqual(vi.mocked(client.exportActivityPopulationCsv).mock.calls.map(([exported]) => [exported.snapshot.from, exported.snapshot.to]), [[requested.from, requested.to]]);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("a cold view with no client and no command binding is unavailable and holds nothing", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Scene() { state = useActivityWiring(undefined, { from: "2026-08-01", to: "2026-08-07" }, null, sources, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Scene)));
+    assert.deepEqual(state!.data, { state: "unavailable", reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text });
+    assert.equal(state!.exportReady, false);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 

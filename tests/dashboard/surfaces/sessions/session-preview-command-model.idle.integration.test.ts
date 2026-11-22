@@ -42,6 +42,30 @@ it("restarts the idle countdown when the read-back proves a refresh whose reply 
   } finally { await act(async () => root.unmount()); }
 });
 
+it("sends no idle refresh and shows no countdown for worker cards held from another day", async () => {
+  vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const requests: SessionPreviewRequest[] = [];
+  const port: SessionPreviewCommandPort = {
+    send: async request => { requests.push(request); return { id: request.id, state: "confirmed" }; },
+    check: async request => ({ id: request.id, state: "confirmed" }),
+  };
+  let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
+  const loaded = sessionsSample("active");
+  assert(loaded.state === "ready");
+  const held = { ...loaded, stale: true } as const;
+  function Harness() { commands = useSessionPreviewCommands(held, [], port); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Harness)));
+    assert.deepEqual(commands?.idleCountdowns, {});
+    await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS + 3000));
+    assert.equal(requests.length, 0);
+    commands?.control("sample-worker-4", "remove");
+    await act(async () => vi.advanceTimersByTimeAsync(250));
+    assert.equal(requests.length, 0, "a held card sends no command");
+  } finally { await act(async () => root.unmount()); }
+});
+
 function servedWorld(count: number, gateReads = 0) {
   const base = FIXTURE_DAY_WIRE;
   assert(base.workerAuthority.state === "present");

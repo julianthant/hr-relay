@@ -123,11 +123,9 @@ describe("Settings > General groups", () => {
   it("shows a loading skeleton with exactly the headings the loaded page has", async () => {
     const h = await setup();
     const loaded = headings(h.host);
-    vi.useFakeTimers();
     const host = document.createElement("div"); const root = createRoot(host);
     try {
       act(() => root.render(createElement(SettingsSectionSkeleton, { section: "general" })));
-      act(() => { vi.advanceTimersByTime(150); });
       assert.deepEqual(headings(host), loaded);
     } finally { act(() => root.unmount()); }
   });

@@ -38,8 +38,10 @@ export function AnalyticsToolbar({ range, today, onRange, workflows, workflow, o
 }
 
 /** Runs, Workflows, Time, and the assistant's Messages, Tools used and Actions, for the selected period, on served data. */
-export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }: {
+export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns, openRunsLocked = false }: {
   data: AnalyticsData; range: ActivityDateRange; workflow: string; onRange: (range: ActivityDateRange) => void; onOpenRuns?: (workflowId: string) => void;
+  /** Keeps Open runs in place but inert, while the report on screen waits to be replaced. */
+  openRunsLocked?: boolean;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const shown = data.workflows.filter(row => workflow === "all" || row.id === workflow);
@@ -82,7 +84,7 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
               <dl style={{ "--usage-cols": cols + 1 } as CSSProperties}>
                 {details.map(detail => <Fragment key={detail.label}><dt>{detail.label}</dt>{detail.values.map(([name, figure]) => <dd key={name}>{name} <span className="tabular-nums">{figure}</span></dd>)}{Array.from({ length: cols - detail.values.length }, (_, index) => <dd key={index} aria-hidden />)}</Fragment>)}
               </dl>
-              {onOpenRuns && <ButtonLink href="#" variant="ghost" size="sm" className="mt-3" iconAfter={<ArrowUpRight aria-hidden className={dsIcon.md} />} onClick={event => { event.preventDefault(); onOpenRuns(row.id); }}>Open runs</ButtonLink>}
+              {onOpenRuns && <ButtonLink href="#" variant="ghost" size="sm" className={openRunsLocked ? "mt-3 pointer-events-none opacity-45" : "mt-3"} aria-disabled={openRunsLocked || undefined} tabIndex={openRunsLocked ? -1 : undefined} iconAfter={<ArrowUpRight aria-hidden className={dsIcon.md} />} onClick={event => { event.preventDefault(); if (!openRunsLocked) onOpenRuns(row.id); }}>Open runs</ButtonLink>}
             </td></tr>}
           </Fragment>;
         })}</tbody>

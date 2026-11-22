@@ -13,6 +13,7 @@ import { Loader2, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { ShadcnButton } from "./shadcn-button.js";
 import { ShadcnBadge } from "./shadcn-badge.js";
+import { useSkeletonWait } from "./skeleton-wait-model.js";
 import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
 
 /** Core interactive primitives.
@@ -478,14 +479,16 @@ export function Spinner({ className, label = "Loading" }: { className?: string; 
   );
 }
 
-/** Match the incoming content’s dimensions so loading does not shift layout. */
+/** Match the incoming content’s dimensions so loading does not shift layout. Invisible until the read is slow. */
 export function Skeleton({ className }: { className?: string }) {
+  const waiting = useSkeletonWait();
   return (
     <span
       data-slot="skeleton"
       aria-hidden
       className={cn(
         "block animate-pulse motion-reduce:animate-none bg-[var(--ds-surface-3)]",
+        waiting && "invisible",
         dsRadius.sm,
         "h-3 w-full",
         className,

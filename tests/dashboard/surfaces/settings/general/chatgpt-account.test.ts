@@ -45,7 +45,7 @@ describe("General ChatGPT account", () => {
   it("renders loading, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
-    assert.doesNotMatch(loading, /aria-busy="true"/u);
+    assert.match(loading, /aria-label="Loading ChatGPT account" aria-busy="true"[^>]* class="invisible"/u, "the row keeps its place, unseen until the read is slow");
     assert.doesNotMatch(loading, />Connect</u);
     const failed = render({ state: "unavailable", message: "Account read failed" });
     assert.match(failed, /Couldn&#x27;t check ChatGPT\./u);

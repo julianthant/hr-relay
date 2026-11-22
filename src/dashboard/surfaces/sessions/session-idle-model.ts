@@ -11,7 +11,7 @@ export type IdleSessionCountdown = Readonly<{ remainingMs: number; waiting: bool
 export class IdleSessionSchedule {
   private deadlines = new Map<string, Deadline>();
   sync(data: SessionsViewState, now: number, operations: Readonly<Record<string, SessionPreviewOperation>> = {}) {
-    const eligible = data.state === 'ready' ? data.workers.filter(worker => worker.state === 'idle' && (worker.authority === undefined
+    const eligible = data.state === 'ready' && !data.stale ? data.workers.filter(worker => worker.state === 'idle' && (worker.authority === undefined
       ? worker.browsers.length > 0 && worker.browsers.every(browser => browser.state === 'ready')
       : worker.authority.browsers.length > 0 && worker.authority.browsers.every(browser => browser.observation?.state === "present" && browser.observation.health === "authenticated")
         && worker.authority.controls?.basis.state === 'present')) : [];

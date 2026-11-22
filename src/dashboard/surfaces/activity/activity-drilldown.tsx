@@ -1,4 +1,3 @@
-import { useDelayedLoading } from "../shared/loading/loading-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../shared/loading/loading.js";
 import { dsStatusOf } from "../shared/status/status-model.js";
 import { useEffect, useMemo, useRef } from 'react';
@@ -24,7 +23,6 @@ export function ActivityBreadcrumbs({ report, selection, onSelection, browse }: 
 
 export function ActivityDrilldown({ report, selection, onSelection, browse, pending = false, blocked = false }: { report: ActivitySummary; selection: ActivityBrowse; onSelection: ActivitySelectionHandler; browse?: ActivityDrilldownData; pending?: boolean; blocked?: boolean }) {
   const missing = pending && browse === undefined;
-  const show = useDelayedLoading(missing);
   const heading = useRef<HTMLHeadingElement>(null);
   const filterKey = JSON.stringify([selection.sort, selection.query]);
   const focusContext = `${selection.metric}:${selection.workflow ?? ''}:${selection.run ?? ''}`;
@@ -43,7 +41,7 @@ export function ActivityDrilldown({ report, selection, onSelection, browse, pend
   const showStatus = selection.metric === 'outstanding';
   return <section aria-label="Analytics runs" className="min-w-0">
     <h2 ref={heading} tabIndex={-1} className={`mb-1 mt-0 w-fit rounded-sm text-section ${dsFocus} ${result.state === 'loaded' && result.run ? 'sr-only' : ''}`}>{result.state === 'loaded' && result.run ? `${result.run.subject} logs` : title}</h2>
-    {missing ? show && <LoadingRegion label="Loading Analytics runs"><SettingsRowsSkeleton rows={3} presentation="result" /></LoadingRegion> : result.state === 'unavailable' || result.run && (result.run.steps === undefined || result.run.timeline === undefined) ? <p role="alert" className="text-body text-ui-secondary">{result.state === 'unavailable' ? result.reason : 'Run details are unavailable for this report.'}</p> : result.run && steps !== undefined && timeline !== undefined ?
+    {missing ? <LoadingRegion label="Loading Analytics runs"><SettingsRowsSkeleton rows={3} presentation="result" /></LoadingRegion> : result.state === 'unavailable' || result.run && (result.run.steps === undefined || result.run.timeline === undefined) ? <p role="alert" className="text-body text-ui-secondary">{result.state === 'unavailable' ? result.reason : 'Run details are unavailable for this report.'}</p> : result.run && steps !== undefined && timeline !== undefined ?
       <div className="mt-3 flex h-[calc(var(--ds-space-base)*72)] min-w-0 flex-col"><LogPanel key={result.run.id} title={result.run.subject}
         steps={steps} timeline={timeline} /></div>
       : <>

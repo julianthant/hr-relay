@@ -36,8 +36,8 @@ function Browsers({ worker, wide }: { worker: SessionWorker; wide: boolean }) {
   return <TooltipProvider delayDuration={200}><ul aria-label={`${worker.label} systems`} className={cn("m-0 grid min-h-[4.5rem] flex-1 list-none content-start gap-1.5 py-3 pl-0", wide ? "grid-cols-3" : "grid-cols-2")}>{worker.browsers.map(browser => <BrowserRow key={browser.id} browser={browser} />)}</ul></TooltipProvider>;
 }
 
-export function IdleWorkerRow({ worker, countdown, operation, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void }) {
-  const locked = operation?.state === "pending";
+export function IdleWorkerRow({ worker, countdown, operation, disabled = false, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; disabled?: boolean; onControl: (id: string, control: SessionControl) => void }) {
+  const locked = disabled || operation?.state === "pending";
   return <li aria-label={`${worker.label} · ${worker.workflow}`} className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3">
     <div className="flex min-h-8 items-center justify-between gap-3">
       <span className="min-w-0 truncate text-control" title={worker.workflow}>{worker.workflow}</span>
@@ -48,8 +48,8 @@ export function IdleWorkerRow({ worker, countdown, operation, onControl }: { wor
   </li>;
 }
 
-export function WorkerCard({ worker, countdown, operation, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; onControl: (id: string, control: SessionControl) => void }) {
-  const locked = operation?.state === "pending";
+export function WorkerCard({ worker, countdown, operation, disabled = false, onControl }: { worker: SessionWorker; countdown?: IdleSessionCountdown; operation?: SessionPreviewOperation; disabled?: boolean; onControl: (id: string, control: SessionControl) => void }) {
+  const locked = disabled || operation?.state === "pending";
   const settled = worker.state === "failed" || worker.state === "stopped";
   const note = cardNote(worker);
   const wide = worker.browsers.length > MAX_SYSTEMS;
