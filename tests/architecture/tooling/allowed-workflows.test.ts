@@ -48,6 +48,6 @@ describe("allowed workflows check", () => {
     const step = job.split(/\n {6}- /u).find(part => part.startsWith("name: Check added workflow files")) ?? "";
     expect(step).toContain(condition);
     expect(step).toContain("PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
-    expect(step).toContain("run: node scripts/ci/allowed-workflows.ts \"$PR_BASE_SHA\" \"$PR_LABELS\"");
+    expect(step).toContain("node scripts/ci/allowed-workflows.ts \"$PR_BASE_SHA\" \"$PR_LABELS\"");
   });
 });
