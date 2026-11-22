@@ -71,7 +71,10 @@ export function startupDeadlineClient(client: DashboardClient) {
       return new Promise((resolve, reject) => {
         const expire = () => reject(failure());
         expiries.add(expire);
-        result.then(value => { expiries.delete(expire); resolve(value); }, (error: unknown) => { expiries.delete(expire); reject(error); });
+        result.then(value => { expiries.delete(expire); resolve(value); }, (error: unknown) => {
+          expiries.delete(expire);
+          reject(error instanceof Error ? error : failure());
+        });
       });
     };
   };

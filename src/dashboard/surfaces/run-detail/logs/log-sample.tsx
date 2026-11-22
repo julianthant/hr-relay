@@ -70,7 +70,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     if (option.send.via !== "row-action") { resource.onDecision?.(id, option, answer); return; }
     const key = option.send.actionKey;
     const action = selection.row.actions.find(candidate => candidate.key === key);
-    if (action !== undefined) onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
+    if (action !== undefined) void onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description="Relay could not refresh these logs." /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, logsReadFailedTitle]);
   const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence={resource.retryable === false && resource.error !== undefined ? resource.error : "Couldn't load logs."}
@@ -86,7 +86,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
       {showPreview ? <div className="col-start-2 mt-4 min-w-0">{previewRegion}</div> : undefined}</>;
   }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, previewRegion]);
   const retryRun = useCallback(() => {
-    if (retry !== undefined) onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
+    if (retry !== undefined) void onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
   const linkedRuns = useMemo(() => linkedRunEntries(selection.row), [selection.row]);
   const recordCount = resource.snapshot?.detail.ocrRecordCount;

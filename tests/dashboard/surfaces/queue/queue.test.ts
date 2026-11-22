@@ -35,7 +35,7 @@ let root: Root_m0 | undefined;
 let host: HTMLDivElement | undefined;
 const _afterEachFixture0 = () => { act_m0(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; };
 
-it_m0('redraws only affected selections while preserving new handlers, clock and bulk state', async () => {
+it_m0('redraws only affected selections while preserving new handlers, and clock', async () => {
 try {
 
 
@@ -54,11 +54,11 @@ try {
   assert_m0.deepEqual(renders, [rows[0].runId]); renders.length = 0;
   state = { ...state, selectedRunId: rows[1].runId }; draw();
   assert_m0.deepEqual(new Set(renders), new Set([rows[0].runId, rows[1].runId])); renders.length = 0;
-  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[0].runId}"]`)?.getAttribute('aria-pressed'), 'false');
-  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[1].runId}"]`)?.getAttribute('aria-pressed'), 'true');
+  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[0].runId}"] [data-queue-open]`)?.getAttribute('aria-pressed'), 'false');
+  assert_m0.equal(host.querySelector(`[data-demo-row-id="${rows[1].runId}"] [data-queue-open]`)?.getAttribute('aria-pressed'), 'true');
   const selected: string[] = []; handlers = { onSelect(id) { selected.push(id); } }; draw();
   assert_m0.equal(renders.length, 3); renders.length = 0;
-  act_m0(() => host?.querySelector<HTMLElement>(`[data-demo-row-id="${rows[2].runId}"]`)?.click());
+  act_m0(() => host?.querySelector<HTMLElement>(`[data-demo-row-id="${rows[2].runId}"] [data-queue-open]`)?.click());
   assert_m0.deepEqual(selected, [rows[2].runId]);
   state = { ...state, nowIso: '2026-08-14T19:00:00.000Z' }; draw(); assert_m0.equal(renders.length, 3); renders.length = 0;
 
@@ -111,7 +111,7 @@ try {
   assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('data-demo-row-id'), first.runId);
   draw([newest]);
   assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('data-demo-row-id'), newest.runId);
-  assert_m0.equal(host.querySelector('[data-demo-row-id]')?.getAttribute('aria-pressed'), 'false');
+  assert_m0.equal(host.querySelector('[data-demo-row-id] [data-queue-open]')?.getAttribute('aria-pressed'), 'false');
   const cancel = host.querySelector<HTMLButtonElement>('button[aria-label="Cancel surviving attempt"]');
   assert_m0.ok(cancel);
   act_m0(() => cancel.click());

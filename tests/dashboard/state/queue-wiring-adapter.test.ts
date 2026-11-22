@@ -128,7 +128,7 @@ it("retires Archive while preserving admitted footer descriptors and exact comma
     assert.equal(wiring.actionsOf(served)[0], admitted);
     assert.deepEqual(row.actions, [archive, admitted]);
     assert.equal(wiring.queueHandlers.onAction, runQueueAction);
-    wiring.queueHandlers.onAction?.(admitted, { runId: served.runId, expectedVersion: served.rowRevision });
+    await wiring.queueHandlers.onAction?.(admitted, { runId: served.runId, expectedVersion: served.rowRevision });
     assert.deepEqual(sent, [[admitted, { runId: row.runId, expectedVersion: row.rowRevision }]]);
     const empty = await mounted.draw({ allRows: [{ ...base, actions: [] }] });
     assert.deepEqual(empty.actionsOf(empty.surfaces[0]), []);

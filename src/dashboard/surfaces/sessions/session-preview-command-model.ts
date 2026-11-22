@@ -274,7 +274,9 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     const answered = proves(sent);
     // A lost, malformed or foreign reply is read back from the served workers, never shown.
     const read = answered ? sent : await readBack(() => port.check(request), proves);
-    if (!proves(read)) await port.abandon?.(request).catch(() => undefined);
+    if (!proves(read)) await port.abandon?.(request).catch((cause: unknown) => {
+      if (attemptEpoch === epoch.current) window.reportError(cause);
+    });
     if (!live.current || operationsRef.current[request.target]?.request.id !== request.id) return;
     // A changed scope (another day or sign-in) leaves nothing pending behind.
     if (attemptEpoch !== epoch.current) { drop(request); return; }
@@ -297,11 +299,12 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     for (const operation of Object.values(operationsRef.current)) {
       if (operation.state !== 'pending') continue;
       const attemptEpoch = epoch.current;
-      void (port.afterSettled?.(operation.request) ?? Promise.resolve(undefined)).catch(() => undefined).then(next => {
+      const finish = (next?: SessionPreviewOperation) => {
         if (!live.current || operationsRef.current[operation.request.target]?.request.id !== operation.request.id) return;
         if (next?.state === 'confirmed' || next?.state === 'refused') { retain(next); return; }
         void settle(operation.request, undefined, attemptEpoch, latestSource.current);
-      });
+      };
+      void (port.afterSettled?.(operation.request) ?? Promise.resolve(undefined)).then(finish, () => finish());
     }
   }, [port, retain, settle]);
   const perform = useCallback(async (request: SessionPreviewRequest) => {
@@ -309,8 +312,10 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     retain({ request, state: 'pending', message: `${request.action === 'add' ? 'Adding workers' : `${label(request)} requested`}…` });
     const attemptEpoch = epoch.current;
     const snapshot = latestSource.current;
-    let result: SessionPreviewResult | undefined;
-    try { result = await port.send(request); } catch { result = undefined; }
+    let result: SessionPreviewResult;
+    try { result = await port.send(request); } catch {
+      result = { id: request.id, state: "uncertain", message: FAILED[request.action] };
+    }
     await settle(request, result, attemptEpoch, snapshot);
   }, [port, retain, settle]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);

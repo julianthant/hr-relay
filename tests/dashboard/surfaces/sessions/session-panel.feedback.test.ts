@@ -56,11 +56,11 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
     return;
   }
   assert.equal(panel.querySelector('[role="alert"]'), null);
-  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, "Workers added");
+  assert.equal(document.querySelector('[data-slot="toast-title"]')?.textContent, outcome === "uncertain" ? undefined : "Workers added");
   assert.equal(panel.querySelectorAll("article").length, 1, "the read-back confirms the addition once");
   assert.equal(trigger.disabled, false);
   await act(async () => render());
-  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 1, "rerender does not repeat confirmed feedback");
+  assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, outcome === "uncertain" ? 0 : 1, "rerender does not repeat confirmed feedback");
 });
 
 it("dismisses add progress when the panel unmounts and ignores its late settlement", async () => {

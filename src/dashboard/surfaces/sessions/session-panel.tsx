@@ -17,9 +17,15 @@ export function SessionPanel({ catalog, open, onOpenChange, harness, binding, ac
   if (day?.state === "loaded" && day.value !== heldDay) setHeldDay(day.value);
   const shownDay = day?.state === "loaded" ? day.value : day?.state === "loading" ? heldDay : undefined;
   const stale = day?.state !== "loaded";
-  const initial = useMemo((): SessionsViewState => harnessed ? harnessed.initial : binding !== undefined && shownDay !== undefined
-    ? stale ? { ...sessionsFromDay(shownDay, catalog, binding.nowIso), stale: true } : sessionsFromDay(shownDay, catalog, binding.nowIso) : binding === undefined ? sessionsUnavailable() : binding.dayState.day.state === "failed"
-      ? sessionsUnavailable(binding.dayState.day.error) : { state: "loading" }, [harnessed, binding, shownDay, stale, catalog]);
+  const initial = useMemo((): SessionsViewState => {
+    if (harnessed) return harnessed.initial;
+    if (binding === undefined) return sessionsUnavailable();
+    if (shownDay !== undefined) {
+      const sessions = sessionsFromDay(shownDay, catalog, binding.nowIso);
+      return stale && sessions.state === "ready" ? { ...sessions, stale: true } : sessions;
+    }
+    return day?.state === "failed" ? sessionsUnavailable(day.error) : { state: "loading" };
+  }, [harnessed, binding, shownDay, stale, catalog, day]);
   const current = useMemo(() => ({ binding, catalog }), [binding, catalog]);
   const currentRef = useRef(current); currentRef.current = current;
   const servedPort = useMemo(() => createSessionPreviewPort(() => currentRef.current), []);

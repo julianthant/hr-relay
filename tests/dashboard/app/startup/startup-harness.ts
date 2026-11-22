@@ -11,7 +11,7 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 // jsdom has no scrolling; the search list scrolls its active row into view.
-Element.prototype.scrollIntoView ??= () => {};
+if (!("scrollIntoView" in Element.prototype)) Element.prototype.scrollIntoView = () => {};
 
 /** The fixture BFF serves every dashboard read; the day arrives on the event stream like the real one. */
 export function dashboardServer() {

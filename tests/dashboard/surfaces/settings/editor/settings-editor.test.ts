@@ -166,6 +166,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     ports.execute = () => { throw new Error('synthetic-response-lost'); };
     await act(async () => controller().update('display.screenWidth', '1980'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
+    await act(async () => vi.advanceTimersByTimeAsync(2500));
     assert.equal(commands.length, 1); assert.equal(controller().dirtyCount, 0); assert.equal(controller().locked, false);
     assert.deepEqual(notices, []); assert.deepEqual(problems, [FAILURE]);
     assert.doesNotMatch(host.textContent ?? '', /Retry|Saving/);
@@ -212,11 +213,12 @@ describe('confirmed Settings feedback through the current editor', () => {
     };
     await act(async () => controller().update('actor.label', 'Intended operator'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
+    await act(async () => vi.advanceTimersByTimeAsync(2500));
     assert.equal(controller().dirtyCount, 0);
     assert.deepEqual(notices, []); assert.deepEqual(problems, [FAILURE]);
     // The failed save re-reads the backend; the page unlocks only once that fresh read is held.
     for (let flush = 0; flush < 20 && controller().locked; flush++) await act(async () => vi.advanceTimersByTimeAsync(0));
-    assert.equal(reads, 2, 'one readback for the save and one fresh read after the failure');
+    assert.equal(reads, 5, 'one acknowledgement read and four reads to settle the mismatch');
     assert.equal(controller().locked, false);
     const editor = controller().editor;
     assert.equal(editor.state, 'loaded');

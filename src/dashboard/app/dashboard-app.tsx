@@ -453,7 +453,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [preferences, client, authorityEpoch, commandScope]);
   const preferenceState = usePersonPreferences();
   useConfirmCloseDuringRun(preferenceState.value.confirmCloseDuringRun, (application?.targets.length ?? 0) > 0);
-  useEffect(() => { if (preferenceState.problem) toast({ ...settingsSaveFailure(), description: preferenceState.problem }); }, [preferenceState.problem, toast]);
+  useEffect(() => { if (preferenceState.problem) toast({ ...settingsSaveFailure(), title: preferenceState.problem }); }, [preferenceState.problem, toast]);
 
   const appAttempts = executor.retainedAttempts().filter(attempt => attempt.scope.actorId === commandScope.actorId
     && attempt.scope.authority === commandScope.authority && attempt.scope.client === client
@@ -781,7 +781,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       toast({ tone: "danger", title: "Command refused", description: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text });
       return;
     }
-    dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
+    void dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
   }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
@@ -1208,7 +1208,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           if (!currentCommandConfirmation(currentCommandScope.current, current, confirmed)) return;
           setPendingCommand(null);
           if (current?.onConfirmed !== undefined) { current.onConfirmed(); return; }
-          dispatchCommand(confirmed.action, confirmed.target, {
+          void dispatchCommand(confirmed.action, confirmed.target, {
             source: confirmed.source,
             commandId: confirmed.commandId,
             requestedAt: confirmed.requestedAt,
@@ -1223,7 +1223,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         onConfirm={(confirmed, name) => {
           if (!currentCommandConfirmation(currentCommandScope.current, pendingConfirmation.current.rename, confirmed)) return;
           setPendingRename(null);
-          dispatchCommand(confirmed.action, confirmed.target, {
+          void dispatchCommand(confirmed.action, confirmed.target, {
             renameAnswer: name,
             source: confirmed.source,
             commandId: confirmed.commandId,

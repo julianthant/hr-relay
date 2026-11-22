@@ -174,7 +174,7 @@ it("keeps initial loading, read refusal, empty success and client replacement se
     assert.equal(loaded.report.total, 0);
     const oldExport = state!.exportCsv;
     await act(async () => root.render(createElement(Scene, { current: failing })));
-    await assert.rejects(oldExport(), /no longer matches/u);
+    await assert.rejects(oldExport(), /The Analytics selection is out of date\. Select the period again\./u);
     assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
@@ -202,7 +202,7 @@ it("holds the settled report, with export refused, while another range loads, an
     assert.equal(total(), 3);
     assert.deepEqual(range(), { from: first.report.from, to: first.report.to });
     assert.equal(current().exportReady, false);
-    await assert.rejects(current().exportCsv(), /no longer matches/u);
+    await assert.rejects(current().exportCsv(), /The Analytics selection is out of date\. Select the period again\./u);
     assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
     await act(async () => resolvers[1](second));
     assert.equal(total(), 1);
@@ -251,7 +251,7 @@ it("refuses a served detail without exact day membership before reading any logs
   const client = clientOf(selected);
   client.dashboardDay = vi.fn(async () => ({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [] }));
   const run = selected.population[0];
-  await assert.rejects(projectActivityBrowse(client, selected, browseResult(selected, { metric: "completed", page: 0, run: run.runId }), { fixture: "served" }, new AbortController().signal), /no longer matches/u);
+  await assert.rejects(projectActivityBrowse(client, selected, browseResult(selected, { metric: "completed", page: 0, run: run.runId }), { fixture: "served" }, new AbortController().signal), /The Analytics selection is out of date\. Select the period again\./u);
   assert.equal(vi.mocked(client.runDetail).mock.calls.length, 0);
 });
 
@@ -266,10 +266,10 @@ it("renders an invalid browse as a named refusal and revokes export after unmoun
     await act(async () => root.render(createElement(Scene)));
     assert.deepEqual(state!.browse, { state: "unavailable", reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text });
     assert.equal(vi.mocked(client.readActivityPopulation).mock.calls.length, 0);
-    await assert.rejects(state!.exportCsv(), /no longer matches/u);
+    await assert.rejects(state!.exportCsv(), /The Analytics selection is out of date\. Select the period again\./u);
     const exported = state!.exportCsv;
     await act(async () => root.unmount());
-    await assert.rejects(exported(), /no longer matches/u);
+    await assert.rejects(exported(), /The Analytics selection is out of date\. Select the period again\./u);
     assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
   } finally { host.remove(); }
 });

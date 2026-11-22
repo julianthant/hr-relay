@@ -67,7 +67,7 @@ it("shows a rejected account port action in the card with its original failure c
   assert.ok(action); await act(async () => action.click());
   const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes(ERROR_CATALOG.CHATGPT_CONNECT_FAILED.text));
   assert.ok(banner); assert.ok(banner.closest(".ds-form-group"));
-  assert.match(banner.textContent ?? "", /Relay could not connect ChatGPT\. Try connecting again\./);
+  assert.match(banner.textContent ?? "", /ChatGPT did not connect\. Try again\./);
   assert.deepEqual([...banner.querySelectorAll("button")], []);
   assert.ok([...host.querySelectorAll("button")].some(button => button.textContent === "Connect"));
 });
@@ -149,7 +149,7 @@ describe("Disconnecting the ChatGPT account", () => {
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: live })));
     await act(async () => button("Disconnect")?.click());
-    assert.match(document.body.textContent ?? "", /Disconnect ChatGPT\?.*Relay forgets this account; the assistant and OCR stop until you connect again\./u);
+    assert.match(document.body.textContent ?? "", /Disconnect ChatGPT\?.*The assistant and OCR stop until you sign in again\./u);
     assert.equal(calls, 0);
     const confirm = [...document.body.querySelectorAll("button")].filter(node => node.textContent === "Disconnect").at(-1);
     assert.ok(confirm); await act(async () => confirm.click());

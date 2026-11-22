@@ -90,7 +90,7 @@ it("refuses a second UCSD training reminder appearance with its fixed stall code
     await assert.rejects(world.run(), error => {
       assert.ok(error instanceof BrowserLandingStallError);
       assert.equal(error.code, "TRAINING_REMINDER_REPEATED");
-      assert.match(error.message, /The UCSD training reminder appeared again after Continue Log In/);
+      assert.match(error.message, /The UCSD training reminder came back after Continue Log In/);
       return true;
     });
     assert.deepEqual(world.harness.actions().filter(action => action.startsWith("click:")), ["click:training-reminder"]);

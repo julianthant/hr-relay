@@ -154,7 +154,8 @@ export function FooterActions({
             const settled = onAction(a, target);
             if (a.kind === "command" && !a.confirm) {
               if (settled === undefined) setPressed(null);
-              else void Promise.resolve(settled).catch(() => undefined).finally(() => setPressed(now => now?.key === press.key && now.version === press.version ? null : now));
+              else void settled.catch((cause: unknown) => { window.reportError(cause); })
+                .finally(() => setPressed(now => now?.key === press.key && now.version === press.version ? null : now));
             }
             if (a.kind === "command" && (a.command === "pause" || a.command === "resume")) row?.focus({ preventScroll: true });
           }}
@@ -191,7 +192,7 @@ export function OutcomeActionButton({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          onAction(action, target);
+          void onAction(action, target);
         }}
         title={action.label}
         aria-label={action.label}
@@ -216,7 +217,7 @@ export function OutcomeActionButton({
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onAction(action, target);
+        void onAction(action, target);
       }}
       className={cn(intentPill(action.intent, "sm"), "font-sans", className)}
     >

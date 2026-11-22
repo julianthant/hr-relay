@@ -76,7 +76,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
     submitted.current++; setBusy(false);
     if (previous === "login" || previous === "signup") setForms(current => ({ ...current, [previous]: { ...current[previous], password: "" } }));
     setErrors({}); setLoginError(""); setDismissed(signInProblem);
-  }, [step]);
+  }, [step, signInProblem]);
   const requestCancellation = (next: "login" | "signup", trigger: Element | null = document.activeElement) => {
     cancelTrigger.current = trigger instanceof HTMLElement ? trigger : null;
     setCancelTarget({ next, ...(draft === undefined ? {} : { operationId: draft.operationId }), authority: cancelAuthority });

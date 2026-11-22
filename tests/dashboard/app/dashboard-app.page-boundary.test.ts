@@ -45,7 +45,7 @@ it("Retry re-renders the panel", async () => {
   let broken = true;
   function Flaky() { if (broken) throw new Error("Synthetic panel crash"); return createElement("p", null, "Panel ok"); }
   try {
-    await act(async () => root.render(createElement(PanelBoundary, { resetKey: "a", sentence: "x" }, createElement(Flaky))));
+    await act(async () => root.render(createElement(PanelBoundary, { resetKey: "a", sentence: "x", children: createElement(Flaky) })));
     broken = false;
     const retry = host.querySelector("button"); assert.ok(retry);
     await act(async () => retry.click());

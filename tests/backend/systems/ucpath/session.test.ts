@@ -574,7 +574,7 @@ describe("ucpath login recipe", () => {
       },
       settlesTo: [],
     });
-    await assert.rejects(ucpathLoginRecipe(context), /stale-request page; the SAML execution expired/);
+    await assert.rejects(ucpathLoginRecipe(context), /Sign-in expired partway\. Run it again\./);
     assert.equal(harness.actions().filter(action => action === `goto:${UCPATH_PORTAL}`).length, 2);
   });
 

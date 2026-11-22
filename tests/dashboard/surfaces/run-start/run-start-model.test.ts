@@ -113,7 +113,7 @@ describe("why this dialog cannot start a workflow", () => {
   it("names the modal's own precondition and does not speak for the server", () => {
     const reason = START_DOOR_ABSENCE["no-typed-input"];
     // No typed-input dialog does not forbid API input; JSON submissions still use the workflow schema.
-    assert.match(reason, /this dialog/u);
+    assert.match(reason, /This dialog/u);
     assert.doesNotMatch(reason, /refus|server|not allowed|cannot be started/u);
   });
 

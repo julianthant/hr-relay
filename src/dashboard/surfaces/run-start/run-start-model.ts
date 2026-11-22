@@ -266,7 +266,7 @@ export function inputRunDelimiterHint(parser: InputParserSpec): string {
 
 /** State this dialog’s missing input surface, not an unsupported claim that all start routes refuse. */
 export const START_DOOR_ABSENCE = Object.freeze({
-  "no-typed-input": "This workflow can't start from typed values.",
+  "no-typed-input": "This dialog can't start the workflow from typed values.",
 });
 export type StartDoorAbsenceCode = keyof typeof START_DOOR_ABSENCE;
 
@@ -530,7 +530,7 @@ export function toggleStepSelection(
 /** The footer's short reason while Continue is held; the sentence below stays as the refusal text. */
 export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
 /** The one sentence for a required reference spreadsheet that was never chosen. */
-export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
+export const MISSING_REFERENCE_TEXT = ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text;
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,

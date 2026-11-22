@@ -65,10 +65,9 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
         binding.executor.resolve(command.commandId, readback !== undefined && ordinaryReadbackConfirms(readback, patch), binding.scope);
         if (started !== generation) return false;
       }
-      const saved = readback !== undefined && (outcome.kind === "confirmed" || ordinaryReadbackConfirms(readback, patch));
       if (readback !== undefined) document = readback;
-      if (!saved) {
-        publish({ value: readback === undefined ? previous : preferencesFromSettings(readback), state: "ready", problem: settingsSaveFailure().description });
+      if (readback === undefined || (outcome.kind !== "confirmed" && !ordinaryReadbackConfirms(readback, patch))) {
+        publish({ value: readback === undefined ? previous : preferencesFromSettings(readback), state: "ready", problem: settingsSaveFailure().title });
         return false;
       }
       publish({ value: preferencesFromSettings(readback), state: "ready" });

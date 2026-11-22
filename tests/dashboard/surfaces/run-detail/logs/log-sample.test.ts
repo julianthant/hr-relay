@@ -124,7 +124,7 @@ describe('compact run headers', () => {
     const run: MockRun = { id: 'member-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const parent = queueParentFixture('00000000-0000-4000-8000-000000000a01', { title: 'Spring onboarding' });
     const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), parent });
-    const onOpenLinked = vi.fn();
+    const onOpenLinked = vi.fn<NonNullable<Parameters<typeof LogSample>[0]["onOpenLinked"]>>();
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Jordan' }, availableSections: ['logs'] }, logs: {}, unavailableEvidence: [] } });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);

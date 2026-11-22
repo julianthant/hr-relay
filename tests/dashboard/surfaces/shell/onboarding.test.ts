@@ -85,7 +85,7 @@ it("uses server authentication for Duo access and keeps a refused served login o
         field.dispatchEvent(new Event("input", { bubbles: true })); });
     }
     await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    assert.equal(host.querySelector<HTMLInputElement>('input[name="password"]')!.value, "disposable-fixture-password");
+    assert.equal(host.querySelector<HTMLInputElement>('input[name="password"]')!.value, "", "a refused login clears the submitted password");
     assert.ok(host.querySelector('[role="alert"]')?.textContent);
     assert.deepEqual(transitions, []);
     assert.doesNotMatch(host.textContent ?? "", /Demo:/);

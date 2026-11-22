@@ -280,7 +280,12 @@ describe("a refused re-check through the real client", () => {
     const real = createDashboardClient({ baseUrl: "http://relay.test", surface: () => "app", fetchImpl: async (url, init) => {
       const path = new URL(url).pathname;
       if (path === "/api/v1/profile/state") return Response.json(ACTIVE);
-      if (path === "/api/v1/debug/errors") { reports.push(JSON.parse(String(init?.body))); return Response.json({ state: "recorded" }); }
+      if (path === "/api/v1/debug/errors") {
+        assert.equal(typeof init?.body, "string");
+        if (typeof init?.body !== "string") throw new Error("Expected a JSON error report");
+        reports.push(JSON.parse(init.body));
+        return Response.json({ state: "recorded" });
+      }
       if (path === "/api/v1/preflight") return Response.json({ state: "unavailable", reason: "Not checked yet." });
       if (path === "/api/v1/settings/editable") return Response.json(FIXTURE_EDITABLE_SETTINGS);
       if (path === "/api/v1/bootstrap") return Response.json(FIXTURE_BOOTSTRAP);
@@ -289,8 +294,8 @@ describe("a refused re-check through the real client", () => {
       throw new Error(`unexpected request ${path}`);
     } });
     await real.readProfileSession();
-    const client = h.stubClient({ readPreflight: real.readPreflight, editableSettings: real.editableSettings,
-      preflightScopes: real.preflightScopes, rerunPreflight: real.rerunPreflight });
+    const client = h.stubClient({ readPreflight: real.readPreflight.bind(real), editableSettings: real.editableSettings.bind(real),
+      preflightScopes: real.preflightScopes?.bind(real), rerunPreflight: real.rerunPreflight.bind(real) });
     return { reports, client };
   }
   /** Opens the dialog and lets its evidence read settle, so the count after it is what reaching Checks adds. */

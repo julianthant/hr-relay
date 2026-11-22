@@ -2,6 +2,8 @@ import { FIXTURE_EDITABLE_SETTINGS } from "../../../mocks/helpers/fixture-settin
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
+import { ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
+import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement, type ComponentProps } from "react";
@@ -37,13 +39,21 @@ async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "
   let release!: () => void;
   const responseReady = mode === "held" ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
-    if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(stored ? authority.read() : DOCUMENT), { status: 200 });
+    if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(stored || mode === "lost" ? authority.read() : DOCUMENT), { status: 200 });
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body);
       applied.push(request);
+      if (mode === "lost") {
+        const command = ProtectedSettingsCommandRequestSchema.parse(request);
+        const result = authority.credentials.apply(ProtectedSettingsApplyInputSchema.parse({
+          ...command.payload, commandId: command.commandId, commandFingerprint: deriveSettingsCommandFingerprint(command),
+          expectedRevision: command.target.expectedRevision, updatedAt: command.requestedAt,
+        }));
+        assert.equal(result.state, "applied");
+        throw new Error("synthetic-uncertain");
+      }
       const result = authority.execute(request);
       stored = true;
-      if (mode === "lost") throw new Error("synthetic-uncertain");
       await responseReady;
       return new Response(JSON.stringify(result), { status: 200 });
     }
@@ -105,7 +115,8 @@ describe("editable Settings surface", () => {
   it("guards a credentials draft, then settles a lost write by reading it back", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exited = 0;
-    const transport = await settingsClient([], "lost");
+    const applied: unknown[] = [];
+    const transport = await settingsClient(applied, "lost");
     host = await mountSettingsPage(transport.client, "credentials", next => { guard = next; });
     const input = host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
     assert.ok(input);
@@ -120,9 +131,14 @@ describe("editable Settings surface", () => {
     await act(async () => overlayButton("Keep editing").click());
     assert.equal(input.value, "synthetic-local");
     // The lost reply is read back by itself, never resent; the stored write ends as saved with no message.
-    await vi.waitFor(async () => { await act(async () => undefined); assert.equal(input.value, "", "the served value replaces the draft"); }, { timeout: 8000, interval: 100 });
+    await vi.waitFor(async () => {
+      await act(async () => undefined);
+      assert.equal(transport.authority.credentials.read().revision, 2);
+      assert.equal(input.disabled, false);
+      assert.equal(input.value, "synthetic-local", "the served username replaces the draft");
+    }, { timeout: 8000, interval: 100 });
+    assert.equal(applied.length, 1, "read-back does not resend the write");
     assert.doesNotMatch(host.textContent ?? "", /unconfirmed|Retry exact attempt|outcome is uncertain/u);
-    assert.equal(transport.authority.credentials.read().revision, 2, "the lost response retains an actually stored protected write");
     await act(async () => guard?.(() => { exited += 1; }));
     assert.equal(exited, 1, "nothing is left to guard once the save settles");
     assert.doesNotMatch(host.textContent ?? "", /Provider keys|Add key/u);
@@ -328,7 +344,7 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   fail = true;
   await act(async () => current().reload());
   assert.equal(current().editor.state, "loaded");
-  assert.match(current().readProblem ?? "", /could not be read.*drafts are retained/u);
+  assert.match(current().readProblem ?? "", /Settings could not refresh\. Your drafts are kept\./u);
   assert.deepEqual(current().draft, retained);
   assert.equal(current().dirtyCount, 1);
 });

@@ -479,7 +479,7 @@ describe_m1("served sign-up Finish", () => {
     else {
       const settled = reads;
       await vi_m1.waitFor(() => { assert_m1.equal(reads >= settled + 1, true); }, { timeout: 3000 });
-      assert_m1.equal(document.querySelector(".form-error")?.textContent, operatorFailureSentence("PROFILE_SIGN_IN_REFUSED"));
+      assert_m1.equal(document.querySelector(".form-error")?.textContent, "Wrong email or password");
     }
   });
 
@@ -626,7 +626,7 @@ afterEach_m1(_afterEachFixture0);
 describe_m1("Settings exits share the page-owned draft guard", () => {
 afterEach_m1(_afterEachFixture0);
 
-  it_m1("retains the same draft across catalog subroutes, restores cancelled-dialog focus and exits to gear", async () => {
+  it_m1("retains the draft when a Settings section switch is declined and restores focus after cancelled exits", async () => {
     await mountDashboard("?settings=general");
     const { input, value } = await dirtyBrowserSettings();
     const frame = frameOf("Settings");
@@ -651,14 +651,17 @@ afterEach_m1(_afterEachFixture0);
     };
     const editorLabel = sectionLink("General").textContent?.trim();
     assert_m1.equal(editorLabel, "General");
-    await act_m1(async () => sectionLink("Keyboard").click());
-    assert_m1.match(window.location.search, /settings=keyboard/u);
+    const keyboard = sectionLink("Keyboard");
+    await act_m1(async () => { keyboard.focus(); keyboard.click(); });
+    await press(buttonNamed("Keep editing"));
+    assert_m1.match(window.location.search, /settings=general/u);
+    assert_m1.equal(document.activeElement, keyboard);
     assert_m1.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
     const dashboard = buttonNamed("Close settings");
     await press(dashboard);
     await press(buttonNamed("Keep editing"));
     assert_m1.equal(document.activeElement === dashboard, true, "cancelling the shell exit restores focus to its persistent navigation control");
-    assert_m1.match(window.location.search, /settings=keyboard/u);
+    assert_m1.match(window.location.search, /settings=general/u);
     await press(dashboard);
     await act_m1(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -666,7 +669,6 @@ afterEach_m1(_afterEachFixture0);
     });
     assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
     assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
-    await act_m1(async () => sectionLink("General").click());
     const restored = document.querySelector('[data-settings-path="browser.headless"] button[aria-label="Browser window"]');
     assert_m1.ok(restored instanceof HTMLButtonElement);
     assert_m1.equal(restored.dataset.value, value);
@@ -934,8 +936,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const h = await mount({ accountless: true, search: "settings=credentials", settingsRead: authority.read, command: body => {
       commands.push(body);
       const command = ProtectedSettingsCommandRequestSchema.parse(body);
-      if (commands.length > 1) return Promise.resolve(Response.json(authority.execute(command)));
-      if (landed) {
+      if (landed || commands.length > 1) {
         const applied = authority.credentials.apply(ProtectedSettingsApplyInputSchema.parse({
           ...command.payload,
           commandId: command.commandId,
@@ -945,6 +946,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
         }));
         assert_m2.equal(applied.state, "applied");
       }
+      if (commands.length > 1) return Promise.resolve(Response.json(authority.execute(command)));
       return Promise.reject(new Error("private-transport-sentinel"));
     } });
     const type = async (value: string) => {

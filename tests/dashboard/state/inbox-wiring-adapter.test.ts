@@ -187,7 +187,7 @@ it("checks the target of a published notice that has no source policy and says s
   assert.equal(notificationPolicy(bare), undefined); h.setRows([bare]); h.refuseTarget();
   await act(async () => { h.listeners[0](publication(bare)); await new Promise(resolve => setTimeout(resolve, 0)); });
   assert(h.requests.some(path => path.endsWith("/target")));
-  assert.match(h.value.notice, /no longer available/);
+  assert.match(h.value.notice, /This notification’s target is gone\. Refresh the inbox\./u);
 });
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();

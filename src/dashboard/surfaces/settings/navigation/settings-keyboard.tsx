@@ -18,12 +18,12 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
   const actions = SHORTCUT_ACTIONS.filter(action => `${action.title} ${preferences.bindings[action.id].join(' ')}`.toLowerCase().includes(query.toLowerCase()));
   const edit = (id: ShortcutAction, index: number) => { setEditing({ id, index }); setCaptured(preferences.bindings[id][index] ?? ''); setError(''); };
   /** Saves one change; a refusal becomes one plain sentence, never the validator's raw text. A failed save is the shared toast. */
-  const commit = async (value: ShortcutPreferences): Promise<boolean | "recovered"> => {
+  const commit = async (value: ShortcutPreferences): Promise<boolean | "recovered" | "refused"> => {
     setError('');
     try { return await saveShortcutPreferences(value); } catch (caught) {
       if (!(caught instanceof ShortcutRefusedError)) throw caught;
       setError(caught.sentence);
-      return false;
+      return "refused";
     }
   };
   const save = async () => {
@@ -31,7 +31,7 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
     const next = [...preferences.bindings[editing.id]];
     next[editing.index] = captured;
     const saved = await commit({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } });
-    if (saved === false) return;
+    if (saved === false || saved === "refused") return;
     setEditing(null);
     if (saved === true) onSaved?.({ title: `Saved ${SHORTCUT_ACTIONS.find(action => action.id === editing.id)!.title} shortcut` });
   };

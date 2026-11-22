@@ -6,6 +6,7 @@ import { afterEach, describe, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { emergencyContactModule, i9CheckStartModule, onboardingModule } from "../../../support/helpers/registered-workflows.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
+import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { useRunLaunch } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
@@ -24,7 +25,7 @@ afterEach(async () => {
   await h.cleanup();
 });
 
-const workflowOf = (descriptor: typeof onboardingModule.descriptor): RunStartWorkflow => ({ ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label,
+const workflowOf = (descriptor: AnyWorkflowDescriptor): RunStartWorkflow => ({ ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label,
   version: descriptor.version, steps: projectStartSteps(descriptor), requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
   workbookReference: descriptor.workbookReference, referenceSources: [],
   ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),

@@ -5,9 +5,10 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, it } from "vitest";
+import { restoreDashboardTakeoverFocus } from "../../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { DASHBOARD_MAIN_REGION_ID, SETTINGS_GEAR_ID, SETTINGS_KEYBOARD_SECTION_ID, buildSettingsNav, resolveSettingsSection, settingsCloseFocusTargetId } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
+import { DASHBOARD_MAIN_REGION_ID, SETTINGS_GEAR_ID, SETTINGS_KEYBOARD_SECTION_ID, buildSettingsNav, resolveSettingsSection } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../../src/models/dashboard/settings.js";
 import { fixtureSettingsDocument } from "../../../mocks/helpers/fixture-settings.js";
@@ -120,7 +121,7 @@ describe("canonical Settings navigation", () => {
   it("reports a credential read failure instead of leaving its loading spinner", async () => {
     const page = await mountFailedRead("credentials");
     assert.ok(page.textContent?.includes("Credentials unavailable"), page.textContent ?? "");
-    assert.ok(page.textContent?.includes("Settings could not load. Reload the page."), page.textContent ?? "");
+    assert.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Couldn't load settings."), page.textContent ?? "");
     assert.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
@@ -151,12 +152,18 @@ describe("canonical Settings navigation", () => {
 });
 
 describe("focus on close", () => {
-  it("prefers the gear that opened the page", () => {
-    assert.equal(settingsCloseFocusTargetId(true), SETTINGS_GEAR_ID);
-  });
-
-  it("falls back to the main region the takeover was covering, when the gear is gone", () => {
-    assert.equal(settingsCloseFocusTargetId(false), DASHBOARD_MAIN_REGION_ID);
+  it.each([true, false])("restores focus after closing Settings with the gear mounted: %s", gearMounted => {
+    const container = document.createElement("div");
+    host = container;
+    document.body.append(container);
+    const main = container.appendChild(document.createElement("main"));
+    main.id = DASHBOARD_MAIN_REGION_ID;
+    main.tabIndex = -1;
+    const gear = document.createElement("button");
+    gear.id = SETTINGS_GEAR_ID;
+    if (gearMounted) container.append(gear);
+    restoreDashboardTakeoverFocus(document, SETTINGS_GEAR_ID, DASHBOARD_MAIN_REGION_ID);
+    assert.equal(document.activeElement, gearMounted ? gear : main);
   });
 
   it("the two targets are distinct ids", () => {

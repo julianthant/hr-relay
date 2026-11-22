@@ -38,7 +38,7 @@ describe("a placeholder waits before it shows", () => {
 
   it("keeps a loading region busy for startup while it is invisible, then shows it", () => {
     vi.useFakeTimers();
-    const view = mount(createElement(LoadingRegion, { label: "Loading spreadsheets", className: "min-h-10" }, "rows"));
+    const view = mount(createElement(LoadingRegion, { label: "Loading spreadsheets", className: "min-h-10", children: "rows" }));
     try {
       const region = view.host.querySelector<HTMLElement>('[role="status"][aria-busy="true"]');
       assert.ok(region, "startup still counts the waiting region as loading");

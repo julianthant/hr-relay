@@ -219,7 +219,7 @@ describe("served Logs wiring", () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : served);
     const sent: string[] = [];
     await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
-      children: createElement(LogSample, { selection: withActions, onAction: action => sent.push(action.key) }) }) }));
+      children: createElement(LogSample, { selection: withActions, onAction: action => { sent.push(action.key); } }) }) }));
     const button = (label: string) => { const found = [...document.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === label); assert.ok(found, label); return found; };
     await act(async () => button("Resume").click());
     await act(async () => button("Cancel run").click());
@@ -575,7 +575,7 @@ describe("served Logs wiring", () => {
     assert.equal(current?.command, restored); assert.equal(current?.replay, replay); assert.equal(sent.length, 1);
     if (outcome === "uncertain") {
       assert.ok(replay); await act(async () => replay()); assert.equal(current?.command?.state, "pending"); assert.notEqual(current?.command, restored); assert.equal(current?.replay, undefined);
-      assert.deepEqual(sent[1], sent[0]); await act(async () => release?.()); assert.equal(current?.command?.state, "refused"); assert.match(document.body.textContent ?? "", /The command was refused/);
+      assert.deepEqual(sent[1], sent[0]); await act(async () => release?.()); assert.equal(current?.command?.state, "refused"); assert.match(document.body.textContent ?? "", /That was refused/);
     } else assert.equal(replay, undefined);
     const replacement = { ...binding, scope: { ...scope, actorId: "other-operator" } };
     await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: replacement })));
@@ -635,7 +635,7 @@ describe("served Logs wiring", () => {
       assert.equal(approve().disabled, false); await act(async () => approve().click());
     }
     await choose(0);
-    assert.equal(sent.length, 1); assert.match(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, false);
+    assert.equal(sent.length, 1); assert.match(document.body.textContent ?? "", /That was refused/); assert.equal(approve().disabled, false);
     await act(async () => {}); assert.equal(sent.length, 1);
     await choose(1);
     assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
@@ -724,20 +724,20 @@ describe("served Logs wiring", () => {
     await act(async () => root?.render(panel(next, nextBinding)));
     assert.equal(sent.length, 1); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
     assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
-    if (authority !== "current") { assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); return; }
-    assert.match(document.body.textContent ?? "", /The command was refused/);
+    if (authority !== "current") { assert.doesNotMatch(document.body.textContent ?? "", /That was refused/); return; }
+    assert.match(document.body.textContent ?? "", /That was refused/);
     await act(async () => document.querySelectorAll<HTMLButtonElement>('[role="radio"]')[0]?.click()); assert.equal(approve().disabled, false);
     await act(async () => root?.render(panel(next, binding))); assert.equal(sent.length, 1);
     await choose(1); assert.equal(sent.length, 2); assert.notEqual(sent[1].commandId, sent[0].commandId);
     for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.payload,
       { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[index].ref }); }
-    assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, true);
+    assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /That was refused/); assert.equal(approve().disabled, true);
     await act(async () => root?.render(panel(selection(OTHER)))); await act(async () => root?.render(panel(next)));
-    assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/);
+    assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /That was refused/);
     currentDetail = RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: GATE_NODE, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } });
     await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
     await act(async () => root?.render(panel(next, binding)));
-    assert.doesNotMatch(document.body.textContent ?? "", /The command was refused|Pending/); assert.equal(sent.length, 2);
+    assert.doesNotMatch(document.body.textContent ?? "", /That was refused|Pending/); assert.equal(sent.length, 2);
   });
   it("mounts the served LogSample producer without fictional decision events", async () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : detail());
@@ -756,7 +756,9 @@ describe("served Logs wiring", () => {
           ? Response.json({ state: "error", code: "LOGS_IDENTITY_REFUSED", message: "private native mismatch", retryable: false }, { status: 409 })
           : Response.json(detail()) });
     await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
-    assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
+    const reason = source === "client" ? /These logs lack the details that tie them to this run\./u : /These logs don't match this run\./u;
+    assert.match(document.body.textContent ?? "", reason);
+    assert.equal([...document.querySelectorAll("button")].some(button => button.textContent === "Retry"), false);
     assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
   });
   it("does not turn a failed served read into a mock or a verified empty result", async () => {
@@ -867,6 +869,6 @@ it("preserves a catalogued unmapped-display refusal from the actual HTTP client 
   await mount(createElement(Probe));
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
   assert.equal(current?.state,'failed');
-  assert.match(document.body.textContent??'',/A retained value has no declared display text/u);
+  assert.match(document.body.textContent??'',/A saved value has no display text/u);
   assert.doesNotMatch(document.body.textContent??'',/Dashboard data could not be read|Untrusted transport text/u);
 });

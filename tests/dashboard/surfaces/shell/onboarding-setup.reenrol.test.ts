@@ -40,7 +40,7 @@ it("switches through the served port when both methods are proven and shows a re
     assert.equal(f.button("Use new devices")?.disabled, false);
     await act(async () => { f.button("Use new devices")?.click(); });
     assert.deepEqual(calls, ["complete"]);
-    assert.match(f.host.querySelector("[role=alert]")?.textContent ?? "", /Relay can switch to the new Duo setup only while no run/u);
+    assert.match(f.host.querySelector("[role=alert]")?.textContent ?? "", /The new Duo setup can only switch in while idle\. Try later\./u);
     assert.ok(f.button("Cancel setup"));
   } finally { await f.close(); }
 });

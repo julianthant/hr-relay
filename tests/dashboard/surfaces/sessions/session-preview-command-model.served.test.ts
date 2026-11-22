@@ -415,7 +415,7 @@ it("hydrates mounted Remove after remount, retains it through outage and a faile
     await act(async () => render());
     assert.match(document.body.textContent ?? "", /Remove requested/); assert.doesNotMatch(document.body.textContent ?? "", /Check outcome/); assert.equal(h.sent.length, 1);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerAuthority: { state: "unavailable", reason: "missing member", members: pendingDay.workerAuthority.members }, workerCards: [] }));
-    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
+    await act(async () => render()); assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0); assert.match(document.body.textContent ?? "", /Sessions are unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /missing member/);
     h.setDay(DashboardDayWireSchema.parse({ ...pendingDay, workerCards: [{ ...pendingDay.workerCards[0], state: "failed", endedAt: now, stopReason: "crashed" }] }));
     await act(async () => render());
     const retry = document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert(retry?.disabled, "same Remove still locks newest failed card");
@@ -472,7 +472,7 @@ it("maps unavailable served authority/catalog to fixed text while retaining diag
   const base = h.binding();
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, open: true, onOpenChange() {}, binding: { ...base, dayState: { ...base.dayState, day: { state: "failed", error } } } })));
-    assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic/);
+    assert.match(document.body.textContent ?? "", /Sessions are unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic/);
     assert.equal(error.message, "private transport diagnostic");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
@@ -486,7 +486,7 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 1);
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll(WORKER_ENTRY).length, 0);
-    assert.match(document.body.textContent ?? "", /Session information is unavailable/);
+    assert.match(document.body.textContent ?? "", /Sessions are unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);
     assert.equal(h.sent.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
@@ -536,7 +536,7 @@ it("refreshes only observed physical sessions through required presentation slot
   assert.equal(refusal.state, "refused"); assert.equal(h.sent.length, 0);
   const acknowledged = h.day();
   const acknowledgedView = sessionsFromDay(acknowledged, catalog, now);
-  schedule.sync(acknowledgedView, IDLE_REFRESH_MS, { [card.workerId]: { request: partial, state: "uncertain", message: "awaiting readback" } });
+  schedule.sync(acknowledgedView, IDLE_REFRESH_MS, { [card.workerId]: { request: partial, state: "pending", message: "awaiting readback" } });
   schedule.confirm(partial, IDLE_REFRESH_MS, acknowledgedView);
   assert.deepEqual(schedule.view(IDLE_REFRESH_MS)[card.workerId], { remainingMs: IDLE_REFRESH_MS, waiting: false }, "unopened UCPath does not block exact physical CRM rearm");
   h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], browsers: [observed, { ...observed, sessionId: uuidOf(9102), system: "ucpath" }] }] }));
