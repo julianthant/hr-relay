@@ -26,7 +26,8 @@ export class DashboardPage {
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
     page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/")) this.reads.add(request); });
-    for (const done of ["requestfinished", "requestfailed"] as const) page.on(done, request => { this.reads.delete(request); });
+    page.on("requestfinished", request => { this.reads.delete(request); });
+    page.on("requestfailed", request => { this.reads.delete(request); });
   }
 
   private readonly reads = new Set<Request>();
