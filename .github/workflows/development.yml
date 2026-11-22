@@ -89,12 +89,22 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const sha = context.payload.pull_request.head.sha;
+            const pr = context.payload.pull_request;
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+            const branch = pr.head.ref;
+            const sha = pr.head.sha;
+            // Task pull requests prove through their push run; other edited pull requests through their last test run.
+            const event = branch.startsWith('task/') ? 'push' : 'pull_request';
+            if (pr.head.repo?.full_name !== repo) {
+              core.setFailed(`Pull request head ${pr.head.repo?.full_name} is not ${repo}.`);
+              return;
+            }
             const started = Date.now();
             for (;;) {
               const runs = (await github.paginate(github.rest.actions.listWorkflowRuns, {
-                ...context.repo, workflow_id: 'development.yml', head_sha: sha, per_page: 100,
-              })).filter(run => run.id !== context.runId)
+                ...context.repo, workflow_id: 'development.yml', event, branch, head_sha: sha, per_page: 100,
+              })).filter(run => run.id !== context.runId && run.event === event && run.head_branch === branch
+                && run.head_sha === sha && run.head_repository?.full_name === repo)
                 .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id);
               let waiting;
               for (const run of runs) {
@@ -115,7 +125,7 @@ jobs:
               }
               // A missing run fails after a minute; a running proof gets the length of a task run.
               if (Date.now() - started > (waiting ? 20 : 1) * 60_000) {
-                core.setFailed(waiting ? `Timed out waiting for ${waiting.html_url}` : `No Development run proves ${sha}; push the branch to start one.`);
+                core.setFailed(waiting ? `Timed out waiting for ${waiting.html_url}` : `No Development ${event} run on ${branch} proves ${sha}; push the branch to start one.`);
                 return;
               }
               if (waiting) core.info(`Waiting for ${waiting.html_url}`);

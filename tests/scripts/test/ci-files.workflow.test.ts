@@ -34,29 +34,37 @@ function job(workflow: string, name: string): string {
 const jobNames = (workflow: string) => [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([\w-]+):$/gmu)].map(match => match[1]);
 
 type GateJob = { name: string; status: string; conclusion: string | null };
-type GateRun = { id: number; status: string; created_at: string; html_url: string; jobs: GateJob[] };
+type GateRun = { id: number; status: string; created_at: string; html_url: string; event: string; head_branch: string;
+  head_sha: string; head_repository: { full_name: string } | null; jobs: GateJob[] };
+const headSha = "a".repeat(40);
+const taskBranch = "task/ci/demo";
 
-// Runs the development gate's lookup with a fake clock; `poll` returns the runs GitHub reports on each poll.
-async function proofLookup(poll: (count: number) => GateRun[]) {
+// Runs the development gate's lookup with a fake clock; `poll` returns every run GitHub could report on each poll.
+async function proofLookup(poll: (count: number) => GateRun[], head: { ref?: string; repo?: string } = {}) {
   const source = job(load("development"), "development").match(/ {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
   assert.ok(source);
+  const branch = head.ref ?? taskBranch;
   let clock = 0;
   let polls = 0;
   let current: GateRun[] = [];
   const failures: string[] = [];
   const infos: string[] = [];
+  const inspected: unknown[] = [];
   await runInNewContext(`(async () => {${source.replace(/^ {12}/gmu, "")}\n})()`, {
-    context: { runId: 1, repo: { owner: "owner", repo: "relay" }, payload: { pull_request: { head: { sha: "a".repeat(40) } } } },
+    context: { runId: 1, repo: { owner: "owner", repo: "relay" }, payload: { pull_request: {
+      head: { sha: headSha, ref: branch, repo: { full_name: head.repo ?? "owner/relay" } } } } },
     github: {
       paginate: async (operation: (args: Record<string, unknown>) => unknown, args: Record<string, unknown>) => operation(args),
       rest: { actions: {
-        listWorkflowRuns: ({ workflow_id, head_sha }: Record<string, unknown>) => {
-          expect({ workflow_id, head_sha }).toEqual({ workflow_id: "development.yml", head_sha: "a".repeat(40) });
+        listWorkflowRuns: ({ workflow_id, event, branch: queried, head_sha }: Record<string, unknown>) => {
+          expect({ workflow_id, event, branch: queried, head_sha }).toEqual({ workflow_id: "development.yml",
+            event: branch.startsWith("task/") ? "push" : "pull_request", branch, head_sha: headSha });
           current = poll(polls++);
           return current;
         },
         listJobsForWorkflowRun: ({ run_id, filter }: Record<string, unknown>) => {
           expect(filter).toBe("latest");
+          inspected.push(run_id);
           return current.find(run => run.id === run_id)?.jobs ?? [];
         },
       } },
@@ -66,13 +74,17 @@ async function proofLookup(poll: (count: number) => GateRun[]) {
     setTimeout: (resolve: () => void, ms: number) => { clock += ms; resolve(); },
     Promise,
   });
-  return { failures, infos, minutes: clock / 60_000, polls };
+  return { failures, infos, inspected, minutes: clock / 60_000, polls };
 }
 
-const proofRun = (id: number, proof: Partial<GateJob> | undefined, status = "completed", created_at = `2026-11-22T00:0${id}:00Z`): GateRun => ({
-  id, status, created_at, html_url: `https://example.test/runs/${id}`,
+// An eligible push run of the task branch at the head SHA unless `extra` changes its metadata.
+const proofRun = (id: number, proof: Partial<GateJob> | undefined, status = "completed", extra: Partial<GateRun> = {}): GateRun => ({
+  id, status, created_at: `2026-11-22T00:0${id}:00Z`, html_url: `https://example.test/runs/${id}`,
+  event: "push", head_branch: taskBranch, head_sha: headSha, head_repository: { full_name: "owner/relay" },
   jobs: proof ? [{ name: "proof", status: "completed", conclusion: "success", ...proof }] : [{ name: "development", status, conclusion: null }],
+  ...extra,
 });
+const missing = `No Development push run on ${taskBranch} proves ${headSha}; push the branch to start one.`;
 
 describe("development fast check", () => {
   const development = load("development");
@@ -201,33 +213,64 @@ describe("development fast check", () => {
     expect(job(development, "development")).toContain("timeout-minutes: 25");
   });
 
-  it("passes on the newest completed proof for the head commit, skipping gate-only runs", async () => {
-    const runs = [proofRun(1, undefined, "in_progress", "2026-11-22T00:09:00Z"), proofRun(3, { conclusion: "skipped" }),
-      proofRun(2, {}), proofRun(4, undefined)];
+  it("passes on the eligible push proof, ignoring pending and finished runs with other metadata", async () => {
+    const runs = [
+      proofRun(9, undefined, "in_progress", { event: "pull_request" }),
+      proofRun(8, {}, "completed", { event: "pull_request" }),
+      proofRun(7, {}, "completed", { head_branch: "task/ci/other" }),
+      proofRun(6, {}, "completed", { head_sha: "b".repeat(40) }),
+      proofRun(5, {}, "completed", { head_repository: { full_name: "fork/relay" } }),
+      proofRun(4, {}, "completed", { head_repository: null }),
+      proofRun(1, { status: "in_progress", conclusion: null }, "in_progress"),
+      proofRun(3, undefined),
+      proofRun(2, {}),
+    ];
     const result = await proofLookup(() => runs);
     expect(result.failures).toEqual([]);
-    expect(result.infos).toEqual([`Proof passed for ${"a".repeat(40)} in https://example.test/runs/2`]);
+    expect(result.infos).toEqual([`Proof passed for ${headSha} in https://example.test/runs/2`]);
+    expect(result.inspected).toEqual([3, 2]);
     expect(result.polls).toBe(1);
   });
 
-  it.each(["failure", "cancelled"])("fails when the newest proof is %s, even if an older one passed", async conclusion => {
-    const result = await proofLookup(() => [proofRun(3, { conclusion }), proofRun(2, {})]);
-    expect(result.failures).toEqual([`Proof ${conclusion} for ${"a".repeat(40)} in https://example.test/runs/3`]);
+  it("fails closed when only ineligible runs prove the head commit", async () => {
+    for (const extra of [{ event: "pull_request" }, { head_branch: "task/ci/other" }, { head_sha: "b".repeat(40) },
+      { head_repository: { full_name: "fork/relay" } }]) {
+      const result = await proofLookup(() => [proofRun(2, {}, "completed", extra), proofRun(3, undefined, "in_progress", { event: "pull_request" })]);
+      expect(result.failures).toEqual([missing]);
+      expect(result.inspected).toEqual([]);
+      expect(result.minutes).toBeLessThan(2);
+    }
   });
 
-  it("waits for a running push run and passes when its proof succeeds", async () => {
-    const result = await proofLookup(count => count < 3
-      ? [proofRun(2, undefined, "in_progress")]
-      : [proofRun(2, {})]);
+  it("refuses a pull request whose head is another repository without listing runs", async () => {
+    const result = await proofLookup(() => { throw new Error("must not list runs"); }, { repo: "fork/relay" });
+    expect(result.failures).toEqual(["Pull request head fork/relay is not owner/relay."]);
+  });
+
+  it("uses the pull request's own test run on edited non-task pull requests and ignores push runs", async () => {
+    const pull = { event: "pull_request", head_branch: "fix/x" };
+    const result = await proofLookup(() => [proofRun(4, {}, "completed", { head_branch: "fix/x" }),
+      proofRun(3, { conclusion: "skipped" }, "completed", pull), proofRun(2, { conclusion: "failure" }, "completed", pull)], { ref: "fix/x" });
+    expect(result.failures).toEqual([`Proof failure for ${headSha} in https://example.test/runs/2`]);
+    expect(result.inspected).toEqual([3, 2]);
+  });
+
+  it.each(["failure", "cancelled"])("fails when the newest eligible proof is %s, even if an older one passed", async conclusion => {
+    const result = await proofLookup(() => [proofRun(3, { conclusion }), proofRun(2, {})]);
+    expect(result.failures).toEqual([`Proof ${conclusion} for ${headSha} in https://example.test/runs/3`]);
+  });
+
+  it("waits for a running eligible push run and passes when its proof succeeds", async () => {
+    const result = await proofLookup(count => count < 3 ? [proofRun(2, undefined, "in_progress")] : [proofRun(2, {})]);
     expect(result.failures).toEqual([]);
     expect(result.polls).toBe(4);
     expect(result.infos).toContain("Waiting for https://example.test/runs/2");
   });
 
-  it("fails within about a minute when no run proves the head commit", async () => {
+  it("fails within about a minute when no eligible run proves the head commit", async () => {
     for (const runs of [[], [proofRun(2, undefined)], [proofRun(2, { conclusion: "skipped" })]]) {
       const result = await proofLookup(() => runs);
-      expect(result.failures).toEqual([`No Development run proves ${"a".repeat(40)}; push the branch to start one.`]);
+      expect(result.failures).toEqual([missing]);
       expect(result.minutes).toBeGreaterThanOrEqual(1);
       expect(result.minutes).toBeLessThan(2);
     }
