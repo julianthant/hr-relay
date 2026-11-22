@@ -286,7 +286,7 @@ dispatches bypass the draft limit.
 | Local or perf test files only | Architecture; local remains machine-only. Ready Staging/Production PRs also run perf and smoke. |
 
 Select the union for mixed changes. Development selects unit and architecture only; drafts select
-unit only. Staging PRs from `development` execute the portable plan plus perf and smoke.
+unit only. Staging PRs from `cut/<milestone>` execute the portable plan plus perf and smoke.
 Valid `staging` or `hotfix/*` → `main` releases also select native work. Other heads into main omit
 native work and fail the required source-head check. Operator manual releases select all routine
 native suites. Machine-readable docs count as configuration. Release authorization belongs to the
@@ -429,14 +429,19 @@ executable enforcement.
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `development`, `dependabot/*`,
-`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `feature/*`, `fix/*`, `chore/*` or
-`dependabot/*`; only `development` targets `staging`. A pull request title must be `<Area>: <text>`; a conventional title such as
+`feature/<kebab>`, `cut/<milestone>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `feature/*`, `fix/*`, `chore/*`,
+`dependabot/*`, or `task/<kebab>/<kebab>`. Only `cut/<milestone>` targets `staging`. A pull request title must be `<Area>: <text>`. A conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
 `.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first job; Development combines it with planning in
 `checks.yml`, and every other started job waits on it. `pull_request` includes `edited`, so a
 title change at the same head runs the check again. `--all` lists off-pattern local branches and
 linked worktrees without deleting them.
+
+`allowed-workflows` (`tests/architecture/tooling/allowed-workflows.test.ts`) exercises the check in
+the shared static CI job. Pull requests may add workflow YAML only at the four approved paths
+`checks.yml`, `development.yml`, `staging.yml`, and `production.yml` under `.github/workflows/`.
+Adding any other workflow requires `needs-human` on the pull request.
 
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
