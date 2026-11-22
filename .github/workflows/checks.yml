@@ -116,6 +116,10 @@ jobs:
             architecture:
               - '**'
               - '!**/*.md'
+            smoke:
+              - '{.github/workflows/checks.yml,playwright.smoke.config.ts,vite.dashboard.config.ts,config/dashboard-workflow-sources.json,package.json,package-lock.json,tests/smoke/**,tests/support/helpers/dashboard/{smoke,served-fixtures,profiles}/**,tests/support/fixtures/dashboard/**,tests/support/helpers/{credential-keychain-process-preload.mjs,seeded-dashboard-world.ts}}'
+              - '!**/*.md'
+              - '!**/*.test.ts'
       - uses: actions/github-script@v9
         id: select
         env:
