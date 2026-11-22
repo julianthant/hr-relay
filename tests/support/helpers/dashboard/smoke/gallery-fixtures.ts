@@ -19,11 +19,6 @@ export const STATE_FRAMES_DIR = join(SMOKE_OUTPUT, "states");
 interface GalleryWorkerFixtures { galleryUrl: string }
 interface GalleryTestFixtures { diagnostics: StateRuleContext["diagnostics"] }
 
-/** The gallery runs in the full run, on staging pull requests and on local runs; every other pull request keeps the smoke files alone. */
-const pullRequestBase = process.env.GITHUB_BASE_REF;
-export const GALLERY_OFF_SCHEDULE = pullRequestBase !== undefined && pullRequestBase !== "" && pullRequestBase !== "staging";
-export const GALLERY_SCHEDULE = "The state gallery runs in the full run, on staging pull requests and on local runs.";
-
 export const test = base.extend<GalleryTestFixtures, GalleryWorkerFixtures>({
   // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
   galleryUrl: [async ({}, use) => {

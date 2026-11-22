@@ -1,10 +1,8 @@
 /** Proves the state rules bite: each planted violation, on real dashboard primitives, is reported by its rule. */
-import { expect, GALLERY_OFF_SCHEDULE, GALLERY_SCHEDULE, test } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
+import { expect, test } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
 import { STATE_RULE_NAMES } from "../support/helpers/dashboard/smoke/state-rule-limits.js";
 import { STATE_RULES } from "../support/helpers/dashboard/smoke/state-rules.js";
 import { RULE_PROBES, type RuleProbe } from "../support/helpers/dashboard/smoke/stories/rule-probe-stories.js";
-
-test.skip(GALLERY_OFF_SCHEDULE, GALLERY_SCHEDULE);
 
 const probes: readonly [string, RuleProbe][] = Object.entries(RULE_PROBES);
 

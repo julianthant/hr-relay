@@ -87,7 +87,8 @@ judging a visual difference.
   A story that is not ready at first paint names its `ready` selector, and one whose requests start
   later names `settled`. A new or changed rule ships with a planted violation in
   `stories/rule-probe-stories.tsx`, which `tests/smoke/state-rules.gallery.ts` proves it reports.
-  The gallery runs in the `smoke` job of the full run and of staging pull requests, and on local named runs; other pull requests skip it.
+  The shared `smoke` job runs the gallery whenever the CI plan selects smoke. For assigned local runs,
+  select `--project=gallery`.
 - Assigned local mock renders and browser verification run serially with one worker under the
   local slot's containment rules. Stop at the first unexpected RED; this authorizes no full suite.
 - A declared workflow scenario ID alone proves no execution.

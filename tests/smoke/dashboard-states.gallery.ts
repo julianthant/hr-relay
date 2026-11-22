@@ -1,17 +1,15 @@
 /** The state check loop: every catalogue story, at both desktop sizes, against every state rule.
  * Run one surface alone with `--grep @<surface>`, for example `--grep @queue`. */
 import { DESKTOP_VIEWPORTS } from "../support/helpers/dashboard/smoke/dashboard-page.js";
-import { expect, GALLERY_OFF_SCHEDULE, GALLERY_SCHEDULE, saveStateFrame, test, writeStateFrameIndex } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
+import { expect, saveStateFrame, test, writeStateFrameIndex } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
 import { STATE_RULE_NAMES } from "../support/helpers/dashboard/smoke/state-rule-limits.js";
 import { STATE_RULES, type StateRuleContext } from "../support/helpers/dashboard/smoke/state-rules.js";
 import { CATALOGUE } from "../support/helpers/dashboard/smoke/stories/catalogue.js";
 
 const dialogShapes: StateRuleContext["dialogShapes"] = new Map();
 
-test.skip(GALLERY_OFF_SCHEDULE, GALLERY_SCHEDULE);
-
 test.afterAll(() => {
-  if (!GALLERY_OFF_SCHEDULE) writeStateFrameIndex(CATALOGUE, DESKTOP_VIEWPORTS.map(viewport => viewport.width));
+  writeStateFrameIndex(CATALOGUE, DESKTOP_VIEWPORTS.map(viewport => viewport.width));
 });
 
 for (const viewport of DESKTOP_VIEWPORTS) {
