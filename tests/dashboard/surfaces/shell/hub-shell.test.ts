@@ -12,6 +12,8 @@ import { MeasurementFreeResizeObserver } from "../../../support/helpers/settings
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { createFixtureBff } from "../../../support/helpers/dashboard/fixture-bff.js";
+import { ChatGptAccountContext, createPreviewChatGptAccountPort } from "../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+import { ASSISTANT_DEFAULT_MODEL } from "../../../../src/models/dashboard/assistant.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -31,7 +33,7 @@ it("keeps the served assistant closed until requested and preserves its close an
     assert.equal(panel.hidden, true); assert.equal(panel.hasAttribute("inert"), true);
     assert.equal(launcher.getAttribute("aria-expanded"), "false");
     await act(async () => launcher.click());
-    // The first open reads the history, which replaces the shell body.
+    // History loads with the shell, so its body can be replaced while the first open settles.
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
     panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, false); assert.equal(launcher.getAttribute("aria-expanded"), "true");
@@ -42,22 +44,30 @@ it("keeps the served assistant closed until requested and preserves its close an
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it("reads the assistant history and model preference once, at load, not again when the panel first opens", async () => {
+it("reads an existing chat history and the model preference at load, and the model catalog only on the first open", async () => {
   const { app } = createFixtureBff();
   const paths: string[] = [];
   assistantOpen.set(false);
-  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => { paths.push(new URL(url).pathname); return app.request(url, init); } });
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    const path = new URL(url).pathname;
+    paths.push(`${init?.method ?? "GET"} ${path}`);
+    return path === "/api/v1/assistant/models" ? Response.json({ models: [{ slug: ASSISTANT_DEFAULT_MODEL, displayName: "Sol" }] }) : app.request(url, init);
+  } });
+  await client.assistantHistoryWrite({ operation: "create", conversationId: "00000000-0000-4000-8000-0000000000c1", title: "Earlier chat" });
+  paths.splice(0);
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const count = (request: string) => paths.filter(path => path === request).length;
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
-      settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
-    })) })));
+    await act(async () => root.render(createElement(ChatGptAccountContext.Provider, { value: { ...preview, mode: "live" as const },
+      children: createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
+        settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
+      })) }) })));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-    assert.ok(paths.includes("/api/v1/assistant/history"));
-    assert.equal(paths.filter(path => path === "/api/v1/assistant/model-preference").length, 1);
+    assert.deepEqual([count("GET /api/v1/assistant/history"), count("GET /api/v1/assistant/model-preference"), count("GET /api/v1/assistant/models")], [1, 1, 0]);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]')?.click());
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-    assert.equal(paths.filter(path => path === "/api/v1/assistant/model-preference").length, 1);
+    assert.deepEqual([count("GET /api/v1/assistant/history"), count("GET /api/v1/assistant/model-preference"), count("GET /api/v1/assistant/models")], [1, 1, 1]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
