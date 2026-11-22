@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { applicationDataWorkspace } from "../../app/config/runtime-isolation.js";
 import { runtimeProfiles } from "../../../models/config/define-runtime-isolation.js";
@@ -53,7 +53,7 @@ const sameBinding = (left: ProfileDatabaseBinding, right: ProfileDatabaseBinding
 
 function inside(root: string, path: string): boolean {
   const offset = relative(resolve(root), resolve(path));
-  return offset === "" || (!offset.startsWith("..") && !isAbsolute(offset));
+  return !isAbsolute(offset) && offset.split(sep)[0] !== "..";
 }
 
 /**

@@ -29,6 +29,24 @@ vi.mock("node:os", async original => {
   }) as typeof os.userInfo;
   return { ...os, userInfo };
 });
+// Test-only seam: alters the finished private snapshot of one backup and leaves the original file intact.
+const snapshotTamper = vi.hoisted(() => ({ backupPath: undefined as string | undefined, tampered: 0 }));
+vi.mock("node:child_process", async original => {
+  const childProcess = await original<typeof import("node:child_process")>();
+  const spawnSync = ((command: string, args?: readonly string[], options?: object) => {
+    const result = childProcess.spawnSync(command, args, options);
+    const [, , , copyPath, sources] = args ?? [];
+    if (snapshotTamper.backupPath !== undefined && copyPath !== undefined && sources?.includes(JSON.stringify(snapshotTamper.backupPath)) === true
+      && result.stdout === "copied") {
+      const bytes = readFileSync(copyPath);
+      bytes[bytes.length - 1] ^= 0xff;
+      writeFileSync(copyPath, bytes);
+      snapshotTamper.tampered++;
+    }
+    return result;
+  }) as typeof childProcess.spawnSync;
+  return { ...childProcess, spawnSync };
+});
 const productionUnder = (home: string) => {
   if (process.platform === "win32") vi.stubEnv("LOCALAPPDATA", home); else applicationData.home = home;
   return applicationDataWorkspace(undefined, "production");
@@ -37,7 +55,7 @@ const realProduction = () => { applicationData.home = undefined; vi.unstubAllEnv
 
 const CLOCK = manualClock(new Date("2026-11-22T12:00:00.000Z"));
 const cleanups: (() => void | Promise<void>)[] = [];
-afterEach(async () => { realProduction(); vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { realProduction(); snapshotTamper.backupPath = undefined; vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, CLOCK);
 type World = Awaited<ReturnType<typeof openCurrentWorld>>;
 
@@ -297,16 +315,37 @@ it("refuses a copy whose workspace lies inside the production application data w
   cleanups.push(() => { rmSync(home, { recursive: true, force: true }); });
   const production = productionUnder(home);
   realProduction();
-  mkdirSync(production, { recursive: true, mode: 0o700 });
-  const destination = await openCurrentWorld({ workspace: production });
+  // A child whose name starts with two dots is still inside the production folder.
+  const destinations = [];
+  for (const workspace of [production, join(production, "..archive")]) {
+    mkdirSync(workspace, { recursive: true, mode: 0o700 });
+    destinations.push(await openCurrentWorld({ workspace }));
+  }
+  for (const destination of destinations) {
+    const generation = destination.database.getMeta().authorityGeneration;
+    assert.equal(productionUnder(home), production);
+    await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK),
+      (error: unknown) => error instanceof IsolatedLibraryImportRefusedError && error.reason === "destination-not-isolated");
+    assert.equal(destination.database.authority.workbooks.catalog().length, 0);
+    assert.equal(destination.database.getMeta().authorityGeneration, generation);
+    realProduction();
+    assert.equal((await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK)).created, 2);
+  }
+});
+
+it("refuses a private snapshot whose bytes differ from the manifest while the original still matches", async () => {
+  const { source, backup } = await sourceWithLibrary();
+  const destination = await openCurrentWorld();
+  const backupPath = join(dirname(backup.manifestPath), backup.manifest.backupFileName);
   const generation = destination.database.getMeta().authorityGeneration;
-  assert.equal(productionUnder(home), production);
+  snapshotTamper.backupPath = backupPath;
+  snapshotTamper.tampered = 0;
   await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK),
-    (error: unknown) => error instanceof IsolatedLibraryImportRefusedError && error.reason === "destination-not-isolated");
+    /authority-backup-snapshot-digest-mismatch/u);
+  assert.equal(snapshotTamper.tampered, 1);
+  assert.equal(sha256(backupPath), backup.manifest.sha256);
   assert.equal(destination.database.authority.workbooks.catalog().length, 0);
   assert.equal(destination.database.getMeta().authorityGeneration, generation);
-  realProduction();
-  assert.equal((await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK)).created, 2);
 });
 
 it("leaves empty write-ahead companions beside the source backup in place", async () => {
