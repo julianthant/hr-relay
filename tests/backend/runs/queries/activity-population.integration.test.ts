@@ -329,7 +329,7 @@ describe("selected Analytics population", () => {
     const current = f.service.read(range);
     expect(current.report).toEqual(selected.report);
     expect(current.snapshot.populationDigest).not.toBe(selected.snapshot.populationDigest);
-    expect(() => f.service.exportSelected(range, selected.snapshot.token)).toThrow("The selected Analytics population has changed");
+    expect(() => f.service.exportSelected(range, selected.snapshot.token)).toThrow("The Analytics results changed. Select the period again.");
   });
 
   it("keeps summary, workflow, population and export readback counts bound to verified receipts", async () => {
