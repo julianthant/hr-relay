@@ -166,5 +166,5 @@ export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmis
 export function importedLibraryId(source: ProfileDatabaseBinding, destination: ProfileDatabaseBinding, sourceLibraryId: string): string {
   const hex = createHash("sha256").update(JSON.stringify(["relay-isolated-library-import", source.installationId, source.profileId,
     destination.installationId, destination.profileId, sourceLibraryId])).digest("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${(8 | (parseInt(hex[16], 16) & 3)).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${(8 | (parseInt(hex.slice(16, 17), 16) & 3)).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
