@@ -11,7 +11,7 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fileStatus, sameDirectory } from "../file-identity.js";
 import { privatePathRejects } from "../private-path.js";
-import { createDashboardSnapshotQuery } from "./authority-database.js";
+import { type AuthorityDatabase, createDashboardSnapshotQuery } from "./authority-database.js";
 import { workerExecArgv } from "./backup-inspection-worker.js";
 import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
@@ -34,11 +34,12 @@ const ResultSchema = z.strictObject({
 export type DashboardBackgroundReadResult = z.infer<typeof ResultSchema>;
 const ReplySchema = z.union([ResultSchema, z.strictObject({ error: z.string() })]);
 
-function sourceIdentity(path: string) {
+function sourceIdentity(path: string, requireWal = false) {
   requireDatabaseSourcePath(path);
   const source = fileStatus(path);
   for (const suffix of ["", "-wal", "-shm", "-journal"]) {
     const file = path + suffix, status = suffix === "" ? source : fileStatus(file, true);
+    if (requireWal && status === undefined && (suffix === "-wal" || suffix === "-shm")) throw new Error("dashboard-background-wal-source-missing");
     if (status !== undefined && (!status.isFile() || BigInt(status.nlink) !== 1n || privatePathRejects(file, status, "group-write"))) {
       throw new Error("profile-database-identity-invalid");
     }
@@ -47,7 +48,7 @@ function sourceIdentity(path: string) {
 }
 
 /** One in-flight page per profile reader. close() drains the accepted page and awaits native connection closure and thread exit. */
-export function createDashboardBackgroundReader(admission: RuntimeAdmission) {
+export function createDashboardBackgroundReader(admission: RuntimeAdmission, source: AuthorityDatabase) {
   const owner = requireRuntimeAdmission(admission);
   owner.assertProfileRuntime();
   const path = join(owner.stateRoot, "state.db");
@@ -58,8 +59,12 @@ export function createDashboardBackgroundReader(admission: RuntimeAdmission) {
     owner.assertReadOnlyAuthorityDatabase(path);
     if (!sameDirectory(sourceIdentity(path), start.identity)) throw new Error("profile-database-open-source-changed");
   };
-  const worker = new Worker(new URL(import.meta.url), { name: "relay-dashboard-background-read", workerData: start,
-    execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+  const releaseSource = source.retainDashboardReadSource(owner, start.identity);
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL(import.meta.url), { name: "relay-dashboard-background-read", workerData: start,
+      execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+  } catch (error) { releaseSource(); throw error; }
   let closing = false;
   let failure: Error | undefined;
   let pending: ReturnType<typeof Promise.withResolvers<DashboardBackgroundReadResult>> | undefined;
@@ -82,6 +87,7 @@ export function createDashboardBackgroundReader(admission: RuntimeAdmission) {
     } catch (error) { read.reject(error instanceof Error ? error : new Error("dashboard-background-reply-invalid", { cause: error })); }
   });
   const exit = new Promise<void>(resolve => worker.once("exit", code => {
+    releaseSource();
     if (failure === undefined && (!closing || code !== 0 || pending !== undefined)) fail(new Error(`dashboard-background-worker-exited: ${String(code)}`));
     resolve();
   }));
@@ -108,7 +114,7 @@ export function createDashboardBackgroundReader(admission: RuntimeAdmission) {
 if (!isMainThread && parentPort !== null && z.object({ protocol: z.literal(PROTOCOL) }).safeParse(workerData).success) {
   const port = parentPort, start = StartSchema.parse(workerData);
   const checkSource = () => {
-    if (!sameDirectory(sourceIdentity(start.path), start.identity)) throw new Error("profile-database-open-source-changed");
+    if (!sameDirectory(sourceIdentity(start.path, true), start.identity)) throw new Error("profile-database-open-source-changed");
   };
   checkSource();
   const database = openReadOnlyDatabase(start.path, 250);
