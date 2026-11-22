@@ -56,6 +56,8 @@ test("switching runs replaces the panel with the newly chosen run", async ({ das
   await dashboard.open();
   await dashboard.openRun(dashboard.runId("doneRun"));
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  // Switch only after the first run's reads settle, or the switch aborts them mid-flight.
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
   await dashboard.openRun(dashboard.runId("cancelledRun"));
   await expect(dashboard.runPanel.getByText("Cancelled", { exact: true }).first()).toBeVisible();
   await expect(dashboard.runPanel.getByText("Done", { exact: true })).toHaveCount(0);
