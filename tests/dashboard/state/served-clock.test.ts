@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe,it,vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { deriveServedNow, useServedNow } from "../../../src/dashboard/state/served-clock.js";
+import { createServedClock, deriveServedNow, ServedClockContext, useServedView } from "../../../src/dashboard/state/served-clock.js";
 import { runTiming } from "../../../src/dashboard/surfaces/shared/status/format.js";
 import { isTerminalQueueStatus } from "../../../src/models/dashboard/projection.js";
 
@@ -61,18 +61,32 @@ describe("the served clock", () => {
 });
 
 
-it("recalibrates every render exposing a changed served instant", async () => {
+it("starts a clock for a new served instant at that instant and ticks subscribers from it", async () => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  const monotonic = vi.spyOn(performance, "now").mockReturnValue(10);
+  let monotonic = 10;
+  const performanceNow = vi.spyOn(performance, "now").mockImplementation(() => monotonic);
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const seen: string[] = [];
-  function Probe({ instant }: { instant: string }) { seen.push(useServedNow(instant)); return null; }
+  function Probe() { seen.push(useServedView(BOOTSTRAP_INSTANT, now => now)); return null; }
   const root = createRoot(document.createElement("div"));
   try {
-    await act(async () => root.render(createElement(Probe, { instant: BOOTSTRAP_INSTANT })));
-    monotonic.mockReturnValue(5000);
-    const start = seen.length;
+    monotonic = 5000;
     const next = "2026-08-21T15:00:00.000Z";
-    await act(async () => root.render(createElement(Probe, { instant: next })));
-    assert.ok(seen.slice(start).every(value => value === next));
-  } finally { await act(async () => root.unmount()); monotonic.mockRestore(); }
+    await act(async () => root.render(createElement(ServedClockContext.Provider, { value: createServedClock(next) }, createElement(Probe))));
+    assert.equal(seen.at(-1), next);
+    monotonic += 1000;
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    assert.equal(seen.at(-1), "2026-08-21T15:00:01.000Z");
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); performanceNow.mockRestore(); }
+});
+
+it("shows the frozen instant when no clock is mounted", async () => {
+  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+  const seen: string[] = [];
+  function Probe() { seen.push(useServedView(BOOTSTRAP_INSTANT, now => now)); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.ok(seen.length > 0 && seen.every(value => value === BOOTSTRAP_INSTANT));
+  } finally { await act(async () => root.unmount()); }
 });

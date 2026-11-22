@@ -73,7 +73,7 @@ async function harness(enabled = true, initiallyFailed = false) {
   const scope = { client, authority: epoch, actorId: "local-operator", dayRequest };
   let activeScope: CommandExecutionScope = scope;
   const executor = new CommandExecutor(() => activeScope);
-  const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, nowIso: now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
+  const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, now: () => now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
     dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "live" }, refresh() {}, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
   function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding }); return null; }

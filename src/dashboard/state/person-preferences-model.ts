@@ -13,7 +13,7 @@ import { ordinaryReadbackConfirms } from "../surfaces/settings/editor/settings-d
 import { readBack } from "../app/commands/command-readback.js";
 import { clearSettingsReads, settingsReadResource } from "./settings-read-model.js";
 
-type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "nowIso"> };
+type PreferencesBinding = Pick<DashboardCommandBinding, "scope" | "executor"> & { authority: Pick<DashboardCommandBinding["authority"], "epoch" | "now"> };
 
 export function preferencesFromSettings(document: EditableSettingsWire) {
   const patch = Object.fromEntries(document.sections.flatMap(section => section.leaves)
@@ -43,7 +43,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       const active = connection;
       const started = generation;
       const binding = active.current();
-      const command = SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
+      const command = SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.now(),
         requestedBy: binding.scope.actorId, source: "person-preferences", family: "settings", type: "apply-settings",
         target: { expectedRevision: document.revision }, payload: { settingsSchemaHash: document.settingsSchemaHash,
           patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });

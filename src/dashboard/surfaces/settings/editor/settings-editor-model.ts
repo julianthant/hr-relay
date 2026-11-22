@@ -179,7 +179,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     if (binding === undefined) { failed(draft); return; }
     try {
       const patch = patchFromSettingsDraft(leaves, draft);
-      const command = deepFreeze(SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "settings-surface", family: "settings", type: "apply-settings",
+      const command = deepFreeze(SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.now(), requestedBy: binding.scope.actorId, source: "settings-surface", family: "settings", type: "apply-settings",
         target: { expectedRevision: editor.document.revision }, payload: { settingsSchemaHash: editor.document.settingsSchemaHash, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }));
       void perform(command, draft);
     } catch { failed(draft); }
