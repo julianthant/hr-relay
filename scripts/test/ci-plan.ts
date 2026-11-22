@@ -3,7 +3,7 @@ import { isDirectExecution } from "./scope-files.js";
 
 const suiteNames = ["unit", "integration", "architecture"] as const;
 const contextSchema = z.object({
-  workflow: z.enum(["fast", "portable", "release"]), event: z.enum(["pull_request", "workflow_dispatch"]),
+  workflow: z.enum(["fast", "portable", "release"]), event: z.enum(["pull_request", "push", "workflow_dispatch"]),
   base: z.string(), head: z.string(), draft: z.boolean(), filters: z.record(z.string(), z.string()),
 });
 const matrixSchema = z.object({ include: z.array(z.object({
@@ -24,6 +24,9 @@ export function createCiPlan(input: unknown): CiPlan {
   const context = contextSchema.parse(input);
   const manual = context.event === "workflow_dispatch";
   const fast = context.workflow === "fast";
+  if (context.event === "push" && !(fast && context.head.startsWith("task/"))) {
+    throw new Error("Push CI runs only fast checks on task branches.");
+  }
   if (fast && (manual || context.base !== "development")) {
     throw new Error("Fast CI requires a development pull request.");
   }
