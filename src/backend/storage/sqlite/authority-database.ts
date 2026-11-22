@@ -1,5 +1,6 @@
 import type { DashboardBackgroundReadRequest } from "./dashboard-background-read-worker.js";
 import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
+import type { FileIdentitySchema } from "../../../models/storage/file-identity.js";
 import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
@@ -1829,10 +1830,13 @@ export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.
       } else if (validatedVersion !== version) {
         const changes: DashboardFactChanges = new Map();
         const contiguous = admitChanges(database, baseline, "all", version, entry => includeDashboardFactChange(changes, entry));
-        try {
-          if (contiguous) facts.refresh(changes);
-          else facts = createDashboardWorkerFacts(database);
-        } catch (error) { facts = undefined; throw error; }
+        const previous = facts;
+        // Admission has advanced the cursor. Publish the cache only after the matching refresh succeeds.
+        facts = undefined;
+        if (contiguous) {
+          previous.refresh(changes);
+          facts = previous;
+        } else facts = createDashboardWorkerFacts(database);
       }
       validatedVersion = version;
 
@@ -4198,7 +4202,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** Keep the writable WAL connection open until the background reader's native connection has exited. */
-  retainDashboardReadSource(admission: RuntimeAdmission, identity: Readonly<{ device: string; inode: string }>): () => void {
+  retainDashboardReadSource(admission: RuntimeAdmission, identity: Readonly<z.infer<typeof FileIdentitySchema>>): () => void {
     this.#assertOpen();
     admission.assertProfileRuntime();
     if (admission !== this.#admission || resolve(this.#path) !== join(admission.stateRoot, "state.db")

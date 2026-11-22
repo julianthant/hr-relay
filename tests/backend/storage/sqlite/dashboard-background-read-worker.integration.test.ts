@@ -12,6 +12,10 @@ import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixt
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
+function companions(path: string) {
+  return ["-wal", "-shm"].filter(suffix => existsSync(path + suffix));
+}
+
 it("returns ordered bounded pages and observes peer commits without advancing authority", async () => {
   const fixture = await openBoundDatabaseFixture("background-read");
   try {
@@ -118,6 +122,8 @@ it("refuses a machine admission and a mismatched binding on the worker connectio
       peer.close();
       await reader.close();
     }
+    fixture.database.close();
+    assert.deepEqual(companions(fixture.path), []);
   } finally { await fixture.close(); }
 });
 
@@ -141,16 +147,15 @@ it("drains a pending read before shutdown and refuses later requests", async () 
 
 it("refuses a closed source without creating WAL companions on the checkpointed profile", async () => {
   const fixture = await openBoundDatabaseFixture("background-source");
-  const companions = () => ["-wal", "-shm"].filter(suffix => existsSync(fixture.path + suffix));
   try {
-    assert.deepEqual(companions(), ["-wal", "-shm"]);
+    assert.deepEqual(companions(fixture.path), ["-wal", "-shm"]);
     const reader = createDashboardBackgroundReader(fixture.profile.admission, fixture.database);
     try { await reader.read({ after: 0, limit: 1, nowMs: systemClock.nowMs() }); }
     finally { await reader.close(); }
     fixture.database.close();
-    assert.deepEqual(companions(), []);
+    assert.deepEqual(companions(fixture.path), []);
     assert.throws(() => createDashboardBackgroundReader(fixture.profile.admission, fixture.database), /authority database is closed/u);
-    assert.deepEqual(companions(), []);
+    assert.deepEqual(companions(fixture.path), []);
   } finally { await fixture.close(); }
 });
 
