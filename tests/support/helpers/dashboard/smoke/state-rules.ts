@@ -296,7 +296,8 @@ export function noDeadDisabledControl({ page }: StateRuleContext): Promise<reado
 const CONTROL_SELECTOR = 'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"], [role="link"], [role="checkbox"], '
   + '[role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [role="combobox"], [tabindex]';
 
-type FocusProbeStep = { readonly step: "tag"; readonly selector: string } | { readonly step: "stop" } | { readonly step: "focus"; readonly index: string } | { readonly step: "clean" };
+// Playwright widens literal unions across evaluate, so the step is a plain string: "tag" | "stop" | "focus" | "clean".
+interface FocusProbeStep { readonly step: string; readonly selector?: string; readonly index?: string }
 interface FocusProbeControl {
   readonly index: string;
   readonly label: string;
@@ -340,7 +341,7 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     document.head.append(still);
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const composite = '[role="radiogroup"], [role="tablist"], [role="menu"], [role="menubar"], [role="listbox"], [role="toolbar"], [role="grid"], [role="tree"]';
-    for (const element of document.querySelectorAll<HTMLElement>(`body :is(${input.selector})`)) {
+    for (const element of document.querySelectorAll<HTMLElement>(`body :is(${input.selector ?? "*"})`)) {
       const box = element.getBoundingClientRect();
       if (box.width === 0 || box.height === 0 || getComputedStyle(element).visibility === "hidden") continue;
       const shown = stoodInFor(element).filter(part => { const partBox = part.getBoundingClientRect(); return partBox.width > 1 && partBox.height > 1; });
@@ -360,7 +361,7 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
   } else if (input.step === "stop") {
     report();
   } else if (input.step === "focus") {
-    document.querySelector<HTMLElement>(`[data-state-rule-control="${input.index}"]`)?.focus();
+    document.querySelector<HTMLElement>(`[data-state-rule-control="${input.index ?? ""}"]`)?.focus();
     report();
   } else {
     document.querySelector("[data-state-rule-still]")?.remove();
