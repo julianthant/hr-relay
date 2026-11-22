@@ -33,7 +33,7 @@ for (const key of REFUSED_RUNS) {
     }
     await dashboard.open();
     await dashboard.openRun(runId);
-    const refusal = dashboard.runPanel.getByText("Couldn't load logs.", { exact: true });
+    const refusal = dashboard.runPanel.getByText("These logs don't match this run.", { exact: true });
     await expect(refusal, "known refusal; move this run to OPENABLE_RUNS once its logs load").toBeVisible();
     await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeHidden();
   });

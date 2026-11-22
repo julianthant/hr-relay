@@ -43,8 +43,11 @@ export class DashboardPage {
     await expect(this.pageHeading(`${label} queue`)).toBeVisible();
   }
 
+  /** Data pages are Settings sections; the Settings button is reachable from every page, the section list only while Settings is open. */
   async openDataPage(label: string): Promise<void> {
-    await this.workflows.getByRole("button", { name: label, exact: true }).click();
+    const sections = this.page.getByRole("navigation", { name: "Settings sections" });
+    if (!(await sections.isVisible())) await this.page.getByRole("button", { name: "Settings", exact: true }).click();
+    await sections.getByRole("link", { name: label, exact: true }).click();
     await expect(this.pageHeading(label)).toBeVisible();
   }
 
