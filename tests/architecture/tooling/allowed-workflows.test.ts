@@ -39,10 +39,15 @@ describe("allowed workflows check", () => {
     }
   });
 
-  it("runs from the shared static job on pull requests", () => {
-    const workflow = readFileSync(new URL("../../../.github/workflows/checks.yml", import.meta.url), "utf8");
-    const job = workflow.split("\n  static:\n")[1]?.split(/\n {2}[\w-]+:\n/u)[0] ?? "";
-    expect(job).toContain("if: github.event_name == 'pull_request'");
-    expect(job).toContain("run: node scripts/ci/allowed-workflows.ts \"$PR_BASE_SHA\" \"$PR_LABELS\"");
+  it.each([
+    { file: "checks.yml", name: "static", condition: "if: github.event_name == 'pull_request' && inputs.kind != 'fast'" },
+    { file: "development.yml", name: "development", condition: "if: github.event_name == 'pull_request'" },
+  ])("runs from the $file $name job on pull requests", ({ file, name, condition }) => {
+    const workflow = readFileSync(new URL(`../../../.github/workflows/${file}`, import.meta.url), "utf8");
+    const job = workflow.split(`\n  ${name}:\n`)[1]?.split(/\n {2}[\w-]+:\n/u)[0] ?? "";
+    const step = job.split(/\n {6}- /u).find(part => part.startsWith("name: Check added workflow files")) ?? "";
+    expect(step).toContain(condition);
+    expect(step).toContain("PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
+    expect(step).toContain("run: node scripts/ci/allowed-workflows.ts \"$PR_BASE_SHA\" \"$PR_LABELS\"");
   });
 });

@@ -96,7 +96,7 @@ function pack(files: readonly string[], durations: Readonly<Record<string, numbe
   return shards;
 }
 
-export function createAffectedTestsPlanner(root: string): (base: string, head: string) => AffectedTestsPlan {
+export function createAffectedTestsPlanner(root: string): (base: string, head: string, limit?: number) => AffectedTestsPlan {
   const durations = durationsSchema.parse(JSON.parse(readFileSync(join(root, "scripts/test/ci-durations.json"), "utf8")));
   const parsedBlobs = new Map<string, readonly string[]>();
   const git = (args: string[], input?: string) =>
@@ -167,7 +167,7 @@ export function createAffectedTestsPlanner(root: string): (base: string, head: s
     return result;
   }
 
-  return (base, head) => {
+  return (base, head, limit = shardLimit) => {
     const before = commit(base);
     const after = commit(head);
     const changed = git(["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", before, after, "--"])
@@ -189,12 +189,14 @@ export function createAffectedTestsPlanner(root: string): (base: string, head: s
       && !excludedTests.has(file) && (global || distances.has(file)))
       .sort((a, b) => (distances.get(a) ?? Infinity) - (distances.get(b) ?? Infinity) || a.localeCompare(b));
     const shards = pack(ordered, durations);
-    return { core: global || shards.length > shardLimit, shardCount: shards.length, shards: shards.slice(0, shardLimit) };
+    return { core: global || shards.length > limit, shardCount: shards.length, shards: shards.slice(0, limit) };
   };
 }
 
 if (isDirectExecution(import.meta.url)) {
-  const [base, head, ...extra] = process.argv.slice(2);
-  if (!base || !head || extra.length > 0) throw new Error("Usage: affected-tests <base-ref> <head-ref>");
-  process.stdout.write(JSON.stringify(createAffectedTestsPlanner(process.cwd())(base, head)) + "\n");
+  const [base, head, scope, ...extra] = process.argv.slice(2);
+  if (!base || !head || (scope !== undefined && scope !== "--all") || extra.length > 0) {
+    throw new Error("Usage: affected-tests <base-ref> <head-ref> [--all]");
+  }
+  process.stdout.write(JSON.stringify(createAffectedTestsPlanner(process.cwd())(base, head, scope ? Infinity : undefined)) + "\n");
 }

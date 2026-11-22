@@ -123,10 +123,13 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`development.yml` (`Development`) calls `checks.yml` with kind `fast`: names and plan together,
-lint, static, privacy, three unit shards, two architecture shards and the `development` gate,
-at most ten runner jobs. It starts no integration, perf, smoke or macOS job. Its gate folds the
-unit and architecture proofs into the final job and fails failed or cancelled dependencies.
+`development.yml` (`Development`) calls `checks.yml` with kind `fast` on `task/**` pushes and
+non-task pull requests: plan, lint, static, privacy, three unit shards, two architecture shards
+and the affected integration shards (at most eight; uncapped for `feature/*`). It starts no perf,
+smoke or macOS job. `proof` folds the shard results and fails failed or cancelled dependencies.
+The `development` gate checks names and the workflow allowlist on pull requests, then requires
+this run's `proof` or, for `task/**` and edited pull requests, the `proof` of another run at the
+head SHA.
 `staging.yml` (`Staging`) runs only on pull requests from `development` into `staging` and admits
 `checks.yml` with kind `portable`; its `staging` gate needs `names` and `checks`.
 `production.yml` (`Production`) keeps main pull requests, CodeQL on main pushes and operator
@@ -292,9 +295,10 @@ native work and fail the required source-head check. Operator manual releases se
 native suites. Machine-readable docs count as configuration. Release authorization belongs to the
 root check rules. Protected branch pushes do not repeat CI.
 
-All three event entries use per-PR/manual-branch workflow concurrency with cancellation enabled.
-New pushes supersede older runs for the same key. Development has no shared admission lane;
-four runs of at most ten jobs fit the forty job slots. Staging admits one complete reusable call
+All three event entries use per-PR/manual-branch workflow concurrency with cancellation enabled;
+a Development edited event queues instead of cancelling. New pushes supersede older runs for the
+same key. Development has no shared admission lane; a run uses at most nineteen job slots, more
+on `feature/*` pull requests. Staging admits one complete reusable call
 through the `ci-runners` FIFO; Production uses `release-runners`. Both use `queue: max` and
 `cancel-in-progress: false`; no callee reacquires admission.
 
