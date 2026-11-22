@@ -35,6 +35,7 @@ async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manu
     const managers: WorkerSessionManager[] = [];
     const bound = new Set<WorkerSessionManager>();
     const filing = new AbortController();
+    const failures: unknown[] = [];
     const releaseFingerprint = (manager: WorkerSessionManager) => {
       manager.releaseRunConfigFingerprint();
       bound.delete(manager);
@@ -65,22 +66,17 @@ async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manu
       const first = await worker(1, "11111111-1111-4111-8111-111111111111", launcher1);
       const second = await worker(2, "33333333-3333-4333-8333-333333333333", launcher2);
       await body({ clock, scheduler: sessionScheduler, polls: pollScheduler, releaseFingerprint, signal: filing.signal, database, first, second, launcher1, launcher2 });
-    } finally {
-      filing.abort();
-      const failures: unknown[] = [];
-      try {
-        for (const manager of managers) {
-          try { if (bound.has(manager)) releaseFingerprint(manager); }
-          catch (error) { failures.push(error); }
-          try { await manager.closeAll("worker-stop"); }
-          catch (error) { failures.push(error); }
-        }
-      } finally {
-        try { database.close(); }
-        catch (error) { failures.push(error); }
-      }
-      if (failures.length > 0) throw new AggregateError(failures, "OnBase two-worker fixture cleanup failed");
+    } catch (error) { failures.push(error); }
+    filing.abort();
+    for (const manager of managers) {
+      try { if (bound.has(manager)) releaseFingerprint(manager); }
+      catch (error) { failures.push(error); }
+      try { await manager.closeAll("worker-stop"); }
+      catch (error) { failures.push(error); }
     }
+    try { database.close(); }
+    catch (error) { failures.push(error); }
+    if (failures.length > 0) throw new AggregateError(failures, "OnBase two-worker fixture failed or its cleanup failed");
   });
 }
 
