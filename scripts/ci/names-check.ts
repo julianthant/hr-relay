@@ -70,6 +70,7 @@ function branchProblem(branch: string, origin: readonly string[]): string | unde
   if (branch === "main" || branch === "staging" || branch === "development") return undefined;
   if (matches("dependabot/.+", branch) && !branch.endsWith("/") && !/[\s]/u.test(branch)) return undefined;
   if (matches(`feature/${KEBAB}`, branch)) return undefined;
+  if (matches(`cut/${KEBAB}`, branch)) return undefined;
   if (matches(`design/${KEBAB}`, branch)) return undefined;
   if (matches(`fix/${KEBAB}-${KEBAB}`, branch)) return undefined;
   if (matches(`chore/${KEBAB}-${KEBAB}`, branch)) return undefined;
@@ -78,10 +79,11 @@ function branchProblem(branch: string, origin: readonly string[]): string | unde
   // An origin task branch keeps an older lane segment. A new lane stays kebab-case.
   const legacy = new RegExp(`^task/(${KEBAB})/([A-Za-z0-9][A-Za-z0-9._-]*)$`, "u").exec(branch);
   if (legacy && origin.includes(branch)) return undefined;
-  return report(branch, "branch name is outside main, staging, development, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>");
+  return report(branch, "branch name is outside main, staging, development, dependabot/*, feature/<kebab>, cut/<milestone>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>");
 }
 
 function developmentHeadProblem(branch: string): string | undefined {
+  if (branch === "task/ci-environments/cleanup") return undefined;
   if (branchProblem(branch, []) === undefined && (branch.startsWith("dependabot/") || branch.startsWith("feature/") || branch.startsWith("fix/") || branch.startsWith("chore/"))) {
     return undefined;
   }
@@ -185,8 +187,8 @@ function main(): void {
       const head = developmentHeadProblem(branch);
       if (head) reject(head);
     }
-    if (request.base === "staging" && branch !== "development") {
-      reject(report(branch, "a staging pull request head must be development"));
+    if (request.base === "staging" && !matches(`cut/${KEBAB}`, branch)) {
+      reject(report(branch, "a staging pull request head must be cut/<milestone>"));
     }
   }
   if (request.titleSet) {
