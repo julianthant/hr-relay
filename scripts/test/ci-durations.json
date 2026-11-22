@@ -1170,7 +1170,6 @@
   "tests/scripts/dev/relay-backend.test.ts": 0,
   "tests/scripts/dev/relay.integration.test.ts": 1.8,
   "tests/scripts/dev/secure-env-bootstrap.integration.test.ts": 4.7,
-  "tests/scripts/docs/roadmap.test.ts": 0,
   "tests/scripts/test/artifact-policy.test.ts": 0,
   "tests/scripts/test/ci-files.test.ts": 0.4,
   "tests/scripts/test/ci-files.workflow.test.ts": 4.2,

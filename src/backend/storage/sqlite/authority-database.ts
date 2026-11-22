@@ -99,14 +99,14 @@ import { withNativeRecordReadScope, predecessorRunRecordFromRow,runRecordColumns
 import { SearchStateColumnSchema,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
-import { createRunSummaries } from "./run-summaries.js";
+import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "./workbook-library-repository.js";
+import { assertPreMasterWorkbookHistory,createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,migrateWorkbookPayloads,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION,WORKBOOK_MASTER_MIGRATION,WORKBOOK_PAYLOAD_CONVERSION_ID,WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -750,7 +750,7 @@ function errorMessage(error: unknown): string {
 
 function readIntPragma(
   database: DatabaseSync,
-  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version" | "schema_version",
+  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version" | "schema_version" | "freelist_count",
 ): number {
   const row = IntPragmaRowSchema.parse(database.prepare(`PRAGMA ${name}`).get());
   const value = row[name === "busy_timeout" ? "timeout" : name];
@@ -1429,7 +1429,7 @@ function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads =
   const { database, expectedSchemaVersion, convertPreferences } = context;
   let validated = 0;
   if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
-    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version);
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_PAYLOAD_MIGRATION.version);
   // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
@@ -2016,10 +2016,12 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
         assertAssistantHistoryRetirable(database, nativeOrdinaryRecordFromRow);
         database.exec("DELETE FROM assistant_actions");
       }
+      if (migration.version === WORKBOOK_MASTER_MIGRATION.version && index === 0) assertPreMasterWorkbookHistory(database);
       execMigrationStatement(database, statement);
       if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       if (statement === `SELECT '${FAILURE_NOTE_REMOVAL_CONVERSION_ID}'`) migrateFailureNotes(database);
+      if (statement === `SELECT '${WORKBOOK_PAYLOAD_CONVERSION_ID}'`) migrateWorkbookPayloads(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -3335,6 +3337,31 @@ export class AuthorityDatabase implements Disposable {
     if (primary !== undefined) throw primary.error;
     if (result === undefined) throw new Error("profile-stopped-upgrade-result-unavailable");
     return result;
+  }
+
+  // Returns the pages a committed upgrade freed to the file system. A store with no free pages is left alone (undefined).
+  // A failed compaction leaves a larger file, not an unproved store, so it is reported and never retried.
+  static compactStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
+    expected: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>): "compacted" | "failed" | undefined {
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
+    let outcome: "compacted" | "failed" | undefined;
+    let primary: { error: unknown } | undefined;
+    try {
+      if (readIntPragma(database, "user_version") !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-stopped-compaction-version-refused");
+      if (readIntPragma(database, "freelist_count") > 0) {
+        try { database.exec("VACUUM"); outcome = "compacted"; } catch { outcome = "failed"; }
+      }
+    } catch (error) { primary = { error }; }
+    const failures: unknown[] = [];
+    try { database.close(); } catch (error) { failures.push(error); }
+    if (failures.length !== 0) throw retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { database });
+    if (primary !== undefined) throw primary.error;
+    if (outcome === undefined) return undefined;
+    const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
+    if (after.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || after.authorityGeneration !== expected.authorityGeneration
+      || after.authorityContentFingerprint !== expected.authorityContentFingerprint) throw new Error("profile-stopped-compaction-authority-changed");
+    return outcome;
   }
 
 
@@ -6951,7 +6978,7 @@ export class AuthorityDatabase implements Disposable {
       }
       if (eligible !== undefined) this.#refreshClaimRoutes();
       const candidates = eligible === undefined
-        ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued' AND pause_state IS NULL
+        ? this.#database.prepare(`SELECT * FROM runs INDEXED BY runs_queued_idx WHERE workflow=? AND state='queued' AND pause_state IS NULL
           ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all(request.workflow)
         : this.#database.prepare(`SELECT run.* FROM temp.claim_routes AS route INDEXED BY claim_routes_home_idx
           CROSS JOIN runs AS run ON run.id=route.run_id WHERE route.home=? OR route.home IS NULL
@@ -7161,7 +7188,7 @@ export class AuthorityDatabase implements Disposable {
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
       },
       // Either representation can reveal active membership when a row's state has drifted.
-      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs
+      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs INDEXED BY runs_nonterminal_idx
         WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
         ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
@@ -7182,11 +7209,7 @@ export class AuthorityDatabase implements Disposable {
       listByPauseState: (state: "requested" | "paused") => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE pause_state = ? ORDER BY created_at, id
       `).all(state).map((row) => runRecordFromRow(row))),
-      listWorkflows: () => Object.freeze(
-        z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
-          SELECT DISTINCT workflow AS workflow FROM runs ORDER BY workflow
-        `).all()).map(({ workflow }) => workflow),
-      ),
+      listWorkflows: () => Object.freeze(listRunWorkflows(this.#database)),
       findByTrace: (traceId: string) => {
         const parsed = TraceIdSchema.parse(traceId);
         const rows = this.#database.prepare(`

@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { expect, it } from 'vitest';
+import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-database.js';
 import { SQLITE_MIGRATIONS } from '../../../../src/backend/storage/sqlite/migrations.js';
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, bindRunWorkbookReference } from '../../../../src/models/dashboard/workbooks.js';
 import { deriveSchemaHash } from '../../../../src/models/validation/schema-bound-value.js';
 
@@ -12,10 +13,9 @@ function source() {
   }
   return database;
 }
+/** Upgrades the schema-17 store through migration 18 and every later one. */
 function apply(database: DatabaseSync) {
-  const migration = SQLITE_MIGRATIONS.find(migration => migration.version === 18);
-  if (migration === undefined) throw new Error('current migration missing');
-  for (const sql of [...migration.statements, ...WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.statements]) database.exec(sql);
+  applyAuthorityMigrationsAfter(database, 17, { now: '2026-11-03T00:00:00.000Z', captureFile: () => { throw new Error('no capture expected'); } });
 }
 
 it('initializes the empty named catalogue without changing a numeric workbook revision', () => {
