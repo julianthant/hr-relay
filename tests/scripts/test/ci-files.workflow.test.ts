@@ -35,10 +35,11 @@ describe("development fast check", () => {
   it("uses one shared check definition and a plain development gate without runner admission", () => {
     const development = load("development");
     expect(development).toContain("name: Development");
-    expect(development).toContain("run-name: ${{ github.event.pull_request.title }}");
+    expect(development).toContain("run-name: ${{ github.event.pull_request.title || github.ref_name }}");
     expect(development).toContain("branches: [development]");
-    expect(development).not.toMatch(/\n {2}push:|workflow_dispatch:|ci-runners/u);
-    expect(development).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}");
+    expect(development).toContain("push:\n    branches: ['task/**']");
+    expect(development).not.toMatch(/workflow_dispatch:|ci-runners/u);
+    expect(development).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}");
     expect(development).toContain("cancel-in-progress: true");
     expect(jobNames(development)).toEqual(["checks", "development"]);
     expect(job(development, "checks")).toContain("uses: ./.github/workflows/checks.yml");
@@ -51,6 +52,13 @@ describe("development fast check", () => {
     expect(checks).toContain("value: ${{ jobs.changes.outputs.plan }}");
     expect(checks).toContain("value: ${{ toJSON(jobs) }}");
     expect(job(checks, "changes")).toContain("npm run names:check");
+    expect(job(checks, "changes")).toContain("if: inputs.kind == 'fast' && github.event_name == 'pull_request'");
+  });
+
+  it("plans task-branch pushes like a development pull request and refuses other pushes", () => {
+    expect(selectUsingAdapter("fast", "push", "", "task/ci/push", filters))
+      .toEqual(selectUsingAdapter("fast", "pull_request", "development", "feature/test", filters));
+    expect(() => selectUsingAdapter("fast", "push", "", "feature/ci", filters)).toThrow("Push CI runs only fast checks on task branches.");
   });
 
   it.each([
@@ -132,7 +140,7 @@ function selectUsingAdapter(kind: "fast" | "portable" | "release", event: string
   const outputs: Record<string, string> = {};
   runInNewContext(source.replace(/^ {12}/gmu, ""), {
     require: () => ({ execFileSync: (_node: string, args: string[]) => JSON.stringify(createCiPlan(JSON.parse(args[4] ?? ""))) }),
-    context: { eventName: event, payload: event === "pull_request" ? { pull_request: { base: { ref: base }, head: { ref: head }, draft } } : {} },
+    context: { eventName: event, ref: `refs/heads/${head || "main"}`, payload: event === "pull_request" ? { pull_request: { base: { ref: base }, head: { ref: head }, draft } } : {} },
     process: { env: { FILTERS: JSON.stringify(selectedFilters), KIND: kind } },
     core: { setOutput: (key: string, value: string) => { outputs[key] = value; } },
   });
