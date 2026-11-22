@@ -45,12 +45,16 @@ export const nameCases: readonly NameCase[] = [
   { label: "accepts a development fix head", args: ["--branch", "fix/ci-names", "--base", "development", "--title", "CI: reject a bad branch name"], ok: true, offender: "" },
   { label: "accepts a dependabot development head with an area title", args: ["--branch", "dependabot/npm_and_yarn/foo", "--base", "development", "--title", "Dependencies: bump foo"], ok: true, offender: "" },
   { label: "rejects a development hotfix head", args: ["--branch", "hotfix/duo-window-crash", "--base", "development", "--title", "Hotfix: close the Duo window crash"], ok: false, offender: "hotfix/duo-window-crash" },
-  { label: "rejects a development task head", args: ["--branch", "task/workspace-conventions/name-check", "--base", "development", "--title", "Workspace: keep the task branch off staging"], ok: false, offender: "task/workspace-conventions/name-check" },
-  { label: "accepts development into staging", args: ["--branch", "development", "--base", "staging", "--title", "CI: promote development"], ok: true, offender: "" },
-  ...["feature/workspace-conventions", "fix/ci-names", "chore/remove-parity-suite", "dependabot/npm_and_yarn/foo", "main", "staging", "hotfix/duo-window-crash", "task/workspace-conventions/name-check", "design/dashboard-mock"].map(branch => ({
+  { label: "accepts a canonical task head into development", args: ["--branch", "task/workspace-conventions/name-check", "--base", "development", "--title", "Workspace: check task names"], ok: true, offender: "" },
+  { label: "rejects a legacy task lane into development even when it exists on origin", args: [...olderLane, "--base", "development"], ok: false, offender: "task/names-check-fixture/Old_Lane" },
+  { label: "accepts the CI cleanup task into development", args: ["--branch", "task/ci-environments/cleanup", "--base", "development", "--title", "CI: enforce workflow rules"], ok: true, offender: "" },
+  { label: "accepts cut/staging-cut", args: ["--branch", "cut/staging-cut"], ok: true, offender: "" },
+  { label: "accepts a milestone cut into staging", args: ["--branch", "cut/staging-cut", "--base", "staging", "--title", "CI: cut staging"], ok: true, offender: "" },
+  { label: "accepts main into staging for the release sync", args: ["--branch", "main", "--base", "staging", "--title", "Release: Sync main into staging after v2026.11.22"], ok: true, offender: "" },
+  ...["development", "cut/Not-Kebab", "cut/staging-cut/extra", "feature/workspace-conventions", "fix/ci-names", "chore/remove-parity-suite", "dependabot/npm_and_yarn/foo", "staging", "hotfix/duo-window-crash", "task/workspace-conventions/name-check", "design/dashboard-mock"].map(branch => ({
     label: `rejects ${branch} into staging`, args: ["--branch", branch, "--base", "staging", "--title", "CI: promote development"], ok: false, offender: branch,
   })),
-  ...["development", "main", "staging", "design/dashboard-mock"].map(branch => ({
+  ...["development", "main", "staging", "cut/staging-cut", "design/dashboard-mock"].map(branch => ({
     label: `rejects ${branch} into development`, args: ["--branch", branch, "--base", "development", "--title", "CI: check development"], ok: false, offender: branch,
   })),
   { label: "rejects a conventional dependabot development title", args: ["--branch", "dependabot/npm_and_yarn/foo", "--base", "development", "--title", "chore(deps): bump foo"], ok: false, offender: "chore(deps): bump foo" },

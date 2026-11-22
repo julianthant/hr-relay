@@ -1,8 +1,10 @@
 import { userInfo } from "node:os";
 import { posix, win32 } from "node:path";
-import { windowsLocalApplicationData } from "../../../models/config/secrets.js";
+import { readRuntimeProfile, windowsLocalApplicationData } from "../../../models/config/secrets.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { defineRuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
+import { defineRuntimeIsolation, runtimeProfiles, type RuntimeProfile } from "../../../models/config/define-runtime-isolation.js";
+
+export const runtimeProfile = readRuntimeProfile();
 
 export const rebuildRuntimeIsolation = defineRuntimeIsolation({
   stateRoot: ".tracker/data",
@@ -13,7 +15,7 @@ export const rebuildRuntimeIsolation = defineRuntimeIsolation({
   processLockRoot: ".tracker/data/locks",
   browserProfileRoot: ".tracker/data/browsers",
   browserSessionNamespace: "hrauto-rebuild",
-});
+}, runtimeProfile);
 
 export type ApplicationDataHostFacts =
   | { readonly platform: "win32"; readonly localAppData: string | undefined }
@@ -34,10 +36,11 @@ function currentApplicationDataHostFacts(): ApplicationDataHostFacts {
     : { platform, homeDirectory: userInfo().homedir };
 }
 
-export function applicationDataWorkspace(host: ApplicationDataHostFacts = currentApplicationDataHostFacts()): string {
+export function applicationDataWorkspace(host: ApplicationDataHostFacts = currentApplicationDataHostFacts(), profile: RuntimeProfile = runtimeProfile): string {
+  const { namespace } = runtimeProfiles[profile];
   if (host.platform !== "win32") {
     if (!posix.isAbsolute(host.homeDirectory) || posix.resolve(host.homeDirectory) !== host.homeDirectory) throw new Error("application-data-home-invalid");
-    return posix.join(host.homeDirectory, "Library", "Application Support", "Relay");
+    return posix.join(host.homeDirectory, "Library", "Application Support", namespace);
   }
   const local = host.localAppData;
   if (local === undefined) throw new ApplicationDataWorkspaceRefusedError("missing-local-appdata");
@@ -48,5 +51,5 @@ export function applicationDataWorkspace(host: ApplicationDataHostFacts = curren
       || [...part].some(character => character.charCodeAt(0) < 32)
       || /^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/iu.test(base);
   })) throw new ApplicationDataWorkspaceRefusedError("invalid-local-appdata");
-  return win32.join(local, "Relay");
+  return win32.join(local, namespace);
 }

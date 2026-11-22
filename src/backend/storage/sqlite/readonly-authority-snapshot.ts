@@ -1,3 +1,4 @@
+import { runtimeProfile } from "../../app/config/runtime-isolation.js";
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { createPrivateDirectory, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, isRetainedSnapshot, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
@@ -182,11 +183,12 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySna
 }
 
 // The "pid" marker keeps a legacy UUID name (leading digits, then a hyphen) from reading as an owner.
-const leakedReadonlyAuthorityCopy = /^relay-readonly-authority-pid(\d+)-/u;
+export const readonlyAuthorityCopyPrefix = runtimeProfile === "production" ? "relay-readonly-authority-pid" : `relay-${runtimeProfile}-readonly-authority-pid`;
 
 export function sweepLeakedReadonlyAuthorityCopies(root = realpathSync(tmpdir())): void {
   for (const name of readdirSync(root)) {
-    const pid = Number(leakedReadonlyAuthorityCopy.exec(name)?.[1]);
+    if (!name.startsWith(readonlyAuthorityCopyPrefix)) continue;
+    const pid = Number(/^(\d+)-/u.exec(name.slice(readonlyAuthorityCopyPrefix.length))?.[1]);
     if (!Number.isInteger(pid) || pid === process.pid || pidAlive(pid)) continue;
     try { rmSync(join(root, name), { recursive: true }); }
     catch { /* A stuck copy must not stop BFF start. */ }
@@ -206,8 +208,8 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string): ReadonlySnapshot;
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner: AuthorityImageOwner): ReadonlySnapshot | undefined;
 function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImageOwner): ReadonlySnapshot | undefined {
   const directory = process.platform === "win32"
-    ? join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-${randomUUID()}`)
-    : mkdtempSync(join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-`));
+    ? join(realpathSync(tmpdir()), `${readonlyAuthorityCopyPrefix}${process.pid}-${randomUUID()}`)
+    : mkdtempSync(join(realpathSync(tmpdir()), `${readonlyAuthorityCopyPrefix}${process.pid}-`));
   if (process.platform === "win32") createPrivateDirectory(directory, { mode: 0o700 });
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
@@ -364,7 +366,7 @@ const RestoreFenceIndexRow = z.strictObject({
 });
 
 export function createRestoreFenceIndex() {
-  const prefix = join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-fences-`);
+  const prefix = join(realpathSync(tmpdir()), `${readonlyAuthorityCopyPrefix}${process.pid}-fences-`);
   const path = process.platform === "win32" ? `${prefix}${randomUUID()}` : mkdtempSync(prefix);
   if (process.platform === "win32") createPrivateDirectory(path, { mode: 0o700 });
   const directory = { path };

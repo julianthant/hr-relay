@@ -10,7 +10,7 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { createPrivateDirectory, fsyncPath } from "../private-path.js";
 import { isAuthorityInspectionIntegrityFailure } from "./authority-database.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
-import { backupReadOnlyDatabase, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { backupReadOnlyDatabase, readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { BackupCopyInspectionSchema } from "./recovery-contracts.js";
 
 const PROTOCOL = "relay.backup-inspection.v1";
@@ -153,7 +153,7 @@ export function workerExecArgv(parentExecArgv: readonly string[] = process.execA
 
 /** Named like the snapshot copies, so a folder left by a hard-killed process is removed by the next start's sweep. */
 function createScratchDirectory(): string {
-  const prefix = join(realpathSync(tmpdir()), `relay-readonly-authority-pid${String(process.pid)}-inspection-`);
+  const prefix = join(realpathSync(tmpdir()), `${readonlyAuthorityCopyPrefix}${String(process.pid)}-inspection-`);
   if (process.platform !== "win32") return mkdtempSync(prefix);
   const directory = `${prefix}${randomUUID()}`;
   createPrivateDirectory(directory, { mode: 0o700 });

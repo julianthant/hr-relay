@@ -76,3 +76,15 @@ it("passes only the fake keychain into a child with a stripped environment", () 
     assert.equal(child.stdout, "matched");
   } finally { entry.deletePassword(); }
 });
+
+it("isolates identical credential identities across all runtime profiles", () => {
+  const f = fixture(), production = f.custody.create(f.identity, () => {});
+  for (const profile of ["staging", "development"] as const) {
+    const isolated = createCredentialKeyCustody(f.store, profile);
+    assert.throws(() => isolated.read(production), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
+    isolated.delete(production);
+    const metadata = isolated.create(f.identity, () => {});
+    assert.notEqual(isolated.read(metadata).key, f.custody.read(production).key);
+  }
+  assert.equal(f.entries.size, 3);
+});

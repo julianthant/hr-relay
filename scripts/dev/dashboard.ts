@@ -2,14 +2,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { DEVELOPMENT_DEBUG_MIRROR_ENV } from "../../src/models/config/secrets.js";
+import { DEVELOPMENT_DEBUG_MIRROR_ENV, readRuntimeProfile, RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import {
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
 } from "../../src/backend/transports/http/frontend-owner.js";
+
+import { RuntimeProfileSchema, type RuntimeProfile } from "../../src/models/config/define-runtime-isolation.js";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 const STARTUP_PROGRESS_MS = 30_000;
@@ -22,6 +25,7 @@ interface Managed {
 
 export interface DashboardLauncherOptions {
   readonly mode?: "dashboard" | "backend" | "web";
+  readonly profile?: RuntimeProfile;
   readonly frontendOwnerFile?: string;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
@@ -29,7 +33,8 @@ export interface DashboardLauncherOptions {
 
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
   const mode = options.mode ?? "dashboard";
-  const frontendOwnerFile = options.frontendOwnerFile ?? join(repositoryRoot, "node_modules", ".cache", "relay-dashboard", "frontend-owner");
+  const profile = options.profile ?? readRuntimeProfile();
+  const frontendOwnerFile = options.frontendOwnerFile ?? join(repositoryRoot, "node_modules", ".cache", "relay-dashboard", profile === "production" ? "frontend-owner" : `frontend-owner-${profile}`);
   const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
   let launchNonce: string;
   try {
@@ -40,7 +45,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     writeError('[dashboard] Start npm run backend first and wait for "listening".\n');
     return Promise.resolve(1);
   }
-  const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
+  const childEnvironment = { ...process.env, [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
   const signals = options.signals ?? process;
   const managed: Managed[] = [];
   let stopping = false;
@@ -150,5 +155,11 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
 
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  process.exitCode = await runDevDashboard({ mode: process.argv.includes("--backend-only") ? "backend" : process.argv.includes("--web-only") ? "web" : "dashboard" });
+  const { values } = parseArgs({ options: {
+    profile: { type: "string" }, "backend-only": { type: "boolean" }, "web-only": { type: "boolean" },
+  } });
+  process.exitCode = await runDevDashboard({
+    profile: RuntimeProfileSchema.optional().parse(values.profile),
+    mode: values["backend-only"] ? "backend" : values["web-only"] ? "web" : "dashboard",
+  });
 }
