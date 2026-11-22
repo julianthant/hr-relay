@@ -43,6 +43,8 @@ test("an open run survives Reload and closes on Back", async ({ dashboard, page 
   await dashboard.open();
   const runId = dashboard.runId("doneRun");
   await dashboard.openRun(runId);
+  // Reload only after the run read settles, or the reload aborts it mid-flight.
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
   await page.reload();
   await dashboard.expectRunOpen(runId);
   await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
