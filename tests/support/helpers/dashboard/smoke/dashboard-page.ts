@@ -1,5 +1,5 @@
 /** Page object for the served dashboard: the shell, queue, run panel and Run dialog as an operator reaches them. */
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, type Request } from "@playwright/test";
 import type { SeededServer } from "../served-fixtures/seeded-bff.js";
 
 export const WORKFLOW_LABELS = ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Work-Study", "Emergency Contact"] as const;
@@ -25,6 +25,16 @@ export class DashboardPage {
     this.dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
+    page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/")) this.reads.add(request); });
+    page.on("requestfinished", request => { this.reads.delete(request); });
+    page.on("requestfailed", request => { this.reads.delete(request); });
+  }
+
+  private readonly reads = new Set<Request>();
+
+  /** Leaving a page aborts its open reads and the browser reports each abort; a test that navigates waits for them to finish first. */
+  async settleReads(): Promise<void> {
+    await expect.poll(() => this.reads.size, { message: "API reads still open" }).toBe(0);
   }
 
   async open(): Promise<void> {
