@@ -1,5 +1,5 @@
 /** Page object for the served dashboard: the shell, queue, run panel and Run dialog as an operator reaches them. */
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, type Request } from "@playwright/test";
 import type { SeededServer } from "../served-fixtures/seeded-bff.js";
 
 export const WORKFLOW_LABELS = ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Work-Study", "Emergency Contact"] as const;
