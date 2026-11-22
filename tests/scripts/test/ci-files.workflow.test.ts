@@ -121,7 +121,9 @@ describe("development fast check", () => {
     expect(gate).toContain("if: ${{ always() && github.event_name != 'schedule' }}");
     expect(gate).toContain("npm run names:check");
     expect(gate).toContain('node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"');
-    expect(gate).toContain('git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"');
+    expect(gate).toContain('git cat-file -e "$PR_BASE_SHA^{commit}"');
+    expect(gate).toContain('|| git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"');
+    expect(gate).toContain("is not available to fetch");
     expect(gate.indexOf("git fetch")).toBeLessThan(gate.indexOf("allowed-workflows.ts"));
     expect(gate).toContain("PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}");
     expect(gate.indexOf("allowed-workflows.ts")).toBeLessThan(gate.indexOf("listWorkflowRuns"));
@@ -258,7 +260,8 @@ describe("development fast check", () => {
     for (const file of ["tests/smoke/dashboard.smoke.ts", "tests/smoke/dashboard-states.gallery.ts", "tests/smoke/gallery/index.html",
       "playwright.smoke.config.ts", ".github/workflows/checks.yml", "tests/support/helpers/dashboard/smoke/stories/catalogue.ts",
       "tests/support/helpers/dashboard/served-fixtures/seeded-bff.ts", "tests/support/fixtures/dashboard/fixture-day.ts",
-      "tests/support/fixtures/operator-command-fixtures.ts", "tests/support/helpers/synthetic-storage-admission.ts"]) {
+      "tests/support/fixtures/operator-command-fixtures.ts", "tests/support/helpers/synthetic-storage-admission.ts",
+      "tsconfig.json", ".node-version", "scripts/build/windows-observer-policy.ts", "vite.dashboard.config.ts", "src/dashboard/index.html"]) {
       expect(matches(file), file).toBe(true);
     }
     for (const file of ["README.md", "tests/smoke/README.md", "tests/scripts/test/ci-plan.test.ts", "playwright.mocks.config.ts"]) {
