@@ -5,10 +5,13 @@ const suiteNames = ["unit", "integration", "architecture"] as const;
 const contextSchema = z.object({
   workflow: z.enum(["fast", "portable", "release"]), event: z.enum(["pull_request", "push", "workflow_dispatch"]),
   base: z.string(), head: z.string(), draft: z.boolean(), filters: z.record(z.string(), z.string()),
+  affected: z.object({ core: z.boolean(), shardCount: z.number().int().nonnegative(),
+    shards: z.array(z.array(z.string().startsWith("tests/")).min(1)) }).optional(),
 });
 const matrixSchema = z.object({ include: z.array(z.object({
   suite: z.enum(["unit", "integration", "architecture", "native"]),
   shard: z.number().int().positive(), shards: z.number().int().positive(),
+  files: z.array(z.string().startsWith("tests/")).min(1).optional(),
 })) });
 export const ciPlanSchema = z.object({
   workflow: z.enum(["fast", "portable", "release"]), fullRelease: z.boolean(),
@@ -30,6 +33,9 @@ export function createCiPlan(input: unknown): CiPlan {
   if (fast && (manual || context.base !== "development")) {
     throw new Error("Fast CI requires a development pull request.");
   }
+  if (fast !== (context.affected !== undefined)) {
+    throw new Error("Only fast CI takes the affected integration plan.");
+  }
   if (context.workflow === "portable" && (manual || context.base !== "staging")) {
     throw new Error("Portable CI requires a staging pull request.");
   }
@@ -43,7 +49,8 @@ export function createCiPlan(input: unknown): CiPlan {
   const enabled = (suite: typeof suiteNames[number]) =>
     manual || context.filters.shared === "true" || context.filters[suite] === "true";
   const selected = { unit: enabled("unit"), integration: enabled("integration"), architecture: enabled("architecture") };
-  if (fast) selected.integration = false;
+  const affected = context.draft ? [] : context.affected?.shards ?? [];
+  if (fast) selected.integration = affected.length > 0;
   if (!manual && context.draft) {
     selected.integration = false;
     selected.architecture = false;
@@ -53,7 +60,8 @@ export function createCiPlan(input: unknown): CiPlan {
   const ubuntu = [
     ...(selected.unit ? jobs("unit", 3) : []),
     ...(selected.architecture ? jobs("architecture", 2) : []),
-    ...(selected.integration ? jobs("integration", 30) : []),
+    ...(fast ? affected.map((files, i) => ({ suite: "integration" as const, shard: i + 1, shards: affected.length, files }))
+      : selected.integration ? jobs("integration", 30) : []),
   ];
   const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
   const macos = fullRelease ? jobs("native", nativeShards) : [];

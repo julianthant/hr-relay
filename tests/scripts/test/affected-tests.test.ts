@@ -75,6 +75,11 @@ describe("affected integration tests", () => {
       shardCount: 10,
       shards: ["ab", "c", "de", "fg", "hi", "jk", "lm", "no"].map(group => [...group].map(name)),
     });
+    expect(createAffectedTestsPlanner(root)(base, head, Infinity)).toEqual({
+      core: false,
+      shardCount: 10,
+      shards: ["ab", "c", "de", "fg", "hi", "jk", "lm", "no", "pq", "r"].map(group => [...group].map(name)),
+    });
   });
 
   it.each(["package.json", "package-lock.json", "vitest.config.ts", "tsconfig.json",

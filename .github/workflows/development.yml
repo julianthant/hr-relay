@@ -14,20 +14,23 @@ permissions:
   actions: read
   pull-requests: read
 
+# An edited run queues behind the pull request's test run instead of cancelling it.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
+  # Task pull requests reuse their push run; edited events reuse the last test run.
   checks:
+    if: ${{ github.event_name == 'push' || (github.event.action != 'edited' && !startsWith(github.head_ref, 'task/')) }}
     uses: ./.github/workflows/checks.yml
     with:
       kind: fast
 
-  development:
-    name: development
+  proof:
+    name: proof
     needs: checks
-    if: ${{ always() }}
+    if: ${{ always() && needs.checks.result != 'skipped' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -44,3 +47,87 @@ jobs:
         run: |
           test "$CHECKS_RESULT" = success
           node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"
+
+  development:
+    name: development
+    needs: proof
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v7
+        if: github.event_name == 'pull_request'
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Check the development pull request name
+        if: github.event_name == 'pull_request'
+        env:
+          NAMES_BASE: ${{ github.base_ref }}
+          NAMES_HEAD: ${{ github.head_ref }}
+          NAMES_TITLE: ${{ github.event.pull_request.title }}
+        run: npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE"
+      - run: npm ci
+        if: github.event_name == 'pull_request'
+      - name: Check added workflow files
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"
+      - name: Require this run's proof
+        if: needs.proof.result != 'skipped'
+        env:
+          PROOF_RESULT: ${{ needs.proof.result }}
+        run: test "$PROOF_RESULT" = success
+      - name: Find the proof for the pull request head
+        if: needs.proof.result == 'skipped'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+            const branch = pr.head.ref;
+            const sha = pr.head.sha;
+            // Task pull requests prove through their push run; other edited pull requests through their last test run.
+            const event = branch.startsWith('task/') ? 'push' : 'pull_request';
+            if (pr.head.repo?.full_name !== repo) {
+              core.setFailed(`Pull request head ${pr.head.repo?.full_name} is not ${repo}.`);
+              return;
+            }
+            const started = Date.now();
+            for (;;) {
+              const runs = (await github.paginate(github.rest.actions.listWorkflowRuns, {
+                ...context.repo, workflow_id: 'development.yml', event, branch, head_sha: sha, per_page: 100,
+              })).filter(run => run.id !== context.runId && run.event === event && run.head_branch === branch
+                && run.head_sha === sha && run.head_repository?.full_name === repo)
+                .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id);
+              let waiting;
+              for (const run of runs) {
+                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                  ...context.repo, run_id: run.id, filter: 'latest', per_page: 100,
+                });
+                const proof = jobs.find(job => job.name === 'proof');
+                if (proof?.conclusion === 'skipped') continue;
+                if (proof?.status === 'completed') {
+                  if (proof.conclusion === 'success') core.info(`Proof passed for ${sha} in ${run.html_url}`);
+                  else core.setFailed(`Proof ${proof.conclusion} for ${sha} in ${run.html_url}`);
+                  return;
+                }
+                if (proof || run.status !== 'completed') {
+                  waiting = run;
+                  break;
+                }
+              }
+              // A missing run fails after a minute; a running proof gets the length of a task run.
+              if (Date.now() - started > (waiting ? 20 : 1) * 60_000) {
+                core.setFailed(waiting ? `Timed out waiting for ${waiting.html_url}` : `No Development ${event} run on ${branch} proves ${sha}; push the branch to start one.`);
+                return;
+              }
+              if (waiting) core.info(`Waiting for ${waiting.html_url}`);
+              await new Promise(resolve => setTimeout(resolve, 20_000));
+            }

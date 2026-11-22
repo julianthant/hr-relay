@@ -31,12 +31,17 @@ Development and Staging run on pull requests to their named branches. Production
 requests into `main`, operator manual starts with a required title, and pushes to `main` for
 CodeQL only. Pull request runs are titled with their pull request title.
 
-A Development run starts at most ten runner jobs: names and plan together, lint, static (typecheck
-and build), privacy, three unit shards, two architecture shards and the `development` gate.
-It starts no integration, perf, smoke or macOS job. Drafts keep names, plan and gate, static,
-privacy and selected unit shards only. Path filters may omit test suites, including all suites
-for Markdown-only changes. The fast gate folds unit and architecture proofs into its result;
-it requires successful selected shards, exactly skipped omitted work and all mandatory checks.
+A Development run for a `task/**` push or a non-task pull request runs plan, lint, static
+(typecheck and build), privacy, three unit shards, two architecture shards, the integration
+shards `scripts/test/affected-tests.ts` selects (at most eight five-minute shards; every affected
+shard for `feature/*` pull requests), `proof` and the `development` gate. It starts no perf, smoke
+or macOS job. Drafts keep plan, static, privacy and selected unit shards only. Path filters may
+omit unit and architecture suites, including all suites for Markdown-only changes. `proof` folds
+the shard results into one result; it requires successful selected shards, exactly skipped
+omitted work and all mandatory checks. A `task/**` pull request runs only the `development` gate:
+names, the workflow allowlist, then the `proof` of the push run at the pull request head SHA. It
+waits up to twenty minutes for a running proof and fails after a minute when no run exists. An
+edited pull request reruns only that gate and reuses the last proof at its head SHA.
 
 Staging runs the full portable check: three unit shards, two architecture shards, thirty
 integration shards, lint, static, privacy, perf and smoke. Ready Staging and Production pull

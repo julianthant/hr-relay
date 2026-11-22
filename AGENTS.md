@@ -55,9 +55,12 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
   by topic. Keep architecture, mocks, perf and types in their own trees; shared fixtures and
   helpers belong in `tests/support/`.
 - CI plans:
-  - Task pushes and development PRs run the fast Ubuntu plan: names (PRs only) and plan, lint,
-    static, privacy, three unit shards, two architecture shards and the `development` gate, at
-    most ten jobs. Drafts run static, privacy and selected unit shards, with names, plan and gate.
+  - Task pushes and other development PRs run the fast Ubuntu plan: plan, lint, static, privacy,
+    three unit shards, two architecture shards, the affected integration shards (at most eight;
+    every affected shard on `feature/*` PRs), `proof` and the `development` gate. Drafts run
+    static, privacy and selected unit shards. A `task/**` PR runs only the `development` gate:
+    names, the workflow allowlist and the push run's `proof` at the PR head SHA. Edited PRs rerun
+    the gate only.
   - Staging PRs from `development` run portable Ubuntu unit, integration and architecture suites
     plus static, privacy, perf and smoke.
   - Release checks run the selected unit, integration and architecture suites, including native

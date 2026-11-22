@@ -31,17 +31,14 @@ jobs:
       plan: ${{ steps.select.outputs.plan }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The fast plan diffs against development history; blobs past the checkout load on demand.
+          fetch-depth: ${{ inputs.kind != 'fast' && 1 || 0 }}
+          filter: ${{ inputs.kind == 'fast' && 'blob:none' || '' }}
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Check the development pull request name
-        if: inputs.kind == 'fast' && github.event_name == 'pull_request'
-        env:
-          NAMES_BASE: ${{ github.base_ref }}
-          NAMES_HEAD: ${{ github.head_ref }}
-          NAMES_TITLE: ${{ github.event.pull_request.title }}
-        run: npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE"
       - run: npm ci
       - name: Find the latest successful file timings
         id: timings
@@ -83,6 +80,19 @@ jobs:
           name: ci-balancing
           path: scripts/test/ci-durations.json
           retention-days: 14
+      - name: Select affected integration tests
+        id: affected
+        if: inputs.kind == 'fast'
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          base=HEAD^1
+          if [ "$GITHUB_EVENT_NAME" = push ]; then base=$(git merge-base origin/development HEAD); fi
+          scope=()
+          if [[ "$HEAD_REF" == feature/* ]]; then scope=(--all); fi
+          plan=$(node --import tsx scripts/test/affected-tests.ts "$base" HEAD "${scope[@]}")
+          node -e 'const p = JSON.parse(process.argv[1]); console.log(`core=${p.core} shards=${p.shards.length}/${p.shardCount}`); p.shards.forEach((s, i) => console.log(`shard ${i + 1}: ${s.join(" ")}`))' "$plan"
+          echo "plan=$plan" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         if: github.event_name != 'workflow_dispatch'
@@ -110,6 +120,7 @@ jobs:
         id: select
         env:
           FILTERS: ${{ toJSON(steps.filter.outputs) }}
+          AFFECTED: ${{ steps.affected.outputs.plan }}
           KIND: ${{ inputs.kind }}
         with:
           script: |
@@ -119,6 +130,7 @@ jobs:
               base: context.payload.pull_request?.base.ref ?? (context.eventName === 'push' ? 'development' : ''),
               head: context.payload.pull_request?.head.ref ?? context.ref.replace(/^refs\/heads\//u, ''),
               draft: context.payload.pull_request?.draft ?? false, filters: JSON.parse(process.env.FILTERS),
+              ...(process.env.AFFECTED ? { affected: JSON.parse(process.env.AFFECTED) } : {}),
             };
             core.setOutput('plan', execFileSync('node', [
               '--import', 'tsx', 'scripts/test/ci-plan.ts', 'plan', JSON.stringify(input),
@@ -156,7 +168,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Check added workflow files
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && inputs.kind != 'fast'
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
@@ -223,10 +235,18 @@ jobs:
           dir=$(mktemp -d "$parent/relay-tmp.XXXXXX")
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - name: Tests
+        if: matrix.files == null
         env:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
         run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
+      - name: Affected integration tests
+        if: matrix.files != null
+        env:
+          FILES: ${{ toJSON(matrix.files) }}
+        run: |
+          mapfile -t files < <(node -e 'for (const file of JSON.parse(process.env.FILES)) console.log(file)')
+          npm run test:integration -- "${files[@]}" --reporter=verbose --maxWorkers=3
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
