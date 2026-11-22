@@ -73,7 +73,7 @@ it("freezes issued leases and binds authority to the exact live root and unrelea
   const next = acquireInstallation(workspace, "shared", lifetime);
   next.release();
   await lifetime.close();
-  expect(() => next.assertHeld()).toThrow(/runtime authority has closed/u);
+  expect(() => next.assertHeld()).toThrow(/^Relay has closed\. Restart it to continue\.$/u);
 });
 
 it("does not silently re-adopt defaults after control is lost", async () => {
