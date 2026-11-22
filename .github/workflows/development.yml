@@ -1,11 +1,13 @@
 name: Development
 
-run-name: ${{ github.event.pull_request.title }}
+run-name: ${{ github.event.pull_request.title || github.ref_name }}
 
 on:
   pull_request:
     branches: [development]
     types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]
+  push:
+    branches: ['task/**']
 
 permissions:
   contents: read
@@ -13,7 +15,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
