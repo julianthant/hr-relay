@@ -90,18 +90,19 @@ test("Back, Forward and Reload follow the URL", async ({ dashboard, failures, pa
   failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
   await dashboard.open();
   await dashboard.openWorkflow("Separations");
-  // Analytics reads its population on open; leaving first would abort that read and the browser reports the abort.
-  const populationRead = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/reports/activity/population");
   await dashboard.openDataPage("Analytics");
-  await populationRead;
   // Opening Settings lands on General, then the section link adds its own entry.
+  await dashboard.settleReads();
   await page.goBack();
   await expect(dashboard.pageHeading("General")).toBeVisible();
+  await dashboard.settleReads();
   await page.goBack();
   await expect(dashboard.pageHeading("Separations queue")).toBeVisible();
+  await dashboard.settleReads();
   await page.goForward();
   await page.goForward();
   await expect(dashboard.pageHeading("Analytics")).toBeVisible();
+  await dashboard.settleReads();
   await page.reload();
   await expect(dashboard.pageHeading("Analytics")).toBeVisible();
 });

@@ -25,6 +25,15 @@ export class DashboardPage {
     this.dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
+    page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/")) this.reads.add(request); });
+    for (const done of ["requestfinished", "requestfailed"] as const) page.on(done, request => { this.reads.delete(request); });
+  }
+
+  private readonly reads = new Set<Request>();
+
+  /** Leaving a page aborts its open reads and the browser reports each abort; a test that navigates waits for them to finish first. */
+  async settleReads(): Promise<void> {
+    await expect.poll(() => this.reads.size, { message: "API reads still open" }).toBe(0);
   }
 
   async open(): Promise<void> {
