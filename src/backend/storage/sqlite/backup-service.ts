@@ -175,7 +175,7 @@ function assertExpectedBackupSource(expected: AuthorityBackupExpectedSource,
   }
 }
 
-function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>,
+export function assertBackupInspection(manifest: StoppedAuthorityBackupManifest, inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>,
   expected: AuthorityBackupExpectedSource): void {
   assertExpectedBackupSource(expected, manifest);
   assertExpectedBackupSource(expected, inspection);

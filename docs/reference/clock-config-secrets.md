@@ -714,6 +714,33 @@ Startup owns automatic same-person repair before ordinary admission, providers o
 
 The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and retains an on-disk repair record with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8, then to registry document 4 and marker 9; old physical completed-restore entries are checked during that conversion and removed from current control.
 
+### Isolated library import
+
+`importIsolatedWorkbookLibrary(admission, database, request, clock?)` in
+`storage/maintenance/isolated-library-import.ts` copies the Spreadsheets library of one verified
+production person backup into one staging or development person. It is the only supported way to
+give an isolated copy production data; seed copies only through it.
+
+- Sign up first. The person signs up in the isolated copy (Relay login and Duo), which issues that
+  installation's own installation and profile IDs and its own credentials. The import never creates
+  a person and never changes either identity.
+- Call it with the copy's lifetime lock held, after stopping its dashboard: acquire the copy's
+  entrypoint admission, admit the signed-up person and open its store through `AuthorityDatabase.open`.
+  Pass that admission and database with
+  `{ source: { manifestPath, binding: { installationId, profileId } }, destination: { installationId, profileId } }`.
+- The source is a current-schema backup manifest (version 4). Its manifest, database identity and
+  contents must match the named source binding, and its bytes must match the manifest before and
+  after a read through a read-only snapshot. The backup file is never opened or written.
+- It refuses (`IsolatedLibraryImportRefusedError`) when the destination admission, open store and
+  named destination differ, when the destination shares the source's installation or lies inside the
+  production workspace, when the source differs from its binding or is not current, and when the
+  destination library already holds workbooks or types. A repeated import therefore refuses.
+- It brings only each local workbook's current content and the workbook types, under new library
+  IDs issued by the destination store, in one store transaction; a failure writes nothing. Version
+  history, journals, tags, workflow outputs, SharePoint links, runs, evidence, settings, assistant
+  state, credentials, sessions and queued work stay behind.
+- To refresh a copy that already holds a library, remove that person and sign up again first.
+
 ## Settings and readiness readback
 
 `GET /api/v1/settings/facts` serves compatibility facts and workflow capabilities.
