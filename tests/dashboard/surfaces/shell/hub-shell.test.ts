@@ -42,7 +42,7 @@ it("keeps the served assistant closed until requested and preserves its close an
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it("reads no assistant data while closed and reads its history and model preference once when it first opens", async () => {
+it("reads the assistant history and model preference once, at load, not again when the panel first opens", async () => {
   const { app } = createFixtureBff();
   const paths: string[] = [];
   assistantOpen.set(false);
@@ -53,11 +53,11 @@ it("reads no assistant data while closed and reads its history and model prefere
       settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-    assert.deepEqual(paths.filter(path => path.startsWith("/api/v1/assistant/")), []);
+    assert.ok(paths.includes("/api/v1/assistant/history"));
+    assert.equal(paths.filter(path => path === "/api/v1/assistant/model-preference").length, 1);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]')?.click());
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
     assert.equal(paths.filter(path => path === "/api/v1/assistant/model-preference").length, 1);
-    assert.ok(paths.includes("/api/v1/assistant/history"));
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 

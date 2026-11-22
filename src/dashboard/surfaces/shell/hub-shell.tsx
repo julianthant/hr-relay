@@ -28,8 +28,9 @@ export function HubShell(props: HubShellProps) {
   const canRead = opened && (revealed || mockParam("assistantOpen") === "1");
   const [everOpened, setEverOpened] = useState(canRead);
   if (canRead && !everOpened) setEverOpened(true);
-  const history = useAssistantHistory(client, everOpened, props.authority);
-  return <HubShellBody key={history.store?.profileId ?? (!everOpened || history.pending ? 'loading' : 'session')} {...props} history={history.store}
+  // History loads with the dashboard because its notices show on the closed panel; only the model catalog waits for the first open.
+  const history = useAssistantHistory(client, true, props.authority);
+  return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
     preferenceChanged={history.preferenceChanged} assistantOpened={everOpened} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyLoading={history.pending} historyNotice={history.notice} />;
 }
 function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyLoading, historyNotice, modelPreference, preferenceChanged, assistantOpened }: HubShellProps & { assistantOpened: boolean; history?: AssistantHistory; historyPending: boolean; historyLoading: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
