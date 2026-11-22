@@ -33,7 +33,10 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
   const lifecycle = new RunRecordService({ database, clock, ids, publishQueued: () => undefined });
   const descriptors = { resolve: () => personLookupDescriptor };
   const inbox = createNotificationInbox({ authority: database, clock, ids, actorId: "local-operator" });
-  const observer = createNotificationObserver({ inbox, read: () => ({ observations: [], diagnostics: [] }), health: async () => undefined });
+  const observer = {
+    ...createNotificationObserver({ inbox, read: () => ({ observations: [], diagnostics: [] }), health: async () => undefined }),
+    healthDueAt: () => Infinity,
+  };
   const input = { database, clock, lifecycle, descriptors, runDetailDeps: createRunDetailTestWorld().depsOf(w) };
   const routes = composeNotificationRoutes({ ...input, assertCurrent: () => undefined, notificationObserver: observer,
     notificationTarget: () => ({ kind: "storage" }) });

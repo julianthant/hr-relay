@@ -76,7 +76,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const timelineRevision = database.trackAuthorityTables(["timeline_events"]);
   const workerRevision = database.trackAuthorityTables(["runs", "deleted_runs", "worker_slots", "worker_pools",
     "run_batches", "auth_leases", "write_intents"]);
-  let key: string | undefined = JSON.stringify(database.changeKey());
+  let key: string | { state: "unreadable" } = JSON.stringify(database.changeKey());
   let timeline = timelineRevision(), workers = workerRevision();
   let lastWall = clock.nowMs(), leaseExpiry = database.nextDuoLeaseExpiry(lastWall);
   let safetyAt = clock.monotonicMs() + 60_000;
@@ -107,7 +107,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       workers = nextWorkers;
       if (safety) safetyAt = elapsed + 60_000;
     } catch {
-      key = undefined;
+      key = { state: "unreadable" };
       // An unreadable revision requires both passes; the projection owns degradation and rebuild.
       projection.ingestFromTimeline();
       projection.reconcileWorkerAuthority();

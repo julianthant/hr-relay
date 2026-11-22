@@ -26,7 +26,8 @@ it("authenticates the same head once per record and checks key custody again bef
   try {
     const store = createCanonicalCredentials(f.admission);
     const decode = vi.spyOn(CanonicalCredentialHeadSchema, "safeParse");
-    const get = FakeKeyringEntry.prototype.getPassword;
+    const { value: get } = Object.getOwnPropertyDescriptors(FakeKeyringEntry.prototype).getPassword;
+    assert.ok(get);
     const custody = vi.spyOn(FakeKeyringEntry.prototype, "getPassword");
     for (let read = 1; read <= 2; read++) {
       assert.ok(store.readRecord("protected"));
@@ -49,7 +50,8 @@ it("rechecks a different credential head published during a record read", async 
     const head = CanonicalCredentialHeadSchema.parse(JSON.parse(original.toString("utf8")));
     assert.equal(head.state, "active");
     const store = createCanonicalCredentials(f.admission);
-    const get = FakeKeyringEntry.prototype.getPassword;
+    const { value: get } = Object.getOwnPropertyDescriptors(FakeKeyringEntry.prototype).getPassword;
+    assert.ok(get);
     vi.spyOn(FakeKeyringEntry.prototype, "getPassword").mockImplementationOnce(function (this: FakeKeyringEntry) {
       writeFileSync(path, JSON.stringify({ ...head, mac: "0".repeat(64) }));
       return get.call(this);

@@ -103,14 +103,15 @@ requireMatch(observations.every(unchanged => unchanged()));
 process.stdout.write(JSON.stringify(file));
 `;
 
-export function readStartupFile(path: string, verifyWalUpTo?: number): StartupFile | undefined {
+export function readStartupFile(path: string, verifyWalUpTo?: number):
+  { state: "observed"; file: StartupFile } | { state: "unavailable" } {
   try {
     const script = process.platform === "win32" ? windowsObserverPolicyPrelude("snapshot") + observeFiles : observeFiles;
     const args = ["--input-type=commonjs", "-e", script, path];
     if (verifyWalUpTo !== undefined) args.push(String(verifyWalUpTo));
     const result = spawnSync(process.execPath, args, { env: workerBootstrapEnvironment(), encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"], maxBuffer: 4096, timeout: 5000, killSignal: "SIGKILL", windowsHide: true });
-    if (result.status !== 0 || result.error !== undefined) return undefined;
-    return fileSchema.parse(JSON.parse(result.stdout));
-  } catch { return undefined; } // No complete observation means no reusable proof.
+    if (result.status !== 0 || result.error !== undefined) return { state: "unavailable" };
+    return { state: "observed", file: fileSchema.parse(JSON.parse(result.stdout)) };
+  } catch { return { state: "unavailable" }; }
 }

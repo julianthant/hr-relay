@@ -79,7 +79,7 @@ it("proves mounted reads once, requires the session, and reads one authenticated
     const url = base + "/api/v1/explorer";
     for (let i = 0; i < 2; i++) {
       proofs = 0;
-      const response = await fetch(url, { headers: { "x-relay-session": session } });
+      const response: Response = await fetch(url, { headers: { "x-relay-session": session } });
       assert.equal(response.status, 200);
       WorkflowExplorerWireSchema.parse(await response.json());
       assert.equal(proofs, 1);

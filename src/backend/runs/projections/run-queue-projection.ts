@@ -1482,7 +1482,7 @@ export class RunQueueProjection {
       if (revision === undefined || wire.workerAuthority.state === "unavailable" || wire.unavailableWorkerCards !== undefined) return { wire };
 
       const workerKey = this.#workerSurfaceKey(wire.workerAuthority.members);
-      if (workerKey === undefined) return { wire };
+      if (typeof workerKey !== "string") return { wire };
       let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
       for (const notice of notifications) {
         if (notice.snooze.state !== "snoozed") continue;
@@ -1503,17 +1503,17 @@ export class RunQueueProjection {
     return wire;
   }
 
-  #workerSurfaceKey(members: readonly WorkerSlotRecord[]): string | undefined {
+  #workerSurfaceKey(members: readonly WorkerSlotRecord[]): string | { state: "unavailable" } {
     // SQLite certifies the durable slots, writes and leases. Live views and pending starts are process state.
     try {
       const views = this.#deps.authority.workerMembers?.();
-      if (views === undefined) return undefined;
+      if (views === undefined) return { state: "unavailable" };
       const pending = [...new Set(members.map(member => member.workflow))]
         .filter(workflow => this.#deps.authority.workerStartupPending?.(workflow) === true);
       return JSON.stringify([views, pending]);
     } catch {
       // A missing observation disables row reuse. The worker card reader reports its own availability.
-      return undefined;
+      return { state: "unavailable" };
     }
   }
 

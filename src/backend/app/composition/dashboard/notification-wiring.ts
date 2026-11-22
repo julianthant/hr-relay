@@ -57,7 +57,7 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       const candidate = current === undefined ? undefined : { actor, position: current, from: now, until };
       let usedDisplay = false;
       const result = respond(candidate, () => notificationListProjection(records, now, {
-        source: deps.source,
+        source: id => deps.source(id),
         get display() { usedDisplay = true; return deps.display; },
       }));
       // Display context can read run, command and retained timeline evidence outside the inbox table.

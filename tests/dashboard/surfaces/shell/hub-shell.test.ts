@@ -26,14 +26,13 @@ it("keeps the served assistant closed until requested and preserves its close an
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {
       settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
     })) })));
-    let launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
+    const launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
     let panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, true); assert.equal(panel.hasAttribute("inert"), true);
     assert.equal(launcher.getAttribute("aria-expanded"), "false");
     await act(async () => launcher.click());
     // The first open reads the history, which replaces the shell body.
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
-    launcher = host.querySelector<HTMLButtonElement>('[aria-label="Assistant"]'); assert.ok(launcher);
     panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, false); assert.equal(launcher.getAttribute("aria-expanded"), "true");
     await act(async () => panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
@@ -47,7 +46,7 @@ it("reads no assistant data while closed and reads its history and model prefere
   const { app } = createFixtureBff();
   const paths: string[] = [];
   assistantOpen.set(false);
-  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => { paths.push(new URL(String(url instanceof Request ? url.url : url)).pathname); return app.request(url, init); } });
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => { paths.push(new URL(url).pathname); return app.request(url, init); } });
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: withAsk(createElement(HubShell, {

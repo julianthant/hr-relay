@@ -263,11 +263,11 @@ it.each(["", "-wal"])("digests every byte of the physical file with suffix '%s'"
   writeFileSync(path, main, { mode: 0o600 });
   writeFileSync(path + "-wal", wal, { mode: 0o600 });
   const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
-  expect(readStartupFile(path)).toMatchObject({ main: hash(main), wal: hash(wal) });
+  expect(readStartupFile(path)).toMatchObject({ state: "observed", file: { main: hash(main), wal: hash(wal) } });
   const bytes = suffix === "" ? main : wal;
   bytes[bytes.length - 1] ^= 1;
   writeFileSync(path + suffix, bytes);
-  expect(readStartupFile(path)).toMatchObject({ main: hash(main), wal: hash(wal) });
+  expect(readStartupFile(path)).toMatchObject({ state: "observed", file: { main: hash(main), wal: hash(wal) } });
 });
 
 it("accepts the committed SQLite WAL and rejects a damaged frame or index on a private copy", async () => {
@@ -283,17 +283,17 @@ it("accepts the committed SQLite WAL and rejects a damaged frame or index on a p
     expect(copied.status, copied.stderr).toBe(0);
   } finally { writer.close(); }
   const wal = readFileSync(copy + "-wal");
-  expect(readStartupFile(copy, wal.length)).toBeDefined();
-  expect(readStartupFile(copy, wal.length - 1)).toBeUndefined();
+  expect(readStartupFile(copy, wal.length).state).toBe("observed");
+  expect(readStartupFile(copy, wal.length - 1).state).toBe("unavailable");
   const damaged = Buffer.from(wal);
   damaged[damaged.length - 1] ^= 1;
   writeFileSync(copy + "-wal", damaged);
-  expect(readStartupFile(copy, wal.length)).toBeUndefined();
+  expect(readStartupFile(copy, wal.length).state).toBe("unavailable");
   writeFileSync(copy + "-wal", wal);
   const index = readFileSync(copy + "-shm");
   index[48] ^= 1;
   writeFileSync(copy + "-shm", index);
-  expect(readStartupFile(copy, wal.length)).toBeUndefined();
+  expect(readStartupFile(copy, wal.length).state).toBe("unavailable");
 });
 
 it("refuses unsupported user_version even with an otherwise valid checkpoint", async () => {

@@ -199,7 +199,7 @@ it.each(["empty", "previous claim"] as const)("refreshes a worker's %s lookup be
       database: w.database, reader: {
         read: runId => runReader.read(runId), list: input => runReader.list(input),
         withRunTreeSnapshot: (ids, read) => runReader.withRunTreeSnapshot(ids, read),
-        summaries: composeQueueSummaries(w.database),
+        summaries: { ...composeQueueSummaries(w.database), activity: unexpected },
       },
       stateRoot: w.stateRoot, clock: w.clock, appVersion: APP_VERSION, descriptorSetHash: DESCRIPTOR_SET_HASH,
       ledger: createTransactionHistory(w.database.authority), descriptors: { resolve: () => undefined }, workerMembers: () => [worker],

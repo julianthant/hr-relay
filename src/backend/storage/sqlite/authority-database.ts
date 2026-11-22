@@ -2150,30 +2150,30 @@ function matchesStartupCheckpoint(prior: StartupCheckpoint | undefined, file: St
     && prior.file.main === file.main && prior.file.wal === file.wal;
 }
 
-function startupImageDigest(database: DatabaseSync): string | undefined {
+function startupImageDigest(database: DatabaseSync): { state: "observed"; digest: string } | { state: "unavailable" } {
   try {
     // serialize reads this transaction's pages, including committed WAL frames. Bound its temporary allocation.
     const pages = PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count;
     const size = z.strictObject({ page_size: z.number().int().positive() }).parse(database.prepare("PRAGMA page_size").get()).page_size;
-    if (pages * size > 256 * 1024 * 1024) return undefined;
-    return createHash("sha256").update(database.serialize()).digest("hex");
-  } catch { return undefined; } // An unavailable proof leaves the ordinary full inspection in force.
+    if (pages * size > 256 * 1024 * 1024) return { state: "unavailable" };
+    return { state: "observed", digest: createHash("sha256").update(database.serialize()).digest("hex") };
+  } catch { return { state: "unavailable" }; }
 }
 
-function checkStartupChanges(database: DatabaseSync, from: StartupPosition): boolean {
-  if (from.schemaCookie !== readIntPragma(database, "schema_version")) return false;
+function checkStartupChanges(database: DatabaseSync, from: StartupPosition): "proved" | "unproved" {
+  if (from.schemaCookie !== readIntPragma(database, "schema_version")) return "unproved";
   let entries: readonly ChangeEntry[];
   try {
     const count = changeLogHighWater(database) - from.cursor;
-    if (count <= 0 || count > CHANGE_LOG_RETAINED_ENTRIES) return false;
+    if (count <= 0 || count > CHANGE_LOG_RETAINED_ENTRIES) return "unproved";
     entries = readAuthorityChanges(database, from.cursor);
-    if (entries.length !== count || !entries.every((entry, i) => entry.seq === from.cursor + i + 1)) return false;
-  } catch { return false; } // An unreadable suffix cannot support a scoped inspection.
+    if (entries.length !== count || !entries.every((entry, i) => entry.seq === from.cursor + i + 1)) return "unproved";
+  } catch { return "unproved"; }
   assertNativeSchema(database);
   checkSqliteIntegrity(database);
   inspectStoredData(() => validateAuthorityChanges(database, entries, singletonChangeKeys(from.singleton, readSingletonImage(database))));
   inspectStoredData(() => validateNotificationMetadata(database));
-  return true;
+  return "proved";
 }
 
 /** Internal stopped-upgrade barrier; never exported through the repository entrypoint. */
@@ -2904,7 +2904,7 @@ export class AuthorityDatabase implements Disposable {
       database.resumeRunDeletionFiles();
       return database;
     } catch (error) {
-      database.#startupOwner = undefined;
+      database.#takeStartupOwner();
       try { database.close(); }
       catch (closeError) { throw retainAuthoritySourceClosure([error, closeError], { database, admission }); }
       throw error;
@@ -3328,8 +3328,10 @@ export class AuthorityDatabase implements Disposable {
     const prior = checkpoints.get(path);
     let checkpoint: StartupCheckpoint | undefined;
     const result = AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version) => {
-      const source = version === CURRENT_AUTHORITY_SCHEMA_VERSION ? readStartupFile(path) : undefined;
-      const digest = source === undefined ? undefined : startupImageDigest(database);
+      const observation = version === CURRENT_AUTHORITY_SCHEMA_VERSION ? readStartupFile(path) : undefined;
+      const source = observation?.state === "observed" ? observation.file : undefined;
+      const image = source === undefined ? undefined : startupImageDigest(database);
+      const digest = image?.state === "observed" ? image.digest : undefined;
       const cached = matchesStartupCheckpoint(prior, source, digest) ? prior.inspection : undefined;
       const inspection = cached === undefined ? inspectNativeAuthority(database, version) : AuthorityCopyInspectionSchema.parse(cached);
       if (source !== undefined && digest !== undefined) checkpoint = { file: source, digest, inspection: AuthorityCopyInspectionSchema.parse(inspection) };
@@ -3988,11 +3990,16 @@ export class AuthorityDatabase implements Disposable {
     throw failure;
   }
 
+  #takeStartupOwner() {
+    const owner = this.#startupOwner;
+    this.#startupOwner = undefined;
+    return owner;
+  }
+
   close(): void {
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
-    const owner = this.#startupOwner;
-    this.#startupOwner = undefined;
+    const owner = this.#takeStartupOwner();
     let checkpoint: StartupCheckpoint | undefined;
     if (owner !== undefined) {
       try {
@@ -4000,27 +4007,32 @@ export class AuthorityDatabase implements Disposable {
         if (!db.isTransaction) {
           db.exec("PRAGMA busy_timeout=0; BEGIN");
           const cookie = readIntPragma(db, "schema_version"); // Pin the snapshot before observing peer commits.
-          const file = readStartupFile(this.#path, owner.file.wal === null ? AUTHORITY_WAL_SIZE_LIMIT_BYTES : undefined);
+          const observation = readStartupFile(this.#path, owner.file.wal === null ? AUTHORITY_WAL_SIZE_LIMIT_BYTES : undefined);
+          const file = observation.state === "observed" ? observation.file : undefined;
+          let candidate: StartupCheckpoint | undefined;
           if (file !== undefined && file.identity === owner.file.identity && file.main === owner.file.main && cookie === owner.position.schemaCookie
             && readIntPragma(db, "data_version") === owner.dataVersion) {
-            const digest = startupImageDigest(db);
-            if (digest === owner.digest && file.wal === owner.file.wal) checkpoint = { file, digest, inspection: owner.inspection };
+            const image = startupImageDigest(db);
+            const digest = image.state === "observed" ? image.digest : undefined;
+            if (digest === owner.digest && file.wal === owner.file.wal) candidate = { file, digest, inspection: owner.inspection };
             else if (digest !== undefined && owner.file.wal === null && file.wal !== null
               && this.#changeReader !== undefined && this.#changeReader.failed === undefined && this.#changeReader.cursor === changeLogHighWater(db)
               && this.#changeReader.cursor > owner.position.cursor) {
-              checkpoint = { file, digest, pending: owner.position };
+              candidate = { file, digest, pending: owner.position };
             }
           }
           db.exec("ROLLBACK");
+          checkpoint = candidate;
         }
-      } catch { /* The native close releases any read transaction; no proof is required to close. */ checkpoint = undefined; }
+      } catch { /* Native close still releases the read transaction. No cache proof was published. */ }
     }
     try { this.#database.close(); }
     catch (error) { this.#failNativeClosure([error]); }
     this.#closed = true;
     if (owner !== undefined && checkpoint !== undefined) {
       // The last SQLite close can checkpoint the WAL into the main file.
-      const file = readStartupFile(this.#path);
+      const observation = readStartupFile(this.#path);
+      const file = observation.state === "observed" ? observation.file : undefined;
       if (file !== undefined && file.identity === checkpoint.file.identity &&
         ((file.main === checkpoint.file.main && file.wal === checkpoint.file.wal) || (file.wal === null && file.main === checkpoint.digest))) {
         owner.checkpoints.set(this.#path, { ...checkpoint, file });
@@ -4222,9 +4234,40 @@ export class AuthorityDatabase implements Disposable {
     return { authorityGeneration: this.#readMetaRow().authority_generation, dataVersion: readIntPragma(this.#database, "data_version"), totalChanges };
   }
 
+  #readActiveRuns(): RunRecord[] {
+    const pageSize = 500;
+    const bounds = this.#database.prepare(`SELECT max(id) AS last, count(*) AS count FROM (
+      SELECT id FROM runs WHERE id >= ? ORDER BY id LIMIT ?)`);
+    // Only omit a terminal row when a single stored lifecycle state confirms it.
+    const active = this.#database.prepare(`SELECT * FROM runs WHERE id BETWEEN ? AND ? AND (
+      state <> 'terminal' OR (
+        SELECT count(*) = 1 AND min(CASE lifecycle.type WHEN 'object' THEN (
+          SELECT count(*) = 1 AND min(state.value IS 'terminal')
+          FROM json_each(lifecycle.value) AS state WHERE state.key = 'state'
+        ) ELSE 0 END)
+        FROM json_each(runs.lifecycle_json) AS lifecycle WHERE lifecycle.key = 'lifecycle'
+      ) IS NOT 1
+    ) ORDER BY id`);
+    const pageBounds = z.strictObject({ last: z.string().nullable(), count: z.number().int().nonnegative() });
+    const runs: RunRecord[] = [];
+    let after: string | undefined;
+    for (;;) {
+      const start = after ?? "";
+      const { last, count } = pageBounds.parse(bounds.get(start, pageSize));
+      if (last === null) return runs;
+      for (const row of active.all(start, last)) {
+        if (row.id === after) continue;
+        if (row.state === "terminal") throw new Error("run row state does not match its whole-record JSON");
+        runs.push(runRecordFromRow(row));
+      }
+      if (count < pageSize) return runs;
+      after = last;
+    }
+  }
+
   readApplicationActivity(runScope: "non-terminal-runs"): RunRecord[];
   readApplicationActivity(runScope?: "all" | "non-terminal"): Readonly<{
-    runs: PredecessorRunRecord[];
+    runs: RunRecord[];
     writeIntents: WriteIntentRecord[];
     duoLeases: DuoCeremonyLeaseRecord[];
     pendingArtifacts: readonly ArtifactOutboxStorageRecord[];
@@ -4232,21 +4275,9 @@ export class AuthorityDatabase implements Disposable {
   readApplicationActivity(runScope: "all" | "non-terminal" | "non-terminal-runs" = "all") {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
-      // Only omit a terminal row when a single stored lifecycle state confirms it.
       const runs = runScope === "all"
         ? this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow)
-        : this.#database.prepare(`SELECT * FROM runs
-          WHERE state <> 'terminal' OR (
-            SELECT count(*) = 1 AND min(CASE lifecycle.type WHEN 'object' THEN (
-              SELECT count(*) = 1 AND min(state.value IS 'terminal')
-              FROM json_each(lifecycle.value) AS state WHERE state.key = 'state'
-            ) ELSE 0 END)
-            FROM json_each(runs.lifecycle_json) AS lifecycle WHERE lifecycle.key = 'lifecycle'
-          ) IS NOT 1
-          ORDER BY id`).all().map(row => {
-          if (row.state === "terminal") throw new Error("run row state does not match its whole-record JSON");
-          return runRecordFromRow(row);
-        });
+        : this.#readActiveRuns();
       if (runScope === "non-terminal-runs") return runs;
       return Object.freeze({
         runs,
@@ -5431,11 +5462,13 @@ export class AuthorityDatabase implements Disposable {
     const checkpoints = checkpointsFor(this.#admission);
     const prior = checkpoints.get(this.#path);
     checkpoints.delete(this.#path);
-    const file = readStartupFile(this.#path);
-    const digest = file === undefined ? undefined : startupImageDigest(db);
+    const observation = readStartupFile(this.#path);
+    const file = observation.state === "observed" ? observation.file : undefined;
+    const image = file === undefined ? undefined : startupImageDigest(db);
+    const digest = image?.state === "observed" ? image.digest : undefined;
     let inspection: AuthorityCopyInspection | undefined;
     if (matchesStartupCheckpoint(prior, file, digest)
-      && (prior.pending === undefined || checkStartupChanges(db, prior.pending))) {
+      && (prior.pending === undefined || checkStartupChanges(db, prior.pending) === "proved")) {
       checkInspectionPragmas(db, true);
       inspection = prior.inspection;
     } else inspection = inspectOpenDatabase(db, true);

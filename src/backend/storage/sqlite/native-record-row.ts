@@ -79,14 +79,15 @@ function nativeRecordIntegrityError(message: string): Error {
 }
 
 function decodePrivateRecord<T>(schema: z.ZodType<T>, input: unknown, message: string): T {
+  let failure: "invalid-record" | "unexpected-error";
   try {
     const payload: unknown = JSON.parse(z.string().parse(input));
     return schema.parse(payload);
   } catch (error) {
-    // Preserve the sanitized error without keeping a cause that may contain the stored payload.
-    if (error instanceof z.ZodError || error instanceof SyntaxError) throw nativeRecordIntegrityError(message);
-    throw new Error(message);
+    failure = error instanceof z.ZodError || error instanceof SyntaxError ? "invalid-record" : "unexpected-error";
   }
+  // The decoder's cause may contain the stored payload.
+  throw failure === "invalid-record" ? nativeRecordIntegrityError(message) : new Error(message);
 }
 
 function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typeof RowSchema>, schemaVersion: number): unknown {

@@ -48,9 +48,9 @@ it("exposes read failure until the operator refreshes, without retaining old aut
   } finally { await act(async () => root.unmount()); }
 });
 
-it("re-renders only when the lifecycle answer changes", async () => {
+it("re-renders only when the polled lifecycle answer changes", async () => {
   vi.useFakeTimers();
-  let pause: "running" | "paused" = "running", failing = false;
+  let pause: "pause-pending" | "paused" = "pause-pending", failing = false;
   const transport = createDashboardClient({ baseUrl: "http://fixture.test" });
   const client = { ...transport, async applicationLifecycle() {
     if (failing) throw new DashboardClientError({ kind: "http", status: 503, code: "DASHBOARD_READ_FAILED", message: "fixture failure" });
@@ -67,7 +67,7 @@ it("re-renders only when the lifecycle answer changes", async () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     assert.equal(renders, settled);
     pause = "paused";
-    await act(async () => result?.refresh());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     assert.equal(result?.resource.state === "loaded" && result.resource.value.pause, "paused");
     assert.equal(renders, settled + 1);
     failing = true;

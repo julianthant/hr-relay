@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
 import type { StartupCleanup } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
@@ -60,7 +61,7 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     tick(500);
     expect(reconcile).toHaveBeenCalledTimes(1);
     createTimelineEmitter({ repository: loggingRepository, clock }).emit(runQueuedSpanEvent({
-      run, actorId: "local-operator", title: "Queued run" }));
+      run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Queued run" }));
     expect(projection.runFold(run.envelope.runId)).toBeUndefined();
     tick(1000);
     expect(projection.runFold(run.envelope.runId)).toBeDefined();
@@ -93,7 +94,9 @@ it("degrades on a refused peer snapshot and rebuilds after the peer repairs it",
     peer.exec("CREATE TABLE unexpected_peer_table (id INTEGER)");
     for (let attempt = 0; attempt < 2; attempt++) {
       vi.advanceTimersByTime(250);
-      expect(projection.health()).toMatchObject({ state: "degraded", lastError: expect.stringContaining("run-search-index-rebuild-required") });
+      const health = projection.health();
+      expect(health.state).toBe("degraded");
+      expect(health.lastError).toContain("run-search-index-rebuild-required");
     }
     peer.exec("DROP TABLE unexpected_peer_table");
     vi.advanceTimersByTime(250);

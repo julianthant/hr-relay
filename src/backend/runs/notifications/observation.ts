@@ -12,7 +12,8 @@ export function createNotificationObserver(deps: {
   read(): NotificationSourceRead;
   health(): Promise<void>;
 }) {
-  let stopped = false, drained = false, healthFailed = false;
+  let stopped = false, drained = false;
+  let healthFailure: NotificationObservationStatus["code"];
   let running: Promise<void> | undefined, publishing: Promise<void> | undefined;
   let sourceStatus: NotificationObservationStatus = { state: "ready", pending: 0 };
   const pending = new Map<string, NotificationObservation>();
@@ -53,12 +54,12 @@ export function createNotificationObserver(deps: {
     running = (async () => {
       const publications = observeSources();
       if (publications !== undefined) await publications;
-      try { await deps.health(); healthFailed = false; } catch { healthFailed = true; }
+      try { await deps.health(); healthFailure = undefined; } catch { healthFailure = "NOTIFICATION_OBSERVATION_FAILED"; }
     })().finally(() => { running = undefined; });
     return running;
   };
   const status = (): NotificationObservationStatus => {
-    if (healthFailed) return { state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: sourceStatus.pending + 1 };
+    if (healthFailure !== undefined) return { state: "failed", code: healthFailure, pending: sourceStatus.pending + 1 };
     return drained && sourceStatus.state !== "failed" ? { state: "stopped", pending: 0 } : sourceStatus;
   };
   return Object.freeze({ observe, observeSources, status, async stop() {

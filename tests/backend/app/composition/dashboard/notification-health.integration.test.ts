@@ -76,7 +76,7 @@ describe("canonical notification producers", () => {
       database.exec("PRAGMA ignore_check_constraints=ON; UPDATE database_states SET search_state='ready', search_generation=authority_generation+1");
     } },
     { failure: "a native run priority that disagrees with its stored envelope",
-      beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => { seedRun(f, QUEUED_RUN); },
+      beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => { seedRun(f, RunRecordSchema.parse(QUEUED_RUN)); },
       damage: (database: DatabaseSync) => {
         const update = database.prepare("UPDATE runs SET priority='interactive' WHERE priority='bulk'").run();
         expect(Number(update.changes)).toBe(1);
@@ -88,7 +88,7 @@ describe("canonical notification producers", () => {
     } },
     { failure: "a corrupt retained run result",
       beforeCopy: (f: Awaited<ReturnType<typeof fixture>>) => {
-        const run = seedRun(f, QUEUED_RUN);
+        const run = seedRun(f, RunRecordSchema.parse(QUEUED_RUN));
         expect(f.reader.transition({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version,
           lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }).state).toBe("applied");
       },

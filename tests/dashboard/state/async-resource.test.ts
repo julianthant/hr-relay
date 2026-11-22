@@ -37,7 +37,8 @@ describe("effect-owned resource settlement", () => {
     const fault = new Error("programming failure");
     observeResource(() => Promise.reject(fault), value => calls.push(value), error => calls.push(error));
     await new Promise(resolve => setTimeout(resolve, 0));
-    assert.deepEqual(calls, [fault]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0], fault);
     observeResource(() => { throw fault; }, value => calls.push(value), error => calls.push(error));
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.deepEqual(calls, [fault, fault]);
