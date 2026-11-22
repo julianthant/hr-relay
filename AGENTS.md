@@ -61,11 +61,16 @@ for the product, [architecture](docs/ARCHITECTURE.md) for its design, the
     static, privacy and selected unit shards. A `task/**` PR runs only the `development` gate:
     names, the workflow allowlist and the push run's `proof` at the PR head SHA. Edited PRs rerun
     the gate only.
-  - Staging PRs from `development` run portable Ubuntu unit, integration and architecture suites
-    plus static, privacy, perf and smoke.
-  - Release checks run the selected unit, integration and architecture suites, including native
-    proofs; ready pull requests also build the web bundle for perf and smoke, while manual
-    releases skip those jobs. Only the operator starts full-release CI; agents never dispatch or
+  - Every 20 minutes Development decides in seconds whether to start the full run on the
+    development head: all suites, 30 integration shards, perf, smoke, native macOS, CodeQL and
+    npm audit. It starts only when that head has no green full run, did not start one in the last
+    six hours, and CI is idle or no full run started in six hours.
+  - Staging PRs from `cut/*` and staging-to-main releases run the portable Ubuntu suites plus
+    static, privacy, perf and smoke, and pass only on the green full run of the cut's exact
+    content. The main-to-staging sync needs no full run.
+  - Hotfix and manual release checks run the selected suites, including native proofs and
+    CodeQL on hotfixes; ready pull requests also build the web bundle for perf and smoke, while
+    manual releases skip those jobs. Only the operator starts full-release CI; agents never dispatch or
     rerun CI workflows.
 - Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards, retaining
   release coverage. Local integration runs skip those files unless `RELAY_TEST_NATIVE=1`. Add new
