@@ -122,7 +122,7 @@ export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmis
       const existing = types.get(type.id);
       return existing !== undefined && canonicalJsonStringify({ ...existing, defaultWorkbookId: null }) !== canonicalJsonStringify({ ...type, defaultWorkbookId: null });
     });
-    if (diverged !== undefined) return { refused: "destination-type-diverged" } as const;
+    if (diverged !== undefined) return "destination-type-diverged";
     const createdTypes = library.types.filter(type => !types.has(type.id));
     for (const type of createdTypes) target.putType({ ...type, defaultWorkbookId: null });
     const counts = { created: 0, refreshed: 0, unchanged: 0, keptLocal: 0 };
@@ -154,7 +154,7 @@ export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmis
     }
     return { ...counts, createdTypes: createdTypes.length };
   });
-  if ("refused" in outcome) throw new IsolatedLibraryImportRefusedError(outcome.refused);
+  if (typeof outcome === "string") throw new IsolatedLibraryImportRefusedError(outcome);
   return Object.freeze({
     ...outcome,
     skippedWorkflowOutputs: library.skippedWorkflowOutputs,
