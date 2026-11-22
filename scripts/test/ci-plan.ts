@@ -46,7 +46,9 @@ export function createCiPlan(input: unknown): CiPlan {
   if (context.workflow === "release" && !manual && context.base !== "main") {
     throw new Error("Release CI requires a main pull request or manual release.");
   }
-  if (!manual && !full && ["shared", ...suiteNames].some(name => !["true", "false"].includes(context.filters[name]))) {
+  const taskPush = context.event === "push";
+  const requiredFilters = ["shared", ...suiteNames, ...(taskPush ? ["smoke"] : [])];
+  if (!manual && !full && requiredFilters.some(name => !["true", "false"].includes(context.filters[name]))) {
     throw new Error("Path-filter outputs are incomplete or invalid.");
   }
   const fullRelease = full || (context.workflow === "release" && (manual || context.head.startsWith("hotfix/")));
@@ -71,7 +73,8 @@ export function createCiPlan(input: unknown): CiPlan {
   const macos = fullRelease ? jobs("native", nativeShards) : [];
   return ciPlanSchema.parse({ ...selected, workflow: context.workflow, fullRelease,
     lint: !fast || !context.draft,
-    perf: !fast && !manual && !context.draft, smoke: !fast && !manual && !context.draft,
+    perf: !fast && !manual && !context.draft,
+    smoke: !manual && !context.draft && (!fast || (taskPush && context.filters.smoke === "true")),
     ubuntu: { include: ubuntu }, macos: { include: macos },
     testJobs: ubuntu.length + macos.length,
   });
