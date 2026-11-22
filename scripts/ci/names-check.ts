@@ -83,11 +83,10 @@ function branchProblem(branch: string, origin: readonly string[]): string | unde
 }
 
 function developmentHeadProblem(branch: string): string | undefined {
-  if (branch === "task/ci-environments/cleanup") return undefined;
-  if (branchProblem(branch, []) === undefined && (branch.startsWith("dependabot/") || branch.startsWith("feature/") || branch.startsWith("fix/") || branch.startsWith("chore/"))) {
+  if (branchProblem(branch, []) === undefined && (branch.startsWith("dependabot/") || branch.startsWith("feature/") || branch.startsWith("fix/") || branch.startsWith("chore/") || branch.startsWith("task/"))) {
     return undefined;
   }
-  return report(branch, "a development pull request head must be feature/*, fix/*, chore/*, or dependabot/*");
+  return report(branch, "a development pull request head must be feature/*, fix/*, chore/*, dependabot/*, or task/<kebab>/<kebab>");
 }
 
 function titleProblem(title: string): string | undefined {

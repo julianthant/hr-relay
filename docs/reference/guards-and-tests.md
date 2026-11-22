@@ -430,7 +430,7 @@ executable enforcement.
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `development`, `dependabot/*`,
 `feature/<kebab>`, `cut/<milestone>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `feature/*`, `fix/*`, `chore/*`,
-`dependabot/*`, or the approved CI cleanup task branch. Only `cut/<milestone>` targets `staging`. A pull request title must be `<Area>: <text>`. A conventional title such as
+`dependabot/*`, or `task/<kebab>/<kebab>`. Only `cut/<milestone>` targets `staging`. A pull request title must be `<Area>: <text>`. A conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
 `.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first job; Development combines it with planning in
