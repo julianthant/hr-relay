@@ -135,7 +135,7 @@ describe("development fast check", () => {
     expect(select).toContain("base=$(git merge-base origin/development HEAD)");
     expect(select).toContain('if [[ "$HEAD_REF" == feature/* ]]; then scope=(--all); fi');
     expect(select).toContain('scripts/test/affected-tests.ts "$base" HEAD "${scope[@]}"');
-    expect(job(checks, "changes")).toContain("fetch-depth: ${{ inputs.kind == 'fast' && 0 || 1 }}");
+    expect(job(checks, "changes")).toContain("fetch-depth: ${{ inputs.kind != 'fast' && 1 || 0 }}");
   });
 
   it("runs affected shards by their file lists and other shards through ci-run", () => {
