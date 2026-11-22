@@ -15,13 +15,11 @@ export function renameDraftProblem(draft: string): string | undefined {
     return `A run name is at most ${String(MAX_CODE_POINTS)} characters; this one is ${String(codePoints)}.`;
   }
   if (/\p{Cc}/u.test(name)) {
-    return "A run name cannot contain control characters. This usually means the text was pasted from "
-      + "somewhere that carried a line break or a tab.";
+    return "A name cannot contain line breaks or tabs.";
   }
   if (name.normalize("NFC") !== name) {
     // Validate typed names without rewriting them; normalization would silently substitute another stored answer.
-    return "This name uses characters in a form the run record cannot store. Retyping the accented "
-      + "characters rather than pasting them usually resolves it.";
+    return "Retype the accented characters instead of pasting them.";
   }
   return undefined;
 }

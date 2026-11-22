@@ -86,7 +86,7 @@ it("sends no Settings command for the current workflow and canonically saves a d
   const ready = () => preferences.snapshot().state === "ready" ? Promise.resolve() : new Promise<void>((resolve, reject) => {
     const unsubscribe = preferences.subscribe(() => {
       const snapshot = preferences.snapshot();
-      if (snapshot.state !== "ready" && snapshot.state !== "failed" && snapshot.state !== "uncertain") return;
+      if (snapshot.state !== "ready" && snapshot.state !== "failed") return;
       unsubscribe();
       if (snapshot.state === "ready") resolve(); else reject(new Error(snapshot.problem));
     });

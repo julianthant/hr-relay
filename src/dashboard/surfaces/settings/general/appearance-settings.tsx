@@ -14,6 +14,6 @@ export function AppearanceSettings({ theme, onToggleTheme }: { theme: DemoTheme;
     <div data-settings-path="appearance.animations" className="settings-compact-row">
       <Switch name="appearance.animations" label="Animations" disabled={disabled} checked={motion.enabled} onCheckedChange={motion.change} />
     </div>
-    {(disabled || motion.problem !== undefined) && <p role="status">{motion.problem ?? notice}</p>}
+    {disabled && <p role="status">{notice}</p>}
   </>;
 }

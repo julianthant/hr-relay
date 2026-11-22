@@ -9,17 +9,16 @@ import type { CommandExecutionOptions } from "../../../app/commands/command-exec
 import { readWithDeadline } from "../../../client/read-deadline.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { SettingsReadSuperseded,useSettingsRead } from "../../../state/settings-read-model.js";
-import { useSettingsPreflight } from "../preflight/settings-preflight-model.js";
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
 import { routePresentation } from "../routes/settings-routes-model.js";
 import { settingTitle } from "../settings-presentation.js";
 import { checkedSettingsResult,commandSaveState,ordinaryReadbackState,settingsSaveNotice,settingsSaveFailure,type OrdinarySettingsAttempt,type SettingsSaveListener,type SettingsSaveProblemListener,type SettingsSaveState } from "./settings-attempt-model.js";
 import { blurredSettingsPath,type SettingsBlurEvent } from "./settings-autosave-model.js";
 import { useSettingsClient } from "./settings-client.js";
-import { coupledSettingsLeaves,draftError,patchFromSettingsDraft,settingInput,settingsLeaves,type SettingsDraft,type SettingsDraftInput } from "./settings-draft-model.js";
+import { readBack } from "../../../app/commands/command-readback.js";
+import { coupledSettingsLeaves,draftError,ordinaryReadbackConfirms,patchFromSettingsDraft,settingInput,settingsLeaves,type SettingsDraft,type SettingsDraftInput } from "./settings-draft-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
-export type { PreflightRerunState } from "../preflight/settings-preflight-model.js";
 export type { SettingsSaveState } from "./settings-attempt-model.js";
 
 /** Ordinary Settings never lock or show a save row: the control keeps the new value while the save runs. */
@@ -53,7 +52,6 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const saveAtOnce = useRef(false);
   const readReady = acceptedRequest.current === request && observation.state === "loaded";
   const readProblem = reportedReadProblem;
-  const { preflight, rerunPreflight } = useSettingsPreflight(editor, input);
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
       const read = async (): Promise<EditableSettingsWire> => {
@@ -135,6 +133,11 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     try {
       if (binding === undefined || command.requestedBy !== binding.scope.actorId) { failed(sent); return; }
       let readDocument: EditableSettingsWire | undefined;
+      let unknown: Promise<void> | undefined;
+      const saved = (replayed: boolean) => {
+        settle(sent);
+        input.onSaved?.(settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), replayed, readDocument?.runtimeStatus.state === "restart-required"));
+      };
       const options: CommandExecutionOptions = {
         scope: binding.scope,
         readback: async (_request, reply) => {
@@ -150,12 +153,24 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
             acceptedRequest.current = request; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
           }
           const next = commandSaveState(outcome);
+          // An unknown outcome is read back: the served value shows silently, or one failure toast. Either way the lock is freed.
+          if (next.state === "unconfirmed") {
+            unknown = readBack(() => refresh(false), served => ordinaryReadbackConfirms(served, command.payload.patch)).then(served => {
+              const landed = served !== undefined && ordinaryReadbackConfirms(served, command.payload.patch);
+              binding.executor.resolve(command.commandId, landed, binding.scope);
+              if (generation.current !== request) return;
+              if (!landed || served === undefined) { failed(sent); return; }
+              acceptedRequest.current = request; resource.accept(served); setEditor({ state: "loaded", document: served }); setReadProblem(undefined);
+              settle(sent);
+            });
+            return;
+          }
           if (next.state !== "applied") { failed(sent); return; }
-          settle(sent);
-          input.onSaved?.(settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), next.replayed, readDocument?.runtimeStatus.state === "restart-required"));
+          saved(next.replayed);
         },
       };
       await binding.executor.execute(command, options);
+      await unknown;
     } finally { busy.current = false; setSaving(false); }
   };
 
@@ -186,7 +201,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     } else if (!busy.current && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
-  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, preflight, protectedEditor, leaves, readProblem,
+  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, protectedEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined,
-    update, reset, clear, discard, submit, reload, rerunPreflight, onFieldBlur });
+    update, reset, clear, discard, submit, reload, onFieldBlur, readCurrent: () => refresh() });
 }

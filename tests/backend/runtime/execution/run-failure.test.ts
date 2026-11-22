@@ -69,7 +69,7 @@ describe("node failure code selection", () => {
     const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
       failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
       error: wrapUnhandledTaskError(TASK_ID, new Error("Timeout 30000ms exceeded")), occurredAt: "2026-08-29T08:00:00.000Z" });
-    assert.equal(projectFailureForOperator(failure).summary, "This task stopped for a reason Relay does not recognize. Open the run in Logs to see what happened.");
+    assert.equal(projectFailureForOperator(failure).summary, "This task stopped for an unknown reason. Open the run in Logs.");
   });
 
   it("records each named secondary cause after the task's own primary cause", () => {
@@ -119,7 +119,7 @@ it.each(["not-attempted", "committed", "verified"] as const)("maps retained dele
   const resolved = resolveErrorCatalogFailure({ code: failure.code, parameters: {}, summary: failure.summary }, "http-response");
   assert.equal(resolved.state, "resolved");
   assert.equal(resolved.code, "DELEGATION_CONFIG_UNAVAILABLE");
-  assert.equal(resolved.text, "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.");
+  assert.equal(resolved.text, "Saved settings could not be checked, so the next workflow stopped.");
   assert.equal(resolved.text.includes(cause.message), false);
 });
 
@@ -139,7 +139,7 @@ it.each(["not-attempted", "unknown"] as const)("shows the registered delegation 
     { artifactUrl: () => { throw new Error("config failure must not request an artifact"); } });
   const entry = projection.steps.find(step => step.id === source.failureId)?.entries[0];
   assert.ok(entry?.kind === "decision");
-  assert.equal(entry.decision.message, "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.");
+  assert.equal(entry.decision.message, "Saved settings could not be checked, so the next workflow stopped.");
   assert.equal(entry.decision.state, writeState === "unknown" ? "unconfirmed" : "failed");
   assert.equal(entry.decision.message.includes("private retained snapshot details"), false);
   if (writeState === "unknown") assert.equal(entry.decision.caution, "The result is unknown. Check the system before continuing.");

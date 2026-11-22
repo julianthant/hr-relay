@@ -624,7 +624,7 @@ describe("typed facts describe ONE subject", () => {
       true,
       "a multi-subject box still offered to omit a step",
     );
-    assert.ok(dialog.text().includes("this run would create 2"), dialog.text());
+    assert.ok(dialog.text().includes("One person only."), dialog.text());
   });
 });
 

@@ -26,7 +26,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
     <PageHeading title={pageTitle} />
     <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
-      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description="Reopen Settings to refresh." />}
       {settingsSectionGroups(sectionId, leaves).map(group => <section key={group.title} className="settings-editor-group">
         <div className="settings-group-heading"><h2 className={cn(dsText.title, "m-0 font-medium text-[color:var(--ds-fg)]")}>{group.title}</h2></div>
         <FormGroup label={group.title} className="settings-group">

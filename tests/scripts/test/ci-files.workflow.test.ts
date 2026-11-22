@@ -234,7 +234,7 @@ describe("separate event and admitted proof workflows", () => {
     }
   });
 
-  it("defines three triggered workflows, each ending in one gate job", () => {
+  it("keeps the three gated workflows and a separate opt-in evidence run", () => {
     const stagingTrigger = staging.split("\npermissions:\n")[0];
     const productionTrigger = production.split("\npermissions:\n")[0];
     expect(stagingTrigger).toContain("run-name: ${{ github.event.pull_request.title || github.event.head_commit.message }}");
@@ -255,7 +255,11 @@ describe("separate event and admitted proof workflows", () => {
     expect(checks).not.toMatch(/windows/iu);
     expect(checks.split("\njobs:\n")[0]).toContain("value: ${{ toJSON(jobs) }}");
     expect(readdirSync(new URL("../../../.github/workflows", import.meta.url)).sort())
-      .toEqual(["checks.yml", "development.yml", "production.yml", "staging.yml"]);
+      .toEqual(["checks.yml", "dashboard-skeleton-evidence.yml", "development.yml", "production.yml", "staging.yml"]);
+    const evidence = load("dashboard-skeleton-evidence");
+    expect(evidence.split("\npermissions:\n")[0]).toMatch(/\non:\n {2}push:\n {4}branches: \['chore\/dashboard-skeleton-evidence-\*'\]\n$/u);
+    expect(jobNames(evidence)).toEqual(["dashboard-skeleton-evidence"]);
+    expect(evidence).toContain("npm run test:smoke -- dashboard-skeletons.smoke.ts");
     expect(jobNames(staging)).toEqual(["names", "checks", "staging"]);
     expect(jobNames(production)).toEqual(["checks", "codeql", "dependencies", "production"]);
     expect(jobNames(checks)).toEqual(["changes", "lint", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "perf", "smoke", "unit"]);

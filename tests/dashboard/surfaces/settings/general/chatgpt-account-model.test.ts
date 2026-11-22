@@ -94,7 +94,7 @@ describe("General ChatGPT account", () => {
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.equal(port.getSnapshot().state, "signed-out");
     await act(async () => reject(new Error("synthetic-refusal")));
-    assert.match(host?.textContent ?? "", /Relay could not connect ChatGPT\. Try connecting again\./u);
+    assert.match(host?.textContent ?? "", /ChatGPT did not connect\. Try again\./u);
     assert.equal(button("Connect").disabled, false);
     assert.equal(port.getSnapshot().state, "signed-out");
   });

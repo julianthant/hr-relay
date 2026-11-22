@@ -74,7 +74,7 @@ export function NotificationsPanel({ state, activeId, showPriority, onShowPriori
     ...(showPriority ? [{ label: "Priority", items: items.filter(item => item.priority), empty: "Nothing needs attention" }] : []),
     ...dayGroups(items.filter(item => !showPriority || !item.priority)).map(group => ({ label: group.day, items: group.items, empty: undefined })),
   ];
-  return <section aria-label="Notifications" className="notification-panel font-ui">
+  return <section aria-label="Notification list" className="notification-panel font-ui">
     <div className="notification-panel-scroll rail-scroll">
       {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="h-10 flex-1" /></div>)}</div></LoadingRegion>
         : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>

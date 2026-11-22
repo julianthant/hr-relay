@@ -11,7 +11,7 @@ function ready(state: NotificationsState) {
 describe("frontend notification state", () => {
   it("shows a workflow-only run's reason without an empty subject prefix", () => {
     const item: NotificationItem = { id: "retained-failure", kind: "run", title: "Run failed", subject: "", workflow: "Onboarding",
-      detail: "UCPath could not be reached. Check the connection and review the run evidence.", tone: "danger", age: "Just now",
+      detail: "UCPath could not be reached. Check the connection.", tone: "danger", age: "Just now",
       read: false, action: "Open log", destination: { kind: "none" } };
     assert.equal(itemSource(item), "Onboarding");
     assert.equal(itemContext(item), "Onboarding");

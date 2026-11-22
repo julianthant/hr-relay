@@ -125,7 +125,7 @@ describe("bootstrap start-surface block", () => {
               ? { scope: "workbook-sources", state: "selection-needed",
                 fixAction: { kind: "choose-workbook-sources", workflowId: descriptor.id } }
               : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
-                reason: "Import a Library spreadsheet before selecting a workflow source.",
+                reason: "Import a Library spreadsheet before choosing a source.",
                 fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),

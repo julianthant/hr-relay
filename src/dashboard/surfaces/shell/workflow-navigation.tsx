@@ -38,13 +38,13 @@ function WorkflowNavigationEntries({ nodes, active, onSelect, metadata, unavaila
   </li>)}</ul>;
 }
 
-export const WorkflowNavigation = memo(function WorkflowNavigation({ groups, active, onSelect, label, metadata, unavailable, description, collapsed, footer }: {
-  collapsed?: boolean; footer?: ReactNode;
+export const WorkflowNavigation = memo(function WorkflowNavigation({ groups, active, onSelect, label, metadata, unavailable, description, collapsed }: {
+  collapsed?: boolean;
   description?: (id: string) => string | undefined;
   groups: readonly WorkflowCategoryGroup<WorkflowNavigationEntry>[]; active: string; onSelect: (id: string) => void; label: string; metadata?: (id: string) => ReactNode; unavailable?: (id: string) => string | undefined;
 }) {
   return <nav aria-label={label} className="workflow-rail" data-collapsed={collapsed || undefined}><div className="workflow-rail-groups">{groups.map(group =>
     <section key={group.label} className="workflow-rail-group">{!collapsed && group.label !== "" && <h3>{group.label}</h3>}
       <WorkflowNavigationEntries nodes={group.entries} active={active} onSelect={onSelect} metadata={metadata} unavailable={unavailable} description={description} collapsed={collapsed} />
-    </section>)}{footer}</div></nav>;
+    </section>)}</div></nav>;
 });

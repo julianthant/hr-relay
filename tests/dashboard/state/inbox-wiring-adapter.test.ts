@@ -97,7 +97,7 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
 });
 it("shows retained failed-run workflow and reason without unavailable text or an inferred source policy", () => {
-  const summary = "UCPath could not be reached. Check the connection and review the run evidence.";
+  const summary = "UCPath could not be reached. Check the connection.";
   const retained = row("run-failed", { title: "Run failed", summary,
     context: { state: "workflow-only", workflow: "Onboarding" }, sourceEvent: { state: "unavailable" } });
   const projection = inboxProjection([retained], now);
@@ -187,7 +187,7 @@ it("checks the target of a published notice that has no source policy and says s
   assert.equal(notificationPolicy(bare), undefined); h.setRows([bare]); h.refuseTarget();
   await act(async () => { h.listeners[0](publication(bare)); await new Promise(resolve => setTimeout(resolve, 0)); });
   assert(h.requests.some(path => path.endsWith("/target")));
-  assert.match(h.value.notice, /no longer available/);
+  assert.match(h.value.notice, /This notification’s target is gone\. Refresh the inbox\./u);
 });
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();

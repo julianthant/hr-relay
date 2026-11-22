@@ -9,7 +9,7 @@
   --ui-stroke-control: #8a8a8a;
   --ui-primary: #1b1b1b;
   --ui-secondary: #555555;
-  --ui-muted: #737373;
+  --ui-muted: #666666;
   --ui-info: #245d9e;
   --ui-positive: #16764a;
   --ui-warning: #865609;
@@ -26,7 +26,7 @@
   --ui-stroke-control: #6e6e76;
   --ui-primary: #e3e4e6;
   --ui-secondary: #9d9ea2;
-  --ui-muted: #808085;
+  --ui-muted: #95959b;
   --ui-info: #9dc4ff;
   --ui-positive: #63d9a2;
   --ui-warning: #f0bd61;
@@ -69,7 +69,7 @@
   --text-workflow: 1.6875rem;
   --text-workflow--line-height: 2rem;
   --text-workflow--font-weight: 600;
-  --spacing-log-time: 4rem;
+  --spacing-log-time: 5rem;
   --spacing-log-label: 8rem;
   --container-log-capture: 28.75rem;
 }
@@ -83,5 +83,4 @@
   --ds-border-subtle: var(--ui-stroke);
   --ds-surface-1: var(--ui-panel);
   --ds-surface-2: var(--ui-table);
-  --ds-accent: var(--ui-info);
 }

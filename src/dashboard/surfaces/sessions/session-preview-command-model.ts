@@ -8,6 +8,7 @@ import { CommandExecutor, type CommandExecutionScope, type CommandExecutionOptio
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from '../../../models/failures/error-catalog.js';
 import { sessionsFromDay } from './sessions-view-model.js';
 import { useIdleSessionRefresh } from './session-idle-model.js';
+import { readBack, withDeadline } from '../../app/commands/command-readback.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToasts } from '../../ds/ui.js';
 import type { WorkflowCatalogEntry } from '../workflows/workflow-catalog-model.js';
@@ -15,16 +16,16 @@ import { sessionWorkerAuthorityKey, type SessionControl, type SessionsViewState 
 
 export type SessionPreviewRequest = Readonly<{ id: string; target: string; action: SessionControl; authorityKey?: string } | { id: string; target: string; action: 'refresh'; browserIds: readonly string[]; nativeCommandIds?: readonly string[]; authorityKey?: string } | { id: string; target: 'add'; action: 'add'; workflow: string; count: number; ordinal: number }>;
 export type SessionPreviewResult = Readonly<{ data?: SessionsViewState } & ({ id: string; state: 'confirmed' } | { id: string; state: 'refused' | 'uncertain'; message: string; code?: ErrorCatalogCode })>;
-export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest; state: 'pending' | 'checking' | 'confirmed' | 'refused' | 'uncertain'; message: string; code?: ErrorCatalogCode; diagnostic?: unknown }>;
+export type SessionPreviewOperation = Readonly<{ request: SessionPreviewRequest; state: 'pending' | 'confirmed' | 'refused'; message: string; code?: ErrorCatalogCode }>;
 export interface SessionPreviewCommandPort {
   send(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
   check(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
-  /** Member controls the shared executor still holds in flight or uncertain for this scope, so a remounted panel keeps them locked and checkable. */
+  /** Member controls the shared executor still holds in flight or unsettled for this scope, so a remounted panel keeps them locked until they settle. */
   retained?(): readonly SessionPreviewOperation[];
   /** The operation once its in-flight attempt settles; undefined when the attempt is gone or belongs to another scope. */
   afterSettled?(request: SessionPreviewRequest): Promise<SessionPreviewOperation | undefined>;
-  /** Reads an uncertain control's audited outcome without the operator or a resend; only an authority-backed port can. */
-  audited?(request: SessionPreviewRequest): Promise<SessionPreviewResult>;
+  /** Frees the controls a read-back could not prove, once any check still in flight has ended, so the next click reaches Relay. */
+  abandon?(request: SessionPreviewRequest): Promise<void>;
 }
 
 export interface SessionCommandBinding {
@@ -34,11 +35,16 @@ export interface SessionCommandBinding {
   readonly dayState: DashboardDayState;
   readonly day: string;
   readonly nowIso: string;
+  /** The selected workflow; switching it clears every pending control. */
+  readonly workflowId?: string;
 }
 type NativeAttempt = { readonly body: string; readonly actor: string; readonly client: DashboardClient; readonly authority: object;
   readonly commands: CommandRequest[]; readonly expected: number; snapshot?: DashboardDayWire; cause?: unknown };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
-const commandFeedback = (code: "COMMAND_REFUSED" | "COMMAND_OUTCOME_UNCERTAIN" | "COMMAND_READBACK_MISMATCH" | "COMMAND_RESULT_IDENTITY_MISMATCH" | "DASHBOARD_AUTHORITY_REPLACED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+// Relay stamps its own requestedAt, requestedBy and source on admission; the audit still proves this command when everything else matches.
+const intent = ({ requestedAt: _at, requestedBy: _by, source: _source, ...rest }: DashboardCommandRequest) => canonicalJsonStringify(rest);
+const sameIntent = (recorded: DashboardCommandRequest, sent: DashboardCommandRequest) => intent(recorded) === intent(sent);
+const commandFeedback = (code: "COMMAND_REFUSED") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 /** A worker command is confirmed once the served day shows its effect; the member fence makes each effect observable. */
 export function sessionCommandEffect(day: DashboardDayWire, request: DashboardCommandRequest): boolean {
@@ -79,9 +85,10 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     const request: SessionPreviewRequest = { id: command.commandId, target: command.target.workerId, action: command.type.replace(/-worker$/u, "") as SessionControl };
     if (!attempts.has(request.id)) attempts.set(request.id, { body: JSON.stringify(request), actor: binding.scope.actorId, client: binding.client, authority: binding.scope.authority, commands: [command], expected: 1 });
     const outcome = retained.outcome;
-    if (retained.state === "pending" || outcome === undefined) return { request, state: "pending", message: `${label(request)} requested…` };
-    if (outcome.kind === "confirmed") return { request, state: "confirmed", message: `${label(request)} confirmed` };
-    return { request, state: commandAttemptView(outcome).view === "unknown" ? "uncertain" : "refused", message: outcome.feedback.text, code: outcome.feedback.code };
+    if (outcome?.kind === "confirmed") return { request, state: "confirmed", message: `${label(request)} confirmed` };
+    // An unknown outcome stays pending until the panel reads it back.
+    if (retained.state === "pending" || outcome === undefined || commandAttemptView(outcome).view === "unknown") return { request, state: "pending", message: `${label(request)} requested…` };
+    return { request, state: "refused", message: outcome.feedback.text, code: outcome.feedback.code };
   };
   const valid = (attempt: NativeAttempt, binding: SessionCommandBinding) => {
     const next = requireBinding();
@@ -89,7 +96,8 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
       && next.scope === binding.scope && next.client === binding.client;
   };
   const read = async (attempt: NativeAttempt, binding: SessionCommandBinding) => {
-    const day = await binding.client.dashboardDay(binding.day);
+    // Every Sessions read ends at a deadline, so a stalled Day or audit read leaves an unknown the panel can settle.
+    const day = await withDeadline(binding.client.dashboardDay(binding.day));
     if (!valid(attempt, binding)) throw new Error("SESSION_AUTHORITY_REPLACED");
     attempt.snapshot = day;
     return day;
@@ -117,9 +125,16 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
     return all ? { id: request.id, state: "confirmed", data } : { id: request.id,
       state: attempt.commands.length === 1 && outcome !== undefined && outcome.kind !== "confirmed" && commandAttemptView(outcome).view !== "unknown" ? "refused" : "uncertain",
       code: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.code : undefined,
-      message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN"), data };
+      message: outcome !== undefined && outcome.kind !== "confirmed" ? outcome.feedback.text : FAILED[request.action], data };
   };
   const port: SessionPreviewCommandPort = {
+    async abandon(request) {
+      const binding = current().binding;
+      for (const command of attempts.get(request.id)?.commands ?? []) {
+        await binding?.executor.whenSettled(command.commandId);
+        binding?.executor.resolve(command.commandId, false, binding.scope);
+      }
+    },
     retained() {
       const binding = current().binding;
       return binding === undefined ? [] : binding.executor.retainedAttempts().flatMap(retained => retainedOperation(binding, retained) ?? []);
@@ -174,42 +189,45 @@ export function createSessionPreviewPort(current: () => Readonly<{ binding?: Ses
         return result(request, attempt, await dispatch({ ...envelope(request.id, binding), type: `${request.action}-worker`, target }));
       } catch (cause) {
         attempt.cause = cause;
-        return { id: request.id, state: attempt.commands.length === 0 ? "refused" : "uncertain", message: commandFeedback(attempt.commands.length === 0 ? "COMMAND_REFUSED" : "COMMAND_OUTCOME_UNCERTAIN") };
+        return { id: request.id, state: attempt.commands.length === 0 ? "refused" : "uncertain", message: attempt.commands.length === 0 ? commandFeedback("COMMAND_REFUSED") : FAILED[request.action] };
       } finally { release(attempt); }
     },
     async check(request) {
       const binding = requireBinding();
       const attempt = attempts.get(request.id);
-      if (attempt === undefined || attempt.body !== JSON.stringify(request) || !valid(attempt, binding)) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+      if (attempt === undefined || attempt.body !== JSON.stringify(request) || !valid(attempt, binding)) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
       try {
         for (const command of attempt.commands) {
           const retained = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === command.commandId);
           if (retained === undefined) continue;
-          if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
-          // The audited outcome, read without resending; a command with no audit stays unproved.
+          if (retained.scope.actorId !== binding.scope.actorId || retained.scope.client !== binding.scope.client || retained.scope.authority !== binding.scope.authority) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
+          // The audited outcome, read without resending; a missing or foreign audit leaves the command unproved, whatever the workers show.
           const checked = retained.outcome !== undefined && commandAttemptView(retained.outcome).view === "unknown";
           const reply = checked ? CommandResultSchema.safeParse(retained.outcome?.reply) : undefined;
           const settled = !checked ? retained.outcome : await binding.executor.check(command.commandId, { ...options(attempt, binding), observe: async sent => {
             // The command's own applied reply still proves it; a lost or unapplied reply falls back to the audit.
             if (reply?.success && (reply.data.state === "applied" || reply.data.state === "already-applied")) return reply.data;
-            const record = await binding.client.workerCommandResult(sent.commandId);
-            return record.state === "recorded" && canonicalJsonStringify(record.request) === canonicalJsonStringify(sent) ? record.result : undefined;
+            const record = await withDeadline(binding.client.workerCommandResult(sent.commandId));
+            return record.state === "recorded" && sameIntent(record.request, sent) ? record.result : undefined;
           } });
           if (settled?.kind === "refused" && settled.reason === undefined) return { id: request.id, state: "refused", message: settled.feedback.text, code: settled.feedback.code };
-          if (settled?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: checked && settled !== undefined ? settled.feedback.text : commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+          if (settled?.kind !== "confirmed") return { id: request.id, state: "uncertain", message: FAILED[request.action] };
         }
         await read(attempt, binding);
-        if (!valid(attempt, binding)) return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+        if (!valid(attempt, binding)) return { id: request.id, state: "uncertain", message: FAILED[request.action] };
         return result(request, attempt);
       } catch (cause) {
         attempt.cause = cause;
-        return { id: request.id, state: "uncertain", message: commandFeedback("COMMAND_OUTCOME_UNCERTAIN") };
+        return { id: request.id, state: "uncertain", message: FAILED[request.action] };
       } finally { release(attempt); }
     },
   };
-  return { ...port, audited: request => port.check(request) };
+  return port;
 }
 
+/** One short line when a control could not be confirmed after reading back. */
+const FAILED: Readonly<Record<SessionPreviewRequest['action'], string>> = { add: "Workers weren't added.", refresh: "Couldn't refresh the sessions.",
+  pause: "Couldn't pause this worker.", resume: "Couldn't resume this worker.", retry: "Couldn't restart this worker.", stop: "Couldn't stop this worker.", remove: "Couldn't remove this worker." };
 const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Workers added' : request.action === 'refresh' ? 'Idle sessions refreshed' : ({ pause: 'Pause', resume: 'Resume', retry: 'Retry', stop: 'Stop', remove: 'Remove' }[request.action]);
 
 export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; onRefused?: (problem: string) => void }>) {
@@ -218,12 +236,14 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
   const data = readback.key === sourceKey ? readback.data : initial;
   const epoch = useRef<object>({});
   const identity = useRef(source?.scope ?? port);
-  if (identity.current !== (source?.scope ?? port)) { identity.current = source?.scope ?? port; epoch.current = {}; }
+  const scopeChanged = identity.current !== (source?.scope ?? port);
+  if (scopeChanged) { identity.current = source?.scope ?? port; epoch.current = {}; }
   const latestSource = useRef(sourceKey); latestSource.current = sourceKey;
   const [operations, setOperations] = useState<Readonly<Record<string, SessionPreviewOperation>>>(() => Object.fromEntries((port.retained?.() ?? []).map(operation => [operation.request.target, operation])));
   const operationsRef = useRef<Record<string, SessionPreviewOperation>>(operations);
+  // Another day, sign-in or workflow leaves nothing pending behind, even while a reply or read is outstanding.
+  if (scopeChanged && Object.keys(operationsRef.current).length > 0) { operationsRef.current = {}; setOperations(operationsRef.current); }
   const onRefused = useRef(source?.onRefused); onRefused.current = source?.onRefused;
-  const reconciling = useRef(new Map<string, Promise<void>>());
   const live = useRef(true);
   const ordinal = useRef(5);
   const idle = useRef<((request: SessionPreviewRequest, data?: SessionsViewState) => void) | undefined>(undefined);
@@ -242,80 +262,77 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
         ? { ...data, workers: data.workers.filter(worker => !removed.includes(worker.id)) } : data };
     });
   }, []);
+  const drop = useCallback((request: SessionPreviewRequest) => {
+    if (operationsRef.current[request.target]?.request.id !== request.id) return;
+    const next = { ...operationsRef.current }; delete next[request.target];
+    operationsRef.current = next; setOperations(next);
+  }, []);
+  // Settles one control: the confirmed result, or the previous state with one short failure toast. Nothing waits on the operator.
+  const settle = useCallback(async (request: SessionPreviewRequest, sent: SessionPreviewResult | undefined, attemptEpoch: object, snapshot: object) => {
+    const proves = (result: SessionPreviewResult | undefined): result is SessionPreviewResult => result !== undefined && result.id === request.id
+      && (result.state === 'confirmed' || result.state === 'refused' && typeof result.message === 'string');
+    const answered = proves(sent);
+    // A lost, malformed or foreign reply is read back from the served workers, never shown.
+    const checked = answered ? { result: sent, snapshot } : await readBack(async () => {
+      const readSnapshot = latestSource.current;
+      return { result: await port.check(request), snapshot: readSnapshot };
+    }, ({ result }) => proves(result));
+    if (!proves(checked?.result)) await port.abandon?.(request).catch((cause: unknown) => {
+      if (attemptEpoch === epoch.current) window.reportError(cause);
+    });
+    if (!live.current || operationsRef.current[request.target]?.request.id !== request.id) return;
+    // A changed scope (another day or sign-in) leaves nothing pending behind.
+    if (attemptEpoch !== epoch.current) { drop(request); return; }
+    const proven = checked !== undefined && proves(checked.result) ? checked.result : undefined;
+    if (proven !== undefined && checked !== undefined) acceptReadback(checked.snapshot, request, proven);
+    if (proven?.state === 'confirmed') {
+      if (request.action === 'refresh') idle.current?.(request, proven.data);
+      // A result found only by reading back shows as the new state alone, with no note or toast.
+      if (answered) retain({ request, state: 'confirmed', message: request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` });
+      else drop(request);
+      return;
+    }
+    // A refusal the send itself returned keeps its note; one found on read-back is a toast.
+    if (proven?.state === 'refused' && answered) { retain({ request, state: 'refused', message: proven.message, code: proven.code }); return; }
+    drop(request);
+    onRefused.current?.(proven === undefined || request.action === 'retry' ? FAILED[request.action] : proven.message);
+  }, [port, acceptReadback, retain, drop]);
   // A control another mount sent is still in flight: follow it to its settled outcome instead of resending.
   useEffect(() => {
     for (const operation of Object.values(operationsRef.current)) {
       if (operation.state !== 'pending') continue;
-      void port.afterSettled?.(operation.request).then(next => {
+      const attemptEpoch = epoch.current;
+      const finish = (next?: SessionPreviewOperation) => {
         if (!live.current || operationsRef.current[operation.request.target]?.request.id !== operation.request.id) return;
-        retain(next ?? { request: operation.request, state: 'uncertain', message: commandFeedback('COMMAND_OUTCOME_UNCERTAIN') });
-      }, (diagnostic: unknown) => {
-        if (live.current) retain({ request: operation.request, state: 'uncertain', diagnostic, message: commandFeedback('COMMAND_OUTCOME_UNCERTAIN') });
-      });
+        if (next?.state === 'confirmed' || next?.state === 'refused') { retain(next); return; }
+        void settle(operation.request, undefined, attemptEpoch, latestSource.current);
+      };
+      void (port.afterSettled?.(operation.request) ?? Promise.resolve(undefined)).then(finish, () => finish());
     }
-  }, [port, retain]);
-  const settleProven = useCallback((request: SessionPreviewRequest, result: SessionPreviewResult) => {
-    if (result.state === 'confirmed') { retain({ request, state: 'confirmed', message: request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` }); return; }
-    if (request.action === 'remove' && result.state === 'refused') {
-      retain({ request, state: 'refused', message: result.message, code: result.code });
-      return;
-    }
-    const next = { ...operationsRef.current }; delete next[request.target];
-    operationsRef.current = next; setOperations(next);
-    onRefused.current?.(request.action === 'retry' ? "Couldn't restart this worker." : result.message);
-  }, [retain]);
-  // Reads an uncertain control's audited outcome without resending; an unproved outcome stays uncertain.
-  const reconcile = useCallback((operation: SessionPreviewOperation) => {
-    const { request } = operation;
-    if (port.audited === undefined || operation.state !== 'uncertain' || reconciling.current.has(request.id)) return;
-    const attemptEpoch = epoch.current;
-    const snapshot = latestSource.current;
-    reconciling.current.set(request.id, port.audited(request).then(result => {
-      if (!live.current || attemptEpoch !== epoch.current || result.id !== request.id || result.state === 'uncertain' || operationsRef.current[request.target] !== operation) return;
-      acceptReadback(snapshot, request, result);
-      if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
-      settleProven(request, result);
-    }, () => undefined).finally(() => { reconciling.current.delete(request.id); }));
-  }, [port, acceptReadback, settleProven]);
-  // A later served day may follow a settlement whose reply never arrived.
-  useEffect(() => { for (const operation of Object.values(operationsRef.current)) reconcile(operation); }, [sourceKey, reconcile]);
-    const perform = useCallback(async (request: SessionPreviewRequest, checking = false) => {
-    const current = operationsRef.current[request.target];
-    if (current && ['pending', 'checking'].includes(current.state) || !checking && current?.state === 'uncertain') return;
-    retain({ request, state: checking ? 'checking' : 'pending', message: checking ? 'Checking command…' : `${request.action === 'add' ? 'Adding workers' : `${label(request)} requested`}…` });
-    // A manual Check waits for an automatic read already in flight, then settles from what it left.
-    if (checking) await reconciling.current.get(request.id);
+  }, [port, retain, settle]);
+  const perform = useCallback(async (request: SessionPreviewRequest) => {
+    if (operationsRef.current[request.target]?.state === 'pending') return;
+    retain({ request, state: 'pending', message: `${request.action === 'add' ? 'Adding workers' : `${label(request)} requested`}…` });
     const attemptEpoch = epoch.current;
     const snapshot = latestSource.current;
     let result: SessionPreviewResult;
-    let diagnostic: unknown;
-    try { result = await (checking ? port.check(request) : port.send(request)); }
-    catch (cause) { diagnostic = cause; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_OUTCOME_UNCERTAIN') }; }
-    if (!live.current) return;
-    if (attemptEpoch !== epoch.current) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('DASHBOARD_AUTHORITY_REPLACED') }; }
-    if (!result || !['confirmed', 'refused', 'uncertain'].includes(result.state) || result.state !== 'confirmed' && typeof result.message !== 'string') { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_READBACK_MISMATCH') }; }
-    if (result.id !== request.id) { diagnostic ??= result; result = { id: request.id, state: 'uncertain', message: commandFeedback('COMMAND_RESULT_IDENTITY_MISMATCH') }; }
-    if (attemptEpoch === epoch.current) acceptReadback(snapshot, request, result);
-    if (result.state === 'confirmed' && request.action === 'refresh') idle.current?.(request, result.data);
-    if (checking && result.state === 'refused') { settleProven(request, result); return; }
-    retain({ request, state: result.state, ...(diagnostic === undefined ? {} : { diagnostic }), code: result.state === 'confirmed' ? undefined : result.code,
-      message: result.state === 'confirmed' ? request.action === 'add' ? 'Workers added' : `${label(request)} confirmed` : result.message });
-    // A lost reply is read back at once; the audit is committed before the server replies.
-    const retained = operationsRef.current[request.target];
-    if (result.state === 'uncertain' && !checking && retained !== undefined) reconcile(retained);
-  }, [port, acceptReadback, retain, settleProven, reconcile]);
+    try { result = await port.send(request); } catch {
+      result = { id: request.id, state: "uncertain", message: FAILED[request.action] };
+    }
+    await settle(request, result, attemptEpoch, snapshot);
+  }, [port, retain, settle]);
   const keepAlive = useIdleSessionRefresh(data, operations, perform);
   idle.current = keepAlive.confirmed;
   return { data, operations, idleCountdowns: keepAlive.countdowns,
-    control: (target: string, action: SessionControl) => { const worker = data.state === 'ready' ? data.workers.find(item => item.id === target) : undefined; void perform({ id: crypto.randomUUID(), target, action, ...(worker?.authority === undefined ? {} : { authorityKey: sessionWorkerAuthorityKey(worker.authority) }) }); },
+    control: (target: string, action: SessionControl) => { if (data.state === 'ready' && data.stale) return; const worker = data.state === 'ready' ? data.workers.find(item => item.id === target) : undefined; void perform({ id: crypto.randomUUID(), target, action, ...(worker?.authority === undefined ? {} : { authorityKey: sessionWorkerAuthorityKey(worker.authority) }) }); },
     add: (workflow: string, count: number) => {
+      if (data.state === 'ready' && data.stale) return;
       if (!Number.isSafeInteger(count) || count < 1 || !catalog.some(item => item.id === workflow)) throw new Error('SESSION_ADD_INVALID');
       const current = operationsRef.current.add;
-      if (current && ['pending', 'checking', 'uncertain'].includes(current.state)) return;
+      if (current?.state === 'pending') return;
       const first = ordinal.current; ordinal.current += count;
       void perform({ id: crypto.randomUUID(), target: 'add', action: 'add', workflow, count, ordinal: first });
     },
-    check: (target: string) => { const operation = operationsRef.current[target]; if (operation?.state === 'uncertain') void perform(operation.request, true); },
   };
 }
 

@@ -11,7 +11,7 @@ export type IdleSessionCountdown = Readonly<{ remainingMs: number; waiting: bool
 export class IdleSessionSchedule {
   private deadlines = new Map<string, Deadline>();
   sync(data: SessionsViewState, now: number, operations: Readonly<Record<string, SessionPreviewOperation>> = {}) {
-    const eligible = data.state === 'ready' ? data.workers.filter(worker => worker.state === 'idle' && (worker.authority === undefined
+    const eligible = data.state === 'ready' && !data.stale ? data.workers.filter(worker => worker.state === 'idle' && (worker.authority === undefined
       ? worker.browsers.length > 0 && worker.browsers.every(browser => browser.state === 'ready')
       : worker.authority.browsers.length > 0 && worker.authority.browsers.every(browser => browser.observation?.state === "present" && browser.observation.health === "authenticated")
         && worker.authority.controls?.basis.state === 'present')) : [];
@@ -22,11 +22,11 @@ export class IdleSessionSchedule {
       const authorityKey = worker.authority === undefined ? undefined : sessionWorkerAuthorityKey(worker.authority);
       const lifetimeKey = worker.authority === undefined ? JSON.stringify(browserIds) : sessionWorkerLifetimeKey(worker.authority);
       const operation = operations[worker.id];
-      if (operation !== undefined && operation.request.action !== "refresh" && ["pending", "checking", "uncertain"].includes(operation.state)) { this.deadlines.delete(worker.id); continue; }
+      if (operation !== undefined && operation.request.action !== "refresh" && operation.state === "pending") { this.deadlines.delete(worker.id); continue; }
       const prior = this.deadlines.get(worker.id);
       // The refresh itself moves the member version, so only a new lifetime or browser set ends the wait for its result.
       if (prior?.attempted && prior.lifetimeKey === lifetimeKey && operation !== undefined && operation.request.id === prior.requestId) continue;
-      if (operation?.request.action === "refresh" && ["pending", "checking", "uncertain", "refused"].includes(operation.state)) { this.deadlines.delete(worker.id); continue; }
+      if (operation?.request.action === "refresh" && ["pending", "refused"].includes(operation.state)) { this.deadlines.delete(worker.id); continue; }
       if (JSON.stringify(prior?.browserIds) !== JSON.stringify(browserIds) || prior?.authorityKey !== authorityKey) this.deadlines.set(worker.id, { browserIds, authorityKey, lifetimeKey, dueAt: now + IDLE_REFRESH_MS, attempted: false });
     }
   }
@@ -72,7 +72,7 @@ export function useIdleSessionRefresh(data: SessionsViewState, operations: Reado
       schedule.current.sync(latest.current.data, now, latest.current.operations);
       for (const request of schedule.current.due(now, target => {
         const operation = latest.current.operations[target];
-        return operation !== undefined && ['pending', 'checking', 'uncertain', 'refused'].includes(operation.state);
+        return operation !== undefined && ['pending', 'refused'].includes(operation.state);
       })) void latest.current.send(request);
       setCountdowns(schedule.current.view(now));
     }, 1000);

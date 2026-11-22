@@ -94,3 +94,31 @@ it("a saved choice of a sub-workflow shows the main workflow that starts it; an 
     host.remove();
   }
 });
+
+it("while the definitions are first read, shows the heading and picker and no guessed run options or steps", async () => {
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  const pending = { workflowExplorer: () => new Promise<never>(() => {}) } as never;
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: pending }))));
+  const frame = host.querySelector('[role="status"][aria-busy="true"][aria-label="Loading workflow definition"]');
+  assert.ok(frame, "a labelled loading region, so startup still waits for it");
+  assert.ok(host.querySelector('[aria-label="Explorer workflow"]'), "the picker stays usable above it");
+  assert.equal(frame.childElementCount, 0);
+  assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+});
+
+it("keeps the workflow picker mounted, focus included, when the definitions arrive", async () => {
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  let settle!: (wire: typeof FIXTURE_EXPLORER_WIRE) => void;
+  const pending = { workflowExplorer: () => new Promise<typeof FIXTURE_EXPLORER_WIRE>(resolve => { settle = resolve; }) } as never;
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: pending }))));
+  const picker = host.querySelector<HTMLSelectElement>('[aria-label="Explorer workflow"]');
+  assert.ok(picker);
+  picker.focus();
+  await act(async () => { settle(FIXTURE_EXPLORER_WIRE); });
+  assert.equal(host.querySelector('[aria-label="Loading workflow definition"]'), null);
+  assert.ok(host.querySelector("#run-options"), "the spec replaced the busy region");
+  assert.equal(host.querySelector('[aria-label="Explorer workflow"]'), picker, "the same picker node");
+  assert.equal(document.activeElement, picker);
+});

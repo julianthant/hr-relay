@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { BodySection, dsIcon } from '../../../ds/ui.js';
-import { LoadingRegion, SkeletonText } from '../../shared/loading/loading.js';
+import { LoadingRegion } from '../../shared/loading/loading.js';
 import { type Sheet, stamp, tagsOf } from './sheets-v2-model.js';
 import { DownloadIcon, SheetMenu, SyncStatus, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
@@ -50,15 +50,8 @@ export function SheetTable({ title, heading, sheets, narrow, actions, limit }: {
   return heading ? <BodySection title={heading}>{body}</BodySection> : <section className="ds-body-section">{body}</section>;
 }
 
-/** The loading frame of the list: the same card, header row and row height as a loaded table, so the page does not jump. */
-export function SheetsSkeleton({ narrow }: { narrow: boolean }) {
-  return <LoadingRegion label="Loading spreadsheets"><div aria-hidden><BodySection title={<SkeletonText className="w-24" />}>
-    <div className="overflow-hidden sv2-card border border-ui-stroke bg-[var(--ds-card-bg)]">
-      <div className={`${cols(narrow, false)} sv2-head bg-ui-table text-ui-muted`}>{['Spreadsheet', 'Source', 'Version'].map(head => <div key={head}>{head}</div>)}<div /></div>
-      {[0, 1, 2].map(index => <div key={index} className={`${cols(narrow, false)} sv2-row border-t border-ui-stroke ds-text-ui`}>
-        <div className="min-w-0"><SkeletonText className="w-3/5 sv2-row-title" /><SkeletonText className="sv2-row-desc w-2/5" /></div>
-        <SkeletonText className="w-20" /><SkeletonText className="w-8" /><div />
-      </div>)}
-    </div>
-  </BodySection></div></LoadingRegion>;
+/** The list while its first read is slow: a busy region with nothing drawn. The search bar, tables, group headings and the
+ * empty state all depend on what the read returns, so no guessed part stands in for them. */
+export function SheetsSkeleton() {
+  return <LoadingRegion label="Loading spreadsheets">{null}</LoadingRegion>;
 }

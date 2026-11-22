@@ -29,7 +29,10 @@ export type SettingsNavIcon =
   | "routes"
   | "capabilities"
   | "keyboard"
-  | "unrendered";
+  | "unrendered"
+  | "spreadsheets"
+  | "explorer"
+  | "activity";
 
 
 /** The glyph for each SERVED section this build renders, keyed by the id the
@@ -88,7 +91,7 @@ export interface SettingsNavEntry {
 
 
 export interface SettingsNavGroup {
-  readonly id: "personal" | "advanced" | "help";
+  readonly id: "personal" | "advanced" | "data" | "status" | "help";
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
@@ -100,6 +103,7 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
 
 /** Route token kept only for compatibility notices */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
+export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "activity"]);
 
 
 /** The gear's stable DOM id, and the app shell's main region behind the
@@ -108,13 +112,6 @@ export const SETTINGS_GEAR_ID = "settings-gear";
 
 export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
 export const DASHBOARD_LOGS_REGION_ID = "dashboard-logs-region";
-
-
-/** Which id to focus when the takeover closes: the gear it was opened from, or
- * if the gear is not mounted — the main region the takeover was covering. */
-export function settingsCloseFocusTargetId(gearMounted: boolean): string {
-  return gearMounted ? SETTINGS_GEAR_ID : DASHBOARD_MAIN_REGION_ID;
-}
 
 
 /** The approved Settings page list stays available while the current editor
@@ -130,6 +127,11 @@ export function buildSettingsNav(
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
     .map(section => servedEntry(section.id, section.label)) ?? [];
   if (advanced.length > 0) groups.push({ id: "advanced", heading: "Advanced", entries: advanced });
+  groups.push({ id: "data", heading: "Data", entries: [
+    clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
+    clientEntry("explorer", "Explorer", "explorer"),
+    clientEntry("activity", "Analytics", "activity"),
+  ] });
   groups.push({
     id: "help",
     heading: "Help",
@@ -163,12 +165,8 @@ export function resolveSettingsSection(
   const found = entries.find((entry) => entry.id === requested) ?? entries.find((entry) => entry.id === SETTINGS_ALIASES[requested]);
   return found === undefined ? { state: "unknown", requested } : { state: "open", entry: found };
 }
-export { CAPABILITY_SPECS,capabilityAvailableCount,capabilityMatrix,dryRunPostureSentence } from "./preflight/settings-capabilities-model.js";
-export type { CapabilityCell,CapabilityKey,CapabilityRow,CapabilitySpec } from "./preflight/settings-capabilities-model.js";
 export { useEditableSettings } from "./editor/settings-editor-model.js";
-export type { EditableSettingsState,PreflightRerunState,SettingsSaveState } from "./editor/settings-editor-model.js";
-export { useSettingsFacts } from "./editor/settings-facts-model.js";
-export type { SettingsFactsState } from "./editor/settings-facts-model.js";
+export type { EditableSettingsState,SettingsSaveState } from "./editor/settings-editor-model.js";
 export { SYSTEM_HOST_PRESENTATION } from "./general/settings-hosts-model.js";
 export type { SystemHostPresentation } from "./general/settings-hosts-model.js";
 export { storageNeedsAttention } from "./storage/storage-settings-model.js";

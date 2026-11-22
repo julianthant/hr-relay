@@ -44,7 +44,7 @@ it.each([
     saves: f.persistence.submissions.length,
   }, { probed: true, outcome: "failed", failureCodes: ["WRITE_COMMITTED_EFFECT_ABSENT"], filingChildren: 0, imports: 0, saves: 1 });
   assert.equal(operatorFailureSentence("WRITE_COMMITTED_EFFECT_ABSENT"),
-    "The earlier Save is no longer in UCPath. Check the contact, then start a new run.");
+    "The earlier Save is gone from UCPath. Check it, then rerun.");
   const evidence = f.database.authority.runResults.get(fresh.envelope.runId);
   assert.equal(RunTerminalEvidenceResultSchema.parse(evidence?.result.value).kind, "failed-evidence");
 });

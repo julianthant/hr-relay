@@ -8,6 +8,11 @@ import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, 
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** Refusals the caller shows as its own state, so they are not error reports: a preflight re-check turned away because one is running or too many started. */
+const EXPECTED_REFUSALS: Readonly<Record<string, readonly number[]>> = Object.freeze({
+  "POST /api/v1/preflight/rerun": Object.freeze([429]),
+});
+
 export interface SseMessage {
   readonly id?: string;
   readonly data: string;
@@ -125,14 +130,15 @@ export function createDashboardTransport(input: Readonly<{
       });
   };
 
-  const reportFailure = (path: string, body: unknown, status = 200): void => {
+  const reportFailure = (path: string, body: unknown, status = 200, method = "GET"): void => {
     if (path === "/api/v1/debug/errors") return;
+    if (EXPECTED_REFUSALS[`${method.toUpperCase()} ${path.split("?")[0] ?? path}`]?.includes(status) === true) return;
     for (const failure of debugFailureOutcomes(body, status)) input.onFailure?.({ ...failure, route: diagnosticRequestRoute(path) });
   };
   const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
     try {
       const response = await sendWithDeadline(path, init);
-      reportFailure(path, response.body, response.ok ? response.status : Math.max(400, response.status));
+      reportFailure(path, response.body, response.ok ? response.status : Math.max(400, response.status), init?.method);
       return response;
     } catch (error) {
       if (!init?.signal?.aborted) { reportFailure(path, { state: "error" }); markDashboardErrorReported(error); }
