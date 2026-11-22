@@ -134,32 +134,62 @@ export function verifyBackupManifestOffThread(admissionInput: RuntimeAdmission, 
 }
 
 /**
- * verifyBackupManifestAtPath for another person's backup, checked against `source` instead of the admission's own person. `read` runs
- * inside the same read-only snapshot the inspection checks, while the verified copy admission still proves the manifest's bytes.
+ * Reads another person's backup, checked against `source` with the same identity and inspection checks as verifyBackupManifestAtPath.
+ * The verified copy admission holds the backup file; the manifest digest is proved on the private snapshot that the inspection and
+ * `read` use. Nothing next to the backup is written or removed.
  */
-export async function readVerifiedBackupManifestAtPath<T>(admissionInput: RuntimeAdmission, manifestPathInput: string,
-  source: Extract<AuthorityBackupExpectedSource, { kind: "profile" }>, read: (database: Parameters<typeof inspectOpenDatabase>[0]) => T): Promise<VerifiedBackup & Readonly<{ value: T }>> {
-  let result: { value: T } | undefined;
-  const verified = await verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => withAuthorityDatabaseReadOnly(copy, backupPath, database => {
-    const inspection = inspectOpenDatabase(database, schemaVersion);
-    result = { value: read(database) };
+export function readVerifiedBackupManifestAtPath<T>(admissionInput: RuntimeAdmission, manifestPathInput: string,
+  source: Extract<AuthorityBackupExpectedSource, { kind: "profile" }>, read: (database: Parameters<typeof inspectOpenDatabase>[0]) => T): VerifiedBackup & Readonly<{ value: T }> {
+  const admission = requireRuntimeAdmission(admissionInput);
+  const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
+  if (!existsSync(manifestPath)) throw new Error(`backup manifest ${manifestPath} does not exist`);
+  const manifest = parseBackupManifestFile(manifestPath);
+  if (manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(source)) {
+    throw new Error(`backup manifest ${basename(manifestPath)} belongs to a different authority database`);
+  }
+  assertExpectedBackupSource(source, manifest);
+  const backupPath = join(dirname(manifestPath), manifest.backupFileName);
+  const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
+  try {
+    const { inspection, value } = withAuthorityDatabaseReadOnly(copy, backupPath, database => {
+      const image = database.location();
+      if (image === null || resolve(image) === backupPath) throw new Error("authority-backup-snapshot-required");
+      assertSnapshotBytes(image, manifest);
+      const inspected = inspectOpenDatabase(database, manifest.schemaVersion);
+      assertBackupInspection(manifest, inspected, source);
+      const result = read(database);
+      assertSnapshotBytes(image, manifest);
+      return { inspection: inspected, value: result };
+    });
     copy.assertLive();
-    return inspection;
-  }), source);
-  if (result === undefined) throw new Error("authority-backup-read-missing");
-  return Object.freeze({ ...verified, value: result.value });
+    assertBackupInspection(manifest, inspection, source);
+    return Object.freeze({ manifestPath, backupPath, manifest, value });
+  } finally { copy.release(); }
+}
+
+/** The private snapshot holds exactly the manifest's bytes, with nothing pending in a write-ahead log beside it. */
+function assertSnapshotBytes(path: string, manifest: Readonly<{ byteSize: number; sha256: string }>): void {
+  const wal = statSync(`${path}-wal`, { throwIfNoEntry: false });
+  if (wal !== undefined && wal.size !== 0) throw new Error("authority-backup-snapshot-wal-not-empty");
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW), hash = createHash("sha256"), chunk = Buffer.alloc(64 * 1024);
+  let count = 0;
+  try {
+    for (let size = readSync(descriptor, chunk, 0, chunk.length, null); size > 0; size = readSync(descriptor, chunk, 0, chunk.length, null)) {
+      count += size; hash.update(chunk.subarray(0, size));
+    }
+  } finally { closeSync(descriptor); }
+  if (count !== manifest.byteSize || hash.digest("hex") !== manifest.sha256) throw new Error("authority-backup-snapshot-digest-mismatch");
 }
 
 async function verifyManifest(
   admissionInput: RuntimeAdmission,
   manifestPathInput: string,
   inspect: BackupCopyInspector,
-  source?: AuthorityBackupExpectedSource,
 ): Promise<VerifiedBackup> {
   const admission = requireRuntimeAdmission(admissionInput);
   const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
   if (!existsSync(manifestPath)) throw new Error(`backup manifest ${manifestPath} does not exist`);
-  const expected = source ?? admission.authorityBackupExpectedSource();
+  const expected = admission.authorityBackupExpectedSource();
   if (expected.kind !== "profile") throw new Error("profile-backup-binding-required");
   const manifest = parseBackupManifestFile(manifestPath);
   if (manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(expected)) {

@@ -729,11 +729,12 @@ give an isolated copy production data; seed copies only through it.
   and open its `state.db` through `AuthorityDatabase.open` with that admission. Pass that admission and
   database with
   `{ source: { manifestPath, binding: { installationId, profileId } }, destination: { installationId, profileId } }`.
-- The source is a current-schema backup manifest (version 4), checked by the same verifier restore
-  uses (`verifyBackupManifestAtPath`) against the named source binding. Its bytes must match the
-  manifest through the verified read-only copy admission, which refuses a backup file with a second
-  link, and the library is read from the same snapshot the inspection checks. The backup file is never
-  opened for writing.
+- The source is a current-schema backup manifest (version 4), checked against the named source
+  binding with the same identity and inspection checks restore uses (`verifyBackupManifestAtPath`).
+  The verified read-only copy admission holds the backup file and refuses one with a second link. The
+  manifest's size and SHA-256 are proved on the private snapshot that the inspection and the library
+  read use, with an empty write-ahead log. Nothing beside the backup, including empty `-wal` or `-shm`
+  files, is written or removed.
 - It refuses (`IsolatedLibraryImportRefusedError`) when the store was not opened by this exclusive
   admission or is not its `state.db` (`destination-store-unbound`), when the admission, open store and
   named destination differ, when the controller holds the production lifetime lock, its workspace lies

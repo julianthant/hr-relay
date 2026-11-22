@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
+import { applicationDataWorkspace } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { runtimeProfiles } from "../../../../src/models/config/define-runtime-isolation.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { importIsolatedWorkbookLibrary, IsolatedLibraryImportRefusedError } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -16,9 +19,25 @@ import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixt
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { WorkbookLibraryOriginSchema } from "../../../../src/models/dashboard/workbook-library.js";
 
+// Test-only seam: points the production application data at a temporary home instead of the real one.
+const applicationData = vi.hoisted(() => ({ home: undefined as string | undefined }));
+vi.mock("node:os", async original => {
+  const os = await original<typeof import("node:os")>();
+  const userInfo = ((options?: { encoding: BufferEncoding }) => {
+    const info = os.userInfo(options);
+    return applicationData.home === undefined ? info : { ...info, homedir: applicationData.home };
+  }) as typeof os.userInfo;
+  return { ...os, userInfo };
+});
+const productionUnder = (home: string) => {
+  if (process.platform === "win32") vi.stubEnv("LOCALAPPDATA", home); else applicationData.home = home;
+  return applicationDataWorkspace(undefined, "production");
+};
+const realProduction = () => { applicationData.home = undefined; vi.unstubAllEnvs(); };
+
 const CLOCK = manualClock(new Date("2026-11-22T12:00:00.000Z"));
 const cleanups: (() => void | Promise<void>)[] = [];
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { realProduction(); vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, CLOCK);
 type World = Awaited<ReturnType<typeof openCurrentWorld>>;
 
@@ -180,7 +199,7 @@ it("refuses ambiguous identities, unbound stores, the source's own installation 
   const bytes = readFileSync(backupPath);
   bytes[bytes.length - 1] ^= 0xff;
   writeFileSync(backupPath, bytes);
-  await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, valid, CLOCK), /checksum does not match/u);
+  await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, valid, CLOCK), /digest changed/u);
   assert.equal(destination.database.authority.workbooks.catalog().length, 0);
   writeFileSync(backupPath, readFileSync(backupPath).map((byte, index) => index === bytes.length - 1 ? byte ^ 0xff : byte));
   assert.equal(sha256(backupPath), backup.manifest.sha256);
@@ -253,4 +272,49 @@ it("leaves the source's credentials, queued runs and workflow outputs behind whe
   } finally { reopened.close(); }
   assert.deepEqual(nonLibraryCounts(destination), before);
   assert.deepEqual(credentialFiles(), credentialsBefore);
+});
+
+it("refuses a controller holding the production lifetime lock without writing", async () => {
+  const { source, backup } = await sourceWithLibrary();
+  const destination = await openCurrentWorld();
+  const lifetime = destination.admission.lifetime;
+  assert.ok(lifetime instanceof RuntimeLifetimeLock);
+  assert.notEqual(lifetime.port, runtimeProfiles.production.lockPort);
+  const generation = destination.database.getMeta().authorityGeneration;
+  const port = vi.spyOn(lifetime, "port", "get").mockReturnValue(runtimeProfiles.production.lockPort);
+  await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK),
+    (error: unknown) => error instanceof IsolatedLibraryImportRefusedError && error.reason === "destination-not-isolated");
+  assert.ok(port.mock.calls.length > 0);
+  assert.equal(destination.database.authority.workbooks.catalog().length, 0);
+  assert.equal(destination.database.getMeta().authorityGeneration, generation);
+  port.mockRestore();
+  assert.equal((await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK)).created, 2);
+});
+
+it("refuses a copy whose workspace lies inside the production application data without writing", async () => {
+  const { source, backup } = await sourceWithLibrary();
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "relay-import-home-")));
+  cleanups.push(() => { rmSync(home, { recursive: true, force: true }); });
+  const production = productionUnder(home);
+  realProduction();
+  mkdirSync(production, { recursive: true, mode: 0o700 });
+  const destination = await openCurrentWorld({ workspace: production });
+  const generation = destination.database.getMeta().authorityGeneration;
+  assert.equal(productionUnder(home), production);
+  await assert.rejects(importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK),
+    (error: unknown) => error instanceof IsolatedLibraryImportRefusedError && error.reason === "destination-not-isolated");
+  assert.equal(destination.database.authority.workbooks.catalog().length, 0);
+  assert.equal(destination.database.getMeta().authorityGeneration, generation);
+  realProduction();
+  assert.equal((await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK)).created, 2);
+});
+
+it("leaves empty write-ahead companions beside the source backup in place", async () => {
+  const { source, backup } = await sourceWithLibrary();
+  const backupPath = join(dirname(backup.manifestPath), backup.manifest.backupFileName);
+  for (const suffix of ["-wal", "-shm"]) writeFileSync(`${backupPath}${suffix}`, "", { mode: 0o600 });
+  const destination = await openCurrentWorld();
+  assert.equal((await importIsolatedWorkbookLibrary(destination.admission, destination.database, request(source, backup.manifestPath, destination), CLOCK)).created, 2);
+  for (const suffix of ["-wal", "-shm"]) assert.equal(statSync(`${backupPath}${suffix}`).size, 0);
+  assert.equal(sha256(backupPath), backup.manifest.sha256);
 });

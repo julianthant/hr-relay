@@ -73,14 +73,14 @@ function assertIsolatedDestination(admission: RuntimeAdmission, database: Author
 }
 
 /** Reads the backup's local library through the supported verifier, from the same read-only snapshot its inspection checks. */
-async function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: string, expected: ProfileDatabaseBinding) {
+function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: string, expected: ProfileDatabaseBinding) {
   const manifest = parseBackupManifestFile(manifestPath);
   if (manifest.installationId !== expected.installationId || manifest.profileId !== expected.profileId
     || manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity({ kind: "profile", binding: expected })) {
     throw new IsolatedLibraryImportRefusedError("source-binding-mismatch");
   }
   if (manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new IsolatedLibraryImportRefusedError("source-schema-not-current");
-  const verified = await readVerifiedBackupManifestAtPath(admission, manifestPath, { kind: "profile", binding: expected }, (database): SourceLibrary => {
+  const verified = readVerifiedBackupManifestAtPath(admission, manifestPath, { kind: "profile", binding: expected }, (database): SourceLibrary => {
     const repository = createWorkbookLibraryRepository({ database, read: work => work(),
       mutate: () => { throw new Error("isolated-library-import-source-read-only"); } });
     const entries = repository.catalog();
@@ -118,7 +118,7 @@ export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmis
   const manifestPath = resolve(request.source.manifestPath);
   if (inside(admission.stateRoot, manifestPath)) throw new IsolatedLibraryImportRefusedError("source-inside-destination");
 
-  const { manifest, library } = await readVerifiedSourceLibrary(admission, manifestPath, request.source.binding);
+  const { manifest, library } = readVerifiedSourceLibrary(admission, manifestPath, request.source.binding);
   const target = database.authority.workbooks;
   const at = clock.now().toISOString();
   const issued = (sourceLibraryId: string) => importedLibraryId(request.source.binding, request.destination, sourceLibraryId);
