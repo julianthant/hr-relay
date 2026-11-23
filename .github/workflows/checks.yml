@@ -148,7 +148,48 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - run: npm run lint
+      - name: Profile root lint on the development snapshot
+        run: |
+          ulimit -c 0
+          node --version
+          nproc
+          uptime
+          head -3 /proc/meminfo
+          read -r -a lint_command < <(node -p 'require("./package.json").scripts.lint')
+          profile() {
+            local label=$1 status=0
+            shift
+            echo "::group::$label"
+            TIMING=all /usr/bin/time -f 'Peak RSS: %M KiB; elapsed: %e s' \
+              "${lint_command[0]}" --trace-gc-nvp "${lint_command[@]:1}" --no-cache "$@" \
+              >"$RUNNER_TEMP/lint-profile.log" 2>&1 || status=$?
+            awk '
+              /total_size_before=/ {
+                for (i = 1; i <= NF; i++) {
+                  if ($i ~ /^total_size_before=/) {
+                    split($i, field, "=")
+                    if (field[2] + 0 > peak) peak = field[2] + 0
+                    samples++
+                  }
+                }
+              }
+              END { printf "Peak sampled V8 heap: %.1f MiB (%d GC samples)\n", peak / 1048576, samples }
+            ' "$RUNNER_TEMP/lint-profile.log"
+            sed '/total_size_before=/d' "$RUNNER_TEMP/lint-profile.log"
+            echo "Exit: $status"
+            echo "::endgroup::"
+            return "$status"
+          }
+          lint_status=0
+          profile 'All lint rules' || lint_status=$?
+          printf '%s\n' \
+            'import config from "./eslint.config.js";' \
+            'const rules = new Set(config.flatMap(({ rules }) => Object.keys(rules ?? {})));' \
+            'const linterOptions = { reportUnusedDisableDirectives: "off", reportUnusedInlineConfigs: "off" };' \
+            'export default [...config, { linterOptions, rules: Object.fromEntries([...rules].map(rule => [rule, "off"])) }];' \
+            > .lint-profile.config.mjs
+          profile 'Parser and project service without rule visitors' --config .lint-profile.config.mjs
+          exit "$lint_status"
       - run: npm ci
         working-directory: fast-duo
       - run: npm run lint
