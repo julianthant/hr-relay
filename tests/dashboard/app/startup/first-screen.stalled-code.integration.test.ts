@@ -23,3 +23,19 @@ it("fails a cold Settings link whose page code is still loading at the startup d
     assert.match(String(reported[0]), /did not load within/u);
   } finally { await app.stop(); vi.unstubAllGlobals(); }
 }, STARTUP_READ_DEADLINE_MS + 20_000);
+
+it("leaves a Settings page whose code failed to load with Back", async () => {
+  vi.stubGlobal("reportError", () => {});
+  const server = dashboardServer();
+  const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active) : server(url, init));
+  try {
+    await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
+    await act(async () => (app.host.querySelector("#settings-gear") as HTMLElement | null)?.click());
+    assert.match(window.location.search, /settings=/u);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS + 500)); });
+    assert.match(app.host.textContent ?? "", /Couldn't open Settings\./u);
+    await act(async () => { window.history.back(); await new Promise(resolve => setTimeout(resolve, 200)); });
+    assert.doesNotMatch(window.location.search, /settings=/u);
+    assert.doesNotMatch(app.host.textContent ?? "", /Couldn't open Settings\./u);
+  } finally { await app.stop(); vi.unstubAllGlobals(); }
+}, STARTUP_READ_DEADLINE_MS + 30_000);

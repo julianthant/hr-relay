@@ -32,13 +32,13 @@ const workflowExplorer = preloadable(() => import("../surfaces/explorer/explorer
 const SettingsPage = settingsPage.Component;
 const ActivityReport = activityReport.Component;
 const WorkflowExplorer = workflowExplorer.Component;
-/** Nothing is drafted before the Settings code arrives, so leaving proceeds. */
-function SettingsLoading({ onExitGuardChange }: { onExitGuardChange: (guard: SettingsExitGuard | undefined) => void }) {
+/** Nothing is drafted while the Settings code loads or after it failed, so leaving proceeds. */
+function SettingsPassThrough({ onExitGuardChange }: { onExitGuardChange: (guard: SettingsExitGuard | undefined) => void }) {
  useEffect(() => {
    onExitGuardChange(proceed => proceed());
    return () => onExitGuardChange(undefined);
  }, [onExitGuardChange]);
- return <CodeLoading deadlineMs={STARTUP_READ_DEADLINE_MS} />;
+ return null;
 }
 export function DashboardTakeovers({client,useActivityReport,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
@@ -64,8 +64,8 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
  : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
-            <PanelBoundary resetKey={route.settings ?? takeover} sentence="Couldn't open Settings." className="m-4">
-            <Suspense fallback={<SettingsLoading onExitGuardChange={onSettingsExitGuardChange} />}>
+            <PanelBoundary resetKey={route.settings ?? takeover} sentence="Couldn't open Settings." className="m-4" failed={<SettingsPassThrough onExitGuardChange={onSettingsExitGuardChange} />}>
+            <Suspense fallback={<><SettingsPassThrough onExitGuardChange={onSettingsExitGuardChange} /><CodeLoading deadlineMs={STARTUP_READ_DEADLINE_MS} /></>}>
             <SettingsPage
               onOpenRun={onOpenRun}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
