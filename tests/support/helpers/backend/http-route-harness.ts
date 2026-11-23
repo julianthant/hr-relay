@@ -199,6 +199,7 @@ export async function harness(options: {
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
   readonly ocr?: DashboardAppDeps["ocr"];
+  readonly notifications?: (database: AuthorityDatabase) => NonNullable<DashboardAppDeps["notifications"]>;
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
   readonly startPlans?: (real: StartPlanService) => StartPlanService;
 
@@ -412,6 +413,7 @@ export async function harness(options: {
     }),
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
     ...(options.ocr === undefined ? {} : { ocr: options.ocr }),
+    ...(options.notifications === undefined ? {} : { notifications: options.notifications(database) }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
     bootstrap: {
