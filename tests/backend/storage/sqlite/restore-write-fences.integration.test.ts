@@ -115,6 +115,7 @@ it("accepts additional unresolved writes but refuses weakened intent, attempt an
     more.writeIntentId, more.status, more.generation, more.runId, JSON.stringify(more));
   using proof = capture(original);
   assert.doesNotThrow(() => proof.assertPreservedBy(candidate));
+  const retainedDigest = sha256Hex(canonicalJsonStringify(readRestoreWriteFences(candidate)));
   for (const table of ["write_intents", "write_attempts", "artifacts"] as const) {
     candidate.exec("SAVEPOINT evidence");
     if (table === "write_intents") {
@@ -127,7 +128,7 @@ it("accepts additional unresolved writes but refuses weakened intent, attempt an
     assert.throws(() => proof.assertPreservedBy(candidate), {
       message: `restore-would-weaken-write-evidence:${table}`,
     });
-    assert.notEqual(sha256Hex(canonicalJsonStringify(readRestoreWriteFences(candidate))), proof.digest);
+    assert.notEqual(sha256Hex(canonicalJsonStringify(readRestoreWriteFences(candidate))), retainedDigest);
     candidate.exec("ROLLBACK TO evidence; RELEASE evidence");
   }
 });
