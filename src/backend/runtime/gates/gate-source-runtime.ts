@@ -282,15 +282,22 @@ export function createGateSourceRuntime(input: Readonly<{
     bind,
     async start(signal: AbortSignal): Promise<() => Promise<void>> {
       const stops: Array<() => void | Promise<void>> = [];
+      const stopAll = async (): Promise<unknown[]> => (await Promise.allSettled(stops.map((stop) => Promise.resolve().then(stop))))
+        .flatMap((outcome): unknown[] => outcome.status === "rejected" ? [outcome.reason] : []);
       try {
         for (const port of ports.values()) {
           stops.push(await port.subscribe((event) => Promise.resolve(settle(port, event)), signal));
         }
       } catch (error) {
-        await Promise.allSettled(stops.map((stop) => Promise.resolve().then(stop)));
+        const failures = await stopAll();
+        if (failures.length > 0) throw new AggregateError([error, ...failures], "gate source startup and cleanup failed", { cause: error });
         throw error;
       }
-      return async () => { await Promise.all(stops.map((stop) => Promise.resolve().then(stop))); };
+      return async () => {
+        const failures = await stopAll();
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) throw new AggregateError(failures, "gate source stop failed", { cause: failures[0] });
+      };
     },
   });
 }
