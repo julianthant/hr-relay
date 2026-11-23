@@ -78,7 +78,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
    descriptors: {resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined}; runIds: Record<string,string>;
   }) {
     const runReader = sqliteRunReader(database, clock);
-    const trust = createReceiptService({ database, runReader, descriptors: scripting === undefined ? [personLookupDescriptor] : [personLookupDescriptor, ...SCRIPTED_WORKFLOWS.map(script => script.module.descriptor).filter(descriptor => descriptor.id !== personLookupDescriptor.id)] });
+    const trust = createReceiptService({ database, runReader, descriptors: scripting === undefined ? [personLookupDescriptor] : [personLookupDescriptor, ...SCRIPTED_WORKFLOWS.flatMap(script => [script.module, ...(script.children ?? [])]).map(module => module.descriptor).filter((descriptor, index, all) => descriptor.id !== personLookupDescriptor.id && all.findIndex(other => other.id === descriptor.id) === index)] });
 
 
     const doneReceipt = trust.ensureReceipt(runIds.doneRun);
