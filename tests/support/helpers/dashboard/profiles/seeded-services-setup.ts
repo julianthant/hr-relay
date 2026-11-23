@@ -1,6 +1,7 @@
 import { resolveWriteCommandTarget } from "../../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
-import { createScriptedExecutor, SCRIPTED_WORKFLOW } from "../served-fixtures/seeded-scripted-executor.js";
+import { createScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
+import { SCRIPTED_WORKFLOWS, scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
 import { dataOriginViewsOf, gateNodeViewsOf, writeContractViewsOf } from "../../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import type { WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
@@ -77,7 +78,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
    descriptors: {resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined}; runIds: Record<string,string>;
   }) {
     const runReader = sqliteRunReader(database, clock);
-    const trust = createReceiptService({ database, runReader, descriptors: scripting === undefined ? [personLookupDescriptor] : [personLookupDescriptor, SCRIPTED_WORKFLOW] });
+    const trust = createReceiptService({ database, runReader, descriptors: scripting === undefined ? [personLookupDescriptor] : [personLookupDescriptor, ...SCRIPTED_WORKFLOWS.map(script => script.module.descriptor).filter(descriptor => descriptor.id !== personLookupDescriptor.id)] });
 
 
     const doneReceipt = trust.ensureReceipt(runIds.doneRun);
@@ -88,6 +89,11 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       );
     }
 
+    const servedScripted = (workflowId: string) => {
+      const descriptor = scriptedDescriptorOf(workflowId);
+      return descriptor === undefined ? undefined : { ...descriptor, gateNodes: gateNodeViewsOf(descriptor),
+        writeContracts: writeContractViewsOf(descriptor), dataOrigins: dataOriginViewsOf({ descriptor, stores: taskStoreRegistry.stores }) };
+    };
     const runDetailDeps = { runReader, timeline: database.authority.timelineEvents,
       itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }),
       stateRoot,
@@ -102,10 +108,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       },
       descriptors: {
         resolve: (workflowId: string) => workflowId === personLookupDescriptor.id ? personLookupDescriptor
-          : scripting !== undefined && workflowId === SCRIPTED_WORKFLOW.id ? { ...SCRIPTED_WORKFLOW, gateNodes: gateNodeViewsOf(SCRIPTED_WORKFLOW),
-            writeContracts: writeContractViewsOf(SCRIPTED_WORKFLOW),
-            dataOrigins: dataOriginViewsOf({ descriptor: SCRIPTED_WORKFLOW, stores: taskStoreRegistry.stores }) }
-          : undefined,
+          : scripting === undefined ? undefined : servedScripted(workflowId),
       },
       canonical: {
         reader: runReader,
