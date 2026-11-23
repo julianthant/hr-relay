@@ -4,6 +4,8 @@ import { CommandResultSchema, SettingsCommandRequestSchema } from "../../src/rul
 import { syntheticSettingsAuthority } from "../support/helpers/dashboard/settings-harness.js";
 import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
+test.use({ actionTimeout: 10_000 });
+
 test("Settings show edits immediately, persist on reload, and recover from a refused save", async ({ dashboard, page }) => {
   const authority = await syntheticSettingsAuthority();
   let nextSave: { ready: Promise<void>; refused: boolean } | undefined;
@@ -46,7 +48,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
     const downloads = page.getByRole("button", { name: "Change Downloads" });
     const path = page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value');
     const day = page.locator('[data-settings-path$=".jobEndDate"] [role="spinbutton"][data-type="day"]');
-    const saved = page.locator('[data-slot="toast-title"]').filter({ hasText: /^Saved /u });
+    const saved = (name: string) => page.getByRole("heading", { name: `Saved ${name}`, exact: true });
     const failure = page.locator('[data-slot="toast-title"]').filter({ hasText: "Settings weren't saved. The previous value is back." });
 
     await expect(switchControl).toBeChecked();
@@ -62,14 +64,14 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
       await switchControl.click();
       await expect(switchControl).not.toBeChecked();
     });
-    await expect(saved).toContainText("Prevent sleep");
+    await expect(saved("Prevent sleep while running")).toBeVisible();
 
     await whileReplyIsHeld(async () => {
       await browser.click();
       await page.getByRole("option", { name: "Small", exact: true }).click();
       await expect(browser).toContainText("Small");
     });
-    await expect(saved).toContainText("Saved settings");
+    await expect(saved("settings")).toBeVisible();
     await expect(browser).toBeEnabled();
 
     await whileReplyIsHeld(async () => {
@@ -82,7 +84,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
       await downloads.click();
       await expect(path).toHaveAttribute("aria-label", pickedPath);
     });
-    await expect(saved).toContainText("Saved Downloads");
+    await expect(saved("Downloads")).toBeVisible();
 
     const date = page.locator('[data-settings-path$=".jobEndDate"]');
     await date.locator('[data-type="month"]').press("0");
@@ -92,7 +94,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
     const year = date.locator('[data-type="year"]');
     for (const digit of "2027") await year.press(digit);
     await expect(day).toHaveText("15");
-    await expect(saved).toContainText("Saved Job end date");
+    await expect(saved("Job end date")).toBeVisible();
 
     await dashboard.settleReads();
     await page.reload();
@@ -111,7 +113,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
     await scheduling.click();
     await workers.fill("3");
     await expect(workers).toHaveValue("3");
-    await expect(saved).toContainText("Saved Default workers");
+    await expect(saved("Default workers")).toBeVisible();
     await dashboard.settleReads();
     await page.reload();
     await expect(dashboard.pageHeading("Performance")).toBeVisible();

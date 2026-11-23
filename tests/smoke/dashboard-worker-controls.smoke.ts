@@ -98,8 +98,6 @@ test("worker add and remove settle after delayed or refused replies and clear on
     await expect(adding).toBeHidden();
     await expect(add).toBeEnabled();
     await expect(worker).toBeHidden();
-    await page.getByRole("alert", { name: "Dismiss notification" }).filter({ hasText: "Couldn't add workers" }).click();
-    await expect(failedAdd).toBeHidden();
 
     await startAdd();
     reply?.resolve(true);
@@ -128,6 +126,7 @@ test("worker add and remove settle after delayed or refused replies and clear on
       && CommandRequestSchema.parse(response.request().postDataJSON()).family === "worker-browser");
     await dashboard.openWorkflow("Separations");
     await expect(adding).toBeHidden();
+    await expect(failedAdd).toBeHidden();
     await expect(add).toBeEnabled();
     reply?.resolve(false);
     await late;

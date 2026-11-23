@@ -1,5 +1,7 @@
 import { expect, SEEDED_PREFERENCE_WRITE, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
+test.use({ actionTimeout: 10_000 });
+
 test("imports both CSV sizes, opens their saved rows, and picks both as run references", async ({ dashboard, page, failures }) => {
   failures.allow(SEEDED_PREFERENCE_WRITE, "The seeded server does not implement the selected workflow preference.");
   await dashboard.open();
@@ -8,7 +10,7 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
 
   const dialog = page.getByRole("dialog", { name: "Import a spreadsheet" });
   const inputs = [{ name: "Small smoke roster", rows: 3 }, { name: "Large smoke roster", rows: 5_000 }];
-  for (const { name, rows } of inputs) {
+  for (const { name, rows } of inputs) await test.step(`Import and open the ${rows}-row CSV`, async () => {
     const lastEid = String(10_000_000 + rows);
     const csv = ["Employee ID", ...Array.from({ length: rows }, (_, index) => String(10_000_001 + index))].join("\n");
     await page.getByRole("button", { name: "Import", exact: true }).first().click();
@@ -47,17 +49,17 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
     await expect(page.getByRole("row")).toHaveCount(2);
     await page.getByRole("button", { name: "Spreadsheets", exact: true }).click();
     await expect(dashboard.pageHeading("Spreadsheets")).toBeVisible();
-  }
+  }, { timeout: 45_000 });
 
   await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/u }).click();
   await dashboard.openStartDialog();
   await dashboard.dialog.getByRole("navigation", { name: "Workflow" }).getByRole("button", { name: "Person Lookup", exact: true }).click();
   const checks = dashboard.dialog.getByRole("region", { name: "Reference spreadsheets" });
-  for (const { name } of inputs) {
+  for (const { name } of inputs) await test.step(`Pick ${name} as a reference`, async () => {
     await checks.getByRole("button", { name: "Add spreadsheet" }).click();
     await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill(name);
     await page.getByRole("menuitem", { name: new RegExp(name, "u") }).click();
     await expect(checks.getByRole("button", { name: `Remove ${name}` })).toBeVisible();
     await expect(checks.getByRole("button", { name: new RegExp(`${name} worksheets, (?!none chosen)`, "u") })).toBeEnabled();
-  }
+  }, { timeout: 20_000 });
 });
