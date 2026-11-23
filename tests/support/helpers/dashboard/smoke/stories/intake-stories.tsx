@@ -79,9 +79,32 @@ const PROBLEM = {
   transport: validate("Validate that never reached the server", { executeCommand: async () => { throw new Error("offline"); } }),
 } satisfies Record<CommandProblem["kind"], Story>;
 
+/** One data-changing command: the story drives the control that issues it, and the client answers as scripted. */
+type IntakeCommand = "confirm-intake-mapping" | "correct-intake-row" | "exclude-intake-row" | "inspect-intake" | "enqueue-intake-manifest";
+const MAPPING_LAYOUT = MAPPING;
+const CLEAN = intakeSession("validated", { validation: { ...(VALIDATED.validation as object), validRows: 7, unresolvedRows: [], rejected: [], excluded: [] }, reviewBinding: "b".repeat(64) });
+const driven = (command: IntakeCommand, extra: Partial<DashboardClient>): Story => {
+  const mapping = { confirm: (page: Page) => page.getByRole("button", { name: /^Bind /u }).click() };
+  const fix = async (page: Page) => { await tab(page, "Review"); await press(page, "Fix cell"); await page.getByRole("textbox", { name: "Corrected value" }).fill("10873698"); await press(page, "Re-coerce this cell"); };
+  const exclude = async (page: Page) => { await tab(page, "Review"); await page.getByRole("button", { name: "Exclude…" }).first().click();
+    await page.getByRole("textbox", { name: "Reason" }).fill("duplicate export line"); await press(page, "Exclude with this reason"); };
+  const inspect = async (page: Page) => { await page.getByRole("combobox", { name: "Header row" }).click(); await page.getByRole("option").nth(1).click(); await press(page, "Change it anyway"); };
+  const enqueue = async (page: Page) => { await page.getByRole("checkbox", { name: "I confirm this reviewed plan" }).check(); await page.getByRole("button", { name: /^Start \d+ runs?$/u }).click(); };
+  const plays = { "confirm-intake-mapping": mapping.confirm, "correct-intake-row": fix, "exclude-intake-row": exclude, "inspect-intake": inspect, "enqueue-intake-manifest": enqueue } as const;
+  const session = command === "enqueue-intake-manifest" ? CLEAN : command === "confirm-intake-mapping" || command === "inspect-intake" ? MAPPING_LAYOUT : VALIDATED;
+  return scene(`${command} sent`, () => served(session, extra), session.intakeSessionId, { then: plays[command] });
+};
+const rejected = (command: IntakeCommand): Story => driven(command, { executeCommand: answer({ state: "rejected", commandId: COMMAND, code: "invalid-state", message: "The session cannot take that now." }) });
+const waiting = (command: IntakeCommand): Story => driven(command, { executeCommand: never });
 const PENDING = {
   validate: validate("Validate sent, waiting on the answer", { executeCommand: never }),
-} satisfies Record<string, Story>;
+  "confirm-intake-mapping": waiting("confirm-intake-mapping"), "correct-intake-row": waiting("correct-intake-row"), "exclude-intake-row": waiting("exclude-intake-row"),
+  "inspect-intake": waiting("inspect-intake"), "enqueue-intake-manifest": waiting("enqueue-intake-manifest"),
+} satisfies Record<IntakeCommand | "validate", Story>;
+const COMMAND_REFUSED = {
+  "confirm-intake-mapping": rejected("confirm-intake-mapping"), "correct-intake-row": rejected("correct-intake-row"), "exclude-intake-row": rejected("exclude-intake-row"),
+  "inspect-intake": rejected("inspect-intake"), "enqueue-intake-manifest": rejected("enqueue-intake-manifest"),
+} satisfies Record<IntakeCommand, Story>;
 
 /** Rules today's intake breaks per story, each against the dashboard-audit-fixes umbrella ticket. Every workspace story names an internal term ("fingerprint") and holds tabs and fields no keyboard reaches. */
 const AUDIT_TICKET = "#532";
@@ -95,10 +118,14 @@ const BREAKS: Readonly<Record<string, readonly StateRuleName[]>> = {
   "session/enqueued": [...BASE, "fits-viewport", "no-dead-disabled-control"], "manifest/terminal": [...BASE, "fits-viewport", "no-dead-disabled-control"],
   "pending/validate": [...BASE, "no-dead-disabled-control", "primary-button-accent"],
   "problem/rejected": [...BASE, "no-dead-disabled-control", "primary-button-accent"], "problem/confirmation-required": [...BASE, "no-dead-disabled-control", "primary-button-accent"],
+  ...Object.fromEntries(["confirm-intake-mapping", "inspect-intake", "enqueue-intake-manifest"].flatMap(command =>
+    ["pending", "refused"].map(group => [`${group}/${command}`, [...BASE, "no-dead-disabled-control"] as readonly StateRuleName[]] as const))),
+  ...Object.fromEntries(["correct-intake-row", "exclude-intake-row"].flatMap(command =>
+    ["pending", "refused"].map(group => [`${group}/${command}`, [...BASE, "no-dead-disabled-control", "primary-button-accent"] as readonly StateRuleName[]] as const))),
   "problem/conflict": [...BASE, "no-dead-disabled-control", "primary-button-accent"], "problem/transport": [...BASE, "no-dead-disabled-control", "primary-button-accent"],
 };
 
-export const INTAKE_STORIES = defineSurface("intake", { resource: RESOURCE, session: SESSION, tab: TAB, manifest: MANIFEST, rerun: RERUN, problem: PROBLEM, pending: PENDING })
+export const INTAKE_STORIES = defineSurface("intake", { resource: RESOURCE, session: SESSION, tab: TAB, manifest: MANIFEST, rerun: RERUN, problem: PROBLEM, pending: PENDING, refused: COMMAND_REFUSED })
   .map(entry => {
     const broken = BREAKS[entry.id.slice("intake/".length)] ?? [];
     const narrow = entry.id === "intake/rerun/changed" ? { knownFailureWidths: { "fits-viewport": [1024] } } : {};
