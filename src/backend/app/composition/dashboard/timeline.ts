@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
+import { DEBUG_EVENT_RETENTION_DAYS, EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
 import { ArtifactRefSchema } from "../../../../models/artifacts/artifacts.js";
 import { localDatePart } from "../../../../rules/time/clock.js";
 import type { createOperatorProjection } from "./queue.js";
@@ -24,12 +24,13 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const { database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents } = input;
   const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 
-  // Ordinary timeline and notes retain their 30-day append-day window.
+  // Ordinary timeline and notes retain their 30-day append-day window, unpinned debug entries their shorter one.
   // Confirmed operation events remain until explicit owner deletion.
-  const pruneTimeline = () => database.authority.timelineEvents.pruneBefore(localDatePart(new Date(
-    clock.nowMs() - EVENT_STREAM_RETENTION_DAYS * 24 * 60 * 60 * 1000,
-  )));
+  const cutoff = (days: number) => localDatePart(new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000));
+  const pruneTimeline = () => database.authority.timelineEvents.pruneBefore(cutoff(EVENT_STREAM_RETENTION_DAYS));
+  const pruneDebug = () => database.authority.timelineEvents.pruneDebugBefore(cutoff(DEBUG_EVENT_RETENTION_DAYS));
   pruneTimeline();
+  pruneDebug();
 
   const reportRetentionFailure = (area: string, error: unknown) => debugEvents.emit({
     category: "boot", phase: "failed", correlationId: randomUUID(), area, reason: "purge-failed",
@@ -67,6 +68,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     } catch (error) {
       reportRetentionFailure("timeline-retention", error);
     }
+    try { pruneDebug(); } catch (error) { reportRetentionFailure("debug-retention", error); }
     sweepDiagnostics();
   }, RETENTION_SWEEP_MS);
   diagnosticRetentionTimer.unref();

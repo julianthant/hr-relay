@@ -232,10 +232,10 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
       state: dependency.state === "not-run" ? dependency.reason : "resolved",
     })),
     debugEvents: authority.timelineEvents.withReadSnapshot(() => {
-      const through = authority.timelineEvents.highWaterMark();
-      const scanned = authority.timelineEvents.page({ runId, after: 0, through, limit: 500 });
-      const nextCursor = scanned.at(-1)?.cursor ?? through;
-      return { records: scanned.filter(record => record.payload.kind === "debug"), nextCursor, through,
+      const through = authority.timelineEvents.debugHighWaterMark();
+      const records = authority.timelineEvents.debugPage({ runId, after: 0, through, limit: 500 });
+      const nextCursor = records.at(-1)?.cursor ?? through;
+      return { records, nextCursor, through,
         highWaterMark: through, hasMore: nextCursor < through, after: 0 };
     }),
   };
