@@ -222,7 +222,7 @@ test("CRM Document Download: a failed download shows Failed in the run panel and
   expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
 });
 
-const SEPARATION_STEPS = ["resolve-action", "document", "name-search", "job-summary", "timecard-search", "timecard", "file-termination", "finalize-kuali"];
+const SEPARATION_STEPS = ["resolve-action", "document", "name-search", "job-summary", "timecard-search", "timecard", "pending-set", "clear-pending", "file-termination", "filing-presence", "finalize-kuali"];
 
 test("Separations: start, each step held, done, and one write to UCPath and one to Kuali", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
@@ -243,10 +243,7 @@ test("Separations: start, each step held, done, and one write to UCPath and one 
     position = await run.advance();
   }
   expect(position).toMatchObject({ at: "settled", outcome: { state: "done" } });
-  expect(new Set(held).size, "each step is held once").toBe(held.length);
-  expect(held).toEqual(expect.arrayContaining(SEPARATION_STEPS));
-  expect(held.indexOf("timecard")).toBeLessThan(held.indexOf("file-termination"));
-  expect(held.indexOf("file-termination")).toBeLessThan(held.indexOf("finalize-kuali"));
+  expect(held, "each system-touching step is held once, in order").toEqual(SEPARATION_STEPS);
   await expect(row).toContainText("Done");
   await expect(row).not.toContainText("Running");
   expect(seeded.scripted.writes()).toEqual([
@@ -261,7 +258,7 @@ test("Separations: start, each step held, done, and one write to UCPath and one 
 });
 
 /** Each step, broken, ends the run as Failed; the writes before it stand and the ones after it never happen. */
-for (const [step, writesBefore] of [["resolve-action", 0], ["name-search", 0], ["timecard-search", 0], ["timecard", 0], ["file-termination", 0], ["finalize-kuali", 1]] as const) {
+for (const [step, writesBefore] of [["resolve-action", 0], ["document", 0], ["name-search", 0], ["job-summary", 0], ["timecard-search", 0], ["timecard", 0], ["file-termination", 0], ["finalize-kuali", 1]] as const) {
   test(`Separations: a failed ${step} step shows Failed on the row and leaves ${String(writesBefore)} write${writesBefore === 1 ? "" : "s"}`, async ({ dashboard, seeded, page, failures }) => {
     const request = seededRequestOver(seeded.baseUrl);
     failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
