@@ -92,6 +92,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   workbook_library_actions: WorkbookLibraryActionRecordSchema,
   workbook_library_snapshots: WorkbookLibrarySnapshotSchema,
   workbook_payloads: EditableWorkbookWireSchema,
+  debug_events: TimelineEventRecordSchema,
 } satisfies Record<Exclude<AuthorityTableName, "database_states">, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;

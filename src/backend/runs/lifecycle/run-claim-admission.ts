@@ -28,7 +28,6 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
   if (candidate.envelope.parent === undefined) return true;
   authenticateRootRun(repositories, current);
   if (resolveDescriptor === undefined) throw new Error("delegation-dispatch-resolver-unavailable");
-  const independentChildren = new Set<string>();
   for (const [index, child] of ancestry.slice(0, -1).entries()) {
     const parent = ancestry[index + 1];
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
@@ -47,11 +46,6 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
       || node.join !== manifest.join || canonicalJsonStringify(node.policy) !== canonicalJsonStringify(manifest.policy)
       || deriveSchemaHash(node.target.input, "input") !== invocation.target.inputSchemaHash
       || deriveSchemaHash(node.target.result, "output") !== invocation.target.resultSchemaHash) throw new Error("delegation-dispatch-definition-mismatch");
-    if (manifest.policy.cascadeCancel === "independent") independentChildren.add(child.envelope.runId);
-  }
-  for (const run of ancestry) {
-    if (run.envelope.parent === undefined) break;
-    if (independentChildren.has(run.envelope.runId)) break;
   }
   return true;
 }

@@ -264,6 +264,10 @@ export interface TimelineRepository {
   /** The newest `run.claimed` span naming this worker. */
   lastWorkerClaim(workerId: string): TimelineEventRecord | undefined;
   pruneBefore(retentionDate: string): number;
+  /** Debug entries: their own table and cursor space, outside the change log. */
+  debugPage(input: z.input<typeof TimelinePageRequestSchema>): readonly TimelineEventRecord[];
+  debugHighWaterMark(): number;
+  pruneDebugBefore(retentionDate: string): number;
 }
 
 export function timelineCheckpointReference(checkpoint: RunCheckpointRecord) {

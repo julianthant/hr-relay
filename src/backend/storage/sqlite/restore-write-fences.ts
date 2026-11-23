@@ -4,11 +4,10 @@ import { exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { z } from "zod";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 const Tables = ["deleted_runs", "settings_snapshots", "run_batches", "run_requests", "run_delegations", "delegation_dependencies", "diagnostic_snapshots", "diagnostic_files", "write_intents", "write_attempts", "runs", "run_checkpoints", "gate_results", "run_results", "run_failures", "run_receipts", "artifacts", "timeline_events", "commands", "command_audits"] as const;
 type FenceTable = typeof Tables[number] | "exclusive_session_leases";
-export type RestoreWriteFences = Readonly<{ unresolved: readonly string[]; tables: readonly Readonly<{ name: FenceTable; rows: readonly string[] }>[] }>;
+type RestoreWriteFences = Readonly<{ unresolved: readonly string[]; tables: readonly Readonly<{ name: FenceTable; rows: readonly string[] }>[] }>;
 
 type FenceReader = Readonly<{ prepare(sql: string): Readonly<{ all(): readonly unknown[] }> }>;
 type FenceRow = Readonly<Record<string, unknown>>;
@@ -100,16 +99,6 @@ export function readRestoreWriteFences(database: FenceReader): RestoreWriteFence
   const { unresolved, tables } = readFenceSummary(rows);
   return { unresolved, tables: tables.map(name => ({ name, rows: rows(`SELECT * FROM ${name}`).filter(row =>
     name !== "exclusive_session_leases" || exclusiveSessionLeaseFromRow(row).releasedAt === null).map(row => canonicalJsonStringify(row)).sort() })) };
-}
-
-export function restoreWriteFenceDigest(fences: RestoreWriteFences): string { return sha256Hex(canonicalJsonStringify(fences)); }
-
-export function assertRestorePreservesWriteFences(source: RestoreWriteFences, restored: RestoreWriteFences): void {
-  if (source.unresolved.some(id => !restored.unresolved.includes(id))) throw new Error("restore-would-lose-unresolved-write");
-  for (const table of source.tables) {
-    const rows = new Set(restored.tables.find(row => row.name === table.name)?.rows ?? []);
-    if (table.rows.some(row => !rows.has(row))) throw new Error(`restore-would-weaken-write-evidence:${table.name}`);
-  }
 }
 
 const PrimaryKey = z.tuple([z.strictObject({ name: z.string() })]);

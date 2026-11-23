@@ -3,7 +3,7 @@ import { createBoundProfileFixture } from "../../../support/helpers/admission-fi
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
-import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
@@ -20,8 +20,8 @@ import { separationsKualiFinalizationDescriptor } from "../../../support/helpers
 
 function derive(run = kualiReceiptEvidence().run, result = kualiReceiptEvidence().result) {
   const evidence = kualiReceiptEvidence();
-  return buildRunEvidenceReceipt({ descriptor: separationsKualiFinalizationDescriptor,
-    run, result, checkpoints: evidence.checkpoints, writes: evidence.writes });
+  return deriveRunEvidenceReceipt({ descriptor: separationsKualiFinalizationDescriptor,
+    run, result, checkpoints: evidence.checkpoints, writes: evidence.writes }).receipt;
 }
 
 describe("durable receipt boundaries", () => {
@@ -94,7 +94,7 @@ describe("supplied failure diagnostics", () => {
           descriptorVersion: failed.envelope.descriptorVersion, contractFingerprint: failed.envelope.contractFingerprint },
         failureDigest: deriveTerminalFailureDigest(failure) }),
       checkpoints: evidence.checkpoints, writes: evidence.writes, failure };
-    const current = buildRunEvidenceReceipt(input);
+    const current = deriveRunEvidenceReceipt(input).receipt;
     const currentWarning = current.warnings.find(warning => warning.code === failure.code);
     assert.ok(currentWarning?.summary.includes(failure.summary));
 

@@ -8,9 +8,10 @@ import {
   captureRestoreWriteFenceProof,
   readRestoreWriteFences,
   readUnresolvedRestoreWrites,
-  restoreWriteFenceDigest,
 } from "../../../../src/backend/storage/sqlite/restore-write-fences.js";
-import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { UUID_5, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const capture = (database: DatabaseSync) => captureRestoreWriteFenceProof(read => read(database));
 
@@ -57,7 +58,7 @@ it.each(["id", "run_id"] as const)("preserves the journal digest and compares ex
   candidate.prepare("INSERT INTO timeline_events VALUES (?,NULL,?)").run(3, "{}");
   original.exec("PRAGMA query_only=ON; BEGIN");
   candidate.exec("PRAGMA query_only=ON; BEGIN");
-  const digest = restoreWriteFenceDigest(readRestoreWriteFences(original));
+  const digest = sha256Hex(canonicalJsonStringify(readRestoreWriteFences(original)));
   using proof = capture(original);
   assert.equal(proof.digest, digest);
   assert.doesNotThrow(() => proof.assertPreservedBy(candidate));
@@ -75,10 +76,10 @@ it("retains only held leases and refuses a candidate that lost the lease table",
   using original = authority();
   using candidate = authority();
   using empty = capture(original);
-  assert.equal(empty.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
+  assert.equal(empty.digest, sha256Hex(canonicalJsonStringify(readRestoreWriteFences(original))));
   holdLease(original);
   using proof = capture(original);
-  assert.equal(proof.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
+  assert.equal(proof.digest, sha256Hex(canonicalJsonStringify(readRestoreWriteFences(original))));
   assert.throws(() => proof.assertPreservedBy(candidate), /restore-would-weaken-write-evidence:exclusive_session_leases/u);
   holdLease(candidate);
   assert.doesNotThrow(() => proof.assertPreservedBy(candidate));
@@ -93,8 +94,57 @@ it("refuses losing an unresolved write even when the candidate has no evidence c
   original.prepare("INSERT INTO write_intents VALUES (?,?,?,?,?)").run(
     intent.writeIntentId, intent.status, intent.generation, intent.runId, JSON.stringify(intent));
   using proof = capture(original);
-  assert.equal(proof.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
+  assert.equal(proof.digest, sha256Hex(canonicalJsonStringify(readRestoreWriteFences(original))));
   assert.throws(() => proof.assertPreservedBy(candidate), /restore-would-lose-unresolved-write/u);
+});
+
+it("accepts additional unresolved writes but refuses weakened intent, attempt and artifact evidence", () => {
+  using original = authority();
+  using candidate = authority();
+  const intent = WRITE_INTENT_ATTEMPTING;
+  const attempt = WRITE_ATTEMPT;
+  for (const db of [original, candidate]) {
+    db.prepare("INSERT INTO write_intents VALUES (?,?,?,?,?)").run(
+      intent.writeIntentId, intent.status, intent.generation, intent.runId, JSON.stringify(intent));
+    db.prepare("INSERT INTO write_attempts VALUES (?,?,?,?,?)").run(
+      attempt.writeAttemptId, attempt.writeIntentId, attempt.generation, attempt.runId, JSON.stringify(attempt));
+    db.exec("INSERT INTO artifacts VALUES ('receipt', 'generated', '{}')");
+  }
+  const more = { ...intent, writeIntentId: UUID_5 };
+  candidate.prepare("INSERT INTO write_intents VALUES (?,?,?,?,?)").run(
+    more.writeIntentId, more.status, more.generation, more.runId, JSON.stringify(more));
+  using proof = capture(original);
+  assert.doesNotThrow(() => proof.assertPreservedBy(candidate));
+  const retainedDigest = sha256Hex(canonicalJsonStringify(readRestoreWriteFences(candidate)));
+  for (const table of ["write_intents", "write_attempts", "artifacts"] as const) {
+    candidate.exec("SAVEPOINT evidence");
+    if (table === "write_intents") {
+      const changed = { ...intent, version: intent.version + 1 };
+      candidate.prepare("UPDATE write_intents SET payload_json=? WHERE id=?")
+        .run(JSON.stringify(changed), changed.writeIntentId);
+    } else {
+      candidate.exec(`DELETE FROM ${table}`);
+    }
+    assert.throws(() => proof.assertPreservedBy(candidate), {
+      message: `restore-would-weaken-write-evidence:${table}`,
+    });
+    assert.notEqual(sha256Hex(canonicalJsonStringify(readRestoreWriteFences(candidate))), retainedDigest);
+    candidate.exec("ROLLBACK TO evidence; RELEASE evidence");
+  }
+});
+
+it.each([
+  ["timeline_events", `INSERT INTO timeline_events VALUES (1,NULL,'{"event":{"t":"transaction.fenced"}}')`],
+  ["deleted_runs", "INSERT INTO deleted_runs VALUES ('tombstone','{}')"],
+  ["artifacts", "INSERT INTO artifacts VALUES ('receipt','generated','{}')"],
+])("refuses losing standalone %s evidence and accepts it when the source had none", (table, seed) => {
+  using original = authority();
+  using candidate = authority();
+  using empty = capture(original);
+  original.exec(seed);
+  using proof = capture(original);
+  assert.throws(() => proof.assertPreservedBy(candidate), { message: `restore-would-weaken-write-evidence:${table}` });
+  assert.doesNotThrow(() => empty.assertPreservedBy(original));
 });
 
 it("reads unresolved IDs without comparison rows and preserves malformed-fence refusals", () => {
@@ -105,6 +155,9 @@ it("reads unresolved IDs without comparison rows and preserves malformed-fence r
   db.prepare("INSERT INTO runs VALUES (?,?,?)").run("run", "parked-write",
     JSON.stringify({ lifecycle: { state: "parked-write", writeIntentId: attempt.writeIntentId } }));
   assert.deepEqual(readUnresolvedRestoreWrites(db), [attempt.writeIntentId]);
+  using candidate = authority();
+  using proof = capture(db);
+  assert.throws(() => proof.assertPreservedBy(candidate), /restore-would-lose-unresolved-write/u);
   db.prepare("INSERT INTO timeline_events VALUES (?,NULL,?)").run(1, "malformed JSON");
   assert.throws(() => readUnresolvedRestoreWrites(db), SyntaxError);
   db.exec("DELETE FROM timeline_events");
@@ -138,7 +191,7 @@ it("owns a private indexed witness and removes it on disposal or a failed source
     const folder = join(tmpdir(), name);
     assert.deepEqual(readdirSync(folder), ["fences.sqlite"]);
     if (process.platform !== "win32") assert.equal(statSync(folder).mode & 0o777, 0o700);
-    assert.equal(proof.digest, restoreWriteFenceDigest(readRestoreWriteFences(original)));
+    assert.equal(proof.digest, sha256Hex(canonicalJsonStringify(readRestoreWriteFences(original))));
   }
   assert.deepEqual(ownIndexes(), before);
   assert.throws(() => captureRestoreWriteFenceProof(read => {

@@ -536,7 +536,7 @@ const NO_HISTORY_WRITES: HistoryWrites = { tables: [], writes: 0 };
 export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">, history: HistoryWrites = NO_HISTORY_WRITES) {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
-    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all()
+    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events','debug_events') ORDER BY name").all()
       // The change log and run references are derived from the rows compared here, and log the permitted timeline writes too.
       .filter(row => typeof row.name !== "string" || (!history.tables.includes(row.name) && !AUTHORITY_DERIVED_TABLES.some(table => table === row.name)));
     const rows = tables.map(row => {
@@ -545,7 +545,8 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
     });
     return { rows, schema: raw.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(),
       generation: h.database.getMeta().authorityGeneration,
-      timeline: h.database.authority.timelineEvents.page({ limit: 500 }) };
+      timeline: h.database.authority.timelineEvents.page({ limit: 500 }),
+      debug: h.database.authority.timelineEvents.debugPage({ limit: 500 }) };
   } finally { raw.close(); }
 }
 
@@ -555,12 +556,14 @@ const isLoopStall = (record: TimelinePage[number]) => record.payload.kind === "d
   && record.payload.event.area === "event-loop" && record.payload.event.reason === "event-loop-stall";
 
 /** Asserts a span wrote nothing to authority except loop-stall diagnostics; returns how many it wrote. */
-export function assertOnlyLoopStallWrites(database: Harness["database"], before: Readonly<{ generation: number; timeline: TimelinePage }>): number {
-  const timeline = database.authority.timelineEvents.page({ limit: 500 });
-  assert.deepEqual(timeline.slice(0, before.timeline.length), before.timeline);
-  const added = timeline.slice(before.timeline.length);
+export function assertOnlyLoopStallWrites(database: Harness["database"],
+  before: Readonly<{ generation: number; timeline: TimelinePage; debug: TimelinePage }>): number {
+  assert.deepEqual(database.authority.timelineEvents.page({ limit: 500 }), before.timeline);
+  const debug = database.authority.timelineEvents.debugPage({ limit: 500 });
+  assert.deepEqual(debug.slice(0, before.debug.length), before.debug);
+  const added = debug.slice(before.debug.length);
   assert.ok(added.every(isLoopStall), "the span wrote only loop-stall diagnostics");
-  assert.equal(database.getMeta().authorityGeneration, before.generation + added.length);
+  assert.equal(database.getMeta().authorityGeneration, before.generation, "debug rows advance no authority generation");
   return added.length;
 }
 
@@ -572,15 +575,16 @@ export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, 
   const after = faultAuthoritySnapshot(h, history);
   assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
-  assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);
-  const added = after.timeline.slice(before.timeline.length), stalls = added.filter(isLoopStall).length;
+  assert.deepEqual(after.timeline, before.timeline);
+  assert.deepEqual(after.debug.slice(0, before.debug.length), before.debug);
+  const added = after.debug.slice(before.debug.length), stalls = added.filter(isLoopStall).length;
   assert.equal(added.length - stalls, expected);
   for (const record of added.filter(record => !isLoopStall(record))) {
     assert.equal(record.payload.kind, "debug");
     if (record.payload.kind !== "debug") throw new Error("HTTP refusal wrote non-debug authority");
     assert.equal(record.payload.event.category, "http");
   }
-  assert.equal(after.generation, Number(before.generation) + expected + history.writes + stalls);
+  assert.equal(after.generation, Number(before.generation) + history.writes, "debug rows advance no authority generation");
 }
 
 export function rawSettingsPatchFingerprint(patch: unknown): string {

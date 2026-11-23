@@ -20,7 +20,7 @@ const SETTINGS_FORM = '#dashboard-settings-content .settings-compact-form';
 const RUNS_SECTION = '.ds-body-section:has(> figure[aria-label="Runs per day"])';
 const REPORT = 'section[aria-label="Analytics report"]';
 const REPORT_TOOLBAR = `${REPORT} .ds-toolbar-row`;
-const OPEN_RUNS = { selector: `${REPORT} a`, text: "Open runs" };
+const OPEN_RUNS = { selector: `${REPORT} button`, text: "Open runs" };
 const THEME_FIELD = '[data-settings-path="appearance.theme"]';
 const DATE_FEEDBACK = "Choose a valid date";
 const FILE_NAME = "Synthetic roster.csv";
@@ -82,8 +82,7 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
           period: find(`${runs} figure .text-control`)?.textContent?.trim(),
           updating: findTarget({ selector: `${toolbar} [role="status"]`, text: "Updating" }) !== undefined,
           exportLocked: findTarget({ selector: `${toolbar} button:disabled`, text: "Export" }) !== undefined,
-          drillInLocked: drillIn instanceof HTMLAnchorElement && drillIn.getAttribute("aria-disabled") === "true"
-            && drillIn.tabIndex === -1 && getComputedStyle(drillIn).pointerEvents === "none",
+          drillInLocked: drillIn instanceof HTMLButtonElement && drillIn.disabled,
           bounds: analyticsBoxes(drillIn),
         },
       };
@@ -335,7 +334,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await expect(chart.getByText(priorPeriod, { exact: true })).toBeVisible();
         await expect(exportButton).toBeEnabled();
         await page.getByRole("button", { name: "Show Person Lookup details" }).click();
-        const openRuns = page.getByRole("link", { name: "Open runs", exact: true });
+        const openRuns = page.getByRole("button", { name: "Open runs", exact: true });
         const drillIn = page.getByRole("region", { name: "Analytics runs" });
         await expect(openRuns).toBeVisible();
         await expect(openRuns).toBeEnabled();

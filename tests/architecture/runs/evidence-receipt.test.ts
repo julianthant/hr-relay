@@ -28,7 +28,7 @@ import { EVIDENCE_OBLIGATIONS } from "../../../src/models/trust/evidence-obligat
 import { RunEvidenceReceiptSchema } from "../../../src/models/trust/evidence.js";
 import { RedactedFieldSchema, retainLocalEvidenceValue } from "../../../src/rules/redaction/redaction.js";
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
-import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 
@@ -59,13 +59,13 @@ const RECEIPT_DESCRIPTORS = [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
-  return buildRunEvidenceReceipt({
+  return deriveRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
     run: evidence.run,
     result: evidence.result,
     checkpoints: evidence.checkpoints,
     writes: evidence.writes,
-  });
+  }).receipt;
 }
 
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
@@ -87,12 +87,12 @@ async function personLookupReceipt() {
   testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   const seeded = seedPersonLookupExitRun(database);
-  return buildRunEvidenceReceipt({
+  return deriveRunEvidenceReceipt({
     descriptor: personLookupDescriptor,
     run: seeded.run,
     result: database.authority.runResults.get(seeded.run.envelope.runId),
     checkpoints: seeded.checkpoints,
-  });
+  }).receipt;
 }
 
 /* ── half 1: receipt strictness ──────────────────────────────────────────── */
@@ -222,12 +222,12 @@ describe("evidence receipt — strictness", () => {
     const evidence = kualiReceiptEvidence();
     const run = RunRecordSchema.parse(evidence.run);
     const { completion: _completion, ...unsettled } = run;
-    assert.throws(() => buildRunEvidenceReceipt({
+    assert.throws(() => deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       ...evidence,
       run: { ...unsettled, lifecycle: { state: "queued" } },
     }), /a receipt states a settled verdict|only a terminal/);
-    assert.throws(() => buildRunEvidenceReceipt({
+    assert.throws(() => deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       ...evidence,
       run: {
@@ -235,7 +235,7 @@ describe("evidence receipt — strictness", () => {
         lifecycle: { state: "terminal", outcome: "interrupted", endedAt: "2026-08-04T17:08:54.867Z" },
       },
     }), /interrupted/);
-    assert.throws(() => buildRunEvidenceReceipt({
+    assert.throws(() => deriveRunEvidenceReceipt({
       descriptor: RECEIPT_DESCRIPTORS.find(({ id }) => id === "person-lookup") ?? separationsKualiFinalizationDescriptor,
       ...evidence,
     }), /refusing to explain a run with another workflow's graph/);
@@ -248,10 +248,10 @@ describe("evidence receipt — strictness", () => {
 
   it("carries a resolved gate's decision, approver and instant instead of `unknown`", () => {
     const evidence = identityGateReceiptEvidence();
-    const receipt = buildRunEvidenceReceipt({
+    const receipt = deriveRunEvidenceReceipt({
       descriptor: separationsIdentityCheckDescriptor,
       ...evidence,
-    });
+    }).receipt;
 
     const gateObligation = receipt.verification.find((row) => row.obligation === "node.identity-approval");
     assert.ok(gateObligation !== undefined, "the gate node emitted no obligation at all");
@@ -301,20 +301,20 @@ describe("evidence receipt — strictness", () => {
     const evidence = identityGateReceiptEvidence();
     const stored = evidence.gateResults[0] as Record<string, unknown>;
 
-    assert.throws(() => buildRunEvidenceReceipt({
+    assert.throws(() => deriveRunEvidenceReceipt({
       descriptor: separationsIdentityCheckDescriptor,
       ...evidence,
       gateResults: [{ ...stored, runId: "00000000-0000-4000-8000-000000000001" }],
     }), /refusing to attribute another run's operator decision/);
 
-    assert.throws(() => buildRunEvidenceReceipt({
+    assert.throws(() => deriveRunEvidenceReceipt({
       descriptor: separationsIdentityCheckDescriptor,
       ...evidence,
       gateResults: [{ ...stored, gateId: "not-a-node" }],
     }), /gate result node "not-a-node" left the graph/);
 
     const payload = stored.result as { schemaHash: string; value: Record<string, unknown> };
-    assert.throws(() => buildRunEvidenceReceipt({
+    assert.throws(() => deriveRunEvidenceReceipt({
       descriptor: separationsIdentityCheckDescriptor,
       ...evidence,
       gateResults: [{
@@ -371,17 +371,17 @@ describe("evidence receipt — strictness", () => {
         envelope: { ...run.envelope, contractFingerprint: movedClosure, ...patch },
       },
     });
-    const rederived = buildRunEvidenceReceipt({
+    const rederived = deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       ...underMovedClosure(),
-    });
+    }).receipt;
     assert.equal(rederived.descriptorFingerprint, movedClosure);
     assert.equal(
       JSON.stringify({ ...rederived, descriptorFingerprint: null }),
       JSON.stringify({ ...kualiReceipt(), descriptorFingerprint: null }),
       "a closure move changed a fact about the run",
     );
-    assert.throws(() => buildRunEvidenceReceipt({
+    assert.throws(() => deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       ...underMovedClosure({ descriptorVersion: 2 }),
     }), /descriptor-version moved/);

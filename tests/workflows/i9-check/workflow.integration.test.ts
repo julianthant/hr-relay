@@ -5,7 +5,7 @@ import { CHILD_ONLY_WORKFLOW_MODULES, createWorkflowRegistry, workflowModuleOf }
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
-import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../support/fixtures/backend/queued-run.js";
 import { I9CheckInput, I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
 import { ReadRetentionRow } from "../../../src/models/workflows/i9-check/read-retention-row.js";
 import { I9CheckRowSchema } from "../../../src/models/workflows/i9-check/check.js";
@@ -68,7 +68,7 @@ it.each(["match", "name", "ambiguous", "failure"] as const)("executes the regist
   });
   assert.equal(plan.refused.length, 0);
   const entry = plan.planned[0]; assert.ok(entry);
-  const queued = buildQueuedRun({ descriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "ic-090000-2222",
+  const queued = queuedRunFixture({ descriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "ic-090000-2222",
     rawInput: entry.rawInput, canonicalInput: entry.input, ingressSchemaHash: plan.ingressSchemaHash,
     configFingerprint: plan.configFingerprint, configSnapshotId: plan.configSnapshotId, resolvedInstance: plan.resolvedInstance,
     shape: plan.shape, priority: plan.priority, dryRun: false, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: clock.now().toISOString() });
