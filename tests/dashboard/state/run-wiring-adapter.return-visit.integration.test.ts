@@ -18,13 +18,13 @@ const AT = "2026-08-03T12:00:00.000Z";
 const selection: LogSelection = { row: { ...mockQueueSurface({ id: RUN, workflowId: "person-lookup", title: "Served subject", subject: "Served subject", draft: initialMockDraft("person-lookup"), approved: true, seeded: true }, "2026-08-03T16:10:00.000Z"), runId: RunIdSchema.parse(RUN) }, workflowLabel: "Person lookup" };
 const selectionOf = (runId: string): LogSelection => ({ ...selection, row: { ...selection.row, runId: RunIdSchema.parse(runId) } });
 const runIdOf = (index: number) => `00000000-0000-4000-8000-${String(100 + index).padStart(12, "0")}`;
-const detail = (terminal: boolean, selected: LogSelection = selection) => {
+const detail = (terminal: boolean, selected: LogSelection = selection, sections: readonly string[] = ["logs"]) => {
   const row = selected.row;
   const wire = RunDetailWireSchema.parse({ runId: row.runId, rowRevision: row.rowRevision, panelKind: "run",
     header: { runId: row.runId, workflowId: row.workflowId, traceId: row.traceId, title: row.title, status: row.status, attempt: row.attempt },
     timeline: { steps: [{ key: "first", label: "first", state: "done", members: [{ nodeId: "first", categoryKey: "first", label: "first", state: "done" }] }], events: [] },
     gate: { state: "absent", reason: "No gate" }, outcome: { state: "absent", reason: "Not complete" },
-    context: { dataFacts: 0, evidenceFacts: 0, attempts: 1 }, captures: { state: "absent", reason: "not-captured" }, availableSections: ["logs"] });
+    context: { dataFacts: 0, evidenceFacts: 0, attempts: 1 }, captures: { state: "absent", reason: "not-captured" }, availableSections: sections });
   return terminal ? { ...wire, outcome: { state: "terminal" as const, result: "done-with-warnings" as const, completedAt: AT } } : wire;
 };
 const logs = (runId: string = RUN) => {
@@ -32,15 +32,16 @@ const logs = (runId: string = RUN) => {
   const note = { native, noteId: NOTE, runId, sequence: 0, at: AT, level: "info", message: "Authoritative note" };
   return RunDetailSectionResponseSchema.parse({ section: "logs", payload: NotePageSchema.parse({ runId, rows: [{ kind: "note", native, logId: NOTE, sequence: 0, note }], notes: [note], nextCursor: { state: "absent", reason: "end-of-page" } }) });
 };
-function clientFor(terminal: boolean, hold?: Promise<void>) {
+function clientFor(terminal: boolean, hold?: Promise<void>, sections: readonly string[] = ["logs"]) {
   const reads: { detail: number; hold: Promise<void> | undefined } = { detail: 0, hold };
-  const client = { runDetail: async (runId: string) => { reads.detail += 1; await reads.hold; return detail(terminal, selectionOf(runId)); }, artifactUrl: (id: string) => `/artifacts/${id}`, runSection: async (runId: string) => logs(runId) } as unknown as DashboardClient;
+  const client = { runDetail: async (runId: string) => { reads.detail += 1; await reads.hold; return detail(terminal, selectionOf(runId), sections); }, artifactUrl: (id: string) => `/artifacts/${id}`,
+    runSection: async (runId: string, section: string) => section === "failure" ? RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "missing", reason: "No failure annotation" } }) : logs(runId) } as unknown as DashboardClient;
   return { client, reads };
 }
 let root: Root | undefined;
 let seen: ReturnType<typeof useRunWiring> | undefined;
-const bindingOf = (epoch: object, actorId: string): DashboardCommandBinding => ({ scope: { actorId }, executor: { retainedAttempts: () => [] }, authority: { epoch, day: "2026-08-03", nowIso: AT,
-  dayState: { request: {}, refresh: () => undefined, day: { state: "loaded" } } } }) as unknown as DashboardCommandBinding;
+const bindingOf = (epoch: object, actorId: string, request: object = {}, stream?: object): DashboardCommandBinding => ({ scope: { actorId }, executor: { retainedAttempts: () => [] }, authority: { epoch, day: "2026-08-03", nowIso: AT,
+  dayState: { request, ...(stream === undefined ? {} : { stream }), refresh: () => undefined, day: { state: "loaded" } } } }) as unknown as DashboardCommandBinding;
 function Probe({ client, run = selection, binding }: Readonly<{ client: DashboardClient; run?: LogSelection; binding?: DashboardCommandBinding }>) { seen = useRunWiring(client, run, binding); return null; }
 async function visit(client: DashboardClient, run: LogSelection = selection, binding?: DashboardCommandBinding) {
   const host = document.createElement("div");
@@ -101,6 +102,35 @@ describe("Logs return visit", () => {
     assert.equal(seen?.state, "loaded");
     assert.ok(seen?.onDecision);
     assert.equal(reads.detail, before, "a day frame that re-serves the same finished row reads nothing");
+  });
+  it("reads a finished run again after its day stream resets, never answering from the pre-reset read", async () => {
+    const { client, reads } = clientFor(true);
+    const epoch = {};
+    const dayRequest = {};
+    await visit(client, selection, bindingOf(epoch, "operator-a", dayRequest, {}));
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    let release!: () => void;
+    reads.hold = new Promise<void>(resolve => { release = resolve; });
+    await act(async () => root?.render(createElement(Probe, { client, run: { ...selection, row: { ...selection.row } }, binding: bindingOf(epoch, "operator-a", dayRequest, {}) })));
+    assert.equal(seen?.state, "loading", "a reset stream's row is not answered by the read before the reset");
+    assert.equal(seen?.onDecision, undefined);
+    await vi.waitFor(() => assert.equal(reads.detail, 2, "the reset reads the run again"));
+    release();
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+  });
+  it("reads a finished run with decision sections again when a day frame re-serves its row", async () => {
+    const { client, reads } = clientFor(true, undefined, ["logs", "failure"]);
+    const binding = bindingOf({}, "operator-a");
+    await visit(client, selection, binding);
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    assert.ok(seen?.snapshot?.sections.some(section => section.section === "failure"));
+    let release!: () => void;
+    reads.hold = new Promise<void>(resolve => { release = resolve; });
+    await act(async () => root?.render(createElement(Probe, { client, run: { ...selection, row: { ...selection.row } }, binding })));
+    assert.equal(seen?.state, "loading", "a failure annotation can change without the run revision");
+    await vi.waitFor(() => assert.equal(reads.detail, 2));
+    release();
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
   });
   it("shows nothing kept after the sign-in authority changes, and reads again", async () => {
     const { client, reads } = clientFor(true);

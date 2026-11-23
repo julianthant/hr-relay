@@ -151,10 +151,13 @@ export function keptRunLogsState(client: object, authority: RunLogAuthority, row
   return { state: "loading", snapshot };
 }
 
+/** Sections whose answers can change without the run's revision, such as a failure's resolution annotation. */
+const DECISION_SECTIONS: ReadonlySet<string> = new Set(["failure", "identity-gate", "parked-write", "workbook-writes"]);
+
 /** This visit's own fresh read of a finished run still answers a re-served row of the same attempt at the
- * same or an older revision: a finished run's logs cannot change. A kept snapshot never qualifies. */
+ * same or an older revision under the same day stream, when it carries no decision section. A kept snapshot never qualifies. */
 function finishedFor(snapshot: RunLogSnapshot | undefined, row: LogSelection["row"]): boolean {
-  if (snapshot === undefined) return false;
+  if (snapshot === undefined || snapshot.sections.some(section => DECISION_SECTIONS.has(section.section))) return false;
   const { detail } = snapshot;
   return detail.runId === row.runId && detail.header.traceId === row.traceId && detail.header.attempt === row.attempt
     && detail.header.workflowId === row.workflowId && detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision;
@@ -626,8 +629,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     || !reading.current && (previous.rowRevision !== row.rowRevision || row !== settledRow.current && row !== previous)) readRow.current = row;
   const servedRow = readRow.current;
   const request = useMemo(() => ({ client, runId: servedRow.runId, revision: servedRow.rowRevision, day: binding?.authority.day, selection: { row: servedRow, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, servedRow, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request,
+    dayStream: binding?.authority.dayState.stream ?? binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
+  [client, servedRow, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.stream, binding?.authority.dayState.refresh]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -649,7 +653,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
-    : sameRun && settled.value.state === "loaded" && finishedFor(settled.value.snapshot, servedRow) ? settled.value
+    : sameRun && settled.request.dayStream === request.dayStream && settled.value.state === "loaded" && finishedFor(settled.value.snapshot, servedRow) ? settled.value
     : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
     : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
   const freshFinished = useRef<{ request: typeof request; snapshot: RunLogSnapshot } | undefined>(undefined);
@@ -657,7 +661,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
     const fresh = freshFinished.current;
     if (fresh !== undefined && fresh.request.client === client && fresh.request.day === request.day && fresh.request.epoch === request.epoch
-      && fresh.request.actorId === request.actorId && finishedFor(fresh.snapshot, request.selection.row)) return;
+      && fresh.request.actorId === request.actorId && fresh.request.dayStream === request.dayStream && finishedFor(fresh.snapshot, request.selection.row)) return;
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };

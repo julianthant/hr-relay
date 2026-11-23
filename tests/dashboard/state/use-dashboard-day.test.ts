@@ -341,6 +341,23 @@ describe("useDashboardDay — the last known day first", () => {
     assert.deepEqual(back?.state.day, { state: "loading" });
   });
 
+  it("names a new stream on each reset, and keeps it across frames and state changes in between", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    await h.serve(0, frame(DAY, "pc:1"));
+    const before = h.latest().stream;
+    assert.ok(before);
+    await h.state(0, { state: "live" });
+    await h.serve(0, frame(DAY, "pc:2"));
+    assert.equal(h.latest().stream, before, "frames on one stream share it");
+    await h.state(0, { state: "connecting" });
+    const after = h.latest().stream;
+    assert.ok(after);
+    assert.notEqual(after, before, "a reset names a new stream");
+    await h.serve(0, frame(DAY, "pc:3"));
+    assert.equal(h.latest().stream, after);
+  });
+
   it("keeps nothing across a new sign-in epoch", async () => {
     const h = await mountDays();
     await h.show(DAY);

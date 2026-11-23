@@ -10,6 +10,8 @@ import { useDashboardClient } from "./client-context.js";
 
 export interface DashboardDayState {
   readonly request: object;
+  /** A new object each time this request's stream opens again after a reset; a read under an older one is pre-reset. */
+  readonly stream?: object;
   readonly day: AsyncResource<DashboardDayWire>;
   readonly connection: SubscriptionState;
   readonly subscribePublications: (listener: (publication: NotificationPublicationWire) => void) => () => void;
@@ -42,7 +44,8 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
   useEffect(() => {
     let active = true;
     let shown = request.kept;
-    let value: DashboardDayState = { request, day: loadingWith(shown), connection: { state: "connecting" }, refresh, subscribePublications };
+    let stream = {};
+    let value: DashboardDayState = { request, stream, day: loadingWith(shown), connection: { state: "connecting" }, refresh, subscribePublications };
     // Whether this stream has served a frame or reported itself up; connecting again after either is a reset.
     let opened = false;
     const owns = (): boolean => active && activeRequest.current === request;
@@ -61,7 +64,7 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         if (!active) return;
         if (next.day !== day) {
           const error = protocolError("day-request-identity-mismatch");
-          value = { request, day: failed(error), connection: { state: "stopped", error }, refresh, subscribePublications };
+          value = { request, stream, day: failed(error), connection: { state: "stopped", error }, refresh, subscribePublications };
         } else {
           opened = true;
           // A superseded stream can still deliver between the next render and this effect's cleanup; it keeps nothing.
@@ -76,10 +79,11 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         if (connection.state === "connecting" && opened) {
           opened = false;
           shown = undefined;
+          stream = {};
           if (owns()) dropKeptResults(client);
         }
         if (connection.state !== "connecting" && connection.state !== "stopped") opened = true;
-        value = { request, day: connection.state === "stopped" && connection.error !== undefined
+        value = { request, stream, day: connection.state === "stopped" && connection.error !== undefined
           ? failed(connection.error) : connection.state === "connecting" ? loadingWith(shown) : value.day, connection, refresh, subscribePublications };
         publish();
       },
