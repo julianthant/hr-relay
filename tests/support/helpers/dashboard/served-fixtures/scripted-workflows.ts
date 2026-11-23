@@ -202,7 +202,7 @@ export const SEPARATIONS_SCRIPT: ScriptedWorkflow = {
       parked.add(step);
       await world.hold();
     };
-    const recordWrite = (): void => { const run = world.run(); world.record({ runId: run.runId, nodeId: run.heldNode(), eid: COMPOSITION_EID }); world.record({ runId: run.runId, nodeId: run.heldNode(), eid: COMPOSITION_EID }); };
+    const recordWrite = (): void => { const run = world.run(); world.record({ runId: run.runId, nodeId: run.heldNode(), eid: COMPOSITION_EID }); };
     return {
       kuali: () => {
         const drivers = new Map<string, KualiDriver>();
