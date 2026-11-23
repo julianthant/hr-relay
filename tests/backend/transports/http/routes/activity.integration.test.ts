@@ -169,7 +169,7 @@ it("logs population failure metadata without retaining the caught value and serv
   assert.equal(body.code, "DASHBOARD_READ_FAILED");
   assert.equal(body.message, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
   assert.equal(JSON.stringify(body).includes(detail), false);
-  const events = h.database.authority.timelineEvents.page({ limit: 500 });
+  const events = h.database.authority.timelineEvents.debugPage({ limit: 500 });
   const diagnostic = events.find(row => row.payload.kind === "debug" && row.payload.event.code === "DASHBOARD_READ_FAILED");
   assert.ok(diagnostic);
   assert.equal(diagnostic.payload.kind, "debug");

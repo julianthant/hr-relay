@@ -35,9 +35,9 @@ function migrateTo36(database: DatabaseSync): void {
 }
 
 describe("query index migration 37", () => {
-  it("is schema version 37, under the workbook payloads' current 38, and changes no table", () => {
+  it("is schema version 37, under the debug events' current 39, and changes no table", () => {
     assert.equal(QUERY_INDEX_SCHEMA_VERSION, 37);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 38);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 39);
     assert.deepEqual(migrationTableNames(37), migrationTableNames(36));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });

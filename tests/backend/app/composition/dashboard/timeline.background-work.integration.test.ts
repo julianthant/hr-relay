@@ -8,6 +8,7 @@ import type { StartupCleanup } from "../../../../../src/backend/app/composition/
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
+import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { DESCRIPTOR_SET_HASH } from "../../../../support/helpers/backend/dashboard-harness.js";
@@ -36,7 +37,9 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
   };
   try {
     const debug = () => debugEvents.emit({ category: "boot", phase: "settled", correlationId: randomUUID(), area: "timeline", reason: "fixture" });
-    const first = debug().record;
+    const notes = createNoteTimelineWriter({ repository: loggingRepository, clock, pid: 1 });
+    const note = () => notes.emitNote({ workflow: "person-lookup", address: { workerId: f.workerId, spanPath: f.workerId }, level: "step", message: "fixture" });
+    debug();
     composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
       lifecycle: f.service, loggingRepository, debugEvents });
     ingest.mockClear(); reconcile.mockClear();
@@ -44,6 +47,12 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     expect([ingest.mock.calls.length, reconcile.mock.calls.length]).toEqual([0, 0]);
 
     debug();
+    tick(250);
+    expect([ingest.mock.calls.length, reconcile.mock.calls.length]).toEqual([0, 0]);
+
+    note();
+    const first = loggingRepository.page({ after: loggingRepository.highWaterMark() - 1 })[0];
+    expect(first?.payload.kind).toBe("note");
     tick(250);
     expect([ingest.mock.calls.length, reconcile.mock.calls.length]).toEqual([1, 0]);
 
@@ -53,7 +62,7 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
       const { changes } = db.prepare("DELETE FROM timeline_events WHERE id=?").run(process.argv[2]);
       db.close();
       if (changes !== 1) throw new Error("expected one committed timeline deletion");
-    `, f.profile.path, first.eventId]);
+    `, f.profile.path, first?.eventId ?? ""]);
     tick(250);
     expect([ingest.mock.calls.length, reconcile.mock.calls.length]).toEqual([2, 0]);
 

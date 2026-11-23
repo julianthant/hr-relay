@@ -90,8 +90,9 @@ async function store(runs: readonly RunRecord[], write: (emit: (event: Readonly<
   const raw = new DatabaseSync(authorityPath, { readOnly: true });
   const totals = (() => {
     try {
-      return raw.prepare(`SELECT sum(length(CAST(payload_json AS BLOB))) AS bytes,
-        sum(kind NOT IN ('debug','note')) AS inspected FROM timeline_events`).get() as { bytes: number; inspected: number };
+      return raw.prepare(`SELECT sum(length(CAST(payload_json AS BLOB)))
+          + (SELECT COALESCE(sum(length(CAST(payload_json AS BLOB))),0) FROM debug_events) AS bytes,
+        sum(kind <> 'note') AS inspected FROM timeline_events`).get() as { bytes: number; inspected: number };
     } finally { raw.close(); }
   })();
   return {
@@ -167,24 +168,24 @@ describe("storage doctor on a long-lived timeline", () => {
       const timeline = database.authority.timelineEvents;
       const debugEvents = createDebugEventWriter({ repository: timeline, clock, build: "test" });
       fillDiagnosticBudget(DatabaseSync, f.authorityPath, timeline, clock);
-      const beforeStall = timeline.highWaterMark();
+      const beforeStall = timeline.debugHighWaterMark();
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
       const monitorClock = manualClock(new Date(NOW));
       const monitor = startLoopDelayMonitor({ clock: monitorClock, debugEvents });
       try {
         vi.advanceTimersByTime(1000);
-        assert.equal(timeline.highWaterMark(), beforeStall);
+        assert.equal(timeline.debugHighWaterMark(), beforeStall);
         createTimelineEmitter({ repository: timeline, clock, pid: 4242 }).emit(rootEvent(record));
         const rows = timeline.page({ runId: record.envelope.runId });
         assert.equal(rows.length, 1);
         assert.equal(rows[0]?.payload.kind, "span");
-        const afterRoot = timeline.highWaterMark();
+        const afterRoot = timeline.debugHighWaterMark();
         const peer = new DatabaseSync(f.authorityPath);
-        try { peer.exec("DELETE FROM timeline_events WHERE kind='debug' AND cursor<=500"); }
+        try { peer.exec("DELETE FROM debug_events WHERE cursor<=500"); }
         finally { peer.close(); }
         monitorClock.advanceMonotonic(10_000);
         vi.advanceTimersByTime(1000);
-        const resumed = timeline.page({ after: afterRoot });
+        const resumed = timeline.debugPage({ after: afterRoot });
         assert.equal(resumed.length, 1);
         const payload = resumed[0].payload;
         assert.equal(payload.kind, "debug");

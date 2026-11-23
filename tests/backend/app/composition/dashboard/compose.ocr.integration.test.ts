@@ -35,7 +35,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     const invoke = (body = "{}", signal?: AbortSignal) => actualApp.request("http://127.0.0.1/api/v1/settings/chatgpt-account/test-ocr", { method: "POST", headers, body, signal });
     const missing = await invoke(); assert.equal((await missing.json() as { state: string }).state, "refused");
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 0);
-    const unsignedFaults = runtime.selectedContext(active.token).database.authority.timelineEvents.page({ limit: 500 })
+    const unsignedFaults = runtime.selectedContext(active.token).database.authority.timelineEvents.debugPage({ limit: 500 })
       .filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
     assert.equal(unsignedFaults.length, 1);
     const attempt = await account.signIn({ usePlan: true }); await transport.callback(attempt); await attempt.completion;
@@ -92,7 +92,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 1); unchanged(1);
     transport.setResponse(() => Response.json({ error: { code: "subscription_sharing_unsupported_capability" } }, { status: 400 }));
     const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_REQUEST_REJECTED"); unchanged(3);
-    const inferenceFaults = context.database.authority.timelineEvents.page({ limit: 500 }).filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
+    const inferenceFaults = context.database.authority.timelineEvents.debugPage({ limit: 500 }).filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
     assert.equal(inferenceFaults.length, 2);
     assert.deepEqual(inferenceFaults[0], unsignedFaults[0]);
     assert.ok(inferenceFaults[0].cursor < inferenceFaults[1].cursor);

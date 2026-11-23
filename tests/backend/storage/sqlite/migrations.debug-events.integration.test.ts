@@ -8,6 +8,7 @@ import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/s
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { DEBUG_EVENTS_MIGRATION, createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
+import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { restoreSchema38DebugEvents } from "../../../support/fixtures/storage/historical-run-schema.js";
 
@@ -32,7 +33,7 @@ function seed(repository: ReturnType<typeof currentStore>["repository"]) {
   const notes = createNoteTimelineWriter({ repository, clock, pid: 1 });
   for (let index = 0; index < 6; index++) {
     debug.emit({ category: index % 2 === 0 ? "http" : "sse", phase: "settled", correlationId: `request-${String(index)}`, pinned: index === 3 },
-      index === 4 ? { kind: "worker", workerId: "worker-1" } : undefined);
+      index === 4 ? { kind: "worker", workerId: WorkerIdSchema.parse("worker-1") } : undefined);
     notes.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step", message: `step ${String(index)}` });
   }
 }
