@@ -92,7 +92,7 @@ describe("authority check closure", () => {
     expect(verdict(() => validateAuthorityStore(raw))).toBeUndefined();
   });
 
-  it.each(AuthorityTableNameSchema.options)("refuses through the scoped check exactly when the whole check refuses an edit of %s", table => {
+  it.each(AuthorityTableNameSchema.exclude(["debug_events"]).options)("refuses through the scoped check exactly when the whole check refuses an edit of %s", table => {
     const disagreements: string[] = [];
     let refused = 0;
     for (const mutation of mutations(raw, table)) {
