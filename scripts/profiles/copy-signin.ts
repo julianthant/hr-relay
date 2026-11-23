@@ -147,6 +147,7 @@ async function openCopyDashboard(profile: CopyProfile): Promise<void> {
   const halt = () => { signals.emit("SIGTERM"); };
   process.on("SIGINT", halt);
   process.on("SIGTERM", halt);
+  let dashboardStatus: number;
   try {
     const nonce = await Promise.race([ready.promise, finished.then(() => { throw new CopySigninError("copy-signin-dashboard-stopped"); })]);
     await waitForFrontend(ports.frontendPort, nonce, stop.signal);
@@ -187,12 +188,12 @@ async function openCopyDashboard(profile: CopyProfile): Promise<void> {
     try { await context?.close(); }
     finally {
       halt();
-      const status = await finished;
+      dashboardStatus = await finished;
       process.removeListener("SIGINT", halt);
       process.removeListener("SIGTERM", halt);
-      if (status !== 0) throw new CopySigninError("copy-signin-dashboard-stopped");
     }
   }
+  if (dashboardStatus !== 0) throw new CopySigninError("copy-signin-dashboard-stopped");
 }
 
 const entryPath = process.argv[1];
