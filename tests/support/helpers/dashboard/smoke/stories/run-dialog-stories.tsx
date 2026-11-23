@@ -1,45 +1,22 @@
 /** Run dialog stories: the real dialog on a client that answers what each story scripts, driven through its own controls to the state it is for. */
 import type { Page } from "@playwright/test";
 import type { DashboardClient } from "../../../../../../src/dashboard/client/index.js";
-import { useMemo, type ReactNode } from "react";
-import type { DashboardAuthority } from "../../../../../../src/dashboard/app/dashboard-app-model.js";
-import type { FrontendBootstrapWire } from "../../../../../../src/models/dashboard/bootstrap.js";
-import { ActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
-import { serverLocalDay } from "../../../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
-import { LOADING } from "../../../../../../src/dashboard/state/async-resource.js";
 import { CommandResultSchema } from "../../../../../../src/rules/commands/commands.js";
-import { DashboardClientProvider, DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../../../../../../src/dashboard/state/client-context.js";
+import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
 import { RunStartDialog } from "../../../../../../src/dashboard/surfaces/run-start/run-start.js";
 import type { RunStartStage } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { LaunchActivity, LaunchRecovery, RerunLoad } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
-  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_BOOTSTRAP, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
+  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, type ServedCheck,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
+import { SceneBinding } from "./scene-binding.js";
 import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
-
-/** The command binding the app composes, over the saved bootstrap; the dialog reads only the clock, the day and the actor from it. */
-function SceneBinding({ children }: { children: ReactNode }) {
-  const client = useDashboardClient();
-  const executor = useDashboardCommandExecutor();
-  const binding = useMemo(() => {
-    const bootstrap = RUN_DIALOG_BOOTSTRAP as unknown as FrontendBootstrapWire;
-    const epoch = Object.freeze({ client, bootstrap });
-    const day = serverLocalDay(bootstrap.serverClock);
-    const request = Object.freeze({ client, day, epoch, revision: 0 });
-    const authority: DashboardAuthority = Object.freeze({ epoch, catalog: [], now: () => bootstrap.serverClock.now, today: day, day,
-      dayState: { subscribePublications: () => { throw new Error("the story serves no publications"); }, request, day: LOADING, connection: { state: "connecting" as const },
-        refresh: () => { throw new Error("the story serves no day refresh"); } },
-      selection: { route: { start: false }, workflowId: "" } });
-    return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: ActorIdSchema.parse(RUN_DIALOG_ACTOR), client, authority: epoch, dayRequest: request }), feedback: noop });
-  }, [client, executor]);
-  return <DashboardCommandBindingProvider binding={binding}>{children}</DashboardCommandBindingProvider>;
-}
 
 function DialogScene({ client, rerun, before }: { client: DashboardClient; rerun?: boolean; before?: () => void }) {
   before?.();

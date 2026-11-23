@@ -9,6 +9,8 @@ import { RerunWarningWireSchema, type RerunWarningWire } from "../../../../src/m
 import { StartPlanWireSchema, type StartPlanWire } from "../../../../src/models/dashboard/start-plan.js";
 import type { PreflightReadinessWire } from "../../../../src/models/preflight/preflight-contract.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
+import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "json" };
+import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
 import bootstrapSnapshot from "./run-dialog-bootstrap.json" with { type: "json" };
 
 /** The served bootstrap of the one registered workflow, saved so the gallery page stays free of backend modules; run-dialog-bootstrap.integration.test.ts keeps it current. */
@@ -103,3 +105,8 @@ export function runDialogRerunWarning(repeats = true): RerunWarningWire {
     warningDigest: HASH,
   } });
 }
+
+/** The four intake sessions of the served fixture, saved like the bootstrap; run-dialog-intake.integration.test.ts keeps them current. */
+export const RUN_DIALOG_INTAKE = intakeSnapshot as unknown as Readonly<{ ids: Readonly<Record<"mapping" | "validated" | "manifest" | "rerun", string>>; sessions: Readonly<Record<string, unknown>> }>;
+export const intakeSession = (key: "mapping" | "validated" | "manifest" | "rerun", change: Record<string, unknown> = {}): IntakeSessionWire =>
+  IntakeSessionWireSchema.parse({ ...(RUN_DIALOG_INTAKE.sessions[RUN_DIALOG_INTAKE.ids[key]] as object), ...change });

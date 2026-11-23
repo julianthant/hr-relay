@@ -22,6 +22,8 @@ export interface Story {
   readonly expects?: readonly { readonly pattern: RegExp; readonly reason: string }[];
   /** Rules today's dashboard breaks in this state, each with its dashboard-audit-fixes ticket id. */
   readonly knownFailures?: Readonly<Partial<Record<StateRuleName, string>>>;
+  /** A recorded rule that breaks at one desktop width only; a rule named here is checked, and recorded, at the other width as usual. */
+  readonly knownFailureWidth?: Readonly<Partial<Record<StateRuleName, number>>>;
 }
 
 /** The gallery's reference dialogs: the design system's own dialog at each size, plain and banded, mounted as
