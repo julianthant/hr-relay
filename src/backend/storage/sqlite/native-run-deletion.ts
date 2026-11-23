@@ -14,7 +14,7 @@ import { type PredecessorRunRecord } from "../../../models/run/record.js";
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, COMMAND_ROW_STATE_SCHEMA_VERSION, WORKER_CUSTODY_SCHEMA_VERSION } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { predecessorRunRecordFromRow, runRecordFromRow } from "./run-record-row.js";
-import { timelineEventFromRow } from "./timeline-repository.js";
+import { DEBUG_EVENTS_MIGRATION, predecessorTimelineEventFromRow, timelineEventFromRow } from "./timeline-repository.js";
 import { commandFromRow, convertPredecessorCommandRowState } from "./command-record-row.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunRow } from "./worker-custody-predecessor.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -65,6 +65,8 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   const predecessorCustody = schemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const readRun = predecessorCustody ? (raw: unknown) => strictRun(predecessorCustodyRunRow(raw)) : strictRun;
   // Below the command-row schema, a command row is read as the image migration 33 gives it.
+  // Migrations before 39 delete runs from stores whose timeline still holds debug rows.
+  const readTimeline = schemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow;
   const commandRow = (raw: unknown) => schemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState("commands", raw) : raw;
   const readCommand = (raw: unknown) => (predecessorCustody ? predecessorCommandFromRow : commandFromRow)(commandRow(raw));
   const isHistory = (raw: unknown) => predecessorCustody && isPredecessorWorkerHistory(raw);
@@ -118,7 +120,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
     if (!currentCascade.has(z.string().parse(raw.id))) checkRetained(readRun(raw));
   }
   for (const raw of database.prepare("SELECT * FROM timeline_events").iterate()) {
-    const event = timelineEventFromRow(raw);
+    const event = readTimeline(raw);
     if (event.scope.kind !== "run" || !cascade.has(event.scope.runId)) checkRetained(event);
   }
   for (const table of ["run_results","run_receipts","run_checkpoints","diagnostic_snapshots","write_intents","write_attempts","commands","command_audits","artifacts"] as const) {
@@ -173,7 +175,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   const candidates = new Map<string, ArtifactRef>();
   const plan = steps.map(step => ({...step,keys:database.prepare(`SELECT * FROM ${step.table} WHERE ${step.where}`).all(runId).map(raw => {
     if (step.table === "runs") readRun(raw);
-    else if (step.table === "timeline_events") timelineEventFromRow(raw);
+    else if (step.table === "timeline_events") readTimeline(raw);
     else if (step.table === "run_search") runSearchIndexFromRow(raw, run, false);
     else nativeOrdinaryRecordFromRow(step.table, raw, schemaVersion);
     for (const value of deletionArtifactValues(database, step.table, raw)) {
