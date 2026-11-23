@@ -90,6 +90,18 @@ describe("Logs return visit", () => {
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
     assert.ok(seen?.onDecision, "decisions open once the fresh logs land");
   });
+  it("answers a re-served row of a finished run from this visit's fresh read, with no second read", async () => {
+    const { client, reads } = clientFor(true);
+    const binding = bindingOf({}, "operator-a");
+    await visit(client, selection, binding);
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    const before = reads.detail;
+    await act(async () => root?.render(createElement(Probe, { client, run: { ...selection, row: { ...selection.row } }, binding })));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    assert.equal(seen?.state, "loaded");
+    assert.ok(seen?.onDecision);
+    assert.equal(reads.detail, before, "a day frame that re-serves the same finished row reads nothing");
+  });
   it("shows nothing kept after the sign-in authority changes, and reads again", async () => {
     const { client, reads } = clientFor(true);
     const first = bindingOf({}, "operator-a");

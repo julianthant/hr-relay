@@ -151,6 +151,15 @@ export function keptRunLogsState(client: object, authority: RunLogAuthority, row
   return { state: "loading", snapshot };
 }
 
+/** This visit's own fresh read of a finished run still answers a re-served row of the same attempt at the
+ * same or an older revision: a finished run's logs cannot change. A kept snapshot never qualifies. */
+function finishedFor(snapshot: RunLogSnapshot | undefined, row: LogSelection["row"]): boolean {
+  if (snapshot === undefined) return false;
+  const { detail } = snapshot;
+  return detail.runId === row.runId && detail.header.traceId === row.traceId && detail.header.attempt === row.attempt
+    && detail.header.workflowId === row.workflowId && detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision;
+}
+
 function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
   const { detail, logs } = snapshot;
   if (logs.runId !== detail.runId) throw new RunLogIdentityError("RUN_LOG_NATIVE_IDENTITY_MISMATCH");
@@ -640,15 +649,25 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
+    : sameRun && settled.value.state === "loaded" && finishedFor(settled.value.snapshot, servedRow) ? settled.value
     : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
     : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
+  const freshFinished = useRef<{ request: typeof request; snapshot: RunLogSnapshot } | undefined>(undefined);
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
+    const fresh = freshFinished.current;
+    if (fresh !== undefined && fresh.request.client === client && fresh.request.day === request.day && fresh.request.epoch === request.epoch
+      && fresh.request.actorId === request.actorId && finishedFor(fresh.snapshot, request.selection.row)) return;
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
     const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) { ended(); keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot); setSettled({ request, value: { state: "loaded", snapshot } }); }
+      if (active.current === request && !controller.signal.aborted) {
+        ended();
+        freshFinished.current = { request, snapshot };
+        keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot);
+        setSettled({ request, value: { state: "loaded", snapshot } });
+      }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
       ended();
