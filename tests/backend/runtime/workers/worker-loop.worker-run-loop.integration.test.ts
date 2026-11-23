@@ -122,7 +122,7 @@ describe("worker run loop", () => {
     const delays: number[] = [];
     let claims = 0;
     const timeline = h.authority.database.authority.timelineEvents;
-    const refusalRows = () => timeline.page({}).flatMap(row =>
+    const refusalRows = () => timeline.debugPage({}).flatMap(row =>
       row.payload.kind === "debug" && row.payload.event.area === "worker-admission" ? [row.payload.event] : []);
     const looping = runWorkerLoop({ ...h.deps, exitWhenIdle: false, idleRepollMs: base,
       debugEvents: createDebugEventWriter({ repository: timeline, clock: h.authority.clock, build: "test" }),
