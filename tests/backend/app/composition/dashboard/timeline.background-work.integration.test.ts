@@ -26,6 +26,13 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: "test" });
   const ingest = vi.spyOn(projection, "ingestFromTimeline");
   const reconcile = vi.spyOn(projection, "reconcileWorkerAuthority");
+  // Every revision read opens a read snapshot over the timeline or run sources.
+  let revisionReads = 0;
+  const track = database.trackAuthorityTables.bind(database);
+  vi.spyOn(database, "trackAuthorityTables").mockImplementation(tables => {
+    const revision = track(tables);
+    return () => { revisionReads += 1; return revision(); };
+  });
   const lease = database.authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId: f.workerId,
     system: "crm", now: clock.now().toISOString(), ttlMs: 3000 });
   expect(lease.state).toBe("acquired");
@@ -46,9 +53,21 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     tick(1000);
     expect([ingest.mock.calls.length, reconcile.mock.calls.length]).toEqual([0, 0]);
 
+    revisionReads = 0;
     debug();
     tick(250);
-    expect([ingest.mock.calls.length, reconcile.mock.calls.length]).toEqual([0, 0]);
+    expect([ingest.mock.calls.length, reconcile.mock.calls.length, revisionReads]).toEqual([0, 0, 0]);
+
+    execFileSync(process.execPath, ["--input-type=module", "-e", `
+      import { DatabaseSync } from "node:sqlite";
+      const db = new DatabaseSync(process.argv[1]);
+      const copy = db.prepare("INSERT INTO debug_events(id,workflow,run_id,worker_id,occurred_at,recorded_at,retention_date,pinned,payload_json) SELECT 'peer-'||id,workflow,run_id,worker_id,occurred_at,recorded_at,retention_date,pinned,payload_json FROM debug_events ORDER BY cursor DESC LIMIT 1").run();
+      db.prepare("DELETE FROM debug_events WHERE id LIKE 'peer-%'").run();
+      db.close();
+      if (copy.changes !== 1) throw new Error("expected one committed peer debug row");
+    `, f.profile.path]);
+    tick(250);
+    expect([ingest.mock.calls.length, reconcile.mock.calls.length, revisionReads]).toEqual([0, 0, 0]);
 
     note();
     const first = loggingRepository.page({ after: loggingRepository.highWaterMark() - 1 })[0];
