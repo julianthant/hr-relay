@@ -1,6 +1,8 @@
 /** Page object for the served dashboard: the shell, queue, run panel and Run dialog as an operator reaches them. */
 import { expect, type Locator, type Page, type Request } from "@playwright/test";
 import type { SeededServer } from "../served-fixtures/seeded-bff.js";
+import { CommandResultSchema, type CommandResult } from "../../../../../src/rules/commands/commands.js";
+import { noBannedText, type StateRuleContext } from "./state-rules.js";
 
 export const WORKFLOW_LABELS = ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Work-Study", "Emergency Contact"] as const;
 const QUIET_MS = 300;
@@ -15,6 +17,7 @@ export class DashboardPage {
   readonly runPanel: Locator;
   readonly startRunButton: Locator;
   readonly dialog: Locator;
+  readonly toasts: Locator;
 
   constructor(readonly page: Page, private readonly server: SeededServer) {
     this.sidebar = page.getByRole("complementary", { name: "Workspace" });
@@ -24,6 +27,7 @@ export class DashboardPage {
     // An empty queue offers a second Start run in its body; the toolbar's is always present.
     this.startRunButton = page.getByRole("group", { name: "Action panel controls" }).getByRole("button", { name: "Start run", exact: true });
     this.dialog = page.getByRole("dialog", { name: "Start run", exact: true });
+    this.toasts = page.locator('[data-slot="toast"]');
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
     page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/")) { this.reads.add(request); this.lastReadAt = Date.now(); } });
@@ -85,6 +89,52 @@ export class DashboardPage {
   async openStartDialog(): Promise<void> {
     await this.startRunButton.click();
     await expect(this.dialog.getByRole("heading", { name: "Start run" })).toBeVisible();
+  }
+
+  /** Fills the Work-Study Start run dialog for one employee ID and stops on the Checks stage, ready to press Start. */
+  async fillStartDialog(eid: string): Promise<void> {
+    await this.dialog.locator("textarea").fill(eid);
+    await this.dialog.getByRole("button", { name: "Choose effective date" }).click();
+    await this.page.getByRole("dialog").last().getByRole("gridcell", { name: /16/ }).first().click();
+    await this.dialog.getByRole("button", { name: "Continue" }).click();
+    await expect(this.dialog.getByRole("region", { name: "Run", exact: true })).toBeVisible();
+    await this.dialog.getByRole("button", { name: "Continue" }).click();
+    await expect(this.dialog.getByText("Ready to start")).toBeVisible();
+  }
+
+  async clearToasts(): Promise<void> {
+    for (const close of await this.page.getByRole("button", { name: "Close toast" }).all()) await close.click();
+    await expect(this.toasts).toHaveCount(0);
+  }
+
+  /** The press raised exactly one toast, and nothing on the page reads as internal text. */
+  async expectOneToast(text: string | RegExp): Promise<void> {
+    await expect(this.toasts.filter({ hasText: text })).toHaveCount(1);
+    expect(await noBannedText({ page: this.page } as StateRuleContext), "text an operator must never read").toEqual([]);
+  }
+
+  /** The press raised no toast, and nothing on the page reads as internal text. */
+  async expectNoToast(): Promise<void> {
+    await expect(this.toasts).toHaveCount(0);
+    expect(await noBannedText({ page: this.page } as StateRuleContext), "text an operator must never read").toEqual([]);
+  }
+
+  /** Holds every command of `type` in flight until `release`, counting how many were sent. */
+  async holdCommands(type: string): Promise<{ readonly sent: () => number; readonly release: () => void; readonly result: () => Promise<CommandResult> }> {
+    let sent = 0;
+    let answer: (result: CommandResult) => void = () => undefined;
+    const answered = new Promise<CommandResult>(resolve => { answer = resolve; });
+    let release = (): void => undefined;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    await this.page.route("**/api/v1/commands", async route => {
+      if ((route.request().postDataJSON() as { type?: string }).type !== type) return route.continue();
+      sent += 1;
+      await released;
+      const response = await route.fetch();
+      answer(CommandResultSchema.parse(await response.json()));
+      return route.fulfill({ response });
+    });
+    return { sent: () => sent, release, result: () => answered };
   }
 
   /** The document must not scroll sideways at a supported desktop size. */

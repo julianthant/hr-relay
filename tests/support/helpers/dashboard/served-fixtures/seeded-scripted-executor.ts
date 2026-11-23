@@ -336,9 +336,3 @@ export async function approveScriptedGate(request: SeededRequest, now: string, r
     target: { runId, gateId: WORK_STUDY_GATE_ID, expectedVersion: detail.rowRevision }, payload: { arm: "continue" } }));
   if (result.state !== "applied") throw new Error(`the scripted gate approval was ${result.state}: ${JSON.stringify(result)}`);
 }
-
-/** Sends a run command (`retry`, `cancel`) the way the run panel's buttons do, bound to the run's current revision. */
-export async function sendScriptedRunCommand(request: SeededRequest, now: string, runId: string, type: "retry" | "cancel"): Promise<z.infer<typeof CommandResultSchema>> {
-  const detail = RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`));
-  return CommandResultSchema.parse(await request("/api/v1/commands", { ...operatorCommand(now), family: "run", type, target: { runId, expectedVersion: detail.rowRevision } }));
-}

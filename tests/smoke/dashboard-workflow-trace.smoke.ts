@@ -1,6 +1,6 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
-import { approveScriptedGate, seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
+import { approveScriptedGate, seededRequestOver, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
 import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
 import { readdirSync } from "node:fs";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
@@ -73,6 +73,74 @@ test("Work-Study: a failed step shows Failed on the row and writes nothing", asy
 });
 
 
+test("Work-Study: the Start run dialog starts one run, a second press while pending sends nothing, and the run finishes", async ({ dashboard, seeded, page, failures }) => {
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  await dashboard.open();
+  await dashboard.openWorkflow("Work-Study");
+  await dashboard.openStartDialog();
+  await dashboard.fillStartDialog("10812345");
+  await dashboard.clearToasts();
+  const start = await dashboard.holdCommands("start-run");
+  const startButton = dashboard.dialog.getByRole("button", { name: "Start live run" });
+  await startButton.click();
+  await expect.poll(start.sent, { message: "the held Start reached the server" }).toBe(1);
+  await page.keyboard.press("Enter");
+  start.release();
+  await dashboard.expectOneToast("Run started: 1 Work-Study run created.");
+  await expect(dashboard.dialog).toBeHidden();
+  expect(start.sent(), "a second press while pending sent a second command").toBe(1);
+  const row = page.locator("[data-demo-row-id]");
+  await expect(row).toHaveCount(1);
+  const runId = await row.getAttribute("data-demo-row-id");
+  if (runId === null) throw new Error("the started run has no row");
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  const run = await seeded.scripted.drive(runId);
+  expect(await run.finish()).toMatchObject({ state: "done" });
+  await expect(row).toContainText("Done");
+  expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
+
+  // Logs opens from a press on the row itself.
+  await page.goto(page.url().replace(/[?&]run=[^&]*/u, ""));
+  await expect(page.getByText("No run open")).toBeVisible();
+  await row.click();
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
+});
+
+test("Person Lookup: Rerun starts one new run, a second press while pending sends nothing", async ({ dashboard, seeded, page, failures }) => {
+  const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  await dashboard.open();
+  await dashboard.openWorkflow("Person Lookup");
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10000001", undefined, PERSON_LOOKUP_SCRIPT);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  failures.allow(new RegExp(String.raw`^(?:http 500: GET |console: Failed to load resource: the server responded with a status of 500 \(Internal Server Error\) )http://127\.0\.0\.1:\d+/api/v1/runs/${runId}/logs$`, "u"),
+    "The seeded Person Lookup run's logs cannot resolve a data origin for its UCPath search, so the panel's Logs read fails; Rerun does not need it.");
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  expect(await (await seeded.scripted.drive(runId)).finish()).toMatchObject({ state: "done" });
+  await expect(row).toContainText("Done");
+
+  await dashboard.openRun(runId);
+
+  await dashboard.clearToasts();
+  await dashboard.runPanel.getByRole("button", { name: "Rerun" }).click();
+  const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
+  for (const stage of ["Steps", "Values", "Options"]) {
+    await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem").filter({ hasText: stage })).toHaveAttribute("aria-current", "step");
+    await rerun.getByRole("button", { name: "Continue" }).click();
+  }
+  const started = await dashboard.holdCommands("start-run");
+  await rerun.getByRole("button", { name: "Start run" }).click();
+  await expect.poll(started.sent, { message: "the held Rerun reached the server" }).toBe(1);
+  await page.keyboard.press("Enter");
+  started.release();
+  await dashboard.expectOneToast("Rerun created: 1 Person Lookup run created.");
+  await expect(rerun).toBeHidden();
+  expect(started.sent(), "a second press while pending sent a second command").toBe(1);
+  expect(appliedRunIds(await started.result()).filter(id => id !== runId)).toHaveLength(1);
+});
+
 test("Work-Study: Retry after a failed step runs it again and writes once", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
@@ -87,11 +155,21 @@ test("Work-Study: Retry after a failed step runs it again and writes once", asyn
   await expect(row).toContainText("Failed");
   expect(seeded.scripted.writes()).toHaveLength(0);
 
-  // A retry applies to the failed run and the new run it queues.
-  const queuedByRetry = appliedRunIds(await sendScriptedRunCommand(request, SEEDED_NOW, runId, "retry")).filter(id => id !== runId);
+  // The failed run's retry control is Recover completed steps: it queues a new run for the unfinished steps.
+  await dashboard.clearToasts();
+  const recover = await dashboard.holdCommands("recover-run");
+  await page.getByRole("button", { name: "Recover completed steps" }).click();
+  const confirm = page.getByRole("dialog", { name: "Recover completed steps?" });
+  await confirm.getByRole("button", { name: "Recover", exact: true }).click();
+  await expect.poll(recover.sent, { message: "the held Recover reached the server" }).toBe(1);
+  await page.keyboard.press("Enter");
+  recover.release();
+  await dashboard.expectNoToast();
+  const queuedByRetry = appliedRunIds(await recover.result()).filter(id => id !== runId);
   expect(queuedByRetry).toHaveLength(1);
+  expect(recover.sent(), "a second press while pending sent a second command").toBe(1);
   const [retried] = queuedByRetry;
-  if (retried === undefined) throw new Error("the retry queued no run");
+  if (retried === undefined) throw new Error("the Recover queued no run");
   failures.allow(abortedRead(retried), ABORTED_READ_REASON);
   const again = await seeded.scripted.drive(retried);
   await expect(page.locator(`[data-demo-row-id="${retried}"]`)).toContainText("Running");
@@ -132,8 +210,17 @@ test("Work-Study: Cancel on a run parked at its gate ends it as Cancelled and wr
   await expect(row).toBeVisible();
   const run = await seeded.scripted.drive(runId);
   expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
-  expect(await sendScriptedRunCommand(request, SEEDED_NOW, runId, "cancel")).toMatchObject({ state: "applied" });
+  await dashboard.clearToasts();
+  const cancel = await dashboard.holdCommands("cancel");
+  await page.getByRole("button", { name: "Cancel run" }).click();
+  const confirm = page.getByRole("dialog", { name: "Cancel this run?" });
+  await confirm.getByRole("button", { name: "Cancel the run", exact: true }).click();
+  await expect.poll(cancel.sent, { message: "the held Cancel reached the server" }).toBe(1);
+  await page.keyboard.press("Enter");
+  cancel.release();
   await expect(row).toContainText("Cancelled");
+  expect(cancel.sent(), "a second press while pending sent a second command").toBe(1);
+  await dashboard.expectNoToast();
   expect(seeded.scripted.writes()).toHaveLength(0);
 });
 
