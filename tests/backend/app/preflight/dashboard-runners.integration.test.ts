@@ -204,7 +204,7 @@ afterEach(_afterEachFixture0);
       assert.ok(refused);
       const refusal = await executePreflightRunner(refused, new AbortController().signal, manualClock(new Date(NOW)), NEVER_DEADLINE_SCHEDULER);
       assert.equal(refusal.state, "unhealthy");
-      assert.match(refusal.summary, /owner-endpoint-refused/);
+      assert.match(refusal.summary, /owner-endpoint-refused; refused response not released/);
     }
   });
 

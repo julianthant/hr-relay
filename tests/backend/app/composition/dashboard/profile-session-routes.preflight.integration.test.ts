@@ -135,6 +135,10 @@ it("T2b refuses an unowned dev-frontend host when the probe cannot release the r
       assert.deepEqual(state.json, { state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" });
     }
     assert.equal(bodies.length, 0);
+    const boot = readLocalDebugLog(f.machine.stateRoot);
+    if (boot.state !== "present") throw new Error("boot log missing");
+    assert.equal(boot.records.filter(record => record.payload.kind === "debug"
+      && record.payload.event.reason === "frontend-probe-cleanup-failed").length, 2);
   } finally { await close(runtime, listener, f); }
 });
 
