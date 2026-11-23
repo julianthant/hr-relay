@@ -239,7 +239,7 @@ export function createScriptedExecutor(deps: Readonly<{
           "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({ clock, reader: createApprovedOcrRecordReader({ database, run: claimed, reader: lifecycle,
             resolveDescriptor, assertCurrent: () => admission.assertProfileRuntime() }) }),
           "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: claimed.envelope.runId, clock,
-            references: { runId: claimed.envelope.runId, write: command => runWorkbooks.write(claimed, command), read: command => runWorkbooks.read(claimed, command),
+            references: { runId: claimed.envelope.runId, write: command => { if (target.id !== "onboarding") throw new Error("the scripted workflow writes no reference"); return runWorkbooks.write(claimed, command); }, read: command => runWorkbooks.read(claimed, command),
               verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } }) } };
       deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "busy", runId: claimed.envelope.runId }));
       return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun(

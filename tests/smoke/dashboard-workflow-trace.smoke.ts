@@ -339,7 +339,9 @@ test("Onboarding: start, each step held, the hire review answered, done, and the
   await expect(row).toContainText("Running");
   expect(run.position).toEqual({ at: "step", nodeId: "crm-source" });
   let position = run.position;
-  while (position.at === "step") position = await run.advance();
+  const held: string[] = [];
+  while (position.at === "step") { held.push(position.nodeId); position = await run.advance(); }
+  expect(held).toEqual(["crm-source", "ucpath-source", "lookup-source", "crm-source", "ucpath-source"]);
   expect(position).toMatchObject({ at: "settled", outcome: { state: "parked-gate", gateId: ONBOARDING_WRITE_REVIEW_GATE } });
   expect(seeded.scripted.writes()).toHaveLength(0);
 
