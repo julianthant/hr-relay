@@ -654,7 +654,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
     : sameRun && settled.request.dayStream === request.dayStream && settled.value.state === "loaded" && finishedFor(settled.value.snapshot, servedRow) ? settled.value
-    : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
+    // A snapshot read before a stream reset is not shown after it; the kept store was dropped with the reset too.
+    : sameRun && settled.request.dayStream === request.dayStream && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
     : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
   const freshFinished = useRef<{ request: typeof request; snapshot: RunLogSnapshot } | undefined>(undefined);
   useEffect(() => {

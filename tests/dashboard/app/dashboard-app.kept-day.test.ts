@@ -119,3 +119,34 @@ it("Back to a kept day gives the held run's Logs no Pause, Stop or Cancel, and s
   await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
   await vi.waitFor(() => assert.ok(runControls().length > 0, "the fresh day brings the controls back"));
 });
+
+it("a stream reset with a run open shows neither the pre-reset row nor its logs while the replacement day is held", async () => {
+  const day = FIXTURE_DAY_WIRE.day;
+  const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.parent === null);
+  assert(run);
+  const { app } = createFixtureBff();
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
+  const streams: { serve: (frame: DashboardDayWire) => void; reset: () => void }[] = [];
+  const client: DashboardClient = { ...transport, subscribeDay: input => {
+    streams.push({ serve: frame => { input.onDay(frame); input.onState({ state: "live" }); }, reset: () => input.onState({ state: "connecting" }) });
+    return { close: () => undefined };
+  } };
+  window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
+  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
+  await settle();
+  await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
+  const runTitle = () => host.querySelector('[aria-label="Selected run logs"] h2')?.textContent;
+  const runRow = () => host.querySelector(`[data-demo-row-id="${run.runId}"]`);
+  await vi.waitFor(() => assert.equal(runTitle(), run.title));
+
+  await act(async () => streams.at(-1)?.reset());
+  await settle();
+  assert.equal(runRow(), null, "the pre-reset queue is not shown");
+  assert.notEqual(runTitle(), run.title, "the pre-reset run is not shown in Logs");
+
+  await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
+  await vi.waitFor(() => assert.equal(runTitle(), run.title));
+});

@@ -402,7 +402,9 @@ function LoadedApp({
   const shownQueueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
   const queueRows = dayWire === undefined ? NO_QUEUE_ROWS : shownQueueRows;
   const selectedRow = dayWire?.queueSurfaces.find(row => row.runId === route.run);
-  const logIdentity = useMemo(() => ({ client, authorityEpoch, actorId: boot.actor.id, day, runId: route.run }), [client, authorityEpoch, boot.actor.id, day, route.run]);
+  // A stream reset names a new day stream, so the row held from before it is never shown again.
+  const dayStream = dayState.stream ?? dayState.request;
+  const logIdentity = useMemo(() => ({ client, authorityEpoch, actorId: boot.actor.id, day, runId: route.run, dayStream }), [client, authorityEpoch, boot.actor.id, day, route.run, dayStream]);
   const retainedLogRow = useRef<{ identity: object; row: QueueSurfaceWire } | undefined>(undefined);
   if (selectedRow !== undefined) retainedLogRow.current = { identity: logIdentity, row: selectedRow };
   else if (dayResource.state !== "loading" || retainedLogRow.current?.identity !== logIdentity) retainedLogRow.current = undefined;

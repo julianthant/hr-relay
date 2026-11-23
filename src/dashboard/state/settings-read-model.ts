@@ -50,10 +50,10 @@ export function createSettingsRead<Value>() {
     supersede,
     reset() { sequence += 1; pending = undefined; snapshot = { state: "idle" }; },
     accept(value: Value) { sequence += 1; pending = undefined; publish({ state: "loaded", value }); },
-    /** A stream reset: what this read holds becomes a kept copy, display only, and its last read runs again. */
+    /** A stream reset: nothing read before it shows again, and its last read runs again. */
     invalidate() {
       sequence += 1; pending = undefined; stale += 1;
-      publish({ state: "loading", value: snapshot.value });
+      publish({ state: "loading" });
       const again = last;
       if (again !== undefined && again.signal?.aborted !== true) void startRead(again.read, again.code, again.milliseconds, again.signal).catch(() => snapshot);
     },

@@ -43,12 +43,14 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const observation = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   const stale = useSyncExternalStore(resource.subscribe, resource.stale, resource.stale);
   const held = observation.value;
-  const [observed, setObserved] = useState<{ resource: typeof resource; editor: EditableSettingsState }>({ resource, editor: held === undefined ? { state: "loading" } : { state: "loaded", document: held } });
+  const [observed, setObserved] = useState<{ resource: typeof resource; stale: number; editor: EditableSettingsState }>({ resource, stale, editor: held === undefined ? { state: "loading" } : { state: "loaded", document: held } });
+  const staleRef = useRef(stale);
+  staleRef.current = stale;
   // A document the shared read settled since (a fresh read after a reset, a preference save's readback) replaces the shown one.
   const editor = useMemo<EditableSettingsState>(() => observation.state === "loaded" && (observed.resource !== resource || observed.editor.state !== "loaded" || observed.editor.document !== observation.value)
     ? { state: "loaded", document: observation.value }
-    : observed.resource === resource ? observed.editor : held === undefined ? { state: "loading" } : { state: "loaded", document: held }, [observed, resource, held, observation]);
-  const setEditor = useCallback((editor: EditableSettingsState): void => setObserved({ resource, editor }), [resource]);
+    : observed.resource === resource && observed.stale === stale ? observed.editor : held === undefined ? { state: "loading" } : { state: "loaded", document: held }, [observed, resource, held, observation, stale]);
+  const setEditor = useCallback((editor: EditableSettingsState): void => setObserved({ resource, stale: staleRef.current, editor }), [resource]);
   const [reportedReadProblem, setReadProblem] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [saving, setSaving] = useState(false);

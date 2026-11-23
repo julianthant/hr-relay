@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { KEPT_RUN_LOGS_LIMIT, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { dropKeptResults } from "../../../src/dashboard/state/async-resource.js";
 import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
 import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import { NotePageSchema, NativeRunEventWireSchema, RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
@@ -117,6 +118,19 @@ describe("Logs return visit", () => {
     await vi.waitFor(() => assert.equal(reads.detail, 2, "the reset reads the run again"));
     release();
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+  });
+  it("shows no snapshot read before a day stream reset while the replacement read is held", async () => {
+    const { client, reads } = clientFor(false);
+    const epoch = {};
+    const dayRequest = {};
+    await visit(client, selection, bindingOf(epoch, "operator-a", dayRequest, {}));
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    reads.hold = new Promise<void>(() => undefined);
+    dropKeptResults(client);
+    await act(async () => root?.render(createElement(Probe, { client, run: { ...selection, row: { ...selection.row } }, binding: bindingOf(epoch, "operator-a", dayRequest, {}) })));
+    assert.equal(seen?.state, "loading");
+    assert.equal(seen?.snapshot, undefined, "the pre-reset logs are gone, not shown as a kept copy");
+    await vi.waitFor(() => assert.equal(reads.detail, 2));
   });
   it("reads a finished run with decision sections again when a day frame re-serves its row", async () => {
     const { client, reads } = clientFor(true, undefined, ["logs", "failure"]);

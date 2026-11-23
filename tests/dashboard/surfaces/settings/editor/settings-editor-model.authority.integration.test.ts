@@ -213,7 +213,7 @@ it("does not let an older refresh poison a newer authoritative command readback"
 });
 
 for (const trigger of ["section return", "stream reset"] as const) {
-  it(`a ${trigger} keeps the shown document locked while it reads again, then settles on the fresh one`, async () => {
+  it(`a ${trigger} locks the editor while it reads again, then settles on the fresh one`, async () => {
     const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
     const first = authority.read();
     authority.apply({ "actor.label": { set: "Fresher saved values" } });
@@ -236,7 +236,8 @@ for (const trigger of ["section return", "stream reset"] as const) {
     else await act(async () => { dropKeptResults(client); });
     assert.equal(controller?.locked, true, "a kept document decides nothing");
     assert.equal(controller?.refreshing, true);
-    assert.equal(controller?.editor.state === "loaded" ? controller.editor.document : undefined, shown, "the kept document stays on screen");
+    if (trigger === "section return") assert.equal(controller?.editor.state === "loaded" ? controller.editor.document : undefined, shown, "a section return keeps the document on screen");
+    else assert.equal(controller?.editor.state, "loading", "nothing read before a stream reset shows after it");
     await act(async () => { settle(fresh); });
     await vi.waitFor(() => assert.equal(controller?.locked, false));
     assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, fresh.revision);
@@ -269,14 +270,14 @@ for (const order of ["outgoing first", "incoming first"] as const) {
     assert.equal(settles.length, 2, "the return to Paths starts its own read instead of reusing General's");
     const label = () => controller?.leaves.find(leaf => leaf.path === "actor.label")?.settingsValue;
     if (order === "outgoing first") {
-      await act(async () => { settles[0]!(general); });
+      await act(async () => { settles[0](general); });
       assert.equal(controller?.locked, true, "General's read does not unlock Paths");
       assert.notEqual(label(), "General's read");
-      await act(async () => { settles[1]!(paths); });
+      await act(async () => { settles[1](paths); });
     } else {
-      await act(async () => { settles[1]!(paths); });
+      await act(async () => { settles[1](paths); });
       await vi.waitFor(() => assert.equal(controller?.locked, false));
-      await act(async () => { settles[0]!(general); });
+      await act(async () => { settles[0](general); });
     }
     await vi.waitFor(() => assert.equal(controller?.locked, false));
     assert.equal(label(), "Paths' read");
