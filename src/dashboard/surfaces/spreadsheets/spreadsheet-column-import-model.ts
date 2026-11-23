@@ -1,5 +1,6 @@
 import { columnName } from './spreadsheet-editor-model.js';
-import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
+import { cellText } from '../../../rules/spreadsheets/cell-text.js';
+import type { EditableSheet, EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { fieldForSpreadsheetHeader, spreadsheetField } from '../../../models/fields/workbook-fields.js';
 import { spreadsheetEditorField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
 import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';

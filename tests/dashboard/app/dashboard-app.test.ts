@@ -14,6 +14,7 @@ import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../..
 // @vitest-environment jsdom
 
 import assert_m1 from "node:assert/strict";
+import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 import { act as act_m1,createElement as createElement_m1,type ReactNode as ReactNode_m1 } from "react";
 import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1,vi as vi_m1 } from "vitest";
@@ -207,6 +208,7 @@ async function mountDashboard(search: string): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
   });
+  await loadLazyPages();
 }
 
 async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
@@ -215,6 +217,7 @@ async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
   });
+  await loadLazyPages();
 }
 
 async function moveHistory(direction: "back" | "forward"): Promise<void> {
