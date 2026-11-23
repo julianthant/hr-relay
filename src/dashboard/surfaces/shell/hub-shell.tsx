@@ -11,7 +11,7 @@ import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 import { useDashboardClient } from '../../state/client-context.js';
 import { FirstScreenRevealedContext } from '../../app/startup/first-screen.js';
-import { preloadable } from '../../lib/preloadable.js';
+import { CodeLoading, preloadable } from '../../lib/preloadable.js';
 import { mockParam } from '../../app/mock-surfaces.js';
 import { PanelBoundary } from '../shared/panel-boundary.js';
 import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
@@ -25,7 +25,7 @@ export function HubShell(props: HubShellProps) {
   useState(() => { assistantOpen.init(false); });
   const revealed = useContext(FirstScreenRevealedContext);
   useLayoutEffect(() => { if (!revealed && mockParam("assistantOpen") !== "1") assistantOpen.set(false); }, [revealed]);
-  useEffect(() => { if (revealed) assistantPanel.preload().catch((error: unknown) => { window.reportError(error); }); }, [revealed]);
+  useEffect(() => { assistantPanel.preload().catch((error: unknown) => { window.reportError(error); }); }, []);
   const opened = useAssistantOpen();
   const canRead = opened && (revealed || mockParam("assistantOpen") === "1");
   const [everOpened, setEverOpened] = useState(canRead);
@@ -35,7 +35,7 @@ export function HubShell(props: HubShellProps) {
   return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
     preferenceChanged={history.preferenceChanged} assistantOpened={everOpened} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyLoading={history.pending} historyNotice={history.notice} />;
 }
-// The panel's code loads once the first screen shows; a failed load reaches PanelBoundary.
+// The panel's code loads with the dashboard, under the startup loader; a failed load reaches PanelBoundary.
 const assistantPanel = preloadable(() => import("./assistant-panel.js").then(module => module.AssistantPanel));
 const AssistantPanel = assistantPanel.Component;
 function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyLoading, historyNotice, modelPreference, preferenceChanged, assistantOpened }: HubShellProps & { assistantOpened: boolean; history?: AssistantHistory; historyPending: boolean; historyLoading: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
@@ -109,7 +109,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
         </div> : <div className="hub-transcript">{client.assistantActivity ? <AssistantServedActivity query={query} read={signal => client.assistantActivity!(signal)} /> : <EmptyState title="No activity today" />}</div>}
         </div> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
-          {(opened || assistantOpened) && current && currentSession && <PanelBoundary resetKey={current.id} sentence="Couldn't open the assistant."><Suspense fallback={null}><AssistantPanel key={current.id} loading={historyLoading} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={served} onAutomaticTitle={title => currentSession.autoTitle(title)} conversationPort={currentSession.conversationPort} draft={currentSession.draft} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
+          {current && currentSession && <PanelBoundary resetKey={current.id} sentence="Couldn't open the assistant."><Suspense fallback={<CodeLoading />}><AssistantPanel key={current.id} loading={historyLoading} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={served} onAutomaticTitle={title => currentSession.autoTitle(title)} conversationPort={currentSession.conversationPort} draft={currentSession.draft} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
             onClose={closePanel} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={historyPending ? undefined : () => edit("rename", current.id)} ></AssistantPanel></Suspense></PanelBoundary>}
         </div>
       </section>

@@ -1,9 +1,8 @@
 import type { WorkflowSourcePolicy } from "./workflow-sources.js";
 import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
-import { Suspense,useContext,useEffect,type ComponentProps,type ReactNode } from "react";
-import { preloadable } from "../lib/preloadable.js";
-import { FirstScreenRevealedContext } from "./startup/first-screen.js";
+import { Suspense,useEffect,type ComponentProps,type ReactNode } from "react";
+import { CodeLoading, preloadable } from "../lib/preloadable.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import {
 type FrontendBootstrapWire
@@ -25,7 +24,7 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
-// The pages' code loads once the first screen shows; a click before then shows nothing until it arrives, and a failed load reaches PanelBoundary.
+// The pages' code loads with the dashboard, under the startup loader, which waits for a page the URL opens; a failed load reaches PanelBoundary.
 const settingsPage = preloadable(() => import("../surfaces/settings/settings.js").then(module => module.SettingsPage));
 const activityReport = preloadable(() => import("../surfaces/activity/activity.js").then(module => module.ActivityReport));
 const workflowExplorer = preloadable(() => import("../surfaces/explorer/explorer.js").then(module => module.WorkflowExplorer));
@@ -38,7 +37,7 @@ function SettingsLoading({ onExitGuardChange }: { onExitGuardChange: (guard: Set
    onExitGuardChange(proceed => proceed());
    return () => onExitGuardChange(undefined);
  }, [onExitGuardChange]);
- return null;
+ return <CodeLoading />;
 }
 export function DashboardTakeovers({client,useActivityReport,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
@@ -56,11 +55,9 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  onSettingsSaveProblem?: ComponentProps<typeof SettingsPage>["onSaveProblem"];
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
- const revealed = useContext(FirstScreenRevealedContext);
  useEffect(() => {
-   if (!revealed) return;
    for (const page of [settingsPage, activityReport, workflowExplorer]) page.preload().catch((error: unknown) => { window.reportError(error); });
- }, [revealed]);
+ }, []);
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
  const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
@@ -75,7 +72,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
               accountPage={accountPage}
               section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
-              dataContent={dataContent === undefined ? undefined : <Suspense fallback={null}>{dataContent}</Suspense>}
+              dataContent={dataContent === undefined ? undefined : <Suspense fallback={<CodeLoading />}>{dataContent}</Suspense>}
               actorId={boot.actor.id}
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
