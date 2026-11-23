@@ -20,7 +20,7 @@ import { testAdmittedWorker, testRunService } from "../../../support/fixtures/ru
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { buildEntryValidationFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
-import { buildFailureTerminalAuthorization } from "../../../../src/backend/runs/lifecycle/terminal-authorization.js";
+import { buildTerminalAuthorization } from "../../../../src/backend/runs/lifecycle/terminal-authorization.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -129,7 +129,8 @@ function startTerminalRun(harness: Harness, options: Readonly<{ dryRun: boolean;
       runtimeConfig: selectRunRuntime(harness.database.authority) }));
     assert.equal(claimed.envelope.runId, runId);
     const failure = buildEntryValidationFailureRecord({ run: claimed, failureId: nextCommandId(), problems: ["fixture entry refused"], occurredAt: NOW });
-    const authorization = buildFailureTerminalAuthorization({ run: claimed, authorizedAt: NOW, consequence: { kind: "failed", failure } });
+    const authorization = buildTerminalAuthorization({ run: claimed, authorizedAt: NOW, consequence: { kind: "failed", failure } });
+    assert.equal(authorization.kind, "failed");
     requireLifecycleApplied(lifecycle.terminalize({ commandId: nextCommandId(), kind: "failure", terminal: { authorization, failure } }, descriptor));
   }
   const version = harness.database.authority.runs.get(runId)?.version;

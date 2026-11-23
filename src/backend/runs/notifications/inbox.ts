@@ -148,9 +148,6 @@ export function createNotificationInbox(
         remember(created.record, false);
         return { durable: "created" as const, notification: created.record };
       }
-      if (projection.trigger === "backfill-gap") {
-        return { durable: "existing" as const, notification: existing };
-      }
       const folded = notifications.fold({
         actorId,
         dedupeFingerprint: projection.dedupeFingerprint,

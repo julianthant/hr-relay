@@ -14,7 +14,7 @@ import { deriveCheckpointOutputDigest } from "../../../src/models/run/result.js"
 import { i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
 import { resolveStartStepOmissions } from "../../../src/backend/runs/start/step-selection.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
-import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../support/fixtures/backend/queued-run.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
 import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
@@ -61,7 +61,7 @@ async function runCase(options: Readonly<{ useMatch: boolean; entries?: StepOmis
   });
   assert.equal(plan.refused.length, 0);
   const entry = plan.planned[0]; assert.ok(entry);
-  const queued = buildQueuedRun({ descriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "ic-090000-2222",
+  const queued = queuedRunFixture({ descriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "ic-090000-2222",
     rawInput: entry.rawInput, canonicalInput: entry.input, ingressSchemaHash: plan.ingressSchemaHash,
     configFingerprint: plan.configFingerprint, configSnapshotId: plan.configSnapshotId, resolvedInstance: plan.resolvedInstance,
     shape: plan.shape, priority: plan.priority, dryRun: false, stepOmissions: plan.stepOmissions, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: clock.now().toISOString() });

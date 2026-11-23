@@ -1,4 +1,3 @@
-import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import type { CommandApplication } from "../commands/command-application.js";
@@ -45,8 +44,4 @@ export function executeFailureResolution(
   const target = { family: "failure-resolution" as const, runId, failureId };
   return { result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
     versionChanges: [{ target, before: expectedVersion, after: resolution.version }], affectedDependencyIds: [] };
-}
-/** Real capture preserves immutable failure evidence. */
-export function bindFailureCapture(capture:RunDiagnosticCapture):RunDiagnosticCapture {
- return Object.freeze({captureForFailure:(context:Parameters<RunDiagnosticCapture["captureForFailure"]>[0])=>capture.captureForFailure(context),persist:(bundle:Parameters<RunDiagnosticCapture["persist"]>[0])=>capture.persist(bundle),discard:(bundle:Parameters<RunDiagnosticCapture["discard"]>[0])=>capture.discard(bundle)});
 }

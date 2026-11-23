@@ -307,7 +307,7 @@ export function assertRetainedReceiptDependencies(input: ReceiptDerivationBindin
 /* ── the re-derivation check (6) ─────────────────────────────────────────── */
 
 /** One path at which a stored receipt and this build's derivation disagree. */
-export interface ReceiptDivergence {
+interface ReceiptDivergence {
   readonly path: string;
   readonly owner: ReceiptEvidenceOwner;
   readonly stored: string;
@@ -341,7 +341,7 @@ const OPAQUE_RECEIPT_VALUE_PATH =
   /^(?:(?:input|observations|output)\[\d+\]\.value\.value|actions\[\d+\]\.proved\.values\[\d+\]\.value)$/u;
 
 
-export function diffReceipts(
+function diffReceipts(
   stored: RunEvidenceReceipt,
   derived: RunEvidenceReceipt,
 ): readonly ReceiptDivergence[] {

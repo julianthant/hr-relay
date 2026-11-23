@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { deriveCanonicalPerson } from "../../../src/rules/runs/summary-derivation.js";
-import { queryActivitySummaries } from "../../../src/backend/runs/queries/run-summaries.js";
+import { queryActivitySummaries } from "../../../src/backend/runs/queries/activity-summaries.js";
 import { RunResultRecordSchema } from "../../../src/models/run/result.js";
 import { TERMINAL_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../support/fixtures/integration/separations-run-fixtures.js";
 import { foundationFixture } from "../../support/helpers/database-foundation/fixtures.js";

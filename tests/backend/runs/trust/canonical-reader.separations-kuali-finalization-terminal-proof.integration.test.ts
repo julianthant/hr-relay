@@ -2,7 +2,7 @@ import { createFinalizationTerminalTestWorld } from "../../../support/helpers/ba
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { deriveCheckpointOutputDigest } from "../../../../src/models/run/result.js";
@@ -40,7 +40,7 @@ function deriveReceipts(value: FinalizationHarness) {
         intent.writeIntentId,
       ),
     }));
-  const direct = buildRunEvidenceReceipt({
+  const direct = deriveRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
     run,
     result,
@@ -48,7 +48,7 @@ function deriveReceipts(value: FinalizationHarness) {
     writes,
     gateResults:
       value.database.authority.gateResults.listByRun(FINALIZATION_RUN_ID),
-  });
+  }).receipt;
   const service = createReceiptService({
     database: value.database,
     runReader: createTrustRunReader(value.database),
