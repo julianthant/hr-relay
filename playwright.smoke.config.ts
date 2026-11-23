@@ -1,20 +1,7 @@
 /** Browser smoke checks for the built dashboard on the seeded backend and the state gallery's check loop. */
 import "./tests/support/helpers/credential-keychain-process-preload.mjs";
 import { availableParallelism } from "node:os";
-import { defineConfig, type Project } from "@playwright/test";
-
-const gallery: Project = { name: "gallery", testMatch: "**/*.gallery.ts", workers: 1 };
-const smoke: Project = { name: "smoke", testMatch: "**/*.smoke.ts", workers: 2 };
-
-function projects(shard: string | undefined): Project[] {
-  switch (shard) {
-    case undefined: return [gallery, smoke];
-    case "traces": return [smoke];
-    case "independent": return [{ ...gallery, grep: /@gallery-independent\b/u }];
-    case "shared": return [{ ...gallery, grepInvert: /@gallery-independent\b/u }];
-    default: throw new Error(`Unknown smoke shard: ${shard}`);
-  }
-}
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/smoke",
@@ -30,6 +17,10 @@ export default defineConfig({
     timezoneId: "America/Los_Angeles",
     viewport: { width: 1280, height: 720 },
   },
-  projects: projects(process.env.RELAY_SMOKE_SHARD),
+  projects: [
+    // Keep each gallery shard's ordered story references and frame collection on one worker.
+    { name: "gallery", testMatch: "**/*.gallery.ts", workers: 1 },
+    { name: "smoke", testMatch: "**/*.smoke.ts", workers: 2 },
+  ],
   reporter: [["list"], ["json", { outputFile: "tests/smoke/.output/results.json" }]],
 });

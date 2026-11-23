@@ -441,7 +441,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [traces, independent, shared]
+        include:
+          - lane: traces
+            args: --project=smoke
+          - lane: independent
+            args: --project=gallery --grep @gallery-independent
+          - lane: shared
+            args: --project=gallery --grep-invert @gallery-independent
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).smoke }}
     runs-on: ubuntu-latest
@@ -467,9 +473,7 @@ jobs:
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - name: List all smoke and gallery cases
         run: npm run --silent test:smoke -- --list --reporter=json > "$RUNNER_TEMP/smoke-list.json"
-      - run: npm run test:smoke
-        env:
-          RELAY_SMOKE_SHARD: ${{ matrix.lane }}
+      - run: npm run test:smoke -- ${{ matrix.args }}
       - name: Verify every assigned case ran exactly once
         env:
           SLOT: ${{ strategy.job-index }}

@@ -275,7 +275,12 @@ describe("development fast check", () => {
     }
 
     const body = job(checks, "smoke");
-    expect(body).toMatch(/^ {6}- run: npm run test:smoke$/mu);
+    expect(body).toContain("      - run: npm run test:smoke -- ${{ matrix.args }}");
+    expect([...body.matchAll(/^ {10}- lane: (\S+)\n {12}args: (.+)$/gmu)].map(match => match.slice(1))).toEqual([
+      ["traces", "--project=smoke"],
+      ["independent", "--project=gallery --grep @gallery-independent"],
+      ["shared", "--project=gallery --grep-invert @gallery-independent"],
+    ]);
     const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
     assert.ok(condition);
     for (const smoke of ["true", "false"]) {
