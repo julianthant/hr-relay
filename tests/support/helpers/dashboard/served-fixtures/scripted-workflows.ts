@@ -144,7 +144,7 @@ export const CRM_DOC_DOWNLOAD_SCRIPT: ScriptedWorkflow = {
   drivers(world) {
     const crmFor = (eid: string) => createDeterministicCrmOnboardingDriver({
       record: { state: "absent", queriedEid: EidSchema.parse(eid), reason: "unused by this workflow" }, dates: ReadOnboardingDatesOutputSchema.parse({ emplId: EidSchema.parse(eid), state: "no-confident-record", employmentDate: null, oathDate: null, reason: "" }),
-      documents: [{ identity: { recordId: "ONB-1", eid, workEmail: crmDocEmail(eid), personalEmail: null }, totalDocuments: 1,
+      documents: [{ identity: { recordId: "ONB-1", eid: EidSchema.parse(eid), workEmail: crmDocEmail(eid), personalEmail: null }, totalDocuments: 1,
         documents: [{ index: 0, fileName: CRM_DOC_FILE_NAME, bytes: new TextEncoder().encode(`%PDF-1.7 synthetic ${eid}`) }] }] });
     return { crm: () => {
       const crm = crmFor(world.run().subject);
