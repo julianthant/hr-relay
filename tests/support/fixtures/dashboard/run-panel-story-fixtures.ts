@@ -3,7 +3,7 @@ import { projectDecision, type ServedOption } from "../../../../src/backend/runs
 import { RunDecisionWireSchema, type CandidateTableWire, type RunDecisionType } from "../../../../src/models/dashboard/run-decision.js";
 import type { LogDecision } from "../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import type { LogEntry, LogScreenshot, LogStep } from "../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
-import type { ReviewField, ReviewRecordView, ReviewSourcePage } from "../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
+import type { RecordReviewProps, ReviewField, ReviewRecordView, ReviewSourcePage } from "../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
 import { decisionScenarios, separationLogs } from "./log-preview/log-fixture.js";
 import { logDecisionExamples } from "./log-preview/log-decision-fixture.js";
 
@@ -107,7 +107,7 @@ export const REVIEW_CARDS = {
   "needs-review": [reviewCard("Example, Avery", { blockers: ["Relationship needs review"], fields: FIELDS.map(field => field.key === "relationship" ? { ...field, value: "" } : field) })],
   approved: [reviewCard("Example, Avery", {}, { label: "Approved", tone: "success" })],
   empty: [],
-} as const;
+} satisfies Record<string, RecordReviewProps["cards"]>;
 
 const inlined = (shot: LogScreenshot): LogScreenshot => shot.src.startsWith("/logs-preview/") ? { ...shot, src: captureImage(shot.width, shot.height, shot.label ?? shot.alt) } : shot;
 const inlineEntry = (entry: LogEntry): LogEntry => {

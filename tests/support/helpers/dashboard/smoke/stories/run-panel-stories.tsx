@@ -6,7 +6,7 @@ import { projectFailureDisplay } from "../../../../../../src/models/dashboard/fa
 import type { RunDecisionType } from "../../../../../../src/models/dashboard/run-decision.js";
 import type { QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../../src/models/failures/error-catalog.js";
-import { ErrorCodeSchema } from "../../../../../../src/rules/identity/ids.js";
+import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
 import { Badge, Banner, Notice, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
 import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
 import { RunStateChips } from "../../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
@@ -17,6 +17,7 @@ import type { AnsweredKind, LogDecision } from "../../../../../../src/dashboard/
 import type { LogEntry, LogScreenshot, LogStep } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { pauseTimeline, type LogTimelineStage, type LogTimelineState } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 import { RecordReview } from "../../../../../../src/dashboard/surfaces/run-detail/review/review.js";
+import type { RecordReviewProps } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
 import { ReviewDialog } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-dialog.js";
 import { logTimelineSample, separationLogs } from "../../../../fixtures/dashboard/log-preview/log-fixture.js";
 import { queueStoryRow } from "../../../../fixtures/dashboard/queue-row-story-surfaces.js";
@@ -77,9 +78,12 @@ const exampleStory = (title: string, id: string): Story => {
 const decisionStory = (title: string, value: LogDecision, timeline = logTimelineSample("waiting")): Story =>
   panel(title, { steps: decisionSteps("run-decision-entry", value), timeline, initialStepId: "run-decision" }, DECISION_READY);
 
-const HEADER = Object.fromEntries((["queued", "running", "cancelling", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial"] as const)
-  .map((status, index) => [status, panel(`Header of a ${status} run`, { steps: readingSteps, timeline: reading,
-    status: <RunStateChips row={queueStoryRow(status, 30 + index, status === "cancelled" ? { cancelledBy: "operator" } : {})} /> })])) as Record<QueueStatus, Story>;
+const header = (status: QueueStatus, n: number): Story => panel(`Header of a ${status} run`, { steps: readingSteps, timeline: reading,
+  status: <RunStateChips row={queueStoryRow(status, 30 + n, status === "cancelled" ? { cancelledBy: "operator" } : {})} /> });
+const HEADER = {
+  queued: header("queued", 0), running: header("running", 1), cancelling: header("cancelling", 2), blocked: header("blocked", 3),
+  "awaiting-approval": header("awaiting-approval", 4), done: header("done", 5), failed: header("failed", 6), cancelled: header("cancelled", 7), partial: header("partial", 8),
+} satisfies Record<QueueStatus, Story>;
 
 function timelineAt(state: LogTimelineState): readonly LogTimelineStage[] {
   return logTimelineSample("separation").map((stage, index): LogTimelineStage => {
@@ -90,11 +94,14 @@ function timelineAt(state: LogTimelineState): readonly LogTimelineStage[] {
         ...(later === "completed" && substep.durationLabel !== undefined ? { durationLabel: substep.durationLabel } : {}) })) };
   });
 }
-const TIMELINE = Object.fromEntries((["completed", "active", "waiting", "failed", "pending", "skipped", "cancelled"] as const)
-  .map(state => [state, panel(`A timeline stage that is ${state}`, { steps: separationLogs.slice(0, 7), timeline: timelineAt(state) })])) as Record<LogTimelineState, Story>;
+const timelineStory = (state: LogTimelineState): Story => panel(`A timeline stage that is ${state}`, { steps: separationLogs.slice(0, 7), timeline: timelineAt(state) });
+const TIMELINE = {
+  completed: timelineStory("completed"), active: timelineStory("active"), waiting: timelineStory("waiting"), failed: timelineStory("failed"),
+  pending: timelineStory("pending"), skipped: timelineStory("skipped"), cancelled: timelineStory("cancelled"),
+} satisfies Record<LogTimelineState, Story>;
 
 const PAUSE = {
-  "pause-pending": panel("A run asked to pause at the next step", { steps: readingSteps, timeline: pauseTimeline(reading, "pause-pending", { kind: "pause" } as never) }),
+  "pause-pending": panel("A run asked to pause at the next step", { steps: readingSteps, timeline: pauseTimeline(reading, "pause-pending") }),
   paused: panel("A paused run", { steps: readingSteps, timeline: pauseTimeline(reading, "paused") }),
 } satisfies Record<PauseState, Story>;
 
@@ -130,7 +137,7 @@ const CARD: Record<LogDecision["state"], Story> = {
 };
 
 const answered = (optionId: string, label: string): LogDecision => ({ ...exampleDecision("review-identity"),
-  answered: { optionId, label, at: "2026-08-03T16:41:05.000Z" as never, actor: { kind: "person", name: "Alex Rivera" } } });
+  answered: { optionId, label, at: IsoInstantSchema.parse("2026-08-03T16:41:05.000Z"), actor: { kind: "person", name: "Alex Rivera" } } });
 const ANSWERED = {
   done: decisionStory("An approved match", answered("approve", "Approve match")),
   retry: decisionStory("A step sent to retry", answered("retry", "Retry step")),
@@ -138,10 +145,12 @@ const ANSWERED = {
   cancelled: decisionStory("A cancelled run", answered("cancel-run", "Cancel run")),
 } satisfies Record<AnsweredKind, Story>;
 
-const WRITE_EXAMPLE: Record<WriteState, string> = {
-  "not-attempted": "failure-no-write", prepared: "failure-prepared", attempting: "failure-attempting", committed: "failure-committed", verified: "failure-verified", unknown: "failure-unknown",
-};
-const WRITE = Object.fromEntries(Object.entries(WRITE_EXAMPLE).map(([state, id]) => [state, exampleStory(`A failure while the write is ${state}`, id)])) as Record<WriteState, Story>;
+const writeStory = (state: WriteState, id: string): Story => exampleStory(`A failure while the write is ${state}`, id);
+const WRITE = {
+  "not-attempted": writeStory("not-attempted", "failure-no-write"), prepared: writeStory("prepared", "failure-prepared"),
+  attempting: writeStory("attempting", "failure-attempting"), committed: writeStory("committed", "failure-committed"),
+  verified: writeStory("verified", "failure-verified"), unknown: writeStory("unknown", "failure-unknown"),
+} satisfies Record<WriteState, Story>;
 
 const failureCard = (code: string): LogDecision => {
   const display = projectFailureDisplay({ code: ErrorCodeSchema.parse(code) });
@@ -156,8 +165,10 @@ const FAILURE = {
 } satisfies Record<FailureCase, Story>;
 
 const shot = (kind: CaptureKind) => captureOf(kind === "plain" ? undefined : kind, `${kind} capture`, kind === "form" ? 700 : 300);
-const CAPTURE = Object.fromEntries((["fields", "form", "browser", "person", "plain"] as const)
-  .map(kind => [kind, panel(`A ${kind} capture`, { steps: [captureStep(shot(kind))], timeline: reading }, "figure.log-capture")])) as Record<CaptureKind, Story>;
+const captureStory = (kind: CaptureKind): Story => panel(`A ${kind} capture`, { steps: [captureStep(shot(kind))], timeline: reading }, "figure.log-capture");
+const CAPTURE = {
+  fields: captureStory("fields"), form: captureStory("form"), browser: captureStory("browser"), person: captureStory("person"), plain: captureStory("plain"),
+} satisfies Record<CaptureKind, Story>;
 
 const CAPTURE_PROBLEM = {
   "load-error": panel("A screenshot that fails to load", { steps: [captureStep(captureOf("browser", "Broken capture", 300, "data:image/png;base64,AAAA"))], timeline: reading }, "[role='alert']"),
@@ -201,10 +212,10 @@ const preview = (state: DryRunState): Story => {
 };
 const DRY_RUN = { exercised: preview("exercised"), "not-clicked": preview("not-clicked"), unavailable: preview("unavailable"), skipped: preview("skipped") } satisfies Record<DryRunState, Story>;
 
-const reviewStory = (title: string, cards: typeof REVIEW_CARDS[ReviewCase], extra: Partial<Parameters<typeof RecordReview>[0]> = {}): Story => ({
+const reviewStory = (title: string, cards: RecordReviewProps["cards"], extra: Partial<Parameters<typeof RecordReview>[0]> = {}): Story => ({
   title, ready: "section[aria-label='OCR records']",
   render: () => <StoryFrame><ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan">
-    <RecordReview runId="run-1" subject="Alex Morgan" cards={cards as never} readOnly={false} discarded={false} selectedCount={cards.length}
+    <RecordReview runId="run-1" subject="Alex Morgan" cards={cards} readOnly={false} discarded={false} selectedCount={cards.length}
       onApprove={noop} onDiscard={noop} onEditField={noop} onCommit={noop} onChange={noop} {...extra} />
   </ReviewDialog></StoryFrame>,
 });
