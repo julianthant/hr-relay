@@ -83,7 +83,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
         }
       }
       assertHttpFaultOnly(faultOwner, beforeFault, diagnostics);
-      assert.deepEqual(context.database.getMeta(), { ...metadata, authorityGeneration: Number(generation) + diagnostics });
+      assert.deepEqual(context.database.getMeta(), metadata);
     };
     assert.equal((await (await invoke('{"page":"foreign"}')).json() as { state: string }).state, "refused");
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 0);
@@ -117,7 +117,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     const cancellation = new AbortController();
     transport.setResponse(() => { cancellation.abort(); return new Response(completedOcrStream("synthetic"), { headers: { "content-type": "text/event-stream" } }); });
     const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); unchanged(5);
-    assert.equal(context.database.getMeta().authorityGeneration, Number(generation) + 5);
+    assert.equal(context.database.getMeta().authorityGeneration, generation);
     assert.equal(factory.mock.calls[0]?.[0].admission, context.admission);
     assert.equal(factory.mock.calls[0]?.[0].stateRoot, profile.stateRoot);
   } finally { if (dashboard !== undefined) await dashboard.stop(); else await runtime.close(); factory.mockRestore(); await transport.cleanup(); await profile.close(); }

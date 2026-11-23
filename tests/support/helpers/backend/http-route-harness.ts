@@ -561,7 +561,7 @@ export function assertOnlyLoopStallWrites(database: Harness["database"],
   assert.deepEqual(debug.slice(0, before.debug.length), before.debug);
   const added = debug.slice(before.debug.length);
   assert.ok(added.every(isLoopStall), "the span wrote only loop-stall diagnostics");
-  assert.equal(database.getMeta().authorityGeneration, before.generation + added.length);
+  assert.equal(database.getMeta().authorityGeneration, before.generation, "debug rows advance no authority generation");
   return added.length;
 }
 
@@ -582,7 +582,7 @@ export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, 
     if (record.payload.kind !== "debug") throw new Error("HTTP refusal wrote non-debug authority");
     assert.equal(record.payload.event.category, "http");
   }
-  assert.equal(after.generation, Number(before.generation) + expected + history.writes + stalls);
+  assert.equal(after.generation, Number(before.generation) + history.writes, "debug rows advance no authority generation");
 }
 
 export function rawSettingsPatchFingerprint(patch: unknown): string {
