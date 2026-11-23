@@ -18,17 +18,16 @@ async function mount(over: Partial<AccountPage>): Promise<void> {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  const page: AccountPage = { values, onSignOut: () => {}, onDuoSetup: async () => undefined, details: async () => ({ state: "changed", account: values }),
+  const page: AccountPage = { values, onDuoSetup: async () => undefined, details: async () => ({ state: "changed", account: values }),
     login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) }, ...over };
   await act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page, username: "jordan.lee@ucsd.edu", ucpath: null, deleteAccount: null }) })));
 }
 const button = (name: string) => [...document.body.querySelectorAll("button")].find(item => item.textContent === name);
 
 describe("Settings > Account Security group", () => {
-  it("shows the served Duo state, Set up again and Log out", async () => {
+  it("shows the served Duo state and Set up again", async () => {
     await mount({});
     assert.match(document.body.textContent ?? "", /DuoReadySet up again/u);
-    assert.ok(button("Log out"));
   });
 
   it("runs the served re-enrolment from Set up again", async () => {
@@ -39,7 +38,7 @@ describe("Settings > Account Security group", () => {
   });
 
   it("shows a refusal as a failure with the backend's text and leaves the row as it was", async () => {
-    await mount({ onDuoSetup: async () => "Duo setup is still open for this profile. Finish or cancel it, then try again." });
+    await mount({ onDuoSetup: async () => "Duo setup is still open for this profile. Finish or cancel it." });
     await act(async () => { button("Set up again")?.click(); });
     assert.match(document.body.textContent ?? "", /Duo setup not opened/u);
     assert.match(document.body.textContent ?? "", /Duo setup is still open for this profile/u);

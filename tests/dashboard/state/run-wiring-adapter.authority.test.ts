@@ -23,7 +23,6 @@ import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/lo
 import { RunWorkbookReferenceChoiceWireSchema, FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { DashboardCommandRequestSchema, CommandResultSchema, ParkedWriteCheckTargetSchema, type DashboardCommandRequest } from "../../../src/rules/commands/commands.js";
 import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
@@ -258,7 +257,7 @@ async function harness(client: DashboardClient, confirm?: RunWiringConfirm, rend
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
   const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { h.refreshed++; } };
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: (outcome: CommandOutcome) => { h.outcomes.push(outcome); },
-    authority: { epoch: scope.authority, catalog: [], nowIso: AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
+    authority: { epoch: scope.authority, catalog: [], now: () => AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
   function Probe({ selected }: { selected: LogSelection }) {
     const currentBinding = h.day === undefined ? binding : { ...binding, authority: { ...binding.authority, dayState: { ...binding.authority.dayState, day: h.day } } };
     h.state = useRunWiring(client, selected, currentBinding, confirm);
@@ -482,7 +481,7 @@ describe("served Logs decision authority", () => {
     assert.equal(h.refreshed, 1);
     await h.render(selectionAt(3));
     assert.equal(h.state?.state, "failed");
-    assert.equal(h.state?.error, formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text);
+    assert.equal(h.state?.error, "These logs don't match this run.");
     assert.equal(h.refreshed, 1);
   });
 
@@ -492,7 +491,7 @@ describe("served Logs decision authority", () => {
     const h = await harness(client);
     await h.render(selectionAt(4));
     assert.equal(h.state?.state, "failed");
-    assert.equal(h.state?.error, formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text);
+    assert.equal(h.state?.error, "These logs don't match this run.");
     assert.equal(h.refreshed, 0);
   });
 });

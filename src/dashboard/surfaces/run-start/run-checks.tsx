@@ -1,5 +1,6 @@
 import { Check, CircleAlert, TriangleAlert } from "lucide-react";
 import { Button, Spinner, dsIcon } from "../../ds/ui.js";
+import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { RunList, RunListRow, RunListSkeleton } from "../../ds/primitives/run-list.js";
 import type { RunCheckRow, RunChecksState } from "./run-checks-model.js";
 
@@ -14,8 +15,8 @@ function RowEnd({ item, onFix }: { item: RunCheckRow; onFix: (item: RunCheckRow)
   return <>{failed}<Button variant="secondary" size="sm" data-run-check-fix={item.check} onClick={() => onFix(item)}>{item.fix.label}</Button></>;
 }
 
-/** The Checks stage: only what is not ready, problems first. When nothing needs attention it says so in one line. */
-export function RunChecksStage({ checks, onFix }: { checks: RunChecksState; onFix: (item: RunCheckRow) => void }) {
+/** The Checks stage: only what is not ready, problems first. When nothing needs attention, or the checks cannot be read, it says so in one line. */
+export function RunChecksStage({ checks, onFix, onRecheck }: { checks: RunChecksState; onFix: (item: RunCheckRow) => void; onRecheck: () => void }) {
   const rows = checks.state === "ready" ? checks.rows : [];
   const problems = rows.filter(row => row.verdict !== "pass");
   const failed = problems.filter(row => row.verdict === "fail").length;
@@ -31,6 +32,7 @@ export function RunChecksStage({ checks, onFix }: { checks: RunChecksState; onFi
       </div>
       <p className="m-0 text-body text-ui-secondary">What this run needs. Problems come first.</p>
     </div>
+    {checks.state === "unavailable" && <FailureNotice sentence={checks.message} action={{ label: "Check again", onClick: onRecheck }} />}
     {checks.state === "checking" && <RunList label="Checking"><RunListSkeleton rows={CHECK_COUNT} /></RunList>}
     {checks.state === "ready" && problems.length === 0 && <RunList label="Check results"><RunListRow title={<span role="status">Ready to start</span>} lead={<Check aria-hidden className={`${dsIcon.lg} text-ui-positive`} />} /></RunList>}
     {checks.state === "ready" && problems.length > 0 && <RunList label="Check results">

@@ -58,7 +58,7 @@ it("post-publication uncertainty retains readback and never claims rollback", as
   const f = await fixture(() => { throw new Error("synthetic private value must not escape"); });
   try {
     await assert.rejects(f.repository.withLock(async tx => { tx.replace(f.record, null); }), {
-      code: "CHATGPT_CREDENTIAL_UNCERTAIN", message: "The ChatGPT credential change could not be confirmed. Read its current state before trying again.",
+      code: "CHATGPT_CREDENTIAL_UNCERTAIN", message: "The ChatGPT credential change could not be confirmed. Reload and try again.",
     });
     assert.deepEqual(f.repository.read(), f.record);
     const peer = createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.root });

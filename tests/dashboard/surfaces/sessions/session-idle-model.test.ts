@@ -85,7 +85,7 @@ it('retains the original held refresh across its own version move, cancels Remov
   const view = (next = card) => sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards: FIXTURE_DAY_WIRE.workerCards.map(old => old.workerId === card.workerId ? next : old) }), SERVED_CATALOG, FIXTURE_NOW);
   const schedule = new IdleSessionSchedule(); schedule.sync(view(), 0);
   const request = schedule.due(IDLE_REFRESH_MS, () => false)[0]; assert(request?.action === 'refresh');
-  const operations = { [card.workerId]: { request, state: 'uncertain' as const, message: 'No response' } };
+  const operations = { [card.workerId]: { request, state: 'pending' as const, message: 'No response' } };
   const admitted = { ...card, controls: basis(uuidOf(970), 2) };
   schedule.sync(view(admitted), IDLE_REFRESH_MS + 10, operations);
   assert.equal(schedule.view(IDLE_REFRESH_MS + 10)[card.workerId].waiting, true);
@@ -97,7 +97,7 @@ it('retains the original held refresh across its own version move, cancels Remov
   assert.deepEqual(schedule.due(IDLE_REFRESH_MS * 5 - 1, () => false), []);
   const second = schedule.due(IDLE_REFRESH_MS * 5, () => false)[0]; assert(second?.action === 'refresh');
   const secondAck = { ...admitted, controls: basis(uuidOf(970), 3) };
-  schedule.sync(view(secondAck), IDLE_REFRESH_MS * 5 + 1, { [card.workerId]: { request: second, state: 'uncertain', message: 'No response' } });
+  schedule.sync(view(secondAck), IDLE_REFRESH_MS * 5 + 1, { [card.workerId]: { request: second, state: 'pending', message: 'No response' } });
   assert.equal(schedule.view(IDLE_REFRESH_MS * 5 + 1)[card.workerId].waiting, true);
   schedule.confirm(second, IDLE_REFRESH_MS * 6, view(secondAck));
   assert.equal(schedule.view(IDLE_REFRESH_MS * 6)[card.workerId].remainingMs, IDLE_REFRESH_MS, 'second genuine cycle uses acknowledged control baseline');
@@ -107,7 +107,7 @@ it('retains the original held refresh across its own version move, cancels Remov
   const replaced = new IdleSessionSchedule(); replaced.sync(view(), 0);
   const original = replaced.due(IDLE_REFRESH_MS, () => false)[0]; assert(original.action === 'refresh');
   const replacement = { ...card, controls: basis(uuidOf(971), 1) };
-  replaced.sync(view(replacement), IDLE_REFRESH_MS + 20, { [card.workerId]: { request: original, state: 'uncertain', message: 'No response' } });
+  replaced.sync(view(replacement), IDLE_REFRESH_MS + 20, { [card.workerId]: { request: original, state: 'pending', message: 'No response' } });
   replaced.confirm(original, IDLE_REFRESH_MS + 30, view(replacement));
   assert.equal(replaced.view(IDLE_REFRESH_MS + 30)[card.workerId], undefined, 'a new member lifetime prevents stale acknowledgment rearming');
   replaced.sync(view(replacement), IDLE_REFRESH_MS * 8, { [card.workerId]: { request: original, state: 'confirmed', message: 'Original refresh confirmed' } });

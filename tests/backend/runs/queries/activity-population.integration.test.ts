@@ -112,7 +112,14 @@ describe("selected Analytics population", () => {
     f.add(8, { workflow: "separations" });
     f.add(9, { workflow: "separations", shape: "operation-member", parentSeed: 8 });
     f.publish();
+    const readSummaryPages = vi.spyOn(f.database, "queryRunSummaries");
+    const report = f.service.reports.read(range.from, range.to);
+    const reportPages = readSummaryPages.mock.calls.slice();
+    readSummaryPages.mockClear();
     const selected = f.service.read(range);
+    expect(selected.report).toEqual(report);
+    expect(readSummaryPages.mock.calls).toEqual(reportPages);
+    readSummaryPages.mockClear();
     expect(selected.population).toHaveLength(9);
     expect(selected.successfulTiming).toEqual([
       { workflowId: "missing-timing", totalMs: null, measured: 0, unmeasured: 1 },
@@ -126,7 +133,7 @@ describe("selected Analytics population", () => {
       { workflowId: "person-lookup", needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 2, unmeasuredRuns: 1, meanMs: { state: "present", value: 600 } } },
       { workflowId: "separations", needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } } },
     ]);
-    expect(selected.report.failures[0].sentence).toBe("This failure code is not in the current catalog. Review the recorded local evidence.");
+    expect(selected.report.failures[0].sentence).toBe("Relay did not recognize this failure. Open the run in Logs.");
     expect(selected.report.durations.totalMs).toBe(106200);
     expect(selected.report.durations.measuredRuns).toBe(5);
     expect(selected.report.durations.unmeasuredRuns).toBe(2);
@@ -134,6 +141,7 @@ describe("selected Analytics population", () => {
     expect(selected.population.every(row => row.readback === null)).toBe(true);
     expect(JSON.stringify(selected.population)).not.toContain("identity");
     expect(f.service.readSelected(range, selected.snapshot.token, { metric: "failed", page: 0 }).browse?.rows.map(row => row.runId)).toEqual([uuidOf(10)]);
+    expect(readSummaryPages.mock.calls).toEqual(reportPages);
     const browse = f.service.readSelected(range, selected.snapshot.token, { metric: "timed", page: 0 }).browse;
     expect(browse?.rows.map(row => row.runId)).toEqual([uuidOf(1), uuidOf(2)]);
   });
@@ -278,7 +286,7 @@ describe("selected Analytics population", () => {
     f.publish();
     const report = createActivityPopulationService({ ...f.input, descriptors: { resolve: workflow => workflow === "person-lookup" ? personLookupDescriptor : undefined } }).read(range).report;
     expect(report.failures).toEqual(["person-lookup", "retired-workflow"].map((workflowId, index) => ({ workflowId,
-      code: "INTERNAL_FAILURE", sentence: "Relay could not complete this request. Review the recorded local evidence before trying again.", runs: 1, transient: 0,
+      code: "INTERNAL_FAILURE", sentence: "Relay could not complete this request. Try again.", runs: 1, transient: 0,
       sample: [uuidOf(index + 20)], registration: workflowId === "person-lookup"
         ? { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" }
         : { state: "unregistered", reason: `workflow ${workflowId} is no longer registered; its label and category are unavailable` } })));
@@ -329,7 +337,7 @@ describe("selected Analytics population", () => {
     const current = f.service.read(range);
     expect(current.report).toEqual(selected.report);
     expect(current.snapshot.populationDigest).not.toBe(selected.snapshot.populationDigest);
-    expect(() => f.service.exportSelected(range, selected.snapshot.token)).toThrow("The selected Analytics population has changed");
+    expect(() => f.service.exportSelected(range, selected.snapshot.token)).toThrow("The Analytics results changed. Select the period again.");
   });
 
   it("keeps summary, workflow, population and export readback counts bound to verified receipts", async () => {

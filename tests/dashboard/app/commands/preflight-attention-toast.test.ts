@@ -8,9 +8,8 @@ describe("preflight attention toast", () => {
       { check: "ports.available", status: "fail" },
       { check: "authority.health", status: "fail" },
     ] });
-    assert.equal(toast?.title, "Relay started, but these need attention: Network ports.");
-    assert.equal(toast?.action, "Open readiness");
-    assert.equal(toast?.sticky, true);
+    assert.equal(toast?.title, "Needs attention in Settings: Network ports.");
+    assert.equal(toast !== undefined && ("action" in toast || "sticky" in toast), false);
     assert.equal(preflightAttentionToast({ results: [{ check: "authority.health", status: "fail" }] }), undefined);
     assert.equal(preflightAttentionToast({ results: [{ check: "ports.available", status: "pass" }] }), undefined);
   });

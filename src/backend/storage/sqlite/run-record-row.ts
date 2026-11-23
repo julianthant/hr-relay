@@ -53,35 +53,61 @@ export function runRecordColumns(input: PredecessorRunRecord, schema: z.ZodType<
   };
 }
 
-let nativeRecordReadScope: object | undefined;
+let nativeRecordReadScope = false;
+const MAX_MEMO_ROWS = 1024;
+// Large payloads can dominate retention well before the row limit.
+const MAX_MEMO_CHARACTERS = 8 * 1024 * 1024;
 
-/** Keeps decoded rows inside one synchronous SQL read snapshot. */
+/** Enables decoded-row reuse for synchronous SQL read snapshots. */
 export function withNativeRecordReadScope<Result>(read: () => Result): Result {
+  return withNativeRecordReadMemo(true, read);
+}
+
+export function withoutNativeRecordReadMemo<Result>(validate: () => Result): Result {
+  return withNativeRecordReadMemo(false, validate);
+}
+
+function withNativeRecordReadMemo<Result>(enabled: boolean, read: () => Result): Result {
   const previous = nativeRecordReadScope;
-  nativeRecordReadScope = {};
+  nativeRecordReadScope = enabled;
   try { return read(); }
   finally { nativeRecordReadScope = previous; }
 }
 
 export function createNativeRecordReadMemo<Result>() {
   type PhysicalRow = Readonly<Record<string, string | number | null>>;
-  const scopes = new WeakMap<object, Map<string, { row: PhysicalRow; columnCount: number; value: Result }>>();
-  return (row: PhysicalRow, read: () => Result, discriminator = ""): Result => {
-    if (nativeRecordReadScope === undefined || typeof row.id !== "string") return read();
-    let records = scopes.get(nativeRecordReadScope);
-    if (records === undefined) {
-      records = new Map();
-      scopes.set(nativeRecordReadScope, records);
-    }
-    const key = discriminator + row.id;
+  const records = new Map<string, { row: PhysicalRow; columnCount: number; value: Result; characters: number }>();
+  let retainedCharacters = 0;
+  return (row: PhysicalRow, read: () => Result, discriminator = "", keyColumn = "id"): Result => {
+    const id = row[keyColumn];
+    if (!nativeRecordReadScope || typeof id !== "string") return read();
+    const key = discriminator + id;
     const cached = records.get(key);
     const columns = Object.keys(row);
-    if (cached !== undefined && columns.length === cached.columnCount
-      && columns.every(column => Object.hasOwn(cached.row, column) && Object.is(row[column], cached.row[column]))) {
-      return structuredClone(cached.value);
+    if (cached !== undefined) {
+      records.delete(key);
+      if (columns.length === cached.columnCount
+        && columns.every(column => Object.hasOwn(cached.row, column) && Object.is(row[column], cached.row[column]))) {
+        records.set(key, cached);
+        return structuredClone(cached.value);
+      }
+      retainedCharacters -= cached.characters;
     }
     const record = read();
-    records.set(key, { row, columnCount: columns.length, value: structuredClone(record) });
+    let characters = 0;
+    for (const value of Object.values(row)) {
+      if (typeof value === "string") characters += value.length;
+    }
+    if (characters <= MAX_MEMO_CHARACTERS) {
+      const entry = { row, columnCount: columns.length, value: structuredClone(record), characters };
+      for (const [oldestKey, oldest] of records) {
+        if (records.size < MAX_MEMO_ROWS && retainedCharacters + characters <= MAX_MEMO_CHARACTERS) break;
+        records.delete(oldestKey);
+        retainedCharacters -= oldest.characters;
+      }
+      records.set(key, entry);
+      retainedCharacters += characters;
+    }
     return record;
   };
 }

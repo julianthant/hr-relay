@@ -16,7 +16,7 @@ const TIMELINE_POLL_MS = 250;
 const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
 
 // Notification polling has its own cadence; leases can change without spans.
-export const GATE_PARK_WATCH_MS = 5_000;
+export const GATE_PARK_WATCH_MS = 1_000;
 
 
 
@@ -72,16 +72,46 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   diagnosticRetentionTimer.unref();
   startupCleanups.push(() => clearInterval(diagnosticRetentionTimer));
 
+  // Capture positions before the initial fold so a peer commit during startup remains visible.
+  const timelineRevision = database.trackAuthorityTables(["timeline_events"]);
+  const workerRevision = database.trackAuthorityTables(["runs", "deleted_runs", "worker_slots", "worker_pools",
+    "run_batches", "auth_leases", "write_intents"]);
+  let key: string | { state: "unreadable" } = JSON.stringify(database.changeKey());
+  let timeline = timelineRevision(), workers = workerRevision();
+  let lastWall = clock.nowMs(), leaseExpiry = database.nextDuoLeaseExpiry(lastWall);
+  let safetyAt = clock.monotonicMs() + 60_000;
+
   // Fold whatever span history already exists before serving a single count.
   projection.rebuildFromTimeline();
   const initialHealth = projection.health();
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
-  // Read the shared SQLite cursor; process-local notifications cannot guarantee event delivery.
   const timelineTimer = setInterval(() => {
-    projection.ingestFromTimeline();
-    projection.reconcileWorkerAuthority();
+    try {
+      const current = JSON.stringify(database.changeKey());
+      const now = clock.nowMs(), elapsed = clock.monotonicMs();
+      const safety = elapsed >= safetyAt;
+      const leaseDue = now >= leaseExpiry || now < lastWall;
+      lastWall = now;
+      const degraded = projection.health().state === "degraded";
+      if (current === key && !safety && !leaseDue && !degraded) return;
+      const nextTimeline = timelineRevision(), nextWorkers = workerRevision();
+      if (safety || degraded || nextTimeline === undefined || nextTimeline !== timeline) projection.ingestFromTimeline();
+      if (safety || degraded || leaseDue || nextWorkers === undefined || nextWorkers !== workers) {
+        leaseExpiry = database.nextDuoLeaseExpiry(now);
+        projection.reconcileWorkerAuthority();
+      }
+      key = current;
+      timeline = nextTimeline;
+      workers = nextWorkers;
+      if (safety) safetyAt = elapsed + 60_000;
+    } catch {
+      key = { state: "unreadable" };
+      // An unreadable revision requires both passes; the projection owns degradation and rebuild.
+      projection.ingestFromTimeline();
+      projection.reconcileWorkerAuthority();
+    }
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();
   startupCleanups.push(() => clearInterval(timelineTimer));

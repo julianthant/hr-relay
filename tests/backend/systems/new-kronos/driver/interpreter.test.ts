@@ -382,7 +382,7 @@ describe("timecard grid structural completeness", () => {
         taskId: contract.id, error, occurredAt: "2026-08-27T18:00:00.000Z",
       }), true);
       assert.equal(failure.code, "TIMECARD_UNREADABLE");
-      assert.equal(failure.summary, "Kronos could not verify the timecard. Review it, then enter the confirmed separation dates manually.");
+      assert.equal(failure.summary, "Kronos could not verify the timecard. Enter the separation dates by hand.");
       assert.equal(failure.remediation[0]?.message, failure.summary);
       return true;
     });

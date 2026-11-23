@@ -10,6 +10,7 @@ import { createSettingsActivationRepositories } from "../../../../src/backend/st
 import { commandFromRow, insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -92,8 +93,8 @@ it("keeps initialization counts visible and uses the same eligibility for stoppe
       try {
         const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(child);
         assert.equal(inventory.empty, true);
-        assert.equal(inventory.counts.length, 49);
-        for (const [table, count] of [["commands", 1], ["command_audits", 1], ["settings", 1], ["settings_snapshots", 2], ["workbook_types", 1], ["exclusive_session_leases", 0]] as const) {
+        assert.deepEqual(inventory.counts.map(row => row.table), AUTHORITY_TABLE_REGISTRY.map(table => table.name));
+        for (const [table, count] of [["commands", 1], ["command_audits", 1], ["settings", 1], ["settings_snapshots", 2], ["workbook_types", 1], ["workbook_payloads", 0], ["exclusive_session_leases", 0]] as const) {
           assert.equal(inventory.counts.find(row => row.table === table)?.count, count);
         }
         assert.equal(inventory.artifactReferenceCount, 0);

@@ -434,6 +434,15 @@ describe_m4("logical item attempt grouping", () => {
     );
   });
 
+  it_m4("puts failed, review and parked runs under the Needs you filter and no others", () => {
+    const rows = (["failed", "awaiting-approval", "blocked", "running", "queued", "done", "cancelled"] as const)
+      .map((status, index) => (["failed", "done", "cancelled"].includes(status) ? settled : surface)({ runId: runId(index + 1), status }));
+    assert_m4.deepEqual(
+      filterQueueSurfaces_m4(rows, "needsYou").map((row) => row.status),
+      ["failed", "awaiting-approval", "blocked"],
+    );
+  });
+
   it_m4("does not promote historical attention over the selected item's current attempt", () => {
     const failed = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
     const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });

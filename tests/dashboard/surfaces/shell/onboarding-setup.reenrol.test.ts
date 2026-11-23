@@ -40,7 +40,19 @@ it("switches through the served port when both methods are proven and shows a re
     assert.equal(f.button("Use new devices")?.disabled, false);
     await act(async () => { f.button("Use new devices")?.click(); });
     assert.deepEqual(calls, ["complete"]);
-    assert.match(f.host.querySelector("[role=alert]")?.textContent ?? "", /Relay can switch to the new Duo setup only while no run/u);
+    assert.match(f.host.querySelector("[role=alert]")?.textContent ?? "", /The new Duo setup can only switch in while idle\. Try later\./u);
     assert.ok(f.button("Cancel setup"));
+  } finally { await f.close(); }
+});
+
+it("sends one close command when both footer actions are pressed before React re-renders", async () => {
+  const calls: string[] = [];
+  const pending = (name: string) => () => { calls.push(name); return new Promise<never>(() => undefined); };
+  const f = await mount(draft({ key: done, touch: done }, "ready"), { complete: pending("complete"), cancel: pending("cancel") });
+  try {
+    const use = f.button("Use new devices"), cancel = f.button("Cancel setup"); assert.ok(use); assert.ok(cancel);
+    await act(async () => { use.click(); use.click(); cancel.click(); });
+    assert.deepEqual(calls, ["complete"]);
+    assert.equal(f.button("Switching…")?.getAttribute("aria-busy"), "true");
   } finally { await f.close(); }
 });

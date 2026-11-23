@@ -196,7 +196,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
       const mutation = first === undefined ? { type: include[1] ? "restore-ocr-record" : "discard-ocr-record", payload: { recordId: include[0] } }
         : { type: "correct-ocr-record", payload: correctedOcrRecord(page, first[0], first[1]) };
       request = CommandRequestSchema.parse({ family: "ocr-review", ...mutation, commandId: crypto.randomUUID(), requestedBy: binding.scope.actorId,
-        requestedAt: binding.authority.nowIso, source: "dashboard", target: { runId: page.runId, expectedRevision: review.revision.revision } });
+        requestedAt: binding.authority.now(), source: "dashboard", target: { runId: page.runId, expectedRevision: review.revision.revision } });
     } catch {
       memory.attempt = { state: "refused", text: formatErrorCatalogFailure(createErrorCatalogFailure("OCR_REVIEW_REFUSED", {})).text };
       publishReview(memory);
@@ -233,7 +233,7 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
   };
   const approve = () => {
     if (!fresh || dirty || blocked || review?.approval === undefined || binding === undefined || page === undefined) return;
-    const commandId = crypto.randomUUID(), requestedAt = binding.authority.nowIso;
+    const commandId = crypto.randomUUID(), requestedAt = binding.authority.now();
     const selected = review.revision.records.filter(record => !record.discarded);
     const snapshot = OcrApprovedSnapshotSchema.parse({ snapshotId: commandId, sourceRunId: page.runId, revision: review.revision.revision,
       reviewDigest: review.digest, selectedRecordIds: selected.map(record => record.recordId), records: selected,

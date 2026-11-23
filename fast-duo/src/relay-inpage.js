@@ -34,7 +34,8 @@
         reject: error => { cleanup(); reject(error); },
       });
       signal?.addEventListener('abort', abort, { once: true });
-      if (Number.isFinite(nativeOptions?.timeout) && nativeOptions.timeout > 0) timer = setTimeout(() => cancel('timed-out'), nativeOptions.timeout);
+      const timeout = type === 'DUO_AUTOPILOT_SIGN' ? 15000 : nativeOptions?.timeout;
+      if (Number.isFinite(timeout) && timeout > 0) timer = setTimeout(() => cancel('timed-out'), timeout);
       window.postMessage({ type: 'RELAY_DUO_REQUEST', id, operation: type, request: { ...data, origin: location.origin }, nativeOptions }, location.origin);
     });
   }

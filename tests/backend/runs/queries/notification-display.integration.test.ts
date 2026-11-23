@@ -56,7 +56,7 @@ it.each([
   assert(wire.kind === "notification");
   assert.equal(wire.title, "Run failed");
   assert.deepEqual(wire.context, { state: "workflow-only", workflow: "Onboarding" });
-  assert.equal(wire.summary, "UCPath could not be reached. Check the connection and review the run evidence.");
+  assert.equal(wire.summary, "UCPath could not be reached. Check the connection.");
   world.authority.records.delete(current.envelope.runId);
   assert.deepEqual(notificationDisplayContext(record, deps), { state: "unavailable" });
 });

@@ -93,7 +93,7 @@ export function answeredOutcome(decision: Pick<LogDecision, "answered" | "answer
   if (id.startsWith("approve")) return { outcome: `${noun} approved`, kind: "done" };
   if (id.startsWith("reject")) return { outcome: `${noun} rejected`, kind: "rejected" };
   if (/^(retry|check-again$|reopen-browser$|sign-in-again$|recover$|resume$)/u.test(id)) return { outcome: "Retried", kind: "retry" };
-  return { outcome: "Resolved", kind: "done" };
+  return { outcome: decision.answered?.label ?? "Resolved", kind: "done" };
 }
 
 /** The failure card's served facts: the action it was attempting, the last completed step and the value row. A fact the backend did not serve stays absent. */

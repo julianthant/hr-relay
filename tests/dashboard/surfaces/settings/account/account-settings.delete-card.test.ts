@@ -47,6 +47,6 @@ describe("Settings > Account Delete card", () => {
     await mount(createElement(DeleteAccountControl, { presentation: { state: "deleting", personName: "Alex Morgan" } }));
     assert.equal(triggers()[0]?.textContent, "Deleting…");
     assert.equal(triggers()[0]?.disabled, true);
-    assert.match(host?.textContent ?? "", /erasure is not complete/u);
+    assert.match(host?.textContent ?? "", /Deleting your account…/u);
   });
 });

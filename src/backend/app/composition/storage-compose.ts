@@ -22,14 +22,14 @@ import { profileBrowserClosure } from "../../runtime/browser/profile-browser-clo
 import { activeSettingsConfig,activeSettingsRuntimeIdentity,readBootSettings } from "../../runtime/settings/settings-runtime.js";
 import { isOfflineMaintenanceOperationActive,OfflineMaintenanceOperationUnavailableError,offlineMaintenanceWorkspace,RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../../storage/admission/lifetime-lock.js";
 import { appendLocalDebug } from "../../storage/events/local-debug-log.js";
-import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
+import { readPrivateFile,withOperationProof } from "../../storage/configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import { prepareStoppedBackupClosure,probeRestoreProfileBrowsersClosed,ProfileRestoreBrowserCustodyUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { assertStoppedProfileResourcesClosed } from "../../storage/maintenance/profile-custody.js";
 import { fsyncPath,writePrivateStage } from "../../storage/private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
-import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
+import { rebuildRuntimeIsolation, runtimeProfile } from "../config/runtime-isolation.js";
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
@@ -483,6 +483,7 @@ async function inspectAndUpgradeRegisteredPersonStores(workspace: string, lifeti
           const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock,
             stage => logStartupUpgradeStage(workspace, clock, stage));
           if ((report.state !== "upgraded" && report.state !== "already-upgraded") || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
+          if (report.compaction === "failed") logStartupUpgradeStage(workspace, clock, "compaction-failed");
         });
       } catch (error) { hold(profileId, error, "upgrade"); continue; }
       try {
@@ -657,6 +658,8 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
   if (sourceWorkspace === targetWorkspace) throw new Error("fixed-layout-source-target-equal");
   lifetime.assertHeld();
   const journal = readFixedLayoutIntent(targetWorkspace);
+  const isolated = runtimeProfile !== "production";
+  if (isolated && journal !== undefined) throw new Error("runtime-profile-foreign-layout-journal");
   const unfinished = fixedLayoutUnfinished(journal?.phase ?? "absent");
   if (unfinished && journal?.sourceWorkspace !== sourceWorkspace) throw new Error("fixed-layout-recovery-source-foreign");
   let publication: FixedLayoutPublication | undefined;
@@ -666,8 +669,8 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
   }
   else {
     const targetControl = lstatSync(join(targetWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
-    const sourceControl = lstatSync(join(sourceWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
-    const sourceData = lstatSync(join(sourceWorkspace, rebuildRuntimeIsolation.stateRoot), { throwIfNoEntry: false });
+    const sourceControl = isolated ? undefined : lstatSync(join(sourceWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
+    const sourceData = isolated ? undefined : lstatSync(join(sourceWorkspace, rebuildRuntimeIsolation.stateRoot), { throwIfNoEntry: false });
     if (journal?.phase === "complete" || targetControl !== undefined) {
       if (targetControl === undefined || !existsSync(join(targetWorkspace, ".tracker", "control", "installation.json"))
         || !existsSync(join(targetWorkspace, ".tracker", "control", "locator.json"))
@@ -1244,14 +1247,15 @@ export function composeProfileRuntime(input: Readonly<{
       }
     },
   });
-  const assertCurrent = (token: string): void => {
+  const assertCurrent = (token: string): void => withOperationProof(() => {
     const available = session.prepareCurrentStorage(token);
     if (available.state !== "available") throw new ProfileSessionRefusedError(available.code);
-    const selected = captureSelectedProfileStorage(machine), entry = resources.get(selected.profileId)?.ordinary;
+    const entry = resources.get(available.profileId)?.ordinary;
     if (entry === undefined || entry.state !== "open" || entry.preparation !== undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     entry.admission.assertProfileRuntime();
-    selected.assertCurrent();
-  };
+    const selected = captureSelectedProfileStorage(machine);
+    if (selected.profileId !== available.profileId || selected.epoch !== available.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+  });
   const beginClose = (purpose: "logout" | "shutdown" = "logout"): void => {
     closePurpose = purpose;
     let initializationFailure: { error: unknown } | undefined;
@@ -1744,6 +1748,7 @@ export async function composeStorageCommand(
       return { output: rest.includes("--json") ? JSON.stringify(report, null, 2) : [
         `storage upgrade: ${report.state} (v${String(report.fromSchemaVersion)} → v${String(report.toSchemaVersion)})`,
         "credentials: unchanged",
+        ...(report.compaction === "failed" ? ["compaction: failed; the store is upgraded but larger than needed"] : []),
         ...(report.diagnostics === undefined ? [] : [
           `diagnostic stages: ${String(report.diagnostics.reclaimedStages)} reclaimed, ${String(report.diagnostics.retainedStages)} retained${report.diagnostics.capacityWarning ? "; retained evidence remains budget-accounted" : ""}`,
         ]),

@@ -20,11 +20,12 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
       const metadata = z.strictObject({ id: z.uuid(),
         operation: z.union(NotificationCommandRequestSchema.options.map(option => option.shape.type)),
         outcome: z.union(CommandResultSchema.options.map(option => option.shape.state)).refine(state => state !== "pending", "assistant-activity-audit-pending"), completedAt: z.iso.datetime() });
+      // Keep each assistant action on the outer side of the indexed audit lookup.
       return ports.database.prepare(`SELECT a.id, json_extract(a.payload_json,'$.command.type') AS operation,
         json_extract(d.payload_json,'$.result.state') AS outcome, d.created_at AS completedAt
-        FROM assistant_actions a JOIN assistant_chats c ON c.id=a.chat_id
-        JOIN command_audits d ON d.command_id=a.command_id
-        JOIN database_states owner ON owner.id=1 AND owner.profile_id=c.profile_id
+        FROM assistant_chats c JOIN database_states owner ON owner.id=1 AND owner.profile_id=c.profile_id
+        JOIN assistant_actions a ON c.id=a.chat_id
+        CROSS JOIN command_audits d ON d.command_id=a.command_id
         WHERE json_extract(a.payload_json,'$.binding.profileId')=c.profile_id
         AND json_extract(a.payload_json,'$.command.family')='notification'
         AND json_extract(a.payload_json,'$.command.source')='assistant'

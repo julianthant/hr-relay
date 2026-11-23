@@ -18,7 +18,6 @@ force pushes and deletion; squash and rebase merging are disabled. Drafts cannot
 | `staging` | `staging` |
 | `main` | `production` |
 
-Push roadmap-only commits (`docs/roadmap/**`) straight to `development`.
 The [release instructions](../AGENTS.md#pr-and-release-flow) own production promotion and synchronization.
 Cursor Bugbot reviews pushes and only comments. The [PR flow](../AGENTS.md#pr-and-release-flow)
 owns reviewer/coder responsibility, repairs and escalation. `needs-human` identifies work requiring
@@ -27,19 +26,34 @@ the operator; red required checks prevent merging.
 ## Workflows and checks
 
 `Development` (`development.yml`), `Staging` (`staging.yml`) and `Production` (`production.yml`)
-share the test jobs in `checks.yml`, with kind `fast`, `portable` and `release` respectively.
-Development and Staging run on pull requests to their named branches. Production runs on pull
+share the test jobs in `checks.yml`, with kinds `fast` (Development), `full` (the scheduled
+Development run), `portable` (Staging and staging-to-main releases) and `release` (hotfix and
+manual releases). Development and Staging run on pull requests to their named branches. Production runs on pull
 requests into `main`, operator manual starts with a required title, and pushes to `main` for
 CodeQL only. Pull request runs are titled with their pull request title.
 
-A Development run starts at most ten runner jobs: names and plan together, lint, static (typecheck
-and build), privacy, three unit shards, two architecture shards and the `development` gate.
-It starts no integration, perf, smoke or macOS job. Drafts keep names, plan and gate, static,
-privacy and selected unit shards only. Path filters may omit test suites, including all suites
-for Markdown-only changes. The fast gate folds unit and architecture proofs into its result;
-it requires successful selected shards, exactly skipped omitted work and all mandatory checks.
+A Development run for a `task/**` push or a non-task pull request runs plan, lint, static
+(typecheck and build), privacy, three unit shards, two architecture shards, the integration
+shards `scripts/test/affected-tests.ts` selects (at most eight five-minute shards), `proof` and the `development` gate. It starts no perf, smoke
+or macOS job. Drafts keep plan, static, privacy and selected unit shards only. Path filters may
+omit unit and architecture suites, including all suites for Markdown-only changes. `proof` folds
+the shard results into one result; it requires successful selected shards, exactly skipped
+omitted work and all mandatory checks. A `task/**` pull request runs only the `development` gate:
+names, the workflow allowlist, then the `proof` of the push run at the pull request head SHA. It
+waits up to twenty minutes for a running proof and fails after a minute when no run exists. An
+edited pull request reruns only that gate and reuses the last proof at its head SHA.
 
-Staging runs the full portable check: three unit shards, two architecture shards, thirty
+Every 20 minutes Development's `decide` job reads GitHub through `scripts/ci/full-run.ts` and
+starts the full run only when the development head has no green full run and either no other run
+is queued or in progress or no full run started in the last six hours. A running full run keeps CI
+busy, so full runs never overlap; a failed head retries on the next idle tick. Otherwise nothing
+else runs. The full run, titled `Full run <sha>`, runs the
+`full` plan (every unit, architecture and integration shard, lint, static, privacy, perf, smoke
+and five macOS native shards), CodeQL and `npm audit --omit=dev --audit-level=high`. Its `full`
+job folds those results and writes the SHA and verdict to the run summary. A green full run is
+that job's success in a scheduled `development.yml` run at exactly that commit.
+
+Staging and staging-to-main releases run the full portable check: three unit shards, two architecture shards, thirty
 integration shards, lint, static, privacy, perf and smoke. Ready Staging and Production pull
 requests include perf and smoke even for Markdown-only changes. Both jobs install Chromium,
 build the dashboard and use tmpfs; smoke runs `npm run test:smoke`, perf runs `npm run test:perf`.
@@ -47,16 +61,26 @@ Draft Staging and Production pull requests run lint, static, privacy and affecte
 Manual releases omit perf and smoke and select all routine and native suites.
 No workflow runs coverage; `npm run test:coverage` stays local with unchanged floors.
 
-Production retains its five macOS native shards on full releases, selected native unit and
+Staging pull requests from `development` pass `full-proof` only when their head commit has a green
+full run. Task pull requests merge straight into `development`; unfinished work merges unwired (no
+nav entry or route until the feature's last task) and no flag framework exists. When the full run
+on `development` is red, nothing else merges into it until the failing task is reverted or fixed
+forward. A staging-to-main release passes `full-proof` only when the staging head, or one of its
+parents, has a green full run and carries exactly the staging head's tree. The main-to-staging
+sync passes without a full run because main moves only through the production gate.
+
+Production retains its five macOS native shards on hotfix and manual releases, selected native unit and
 integration proofs, and isolated single-worker serial and storage groups. Native integration
 first verifies full Chromium through `scripts/test/chromium-preflight.ts`; setup has no retries.
 CI takes Node from `.node-version`, caches npm and preserves test timeouts, RAM and time-scale
 budgets. The [check rules](../AGENTS.md#checks) own placement and release authorization.
-Security jobs run only in Production: CodeQL on main pull requests and pushes, and
-`npm audit --omit=dev --audit-level=high` on main pull requests. CodeQL default setup must be off.
+CodeQL runs in the full run, on hotfix pull requests and on pushes to main; `npm audit
+--omit=dev --audit-level=high` runs in the full run and on main pull requests. CodeQL default
+setup must be off.
 
-The `staging` gate needs `names` and `checks`; `production` needs `checks`, `codeql` and
-`dependencies` and refuses a pull request head other than `staging` or `hotfix/*`.
+The `staging` gate needs `names`, `checks` and `full-proof`; `production` needs `checks`,
+`codeql`, `dependencies` and `full-proof`, requires `full-proof` for `staging` heads and `codeql`
+for `hotfix/*` heads, and refuses any other head.
 Gates fail for any failed or cancelled dependency. Shared proof verification rejects missing
 outcomes and requires exactly skipped results for legitimate omissions. The Development caller
 runs its own `development` gate with the shared plan and job results;

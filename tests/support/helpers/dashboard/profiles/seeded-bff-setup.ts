@@ -13,6 +13,7 @@ import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
 import { seed } from "../served-fixtures/seeded-lifecycle.js";
 
+import { SCRIPTED_WORKFLOW, type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
 import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
@@ -38,6 +39,8 @@ export interface SeededServer {
   readonly baseUrl: string;
   readonly day: string;
   readonly runIds: Readonly<Record<string, string>>;
+  /** Drives Work-Study runs through the real executor; present only when started with `scriptedRuns`. */
+  readonly scripted: ScriptedExecutor;
   close(): Promise<void>;
 }
 
@@ -45,7 +48,7 @@ const retainedSeededFixtureOwners = new Set<object>();
 
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
-composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub">;
+composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub" | "scripted">;
 assertServedBundle: typeof BundleTypes.assertServedBundle;
 dateNavigationReader: typeof DateNavigationServerTypes.dateNavigationReader;
 seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
@@ -101,7 +104,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; /** Opt-in, with productApp: Work-Study runs execute on a script the test holds. */ scriptedRuns?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
@@ -136,7 +139,8 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     try {
     seedRuntimeConfig(database, clock);
     const descriptors = {
-      resolve: (workflowId: string) => (workflowId === WORKFLOW_ID ? personLookupDescriptor : undefined),
+      resolve: (workflowId: string) => workflowId === WORKFLOW_ID ? personLookupDescriptor
+        : input.scriptedRuns === true && workflowId === SCRIPTED_WORKFLOW.id ? SCRIPTED_WORKFLOW : undefined,
     };
     const projection = createRunQueueProjection({
       timeline: database.authority.timelineEvents,
@@ -189,9 +193,10 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true});
+    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
+      scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); } } : undefined});
     held.services = services;
-    const { app, hub } = services;
+    const { app, hub, scripted } = services;
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
@@ -237,6 +242,10 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       baseUrl: `http://127.0.0.1:${address.port}`,
       day: SEEDED_DAY,
       runIds: Object.freeze(runIds),
+      get scripted(): ScriptedExecutor {
+        if (scripted === undefined) throw new Error("start the seeded server with scriptedRuns to drive runs");
+        return scripted;
+      },
       close: (): Promise<void> => {
         if (closePromise !== undefined) return closePromise;
         closePromise = (async () => {
@@ -246,6 +255,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
             server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
           });
           hub.close();
+          await scripted?.close();
         } catch (error) {
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workers } });

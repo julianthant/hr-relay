@@ -6,6 +6,7 @@ import { createSharedCommands } from "../../../../src/dashboard/client/commands/
 import { createDashboardTransport } from "../../../../src/dashboard/client/transport.js";
 import { CommandRequestSchema, BulkRunCommandRequestSchema, type CommandRequest, type BulkRunCommandRequest, CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import { deriveBulkChildCommandId } from "../../../../src/rules/commands/command-groups.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 
 const id = (n: number) => `${String(n).padStart(8, "0")}-1111-4111-8111-111111111111`;
 const RUN = id(1);
@@ -494,3 +495,34 @@ for (const code of ["RUN_START_READINESS_BLOCKED", "RUN_START_READINESS_UNAVAILA
     assert.deepEqual(outcome.reply, reply);
   });
 }
+
+function settingsSave(n: number) {
+  const patch = { "actor.label": { set: `label ${n}` } } as const;
+  return CommandRequestSchema.parse({ commandId: id(n), requestedAt: "2026-08-03T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
+    family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+}
+
+it.each([true, false])("frees the lock of an unknown Settings save once its read-back resolves it (landed: %s)", async landed => {
+  const h = harness();
+  h.setReply(() => { throw new Error("reply lost"); });
+  assert.equal((await h.executor.execute(settingsSave(40), h.options())).kind, "uncertain");
+  h.setReply(() => { throw new Error("reply lost"); });
+  const blocked = await h.executor.execute(settingsSave(41), h.options());
+  assert.equal(blocked.kind === "refused" && blocked.reason, "locked", "an unknown save holds the settings lock");
+  assert.equal(h.sent.length, 1);
+  const resolved = h.executor.resolve(id(40), landed, h.options().scope);
+  assert.equal(resolved?.kind, landed ? "confirmed" : "refused");
+  assert.equal(h.executor.resolve(id(40), !landed, h.options().scope), undefined, "a resolved attempt cannot be resolved again");
+  await h.executor.execute(settingsSave(42), h.options());
+  assert.equal(h.sent.length, 2, "the next save reaches Relay");
+});
+
+it("never resolves an unknown HR write from a surface read-back", async () => {
+  const h = harness();
+  h.setReply(() => { throw new Error("reply lost"); });
+  assert.equal((await h.executor.execute(command(), h.options())).kind, "uncertain");
+  assert.equal(h.executor.resolve(command().commandId, false, h.options().scope), undefined);
+  const retained = h.executor.retainedAttempts()[0];
+  assert.equal(retained.outcome?.kind, "uncertain", "the parked write keeps its unknown outcome for its decision card");
+});

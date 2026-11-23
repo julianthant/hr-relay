@@ -25,7 +25,7 @@ export interface DashboardAuthority {
   readonly profileTarget?: RunHistoryTarget;
   readonly epoch: Readonly<{ client: DashboardClient; bootstrap: FrontendBootstrapWire }>;
   readonly catalog: readonly WorkflowCatalogEntry[];
-  readonly nowIso: string;
+  readonly now: () => string;
   readonly today: string;
   readonly day: string;
   readonly dayState: DashboardDayState;

@@ -1,6 +1,6 @@
 import { Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button, Dialog, DialogContent, DialogFooter, IconButton, ResultRow, dsIcon } from "../../../ds/ui.js";
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, ResultRow, dsIcon } from "../../../ds/ui.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { formatSetting } from "../editor/settings-draft-model.js";
 import { ProtectedSettingField } from "./settings-protected-field.js";
@@ -31,9 +31,9 @@ export function ProtectedPencilRow({ editor, name, label, thing, description, on
     </span>} />
     <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
       <DialogContent size="sm" title={`Edit ${thing}`} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
-        <ProtectedSettingField editor={editor} name={name} description={description} onRemove={onRemove} />
+        <DialogBody><ProtectedSettingField editor={editor} name={name} description={description} onRemove={onRemove} /></DialogBody>
         <DialogFooter>
-          <Button variant="muted" onClick={close}>Cancel</Button>
+          <Button variant="secondary" onClick={close}>Cancel</Button>
           <Button variant="primary" onClick={() => { credentials.submit(); setOpen(false); }}>Save</Button>
         </DialogFooter>
       </DialogContent>

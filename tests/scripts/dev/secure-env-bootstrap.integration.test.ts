@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath,pathToFileURL } from "node:url";
 import { describe,it } from "vitest";
+import packageManifest from "../../../package.json" with { type: "json" };
 import { runSecureEnvironmentBootstrap as runBootstrap,secureEnvironmentEntrypoint } from "../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { testProcessImport } from "../../support/compiled-process.js";
@@ -12,6 +12,7 @@ import { testProcessImport } from "../../support/compiled-process.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const { scripts } = packageManifest;
 const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:");
 const runSecureEnvironmentBootstrap: typeof runBootstrap = (args, dependencies) => runBootstrap(args, {
   acquireLifetimeLock: () => acquireRuntimeLifetimeLock(0), ...dependencies,
@@ -208,10 +209,6 @@ describe("secure environment bootstrap", () => {
   });
 
   it("routes every environment-backed package command through the fixed bootstrap", () => {
-    const scripts = (JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
-      scripts: Record<string, string>;
-    }).scripts;
-
     assert.equal(scripts.cli, "tsx scripts/dev/secure-env-bootstrap.ts cli");
     assert.equal(
       scripts["dashboard:prod"],
@@ -225,6 +222,10 @@ describe("secure environment bootstrap", () => {
       Object.values(scripts).some((command) => command.includes("--env-file")),
       false,
     );
+  });
+
+  it("builds the dashboard bundle before starting the production runtime", () => {
+    assert.equal(scripts["predashboard:prod"], "npm run web:build");
   });
 
   it("refuses every entrypoint selector outside the closed CLI and canary-smoke set", () => {

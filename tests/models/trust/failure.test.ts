@@ -21,7 +21,7 @@ import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/writ
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
 
 const RAW = "ucpath:termination|10812345|2026-08-29";
-const UNREGISTERED = "This failure code is not in the current catalog. Review the recorded local evidence.";
+const UNREGISTERED = "Relay did not recognize this failure. Open the run in Logs.";
 const NODE_ID = NodeIdSchema.parse("searching");
 const TASK_ID = TaskIdSchema.parse("ucpath/search-person-org");
 

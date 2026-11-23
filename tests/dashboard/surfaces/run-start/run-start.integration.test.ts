@@ -10,14 +10,14 @@ import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
-const { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount, openedRuns } = createMountedRerunWorld(profileFixtures.create);
+const { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount } = createMountedRerunWorld(profileFixtures.create);
 afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
   it("lost response survives unmount and exact replay without a second run", async () => {
     const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm");
     assert.equal(field("Employee ID").value, "10812345"); await press("Continue"); await act(async () => checkbox("Dry run").click());
-    h.loseResponse(); await press("Start dry run"); assert.match(text(), /uncertain/u); const roots = h.queueRoots;
+    h.loseResponse(); await press("Start dry run"); assert.match(text(), /Not confirmed yet/u); const roots = h.queueRoots;
     await unmount(); document.body.replaceChildren();
     await mount(h, source); assert.match(text(), /needs readback/u); await press("Replay exact submission");
     assert.equal(document.querySelector('[role="dialog"]') === null, true, 'exact replay must close the launch dialog'); assert.match(text(), /Run submission confirmed/u); assert.deepEqual(h.queueRoots, roots);
@@ -46,11 +46,11 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await press("Replay exact submission"); assert.equal(h.finalCommands.length, 2);
     assert.deepEqual(h.finalCommands[1], h.finalCommands[0]); assert.equal(h.queueRoots.length, 2);
   });
-  it("the started toast opens the new run's Logs", async () => {
+  it("the started toast is text only", async () => {
     const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm"); await press("Continue");
     await act(async () => checkbox("Dry run").click()); await press("Start dry run");
     assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun created/u);
-    await press("Open run"); assert.equal(openedRuns.length, 1); assert.match(openedRuns[0], /\S/u);
+    assert.equal([...document.querySelectorAll("button")].some(node => node.textContent === "Open run"), false);
   });
   it("reopening a start after closing with typed input says the draft was kept; an untouched start says nothing", async () => {
     const h = await setup(); await mount(h, undefined);

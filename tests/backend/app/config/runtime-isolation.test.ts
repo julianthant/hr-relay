@@ -6,6 +6,7 @@ import { describe,it,vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-paths.js";
+import { runtimeProfiles, profileForDashboardPort } from "../../../../src/models/config/define-runtime-isolation.js";
 import * as secrets from "../../../../src/models/config/secrets.js";
 import { windowsLocalApplicationData } from "../../../../src/models/config/secrets.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
@@ -170,4 +171,22 @@ it("observes the host authority once when deriving unadmitted default paths", ()
     assert.equal(home.mock.calls.length, process.platform === "win32" ? 0 : 1);
     assert.equal(local.mock.calls.length, process.platform === "win32" ? 1 : 0);
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
+});
+
+it("keeps each installation, credential namespace and listener on its approved profile", () => {
+  for (const [profile, folder, backend, frontend, lock] of [
+    ["production", "Relay", 3938, 5174, 3939],
+    ["staging", "Relay-staging", 3941, 5175, 3942],
+    ["development", "Relay-development", 3940, 5176, 3943],
+  ] as const) {
+    assert.deepEqual(runtimeProfiles[profile], { backendPort: backend, frontendPort: frontend, lockPort: lock, namespace: folder });
+    assert.equal(profileForDashboardPort(String(backend)), profile);
+    assert.equal(profileForDashboardPort(String(frontend)), profile);
+    assert.equal(profileForDashboardPort(String(lock)), undefined);
+    assert.equal(applicationDataWorkspace({ platform: "darwin", homeDirectory: "/fixture" }, profile), `/fixture/Library/Application Support/${folder}`);
+    assert.equal(applicationDataWorkspace({ platform: "win32", localAppData: "C:\\Fixture" }, profile), `C:\\Fixture\\${folder}`);
+    assert.equal(secrets.readRuntimeProfile(secrets.workerBootstrapEnvironment({ RELAY_RUNTIME_PROFILE: profile })), profile);
+  }
+  assert.equal(secrets.readRuntimeProfile({}), "production");
+  for (const invalid of ["", "prod", "../Relay"]) assert.throws(() => secrets.workerBootstrapEnvironment({ RELAY_RUNTIME_PROFILE: invalid }));
 });

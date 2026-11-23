@@ -73,7 +73,7 @@ async function harness(enabled = true, initiallyFailed = false) {
   const scope = { client, authority: epoch, actorId: "local-operator", dayRequest };
   let activeScope: CommandExecutionScope = scope;
   const executor = new CommandExecutor(() => activeScope);
-  const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, nowIso: now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
+  const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, now: () => now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
     dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "live" }, refresh() {}, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
   function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding }); return null; }
@@ -97,7 +97,7 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
 });
 it("shows retained failed-run workflow and reason without unavailable text or an inferred source policy", () => {
-  const summary = "UCPath could not be reached. Check the connection and review the run evidence.";
+  const summary = "UCPath could not be reached. Check the connection.";
   const retained = row("run-failed", { title: "Run failed", summary,
     context: { state: "workflow-only", workflow: "Onboarding" }, sourceEvent: { state: "unavailable" } });
   const projection = inboxProjection([retained], now);
@@ -187,7 +187,7 @@ it("checks the target of a published notice that has no source policy and says s
   assert.equal(notificationPolicy(bare), undefined); h.setRows([bare]); h.refuseTarget();
   await act(async () => { h.listeners[0](publication(bare)); await new Promise(resolve => setTimeout(resolve, 0)); });
   assert(h.requests.some(path => path.endsWith("/target")));
-  assert.match(h.value.notice, /no longer available/);
+  assert.match(h.value.notice, /This notification’s target is gone\. Refresh the inbox\./u);
 });
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();

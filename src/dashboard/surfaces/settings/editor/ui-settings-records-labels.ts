@@ -1,16 +1,9 @@
-import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
 import type { EditorValue } from "../../../../models/dashboard/settings-editor.js";
 
 export const PROFILE_WORKFLOW_FACTS = [
   { key: "displayName", label: "Timekeeper name", target: "profile.displayName" },
   { key: "initials", label: "Timekeeper initials", target: "profile.initials" },
 ] as const;
-
-const PROVIDER_NAMES: Readonly<Record<string, string>> = Object.freeze({
-  geocodeCensus: "Census geocoding",
-  geocodeNominatim: "Nominatim geocoding",
-});
 
 const PROVIDER_FIELDS: Readonly<Record<string, { readonly label: string; readonly unit?: string }>> = Object.freeze({
   timeoutMs: { label: "Request timeout", unit: "milliseconds" },
@@ -26,10 +19,6 @@ function words(value: string): string {
     .replace(/([A-Z])([A-Z][a-z])/gu, "$1 $2")
     .replaceAll("_", " ")
     .replace(/^./u, character => character.toLocaleUpperCase());
-}
-
-export function providerName(key: string): string {
-  return PROVIDER_NAMES[key] ?? words(key);
 }
 
 export function providerFieldPresentation(key: string): { readonly label: string; readonly unit?: string } {
@@ -83,64 +72,4 @@ export function groupDeploymentFacts(facts: Readonly<Record<string, EditorValue>
     groups.set(label, entries);
   }
   return [...groups].map(([label, entries]) => ({ label, entries }));
-}
-
-export interface SettingsLeafGroup {
-  readonly label: string;
-  readonly leaves: readonly EditableSettingsLeafWire[];
-}
-
-export interface SettingsValueGroup {
-  readonly label: string;
-  readonly value: EditableSettingsLeafWire["effectiveValue"];
-}
-
-export function settingsValueGroups(leaf: EditableSettingsLeafWire): readonly SettingsValueGroup[] {
-  const sources = [
-    ...(leaf.settingsValue === undefined ? [] : [{ label: "Saved", value: leaf.settingsValue }]),
-    { label: "Active", value: leaf.activeValue },
-    { label: "Default", value: leaf.defaultValue },
-  ];
-  const groups = new Map<string, { label: string; value: SettingsValueGroup["value"] }>();
-  for (const source of sources) {
-    const key = source.value === undefined ? "not-set" : canonicalJsonStringify(source.value);
-    const group = groups.get(key);
-    groups.set(key, group === undefined
-      ? { label: source.label, value: source.value }
-      : { ...group, label: `${group.label} and ${source.label}` });
-  }
-  return [...groups.values()];
-}
-
-export function differingSettingsValues(leaf: EditableSettingsLeafWire): readonly SettingsValueGroup[] {
-  const groups = settingsValueGroups(leaf);
-  return groups.length > 1 ? groups : [];
-}
-
-function groupLabel(sectionId: string, path: string): string {
-  const parts = path.split(".");
-  if (sectionId === "annual-dates") return "Job end date";
-  if (sectionId === "providers") return providerName(parts[1] ?? "Provider");
-  if (sectionId === "display") return "Primary display";
-  if (sectionId === "general") return "Operator";
-  if (sectionId === "routes") return "System destinations";
-  if (sectionId === "performance") return parts[0] === "daemon" ? "Worker sessions" : "Run capacity";
-  if (sectionId === "paths") {
-    const stem = parts[1] ?? "paths";
-    if (/^(?:browser|duo)/iu.test(stem)) return "Browser sessions";
-    if (/^(?:state|artifact)/iu.test(stem)) return "Runtime storage";
-    return "Reports and documents";
-  }
-  return words(parts[0] ?? sectionId);
-}
-
-export function groupSettingsLeaves(sectionId: string, leaves: readonly EditableSettingsLeafWire[]): readonly SettingsLeafGroup[] {
-  const groups = new Map<string, EditableSettingsLeafWire[]>();
-  for (const leaf of leaves) {
-    const label = groupLabel(sectionId, leaf.path);
-    const group = groups.get(label) ?? [];
-    group.push(leaf);
-    groups.set(label, group);
-  }
-  return [...groups].map(([label, groupedLeaves]) => ({ label, leaves: groupedLeaves }));
 }

@@ -19,13 +19,12 @@ import { sessionsSample } from "../../../support/fixtures/dashboard/sessions-sam
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("clears the idle countdown when the audit proves a refresh whose reply was lost", async () => {
+it("restarts the idle countdown when the read-back proves a refresh whose reply was lost", async () => {
   vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const requests: SessionPreviewRequest[] = [];
   const port: SessionPreviewCommandPort = {
     send: async request => { requests.push(request); return { id: request.id, state: "uncertain", message: "Lost acknowledgment" }; },
-    check: async request => ({ id: request.id, state: "uncertain", message: "unused" }),
-    audited: async request => ({ id: request.id, state: "confirmed" }),
+    check: async request => ({ id: request.id, state: "confirmed" }),
   };
   let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
   const initial = sessionsSample("active");
@@ -34,9 +33,36 @@ it("clears the idle countdown when the audit proves a refresh whose reply was lo
   try {
     await act(async () => root.render(createElement(Harness)));
     await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS));
+    for (let step = 0; step < 12; step += 1) await act(async () => vi.advanceTimersByTimeAsync(250));
     assert.equal(requests.length, 1);
-    assert.equal(commands?.operations["sample-worker-4"].state, "confirmed");
-    assert.deepEqual(commands?.idleCountdowns["sample-worker-4"], { remainingMs: IDLE_REFRESH_MS, waiting: false });
+    assert.equal(commands?.operations["sample-worker-4"], undefined, "a refresh found by reading back leaves no note");
+    const countdown = commands?.idleCountdowns["sample-worker-4"];
+    assert.equal(countdown?.waiting, false);
+    assert.ok((countdown?.remainingMs ?? 0) > IDLE_REFRESH_MS - 3000, "the countdown restarts from the read-back");
+  } finally { await act(async () => root.unmount()); }
+});
+
+it("sends no idle refresh and shows no countdown for worker cards held from another day", async () => {
+  vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const requests: SessionPreviewRequest[] = [];
+  const port: SessionPreviewCommandPort = {
+    send: async request => { requests.push(request); return { id: request.id, state: "confirmed" }; },
+    check: async request => ({ id: request.id, state: "confirmed" }),
+  };
+  let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
+  const loaded = sessionsSample("active");
+  assert(loaded.state === "ready");
+  const held = { ...loaded, stale: true } as const;
+  function Harness() { commands = useSessionPreviewCommands(held, [], port); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Harness)));
+    assert.deepEqual(commands?.idleCountdowns, {});
+    await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS + 3000));
+    assert.equal(requests.length, 0);
+    commands?.control("sample-worker-4", "remove");
+    await act(async () => vi.advanceTimersByTimeAsync(250));
+    assert.equal(requests.length, 0, "a held card sends no command");
   } finally { await act(async () => root.unmount()); }
 });
 
@@ -69,7 +95,7 @@ function servedWorld(count: number, gateReads = 0) {
   const client: DashboardClient = { ...inner, dashboardDay: async requested => { const read = await inner.dashboardDay(requested); served.push(new WeakRef(read)); return read; } };
   const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const executor = new CommandExecutor(() => scope);
-  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: base.day, nowIso: FIXTURE_NOW,
+  const binding = (): SessionCommandBinding => ({ client, executor, scope, day: base.day, now: () => FIXTURE_NOW,
     dayState: { subscribePublications: () => { throw new Error("not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog: buildWorkflowCatalog([], servedFixtureSources([])) }));
   const control = (index: number, action: "pause" | "resume") => { const card = day.workerCards[index]; return port.send({ id: crypto.randomUUID(), target: card.workerId, action, authorityKey: sessionWorkerAuthorityKey(card) }); };

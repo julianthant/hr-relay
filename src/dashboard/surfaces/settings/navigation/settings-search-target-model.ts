@@ -2,7 +2,7 @@ import { createContext, useEffect, type RefObject } from "react";
 
 export const SettingsSearchTargetContext = createContext<{ target?: string; visit: number }>({ visit: 0 });
 
-export function useSettingsSearchArrival(content: RefObject<HTMLDivElement | null>, target: string | undefined, visit: number, section: string | undefined, label?: string): void {
+export function useSettingsSearchArrival(content: RefObject<HTMLDivElement | null>, target: string | undefined, visit: number, section: string | undefined, label?: string, hold = false): void {
   useEffect(() => {
     const container = content.current;
     if (container === null || target === undefined) return undefined;
@@ -35,16 +35,18 @@ export function useSettingsSearchArrival(content: RefObject<HTMLDivElement | nul
       // Restart the brief arrival cue when the same result is selected again.
       void row.offsetWidth;
       row.classList.add("settings-search-arrival");
-      const clearCue = () => { row?.classList.remove("settings-search-arrival"); row?.style.removeProperty("--settings-arrival-left"); row?.style.removeProperty("--settings-arrival-right"); };
-      timer = setTimeout(clearCue, 1400);
+      const clearCue = () => { row?.classList.remove("settings-search-arrival"); row?.removeAttribute("data-held"); row?.style.removeProperty("--settings-arrival-left"); row?.style.removeProperty("--settings-arrival-right"); };
+      // A Fix landing keeps its cue until the operator touches the row; a search arrival fades.
+      if (hold) { row.setAttribute("data-held", "true"); for (const type of ["input", "change", "pointerdown", "keydown"]) row.addEventListener(type, clearCue, { once: true }); }
+      else timer = setTimeout(clearCue, 1400);
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(arrive); };
     observer.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-state", "hidden", "style"] });
     schedule();
     return () => {
-      observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(timer); row?.classList.remove("settings-search-arrival");
+      observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(timer); row?.classList.remove("settings-search-arrival"); row?.removeAttribute("data-held");
       row?.style.removeProperty("--settings-arrival-left"); row?.style.removeProperty("--settings-arrival-right");
       for (const [name, value] of previousAttributes) { if (value === null) row?.removeAttribute(name); else row?.setAttribute(name, value); }
     };
-  }, [content, target, visit, section, label]);
+  }, [content, target, visit, section, label, hold]);
 }

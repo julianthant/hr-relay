@@ -1,8 +1,6 @@
-import { Info, TriangleAlert } from "lucide-react";
+import { Info } from "lucide-react";
 import { useState } from "react";
 import type { z } from "zod";
-import { cn } from "../../../lib/utils.js";
-import { classifyRunShape, shortFingerprint } from "./run-identity-model.js";
 import {
   BulletList,
   Button,
@@ -13,14 +11,9 @@ import {
   Field,
   IconButton,
   Input,
-  KeyValueList,
   MetaLine,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   Well,
   dsIcon,
-  dsText,
 } from "../../../ds/ui.js";
 import type { ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import {
@@ -28,133 +21,10 @@ import {
   type QueueSurfaceWireSchema,
 } from "../../../../models/dashboard/projection.js";
 import { renameDraftProblem } from "./rename-draft.js";
-import { DryRunMark } from "../run-state-chips.js";
 import type { ActionTarget } from "../../shared/actions/actions.js";
 import { runTiming } from "../../shared/status/format.js";
-import { testInstanceHazardTitle, testInstanceSystems } from "../../shared/status/test-instance-hazard.js";
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
-
-/** the fingerprint cut for the eye lives in `run-identity-model.ts` — see the note there */
-
-/** The run's provenance, in the Log Panel's bottom bar. The two hazards stay VISIBLE */
-export function RunProvenanceBar({
-  surface,
-  workflowLabel,
-  currentAppVersion,
-  servedDescriptorHash,
-}: {
-  surface: QueueSurfaceWire;
-  workflowLabel: string;
-  currentAppVersion: string;
-  /** The fingerprint THIS RUN'S OWN WORKFLOW is served under today, or
- * `undefined` when this build registers no such workflow (§9.22 item 3). */
-  servedDescriptorHash: string | undefined;
-}) {
-  const testSystems = testInstanceSystems(surface.resolvedInstances);
-  const ranShape = shortFingerprint(surface.descriptorHash);
-  const shape = classifyRunShape(surface.descriptorHash, servedDescriptorHash);
-  const shapeMoved = shape.state !== "current";
-  /** the build the RUN was enqueued */
-  const ranAppVersion = surface.appVersion.state === "present"
-    ? surface.appVersion.value
-    : undefined;
-  const staleApp = ranAppVersion !== undefined && ranAppVersion !== currentAppVersion;
-
-  return (
-    <span className="flex min-w-0 shrink-0 items-center gap-[var(--ds-space-snug)]">
-      <span
-        title={
-          shape.state === "moved"
-            ? `Ran under ${workflowLabel} shape ${ranShape}; ${workflowLabel} runs are served by ${shortFingerprint(shape.servedShape)} now. The run's SHAPE moved, so these are not comparable — a retry would replay retired code.`
-            : shape.state === "unserved"
-              ? `Ran under ${workflowLabel} shape ${ranShape}; this dashboard serves no ${workflowLabel} descriptor at all, so there is nothing to compare it with — and nothing for a retry to run.`
-              : `${workflowLabel} ${ranShape} — the descriptor currently serving ${workflowLabel} runs.`
-        }
-        className={cn(
-          dsText.meta,
-          dsText.nums,
-          "shrink-0",
-          shapeMoved ? "text-[color:var(--ds-status-waiting-fg)]" : "text-[color:var(--ds-fg-muted)]",
-        )}
-      >
-        {}
-        {ranShape}
-      </span>
-
-      {/* Hazards, never disclosed. */}
-      {/* Rehearsal meaning keeps the same distinct hue in the identity bar and queue. */}
-      {surface.dryRun && <DryRunMark />}
-      {testSystems.length > 0 && (
-        <span
-          title={testInstanceHazardTitle(testSystems)}
-          className={cn(
-            dsText.meta,
-            "inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-status-waiting-fg)]",
-          )}
-        >
-          <TriangleAlert aria-hidden className={dsIcon.sm} />
-          test
-        </span>
-      )}
-
-      <Popover>
-        <PopoverTrigger asChild>
-          <IconButton size="xs" label="Run provenance" icon={<Info aria-hidden className={dsIcon.sm} />} />
-        </PopoverTrigger>
-        <PopoverContent title="Provenance" description={surface.traceId} width="lg" side="top" align="end">
-          <div className="flex flex-col gap-[var(--ds-space-base)]">
-            <KeyValueList
-              items={[
-
-                { key: "Workflow", value: `${workflowLabel} ${ranShape}`, tone: shapeMoved ? "warning" : "default" },
-                {
-                  key: "App build",
-                  value: ranAppVersion ?? "unstamped",
-                  tone: staleApp || ranAppVersion === undefined ? "warning" : "default",
-                },
-                { key: "Requested by", value: surface.actorId ?? "Not recorded" },
-                /* Repeated priority and actor facts belong in disclosure, not identical chips on every row. */
-                { key: "Priority", value: surface.priority === "interactive" ? "On" : "Off" },
-                /* Keep the operator name beside run identity so renaming never obscures the subject. */
-                ...(surface.displayName.state === "present"
-                  ? [{ key: "Named", value: surface.displayName.value }]
-                  : []),
-
-                ...surface.resolvedInstances.map(({ system, instance }) => ({
-                  key: system,
-                  value: instance,
-                  tone: instance === "test" ? ("warning" as const) : ("default" as const),
-                })),
-              ]}
-            />
-            <BulletList
-              items={[
-                surface.priority === "bulk"
-                  ? "Priority is off: this run yields the worker to any run with Priority on — a 50-person packet must never make one urgent separation wait."
-                  : "Priority is on: this run takes a worker ahead of runs without Priority.",
-                shape.state === "moved"
-                  ? `This run's SHAPE is a prior descriptor. It is not comparable with a ${shortFingerprint(shape.servedShape)} run, and a retry would replay retired code.`
-                  : shape.state === "unserved"
-                    ? `This build registers no ${workflowLabel} descriptor, so this run's shape cannot be compared with a current one — and this run cannot be retried here.`
-                    : "The descriptor fingerprint is the run's shape; a row served under the same fingerprint is the same run shape.",
-                ranAppVersion === undefined
-                  ? `${surface.appVersion.state === "absent" ? surface.appVersion.reason : ""} — the app build is the other half of the archive key, so this run can only be told apart from a current one by its descriptor.`
-                  : staleApp
-                    ? `Ran under app ${ranAppVersion}; this dashboard is ${currentAppVersion}. The app build is the other half of the archive key.`
-                    : `Ran under the app build this dashboard is running (${currentAppVersion}), which is why it is stated once on the Sessions bar rather than on every run.`,
-                /* Rename changes no identity facts; explain it only on named runs. */
-                ...(surface.displayName.state === "present"
-                  ? [`Named by you. The subject is still ${surface.title} and the trace id ${surface.traceId} is unchanged — history matches either way.`]
-                  : []),
-              ]}
-            />
-          </div>
-        </PopoverContent>
-      </Popover>
-    </span>
-  );
-}
 
 /* ── rename ──────────────────────────────────────────────────────────────── */
 
@@ -264,7 +134,7 @@ function RenameDialogBody({
             <BulletList
               items={[
                 "It appears on the queue row and in the Run Panel.",
-                "The subject, the trace id and the run number are untouched, so everything in history still matches.",
+                "The subject and history are unchanged.",
                 "It is yours — nothing downstream reads it.",
               ]}
             />

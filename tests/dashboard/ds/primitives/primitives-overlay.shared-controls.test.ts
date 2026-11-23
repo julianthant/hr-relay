@@ -20,12 +20,15 @@ describe("Dialog and ConfirmDialog", () => {
   it("sizes sm 400, md 560, lg 880 and always shows a close X", async () => {
     for (const [size, width] of [["sm", 400], ["md", 560], ["lg", 880]] as const) {
       const unmount = await mount(createElement(Dialog, { open: true },
-        createElement(DialogContent, { size, title: "Title", hideClose: true, children: createElement(DialogFooter, null, "x") })));
+        createElement(DialogContent, { size, title: "Title", children: createElement(DialogFooter, null, "x") })));
       const surface = dialog();
       assert.ok(surface, size);
       assert.ok(surface.className.includes(`max-w-[${width}px]`), `${size}: ${surface.className}`);
       assert.ok(surface.querySelector('button[aria-label="Close"]'), `${size} has no close X`);
-      assert.match(surface.querySelector("h2")?.className ?? "", /font-medium/u);
+      assert.match(surface.querySelector("h2")?.className ?? "", /font-semibold/u);
+      assert.match(surface.querySelector("h2")?.className ?? "", /--ds-dialog-title-size/u);
+      assert.match(surface.className, /rounded-\[var\(--ds-radius-dialog\)\]/u);
+      assert.doesNotMatch(surface.className, /(^|\s)border(\s|$)/u, `${size} has a border`);
       await unmount();
     }
   });

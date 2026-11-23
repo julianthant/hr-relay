@@ -28,7 +28,7 @@ for (const source of ["show", "poll", "initial", "initial-network"] as const) it
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {}) })));
     if (source.startsWith("initial")) {
       assert.equal(host.querySelector("h1")?.textContent, "Log in to Relay");
-      if (source === "initial") assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /Browser closure could not be verified/);
+      if (source === "initial") assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /The browser may not have closed\. No file or credential was changed\./);
       assert.equal(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled, true);
       await act(async () => vi.advanceTimersByTimeAsync(1000));
       assert.equal(host.querySelector("form"), null);

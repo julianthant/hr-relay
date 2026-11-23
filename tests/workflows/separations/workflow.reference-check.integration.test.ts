@@ -186,7 +186,7 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.equal(failure?.nodeId, "subject");
     assert.equal(failure.code, "EMPLOYEE_ID_ABSENT");
     assert.match(failure.summary, /Kuali document 4444.*Employee ID/u);
-    assert.match(projectFailureForOperator(failure, true).summary, /document does not show an Employee ID/iu);
+    assert.match(projectFailureForOperator(failure, true).summary, /The separation document has no Employee ID/u);
     assert.deepEqual(c.searches, []);
     assert.deepEqual(c.nodeSpans(run, "job-summary"), []);
     assert.deepEqual(c.writeIntents(run), []);
@@ -208,7 +208,7 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.equal(failure.code, "EMPLOYEE_ID_NO_MATCH");
     assert.match(failure.summary, /No UCPath person matched Employee ID ••••0000/u);
     const card = projectFailureForOperator(failure, true);
-    assert.match(card.summary, /No UCPath person matched the Employee ID on the separation document/iu);
+    assert.match(card.summary, /No UCPath person matches the Employee ID on the separation document/u);
     assert.ok(!JSON.stringify(card).includes(COMPOSITION_EID));
     assert.deepEqual(c.searches, [{ kind: "by-eid", emplId: COMPOSITION_EID }]);
     assert.deepEqual(c.nodeSpans(run, "job-summary"), []);

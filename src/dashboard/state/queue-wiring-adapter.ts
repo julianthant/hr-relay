@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { DashboardDayWire, QueueBusinessOutcome, QueueMemberSelection } from "../../models/dashboard/projection.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
-import { filterQueueSurfaces, lookupBatchId, queueBatches, queueItemKey, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
+import { filterQueueSurfaces, lookupBatchId, queueItemKey, type QueueSortKey, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import type { QueueHandlers, QueueViewState } from "../surfaces/queue/queue.js";
 import type { StatusBucket } from "../surfaces/shell/shell-model.js";
 
@@ -15,20 +15,18 @@ export function useQueueWiring(input: Readonly<{
   selectedMember?: QueueMemberSelection;
   openMember?: QueueHandlers["onOpenMember"];
   openWells: ReadonlySet<string>;
-  selectMode: boolean;
-  bulkIds: ReadonlySet<string>;
-  nowIso: string;
+  /** Read when the view recomputes; ticking ages read the clock inside the row's leaves. */
+  now: () => string;
+  sort?: QueueSortKey;
   selectRun: (runId: string, partitionDay?: string) => void;
   openRelatedRun: NonNullable<QueueHandlers["onOpenLinked"]>;
   onWells: (next: ReadonlySet<string>) => void;
-  onBulkIds: (next: ReadonlySet<string>) => void;
   setBatchGrouping: NonNullable<QueueHandlers["onSetBatchGrouping"]>;
-  exitQueueSelection: () => void;
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
   renameTitle?: QueueHandlers["onRenameTitle"];
 }>) {
-  const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
-    selectRun, openRelatedRun, selectedMember, openMember, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
+  const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, now, sort,
+    selectRun, openRelatedRun, selectedMember, openMember, onWells, setBatchGrouping,
     runQueueAction, renameTitle } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
@@ -74,27 +72,29 @@ export function useQueueWiring(input: Readonly<{
     surfaces.flatMap(surface => surface.outcome === undefined ? [] : [[surface.runId, surface.outcome] as const]),
   ), [surfaces]);
 
+  // Rows measure against the instant they arrived; their elapsed texts and names tick from the clock.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- surfaces only decides when to re-read the instant
+  const nowIso = useMemo(() => now(), [surfaces, now]);
+  // The order re-reads the instant whenever the rows, the order or the selection change, never on a tick.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- these inputs only decide when to re-read the instant
+  const sortNowIso = useMemo(() => now(), [surfaces, sort, selectedRunId, selectedMember, openWells, activeWorkflowId, now]);
+
   const viewState = useMemo(
     (): QueueViewState => ({
       ...(selectedRunId === undefined ? {} : { selectedRunId }),
       ...(selectedMember === undefined ? {} : { selectedMember }),
       openWells,
-      selectMode,
-      bulkIds,
       panelWorkflowId: activeWorkflowId,
       nowIso,
     }),
-    [selectedRunId, selectedMember, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
+    [selectedRunId, selectedMember, openWells, activeWorkflowId, nowIso],
   );
-
-  const batches = useMemo(() => queueBatches((allRows ?? []).filter(surface => lookupBatchId(surface) !== undefined)), [allRows]);
 
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
       onSetBatchGrouping: setBatchGrouping,
       onSelect: runId => selectRun(runId),
       ...(openMember === undefined ? {} : { onOpenMember: openMember }),
-      onExitSelection: exitQueueSelection,
       onAction: runQueueAction,
       onToggleWell: (runId) => {
         const next = new Set(openWells);
@@ -102,24 +102,13 @@ export function useQueueWiring(input: Readonly<{
         else next.add(runId);
         onWells(next);
       },
-      onToggleBulk: (key) => {
-        const batch = batches.find(batch => batch.key === key);
-        const targets = batch === undefined ? [key] : batch.members.map(member => member.runId);
-        const selected = targets.every(runId => bulkIds.has(runId));
-        const next = new Set(bulkIds);
-        for (const runId of targets) {
-          if (selected) next.delete(runId);
-          else next.add(runId);
-        }
-        onBulkIds(next);
-      },
       onOpenParent: openRelatedRun,
       onOpenLinked: openRelatedRun,
       ...(renameTitle === undefined ? {} : { onRenameTitle: renameTitle }),
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, openRelatedRun, exitQueueSelection, openMember, batches, renameTitle],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, openRelatedRun, openMember, renameTitle],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);
-  return { surfaces, outcomes, viewState, queueHandlers, actionsOf };
+  return { surfaces, outcomes, viewState, sortNowIso, queueHandlers, actionsOf };
 }

@@ -16,18 +16,19 @@ Read this reference for runtime commands and environment behavior. The
 | Coverage of unit, integration and architecture | `npm run test:coverage` |
 | Watch | `npm run test:watch` |
 | Runtime CLI | `npm run cli` |
-| Backend and Vite together | `npm run dashboard` |
+| Daily dashboard on the main checkout | `npm run dashboard:prod` at http://127.0.0.1:3938 |
+| Backend and Vite for feature checkouts and live dry runs | `npm run dashboard` at http://127.0.0.1:5174 |
 | Backend alone | `npm run backend` |
 | Vite alone, with an existing backend | `npm run web` |
-| Production dashboard | `npm run web:build`, then `npm run dashboard:prod` |
 | Windows observer preparation | `npm run build:observer-policy` |
-| Roadmap generation and freshness | `npm run roadmap`, then `npm run roadmap:check` |
 
 The CLI exposes help, phase, dashboard, worker, explain, storage, OCR and test-data commands.
-Workflow execution starts from the signed-in dashboard Run surface. Ctrl+C on the combined dev
-command stops both servers. Separate Vite sessions need a restart after the backend restarts to
-renew ownership proof. Contract fingerprints are computed in memory without preparation. A running
-dashboard freezes its build id at start, so worker code changes need a runtime restart.
+Workflow execution starts from the signed-in dashboard Run surface. The daily command builds the
+production bundle before the secure bootstrap starts the backend. Ctrl+C stops the dashboard.
+On a feature checkout, Ctrl+C on the combined dev command stops both servers. Separate Vite sessions
+need a restart after the backend restarts to renew ownership proof. Contract fingerprints are computed
+in memory without preparation. A running dashboard freezes its build id at start, so worker code
+changes need a runtime restart.
 [Guards and tests](../../../../docs/reference/guards-and-tests.md) describes script selection and build identity.
 
 ## Operational isolation
