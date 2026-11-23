@@ -55,7 +55,7 @@ export function createSettingsRead<Value>() {
       sequence += 1; pending = undefined; stale += 1;
       publish({ state: "loading", value: snapshot.value });
       const again = last;
-      if (again !== undefined && again.signal?.aborted !== true) void startRead(again.read, again.code, again.milliseconds, again.signal).catch(() => undefined);
+      if (again !== undefined && again.signal?.aborted !== true) void startRead(again.read, again.code, again.milliseconds, again.signal).catch(() => snapshot);
     },
     read(reader: (signal: AbortSignal) => Promise<Value>, code: ErrorCatalogCode, milliseconds?: number, signal?: AbortSignal): Promise<Value> { return startRead(reader, code, milliseconds, signal); },
   };
