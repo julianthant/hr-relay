@@ -27,7 +27,7 @@ function hello(cursor: string, projectionGeneration = 7): Record<string, unknown
 }
 
 function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[], projectionGeneration = 7): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+  return { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
 }
 
 /** The cursor a change follows when nothing was skipped: the one before its own. */
@@ -38,6 +38,7 @@ function cursorBefore(cursor: string): string {
 function replacePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
     type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
     after: cursorBefore(cursor),
@@ -53,6 +54,7 @@ function replacePatch(cursor: string, rowRevision: number): Record<string, unkno
 function removePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
     type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
     after: cursorBefore(cursor),
@@ -225,7 +227,7 @@ describe("dashboard day subscription — cursor idempotence", () => {
 
   it("moves the held cursor on a change with no day part and delivers no day", () => {
     const h = liveAtCursorTwo();
-    h.streams[0].push({ type: "change", topic: "dashboard-day", cursor: "pc:5", after: "pc:2", position: 0 });
+    h.streams[0].push({ type: "change", topic: "dashboard-day", rows: [], cursor: "pc:5", after: "pc:2", position: 0 });
     assert.equal(h.days.length, 2);
     h.streams[0].push(replacePatch("pc:6", 3));
     assert.equal(h.days.length, 3, "the next change follows the cursor the empty change set");
@@ -432,7 +434,7 @@ it("rejects a wrong-day snapshot and ignores callbacks from superseded handles",
   h.streams[1].push(hello("pc:2"));
   h.streams[1].push(snapshotEnvelope("pc:3", [surfaceOf(3)]));
   assert.equal(h.days.length, prior + 1);
-  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:4",
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:4",
     payload: { ...dayOf([surfaceOf(4)], "pc:4"), day: "2026-08-02" } });
   assert.equal(h.days.length, prior + 1);
   const state = h.states.at(-1); assert.equal(state?.state, "stopped");
@@ -449,7 +451,7 @@ describe("dashboard day subscription authority", () => {
       const h = subscribe();
       h.streams[0].push(hello("pc:1"));
       const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : field === "projectionGeneration" ? 8 : "pc:2" };
-      h.streams[0].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload });
+      h.streams[0].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload });
       assert.equal(h.days.length, 0);
       assert.equal(h.states.at(-1)?.state, "stopped");
       h.close();
@@ -472,7 +474,7 @@ it("rejects a lower-cursor snapshot with stale authority instead of silently dis
   for (const field of ["day", "descriptorHash", "projectionGeneration"] as const) {
     const h = liveAtCursorTwo();
     const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : 8 };
-    h.streams[0].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload });
+    h.streams[0].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload });
     assert.equal(h.days.length, 2);
     const state = h.states.at(-1);
     assert.equal(state?.state, "stopped");
@@ -490,7 +492,7 @@ it("resets a high cursor on same-generation descriptor replacement and publishes
   assert.equal(h.streams[1].lastEventId, "pc:2");
   assert.equal(h.streams[1].lastProjectionGeneration, 7);
   h.streams[1].push({ ...hello("pc:1"), descriptorHash });
-  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload: { ...dayOf([surfaceOf(5)], "pc:1"), descriptorHash } });
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload: { ...dayOf([surfaceOf(5)], "pc:1"), descriptorHash } });
   assert.equal(h.days.length, 3);
   assert.equal(h.days[2].descriptorHash, descriptorHash);
   assert.equal(h.days[2].queueSurfaces[0].rowRevision, 5);

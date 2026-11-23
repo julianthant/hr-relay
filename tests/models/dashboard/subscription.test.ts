@@ -7,14 +7,14 @@ const { RUN_1, RUN_2, HASH_A, QUEUE, DAY } = createDashboardModelFixtures();
 
 
 describe("subscription snapshots, changes, and resets", () => {
-  const snapshot = { topic: "dashboard-day", position: 4, payload: DAY };
-  const change = { topic: "dashboard-day", after: "pc:1", position: 4, day: { operation: "replace-queue-surface", target: { runId: RUN_1, rowRevision: 1 }, replacement: QUEUE } };
+  const snapshot = { topic: "dashboard-day", position: 4, payload: DAY, rows: [] };
+  const change = { topic: "dashboard-day", after: "pc:1", position: 4, rows: [], day: { operation: "replace-queue-surface", target: { runId: RUN_1, rowRevision: 1 }, replacement: QUEUE } };
 
   it("parses the dashboard-day snapshot and change arms", () => {
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", cursor: "pc:2", ...snapshot }).success, true);
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change }).success, true);
-    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", topic: "dashboard-day", cursor: "pc:2", after: "pc:1", position: 0 }).success, true,
-      "a change without a day part moves the cursor only");
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", topic: "dashboard-day", cursor: "pc:2", after: "pc:1", position: 0, rows: [] }).success, true,
+      "a change without a day part or rows moves the cursor only");
     const hello = { type: "hello", wireVersion: 1, descriptorHash: HASH_A, projectionGeneration: 1, cursor: "pc:2" };
     assert.equal(DashboardStreamEnvelopeSchema.safeParse(hello).success, true);
     assert.equal(DashboardStreamEnvelopeSchema.safeParse(hello).success, true, "duplicate cursor delivery remains representable and idempotent");
@@ -31,17 +31,28 @@ describe("subscription snapshots, changes, and resets", () => {
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change, day: DAY }).success, false);
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "patch", topic: "dashboard-day", cursor: "pc:2", payload: change.day }).success, false,
       "the patch envelope is gone");
-    for (const missing of ["after", "position"] as const) {
+    for (const missing of ["after", "position", "rows"] as const) {
       const { [missing]: _omitted, ...rest } = change;
       assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...rest }).success, false, `a change names its ${missing}`);
     }
-    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "dashboard-day", cursor: "pc:2", payload: DAY }).success, false,
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "dashboard-day", cursor: "pc:2", payload: DAY, rows: [] }).success, false,
       "a snapshot names its position");
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "dashboard-day", cursor: "pc:2", position: 4, payload: DAY }).success, false,
+      "a snapshot names its rows");
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "reset-required", reason: "silent-drop", cursor: "pc:2" }).success, false);
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "dashboard-day", position: 4, payload: DAY }).success, false);
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change,
       day: { operation: "replace-queue-surface", target: { runId: RUN_2, rowRevision: 1 }, replacement: QUEUE } }).success, false);
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change,
       day: { ...change.day, update: { runId: RUN_2 } } }).success, false);
+  });
+
+  it("carries a run panel row as a whole value, available or refused", () => {
+    const refused = { model: "run-panel", key: RUN_1, value: { state: "refused", error: { state: "error", code: "SECTION_UNAVAILABLE", message: "not served", retryable: false } } };
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change, rows: [refused] }).success, true);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", cursor: "pc:2", ...snapshot, rows: [refused] }).success, true);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change, rows: [{ ...refused, model: "run-logs" }] }).success, false,
+      "only declared row models ride the stream");
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change, rows: [{ ...refused, value: { state: "loading" } }] }).success, false);
   });
 });

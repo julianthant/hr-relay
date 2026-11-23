@@ -6,7 +6,8 @@ import { QUEUE_ROW_STORIES } from "./queue-row-stories.js";
 import { RUN_DIALOG_STORIES } from "./run-dialog-stories.js";
 import { RUN_PANEL_STORIES } from "./run-panel-stories.js";
 import { SESSIONS_STORIES } from "./sessions-stories.js";
+import { SETTINGS_STORIES } from "./settings-stories.js";
 import { SHELL_STORIES } from "./shell-stories.js";
 import { SIGN_IN_STORIES } from "./sign-in-stories.js";
 
-export const CATALOGUE: readonly CatalogueEntry[] = Object.freeze([...QUEUE_ROW_STORIES, ...SHELL_STORIES, ...SIGN_IN_STORIES, ...RUN_PANEL_STORIES, ...RUN_DIALOG_STORIES, ...INTAKE_STORIES, ...SESSIONS_STORIES, ...NOTIFICATIONS_STORIES]);
+export const CATALOGUE: readonly CatalogueEntry[] = Object.freeze([...QUEUE_ROW_STORIES, ...SHELL_STORIES, ...SIGN_IN_STORIES, ...RUN_PANEL_STORIES, ...RUN_DIALOG_STORIES, ...INTAKE_STORIES, ...SETTINGS_STORIES, ...SESSIONS_STORIES, ...NOTIFICATIONS_STORIES]);
