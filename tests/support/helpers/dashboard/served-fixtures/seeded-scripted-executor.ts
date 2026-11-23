@@ -189,10 +189,11 @@ export function createScriptedExecutor(deps: Readonly<{
   const ids = sequentialIdFactory("9");
   const runWorkbooks = createRunWorkbookService({ database, clock });
   const sources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent: () => admission.assertProfileRuntime() });
-  /** A results workbook published to the library is this system's write: recorded when asked, every other library call is a read. */
-  const recordingPublishes = (run: RunRecord, adapter: ReturnType<typeof createWorkbookLibraryAdapter>) => ({ ...adapter,
+  /** A results workbook published to the library from the script's write node is that workflow's write: recorded when asked. */
+  const recordingPublishes = (run: RunRecord, script: ScriptedWorkflow, adapter: ReturnType<typeof createWorkbookLibraryAdapter>) => ({ ...adapter,
     invoke: (...args: Parameters<typeof adapter.invoke>) => {
-      if (args[0].payload.schemaHash !== deriveSchemaHash(WorkbookReferenceReadRequestSchema, "output")) recorded.push({ runId: run.envelope.runId, nodeId: heldNode(run.envelope.runId), eid: "" });
+      const nodeId = heldNode(run.envelope.runId);
+      if (nodeId === script.writeNode && args[0].payload.schemaHash !== deriveSchemaHash(WorkbookReferenceReadRequestSchema, "output")) recorded.push({ runId: run.envelope.runId, nodeId, eid: "" });
       return adapter.invoke(...args);
     } });
   const runtimes = new Map<string, Promise<Runtime>>();
@@ -255,7 +256,7 @@ export function createScriptedExecutor(deps: Readonly<{
             resolveDescriptor, assertCurrent: () => admission.assertProfileRuntime() }) }),
           "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({ clock, reader: createApprovedOcrRecordReader({ database, run: claimed, reader: lifecycle,
             resolveDescriptor, assertCurrent: () => admission.assertProfileRuntime() }) }),
-          "workbooks.library": recordingPublishes(claimed, createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: claimed.envelope.runId, clock,
+          "workbooks.library": recordingPublishes(claimed, script, createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: claimed.envelope.runId, clock,
             publicationSource: () => ({ workflowId: target.id, workflowLabel: target.label, partitionDay: searchPartitionDay(new Date(claimed.envelope.enqueuedAt)) }),
             references: { runId: claimed.envelope.runId, write: () => { throw new Error("the scripted workflow writes no reference"); }, read: command => runWorkbooks.read(claimed, command),
               verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } })) } };
