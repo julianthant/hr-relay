@@ -1,4 +1,5 @@
-import { cellText, type SheetCell, type SheetRow, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
+import { cellText } from '../../../rules/spreadsheets/cell-text.js';
+import type { SheetCell, SheetRow, EditableSheet, EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.js";
 import { SPREADSHEET_FIELDS, spreadsheetField } from '../../../models/fields/workbook-fields.js';
 import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';
