@@ -18,7 +18,7 @@ export function availableSections(
     "logs",
     ...(review ? (["review"] as const) : []),
     ...(authority.input.workbookReferences === undefined ? [] : ["workbook-writes"] as const),
-    ...(settled && trust !== undefined ? (["receipt"] as const) : []),
+    ...(settled && trust !== undefined && trust.receiptAvailable?.(authority.envelope.runId) !== false ? (["receipt"] as const) : []),
     "context-data",
     "context-attempts",
     ...(terminal && lifecycle.outcome === "failed" && trust !== undefined

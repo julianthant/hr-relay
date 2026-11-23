@@ -200,7 +200,7 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
         const frontendAvailable = frontendBindable || frontendInspection?.state === "owned";
         if (!backendAvailable || !frontendAvailable) {
           const frontendReason = frontendInspection?.state === "not-owned"
-            ? ` (${frontendInspection.reason})`
+            ? ` (${frontendInspection.reason}${frontendInspection.cleanupFailure === undefined ? "" : "; refused response not released"})`
             : "";
           const occupied = [
             ...(backendAvailable ? [] : [`backend ${String(backendPort)}`]),

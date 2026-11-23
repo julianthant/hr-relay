@@ -316,6 +316,82 @@ describe("composed worker runtime", () => {
     assert.equal(stopped, 1, "composeWorkerRuntime must await source shutdown before returning");
   });
 
+  it("reports a gate source stop failure together with the worker failure", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const primary = new Error("claim admission refused"), stopFailure = new Error("gate source stop refused");
+    const port: GateSourcePort = {
+      kind: "external",
+      sourceId: "composition-stop-failure-fixture",
+      bindCorrelation: () => "synthetic-correlation",
+      subscribe: () => Promise.resolve(() => Promise.reject(stopFailure)),
+    };
+    const reported = await composeWorkerRuntime({
+      ...composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 }),
+      gateSourcePorts: [port],
+      afterClaimAdmissionCheck: () => { throw primary; },
+    }).then(() => assert.fail("the worker must report its failures"), (error: unknown) => error);
+    const seen = new Set<unknown>(), pending = [reported];
+    while (pending.length > 0) {
+      const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+      if (value instanceof AggregateError) pending.push(...(value.errors as unknown[]));
+      if (value instanceof Error) pending.push(value.cause);
+    }
+    assert.ok(seen.has(primary), "the worker failure must survive the gate source stop failure");
+    assert.ok(seen.has(stopFailure), "the gate source stop failure must be reported");
+  });
+
+  it("disposes the worker IPC routing listener after a rejected gate source stop, reporting both failures", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const primary = new Error("claim admission refused"), stopFailure = new Error("gate source stop refused");
+    const port: GateSourcePort = {
+      kind: "external",
+      sourceId: "composition-router-stop-fixture",
+      bindCorrelation: () => "synthetic-correlation",
+      subscribe: () => Promise.resolve(() => Promise.reject(stopFailure)),
+    };
+    const input = composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 });
+    const registry = input.admission.readProfileRegistry();
+    const slots = reopen(stateRoot, clock);
+    const slot = slots.withAuthorityTransaction(repositories => repositories.workerSlots.active(WORKFLOW_ID).find(entry => entry.poolIndex === POOL_INDEX_1));
+    slots.close();
+    assert.ok(slot && registry.activeProfileId);
+    const ipc = { send: Object.getOwnPropertyDescriptor(process, "send"), connected: Object.getOwnPropertyDescriptor(process, "connected"),
+      disconnect: Object.getOwnPropertyDescriptor(process, "disconnect") };
+    const listening = process.listeners("message");
+    let routed = false, reported: unknown;
+    try {
+      Object.defineProperty(process, "send", { configurable: true, writable: true,
+        value: (_message: unknown, _handle: unknown, _options: unknown, callback?: (error: Error | null) => void) => { callback?.(null); return true; } });
+      Object.defineProperty(process, "connected", { configurable: true, get: () => true });
+      Object.defineProperty(process, "disconnect", { configurable: true, writable: true, value: () => undefined });
+      reported = await composeWorkerRuntime({
+        ...input,
+        args: [WORKFLOW_ID, "--pool-index", String(POOL_INDEX_1), "--drain", "--worker-id", slot.workerId, "--ordinal", String(slot.ordinal),
+          "--launch-command-id", randomUUID(), "--profile-id", registry.activeProfileId, "--session-generation", String(registry.sessionGeneration)],
+        gateSourcePorts: [port],
+        afterClaimAdmissionCheck: () => { routed = process.listeners("message").some(listener => !listening.includes(listener)); throw primary; },
+      }).then(() => assert.fail("the worker must report its failures"), (error: unknown) => error);
+    } finally {
+      for (const [key, descriptor] of Object.entries(ipc)) {
+        if (descriptor === undefined) Reflect.deleteProperty(process, key); else Object.defineProperty(process, key, descriptor);
+      }
+    }
+    assert.equal(routed, true, "the inherited launch must route worker IPC while the worker runs");
+    assert.deepEqual(process.listeners("message"), listening, "the IPC routing listener must be disposed");
+    const seen = new Set<unknown>(), pending = [reported];
+    while (pending.length > 0) {
+      const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+      if (value instanceof AggregateError) pending.push(...(value.errors as unknown[]));
+      if (value instanceof Error) pending.push(value.cause);
+    }
+    assert.ok(seen.has(primary), "the worker failure must survive the gate source stop failure");
+    assert.ok(seen.has(stopFailure), "the gate source stop failure must be reported");
+  });
+
   it("ignores retired unjournaled file bytes and claims using SQLite settings", async () => {
     const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));

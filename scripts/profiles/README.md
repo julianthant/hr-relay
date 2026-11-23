@@ -13,7 +13,7 @@ Run the profile command from a Relay checkout other than the copy you are updati
 2. Start the copy using the printed command. Complete Relay signup and Duo in that copy, then quit
    the dashboard without signing out.
 3. Run the same profile command with `-- --source-person <production profile UUID>` to import the
-   workbook library into the selected isolated person. Use that same argument on subsequent
+   workbook library and run history into the selected isolated person. Use that same argument on subsequent
    refreshes. For example, the staging command is
    `npm run profile:staging -- --source-person <production profile UUID>`.
 
@@ -23,5 +23,14 @@ through checkout, dependency installation, and import and refuses dirty or unrel
 Production can keep running. The store imports from the chosen person's newest verified backup
 and checks the backup's identity, contents, and schema. If production prunes that backup during the
 import, rerun the command. Allow production to take a new in-session backup if none is available.
-The import refreshes local workbook content and workbook types and preserves edits made in the
-copy. Only the workbook library crosses environments. Each copy has its own signup and Duo.
+The dashboard shows the imported runs alongside runs created in the copy. Steps, logs, timeline
+events, notifications, and analytics use history from the same backup. Runs that were active or
+waiting at backup time appear as discarded, with an explanation. Terminal runs keep their outcome.
+Workers, gates, and the write sequencer use the copy's own operational store. An imported
+confirmation uses its archived attempt, checkpoint, and write proof.
+
+Each refresh replaces the selected person's imported history as a unit and preserves runs created
+in the copy. If the histories share an identifier for a run or its evidence, refresh reports
+the collision and preserves the previous archive. Refresh also updates local workbook content and types and preserves workbook edits
+made in the copy. The command imports database history only. Browser profiles, credentials, Duo
+keys, and artifact files stay with their original installation.
