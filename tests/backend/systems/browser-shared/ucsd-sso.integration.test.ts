@@ -565,17 +565,26 @@ for (const [system, recipe] of [
   ["ucpath", ucpathLoginRecipe], ["i9", i9LoginRecipe], ["onbase", onbaseLoginRecipe],
 ] as const) {
   const scenarios = ["trusted", "wrong-origin", "wrong-destination"] as const;
-  it.each(system === "crm" ? [...scenarios, "wrong-system"] as const : scenarios)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
+  it.each(system === "crm" ? [...scenarios, "unverified-entry"] as const : scenarios)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
     const browserContext = await guardedContext();
     try {
       const page = await browserContext.newPage();
       const { context } = await contextFor({ url: "about:blank" }, undefined, system);
       const other = SSO.replace("a5.ucsd.edu", "sso.example.invalid");
-      const landing = scenario === "wrong-system" ? kronosSso : scenario === "wrong-origin" ? other : SSO;
+      const unverifiedEntry = scenario === "unverified-entry";
+      const landing = unverifiedEntry ? kronosSso : scenario === "wrong-origin" ? other : SSO;
       const config = {
         ...context.config,
         timeouts: { ...context.config.timeouts, navigationMs: 1000 },
-        urls: { ...context.config.urls, kuali: { prod: { entry: landing } }, newKronos: { prod: { entry: landing } } },
+        urls: {
+          ...context.config.urls,
+          crm: { prod: {
+            ...context.config.urls.crm.prod,
+            entry: unverifiedEntry ? "https://crm.ucsd.edu/other" : context.config.urls.crm.prod.entry,
+          } },
+          kuali: { prod: { entry: landing } },
+          newKronos: { prod: { entry: landing } },
+        },
       };
       const entry = new URL(resolveSystemLoginUrl(config, system, "prod", "fixture")).href;
       const fieldPage = form(scenario === "wrong-destination" ? other : landing)
@@ -608,7 +617,7 @@ for (const [system, recipe] of [
           throw new Error("fixture stopped at credential acquisition");
         },
       });
-      if (scenario === "wrong-system") {
+      if (unverifiedEntry) {
         await assert.rejects(signing, error => error instanceof BrowserLoginError
           && error.system === "crm" && error.code === "CRM_SIGN_IN_FAILED" && error.step === "credential-fill"
           && error.observedUrl === kronosSso && error.cause instanceof Error && error.cause.message === "UCSD_SSO_SCOPE");
@@ -621,7 +630,7 @@ for (const [system, recipe] of [
   });
 }
 
-it("signs in to ACT CRM through the pinned UCSD SSO POST route", async () => {
+it.each(["pinned destination", "wrong destination"] as const)("signs in to ACT CRM through the UCSD SSO POST route only at the pinned destination (%s)", async scenario => {
   const browserContext = await guardedContext();
   try {
     const page = await browserContext.newPage();
@@ -629,6 +638,7 @@ it("signs in to ACT CRM through the pinned UCSD SSO POST route", async () => {
     const entry = "https://crm.ucsd.edu/hr";
     const sso = kronosSso + "?execution=fixture";
     const application = "https://act-crm.my.site.com/hr/s/";
+    const destination = scenario === "pinned destination" ? sso : SSO;
     const posts: string[] = [];
     let credentialReads = 0;
     await browserContext.addCookies([{ url: application, name: "sid", value: "fixture" }]);
@@ -644,18 +654,27 @@ it("signs in to ACT CRM through the pinned UCSD SSO POST route", async () => {
       if (url === entry) return route.fulfill({ contentType: "text/html",
         body: `<meta http-equiv="refresh" content="0; url=${sso}">` });
       if (url === sso) return route.fulfill({ contentType: "text/html",
-        body: form(sso) + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>Active Directory</option></select>' });
+        body: form(destination) + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>Active Directory</option></select>' });
       if (url === application) return route.fulfill({ contentType: "text/html", body: "<main>Onboarding</main>" });
       return route.abort();
     });
-    const result = await crmLoginRecipe({
+    const signing = crmLoginRecipe({
       ...context, page,
       get credentials() { credentialReads++; return context.credentials; },
     });
-    assert.equal(result, "logged-in");
-    assert.equal(credentialReads, 1);
-    assert.deepEqual(posts, [sso]);
-    assert.equal(evidence()[0]?.url, application);
+    if (scenario === "pinned destination") {
+      assert.equal(await signing, "logged-in");
+      assert.equal(credentialReads, 1);
+      assert.deepEqual(posts, [sso]);
+      assert.equal(evidence()[0]?.url, application);
+    } else {
+      await assert.rejects(signing, error => error instanceof BrowserLoginError
+        && error.code === "CRM_SIGN_IN_FAILED" && error.step === "credential-fill"
+        && error.cause instanceof Error && error.cause.message === "UCSD_SSO_FIELDS");
+      assert.equal(credentialReads, 0);
+      assert.deepEqual(posts, []);
+      assert.equal(await page.locator("#ssopassword").inputValue(), "");
+    }
   } finally { await browserContext.close(); }
 });
 
