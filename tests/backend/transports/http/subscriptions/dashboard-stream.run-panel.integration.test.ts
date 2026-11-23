@@ -90,6 +90,13 @@ function manualTimers() {
       for (const timer of due) timer.task();
       return due.length;
     },
+    /** Runs only the oldest live timer. */
+    fireOldest(): void {
+      const index = timers.findIndex(timer => !timer.cancelled);
+      const [timer] = index === -1 ? [] : timers.splice(index, 1);
+      if (timer === undefined) assert.fail("no live timer to fire");
+      timer.task();
+    },
     live(): number {
       return timers.filter(timer => !timer.cancelled).length;
     },
@@ -425,5 +432,65 @@ describe("dashboard stream run panel rows", () => {
     assert.equal(cursorNumberOf(changeOf(change).cursor), cursorNumberOf(cursor) + 1);
     assert.deepEqual(panelRevisions(changeOf(change).rows), [1]);
     assert.equal(dayOnly.pending, 0, "a connection without the run is sent nothing and sees no gap");
+  });
+
+  it("keeps a closed connection's queued read behind the earlier read still active for its key", async () => {
+    const { w, hub, reader } = await harness();
+    seedTwoRuns(w);
+    const kept = await hub.connect({ day: DAY, run: R });
+    const closed = await hub.connect({ day: DAY, run: R });
+    closed.close();
+    taskEventsOf(w, 2, "a");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(reader.reads.length, 1, "the live read waits for the surviving handoff read");
+
+    reader.reads[0]?.resolve(3);
+    await vi.waitFor(() => assert.equal(reader.reads.length, 2));
+    reader.reads[1]?.resolve(4);
+    const envelopes = await take(kept, 3);
+    assert.deepEqual(envelopes.map(({ type }) => type), ["snapshot", "health", "change"]);
+    assert.deepEqual(envelopes.flatMap(envelope => envelope.type === "change" || envelope.type === "snapshot" ? panelRevisions(envelope.rows) : []), [3, 4]);
+  });
+
+  for (const ending of ["aborts", "resolves"] as const) {
+    it(`keeps a retry owed when another connection's private read is active at the retry tick and ${ending}`, async () => {
+      const { w, hub, reader, timers } = await harness();
+      seedTwoRuns(w);
+      const owed = await hub.connect({ day: DAY, run: R });
+      timers.fireOldest(); // the handoff read's deadline
+      const [snapshot] = await take(owed, 2);
+      assert.equal(snapshotOf(snapshot).rows[0]?.value.state, "refused");
+      reader.reads[0]?.resolve(9);
+
+      const other = await hub.connect({ day: DAY, run: R });
+      assert.equal(reader.reads.length, 2, "the new connection's private handoff read");
+      timers.fireOldest(); // the retry, while that read is active
+      if (ending === "aborts") other.close();
+      else reader.reads[1]?.resolve(5);
+
+      await vi.waitFor(() => assert.equal(reader.reads.length, 3), { timeout: 500 });
+      reader.reads[2]?.resolve(6);
+      const [retried] = await take(owed, 1);
+      assert.equal(changeOf(retried).day, undefined);
+      assert.deepEqual(panelRevisions(changeOf(retried).rows), [6]);
+    });
+  }
+
+  it("settles a panel that fails validation as a refusal it retries, and reads its key again", async () => {
+    const { w, hub, timers } = await harness({ reader: {
+      reads: [],
+      read: (runId: RunId) => Promise.resolve(panelOf(runId === R ? Q : R, 1)),
+    } as unknown as ReturnType<typeof heldReader> });
+    seedTwoRuns(w);
+    const connection = await hub.connect({ day: DAY, run: R });
+    const [snapshot] = await take(connection, 2);
+    const refused = snapshotOf(snapshot).rows[0]?.value;
+    if (refused?.state !== "refused") assert.fail("expected the invalid panel to be refused");
+    assert.deepEqual({ code: refused.error.code, retryable: refused.error.retryable }, { code: "INTERNAL_FAILURE", retryable: false });
+    assert.equal(timers.live(), 1, "the retry is scheduled and the read's deadline cancelled");
+
+    taskEventsOf(w, 2, "a");
+    const [change] = await take(connection, 1);
+    assert.deepEqual(panelRevisions(changeOf(change).rows), ["INTERNAL_FAILURE"], "the key is not stranded");
   });
 });

@@ -355,20 +355,30 @@ export class DashboardStreamHub {
     const runPanels = this.#runPanels;
     if (runPanels === undefined) throw new Error("dashboard stream has no run panel reader for a run topic");
     const read: RowRead = { key, owners: new Set(owners), controller: new AbortController(), settled: false, retry: false };
-    let settleTail: () => void = () => undefined;
-    const tail = new Promise<void>(resolve => { settleTail = resolve; });
+    let settleOwn: () => void = () => undefined;
+    const own = new Promise<void>(resolve => { settleOwn = resolve; });
     const previous = this.#keyTails.get(key);
+    // A read that ends before it begins still holds the key's later reads behind its predecessor.
+    const tail = previous === undefined ? own : Promise.all([previous, own]).then(() => undefined);
     this.#keyTails.set(key, tail);
+    void tail.then(() => { if (this.#keyTails.get(key) === tail) this.#keyTails.delete(key); });
     let cancelDeadline: () => void = () => undefined;
     const finish = (row: RunPanelRow | undefined, retry: boolean): void => {
       if (read.settled) return;
       read.settled = true;
-      read.retry = retry;
-      if (row !== undefined) read.row = StreamRowSchema.parse(row);
       cancelDeadline();
-      if (this.#keyTails.get(key) === tail) this.#keyTails.delete(key);
-      settleTail();
-      if (row !== undefined) this.#afterRead(read);
+      settleOwn();
+      if (row === undefined) return;
+      const parsed = StreamRowSchema.safeParse(row);
+      if (parsed.success) {
+        read.row = parsed.data;
+        read.retry = retry;
+      } else {
+        const refused = refusedRow(key, new Error(`run panel ${key} failed validation: ${parsed.error.message}`));
+        read.row = refused.row;
+        read.retry = refused.retry;
+      }
+      this.#afterRead(read);
     };
     read.controller.signal.addEventListener("abort", () => finish(undefined, false), { once: true });
     const begin = (): void => {
@@ -392,18 +402,37 @@ export class DashboardStreamHub {
     return read;
   }
 
+  /** A retry stays owed until a read of the key reaches every connection that has it open. */
   #afterRead(read: RowRead): void {
-    this.#retries.get(read.key)?.();
-    this.#retries.delete(read.key);
-    if (read.retry) {
-      this.#retries.set(read.key, this.#schedule(ROW_RETRY_MS, () => {
-        this.#retries.delete(read.key);
-        // A read already queued for the key settles and decides again.
-        if (this.#keyTails.has(read.key)) return;
-        this.#publishRows([read.key], this.#projection.position());
-      }));
-    }
+    const owedElsewhere = [...this.#subscribers].some(subscriber => subscriber.run === read.key
+      && subscriber.phase.state === "open" && !read.owners.has(subscriber));
+    if (read.retry) this.#scheduleRetry(read.key);
+    else if (!owedElsewhere) this.#cancelRetry(read.key);
     for (const owner of read.owners) this.#deliver(owner);
+  }
+
+  #cancelRetry(key: RunId): void {
+    this.#retries.get(key)?.();
+    this.#retries.delete(key);
+  }
+
+  #scheduleRetry(key: RunId): void {
+    this.#cancelRetry(key);
+    let live = true;
+    const fire = (): void => {
+      if (!live) return;
+      // A read queued for the key settles first; this retry is cancelled only if that read reached every owner.
+      const tail = this.#keyTails.get(key);
+      if (tail !== undefined) {
+        void tail.then(fire);
+        return;
+      }
+      live = false;
+      this.#retries.delete(key);
+      this.#publishRows([key], this.#projection.position());
+    };
+    const cancelTimer = this.#schedule(ROW_RETRY_MS, fire);
+    this.#retries.set(key, () => { live = false; cancelTimer(); });
   }
 
   #release(subscriber: Subscriber, entries: readonly OutboxEntry[]): void {
