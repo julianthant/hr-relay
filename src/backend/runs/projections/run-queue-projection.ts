@@ -495,13 +495,7 @@ export class RunQueueProjection {
       }
       if (page.cursor >= through && !moreWorkerFacts) break;
       const workerCursor = moreWorkerFacts ? page.workers.next : null;
-      try {
-        page = await read({ ...request, after: page.cursor, through, ...(workerCursor === null ? {} : { workerCursor }) });
-      } catch (error) {
-        // A changed digest invalidates only the unpublished facts. The next poll resumes the admitted timeline tail.
-        if (workerCursor !== null && error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") return undefined;
-        throw error;
-      }
+      page = await read({ ...request, after: page.cursor, through, ...(workerCursor === null ? {} : { workerCursor }) });
     }
     const rebuilt = rebuilding ? new TimelineFoldState() : undefined;
     if (rebuilt !== undefined) {

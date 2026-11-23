@@ -95,7 +95,9 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       if (expiry === undefined) key = { state: "retry" };
       else leaseExpiry = expiry;
     }).catch((error: unknown) => {
-      projection.backgroundReadFailed(error);
+      // A normal commit can supersede paged worker facts while the admitted timeline remains live.
+      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = { state: "retry" };
+      else projection.backgroundReadFailed(error);
     }).finally(() => {
       pending = undefined;
       if (checkAfterRead && !stopped) {
