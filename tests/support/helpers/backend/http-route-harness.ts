@@ -35,6 +35,7 @@ import { createRunQueueProjection } from "../../../../src/backend/runs/projectio
 import type { ArtifactBytesQueryDeps } from "../../../../src/backend/runs/queries/artifact-bytes.js";
 import type { DiagnosticBundleQueryDeps } from "../../../../src/backend/runs/queries/diagnostic-bundle.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
+import { readRunPanel } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -384,6 +385,7 @@ export async function harness(options: {
   }));
   const hub = createDashboardStreamHub({
     projection,
+    runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
   });

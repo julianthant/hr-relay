@@ -22,7 +22,7 @@ export function dashboardServer() {
     const body = new ReadableStream<Uint8Array>({ start(controller) {
       const send = (message: unknown) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
       send({ type: "hello", wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor });
-      send({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: day.snapshotCursor, payload: day });
+      send({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: day.snapshotCursor, payload: day });
       init?.signal?.addEventListener("abort", () => { try { controller.close(); } catch { /* already closed */ } }, { once: true });
     } });
     return new Response(body, { headers: { "content-type": "text/event-stream" } });

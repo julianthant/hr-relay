@@ -187,7 +187,7 @@ field membership and discriminated states. The client checks identity as well as
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
 | Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
 | Commands | `commands/shared-commands.ts`, `index.ts` (`workerCommandResult`) | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk`; read-only `GET /api/v1/worker-commands/:commandId` |
-| Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>` |
+| Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>[,run:<runId>]` |
 
 `FrontendBootstrapWire` carries actor, server clock, descriptor/config identity, workflows,
 Settings sections, storage, and readiness. `DashboardDayWire` carries the selected day's queue,
@@ -372,9 +372,22 @@ or `change` sent on that connection, and may carry one queue-row replacement or 
 A change at or below the held cursor is ignored. A change whose `after` is above the held cursor is
 a gap. Missing baseline, gaps, and invalid row application trigger a resnapshot. A reconnect is
 resumable while every retained change above the presented cursor is still held; the server then
-replays them and closes with a `change` that carries no row. Malformed envelopes or non-network stream failures stop
+replays them and closes with a `change` that carries no day part. Malformed envelopes or non-network stream failures stop
 with visible error. Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
+
+Every `snapshot` and `change` also carries `rows`: whole read-model values for the connection's
+topics, never patched. A `run:<runId>` topic adds that run's `run-panel` row: the run detail, the
+whole log as one page, and the available captures, identity-gate, parked-write, failure and
+workbook-writes sections, read by the same queries the run routes serve, or `refused` with the wire
+error the route would have answered. The row rides every envelope that carries the run's queue row,
+the handoff, and a rows-only `change` whenever the projection folds any timeline record of the run,
+notes included. Rows are never retained or replayed. The hub reads each run's panel one read at a
+time in envelope order, and each connection's outbox hands envelopes out in cursor order once its
+own rows are in, so one connection's slow read holds no other connection. A read is cut off after
+5 s and sent as a retryable refusal; a timed-out or failed read is read again every 5 s while a
+connection still has the run open. A refusal the read returned is not retried. Overflow, close and
+generation change empty the outbox and abort reads nobody else is owed.
 
 Notification subjects use the registered title projection and the matching retained evidence receipt when a workflow declares one, through the same canonical title resolver as Queue. Unavailable or refused title authority withholds the subject without falling back to a checkpoint or guessed name; a readable linked run and descriptor still serve the workflow-only context. Other declared subject projections retain their checkpoint identity checks. Workflow-only previews omit the subject and retain the reason. A retained failed-row summary can supply that reason when the source publication is unavailable only if it exactly matches a current error-catalog sentence; other retained summaries leave the reason unavailable. Toast eligibility still requires the source-event policy. Run rows show the unavailable notice when their context or display reason cannot be read. This display context belongs only to the served inbox; durable notification summaries and OS delivery are unchanged.
 
