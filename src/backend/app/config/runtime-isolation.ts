@@ -36,16 +36,19 @@ function currentApplicationDataHostFacts(): ApplicationDataHostFacts {
     : { platform, homeDirectory: userInfo().homedir };
 }
 
-let copySigninFixtureWorkspace: string | undefined;
+let fixtureWorkspace: string | undefined;
+
+/** The bound copy sign-in fixture workspace; it selects the fixture key store and the refusing Duo provider. */
+export function copySigninFixtureWorkspace(): string | undefined { return fixtureWorkspace; }
 
 /** Copy sign-in fixtures only: the caller has proved the workspace is a temporary fixture root for this non-production profile. */
 export function useCopySigninFixtureWorkspace(workspace: string): void {
-  if (runtimeProfile === "production" || copySigninFixtureWorkspace !== undefined) throw new Error("copy-signin-target-refused");
-  copySigninFixtureWorkspace = workspace;
+  if (runtimeProfile === "production" || fixtureWorkspace !== undefined) throw new Error("copy-signin-target-refused");
+  fixtureWorkspace = workspace;
 }
 
 export function applicationDataWorkspace(host?: ApplicationDataHostFacts, profile: RuntimeProfile = runtimeProfile): string {
-  if (host === undefined && copySigninFixtureWorkspace !== undefined && profile === runtimeProfile) return copySigninFixtureWorkspace;
+  if (host === undefined && fixtureWorkspace !== undefined && profile === runtimeProfile) return fixtureWorkspace;
   host ??= currentApplicationDataHostFacts();
   const { namespace } = runtimeProfiles[profile];
   if (host.platform !== "win32") {

@@ -11,7 +11,7 @@ import { applicationDataWorkspace, rebuildRuntimeIsolation, runtimeProfile, useC
 import { probeOwnedViteServer } from "../../src/backend/app/host/local-vite-probe.js";
 import { noSymlinkAncestry, readPrivateFile, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
 import { createDashboardClient, type DashboardClient } from "../../src/dashboard/client/index.js";
-import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
+import { RuntimeProfileSchema, runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 import { runDevDashboard } from "../dev/dashboard.js";
 
@@ -57,14 +57,21 @@ export function assertCopySigninTarget(profile: CopyProfile, workspace: string,
   } catch { throw new CopySigninError("copy-signin-target-refused"); }
 }
 
-/** Test fixtures only: binds this process to an existing temporary copy workspace before anything reads or writes one. */
-export function useCopySigninFixture(profile: CopyProfile, workspace: string): void {
+/** Refuses a copy sign-in fixture unless it is a real path beneath the temporary root and outside every live profile root. */
+export function assertCopySigninFixture(profile: CopyProfile, workspace: string, temporary: string,
+  liveRoots: readonly string[] = RuntimeProfileSchema.options.map(name => applicationDataWorkspace(undefined, name))): void {
+  const within = (path: string, root: string) => path === root || path.startsWith(`${root}${sep}`);
+  const canonical = (path: string) => { try { return realpathSync(path); } catch { return path; } };
   let real: string;
   try { real = realpathSync(workspace); } catch { throw new CopySigninError("copy-signin-target-refused"); }
-  if (runtimeProfile !== profile || real !== workspace || basename(workspace) !== runtimeProfiles[profile].namespace
-    || !dirname(workspace).startsWith(`${realpathSync(tmpdir())}${sep}`) || workspace === applicationDataWorkspace(undefined, profile)) {
-    throw new CopySigninError("copy-signin-target-refused");
-  }
+  if (real !== workspace || basename(workspace) !== runtimeProfiles[profile].namespace || !within(dirname(workspace), canonical(temporary))
+    || liveRoots.some(root => within(workspace, canonical(root)) || within(workspace, root))) throw new CopySigninError("copy-signin-target-refused");
+}
+
+/** Test fixtures only: binds this process to an existing temporary copy workspace before anything reads or writes one. */
+export function useCopySigninFixture(profile: CopyProfile, workspace: string): void {
+  if (runtimeProfile !== profile) throw new CopySigninError("copy-signin-target-refused");
+  assertCopySigninFixture(profile, workspace, tmpdir());
   useCopySigninFixtureWorkspace(workspace);
 }
 
@@ -91,12 +98,14 @@ export async function driveCopySignin(profile: CopyProfile, dashboard: ProfileDa
     if (state.state === "onboarding") {
       const { operationId, profileId } = state;
       if (state.step === "duo") state = await dashboard.openProfileOnboardingPortal({ operationId });
+      if (state.state === "refused") throw new CopySigninError(`copy-signin-dashboard-refused ${state.code}`);
       if (state.state !== "onboarding" || state.step !== "ready" || state.operationId !== operationId || state.profileId !== profileId) {
         throw new CopySigninError("copy-signin-duo-unconfirmed");
       }
       state = await dashboard.completeProfileOnboarding({ operationId });
       if (state.state !== "active" || state.profileId !== profileId) throw new CopySigninError("copy-signin-finish-unconfirmed");
     }
+    if (state.state === "refused") throw new CopySigninError(`copy-signin-dashboard-refused ${state.code}`);
     if (state.state !== "active" || state.duoState !== "ready") throw new CopySigninError("copy-signin-dashboard-refused");
     return "signed in";
   } catch (error) {

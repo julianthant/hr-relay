@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,16 +7,15 @@ import { chromium } from "playwright";
 import { expect, it } from "vitest";
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
-// The password exceeds the sign-in schema, so the owned backend refuses it before any Duo or portal step.
 const credentials = {
   RELAY_EMAIL: "relay-email-sentinel@example.test",
-  RELAY_PASSWORD: `relay-password-sentinel-${"x".repeat(1024)}`,
+  RELAY_PASSWORD: "relay-password-sentinel",
   UCPATH_USERNAME: "ucpath-username-sentinel",
   UCPATH_PASSWORD: "ucpath-password-sentinel",
 };
 // HOME moves to the fixture, so Playwright keeps the installed browsers explicitly.
 const browsers = chromium.executablePath().split(`${sep}chromium-`)[0];
-const sentinels = Object.values(credentials).map(value => value.slice(0, 40));
+const sentinels = Object.values(credentials);
 
 function leaks(text: string, root: string, skip: string): string[] {
   const found = sentinels.filter(value => text.includes(value)).map(() => "output");
@@ -34,6 +33,17 @@ function leaks(text: string, root: string, skip: string): string[] {
   return found;
 }
 
+async function launch(root: string, workspace: string): Promise<{ code: number | null; output: string }> {
+  const child = spawn(process.execPath, ["--conditions=development", "--import", "tsx", "scripts/profiles/copy-signin.ts", "development", "--fixture-workspace", workspace], {
+    cwd: repositoryRoot, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: root, RELAY_RUNTIME_PROFILE: "development", PLAYWRIGHT_BROWSERS_PATH: browsers },
+  });
+  let output = "";
+  child.stdout.on("data", chunk => { output += String(chunk); });
+  child.stderr.on("data", chunk => { output += String(chunk); });
+  const code = await new Promise<number | null>(resolve => { child.on("close", resolve); });
+  return { code, output };
+}
+
 // The launcher finds the env file through HOME, which Windows does not use.
 it.skipIf(process.platform === "win32")("keeps sign-in secrets out of the real launcher's and owned backend's output and written files", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "relay-copy-signin-fixture-")));
@@ -43,16 +53,13 @@ it.skipIf(process.platform === "win32")("keeps sign-in secrets out of the real l
     mkdirSync(envDirectory, { recursive: true, mode: 0o700 });
     mkdirSync(workspace, { recursive: true, mode: 0o700 });
     writeFileSync(envFile, Object.entries(credentials).map(([name, value]) => `${name}="${value}"`).join("\n"), { mode: 0o600 });
-    const child = spawn(process.execPath, ["--conditions=development", "--import", "tsx", "scripts/profiles/copy-signin.ts", "development", "--fixture-workspace", workspace], {
-      cwd: repositoryRoot, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: root, RELAY_RUNTIME_PROFILE: "development", PLAYWRIGHT_BROWSERS_PATH: browsers },
-    });
-    let output = "";
-    child.stdout.on("data", chunk => { output += String(chunk); });
-    child.stderr.on("data", chunk => { output += String(chunk); });
-    const code = await new Promise<number | null>(resolve => { child.on("close", resolve); });
-    expect(output).toContain("copy-signin-dashboard-failed");
+    const { code, output } = await launch(root, workspace);
+    // The owned backend took the sign-up, kept its key in the fixture store and refused Duo setup before any browser launch.
+    expect(output).toContain('"reason":"copy-signin-fixture-duo-refused"');
+    expect(output).toContain("copy-signin-duo-unconfirmed");
     expect(code).toBe(1);
-    expect(readdirSync(join(workspace, ".tracker", "control"))).toContain("installation.json");
+    expect(readdirSync(join(workspace, ".tracker", "fixture-keychain")).length).toBeGreaterThan(0);
+    expect(existsSync(join(workspace, ".tracker", "data", "browsers", "onboarding"))).toBe(false);
     expect(leaks(output, root, envFile)).toEqual([]);
     // The scan reports a secret the launcher prints or writes anywhere under the fixture.
     writeFileSync(join(workspace, "leak.txt"), credentials.UCPATH_PASSWORD);

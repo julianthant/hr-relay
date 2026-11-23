@@ -11,6 +11,7 @@ import { basename, isAbsolute, join } from "node:path";
 import { submitPinnedUcsdSsoCredentials, waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Locator, Page, Worker } from "playwright";
 import type { RuntimeProfile } from "../../../models/config/define-runtime-isolation.js";
+import { copySigninFixtureWorkspace } from "../../app/config/runtime-isolation.js";
 import { z } from "zod";
 import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -104,6 +105,14 @@ async function workerCall(worker: Worker, method: "install" | "next" | "reply" |
     if (method === "next" || method === "browserNext") throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", error);
     throw error;
   }
+}
+
+/** A bound copy sign-in fixture refuses Duo setup before any browser launch or network call. */
+export function copySigninFixtureDuoProvider(): ProfileOnboardingDuoProvider | undefined {
+  if (copySigninFixtureWorkspace() === undefined) return undefined;
+  const refuse = (): Promise<never> => Promise.reject(new ProfileOnboardingDuoProviderError("unavailable", "provider", new Error("copy-signin-fixture-duo-refused")));
+  return { async stop() {}, showBrowser: refuse, openPortal: refuse, start: refuse,
+    async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; } };
 }
 
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {

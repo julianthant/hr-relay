@@ -31,7 +31,7 @@ import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
 import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
 import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
-import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
+import { copySigninFixtureDuoProvider, createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { PROFILE_ONBOARDING_BROWSER_DIRECTORY } from "../../../storage/browser-root-contract.js";
 import { createBrowserRoots } from "../../../storage/browser-roots.js";
@@ -82,7 +82,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
   const profileRuntime = await (async () => {
     const facts = hostConfigFacts(env);
-    let onboardingDuo = input.onboardingDuo;
+    let onboardingDuo = input.onboardingDuo ?? (input.copySignin === undefined ? undefined : copySigninFixtureDuoProvider());
     if (onboardingDuo === undefined) {
       const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, PROFILE_ONBOARDING_BROWSER_DIRECTORY);
       ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);

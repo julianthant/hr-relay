@@ -1,9 +1,11 @@
-import { chmodSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { assertCopySigninTarget, driveCopySignin, readCopySigninCredentials } from "../../../scripts/profiles/copy-signin.js";
+import { assertCopySigninFixture, assertCopySigninTarget, driveCopySignin, useCopySigninFixture, readCopySigninCredentials } from "../../../scripts/profiles/copy-signin.js";
 import { runDevDashboard } from "../../../scripts/dev/dashboard.js";
+import { copySigninFixtureDuoProvider } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { osCredentialSecretStore, selectedCredentialSecretStore } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import { applicationDataWorkspace } from "../../../src/backend/app/config/runtime-isolation.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
@@ -46,6 +48,27 @@ it("refuses production ports or roots, including the production launcher profile
     .toThrow("copy-signin-target-refused");
   expect(() => runDevDashboard({ profile: "production", copySignin: { backendEntry: "", ready: () => undefined, phone: () => undefined } }))
     .toThrow("copy-signin-profile-refused");
+});
+
+it("refuses a fixture under any live profile root even when the temporary root resolves there", () => {
+  const production = join(directory, "Library", "Application Support", "Relay");
+  const temporary = join(production, "tmp"), inside = join(temporary, "fixture", "Relay-development"), outside = join(directory, "fixture", "Relay-development");
+  for (const path of [inside, outside]) mkdirSync(path, { recursive: true });
+  expect(() => assertCopySigninFixture("development", inside, temporary, [production])).toThrow("copy-signin-target-refused");
+  expect(() => assertCopySigninFixture("development", inside, temporary, [inside])).toThrow("copy-signin-target-refused");
+  expect(() => assertCopySigninFixture("development", outside, directory, [production])).not.toThrow();
+  expect(() => assertCopySigninFixture("staging", outside, directory, [production])).toThrow("copy-signin-target-refused");
+});
+
+it("keeps the OS keychain and the real Duo provider unless a fixture workspace is bound", () => {
+  expect(selectedCredentialSecretStore()).toBe(osCredentialSecretStore);
+  expect(copySigninFixtureDuoProvider()).toBeUndefined();
+  const workspace = join(directory, "Relay-development");
+  mkdirSync(workspace);
+  expect(() => useCopySigninFixture("development", workspace)).toThrow("copy-signin-target-refused");
+  expect(selectedCredentialSecretStore()).toBe(osCredentialSecretStore);
+  expect(copySigninFixtureDuoProvider()).toBeUndefined();
+  expect(readdirSync(workspace)).toEqual([]);
 });
 
 it("refuses copy onboarding in the production bootstrap before acquiring a lifetime lock", async () => {
