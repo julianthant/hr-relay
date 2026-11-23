@@ -7,7 +7,7 @@ import { createReceiptService } from "../../../src/backend/runs/trust/receipt-se
 import { redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
-import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { runClaim } from "../../../src/models/run/record.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
@@ -659,14 +659,14 @@ describe("Onboarding captured roster admission and row choice", () => {
         writes: f.database.authority.writeIntents.listByRun(recoveredId).map(intent => ({ intent, attempts: f.database.authority.writeAttempts.listByIntent(intent.writeIntentId) })),
         gateResults: f.database.authority.gateResults.listByRun(recoveredId), continuedGateResults: [original],
         delegations: f.database.withAuthorityTransaction(repositories => [readDelegationEvidence(repositories, recoveredId, "i9-lookup-child")]) };
-      assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [original], continuedGateResults: [] }), /belongs to run/u);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, continuedGateResults: [original, original] }), /duplicate/u);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [{ ...original, runId: recoveredId }] }), /duplicate/u);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, continuedGateResults: [{ ...original, runId: randomUUID() }] }), /continued-gate-membership/u);
+      assert.deepEqual(deriveRunEvidenceReceipt(input).receipt, receipt);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, gateResults: [original], continuedGateResults: [] }), /belongs to run/u);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, continuedGateResults: [original, original] }), /duplicate/u);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, gateResults: [{ ...original, runId: recoveredId }] }), /duplicate/u);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, continuedGateResults: [{ ...original, runId: randomUUID() }] }), /continued-gate-membership/u);
       const altered = structuredClone(completed.run); assert.ok(altered.envelope.continuation);
       altered.envelope.continuation.gates[0].digest = FingerprintSchema.parse("b".repeat(64));
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, run: altered }), /continued-gate-membership/u);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, run: altered }), /continued-gate-membership/u);
       assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId).map(gate => gate.gateId), ["hire-review"]);
     }
   });
@@ -745,7 +745,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     it("derives a failed unknown receipt whose not-run roster-choice cites the roster.state input fact", async () => {
       const { f, run, input } = await failedAtCrmSource();
       assert.equal(OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state, "resolved");
-      const receipt = buildRunEvidenceReceipt(input);
+      const receipt = deriveRunEvidenceReceipt(input).receipt;
       assert.equal(receipt.result, "failed"); assert.equal(receipt.confidence, "unknown");
       const inputFact = receipt.input.find(fact => fact.id === deriveEvidenceEntryId(receipt.receiptId, "input", "roster.state"));
       assert.ok(inputFact);
@@ -776,8 +776,8 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.deepEqual(f.database.authority.gateResults.listByRun(runId).map(gate => gate.gateId), [ONBOARDING_ROSTER_GATE_ID]);
       const result = f.database.authority.runResults.get(runId); assert.ok(result);
       const failure = run.lifecycle.failureId === undefined ? undefined : f.database.authority.failures.get(run.lifecycle.failureId); assert.ok(failure);
-      const taken = buildRunEvidenceReceipt({ descriptor, run, result, failure, writes: [],
-        checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), gateResults: f.database.authority.gateResults.listByRun(runId) });
+      const taken = deriveRunEvidenceReceipt({ descriptor, run, result, failure, writes: [],
+        checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), gateResults: f.database.authority.gateResults.listByRun(runId) }).receipt;
       assert.ok(!taken.decisions.some(value => value.id === deriveEvidenceEntryId(taken.receiptId, "decision", `not-run.${ONBOARDING_ROSTER_GATE_ID}`)));
       assert.ok(taken.decisions.some(value => value.kind === "gate" && value.outcome === "taken"));
       // A failed-evidence record binds no gates, so a missing gate result is reported unknown rather than refused (done runs refuse above).
@@ -795,9 +795,9 @@ describe("Onboarding captured roster admission and row choice", () => {
 
     it("refuses a corrupt failure digest and a result of another run or attempt", async () => {
       const { failure, result, input } = await failedAtCrmSource();
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, failure: { ...failure, summary: `${failure.summary} altered` } }), /terminal-failure-result-mismatch/u);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, attempt: result.attempt + 1 } }), /identity[ -]mismatch/u);
-      assert.throws(() => buildRunEvidenceReceipt({ ...input, result: { ...result, runId: randomUUID() } }), /identity[ -]mismatch/u);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, failure: { ...failure, summary: `${failure.summary} altered` } }), /terminal-failure-result-mismatch/u);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, result: { ...result, attempt: result.attempt + 1 } }), /identity[ -]mismatch/u);
+      assert.throws(() => deriveRunEvidenceReceipt({ ...input, result: { ...result, runId: randomUUID() } }), /identity[ -]mismatch/u);
     });
   });
 

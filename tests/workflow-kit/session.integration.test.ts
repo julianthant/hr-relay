@@ -1,6 +1,6 @@
+import { createDeterministicSessionProvider } from "../support/fixtures/backend/deterministic-session-provider.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { createDeterministicSessionProvider } from "../../src/workflow-kit/session.js";
 
 describe("task, store, session, provider, and artifact seams", () => {
 

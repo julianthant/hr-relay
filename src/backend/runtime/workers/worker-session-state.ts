@@ -27,17 +27,15 @@ export type WorkerSessionBrowser =
  */
 export type WorkerSessionState = WorkerSessionBrowser | Readonly<{ state: "failed"; browser: WorkerSessionBrowser }>;
 
-export const WORKER_SESSION_BROWSER_KEYS = deepFreeze([
-  "closed",
-  "starting/launching",
-  "starting/signing-in",
-  "authenticated/idle",
-  "authenticated/leased",
-  "closing/acquisition",
-  "closing/session",
-  "closure-unproved",
-] as const);
-export type WorkerSessionBrowserKey = (typeof WORKER_SESSION_BROWSER_KEYS)[number];
+export type WorkerSessionBrowserKey =
+  | "closed"
+  | "starting/launching"
+  | "starting/signing-in"
+  | "authenticated/idle"
+  | "authenticated/leased"
+  | "closing/acquisition"
+  | "closing/session"
+  | "closure-unproved";
 export type WorkerSessionStateKey = WorkerSessionBrowserKey | `failed/${WorkerSessionBrowserKey}`;
 
 export type WorkerSessionEvent =
@@ -66,10 +64,6 @@ export type WorkerSessionEvent =
   | Readonly<{ type: "close-proved" }>
   | Readonly<{ type: "close-failed" }>;
 export type WorkerSessionEventType = WorkerSessionEvent["type"];
-export const WORKER_SESSION_EVENT_TYPES = deepFreeze([
-  "launch", "launched", "launch-failed", "launch-uncertain", "signed-in", "login-failed", "ceremony-release-failed",
-  "acquisition-close-timeout", "lease", "reset", "poison", "close", "close-proved", "close-failed",
-] as const satisfies readonly WorkerSessionEventType[]);
 
 export type WorkerSessionRefusal =
   | "acquisition-pending"
@@ -114,7 +108,7 @@ const lost = <Key extends WorkerSessionBrowserKey>(to: Key) => ({ to, custody: "
  * Rows are browser states and columns are events. A closing target takes its reason from a close
  * event, keeps the reason of the close already running, or is a failed sign-in's `login-failed`.
  */
-export const WORKER_SESSION_TRANSITIONS = deepFreeze({
+const WORKER_SESSION_TRANSITIONS = deepFreeze({
   closed: {
     launch: { to: "starting/launching" }, ...PHASE, "launch-uncertain": lost("closed"),
     "ceremony-release-failed": lost("closed"), "acquisition-close-timeout": lost("closed"),
@@ -166,7 +160,7 @@ const SETTLED_BROWSERS = deepFreeze({
   "closure-unproved": { state: "closure-unproved" },
 } as const satisfies Record<Exclude<WorkerSessionBrowserKey, `closing/${string}`>, WorkerSessionBrowser>);
 
-export function workerSessionBrowserKey(browser: WorkerSessionBrowser): WorkerSessionBrowserKey {
+function workerSessionBrowserKey(browser: WorkerSessionBrowser): WorkerSessionBrowserKey {
   switch (browser.state) {
     case "starting": return `starting/${browser.phase}`;
     case "authenticated": return `authenticated/${browser.lease}`;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { afterEach,describe,it } from "vitest";
-import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../../support/fixtures/backend/deterministic-provider.js";
 import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { defineServiceStore,defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";

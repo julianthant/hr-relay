@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { it } from "vitest";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -45,12 +45,12 @@ function cancelMatch(fixture: Awaited<ReturnType<typeof trustWorld>>) {
 function storePriorReceipt(fixture: Awaited<ReturnType<typeof trustWorld>>, digest: string) {
   const run = cancelMatch(fixture);
   const { authority } = fixture.database;
-  const receipt = buildRunEvidenceReceipt({
+  const receipt = deriveRunEvidenceReceipt({
     descriptor: personLookupDescriptor,
     run,
     result: authority.runResults.get(run.envelope.runId),
     checkpoints: [],
-  });
+  }).receipt;
   assert.ok(receipt.input.some(fact => fact.state === "satisfied" && fact.field === "ssn"));
   const retained = authority.evidenceReceipts.insert({
     ...receipt,

@@ -6,7 +6,7 @@ import { readRunCheckpoint, originalCheckpoint, RunContinuationRefusedError, rea
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
-import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "../../logs/generated-artifact-projection.js";
+import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds } from "../../logs/generated-artifact-projection.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -1538,7 +1538,7 @@ export async function executeClaimedRun(
             + "outbox rows, and this composition wires no artifact sink projector",
           ));
         }
-        await projectGeneratedUpdates(projector, pending);
+        await projector.projectOutbox(pending);
       } catch (error) {
         return await failNode(node, node.uses.id, error);
       }
@@ -1670,7 +1670,7 @@ export async function executeClaimedRun(
             commitGeneratedCheckpoint({withTransaction, checkpoint:record, updates:outboxRows,
               ...(deps.publishCheckpoint === undefined ? {} : { publish: deps.publishCheckpoint })});
             // A task cannot finish before every artifact outbox row is acknowledged.
-            await projectGeneratedUpdates(projector, outboxRows.map((row) => String(row.outboxId)));
+            await projector.projectOutbox(outboxRows.map((row) => String(row.outboxId)));
           }
           checkpointRecords.set(String(node.id), record);
           outputs[String(node.id)] = JsonValueSchema.parse(record.output.value);
