@@ -148,7 +148,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Profile root lint on the development snapshot
+      - name: Profile root lint with one TypeScript program
         run: |
           ulimit -c 0
           node --version
@@ -180,15 +180,19 @@ jobs:
             return "$status"
           }
           lint_status=0
-          profile 'All lint rules' || lint_status=$?
+          profile 'All lint rules with the explicit TypeScript project' || lint_status=$?
           printf '%s\n' \
+            'import ts from "typescript-eslint";' \
             'import config from "./eslint.config.js";' \
-            'const rules = new Set(config.flatMap(({ rules }) => Object.keys(rules ?? {})));' \
             'const linterOptions = { reportUnusedDisableDirectives: "off", reportUnusedInlineConfigs: "off" };' \
-            'export default [...config, { linterOptions, rules: Object.fromEntries([...rules].map(rule => [rule, "off"])) }];' \
+            'export default [...config, {' \
+            '  files: ["**/*.ts", "**/*.tsx"], linterOptions,' \
+            '  languageOptions: { parserOptions: { project: false, projectService: true } },' \
+            '  rules: ts.configs.disableTypeChecked.rules,' \
+            '}];' \
             > .lint-profile.config.mjs
           rm -rf -- node_modules/.cache/eslint/
-          profile 'Parser and project service without rule visitors' --config .lint-profile.config.mjs
+          profile 'Project service with syntax rules only' --config .lint-profile.config.mjs
           exit "$lint_status"
       - run: npm ci
         working-directory: fast-duo
