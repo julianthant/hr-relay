@@ -564,24 +564,31 @@ for (const [system, recipe] of [
   ["crm", crmLoginRecipe], ["kuali", kualiLoginRecipe], ["new-kronos", newKronosLoginRecipe],
   ["ucpath", ucpathLoginRecipe], ["i9", i9LoginRecipe], ["onbase", onbaseLoginRecipe],
 ] as const) {
-  it.each(["trusted", "wrong-origin", "wrong-destination"] as const)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
+  const scenarios = ["trusted", "wrong-origin", "wrong-destination"] as const;
+  it.each(system === "crm" ? [...scenarios, "wrong-system"] as const : scenarios)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
     const browserContext = await guardedContext();
     try {
       const page = await browserContext.newPage();
       const { context } = await contextFor({ url: "about:blank" }, undefined, system);
       const other = SSO.replace("a5.ucsd.edu", "sso.example.invalid");
-      const landing = scenario === "wrong-origin" ? other : SSO;
+      const landing = scenario === "wrong-system" ? kronosSso : scenario === "wrong-origin" ? other : SSO;
       const config = {
         ...context.config,
         timeouts: { ...context.config.timeouts, navigationMs: 1000 },
         urls: { ...context.config.urls, kuali: { prod: { entry: landing } }, newKronos: { prod: { entry: landing } } },
       };
       const entry = new URL(resolveSystemLoginUrl(config, system, "prod", "fixture")).href;
-      const fieldPage = form(scenario === "wrong-destination" ? other : SSO)
+      const fieldPage = form(scenario === "wrong-destination" ? other : landing)
         + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>AD</option></select>';
       let servedForm = false;
       let credentialReads = 0;
+      let posts = 0;
       await browserContext.route("**/*", async route => {
+        if (route.request().method() === "POST") {
+          posts++;
+          await route.abort();
+          return;
+        }
         if (route.request().url() === landing) {
           servedForm = true;
           await route.fulfill({ contentType: "text/html", body: fieldPage });
@@ -594,15 +601,21 @@ for (const [system, recipe] of [
           }
         } else await route.abort();
       });
-      await assert.rejects(recipe({
+      const signing = recipe({
         ...context, page, config,
         get credentials(): typeof context.credentials {
           credentialReads++;
           throw new Error("fixture stopped at credential acquisition");
         },
-      }));
+      });
+      if (scenario === "wrong-system") {
+        await assert.rejects(signing, error => error instanceof BrowserLoginError
+          && error.system === "crm" && error.code === "CRM_SIGN_IN_FAILED" && error.step === "credential-fill"
+          && error.observedUrl === kronosSso && error.cause instanceof Error && error.cause.message === "UCSD_SSO_SCOPE");
+      } else await assert.rejects(signing);
       assert.equal(servedForm, true);
       assert.equal(credentialReads, scenario === "trusted" ? 1 : 0);
+      assert.equal(posts, 0);
       assert.equal(await page.locator("#ssopassword").inputValue(), "");
     } finally { await browserContext.close(); }
   });

@@ -550,71 +550,38 @@ function validatedStagedSave(request: Request, expected: StagedExpectation): str
   return JSON.stringify(submit.data);
 }
 
-// The response event fires on headers; the body shares the operation deadline. On expiry control returns to the
-// session owner, whose bounded poison-close ends the abandoned read and proves closure.
-async function responseJsonBefore(clock: Clock, deadline: number, response: Response, what: string): Promise<unknown> {
-  // Parse here, not with response.json(): JSON.parse's SyntaxError quotes the body, so only the category leaves.
-  const body = response.text().then(
-    (text) => {
-      try {
-        return JSON.parse(text) as unknown;
-      } catch {
-        throw new Error(`${what} was not readable JSON; the outcome is unknown`);
-      }
-    },
-    (error: unknown) => {
-      throw new Error(`${what} body could not be read; the outcome is unknown`, { cause: error });
-    },
-  );
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expired = new Promise<"expired">(resolve => {
-    timer = setTimeout(() => resolve("expired"), Math.max(0, deadline - clock.monotonicMs()));
-  });
-  try {
-    const settled = await Promise.race([body.then(value => ({ value })), expired]);
-    if (settled !== "expired") return settled.value;
-  } finally {
-    clearTimeout(timer);
-  }
-  void body.catch(() => { /* The owner's close rejects the abandoned read. */ });
-  throw new Error(`${what} did not finish its body by the deadline; the outcome is unknown`);
-}
-
-// A ZodError's text quotes response keys and values; keep only zod's fixed issue codes.
-function schemaIssueSummary(error: z.ZodError): string {
-  return `${String(error.issues.length)} issue(s): ${[...new Set(error.issues.map(issue => issue.code))].join(", ")}`;
-}
-
 // GraphQL refusals can return HTTP 200; inspect refusal fields, then verify persisted values separately.
-async function assertSubmitNotRefused(
-  assertCurrent: () => void, clock: Clock, deadline: number, response: Response, documentNumber: string,
-): Promise<void> {
+async function assertSubmitNotRefused(assertCurrent: () => void, response: Response, documentNumber: string): Promise<void> {
   if (!response.ok()) {
     throw new Error(
       `Kuali answered HTTP ${String(response.status())} to the save on document ${documentNumber}; `
       + "the write was refused at the transport level",
     );
   }
-  assertCurrent();
   let body: unknown;
   try {
-    // An unreadable or late answer cannot tell a refusal from an acceptance: both stay unknown.
-    body = await responseJsonBefore(clock, deadline, response, `Kuali's answer to the save on document ${documentNumber}`);
+    assertCurrent();
+    body = await response.json();
   } catch (error) {
     assertCurrent();
-    throw error;
+    // Not a swallow: an unreadable answer means we cannot tell a refusal from
+    // an acceptance, which is precisely the uncertainty this driver must raise.
+    throw new Error(
+      `Kuali's answer to the save on document ${documentNumber} was not readable JSON; the outcome is unknown`,
+      { cause: error },
+    );
   }
   const parsed = SubmitResponseSchema.safeParse(body);
   if (!parsed.success) {
-    throw new Error(`Kuali's answer to the save on document ${documentNumber} does not match the known save-response `
-      + `shape (${schemaIssueSummary(parsed.error)}); the outcome is unknown`);
+    throw new Error(
+      `Kuali's answer to the save on document ${documentNumber} does not match the known save-response `
+      + `shape: ${parsed.error.message}`,
+    );
   }
-  // Kuali's messages and validation bodies can quote employee data; a refusal carries only its category and count.
-  const errorCount = parsed.data.errors?.length ?? 0;
-  if (errorCount > 0) {
+  if (parsed.data.errors !== undefined && parsed.data.errors.length > 0) {
     throw new KualiSaveRefusedError({
       documentNumber,
-      refusal: `${KUALI_SUBMIT_OPERATION} returned ${String(errorCount)} GraphQL error${errorCount === 1 ? "" : "s"}`,
+      refusal: parsed.data.errors.map((entry) => entry.message).join("; "),
     });
   }
   const result = parsed.data.data?.submitDocumentV2 ?? undefined;
@@ -626,14 +593,14 @@ async function assertSubmitNotRefused(
   if (result.status !== "Ok") {
     throw new KualiSaveRefusedError({
       documentNumber,
-      refusal: `${KUALI_SUBMIT_OPERATION} reported a status other than Ok`,
+      refusal: `${KUALI_SUBMIT_OPERATION} reported status ${JSON.stringify(result.status)}`,
     });
   }
   if (result.validations !== null && result.validations !== undefined) {
-    const validationCount = Array.isArray(result.validations) ? result.validations.length : 1;
     throw new KualiSaveRefusedError({
       documentNumber,
-      refusal: `${KUALI_SUBMIT_OPERATION} returned ${String(validationCount)} validation${validationCount === 1 ? "" : "s"}`,
+      refusal: `${KUALI_SUBMIT_OPERATION} returned validations: `
+        + JSON.stringify(result.validations).slice(0, 400),
     });
   }
   assertCurrent();
@@ -730,7 +697,6 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     };
     page.on("request", observeRequest);
     try {
-      const deadline = clock.monotonicMs() + ACTION_LIST_FILTER_TIMEOUT_MS;
       const settled = Promise.race([
         page.waitForResponse(response => response.request() === submitted, { timeout: ACTION_LIST_FILTER_TIMEOUT_MS }),
         requestFailed.promise,
@@ -746,13 +712,9 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       if (!response.ok()) {
         throw new Error(`OldActions returned HTTP ${String(response.status())}`);
       }
-      const body = await responseJsonBefore(clock, deadline, response, "The OldActions answer");
+      const body: unknown = await response.json();
       assertCurrent();
-      const parsed = ActionListResultSchema.safeParse(body);
-      if (!parsed.success) {
-        throw new Error(`The OldActions answer does not match the known Action List shape (${schemaIssueSummary(parsed.error)})`);
-      }
-      return parsed.data.data.actions;
+      return ActionListResultSchema.parse(body).data.actions;
     } finally {
       page.off("request", observeRequest);
     }
@@ -902,32 +864,29 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
 
   /* ── The separation-document read (2i chunk 2) ─────────────────────────── */
 
-  /** A `<select>`: its selected option text and its COMPLETE option list (§3.2); `control` names it in a refusal. */
-  async function readSelect(locator: Locator, control: string): Promise<{
+  /** A `<select>`: its selected option text and its COMPLETE option list (§3.2). */
+  async function readSelect(id: ElementId): Promise<{
     readonly selected: string;
     readonly options: readonly string[];
   }> {
     assertCurrent();
+    const locator = await exactlyOne(assertCurrent, page, id);
+    assertCurrent();
     const read = await locator.evaluate((node) => {
       const select = node as HTMLSelectElement;
-      return {
-        selected: select.options[select.selectedIndex]?.text,
-        options: Array.from(select.options).map((option) => option.text),
-      };
+      const options = Array.from(select.options).map((option) => option.text);
+      const selected = select.options[select.selectedIndex]?.text;
+      return { selected, options };
     });
     if (read.selected === undefined) {
       // An invalid selectedIndex is unreadable; never guess the first dropdown option.
       throw new Error(
-        `Kuali ${control} has no option text at its selected index; refusing to guess which option is chosen`,
+        `Kuali ${id} has no option text at its selected index; refusing to guess which option is chosen`,
       );
     }
     assertCurrent();
     return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
   }
-
-  const readRegistrySelect = async (id: ElementId) => readSelect(await exactlyOne(assertCurrent, page, id), id);
-  const readInternalSelect = async (name: string) =>
-    readSelect(await exactlyOneInternal("combobox", name), `driver-internal select "${name}"`);
 
   async function readCheckbox(id: ElementId): Promise<boolean> {
     assertCurrent();
@@ -974,6 +933,30 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     const result = (await locator.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
     assertCurrent();
     return result;
+  }
+
+  async function readInternalSelect(name: string): Promise<{
+    readonly selected: string;
+    readonly options: readonly string[];
+  }> {
+    assertCurrent();
+    const locator = await exactlyOneInternal("combobox", name);
+    assertCurrent();
+    const read = await locator.evaluate((node) => {
+      const select = node as HTMLSelectElement;
+      return {
+        selected: select.options[select.selectedIndex]?.text,
+        options: Array.from(select.options).map((option) => option.text),
+      };
+    });
+    if (read.selected === undefined) {
+      throw new Error(
+        `Kuali driver-internal select "${name}" has no option text at its selected index; `
+        + "refusing to guess which option is chosen",
+      );
+    }
+    assertCurrent();
+    return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
   }
 
   const textField = (value: string): KualiTextField => (value.length === 0
@@ -1111,9 +1094,9 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     };
 
     assertCurrent();
-    const terminationType = await readRegistrySelect(KUALI_RRSS_TERMINATION_TYPE_FIELD);
+    const terminationType = await readSelect(KUALI_RRSS_TERMINATION_TYPE_FIELD);
     assertCurrent();
-    const department = await readRegistrySelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
     assertCurrent();
     const division = await readInternalSelect(INTERNAL_DIVISION_FIELD);
     assertCurrent();
@@ -1234,7 +1217,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     readonly departmentOptions: readonly string[];
   }> {
     assertCurrent();
-    const department = await readRegistrySelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
     assertCurrent();
     const finalPay = await readFinalPayChoice(documentNumber);
     assertCurrent();
@@ -1627,7 +1610,6 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     assertCurrent();
     const refused = Promise.withResolvers<never>();
     let forwarded: Request | undefined;
-    const deadline = clock.monotonicMs() + SUBMIT_OBSERVE_TIMEOUT_MS;
     const answered = page.waitForResponse(
       response => response.request() === forwarded,
       { timeout: SUBMIT_OBSERVE_TIMEOUT_MS },
@@ -1670,7 +1652,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
       const response = await settled;
       assertCurrent();
-      await assertSubmitNotRefused(assertCurrent, clock, deadline, response, expectation.documentNumber);
+      await assertSubmitNotRefused(assertCurrent, response, expectation.documentNumber);
       assertCurrent();
       return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
     } finally {
