@@ -15,6 +15,8 @@ test("Work-Study: start, gate, answered once, done, then Back, Forward and Reloa
   const runId = await startScriptedRun(request, SEEDED_NOW, "10812345", seeded.scripted.reviewReference());
   failures.allow(new RegExp(String.raw`^requestfailed: http://127\.0\.0\.1:\d+/api/v1/runs/${runId}(?:/[a-z-]+)? net::ERR_ABORTED$`, "u"),
     "The panel abandons a read of the run in flight when the run's next state arrives, and reads again.");
+  failures.allow(new RegExp(String.raw`^(?:http 409: GET |console: Failed to load resource: the server responded with a status of 409 \(Conflict\) )http://127\.0\.0\.1:\d+/api/v1/runs/${runId}/identity-gate$`, "u"),
+    "The panel asks for an identity review of the parked reference-check gate, which holds none, and offers no answer control.");
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
   await dashboard.openRun(runId);
