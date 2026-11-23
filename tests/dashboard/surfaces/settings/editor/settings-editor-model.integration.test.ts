@@ -93,22 +93,28 @@ for (const family of ["protected"] as const) {
     let settle: ((value: unknown) => void) | undefined;
     h.ports.execute = () => new Promise<unknown>(resolve => { settle = resolve; });
     const control = () => h.controller().protectedEditor;
-    await settingsAction(() => control().update("ucpathUserId", "retained"));
+    const value = "https://example.test/retained-roster";
+    await settingsAction(() => control().update("sharepointOnboardingRosterUrl", value));
     await settingsAction(() => control().submit());
     assert.equal(control().save.state, "saving"); const original = structuredClone(h.commands[0]);
     await h.render("general", true, 1);
     assert.equal(control().save.state, "unconfirmed");
-    await settingsAction(() => control().retry());
-    assert.equal(h.commands.length, 1, "retry cannot dispatch over the pending original attempt");
+    await settingsAction(() => control().submit());
+    assert.equal(h.commands.length, 1, "the pending original attempt holds the write lock");
     const draft = structuredClone(control().draft);
     assert.ok(settle);
     await settingsAction(() => settle?.({ state: "pending", commandId: (original as { commandId: string }).commandId }));
     assert.equal(control().save.state, "unconfirmed"); assert.equal(control().locked, true);
     assert.deepEqual(control().draft, draft);
     assert.equal(h.notices.length, 0); assert.equal(h.problems.length, 0);
-    h.ports.execute = request => ({ state: "pending", commandId: (request as { commandId: string }).commandId });
-    await settingsAction(() => control().retry());
-    assert.deepEqual(h.commands, [original, original]);
+    assert.equal(h.authority.execute(original).state, "applied");
+    await vi.waitFor(async () => { await settingsAction(() => undefined); assert.equal(control().locked, false); });
+    assert.equal(control().save.state, "idle"); assert.equal(control().dirtyCount, 0);
+    assert.equal(h.notices.length, 0); assert.equal(h.problems.length, 0);
+    const editor = h.controller().editor; assert.ok(editor.state === "loaded");
+    assert.ok(editor.document.protectedSettings.state === "available");
+    assert.equal(editor.document.protectedSettings.entries.sharepointOnboardingRosterUrl?.value, value);
+    assert.deepEqual(h.commands, [original]);
   });
 }
 
