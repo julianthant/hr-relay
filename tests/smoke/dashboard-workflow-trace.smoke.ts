@@ -1,8 +1,9 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { approveScriptedGate, seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
-import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
+import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, PERSON_LOOKUP_SCRIPT, SEPARATIONS_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
 import { readdirSync } from "node:fs";
+import { COMPOSITION_EID } from "../support/helpers/separations-composition-fixtures.js";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
 import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
@@ -220,3 +221,63 @@ test("CRM Document Download: a failed download shows Failed in the run panel and
   expect(seeded.scripted.writes()).toHaveLength(0);
   expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
 });
+
+const SEPARATION_STEPS = ["resolve-action", "document", "name-search", "job-summary", "timecard-search", "timecard", "file-termination", "finalize-kuali"];
+
+test("Separations: start, each step held, done, and one write to UCPath and one to Kuali", async ({ dashboard, seeded, page, failures }) => {
+  const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  await dashboard.open();
+  await dashboard.openWorkflow("Separations");
+  const runId = await startScriptedRun(request, SEEDED_NOW, "4501", undefined, SEPARATIONS_SCRIPT);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  await dashboard.openRun(runId);
+  const run = await seeded.scripted.drive(runId);
+  await expect(row).toContainText("Running");
+  const held: string[] = [];
+  let position = run.position;
+  while (position.at === "step") {
+    held.push(position.nodeId);
+    position = await run.advance();
+  }
+  expect(position).toMatchObject({ at: "settled", outcome: { state: "done" } });
+  expect(new Set(held).size, "each step is held once").toBe(held.length);
+  expect(held).toEqual(expect.arrayContaining(SEPARATION_STEPS));
+  expect(held.indexOf("timecard")).toBeLessThan(held.indexOf("file-termination"));
+  expect(held.indexOf("file-termination")).toBeLessThan(held.indexOf("finalize-kuali"));
+  await expect(row).toContainText("Done");
+  await expect(row).not.toContainText("Running");
+  expect(seeded.scripted.writes()).toEqual([
+    { runId, nodeId: "file-termination", eid: COMPOSITION_EID },
+    { runId, nodeId: "finalize-kuali", eid: COMPOSITION_EID },
+  ]);
+  await dashboard.settleReads();
+  await page.reload();
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  expect(seeded.scripted.writes()).toHaveLength(2);
+});
+
+/** Each step, broken, ends the run as Failed; the writes before it stand and the ones after it never happen. */
+for (const [step, writesBefore] of [["resolve-action", 0], ["name-search", 0], ["timecard-search", 0], ["timecard", 0], ["file-termination", 0], ["finalize-kuali", 1]] as const) {
+  test(`Separations: a failed ${step} step shows Failed on the row and leaves ${String(writesBefore)} write${writesBefore === 1 ? "" : "s"}`, async ({ dashboard, seeded, page, failures }) => {
+    const request = seededRequestOver(seeded.baseUrl);
+    failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+    await dashboard.open();
+    await dashboard.openWorkflow("Separations");
+    const runId = await startScriptedRun(request, SEEDED_NOW, "4502", undefined, SEPARATIONS_SCRIPT);
+    failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+    const row = page.locator(`[data-demo-row-id="${runId}"]`);
+    await expect(row).toBeVisible();
+    const run = await seeded.scripted.drive(runId);
+    let position = run.position;
+    while (position.at === "step" && position.nodeId !== step) position = await run.advance();
+    expect(position).toEqual({ at: "step", nodeId: step });
+    expect(await run.fail()).toMatchObject({ at: "settled" });
+    await expect(row).toContainText("Failed");
+    await expect(row).not.toContainText("Running");
+    expect(seeded.scripted.writes()).toHaveLength(writesBefore);
+  });
+}
