@@ -407,7 +407,10 @@ function LoadedApp({
   if (selectedRow !== undefined) retainedLogRow.current = { identity: logIdentity, row: selectedRow };
   else if (dayResource.state !== "loading" || retainedLogRow.current?.identity !== logIdentity) retainedLogRow.current = undefined;
   // Back to a kept day with its run open shows that run's kept row; its logs stay display-only until the day is fresh.
-  const logRow = selectedRow ?? (dayResource.state === "loading" ? retainedLogRow.current?.row ?? keptDay?.queueSurfaces.find(row => row.runId === route.run) : undefined);
+  const heldLogRow = selectedRow === undefined && dayResource.state === "loading" ? retainedLogRow.current?.row ?? keptDay?.queueSurfaces.find(row => row.runId === route.run) : undefined;
+  // A held row carries no command authority: its actions are dropped and Logs gets no action handler until the day is fresh.
+  const heldLogView = useMemo(() => heldLogRow === undefined ? undefined : { ...heldLogRow, actions: [] }, [heldLogRow]);
+  const logRow = selectedRow ?? heldLogView;
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
     || shownQueueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
@@ -772,7 +775,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     (action: ActionDescriptorWire, target: ActionTarget): Promise<void> | void => runAction(action, target, "queue"),
     [runAction],
   );
-  const runLogAction = useCallback((action: ActionDescriptorWire, target: ActionTarget) => runAction(action, target, "run-detail"), [runAction]);
+  const freshLogRunId = selectedRow?.runId;
+  const runLogAction = useCallback((action: ActionDescriptorWire, target: ActionTarget) => {
+    if (action.kind === "command" && (freshLogRunId === undefined || String(freshLogRunId) !== target.runId)) return;
+    return runAction(action, target, "run-detail");
+  }, [runAction, freshLogRunId]);
+  const logAction = selectedRow === undefined ? undefined : runLogAction;
 
   /** Keyboard traversal must follow the same drawn order and attention bands. */
   /** Keep handler identity stable so unchanged callbacks do not defeat queue memoization. */
@@ -1152,8 +1160,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             <PanelBoundary resetKey={`${route.run ?? ""}:${logsAttempt}`} sentence="Couldn't show this run.">
             {route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
               LogPreview !== undefined && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true)
-              ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={runLogAction} />
-              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={runLogAction}
+              ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={logAction} />
+              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={logAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onOpenLinked={openRelatedRun} onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
                 initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />

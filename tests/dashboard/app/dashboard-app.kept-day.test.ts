@@ -75,3 +75,47 @@ it("Back to a kept day with its run open shows both at once, marked Updating, th
   assert.ok(runRow());
   assert.equal(runTitle(), run.title);
 });
+
+it("Back to a kept day gives the held run's Logs no Pause, Stop or Cancel, and sends no command until the day is fresh", async () => {
+  const day = FIXTURE_DAY_WIRE.day;
+  const otherDay = "2026-08-02";
+  const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent !== null && row.status === "running" && row.actions.some(action => action.kind === "command" && action.command === "cancel"));
+  assert(run);
+  const other = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, day: otherDay, queueSurfaces: [], attemptHistory: undefined, monthCounts: [{ day: otherDay, count: 0 }] });
+  const { app } = createFixtureBff();
+  const commands: string[] = [];
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    if (new URL(String(url)).pathname === "/api/v1/commands") commands.push(String(init?.body));
+    return app.request(url, init);
+  } });
+  const streams: { day: string; serve: (frame: DashboardDayWire) => void }[] = [];
+  const client: DashboardClient = { ...transport, subscribeDay: input => {
+    streams.push({ day: input.day, serve: frame => { input.onDay(frame); input.onState({ state: "live" }); } });
+    return { close: () => undefined };
+  } };
+  window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
+  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
+  await settle();
+  await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
+  const logs = () => host.querySelector('[aria-label="Selected run logs"]');
+  const runControls = () => [...logs()?.querySelectorAll("button") ?? []].map(button => button.getAttribute("aria-label") ?? button.textContent ?? "").filter(label => /^(Pause|Stop|Cancel)\b/.test(label));
+  await vi.waitFor(() => assert.ok(runControls().length > 0, "the fresh day's running member shows its controls"));
+
+  await forward(`/?day=${otherDay}`);
+  await act(async () => streams.at(-1)?.serve(other));
+  await vi.waitFor(() => assert.equal(logs(), null));
+
+  await back();
+  assert.equal(streams.at(-1)?.day, day);
+  assert.ok(logs(), "the held run shows at once");
+  assert.deepEqual(runControls(), [], "a held run carries no command authority");
+  for (const button of logs()?.querySelectorAll("button") ?? []) await act(async () => { button.click(); });
+  await settle();
+  assert.deepEqual(commands, [], "nothing is sent while the fresh day is held");
+
+  await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
+  await vi.waitFor(() => assert.ok(runControls().length > 0, "the fresh day brings the controls back"));
+});
