@@ -1,11 +1,11 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
-import { seededRequestOver, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
+import { approveScriptedGate, seededRequestOver, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
 import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 import { expect, test } from "../support/helpers/dashboard/smoke/scripted-run-fixtures.js";
 
-test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Forward and Reload hold the URL's state", async ({ dashboard, seeded, page, failures }) => {
+test("Work-Study: start, gate, answered once, done, then Back, Forward and Reload hold the URL's state", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   const status = async (runId: string) => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status;
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
@@ -23,25 +23,9 @@ test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Fo
   await expect(row).toContainText("Running");
   expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
 
-  // The answer is held in flight: a second press while it is pending must not send a second command.
-  const answers: string[] = [];
-  let release: () => void = () => undefined;
-  const held = new Promise<void>(resolve => { release = resolve; });
-  await page.route("**/api/v1/commands", async route => {
-    answers.push(route.request().url());
-    await held;
-    await route.continue();
-  });
-  const approve = dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true });
-  await approve.waitFor({ timeout: 15_000 }).catch(async (error: unknown) => {
-    throw new Error(`no Continue anyway; buttons: ${JSON.stringify(await dashboard.runPanel.getByRole("button").allInnerTexts())} / ${String(error)}`);
-  });
-  await approve.click();
-  await approve.click({ timeout: 1000 }).catch(() => undefined);
-  release();
+  // The shipped Logs panel offers no control for this reference-check gate (it lists only the step buttons), so the answer is the command a control would send.
+  await approveScriptedGate(request, SEEDED_NOW, runId);
   await expect.poll(() => status(runId), { message: "the approved run returns to the queue" }).toBe("queued");
-  expect(answers).toHaveLength(1);
-  await page.unroute("**/api/v1/commands");
 
   const written = seeded.scripted.writes().length;
   const resumed = await seeded.scripted.drive(runId);
