@@ -46,7 +46,7 @@ it("keeps enrollment scoped and burns distinct canonical counts across independe
 it("drops a stored Touch ID row at first open and keeps signing with the security key", async () => {
   const fixture = await createBoundProfileFixture();
   const clock = manualClock(new Date("2026-11-01T12:00:00.000Z"));
-  const machineRoot = fixture.admission.stateRoot, profileId = fixture.admission.profileId;
+  const machineRoot = fixture.admission.stateRoot, profileId = fixture.admission.profileBinding.profileId;
   const material = () => {
     const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     return { credentialId: Buffer.from(randomUUID()).toString("base64url"),

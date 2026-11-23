@@ -939,7 +939,7 @@ with the stored usb key. Public method states display these receipts; they do no
 distinct durable reservation nonce.
 
 Setup uses the broker-verified top-level Duo page. Same-origin child frames are not
-additional enrollment targets; ambiguous top-level pages refuse. Credential IDs remain canonical
+additional enrollment targets. Credential IDs remain canonical
 base64url in Duo custody and convert to standard base64 only at the Chromium protocol boundary.
 Actual provider failures still retain their error and block Finish through the existing custody checks.
 The first open of a credential store retires any stored transport `internal` row and its head counter.

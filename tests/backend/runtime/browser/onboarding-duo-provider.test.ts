@@ -179,7 +179,7 @@ function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoP
     return result;
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
-      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
+      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
     events, selectedPages,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
@@ -870,16 +870,6 @@ describe("draft Duo provider", () => {
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
-    } finally { await w.cleanup(); }
-  });
-
-  it("refuses ambiguous top-level Duo pages before preparing an authenticator", async () => {
-    const w = world("darwin", { duoPage: true });
-    try {
-      await w.provider.start(w.attempt, w.bind, w.reportFailure);
-      w.addDuoPage();
-      assert.deepEqual(await w.send("bind", BIND), { ok: false });
-      assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
 

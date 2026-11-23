@@ -55,7 +55,7 @@ export const ONBOARDING_SCENES = {
   "duo-still-opening": { step: "duo", draft: draft("idle", { state: "opening", generation: 1 }), wait: 10_000, shows: "Still opening setup window…" },
   "duo-key-pending": { step: "duo", draft: draft("pending"), shows: "Waiting for Duo to add Security key" },
   "duo-still-waiting": { step: "duo", draft: draft("pending"), wait: 10_000, shows: "Still waiting for Duo to add Security key" },
-  "duo-attempt-unconfirmed": { step: "duo", draft: draft("unknown"), shows: "Relay could not confirm Security key. In Duo, remove any device you do not recognize, then start over." },
+  "duo-attempt-unconfirmed": { step: "duo", draft: draft("unknown"), shows: "Relay could not confirm your security key. In Duo, remove any device you do not recognize, then start over." },
   "duo-cancel-confirm": { step: "duo", draft: draft("pending"), press: ["Cancel sign-up"], shows: "Cancel sign-up?" },
   "duo-cancelling": { step: "duo", draft: draft("pending"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "Cancelling…" },
   "duo-cancel-no-reply": { step: "duo", noReply: true, draft: draft("pending"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "No reply from Relay. Reload the page to check." },

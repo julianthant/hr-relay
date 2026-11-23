@@ -75,7 +75,7 @@ const StoppedCurrentProfileContinuitySchema = PriorProfileContinuitySchema.exten
   .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
 const StoppedProfileRegistryRowV4Schema = ProfileRegistryRowSchema.extend({ registration: ProfileRegistryRowSchema.shape.registration.extend({
   onboardingCompletion: ProfileOnboardingCompletionSchema.extend({ touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u),
-    softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: ProfileOnboardingCompletionSchema.shape.finishedAt.optional() }) }).optional() }) });
+    softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: ProfileOnboardingCompletionSchema.shape.finishedAt.optional() }).optional() }).optional() }) });
 const StoppedProfileRegistryDocumentV4Schema = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(4), profiles: z.array(StoppedProfileRegistryRowV4Schema) });
 type StoppedProfileRegistryDocumentV4 = z.infer<typeof StoppedProfileRegistryDocumentV4Schema>;
 const StoppedProfileRegistryDocumentV3Schema = ProfileRegistryDocumentSchema.extend({ schemaVersion: z.literal(3),
@@ -2011,7 +2011,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         priorControlUpgradeEvidence(locator, prior, document);
         assertHeld();
         if (before !== profileObservation(control, locator)) fail("profile-registry-observation-changed");
-        return seededTimekeeperInitials(document);
+        return securityKeyOnlyRegistry(seededTimekeeperInitials(document));
       }
       if (lstatMaybe(join(control, "profile-publication.json"))) {
         if (options?.readonlyControl === true) return readMachineRegistry(control, locator, false);
@@ -2576,7 +2576,7 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
   const machine = join(locator.stateRoot, "machine");
   if (document.profiles.some(row => row.lifecycle !== "ready" || row.credentialState !== "saved")) fail("profile-control-upgrade-pending-conversion-unsupported");
   assertPriorRegistryLogicalBinding(locator, prior, document);
-  const currentDocument = seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...document, schemaVersion: 3, installationId: locator.installationId, revision: 1 }));
+  const currentDocument = securityKeyOnlyRegistry(seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...document, schemaVersion: 3, installationId: locator.installationId, revision: 1 })));
   if (plans.length !== 0 && (plans.length !== document.profiles.length || new Set(plans.map(row => row.profileId)).size !== plans.length
     || plans.some(row => !document.profiles.some(profile => profile.profileId === row.profileId)))) fail("profile-control-upgrade-plan-membership");
   if (plans.length === 0 && prior.schemaVersion === 1 && lstatMaybe(join(machine, "duo-credentials"))) fail("profile-control-upgrade-duo-material-present");

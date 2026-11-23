@@ -86,7 +86,7 @@ const METHOD = {
   pending: scene("Waiting for Duo to add the security key", { step: "duo", draft: duoDraft("pending") }, "Waiting for Duo to add Security key"),
   complete: scene("Security key added", { step: "duo", draft: duoDraft("complete") }),
   unknown: scene("Security key attempt not confirmed", { step: "duo", draft: duoDraft("unknown") },
-    "Relay could not confirm Security key. In Duo, remove any device you do not recognize, then start over."),
+    "Relay could not confirm your security key. In Duo, remove any device you do not recognize, then start over."),
 } satisfies Record<MethodState, Story>;
 
 const withBrowser = (browser: ProfileOnboardingBrowser) => ({ step: "duo", draft: duoDraft("idle", browser) }) as const satisfies SignInScene;

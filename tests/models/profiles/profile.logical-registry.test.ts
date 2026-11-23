@@ -19,7 +19,7 @@ it("keeps the installation and format immutable even for malformed runtime patch
     // @ts-expect-error immutable identity is not a registry patch
     installationId: "0194a462-08fb-7eb8-9a82-7bd1fdaf9ab6", schemaVersion: 2, revision: 500,
   });
-  assert.equal(next.installationId, installationId); assert.equal(next.schemaVersion, 4); assert.equal(next.revision, 1);
+  assert.equal(next.installationId, installationId); assert.equal(next.schemaVersion, 5); assert.equal(next.revision, 1);
 });
 
 it("refuses revision exhaustion before returning a successor", () => {
@@ -32,6 +32,6 @@ it("admits only the current complete registry format", () => {
   const { installationId: _installationId, revision: _revision, ...prior } = current;
   assert.equal(ProfileRegistryDocumentSchema.safeParse({ ...prior, schemaVersion: 2 }).success, false);
   assert.equal(ProfileRegistryDocumentSchema.safeParse({ ...current, schemaVersion: 3 }).success, false);
-  assert.equal(ProfileRegistryDocumentSchema.safeParse({ ...current, schemaVersion: 5 }).success, false);
+  assert.equal(ProfileRegistryDocumentSchema.safeParse({ ...current, schemaVersion: 6 }).success, false);
   assert.equal(ProfileRegistryDocumentSchema.safeParse({ ...current, revision: Number.MAX_SAFE_INTEGER + 1 }).success, false);
 });

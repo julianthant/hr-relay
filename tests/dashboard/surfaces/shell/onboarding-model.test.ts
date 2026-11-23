@@ -7,6 +7,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, vi } from "vitest";
 import { createServedOnboardingPort, duoMethodLabels, duoMethodPresentation, duoSummary, useDuoBrowser, usePublicProfileSession, useServedDuoSetup, validateOnboarding } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
+import type { ProfileOnboardingMethodState } from "../../../../src/models/profiles/public-profile.js";
 
 describe("onboarding validation", () => {
   const details = { firstName: "Alex", lastName: "Rivera", email: "alex.rivera@ucsd.edu", password: "Relay-demo-42" };
@@ -93,7 +94,7 @@ it("never carries selected public-session authority into a replacement client", 
 });
 
 
-const draftMethod = (state: "idle" | "pending" | "complete" | "unknown" = "idle") => ({ state,
+const draftMethod = (state: "idle" | "pending" | "complete" | "unknown" = "idle"): ProfileOnboardingMethodState => ({ state,
   ceremonyObserved: state === "complete", portalAccepted: state === "complete", operatorConfirmed: state === "complete", exactCredentialRequestObserved: false });
 const onboardingDraft = () => ({ browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
   profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: draftMethod() } });
