@@ -10,10 +10,8 @@ import { boundProfileAdmission, findProfileFixtureAdmission } from "../../../sup
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createRunDiagnosticCapture } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
-import { projectGeneratedUpdates } from "../../../../src/backend/logs/generated-artifact-projection.js";
 import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
 import { createProviderClient } from "../../../../src/backend/processing/providers/provider-client.js";
-import { bindFailureCapture } from "../../../../src/backend/runs/lifecycle/failure-resolution.js";
 import { runRuntimeMatches } from "../../../../src/backend/runs/lifecycle/run-claim-admission.js";
 import { selectNewRunIdentity,selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createArtifactSinkProjector } from "../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
@@ -39,7 +37,7 @@ const flows={
   assert.equal(adapter.calls()[0]?.options.requestId,id(60));
  },
  async D(f:Fixture){
-  const run=f.createRun(id(81));const record={...failure(),runId:run.envelope.runId,traceId:run.envelope.traceId};const writer=artifacts(f);await writer.ready;const capture=bindFailureCapture(createRunDiagnosticCapture({service:createDiagnosticCaptureService({artifacts:writer,authority:f.db.authority,clock:f.clock,ids:sequentialIdFactory("d")})}));
+  const run=f.createRun(id(81));const record={...failure(),runId:run.envelope.runId,traceId:run.envelope.traceId};const writer=artifacts(f);await writer.ready;const capture=createRunDiagnosticCapture({service:createDiagnosticCaptureService({artifacts:writer,authority:f.db.authority,clock:f.clock,ids:sequentialIdFactory("d")})});
   const bundle=await capture.captureForFailure({failure:record,configFingerprint:f.snapshot.fingerprint,descriptorFingerprint:HASH});
   f.db.withAuthorityTransaction(()=>{terminalizeFixtureFailure(f,run,{...record,diagnosticBundleId:bundle.bundleId});capture.persist(bundle);});
   const api=composeFailureResolution(f.db.authority);assert.equal(api.query.getFailure(record.failureId)?.writeState,"unknown");assert.deepEqual(api.query.read(record.runId,record.failureId)?.resolution,{status:"unresolved",version:1});
@@ -51,7 +49,7 @@ const flows={
  async G(f:Fixture){
   f.db.authority.artifactOutbox.insert(update());const workbookPath=join(f.root,"retention.xlsx");
   const projector=createArtifactSinkProjector({authority:f.db.authority,withAuthorityTransaction:work=>f.db.withAuthorityTransaction(work),sinks:{"xlsx-retention":createXlsxRetentionSink({workbookPath,artifacts:artifacts(f)})},lockDir:join(f.root,"locks"),clock:f.clock});
-  await projectGeneratedUpdates(projector,[id(1)]);assert.equal(f.db.authority.artifactOutbox.get(id(1))?.state,"projected");assert.ok(readFileSync(workbookPath).length>0);assert.equal(f.db.authority.generatedArtifacts.get("sink:xlsx-retention")?.state,"ready");
+  await projector.projectOutbox([id(1)]);assert.equal(f.db.authority.artifactOutbox.get(id(1))?.state,"projected");assert.ok(readFileSync(workbookPath).length>0);assert.equal(f.db.authority.generatedArtifacts.get("sink:xlsx-retention")?.state,"ready");
  },
  async S(f:Fixture){
   const admission=findProfileFixtureAdmission(f.root);assert.ok(admission);

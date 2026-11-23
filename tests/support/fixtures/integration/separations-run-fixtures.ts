@@ -30,7 +30,6 @@ import {
   COMPOSITION_UCPATH_NAME,
   compositionQueuedRun,
 } from "../../helpers/separations-composition-fixtures.js";
-import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 
 
@@ -185,11 +184,4 @@ export function seedTerminalSeparationsResult(
   result: RunResultRecord = separationsRunResultRecord(run),
 ): void {
   seedSeparationsRunAuthority(database, path, run, result);
-}
-
-export function assertCurrentSeparationsFixtureContract(): void {
-  if (TERMINAL_SEPARATIONS_RUN.envelope.contractFingerprint
-    !== separationsDescriptor.contractFingerprint) {
-    throw new Error("pseudonym fixture drifted from the current Separations descriptor");
-  }
 }
