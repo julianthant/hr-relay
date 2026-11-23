@@ -5,7 +5,8 @@ import type { SessionPreviewOperation, SessionPreviewRequest } from './session-p
 
 export const IDLE_REFRESH_MS = 5 * 60_000;
 type Deadline = { browserIds: readonly string[]; authorityKey?: string; lifetimeKey?: string; dueAt: number; attempted: boolean; requestId?: string; nativeCommandIds?: readonly string[] };
-export type IdleSessionCountdown = Readonly<{ remainingMs: number; waiting: boolean }>;
+/** The deadline, not a remaining time: it changes only with the schedule, so the ring alone ticks the display. */
+export type IdleSessionCountdown = Readonly<{ dueAt: number; waiting: boolean }>;
 
 /** Only idle workers with wholly ready browser sessions can be refreshed. */
 export class IdleSessionSchedule {
@@ -54,8 +55,11 @@ export class IdleSessionSchedule {
       this.deadlines.set(request.target, { ...deadline, ...(worker?.authority === undefined ? {} : { authorityKey: sessionWorkerAuthorityKey(worker.authority) }), dueAt: now + IDLE_REFRESH_MS, attempted: false });
     }
   }
-  view(now: number): Readonly<Record<string, IdleSessionCountdown>> {
-    return Object.fromEntries([...this.deadlines].map(([id, deadline]) => [id, { remainingMs: Math.max(0, deadline.dueAt - now), waiting: deadline.attempted }]));
+  countdowns(): Readonly<Record<string, IdleSessionCountdown>> {
+    return Object.fromEntries([...this.deadlines].map(([id, deadline]) => [id, { dueAt: deadline.dueAt, waiting: deadline.attempted }]));
+  }
+  view(now: number): Readonly<Record<string, { remainingMs: number; waiting: boolean }>> {
+    return Object.fromEntries(Object.entries(this.countdowns()).map(([id, { dueAt, waiting }]) => [id, { remainingMs: Math.max(0, dueAt - now), waiting }]));
   }
 }
 
@@ -64,9 +68,14 @@ export function useIdleSessionRefresh(data: SessionsViewState, operations: Reado
   const latest = useRef({ data, operations, send });
   const [countdowns, setCountdowns] = useState<Readonly<Record<string, IdleSessionCountdown>>>({});
   const shown = useRef(countdowns);
+  const publish = () => {
+    const next = schedule.current.countdowns();
+    // Only a changed deadline or wait state re-renders the panel; the ring ticks itself.
+    if (JSON.stringify(next) !== JSON.stringify(shown.current)) { shown.current = next; setCountdowns(next); }
+  };
   useEffect(() => { latest.current = { data, operations, send }; }, [data, operations, send]);
   const operationKey = JSON.stringify(Object.entries(operations).map(([target, operation]) => [target, operation.request.id, operation.request.action, operation.state]));
-  useEffect(() => { const now = clock.nowMs(); schedule.current.sync(data, now, latest.current.operations); shown.current = schedule.current.view(now); setCountdowns(shown.current); }, [data, operationKey, clock]);
+  useEffect(() => { schedule.current.sync(data, clock.nowMs(), latest.current.operations); publish(); }, [data, operationKey, clock]);
   useEffect(() => {
     const timer = setInterval(() => {
       const now = clock.nowMs();
@@ -75,9 +84,7 @@ export function useIdleSessionRefresh(data: SessionsViewState, operations: Reado
         const operation = latest.current.operations[target];
         return operation !== undefined && ['pending', 'refused'].includes(operation.state);
       })) void latest.current.send(request);
-      const next = schedule.current.view(now);
-      // No countdown running: skip the update so the panel does not re-render every second.
-      if (Object.keys(next).length > 0 || Object.keys(shown.current).length > 0) { shown.current = next; setCountdowns(next); }
+      publish();
     }, 1000);
     return () => clearInterval(timer);
   }, [clock]);
