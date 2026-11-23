@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { ContentAddressedArtifactWriter } from "../../../../workflow-kit/artifacts.js";
-import { collectionArtifactOutput } from "../../../../workflow-kit/artifacts.js";
+import { ARTIFACT_COLLECTION_MEDIA_TYPE, ArtifactCollectionManifestSchema, CollectionArtifactOutputSchema } from "../../../../models/artifacts/artifacts.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import type { CrmWorksheetPerson } from "../../../../models/workflows/crm-doc-download/documents.js";
 import { ReadCrmWorksheetArchives } from "../../../../models/workflows/crm-doc-download/read-worksheet-archives.js";
 import { CrmWorksheetArchiveSchema } from "../../../../models/workflows/crm-doc-download/documents.js";
@@ -50,7 +51,13 @@ export const readCrmWorksheetArchivesTask = defineTask(ReadCrmWorksheetArchives,
     try {
       const worksheets = await packageCrmWorksheetArchives(ctx.artifacts, input.people, ctx.signal);
       ctx.signal.throwIfAborted();
-      const collection = await collectionArtifactOutput(ctx.artifacts, worksheets.map(({ relativePath, artifact }) => ({ relativePath, artifact })));
+      const manifest = ArtifactCollectionManifestSchema.parse({
+        files: worksheets.map(({ relativePath, artifact }) => ({ relativePath, artifact })),
+      });
+      const artifact = await ctx.artifacts.put(new TextEncoder().encode(canonicalJsonStringify(manifest)), {
+        mediaType: ARTIFACT_COLLECTION_MEDIA_TYPE,
+      });
+      const collection = CollectionArtifactOutputSchema.parse({ ...manifest, artifact });
       ctx.signal.throwIfAborted();
       output = ReadCrmWorksheetArchives.output.parse({ collection, worksheets, worksheetCount: worksheets.length,
         personCount: worksheets.reduce((total, sheet) => total + sheet.people.length, 0),

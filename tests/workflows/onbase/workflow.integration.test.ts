@@ -9,7 +9,7 @@ import { extractOnbasePage } from "../../../src/backend/systems/onbase/tasks/rea
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
-import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../support/fixtures/backend/queued-run.js";
 import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, OnbaseTargetSchema } from "../../../src/models/systems/onbase/import-document.js";
 import { OnbaseCommitImport } from "../../../src/models/systems/onbase/upload-import.js";
 import { onbaseFilingFixture } from "../../support/helpers/backend/onbase-filing-fixture.js";
@@ -34,7 +34,7 @@ async function runOnbase(mode: "dry-run" | "committed" | "lost-acknowledgement")
   const plan = planStart({ authority: database, clock, ids: sequentialIdFactory("f"), planTtlMs: 600000 }, { descriptor, submissions: [input], dryRun,
     priority: "bulk", shape: "operation-member", plannedBy: "local-operator", configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId });
   assert.equal(plan.refused.length, 0); const entry = plan.planned[0]; assert.ok(entry);
-  const queued = buildQueuedRun({ descriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "ob-090000-2222",
+  const queued = queuedRunFixture({ descriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "ob-090000-2222",
     rawInput: entry.rawInput, canonicalInput: entry.input, ingressSchemaHash: plan.ingressSchemaHash, configFingerprint: plan.configFingerprint,
     configSnapshotId: plan.configSnapshotId, resolvedInstance: plan.resolvedInstance, shape: plan.shape, priority: plan.priority, dryRun,
     attempt: 1, runNumber: 1, appVersion: "0.1.0", now: clock.now().toISOString() });

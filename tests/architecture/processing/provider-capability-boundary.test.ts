@@ -8,7 +8,7 @@ import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-pat
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerInvocationConfig } from "../../../src/models/config/schema.js";
 import { ProviderCapabilityIdSchema } from "../../../src/rules/identity/ids.js";
 import { PROVIDER_ADAPTER_SPECS, ProviderIdSchema } from "../../../src/models/runtime/runtime-dependencies.js";
-import { createDeterministicProviderHarness } from "../../../src/backend/processing/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../support/fixtures/backend/deterministic-provider.js";
 import { gitVisibleFiles, REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const NETWORK_MODULE_PATTERN = /^(?:node:)?(?:http|https|http2)$|^(?:axios|got|undici|openai)$/u;

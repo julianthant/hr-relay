@@ -1,7 +1,7 @@
 import { default as assert_m0, default as assert_m1 } from "node:assert/strict";
 import { createHash as createHash_m1 } from "node:crypto";
 import { describe as describe_m0, describe as describe_m1, it as it_m0, it as it_m1 } from "vitest";
-import { buildRunEvidenceReceipt as buildRunEvidenceReceipt_m0 } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { manualClock as manualClock_m1 } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify as canonicalJsonStringify_m1 } from "../../../src/rules/validation/canonical-json.js";
 import { deriveIdempotencyKeyDigest as deriveIdempotencyKeyDigest_m0, deriveIdempotencyKeyDigest as deriveIdempotencyKeyDigest_m1, deriveWriteBindingProofDigest as deriveWriteBindingProofDigest_m1, evaluateNegativeSettlement as evaluateNegativeSettlement_m1, NegativeSettlementEvaluationInputSchema as NegativeSettlementEvaluationInputSchema_m1, RecoveryProbeVerdictSchema as RecoveryProbeVerdictSchema_m1, SubjectProofSchema as SubjectProofSchema_m1, UnscopedBindingProofSchema as UnscopedBindingProofSchema_m1, WriteAttemptRecordSchema as WriteAttemptRecordSchema_m1, WriteBindingProofSchema as WriteBindingProofSchema_m1, WriteIntentRecordSchema as WriteIntentRecordSchema_m1 } from "../../../src/rules/write-safety/write-safety.js";
@@ -13,13 +13,13 @@ import { separationsKualiFinalizationDescriptor as separationsKualiFinalizationD
 
 describe_m0("current receipt — the commit action carries what proved the write", () => {
   const evidence = kualiReceiptEvidence_m0();
-  const receipt = buildRunEvidenceReceipt_m0({
+  const receipt = deriveRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor_m0,
     run: evidence.run,
     result: evidence.result,
     checkpoints: evidence.checkpoints,
     writes: evidence.writes,
-  }, 5);
+  }, 5).receipt.receipt;
 
   it_m0("retains the current transaction digest and exact private fence identity", () => {
     const commit = receipt.actions.find((action) => action.kind === "commit");

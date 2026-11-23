@@ -1,3 +1,4 @@
+import { createDeterministicSessionProvider } from "../support/fixtures/backend/deterministic-session-provider.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
@@ -6,7 +7,6 @@ import { defineTaskContract } from "../../src/models/task/task-contract.js";
 import type { UcpathPersonOrgDriver } from "../../src/models/ui/ucpath-person-org.js";
 import { ScenarioIdSchema,taskId } from "../../src/rules/identity/ids.js";
 import {
-createDeterministicSessionProvider,
 defineUnwiredSessionProvider,
 } from "../../src/workflow-kit/session.js";
 import {

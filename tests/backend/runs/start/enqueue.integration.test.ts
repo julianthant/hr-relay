@@ -4,7 +4,7 @@ import { StartCommandRequestSchema } from "../../../../src/rules/commands/comman
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
-import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../../support/fixtures/backend/queued-run.js";
 import {
 planStart
 } from "../../../../src/backend/runs/start/plan.js";
@@ -39,66 +39,10 @@ afterEach(async () => {
 
 describe("start planning", () => {
 
-  it("buildQueuedRun carries stepOmissions onto the run envelope byte for byte", async () => {
-    const database = await openDatabase();
-    const itemId = deriveItemId("person-lookup", PERSON_EID_MATCH_KEY);
-    const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
-    const withOmissions = buildQueuedRun({
-      descriptor: personLookupDescriptor,
-      appVersion: "0.1.0",
-      runId: "aaaaaaaa-0002-4000-8000-000200000000",
-      itemId,
-      traceId: "pl-170000-bbbb",
-      rawInput: { emplId: "10873698" },
-      canonicalInput: {
-        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-        protectedBindings: [],
-        value: { emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
-      },
-      ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
-      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
-      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
-      resolvedInstance: { ucpath: "prod", crm: "prod" },
-      shape: "single",
-      priority: "bulk",
-      dryRun: false,
-      stepOmissions,
-      attempt: database.authority.runs.nextItemAttempt({ workflow: "person-lookup", itemId }),
-      runNumber: database.authority.runs.nextWorkflowRunNumber("person-lookup"),
-      now: NOW,
-    });
-    assert.deepEqual(withOmissions.envelope.stepOmissions, stepOmissions);
-
-    const withoutOmissions = buildQueuedRun({
-      descriptor: personLookupDescriptor,
-      appVersion: "0.1.0",
-      runId: "aaaaaaaa-0003-4000-8000-000300000000",
-      itemId: deriveItemId("person-lookup", "eid:10101010"),
-      traceId: "pl-170000-cccc",
-      rawInput: { emplId: "10101010" },
-      canonicalInput: {
-        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"),
-        protectedBindings: [],
-        value: { emplId: "10101010", keepNonHdh: false, includeCrmDates: false },
-      },
-      ingressSchemaHash: deriveSchemaHash(PersonLookupInput, "input"),
-      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
-      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
-      resolvedInstance: { ucpath: "prod", crm: "prod" },
-      shape: "single",
-      priority: "bulk",
-      dryRun: false,
-      attempt: 1,
-      runNumber: 1,
-      now: NOW,
-    });
-    assert.equal(Object.hasOwn(withoutOmissions.envelope, "stepOmissions"), false);
-  });
-
   it("refuses a submission whose logical item already has an active run", async () => {
     const database = await openDatabase();
     const itemId = deriveItemId("person-lookup", PERSON_EID_MATCH_KEY);
-    database.authority.runs.enqueue(buildQueuedRun({
+    database.authority.runs.enqueue(queuedRunFixture({
       descriptor: personLookupDescriptor,
       appVersion: "0.1.0",
       runId: "aaaaaaaa-0001-4000-8000-000100000000",

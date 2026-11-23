@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../../support/fixtures/backend/deterministic-provider.js";
 import { FingerprintSchema,IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 
 
