@@ -249,10 +249,12 @@ export function createProfileSession(input: {
 
   type SignIn = { at: ReturnType<typeof IsoInstantSchema.parse>; login?: RelayLogin };
   function upgradeEmail(row: ProfileRegistryRow, signIn?: SignIn): string {
-    if (row.relayEmail !== undefined) return signIn?.login?.email ?? row.relayEmail;
     const store = storeFor(row.profileId);
-    if (signIn?.login !== undefined) restoreInterruptedLogin(verifiers, store, row.profileId, signIn.login, signIn.at);
-    const entries = store.read().entries, email = entries.ucpathUserId?.value, password = entries.ucpathPassword?.value;
+    if (row.relayEmail === undefined && signIn?.login !== undefined) restoreInterruptedLogin(verifiers, store, row.profileId, signIn.login, signIn.at);
+    // A credential format awaiting conversion holds admission even after the Relay login is upgraded.
+    const record = store.read();
+    if (row.relayEmail !== undefined) return signIn?.login?.email ?? row.relayEmail;
+    const email = record.entries.ucpathUserId?.value, password = record.entries.ucpathPassword?.value;
     if (email !== undefined && password !== undefined) {
       if (signIn?.login === undefined) {
         const owner = verifiers.identify(email);
