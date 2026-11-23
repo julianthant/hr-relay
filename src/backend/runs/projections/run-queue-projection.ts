@@ -483,8 +483,9 @@ export class RunQueueProjection {
       if (rebuilding && page.records.length > 0) {
         let events: IterableIterator<ProjectionEvent> = projectionEvents(page.records).sort(compareEvents).values();
         let level = 0;
-        while (replay[level] !== undefined) {
-          events = mergeReplayPages(replay[level], events);
+        for (const previous of replay) {
+          if (previous === undefined) break;
+          events = mergeReplayPages(previous, events);
           replay[level++] = undefined;
         }
         replay[level] = events;
