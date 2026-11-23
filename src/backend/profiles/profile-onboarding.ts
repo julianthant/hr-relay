@@ -44,7 +44,7 @@ export function createProfileOnboarding(input: {
   readonly publicState: (draft: DuoDraft) => ProfileOnboardingState | DuoReenrolState;
   readonly store: (draft: DuoDraft) => ReturnType<typeof createDuoCredentialStore>;
 }) {
-  type Lease = { revoked: boolean; closed: boolean; opening: boolean; attempt: DraftDuoAttempt; browserGeneration?: number; browserClosureProved?: true; capability?: DraftDuoCapability };
+  type Lease = { revoked: boolean; closed: boolean; opening: boolean; attempt: DraftDuoAttempt; browserGeneration?: number; browserClosureProved?: true; receiptPending?: true; capability?: DraftDuoCapability };
   const leases = new Map<string, Lease>();
   const retainedFailures: { error: unknown; lease?: Lease }[] = [];
   const retainCustody = (error: unknown, attempt?: DraftDuoAttempt) => {
@@ -386,11 +386,13 @@ export function createProfileOnboarding(input: {
             if ((await provider!.cancel(lease.attempt)).state !== "closed") { attemptsUnproved = true; continue; }
             lease.closed = true;
           }
+          lease.receiptPending = true;
           input.update(operationId, current => {
             if (current.generation !== draft.generation) return unavailable();
             return { attempts: current.attempts.map(entry => entry.attemptId === receipt.attemptId
               ? { ...entry, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) } : entry), result: undefined };
           });
+          delete lease.receiptPending;
         } catch (error) { attemptFailures.push(error); }
       }
       const browser = browsers.get(operationId);
@@ -445,7 +447,7 @@ export function createProfileOnboarding(input: {
     hasLiveAttempt(attemptId: string): boolean { const lease = leases.get(attemptId); return lease !== undefined && !lease.revoked && !lease.closed; },
     async close(): Promise<void> {
       const failures: unknown[] = [];
-      for (const operationId of new Set([...browsers.keys(), ...[...leases.values()].filter(lease => !lease.closed).map(lease => lease.attempt.operationId)])) {
+      for (const operationId of new Set([...browsers.keys(), ...[...leases.values()].filter(lease => !lease.closed || lease.receiptPending).map(lease => lease.attempt.operationId)])) {
         try { await owner.drain(operationId); } catch (error) { failures.push(error); }
       }
       try { await input.provider?.stop(); }
@@ -454,7 +456,7 @@ export function createProfileOnboarding(input: {
       if (failures.length > 1) throw new AggregateError(failures, "profile-onboarding-shutdown-unproved");
     },
     assertClosed(): void {
-      if ([...leases.values()].some(lease => !lease.closed)) return unavailable();
+      if ([...leases.values()].some(lease => !lease.closed || lease.receiptPending)) return unavailable();
       if (browsers.size > 0) return unavailable();
       assertCustody();
     },

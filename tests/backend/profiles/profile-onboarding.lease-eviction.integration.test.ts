@@ -104,15 +104,19 @@ it("evicts the attempts a browser recovery closed before the final drain", async
   owner.assertClosed();
 });
 
-it("closes the setup browser when the closure receipt cannot be written, and writes the receipt on the next drain", async () => {
+it("closes the setup browser when the closure receipt cannot be written, and shutdown retries the receipt", async () => {
   const { operationId, owner, faults, latest, browserCloses, cancels } = rig("closed");
   await owner.start(operationId, "key");
   faults.update = new Error("fixture receipt write refused");
   await assert.rejects(owner.drain(operationId), (error: unknown) => error === faults.update);
   assert.equal(browserCloses(), 1);
   assert.equal(latest().providerClosedAt, undefined);
+  assert.throws(() => owner.assertClosed(), "a closed lease without its receipt is not closed");
+  await assert.rejects(owner.close(), (error: unknown) => error === faults.update);
+  assert.throws(() => owner.assertClosed());
   faults.update = undefined;
-  await owner.drain(operationId);
+  await owner.close();
+  owner.assertClosed();
   assert.notEqual(latest().providerClosedAt, undefined);
   assert.equal(cancels(), 1, "a provider closure already proved is not repeated");
   owner.assertAbortable(operationId);
