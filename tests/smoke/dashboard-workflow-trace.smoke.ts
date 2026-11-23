@@ -305,12 +305,12 @@ test("Emergency Contact: a Save whose answer is lost parks the person's run and 
   expect(await run.advance()).toEqual({ at: "step", nodeId: "contact-preview" });
   let parked = await run.parkWrite();
   while (parked.at === "step") parked = await run.advance();
-  expect(parked).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
-  expect(seeded.scripted.writes()).toEqual([{ runId: parked.at === "settled" && "runId" in parked.outcome ? parked.outcome.runId : "", nodeId: "contact-preview", eid: "10800000" }]);
+  if (parked.at !== "settled" || parked.outcome.state !== "parked-write") throw new Error(`the Save did not park the run: ${JSON.stringify(parked)}`);
+  expect(seeded.scripted.writes()).toEqual([{ runId: parked.outcome.runId, nodeId: "contact-preview", eid: "10800000" }]);
   await dashboard.settleReads();
   await page.reload();
   await dashboard.expectRunOpen(runId);
-  await expect(page.locator(`[data-demo-row-id="${runId}"]`)).not.toContainText("2/2");
+  await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("0/1");
   expect(seeded.scripted.writes()).toHaveLength(1);
 });
 
