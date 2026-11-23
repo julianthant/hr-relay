@@ -3,9 +3,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createCiPlan, hasTimingArtifact, publishTimings, registeredTimingWorkflows, timingRunIds, verifyCiResults, verifyProofs, verifyUnitProof } from "../../../scripts/test/ci-plan.js";
 
-const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
+const filters = { shared: "true", unit: "false", integration: "false", architecture: "false", smoke: "false" };
+const none = { core: false, shardCount: 0, shards: [] };
 const context = (workflow = "portable", extra: Record<string, unknown> = {}) => ({ workflow, event: "pull_request",
-  base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "development" : "staging",
+  base: workflow === "portable" ? "staging" : "main", head: workflow === "portable" ? "development" : "hotfix/x",
   draft: false, filters, ...extra });
 const portableResults = { changes: { result: "success" }, lint: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
@@ -21,7 +22,7 @@ function cli(command: string, input: unknown, results?: unknown) {
 
 describe("flat CI plan", () => {
   it("plans only three unit and two architecture shards for development, with a unit-only draft", () => {
-    const fast = context("fast", { base: "development", head: "feature/test" });
+    const fast = context("fast", { base: "development", head: "task/ci/test", affected: none });
     const plan = createCiPlan(fast);
     expect(plan.ubuntu.include).toEqual([
       { suite: "unit", shard: 1, shards: 3 }, { suite: "unit", shard: 2, shards: 3 }, { suite: "unit", shard: 3, shards: 3 },
@@ -34,6 +35,44 @@ describe("flat CI plan", () => {
     expect(draft.ubuntu.include.every(row => row.suite === "unit")).toBe(true);
     for (const invalid of [{ ...fast, base: "staging" }, { ...fast, event: "workflow_dispatch" }]) {
       expect(() => createCiPlan(invalid)).toThrow("Fast CI requires a development pull request.");
+    }
+    expect(createCiPlan({ ...fast, event: "push", head: "task/ci/push" })).toEqual(plan);
+    expect(() => createCiPlan({ ...fast, affected: undefined })).toThrow("Only fast CI takes the affected integration plan.");
+    expect(() => createCiPlan(context("portable", { affected: none }))).toThrow("Only fast CI takes the affected integration plan.");
+    for (const invalid of [{ ...fast, event: "push", head: "fix/ci" }, context("portable", { event: "push", head: "task/ci/push" })]) {
+      expect(() => createCiPlan(invalid)).toThrow("Push CI runs only fast checks on task branches.");
+    }
+  });
+
+  it("runs the selector's integration shards with their files on ready fast runs only", () => {
+    const shards = [["tests/a.integration.test.ts", "tests/b.integration.test.ts"], ["tests/c.integration.test.ts"]];
+    const affected = { core: false, shardCount: 2, shards };
+    const fast = context("fast", { base: "development", head: "task/ci/push", event: "push",
+      filters: { ...filters, shared: "false" }, affected });
+    const plan = createCiPlan(fast);
+    expect(plan.ubuntu.include).toEqual(shards.map((files, i) => ({ suite: "integration", shard: i + 1, shards: 2, files })));
+    expect(plan).toMatchObject({ integration: true, unit: false, architecture: false, testJobs: 2 });
+    expect(createCiPlan({ ...fast, filters }).testJobs).toBe(7);
+    expect(createCiPlan({ ...fast, event: "pull_request", head: "task/ci/x", draft: true, filters })).toMatchObject({ integration: false, testJobs: 3 });
+    expect(() => createCiPlan({ ...fast, affected: { ...affected, shards: [[]] } })).toThrow();
+    expect(() => createCiPlan({ ...fast, affected: { ...affected, shards: [["src/a.ts"]] } })).toThrow();
+  });
+
+  it("selects smoke for matching task pushes and requires it in their proof", () => {
+    const push = context("fast", { event: "push", base: "development", head: "task/ci/push", affected: none });
+    const matched = { ...push, filters: { ...filters, smoke: "true" } };
+    const plan = createCiPlan(matched);
+    expect(plan).toMatchObject({ perf: false, smoke: true });
+    expect(createCiPlan(push).smoke).toBe(false);
+    expect(createCiPlan({ ...matched, event: "pull_request", head: "task/ci/x" }).smoke).toBe(false);
+    expect(() => createCiPlan({ ...push, filters: { ...filters, smoke: "invalid" } })).toThrow("Path-filter outputs");
+
+    const skipped = { result: "skipped" };
+    const results = { ...portableResults, integration: skipped, architecture: skipped, macos: skipped,
+      "unit-proofs": skipped, unit: skipped, perf: skipped };
+    expect(() => verifyCiResults(plan, results)).not.toThrow();
+    for (const result of ["failure", "cancelled", "skipped"]) {
+      expect(() => verifyCiResults(plan, { ...results, smoke: { result } })).toThrow("CI smoke must be success.");
     }
   });
 
@@ -80,13 +119,40 @@ describe("flat CI plan", () => {
       const plan = createCiPlan(context(workflow, { filters: { ...filters, shared: "false" } }));
       expect(plan.testJobs).toBe(0);
     }
-    const invalid = createCiPlan(context("release", { head: "feature/other" }));
+    const invalid = createCiPlan(context("release", { head: "fix/other" }));
     expect(invalid.fullRelease).toBe(false);
     expect(invalid.macos.include).toEqual([]);
     const hotfix = createCiPlan(context("release", { head: "hotfix/x" }));
     expect(hotfix.fullRelease).toBe(true);
     expect(hotfix.macos.include).toEqual(createCiPlan(context("release")).macos.include);
     expect(createCiPlan(context("release", { head: "hotfix" })).fullRelease).toBe(false);
+  });
+
+  it("plans the scheduled full run with every suite, perf, smoke and native shards", () => {
+    const full = { workflow: "full", event: "schedule", base: "", head: "development", draft: false, filters: {} };
+    const plan = createCiPlan(full);
+    expect(plan).toMatchObject({ workflow: "full", fullRelease: true, lint: true, perf: true, smoke: true,
+      unit: true, integration: true, architecture: true, testJobs: 40 });
+    expect(plan.ubuntu.include.filter(row => row.suite === "integration")).toHaveLength(30);
+    expect(plan.macos.include).toEqual(createCiPlan(context("release")).macos.include);
+    expect(() => verifyCiResults(plan, releaseResults)).not.toThrow();
+    expect(publishTimings(plan, releaseResults)).toBe(true);
+    for (const job of ["macos", "unit-proofs", "perf", "smoke"]) {
+      expect(() => verifyCiResults(plan, { ...releaseResults, [job]: { result: "skipped" } })).toThrow();
+    }
+    expect(createCiPlan({ ...full, event: "workflow_dispatch" })).toEqual(plan);
+    for (const invalid of [{ ...full, event: "workflow_dispatch", head: "task/ci/x" }, { ...full, head: "task/ci/x" }, { ...full, event: "push" }, { ...full, workflow: "release" },
+      context("portable", { event: "schedule" }), context("fast", { event: "workflow_dispatch" })]) {
+      expect(() => createCiPlan(invalid)).toThrow();
+    }
+  });
+
+  it("runs staging-to-main releases on the portable suite without native shards", () => {
+    const release = createCiPlan(context("portable", { base: "main", head: "staging" }));
+    expect(release).toEqual(createCiPlan(context()));
+    expect(release).toMatchObject({ fullRelease: false, macos: { include: [] }, testJobs: 35 });
+    expect(createCiPlan(context("release", { head: "staging" })).fullRelease).toBe(false);
+    expect(() => createCiPlan(context("portable", { base: "main", head: "hotfix/x" }))).toThrow();
   });
 
   it("refuses incorrect entry contexts and incomplete filters", () => {
@@ -116,7 +182,7 @@ describe("flat CI failure fences", () => {
   it("folds fast proofs into the development gate and rejects unsuccessful or missing results", () => {
     const skipped = { result: "skipped" };
     for (const draft of [false, true]) {
-      const plan = createCiPlan(context("fast", { base: "development", draft }));
+      const plan = createCiPlan(context("fast", { base: "development", draft, affected: none }));
       const positive: Record<string, { result: string }> = { ...portableResults,
         lint: { result: draft ? "skipped" : "success" }, integration: skipped, architecture: skipped,
         macos: skipped, "unit-proofs": skipped, unit: skipped, perf: skipped, smoke: skipped };
@@ -130,7 +196,7 @@ describe("flat CI failure fences", () => {
         expect(() => verifyCiResults(plan, missing)).toThrow();
       }
     }
-    const omitted = createCiPlan(context("fast", { base: "development", filters: { ...filters, shared: "false" } }));
+    const omitted = createCiPlan(context("fast", { base: "development", filters: { ...filters, shared: "false" }, affected: none }));
     expect(omitted.testJobs).toBe(0);
     expect(() => verifyCiResults(omitted, { ...portableResults, ubuntu: skipped, integration: skipped,
       architecture: skipped, macos: skipped, "unit-proofs": skipped, unit: skipped, perf: skipped, smoke: skipped })).not.toThrow();

@@ -6,7 +6,7 @@ import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
@@ -45,6 +45,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let portalSubmitFailure: Error | undefined;
   let typedCount = 0;
   let portalUrl = "";
+  let manualSignInObserved = false;
   let setPortalUrl: (next: string) => void = () => undefined;
   let nativeProbeHold: Promise<void> | undefined, releaseNativeProbe: (() => void) | undefined, nativeProbeEntered: (() => void) | undefined;
   let installFailure: Error | undefined, installDurationMs = 0;
@@ -98,11 +99,12 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     let pageClosed = false;
     let url = initialUrl;
     const frame = { url: () => url, evaluate: async () => true };
-    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
+    let signInFormVerified = false;
+    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => { if (signInFormVerified) manualSignInObserved = true; return url; },
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://") && !destination.startsWith("about:blank")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; portalUrl = url; setPortalUrl = (next: string) => { url = next; portalUrl = next; }; } else url = destination; },
       waitForURL: async (matches: string | ((candidate: URL) => boolean)) => { assert.ok(typeof matches === "string" ? url === matches : matches(new URL(url))); },
       waitForLoadState: async () => undefined, on: () => undefined,
-      waitForFunction: async () => ({ dispose: async () => undefined }),
+      waitForFunction: async () => ({ dispose: async () => { signInFormVerified = true; } }),
       locator: () => ({ count: async () => 1, elementHandle: async () => ({
         isVisible: async () => true, isEditable: async () => true, isEnabled: async () => true,
         evaluate: async () => true, fill: async () => { typedCount++; }, dispose: async () => undefined,
@@ -185,7 +187,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     return result;
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
-      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
     events, selectedPages,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
@@ -202,6 +204,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     reachDuo(next: string) { setPortalUrl(next); },
     typed: () => typedCount,
     portalUrl: () => portalUrl,
+    manualSignInObserved: () => manualSignInObserved,
     blockNativeProbe() { nativeProbeHold = new Promise(resolve => { releaseNativeProbe = resolve; }); return new Promise<void>(resolve => { nativeProbeEntered = resolve; }); },
     releaseNativeProbe() { releaseNativeProbe?.(); },
     refuseCapture(error: Error) { captureFailure = error; },
@@ -585,7 +588,7 @@ describe("draft Duo provider", () => {
       let settled = false;
       const opening = w.provider.openPortal(w.owner).finally(() => { settled = true; });
       opening.catch(() => undefined);
-      await new Promise(resolve => setTimeout(resolve, 80));
+      await vi.waitFor(() => assert.ok(w.manualSignInObserved(), "Duo did not reach the manual sign-in wait"));
       assert.equal(settled, false);
       assert.equal(w.typed(), 0);
       assert.equal(w.portalUrl(), form);
@@ -710,18 +713,15 @@ describe("draft Duo provider", () => {
     w.landPortal(form);
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
-      const started = Date.now();
       let settled = false;
       const opening = w.sendBrowser("portal").finally(() => { settled = true; });
       opening.catch(() => undefined);
-      await new Promise(resolve => setTimeout(resolve, 80));
+      await vi.waitFor(() => assert.ok(w.manualSignInObserved(), "Duo did not reach the manual sign-in wait"));
       assert.equal(settled, false);
       assert.equal(w.typed(), 0);
       assert.equal(w.portalUrl(), form);
       w.clock.setWall(new Date(w.attempt.expiresAt));
       assert.deepEqual(await opening, { ok: false, portalFailure: "sign-in" });
-      const elapsed = Date.now() - started;
-      assert.ok(elapsed >= 80 && elapsed < 1_000);
       assert.equal(w.typed(), 0);
       assert.equal(w.portalUrl(), form);
     } finally { await w.cleanup(); }
@@ -734,6 +734,28 @@ describe("draft Duo provider", () => {
       await assert.rejects(w.provider.cancel(w.attempt), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure));
       assertUncertainBrowserClosure(await w.provider.closeBrowser(w.owner));
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      assert.equal(w.launches(), 1);
+    } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
+  });
+
+  for (const proof of ["close-event", "missing-event"] as const) it(`closes Chromium under its deadline when the attempt close is uncertain, and keeps the attempt failure and profile: ${proof}`, async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure); w.blockStop();
+      let attemptFailure: unknown;
+      await assert.rejects(w.provider.cancel(w.attempt), error => { attemptFailure = error; return error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown"; });
+      if (proof === "missing-event") w.withholdCloseEvent();
+      const cause = assertUncertainBrowserClosure(await w.provider.closeBrowser(w.owner));
+      assert.equal(w.contextClosed(), true, "the setup browser closes even though the attempt closure is unproved");
+      if (proof === "close-event") assert.equal(cause, attemptFailure, "the attempt failure is the closure cause");
+      else {
+        assert.ok(cause instanceof AggregateError);
+        assert.equal(cause.errors.length, 2);
+        assert.equal(cause.errors[0], attemptFailure, "the attempt failure comes first");
+        assert.ok(cause.errors[1] instanceof ProfileOnboardingDuoProviderError, "the unproved browser close follows");
+      }
+      assert.ok(existsSync(w.profile()), "unproved custody keeps the profile");
       await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       assert.equal(w.launches(), 1);
     } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }

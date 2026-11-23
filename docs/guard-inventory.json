@@ -702,11 +702,27 @@
       "replacementRequired": true
     },
     {
+      "name": "store-query-plan",
+      "file": "tests/architecture/storage/store-query-plan.test.ts",
+      "status": "active",
+      "owner": "docs/reference/guards-and-tests.md",
+      "invariant": "Reason: dashboard and worker statements kept scanning tables that grow with runs (run_checkpoints by run, runs by batch, commands by state, write_intents by status, diagnostics by purge date). EXPLAIN QUERY PLAN of every literal SQL statement src/backend prepares outside the named maintenance modules, and of every statement traced while the storage-read fixture serves the dashboard reads and a worker claim, heartbeat and completion, run on a migrated empty store, finds no SCAN of runs, commands, command_audits, run_checkpoints, timeline_events, write_intents, notifications, artifacts or diagnostic_snapshots named in the statement's own FROM, JOIN or UPDATE unless a LIMIT stops it with no sort first or the walked index is partial. Whole-table reads kept by design each carry a reason; every index the query index migration adds is used by a planned statement; checkpoint replay plans through the table's unique key.",
+      "replacementRequired": true
+    },
+    {
       "name": "names-check",
       "file": "tests/architecture/tooling/names-check.test.ts",
       "status": "active",
       "owner": "docs/reference/guards-and-tests.md",
-      "invariant": "Reason: a wrong branch, worktree folder, or pull request title was spending a full CI run. The names:check command allows only main, staging, development, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>. A development pull request head must be feature/*, fix/*, chore/* or dependabot/*. Only development targets staging. A pull request title must be <Area>: <text>, so a conventional title such as feat(ci): add names check is rejected. An origin branch that already matches task/<feature>/<lane> stays valid when its lane is an older name. Worktree folders are .worktrees/<feature> or .worktrees/<feature>.<lane>. The command is the first job in staging.yml and is combined with planning for Development in checks.yml; every other started job waits on it. pull_request includes edited, so a title change at the same head runs the check again. --all also lists a local branch or linked worktree whose Concord ticket is complete or closed, including a detached worktree named by tasks.worktree. An open ticket that owns the path, an open ticket on the checkout branch, or an open ticket on a branch named by a path owner, keeps that worktree unlisted. A closed checkout branch still lists the path when no open ticket owns it and no open ticket names a branch recorded on that path. The ledger is read from ~/.concord-ledger/<package.json name>/.concord/concord.db or --ledger. A missing ledger adds no ticket rows. An unreadable ledger fails the command. --all only lists; it never deletes.",
+      "invariant": "Reason: a wrong branch, worktree folder, or pull request title was spending a full CI run. The names:check command allows only main, staging, development, dependabot/*, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>. A development pull request head must be fix/*, chore/*, dependabot/*, or task/<kebab>/<kebab>. Only development (or main, the release sync) targets staging. A pull request title must be <Area>: <text>, so a conventional title such as feat(ci): add names check is rejected. An origin branch that already matches task/<feature>/<lane> stays valid when its lane is an older name. Worktree folders are .worktrees/<feature> or .worktrees/<feature>.<lane>. The command is the first job in staging.yml and is combined with planning for Development in checks.yml; every other started job waits on it. pull_request includes edited, so a title change at the same head runs the check again. --all lists off-pattern local branches and linked worktrees without deleting them.",
+      "replacementRequired": true
+    },
+    {
+      "name": "allowed-workflows",
+      "file": "tests/architecture/tooling/allowed-workflows.test.ts",
+      "status": "active",
+      "owner": "docs/reference/guards-and-tests.md",
+      "invariant": "Reason: opt-in evidence workflows accumulated outside the shared CI pipeline. The reusable static job rejects a pull request that adds a workflow YAML outside checks.yml, development.yml, staging.yml, and production.yml unless it has the needs-human label. A committed fixture proves an extra workflow fails without the label and passes with it.",
       "replacementRequired": true
     }
   ],

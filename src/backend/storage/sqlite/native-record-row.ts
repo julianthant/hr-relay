@@ -48,6 +48,11 @@ const fields = {
   dryrun_results: {id:"resultId",scenario_id:"scenarioId",workflow:"workflow",subject_label:"subjectLabel",manifest_digest:"manifestDigest",verdict:"verdict",execution_state:"execution.state",run_id:"execution.runId",trace_id:"execution.traceId",wall_time_ms:"wallTimeMs",created_at:"recordedAt"},
 } as const;
 export type NativeOrdinaryTable = keyof typeof fields;
+const nonIdKeys: Partial<Record<NativeOrdinaryTable, string>> = {
+  workflow_workbook_selections: "workflow_id",
+  worker_pools: "workflow",
+  auth_leases: "credential_key",
+};
 function valueAt(record: unknown, path: string): string | number | null {
   let value: unknown = record;
   for (const part of path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value,part) : undefined;
@@ -58,16 +63,39 @@ function valueAt(record: unknown, path: string): string | number | null {
 export function isNativeOrdinaryTable(table: AuthorityTableName): table is NativeOrdinaryTable { return Object.hasOwn(fields,table); }
 export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): unknown {
   const row = RowSchema.parse(input);
-  return readNativeRecord(row, () => decodeNativeOrdinaryRecord(table, row, schemaVersion), `${table}:${schemaVersion}:`);
+  return readNativeRecord(row, () => decodeNativeOrdinaryRecord(table, row, schemaVersion), `${table}:${schemaVersion}:`, nonIdKeys[table]);
 }
+
+const nativeRecordIntegrityFailures = new WeakSet<Error>();
+
+export function isNativeRecordIntegrityFailure(error: Error): boolean {
+  return nativeRecordIntegrityFailures.has(error);
+}
+
+function nativeRecordIntegrityError(message: string): Error {
+  const error = new Error(message);
+  nativeRecordIntegrityFailures.add(error);
+  return error;
+}
+
+function decodePrivateRecord<T>(schema: z.ZodType<T>, input: unknown, message: string): T {
+  let failure: "invalid-record" | "unexpected-error";
+  try {
+    const payload: unknown = JSON.parse(z.string().parse(input));
+    return schema.parse(payload);
+  } catch (error) {
+    failure = error instanceof z.ZodError || error instanceof SyntaxError ? "invalid-record" : "unexpected-error";
+  }
+  // The decoder's cause may contain the stored payload.
+  throw failure === "invalid-record" ? nativeRecordIntegrityError(message) : new Error(message);
+}
+
 function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typeof RowSchema>, schemaVersion: number): unknown {
-  let record: unknown;
-  if (table === "run_results") {
-    try { record = AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(JSON.parse(z.string().parse(row.payload_json))); }
-    catch { throw new Error("run-result-payload-invalid"); }
-  } else record = AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(JSON.parse(z.string().parse(row.payload_json)));
+  const record: unknown = table === "run_results"
+    ? decodePrivateRecord(AUTHORITY_RECORD_SCHEMA_REGISTRY[table], row.payload_json, "run-result-payload-invalid")
+    : AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(JSON.parse(z.string().parse(row.payload_json)));
   for (const [column,path] of Object.entries(fields[table])) {
-    if (row[column] !== valueAt(record,path)) throw new Error(`${table}-row-${column}-mismatch`);
+    if (row[column] !== valueAt(record,path)) throw nativeRecordIntegrityError(`${table}-row-${column}-mismatch`);
   }
   const object = ValueObjectSchema.parse(record);
   const extras: Record<string,string | number | null> = {};
@@ -76,10 +104,10 @@ function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typ
     if (terminal.lifecycle.state !== "terminal"
       || ([["runId","runId"],["workflow","workflowId"],["attempt","attempt"],["descriptorVersion","descriptorVersion"],
         ["contractFingerprint","contractFingerprint"],["configSnapshotId","configSnapshotId"],["configFingerprint","configFingerprint"]] as const).some(
-        ([field,key]) => Reflect.get(terminal.envelope,field) !== object[key])) throw new Error("run-settlement-result-mismatch");
+        ([field,key]) => Reflect.get(terminal.envelope,field) !== object[key])) throw nativeRecordIntegrityError("run-settlement-result-mismatch");
     if (terminal.completion === undefined) {
       const evidence = z.object({ value: z.object({ kind: z.literal("lifecycle-evidence"), appliedVersion: z.number().int().positive() }) }).parse(object.result).value;
-      if (evidence.appliedVersion !== terminal.version) throw new Error("run-settlement-context-mismatch");
+      if (evidence.appliedVersion !== terminal.version) throw nativeRecordIntegrityError("run-settlement-context-mismatch");
     }
     extras.id = `${String(object.runId)}:${terminal.version}`;
     extras.settlement_version = terminal.version;
@@ -94,9 +122,7 @@ function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typ
     const attachment = ValueObjectSchema.parse(object.attachment);
     extras.id = `${String(object.bundleId)}:${String(attachment.artifactId)}`;
   } else if (table === "run_failures") {
-    let resolution;
-    try { resolution=FailureResolutionSchema.parse(JSON.parse(z.string().parse(row.resolution_json))); }
-    catch { throw new Error("failure-resolution-annotation-invalid"); }
+    const resolution = decodePrivateRecord(FailureResolutionSchema, row.resolution_json, "failure-resolution-annotation-invalid");
     extras.resolution_json = z.string().parse(row.resolution_json); extras.resolution_version = resolution.version;
   } else if (table === "write_intents") {
     confirmationPublicationFromRow(WriteIntentRecordSchema.parse(record),row.publication_json);
@@ -106,8 +132,8 @@ function decodeNativeOrdinaryRecord(table: NativeOrdinaryTable, row: z.infer<typ
     validateNotificationPublicationArray(record,JSON.parse(extras.publications_json));
     extras.run_id = NotificationRecordSchema.parse(record).links.find(link => "runId" in link)?.runId ?? null;
   }
-  for (const [key,value] of Object.entries(extras)) if (row[key] !== value) throw new Error(`${table}-row-${key}-mismatch`);
+  for (const [key,value] of Object.entries(extras)) if (row[key] !== value) throw nativeRecordIntegrityError(`${table}-row-${key}-mismatch`);
   const expectedKeys = [...Object.keys(fields[table]), ...Object.keys(extras), "payload_json"];
-  if (Object.keys(row).length !== expectedKeys.length || !expectedKeys.every(key => Object.hasOwn(row, key))) throw new Error(`${table}-row-columns-mismatch`);
+  if (Object.keys(row).length !== expectedKeys.length || !expectedKeys.every(key => Object.hasOwn(row, key))) throw nativeRecordIntegrityError(`${table}-row-columns-mismatch`);
   return record;
 }

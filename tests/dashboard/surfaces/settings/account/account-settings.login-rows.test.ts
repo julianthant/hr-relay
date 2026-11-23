@@ -146,15 +146,52 @@ describe("Settings > Account Relay login rows", () => {
     assert.match(document.body.textContent ?? "", /@ucsd\.edu/u);
   });
 
-  it("reports an unconfirmed outcome as a warning and keeps the shown username", async () => {
+  it("ends an unconfirmed username change it cannot read back in one short toast and keeps the shown username", async () => {
     await mount(login({ changeUsername: async () => ({ state: "unknown", code: "PROFILE_LOGIN_CHANGE_UNKNOWN" }) }));
     await click("Edit username");
     await type("currentPassword", "pw");
     await type("newUsername", "new.name@ucsd.edu");
     await click("Save");
     await settle();
-    assert.match(document.body.textContent ?? "", new RegExp(ERROR_CATALOG.PROFILE_LOGIN_CHANGE_UNKNOWN.text.slice(0, 30), "u"));
+    assert.match(document.body.textContent ?? "", /Relay username change not confirmed/u);
+    assert.doesNotMatch(document.body.textContent ?? "", new RegExp(ERROR_CATALOG.PROFILE_LOGIN_CHANGE_UNKNOWN.text.slice(0, 30), "u"));
     assert.doesNotMatch(rowText(), /new\.name@ucsd\.edu/u);
+  });
+
+  it("ends a lost password reply in one short toast with no instructions and closes the dialog", async () => {
+    await mount(login({ changePassword: async () => { throw new Error("reply lost"); } }));
+    await click("Change Relay password");
+    await type("currentPassword", "pw");
+    await type("newPassword", "next-password-1");
+    await type("confirmPassword", "next-password-1");
+    await click("Save");
+    await settle();
+    assert.match(document.body.textContent ?? "", /Relay password change not confirmed/u);
+    assert.doesNotMatch(document.body.textContent ?? "", /could not confirm|Try your new/iu);
+    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+  });
+
+  it("reads a lost username reply back and shows the new username with no message when it landed", async () => {
+    let served = "jordan.lee@ucsd.edu";
+    await mount(login({ changeUsername: async request => { served = request.newUsername; throw new Error("reply lost"); }, readUsername: async () => served }));
+    await click("Edit username");
+    await type("currentPassword", "pw");
+    await type("newUsername", "new.name@ucsd.edu");
+    await click("Save");
+    await vi.waitFor(async () => { await settle(); assert.match(rowText(), /new\.name@ucsd\.edu/u); });
+    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.doesNotMatch(document.body.textContent ?? "", /not changed|could not confirm/iu);
+  });
+
+  it("reads a lost username reply back and keeps the old username with one failure toast when it did not land", async () => {
+    await mount(login({ changeUsername: async () => { throw new Error("request dropped"); }, readUsername: async () => "jordan.lee@ucsd.edu" }));
+    await click("Edit username");
+    await type("currentPassword", "pw");
+    await type("newUsername", "new.name@ucsd.edu");
+    await click("Save");
+    await vi.waitFor(async () => { await settle(); assert.match(document.body.textContent ?? "", /Relay username not changed/u); }, { timeout: 5000, interval: 50 });
+    assert.match(rowText(), /jordan\.lee@ucsd\.edu/u);
+    assert.doesNotMatch(document.body.textContent ?? "", /could not confirm/iu);
   });
 
   it("keeps the password dialog open with its values when the current password is refused", async () => {
@@ -169,10 +206,10 @@ describe("Settings > Account Relay login rows", () => {
     assert.equal(document.body.querySelector('[role="dialog"] [role="alert"]')?.textContent, ERROR_CATALOG.PROFILE_CURRENT_PASSWORD_REFUSED.text);
   });
 
-  it("explains an unreadable username row", async () => {
+  it("shows an unreadable username without an edit control", async () => {
     await mount(login({ username: undefined }));
     assert.match(rowText(), /Not set/u);
-    assert.match(rowText(), /UCPath sign-in/u);
-    assert.match(rowText(), /workflows need it/u);
+    assert.equal(host?.querySelector('button[aria-label="Edit username"]'), null);
+    assert.equal(button("Change Relay password").disabled, false);
   });
 });

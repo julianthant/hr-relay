@@ -177,7 +177,7 @@ it("reports a real successful run's missing completion receipt through observer 
     try {
       await observer.observe();
       expect.soft(observer.status()).toEqual({ state: "failed", code: "NOTIFICATION_RECEIPT_MISSING", pending: 1 });
-      expect(formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_RECEIPT_MISSING", {})).text).toMatch(/receipt/i);
+      expect(formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_RECEIPT_MISSING", {})).text).toBe("Some notifications may be missing.");
       expect(f.inbox.list("local-operator")).toEqual([]);
       expect(f.db.getMeta()).toEqual(before);
       f.db.authority.evidenceReceipts.insert(receiptOf(run, 7));

@@ -58,8 +58,14 @@ async function shutdownBackups(admission: RuntimeAdmission, clock: Clock, known:
     if (name !== `${proof.manifest.backupFileName}.manifest.json` || Date.parse(proof.manifest.createdAt) > clock.nowMs()) throw new Error("shutdown-backup-retention-invalid");
     checked.push({ ...proof, files });
   }
-  return checked.sort((left, right) => Date.parse(right.manifest.createdAt) - Date.parse(left.manifest.createdAt)
-    || right.manifest.backupFileName.localeCompare(left.manifest.backupFileName));
+  return checked.sort((left, right) => newerFirst(left.manifest, right.manifest));
+}
+
+type BackupOrder = Pick<CheckedShutdownBackup["manifest"], "createdAt" | "authorityGeneration" | "backupFileName">;
+/** Negative when `left` is the newer backup; a frozen clock gives backups one creation time, so the generation decides. */
+function newerFirst(left: BackupOrder, right: BackupOrder): number {
+  return Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.authorityGeneration - left.authorityGeneration
+    || right.backupFileName.localeCompare(left.backupFileName);
 }
 
 export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, clock: Clock, known: readonly CheckedShutdownBackup[] = []): Promise<void> {
@@ -75,8 +81,7 @@ export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, cl
     const binding = admission.profileBinding;
     if (basename(path) !== `${manifest.backupFileName}.manifest.json${Retiring}` || manifest.installationId !== binding.installationId
       || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())
-      || current.filter(value => Date.parse(value.manifest.createdAt) > Date.parse(manifest.createdAt)
-        || value.manifest.createdAt === manifest.createdAt && value.manifest.backupFileName.localeCompare(manifest.backupFileName) > 0).length < 3) throw new Error("shutdown-backup-retirement-unproved");
+      || current.filter(value => newerFirst(value.manifest, manifest) < 0).length < 3) throw new Error("shutdown-backup-retirement-unproved");
     const backupPath = join(directory, manifest.backupFileName);
     if (existsSync(backupPath)) {
       const before = inventoryFileIdentity(backupPath);

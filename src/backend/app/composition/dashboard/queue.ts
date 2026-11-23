@@ -14,6 +14,7 @@ import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline" | "assistantUsage"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
+  const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
   return createRunQueueProjection({
     assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }),
     timeline: database.authority.timelineEvents,
@@ -52,7 +53,9 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       getRunBatch: (id) => database.authority.runSessions.get(id),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       writeInFlight: runId => database.authority.writeIntents.listByRun(runId).some(intent => intent.status === "attempting"),
-      changeKey: () => database.changeKey(),
+      changeKey,
+      checkDaySources: (day, previous) => database.checkQueueDaySources(day, previous),
+      nextDuoLeaseExpiry: nowMs => database.nextDuoLeaseExpiry(nowMs),
       delegationWait: runId => database.authority.dependencies.waitState(runId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
       canonicalPerson: (runId) => database.canonicalPerson(runId),

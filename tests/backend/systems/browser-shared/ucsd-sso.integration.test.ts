@@ -46,6 +46,14 @@ const kronosHops = [
 
 it.each(["application", "sign-in form", "missing cookie"] as const)("proves the final WFD document after the reset redirect chain (%s)", async landing => {
   const browserContext = await guardedContext();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  const schedule = globalThis.setTimeout;
+  const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args: unknown[]) => {
+    const timer = schedule(callback, delay, ...args);
+    // Advance one WFD poll after it is scheduled, leaving browser I/O outside virtual time.
+    if (delay === 250) queueMicrotask(() => vi.advanceTimersByTime(delay));
+    return timer;
+  });
   try {
     const page = await browserContext.newPage();
     const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "new-kronos");
@@ -76,7 +84,11 @@ it.each(["application", "sign-in form", "missing cookie"] as const)("proves the 
       assert.deepEqual(evidence(), []);
     }
     assert.ok(reads.mock.calls.length >= 2, "the replacement document requires its own cookie proof");
-  } finally { await browserContext.close(); }
+  } finally {
+    timers.mockRestore();
+    vi.useRealTimers();
+    await browserContext.close();
+  }
 });
 
 it("waits for WFD when final verification starts on the SAML return hop", async () => {
@@ -552,24 +564,40 @@ for (const [system, recipe] of [
   ["crm", crmLoginRecipe], ["kuali", kualiLoginRecipe], ["new-kronos", newKronosLoginRecipe],
   ["ucpath", ucpathLoginRecipe], ["i9", i9LoginRecipe], ["onbase", onbaseLoginRecipe],
 ] as const) {
-  it.each(["trusted", "wrong-origin", "wrong-destination"] as const)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
+  const scenarios = ["trusted", "wrong-origin", "wrong-destination"] as const;
+  it.each(system === "crm" ? [...scenarios, "unverified-entry"] as const : scenarios)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
     const browserContext = await guardedContext();
     try {
       const page = await browserContext.newPage();
       const { context } = await contextFor({ url: "about:blank" }, undefined, system);
       const other = SSO.replace("a5.ucsd.edu", "sso.example.invalid");
-      const landing = scenario === "wrong-origin" ? other : SSO;
+      const unverifiedEntry = scenario === "unverified-entry";
+      const landing = unverifiedEntry ? kronosSso : scenario === "wrong-origin" ? other : SSO;
       const config = {
         ...context.config,
         timeouts: { ...context.config.timeouts, navigationMs: 1000 },
-        urls: { ...context.config.urls, kuali: { prod: { entry: landing } }, newKronos: { prod: { entry: landing } } },
+        urls: {
+          ...context.config.urls,
+          crm: { prod: {
+            ...context.config.urls.crm.prod,
+            entry: unverifiedEntry ? "https://crm.ucsd.edu/other" : context.config.urls.crm.prod.entry,
+          } },
+          kuali: { prod: { entry: landing } },
+          newKronos: { prod: { entry: landing } },
+        },
       };
       const entry = new URL(resolveSystemLoginUrl(config, system, "prod", "fixture")).href;
-      const fieldPage = form(scenario === "wrong-destination" ? other : SSO)
+      const fieldPage = form(scenario === "wrong-destination" ? other : landing)
         + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>AD</option></select>';
       let servedForm = false;
       let credentialReads = 0;
+      let posts = 0;
       await browserContext.route("**/*", async route => {
+        if (route.request().method() === "POST") {
+          posts++;
+          await route.abort();
+          return;
+        }
         if (route.request().url() === landing) {
           servedForm = true;
           await route.fulfill({ contentType: "text/html", body: fieldPage });
@@ -582,19 +610,73 @@ for (const [system, recipe] of [
           }
         } else await route.abort();
       });
-      await assert.rejects(recipe({
+      const signing = recipe({
         ...context, page, config,
         get credentials(): typeof context.credentials {
           credentialReads++;
           throw new Error("fixture stopped at credential acquisition");
         },
-      }));
+      });
+      if (unverifiedEntry) {
+        await assert.rejects(signing, error => error instanceof BrowserLoginError
+          && error.system === "crm" && error.code === "CRM_SIGN_IN_FAILED" && error.step === "credential-fill"
+          && error.observedUrl === kronosSso && error.cause instanceof Error && error.cause.message === "UCSD_SSO_SCOPE");
+      } else await assert.rejects(signing);
       assert.equal(servedForm, true);
       assert.equal(credentialReads, scenario === "trusted" ? 1 : 0);
+      assert.equal(posts, 0);
       assert.equal(await page.locator("#ssopassword").inputValue(), "");
     } finally { await browserContext.close(); }
   });
 }
+
+it.each(["pinned destination", "wrong destination"] as const)("signs in to ACT CRM through the UCSD SSO POST route only at the pinned destination (%s)", async scenario => {
+  const browserContext = await guardedContext();
+  try {
+    const page = await browserContext.newPage();
+    const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "crm");
+    const entry = "https://crm.ucsd.edu/hr";
+    const sso = kronosSso + "?execution=fixture";
+    const application = "https://act-crm.my.site.com/hr/s/";
+    const destination = scenario === "pinned destination" ? sso : SSO;
+    const posts: string[] = [];
+    let credentialReads = 0;
+    await browserContext.addCookies([{ url: application, name: "sid", value: "fixture" }]);
+    await browserContext.route("**/*", route => {
+      const request = route.request();
+      const url = request.url();
+      if (request.method() === "POST") {
+        posts.push(url);
+        if (url !== sso) return route.abort();
+        return route.fulfill({ contentType: "text/html",
+          body: `<meta http-equiv="refresh" content="1; url=${application}">` });
+      }
+      if (url === entry) return route.fulfill({ contentType: "text/html",
+        body: `<meta http-equiv="refresh" content="0; url=${sso}">` });
+      if (url === sso) return route.fulfill({ contentType: "text/html",
+        body: form(destination) + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>Active Directory</option></select>' });
+      if (url === application) return route.fulfill({ contentType: "text/html", body: "<main>Onboarding</main>" });
+      return route.abort();
+    });
+    const signing = crmLoginRecipe({
+      ...context, page,
+      get credentials() { credentialReads++; return context.credentials; },
+    });
+    if (scenario === "pinned destination") {
+      assert.equal(await signing, "logged-in");
+      assert.equal(credentialReads, 1);
+      assert.deepEqual(posts, [sso]);
+      assert.equal(evidence()[0]?.url, application);
+    } else {
+      await assert.rejects(signing, error => error instanceof BrowserLoginError
+        && error.code === "CRM_SIGN_IN_FAILED" && error.step === "credential-fill"
+        && error.cause instanceof Error && error.cause.message === "UCSD_SSO_FIELDS");
+      assert.equal(credentialReads, 0);
+      assert.deepEqual(posts, []);
+      assert.equal(await page.locator("#ssopassword").inputValue(), "");
+    }
+  } finally { await browserContext.close(); }
+});
 
 it.each(["application", "duo", "embedded-duo"] as const)("binds terminal refusal text to the Duo document (%s)", async surface => {
   const browserContext = await guardedContext();

@@ -3,7 +3,8 @@ import { forwardRef, useEffect, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
-import { itemContext, itemDay, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { itemContext, itemDay, notificationAge, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { useServedView } from "../../state/served-clock.js";
 import "./notifications-panel.css";
 
 type Open = (item: NotificationItem) => void;
@@ -14,6 +15,13 @@ function RowActionButton({ label, icon, onClick }: { label: string; icon: ReactN
   return <Tooltip side="bottom" content={label}><IconButton label={label} title="" size="xs" icon={icon} onClick={onClick} /></Tooltip>;
 }
 
+/** The age ticks here, so a minute passing re-renders only this text. */
+function NotificationAge({ item }: { item: NotificationItem }) {
+  const at = item.at;
+  const age = useServedView("", now => at === undefined || now === "" ? item.age : notificationAge(at, now));
+  return <span className="notification-item-age">{age}</span>;
+}
+
 /** Codex rows: the unread dot left of the title, the time right of it, the workflow and run, then a two-line grey line below. */
 function NotificationRow({ item, active, onOpen, actions }: { item: NotificationItem; active: boolean; onOpen: Open; actions: RowActions }) {
   return <li className="notification-row">
@@ -22,7 +30,7 @@ function NotificationRow({ item, active, onOpen, actions }: { item: Notification
         {!item.read && <span aria-hidden className="notification-unread-dot" />}
         <span className="notification-item-title">{item.title}</span>
         {item.count !== undefined && <span className="notification-item-count"><span className="sr-only">{item.count} times</span><span aria-hidden>×{item.count}</span></span>}
-        <span className="notification-item-age">{item.age}</span>
+        <NotificationAge item={item} />
         {!item.read && <span className="sr-only">Unread</span>}
       </span>
       {itemContext(item) !== "" && <span className="notification-item-context">{itemContext(item)}</span>}
@@ -74,7 +82,7 @@ export function NotificationsPanel({ state, activeId, showPriority, onShowPriori
     ...(showPriority ? [{ label: "Priority", items: items.filter(item => item.priority), empty: "Nothing needs attention" }] : []),
     ...dayGroups(items.filter(item => !showPriority || !item.priority)).map(group => ({ label: group.day, items: group.items, empty: undefined })),
   ];
-  return <section aria-label="Notifications" className="notification-panel font-ui">
+  return <section aria-label="Notification list" className="notification-panel font-ui">
     <div className="notification-panel-scroll rail-scroll">
       {state.state === "loading" ? <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="flex items-center gap-2.5 px-2 py-2"><Skeleton className="h-10 flex-1" /></div>)}</div></LoadingRegion>
         : state.state === "unavailable" ? <p role="alert" className="notification-empty">Notifications unavailable. {state.reason}</p>

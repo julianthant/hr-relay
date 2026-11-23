@@ -11,8 +11,6 @@ Read the [root instructions](../AGENTS.md) for task rules. Use the [repository o
 | `reference/` | Current contracts, codebase map, and store catalog. |
 | `guides/` | Workflow authoring guide. |
 | `guard-inventory.json` | Registered guards and their owners. |
-| `roadmap/roadmap.md` | Roadmap source. |
-| `roadmap/index.html` | Generated roadmap site. |
 | `images/` | Images used by the repository README. |
 
 ## Reference index
@@ -30,7 +28,6 @@ Read the [root instructions](../AGENTS.md) for task rules. Use the [repository o
 
 ## Generated documents
 
-The [roadmap site](roadmap/index.html) is generated from [the roadmap source](roadmap/roadmap.md). Run `npm run roadmap`, then `npm run roadmap:check`.
 
 ## Repository policy
 

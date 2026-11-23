@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
 import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -200,5 +203,131 @@ describe("the Run dialog's Checks step", () => {
     const after = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
     assert.equal(after, region, "the same live region is updated, not replaced");
     assert.match(after?.textContent ?? "", /1 check needs fixing/u);
+  });
+});
+
+describe("asking for a re-check", () => {
+  const missing = (rerun: () => Promise<never>) => {
+    let reruns = 0;
+    const client = h.stubClient({
+      readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }),
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows),
+      rerunPreflight: async () => { reruns += 1; return rerun(); },
+    });
+    return { client, reruns: () => reruns };
+  };
+
+  it("asks once per open dialog, only from Checks, and not again on a return to Checks", async () => {
+    const served = missing(async () => { throw new Error("refused"); });
+    const dialog = await h.openDialog(served.client);
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(served.reruns(), 0, "opening the dialog asks for no re-check");
+    await reachChecks(dialog);
+    assert.equal(served.reruns(), 1);
+    await dialog.press("Back");
+    await dialog.press("Continue");
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(served.reruns(), 1, "a second visit to Checks only reads");
+  });
+
+  it("does not ask again after switching workflow or returning from Settings, and asks once more after a reopen", async () => {
+    const served = missing(async () => { throw new Error("refused"); });
+    const separations = DESCRIPTORS.find(flow => flow.id === "separations");
+    assert.ok(separations?.surfaces.inputRun);
+    const other = { ...h.WORKFLOWS[0], workflowId: separations.id, label: separations.label, version: separations.version,
+      steps: projectStartSteps(separations), inputRun: { state: "present" as const, surface: separations.surfaces.inputRun } };
+    const dialog = await h.openDialog(served.client, { workflows: [h.WORKFLOWS[0], other], panelWorkflowId: h.WORKFLOW_ID });
+    await reachChecks(dialog);
+    assert.equal(served.reruns(), 1);
+    const pick = async (label: string) => {
+      const button = [...document.body.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow"] button')].find(node => node.textContent?.includes(label));
+      assert.ok(button, label);
+      await act(async () => button.click());
+      for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    };
+    await pick(other.label);
+    await pick(h.WORKFLOWS[0].label);
+    assert.equal(served.reruns(), 1, "switching workflow asks for no second re-check");
+    await dialog.rerender({ hidden: true });
+    await dialog.rerender({ hidden: false });
+    assert.equal(served.reruns(), 1, "returning from Settings asks for no second re-check");
+    await dialog.rerender({ open: false });
+    await dialog.rerender({ open: true });
+    await reachChecks(dialog);
+    assert.equal(served.reruns(), 2, "a reopened dialog may ask once more");
+  });
+
+  it("shows one message and Check again when the re-check is refused", async () => {
+    const served = missing(async () => { throw new Error("refused"); });
+    const dialog = await reachChecksWith(served.client);
+    const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
+    assert.deepEqual(alerts, ["Relay could not check this run.Check again"]);
+    assert.doesNotMatch(dialog.text(), /Checks are unavailable/u);
+    assert.equal(dialog.disabled("Start run"), true);
+  });
+});
+async function reachChecksWith(client: Parameters<typeof h.openDialog>[0]) {
+  const dialog = await h.openDialog(client);
+  await reachChecks(dialog);
+  return dialog;
+}
+
+describe("a refused re-check through the real client", () => {
+  const ACTIVE = { state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready" };
+  async function served(rerunStatus: number) {
+    const reports: unknown[] = [];
+    const real = createDashboardClient({ baseUrl: "http://relay.test", surface: () => "app", fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname;
+      if (path === "/api/v1/profile/state") return Response.json(ACTIVE);
+      if (path === "/api/v1/debug/errors") {
+        assert.equal(typeof init?.body, "string");
+        if (typeof init?.body !== "string") throw new Error("Expected a JSON error report");
+        reports.push(JSON.parse(init.body));
+        return Response.json({ state: "recorded" });
+      }
+      if (path === "/api/v1/preflight") return Response.json({ state: "unavailable", reason: "Not checked yet." });
+      if (path === "/api/v1/settings/editable") return Response.json(FIXTURE_EDITABLE_SETTINGS);
+      if (path === "/api/v1/bootstrap") return Response.json(FIXTURE_BOOTSTRAP);
+      if (path === "/api/v1/preflight/rerun") return Response.json({ state: "error", code: rerunStatus === 429 ? "PREFLIGHT_RATE_LIMITED" : "PREFLIGHT_RERUN_FAILED",
+        message: "refused", retryable: true }, { status: rerunStatus });
+      throw new Error(`unexpected request ${path}`);
+    } });
+    await real.readProfileSession();
+    const client = h.stubClient({ readPreflight: real.readPreflight.bind(real), editableSettings: real.editableSettings.bind(real),
+      preflightScopes: real.preflightScopes?.bind(real), rerunPreflight: real.rerunPreflight.bind(real) });
+    return { reports, client };
+  }
+  /** Opens the dialog and lets its evidence read settle, so the count after it is what reaching Checks adds. */
+  async function openSettled(client: Parameters<typeof h.openDialog>[0], reports: readonly unknown[]) {
+    const dialog = await h.openDialog(client);
+    await dialog.type(h.TYPED);
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    return { dialog, before: reports.length };
+  }
+  async function toChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
+    await dialog.press("Continue");
+    await dialog.press("Continue");
+    for (let wait = 0; wait < 6; wait += 1) await h.settle();
+    assert.equal(dialog.stage(), "Checks");
+  }
+
+  it("shows one notice and sends no error report when the server turns the re-check away (429)", async () => {
+    const { reports, client } = await served(429);
+    const { dialog, before } = await openSettled(client, reports);
+    await toChecks(dialog);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
+    assert.deepEqual(alerts, ["Relay could not check this run.Check again"]);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(reports.length, before, "the turned-away re-check sends no report");
+  });
+
+  it("still reports an unexpected re-check failure (500)", async () => {
+    const { reports, client } = await served(500);
+    const { dialog, before } = await openSettled(client, reports);
+    await toChecks(dialog);
+    await vi.waitFor(() => assert.equal(reports.length, before + 1));
   });
 });

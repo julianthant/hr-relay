@@ -11,6 +11,7 @@ import { disposeHttpRouteHarness, harness as backendHarness, type Harness as Bac
 import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m0 } from "../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
+import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 import { act as act_m0,createElement as createElement_m0 } from "react";
 import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/client";
 import { it as it_m0 } from "vitest";
@@ -78,6 +79,7 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
   await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
+  await loadLazyPages();
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -134,12 +136,17 @@ it_m0("spreadsheet import is a Settings destination and leaves the Run launch fo
 try {
   let uploads = 0;
   await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
+  // The assistant panel mounts on first open and stays mounted while closed.
+  const launcher = document.querySelector<HTMLButtonElement>("[data-assistant-launcher]"); assert_m0.ok(launcher);
+  await click(launcher); await click(launcher);
   await click(button("Start run"));
   const launch = document.querySelector('[role="dialog"]'); assert_m0.ok(launch);
   assert_m0.equal(launch.querySelectorAll('input[type="file"]').length, 0);
   assert_m0.equal(document.querySelectorAll('#hub-panel-assistant input[type="file"]').length, 1);
   await key("Escape"); assert_m0.ok(document.activeElement === button("Start run"));
-  await click(button("Spreadsheets"));
+  await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
+  await click(link);
   await click(button("Import"));
   await chooseSpreadsheet();
   await click(button("Next"));
@@ -156,7 +163,8 @@ await _afterEachFixture0();
 it_m0.each(["Cancel", "Escape"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
 try {
   let starts = 0;
-  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Spreadsheets"));
+  await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
   const before = (await savedWorkbooks()).map(record => record.name);
   await click(button("Import"));
   await chooseSpreadsheet();
@@ -213,6 +221,7 @@ async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}
   const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
   await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition, previewPreferences: shellPreferences })})));
   await settle();
+  await loadLazyPages();
   return client;
 }
 async function historyMove(direction: "back" | "forward") { window.history[direction](); await settle(); await settle(); }
@@ -350,8 +359,8 @@ afterEach_m1(_afterEachFixture0);
       : [...document.querySelectorAll<HTMLButtonElement>('.notification-item')].find(item => item.querySelector(".notification-item-title")?.textContent === title);
     assert_m1.ok(target);
     await click(target);
-    assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
-    assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
+    assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
+    assert_m1.match(document.body.textContent ?? "", /This workflow is not available to select\./);
     assert_m1.equal(location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
     assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
@@ -374,39 +383,22 @@ afterEach_m1(_afterEachFixture0);
     const selected = document.querySelector(`[data-demo-row-id="${FIXTURE_IDS_m1.runningRun}"]`);
     assert_m1.ok(selected, "selected run must belong to the visible queue");
   });
-  it_m1.each([["?settings=spreadsheets", "Spreadsheets"], ["?settings=explorer", "Explorer"], ["?settings=activity", "Analytics"], ["?spreadsheets=1", "Spreadsheets"]])("opens %s as the %s data page with the rail and Sessions bar still there", async (search, label) => {
-    await mount(search);
-    assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true, "Settings is not open");
-    assert_m1.ok(document.querySelector('[aria-label="Session actions"]'), "the Sessions bar stays");
-    assert_m1.equal(document.querySelector('aside[aria-label="Workspace"] [aria-current="page"]')?.textContent?.trim(), label);
-    assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
-  });
-  it_m1("moves focus to the data page heading on arrival and back to its rail row on leaving", async () => {
-    await mount("?day=" + FIXTURE_DAY_WIRE_m1.day);
-    await click(button("Explorer"));
-    await act_m1(async () => { await new Promise(resolve => requestAnimationFrame(() => resolve(undefined))); });
-    assert_m1.equal(parseRoute_m1(location.search).explore, "");
-    assert_m1.equal(document.activeElement, document.querySelector("h1"), "focus lands on the page heading");
-    await historyMove("back");
-    assert_m1.equal(parseRoute_m1(location.search).explore, undefined);
-    assert_m1.equal(document.activeElement?.id, "rail-data-explorer", "focus returns to the launching row");
-  });
-  it_m1("Back to run closes Settings opened from the Run dialog and keeps the dialog's route", async () => {
+  it_m1("Close settings closes Settings opened from the Run dialog and keeps the dialog's route", async () => {
     await mount("?day=" + FIXTURE_DAY_WIRE_m1.day + "&start=1&settings=account&settingsFrom=run");
     assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"]'));
-    await click(button("Back to run"));
+    await click(button("Close settings"));
     const route = parseRoute_m1(location.search);
     assert_m1.equal(route.settings, undefined);
     assert_m1.equal(route.settingsFrom, undefined);
     assert_m1.equal(route.start, true);
     assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"]') === null, true);
   });
-  it_m1("Settings gear opens the surface, Back to dashboard closes it and competing keys resolve one takeover", async () => {
+  it_m1("Settings gear opens the surface, Close settings closes it and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert_m1.ok(document.querySelector('[aria-label="Settings"]'));
     assert_m1.equal(document.querySelector('[aria-label="Session actions"]'), null);
     const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
-    await click(button("Back to dashboard"));
+    await click(button("Close settings"));
     assert_m1.equal(new URLSearchParams(location.search).has("settings"), false);
     assert_m1.equal(new URLSearchParams(location.search).has("archive"),false);
     assert_m1.equal(new URLSearchParams(location.search).has("explore"),false);
@@ -429,43 +421,41 @@ async function editHeadlessPreference() {
   await act_m1(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, editedJobEndDate); input.dispatchEvent(new Event("input", { bubbles: true })); });
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
 }
-it_m1("keeps the Settings editor and draft across ordinary-section native history", async () => {
+it_m1("asks before a sidebar section switch with an unsaved draft, and both answers work", async () => {
 try {
 
 
   await mount("?settings=general");
   await editHeadlessPreference();
-  const general = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(general);
-  await click(general);
-  await historyMove("back");
-  assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
-  await click(button("Analytics"));
-  assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), true);
+  const account = () => [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(link => link.textContent?.trim() === "Account"); assert_m1.ok(account());
+  await click(account()!);
+  assert_m1.equal(document.body.textContent?.includes("Discard changes?"), true);
   await click(button("Keep editing"));
-  assert_m1.equal(new URLSearchParams(location.search).has("activity"), false);
+  assert_m1.equal(new URLSearchParams(location.search).get("settings"), "general");
   assert_m1.equal(jobEndDate()?.value, editedJobEndDate);
-  await click(button("Back to dashboard"));
+  await click(account()!);
   await click(button("Discard changes"));
+  assert_m1.equal(new URLSearchParams(location.search).get("settings"), "account");
+  await click(button("Close settings"));
   assert_m1.equal(new URLSearchParams(location.search).has("settings"),false);
 
 } finally {
 await _afterEachFixture0();
 }
 });
-it_m1.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("keeps retired Archive URL %s explicit and returns to the queue", async search => {
+it_m1.each(["?settings=archive", "?archive=", "?archive=archive-demo-run-48216&archiveView=versions"])("opens the first Settings section for retired Archive URL %s", async search => {
 try {
 
 
   await mount(search);
-  assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
+  assert_m1.doesNotMatch(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
   // Subscription folded into General (1f9149b4fe); Archive is retired.
   assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
-    ["general", "account", "keyboard"].map(id => `?settings=${id}`));
+    ["general", "account", "spreadsheets", "explorer", "activity", "keyboard"].map(id => `?settings=${id}`));
   assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
-  await click(button("Return to dashboard"));
+  await click(button("Close settings"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
   assert_m1.ok(document.querySelector('[data-demo-row-id]'));
@@ -531,7 +521,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     let reads = 0;
     const search = `?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`;
     const client = await mount(search, {
-      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
+      runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", retryable: true, message: "private transport detail" }); },
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.ok(reads > 0);
     assert_m1.ok(document.body.textContent?.includes("Couldn't load logs."));

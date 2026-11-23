@@ -26,10 +26,7 @@
 .settings-tab-body .ds-body-section-description { margin:0 0 16px; }
 .settings-tab-body .ds-form-group { background:var(--ds-card-bg); }
 .settings-tab-body .ds-form-group .ds-body-row,.settings-tab-body .ds-form-group .ds-switch-row { min-height:var(--ds-row-h-1);padding-block:var(--ds-row-pad-y-1);gap:24px; }
-.settings-tab-body .ds-form-group .ds-body-row:has(.ds-field-description),.settings-tab-body .ds-form-group .ds-switch-row:has(.ds-text-meta) { min-height:var(--ds-row-h-2);padding-block:var(--ds-row-pad-y); }
-.settings-tab-body .ds-form-group:has(.ds-field-description, .ds-switch-content .ds-text-meta) :is(.ds-body-row, .ds-switch-row) { min-height:var(--ds-row-h-2);padding-block:var(--ds-row-pad-y); }
 .settings-tab-body .ds-form-group > * + .ds-body-row { padding-top:calc(var(--ds-row-pad-y-1) - var(--ds-border-w)); }
-.settings-tab-body .ds-form-group:has(.ds-field-description, .ds-switch-content .ds-text-meta) > * + .ds-body-row { padding-top:calc(var(--ds-row-pad-y) - var(--ds-border-w)); }
 .settings-tab-body .ds-form-group .ds-body-row { grid-template-columns:minmax(0,1fr) minmax(150px,300px); }
 .settings-tab-body .ds-field-label,.settings-tab-body .ds-result-row-copy .ds-field-label,.settings-tab-body .ds-switch-content .ds-text-ui { font-size:var(--ds-text-body-row);line-height:var(--ds-lh-body-row);font-weight:400; }
 .settings-tab-body .ds-field-description,.settings-tab-body .ds-switch-content .ds-text-meta { font-size:var(--ds-row-desc);line-height:var(--ds-row-desc-lh);font-weight:400;color:var(--ds-fg-secondary);margin-top:var(--ds-row-gap); }
@@ -53,4 +50,6 @@
 .settings-takeover .ds-path-control > button { min-width:70px;height:28px; }
 .settings-takeover [data-settings-path^="annualDates."] .settings-compact-control { width:153px;margin-left:auto; }
 .settings-account-page > .ds-body-section + .ds-form-group { margin-top:0; }
-.settings-takeover .settings-account-page .ds-result-row-value button[data-slot="button"]:not([aria-label]) { min-width:96px; }
+.settings-takeover .settings-account-page .ds-result-row-value button[data-slot="button"]:not([aria-label]) { width:112px; }
+.settings-search-arrival[data-held="true"]::before { animation: none; opacity: 1; }
+.settings-fix-banner { position: sticky; top: 0; z-index: 2; background: var(--ui-canvas); }

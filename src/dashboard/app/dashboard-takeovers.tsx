@@ -1,19 +1,16 @@
 import type { WorkflowSourcePolicy } from "./workflow-sources.js";
 import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
-import type { ComponentProps,ReactNode } from "react";
+import { lazy,Suspense,useEffect,type ComponentProps,type ReactNode } from "react";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import {
 type FrontendBootstrapWire
 } from "../../models/dashboard/bootstrap.js";
-import { ActivityReport, type ActivityReportHook } from "../surfaces/activity/activity.js";
-import { WorkflowExplorer } from "../surfaces/explorer/explorer.js";
+import type { ActivityReportHook } from "../surfaces/activity/activity.js";
 import { IntakeWorkspace } from "../surfaces/intake/intake.js";
 import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
 import type { DemoTheme } from "../ds/ui.js";
-import { SettingsPage } from "../surfaces/settings/settings.js";
-import { SheetsV2 } from "../surfaces/spreadsheets/design/sheets-v2.js";
-import { DataPage } from "./data-page.js";
+import { PanelBoundary } from "../surfaces/shared/panel-boundary.js";
 import {
 RUN_START_DOOR_ID,
 type DashboardTakeoverCloseFocusTargetId
@@ -24,9 +21,20 @@ import type { RouteSetter } from "./navigation/view-route-model.js";
 import {
 activeTakeover,
 routeWithoutTakeovers,
-settingsRoute,
 type AppRouteState
 } from "./navigation/url-state.js";
+// The local server answers in milliseconds, so a page shows nothing while its code loads; a failed load reaches PanelBoundary.
+const SettingsPage = lazy(() => import("../surfaces/settings/settings.js").then(module => ({ default: module.SettingsPage })));
+const ActivityReport = lazy(() => import("../surfaces/activity/activity.js").then(module => ({ default: module.ActivityReport })));
+const WorkflowExplorer = lazy(() => import("../surfaces/explorer/explorer.js").then(module => ({ default: module.WorkflowExplorer })));
+/** Nothing is drafted before the Settings code arrives, so leaving proceeds. */
+function SettingsLoading({ onExitGuardChange }: { onExitGuardChange: (guard: SettingsExitGuard | undefined) => void }) {
+ useEffect(() => {
+   onExitGuardChange(proceed => proceed());
+   return () => onExitGuardChange(undefined);
+ }, [onExitGuardChange]);
+ return null;
+}
 export function DashboardTakeovers({client,useActivityReport,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
  useActivityReport?: ActivityReportHook; today: string; workflowSources: WorkflowSourcePolicy;
@@ -43,31 +51,36 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  onSettingsSaveProblem?: ComponentProps<typeof SettingsPage>["onSaveProblem"];
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
- if (takeover === "activity" || takeover === "explore" || takeover === "spreadsheets") return (
-   <DataPage page={takeover}>
-     {takeover === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, activity: next }))} />
-     : takeover === "explore" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div>
-     : <SheetsV2 onOpenRun={onOpenRun} />}
-   </DataPage>
- );
- return (takeover === "settings" || takeover === "archive" ? (
+ const dataSection = takeover === "settings" ? route.settings
+   : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
+ const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
+ : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
+ return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
+            <PanelBoundary resetKey={route.settings ?? takeover} sentence="Couldn't open Settings." className="m-4">
+            <Suspense fallback={<SettingsLoading onExitGuardChange={onSettingsExitGuardChange} />}>
             <SettingsPage
+              onOpenRun={onOpenRun}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               deleteAccount={deleteAccount}
               accountPage={accountPage}
-              section={route.settings ?? (takeover === "archive" ? "archive" : "")}
+              section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
+              dataContent={dataContent === undefined ? undefined : <Suspense fallback={null}>{dataContent}</Suspense>}
               actorId={boot.actor.id}
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
-              onSection={(next, settingsTarget) => setRoute({ ...settingsRoute(route, next, settingsTarget), ...(route.settingsFrom === undefined ? {} : { settingsFrom: route.settingsFrom }) })}
+              onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,
+                ...(route.settingsFrom === undefined ? {} : { settingsFrom: route.settingsFrom }),
+                ...(next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
               onClose={() => route.settingsFrom === "run" ? setRoute(routeWithoutTakeovers(route)) : closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
               backToRun={route.settingsFrom === "run"}
               onExitGuardChange={onSettingsExitGuardChange}
               onSaved={onSettingsSaved}
               onSaveProblem={onSettingsSaveProblem}
             />
- ) : takeover === "intake" && route.intake !== undefined ? (
+            </Suspense>
+            </PanelBoundary>
+          ) : takeover === "intake" && route.intake !== undefined ? (
              /** The surface owns the same full-bleed `TakeoverFrame` as every other
  * window-replacing view; no shell gutter may sit between frame and column. */
             <IntakeWorkspace

@@ -52,7 +52,6 @@
 .hub-assistant-panel{position:relative;display:flex;flex-direction:column;background:var(--ui-panel);color:var(--ui-primary);border:1px solid var(--ui-stroke);font:12px/1.5 var(--font-sans)}
 #hub-panel-assistant.hub-assistant-panel{left:auto;right:auto;bottom:auto;height:100%;max-height:none;max-width:100%}
 #hub-panel-assistant .hub-panel-title{flex:1;font-weight:500}
-#hub-panel-assistant :is(button,a):focus-visible{background:var(--hub-focus-fill)!important;color:var(--hub-focus-ink)!important;outline:none;box-shadow:none}
 #hub-panel-assistant button:disabled{cursor:default;opacity:.45}
 #hub-panel-assistant .hub-chat-title:disabled,#hub-panel-assistant .hub-header-actions button:disabled{opacity:1}
 #hub-panel-assistant .hub-thread-wrap>.hub-transcript{width:100%}
@@ -74,7 +73,6 @@ html[data-motion=off] :is(#hub-panel-assistant,.hub-assistant-menu) *,html[data-
 
 #hub-panel-assistant strong{font-weight:500}
 /* Assistant mock: primary actions use the Start a run blue. */
-#hub-panel-assistant{--ds-accent:var(--ui-info);--ds-accent-fg:var(--ui-canvas);--ds-accent-hover:var(--ui-info)}
 #hub-panel-assistant .hub-icon[aria-pressed=true]{background:var(--ui-hover);color:var(--ui-primary)}
 
 /* Floating panel: its own surface (stronger edge and the floating shadow) over Logs. */

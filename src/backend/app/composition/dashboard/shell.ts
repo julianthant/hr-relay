@@ -11,33 +11,41 @@ import type { OperatorXlsxExportServiceDependencies } from "../../../runs/export
 import { createDashboardStreamHub, type DashboardStreamHubDeps } from "../../../transports/http/subscriptions/dashboard-stream.js";
 import type { ShellRouteDeps } from "../../../transports/http/routes/shell-types.js";
 import { composeGeneratedExports } from "./generated-exports.js";
+import { resolveResultTitle, resolveSubjectTitle } from "../../../runs/projections/run-subject-title.js";
+import { retainedRunProtectedBindings } from "../../../../models/write-safety/protected-input.js";
+import { runResultCurrent } from "../../../storage/sqlite/delegation-refresh.js";
 
 /** Shell bootstrap, search, export and subscription use the same production authority. */
 export function composeShell(input: Pick<BootstrapQueryDeps,
   "appVersion" | "actorLabel" | "clock" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { projection: Pick<RunQueueProjection, "queueSurfaces">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
+  & { projection: Pick<RunQueueProjection, "runFold">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
-  const { database, projection, clock, ids, artifacts } = input;
-  database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({
+  const { projection, clock, ids, artifacts } = input;
+  const database = input.database.dashboardHistory();
+  input.database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({
     workflow: descriptor.id, version: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
     subjectProjection: descriptor.subjectProjection ?? null,
   })));
+  const descriptorOf = (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor;
+  const withSearchSnapshot = <Result>(read: () => Result): Result => database.withAuthorityReadSnapshot(read);
   const search = createCrossDateSearchService({ clock,
     sourceIdentity: database.getSourceDatabaseIdentity(), cursorSigningKey: randomBytes(32),
-    descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor },
-    authority: { readSnapshot: read => database.withAuthorityReadSnapshot(() => read({
+    descriptors: { resolve: descriptorOf },
+    authority: { readSnapshot: read => withSearchSnapshot(() => read({
       authorityGeneration: database.getMeta().authorityGeneration,
-      searchRuns: searchInput => {
-        const page = database.authority.runs.search(searchInput);
-        const surfaces = new Map(projection.queueSurfaces(page.rows.map(row => row.record.envelope.runId))
-          .map(surface => [surface.runId, surface]));
-        return { ...page, rows: page.rows.map(row => {
-          const surface = surfaces.get(row.record.envelope.runId);
-          if (surface === undefined) throw new Error(`search-queue-surface-unavailable: ${row.record.envelope.runId}`);
-          return { ...row, displayTitle: surface.displayName.state === "present" ? surface.displayName.value : surface.title };
-        }) };
+      searchRuns: searchInput => database.authority.runs.search(searchInput),
+      displayTitle: run => {
+        if (run.displayName !== undefined && retainedRunProtectedBindings(run).length === 0) return run.displayName;
+        const { runId, workflow, itemId, shape } = run.envelope;
+        const descriptor = descriptorOf(workflow);
+        const receipt = descriptor?.titleProjection !== undefined && shape !== "operation"
+          && runResultCurrent(run) && run.lifecycle.outcome === "done" ? database.authority.evidenceReceipts.findByRun(runId) : undefined;
+        return (descriptor === undefined ? undefined : resolveResultTitle(descriptor, run, receipt))
+          ?? resolveSubjectTitle(descriptor?.subjectProjection, { workflowId: workflow, itemId },
+            { latestCheckpoint: (workflowId, item, node) => database.authority.runCheckpoints.latest(workflowId, item, node) })
+          ?? projection.runFold(runId)?.queued.title ?? runId;
       },
     })) },
   });
@@ -47,10 +55,10 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
       workbookCompatibility: input.workbookCompatibility },
     search,
-    searchMetadataExports: {export: request=>exportSearchMetadata({search,sourceIdentity:database.getSourceDatabaseIdentity()},request)},
+    searchMetadataExports: {export: request=>exportSearchMetadata({search,withSearchSnapshot,sourceIdentity:database.getSourceDatabaseIdentity()},request)},
     calendar: createCalendarQuery(database, clock),
     xlsxExports: composeGeneratedExports({ clock, ids, sourceIdentity: database.getSourceDatabaseIdentity(),
-      artifacts, authority: database.authority.operatorXlsxExports, search,
+      artifacts, authority: input.database.authority.operatorXlsxExports, search, withSearchSnapshot,
       activityReport: (from, to, token) => input.activity.readSelected(from, to, token) }),
     hub: createDashboardStreamHub(input),
   };

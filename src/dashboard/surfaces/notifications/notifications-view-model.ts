@@ -21,7 +21,15 @@ export type NotificationItem = Readonly<{
   priority?: boolean;
   /** Day group label once out of Priority: Today, Yesterday, a weekday or a date. */
   day?: string;
+  /** When it happened; the shown age ticks from it. Without it the age stays as served. */
+  at?: string;
 }>;
+
+/** Whole minutes, hours, then days since `at`. */
+export function notificationAge(at: string, nowIso: string): string {
+  const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(at)) / 60000));
+  return elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`;
+}
 export type NotificationPinned = Readonly<{ id: string; title: string; detail: string }>;
 export type NotificationsState = Readonly<{ state: "ready"; items: readonly NotificationItem[]; pinned: readonly NotificationPinned[] }>
   | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string }>;

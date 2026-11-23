@@ -1,5 +1,11 @@
 import { resolveWriteCommandTarget } from "../../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
+import { createScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
+import { SCRIPTED_WORKFLOWS, scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
+import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
+import { dataOriginViewsOf, gateNodeViewsOf, writeContractViewsOf } from "../../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import type { WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
+import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
 import { registeredExplorerQueryDeps } from "../../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS } from "../../../fixtures/intake-kernel-seams.js";
@@ -55,22 +61,24 @@ import { hostConfigFacts } from "../../../../../src/models/config/host-display.j
 import { initialProtectedStoreRecord } from "../../../../../src/models/config/protected-settings.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../../src/models/config/settings.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/rules/identity/ids.js";
-import type { Clock } from "../../../../../src/rules/time/clock.js";
+import type { TestClock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
 createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
-  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows }: {
+  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows, scripting }: {
+   /** Opt-in: run Work-Study through the real executor on a script the test holds (needs productWorkflows). */
+   scripting?: Readonly<{ profilePath: string; reportWorker: (workerId: string, activity: WorkerActivity) => void }>;
    /** Serve the production catalog (same filter as composeShell) instead of person-lookup alone. */
    productWorkflows?: boolean;
    selectionServices?: Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">;
-   database: AuthorityDatabase; clock: Clock; stateRoot: string; root: string;
+   database: AuthorityDatabase; clock: TestClock; stateRoot: string; root: string;
    projection: ReturnType<typeof createRunQueueProjection>; spans: ReturnType<typeof createTimelineEmitter>;
-   descriptors: {resolve: (workflowId: string) => typeof personLookupDescriptor | undefined}; runIds: Record<string,string>;
+   descriptors: {resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined}; runIds: Record<string,string>;
   }) {
     const runReader = sqliteRunReader(database, clock);
-    const trust = createReceiptService({ database, runReader, descriptors: [personLookupDescriptor] });
+    const trust = createReceiptService({ database, runReader, descriptors: scripting === undefined ? [personLookupDescriptor] : [personLookupDescriptor, ...SCRIPTED_WORKFLOWS.map(script => script.module.descriptor).filter(descriptor => descriptor.id !== personLookupDescriptor.id)] });
 
 
     const doneReceipt = trust.ensureReceipt(runIds.doneRun);
@@ -81,6 +89,11 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       );
     }
 
+    const servedScripted = (workflowId: string) => {
+      const descriptor = scriptedDescriptorOf(workflowId);
+      return descriptor === undefined ? undefined : { ...descriptor, gateNodes: gateNodeViewsOf(descriptor),
+        writeContracts: writeContractViewsOf(descriptor), dataOrigins: dataOriginViewsOf({ descriptor, stores: taskStoreRegistry.stores }) };
+    };
     const runDetailDeps = { runReader, timeline: database.authority.timelineEvents,
       itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }),
       stateRoot,
@@ -94,8 +107,8 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         listGateResults: (runId: string) => database.authority.gateResults.listByRun(runId),
       },
       descriptors: {
-        resolve: (workflowId: string) =>
-          (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+        resolve: (workflowId: string) => workflowId === personLookupDescriptor.id ? personLookupDescriptor
+          : scripting === undefined ? undefined : servedScripted(workflowId),
       },
       canonical: {
         reader: runReader,
@@ -108,10 +121,17 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       trust,
     };
 
-    const lifecycle = new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
+    const lifecycle = new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), ...(scripting === undefined ? {} : { resolveDescriptor: descriptors.resolve }), publishQueued: (run, publication) => {
         if (publication === undefined) throw new Error("command-created run lacks queue presentation");
         spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
       } });
+    const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
+      sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
+    const scripted = scripting === undefined ? undefined : createScriptedExecutor({ database, clock, lifecycle, emitter: spans, library,
+      profilePath: scripting.profilePath, reportWorker: scripting.reportWorker, publish: () => { projection.ingestFromTimeline(); } });
+    // A scripted plan binds the active runtime config, as production plans do.
+    const activeConfig = scripting === undefined ? undefined : database.authority.runtimeConfig.get();
+    if (scripting !== undefined && activeConfig === undefined) throw new Error("the seeded authority holds no runtime config");
     const kernel = createCommandKernel({
       lifecycle: lifecycle,
       appVersion: SEEDED_APP_VERSION,
@@ -139,22 +159,24 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       authorityRead: database,
       descriptors,
       clock,
-      ids: { uuid: () => uuidOf(8000) },
+      ...(scripting === undefined ? {} : { workbooks: library }),
+      ids: scripting === undefined ? { uuid: () => uuidOf(8000) } : sequentialIdFactory("8"),
       planTtlMs: 10 * 60 * 1000,
-      configFingerprint: CONFIG_FINGERPRINT,
-      configSnapshotId: CONFIG_SNAPSHOT_ID,
+      configFingerprint: activeConfig?.configFingerprint ?? CONFIG_FINGERPRINT,
+      configSnapshotId: activeConfig?.configSnapshotId ?? CONFIG_SNAPSHOT_ID,
       plannedBy: "local-operator",
     });
     // Product-app services: real notification and workbook-library composition; the live-only ones (SharePoint download,
     // ChatGPT assistant) are the minimum the dashboard's start-up reads need.
+    const modules = productWorkflows === true
+      ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
+      : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
     const productAppDeps = (): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
       const { observer } = createTrustNotifications({ database, clock, ids: sequentialIdFactory("n"), reader: lifecycle });
       const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
         host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
         command: commandId => database.authority.commands.readForNotice(commandId),
         bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
-      const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
-        sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
       const profileId = "00000000-0000-4000-8000-000000000001";
       const assistant: AssistantService = {
         respond: () => Promise.resolve({ kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." } }),
@@ -165,7 +187,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       };
       return {
         notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
-        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: [] },
+        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: modules.map(module => module.descriptor) },
         assistant,
       };
     };
@@ -194,9 +216,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         appVersion: SEEDED_APP_VERSION,
         clock,
 
-        modules: productWorkflows === true
-          ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
-          : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
+        modules,
         descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
         settingsSchemaHash: descriptorSetHash(["settings-schema"]),
         projection,
@@ -259,7 +279,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     });
 
 
-  return { app, hub };
+  return { app, hub, scripted };
   }
 
   return { composeSeededServices };

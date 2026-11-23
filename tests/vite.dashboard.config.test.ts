@@ -140,6 +140,20 @@ describe("the dashboard dev server's launch-owner middleware", () => {
 });
 
 describe("the dashboard development proxy", () => {
+  it.each([["staging", 3941, 5175], ["development", 3940, 5176]] as const)(
+    "serves %s on its own port and sends every proxy to the same profile", async (profile, backendPort, frontendPort) => {
+      vi.resetModules();
+      vi.stubEnv("RELAY_RUNTIME_PROFILE", profile);
+      try {
+        const { default: config } = await import("../vite.dashboard.config.js");
+        assert.equal(config.server?.port, frontendPort);
+        assert.equal(config.preview?.port, frontendPort);
+        assert.deepEqual(config.server?.proxy, Object.fromEntries(["/api", "/artifacts", "/events"].map(path =>
+          [path, { target: `http://127.0.0.1:${backendPort}`, changeOrigin: false }])));
+      } finally { vi.unstubAllEnvs(); vi.resetModules(); }
+    },
+  );
+
   it("forwards every browser-reachable BFF surface, including artifact bytes", () => {
     const proxy = dashboardConfig.server?.proxy;
     assert(proxy !== undefined && !Array.isArray(proxy));

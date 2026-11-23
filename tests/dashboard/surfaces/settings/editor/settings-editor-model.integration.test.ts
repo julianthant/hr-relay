@@ -13,7 +13,7 @@ async function setup(section?: string) {
   const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority, section); cleanups.push(mounted.close); return { ...mounted, authority };
 }
-const FAILURE = { tone: "danger", title: "Settings weren't saved", description: "The previous value is back.", key: "settings-save" } as const;
+const FAILURE = { tone: "danger", title: "Settings weren't saved. The previous value is back.", key: "settings-save" } as const;
 const labelValue = (h: Awaited<ReturnType<typeof setup>>): unknown => {
   const editor = h.controller().editor; assert.equal(editor.state, "loaded");
   if (editor.state !== "loaded") throw new Error("current settings unavailable");
@@ -31,7 +31,7 @@ describe("typed Settings catalog controls", () => {
     assert.equal(h.controller().locked, false);
   });
   for (const failure of ["lost-response", "failed-readback", "stale-readback", "intervening-writer", "foreign-result", "wrong-family"] as const) {
-    it(`reverts the edit with a failure toast and no retry after ${failure}`, async () => {
+    it(`settles the edit from its read-back after ${failure}, never resending`, async () => {
       const h = await setup(); const original = h.authority.read();
       h.ports.execute = request => {
         const result = h.authority.execute(request);
@@ -44,12 +44,24 @@ describe("typed Settings catalog controls", () => {
         return result;
       };
       await settingsAction(() => h.controller().update("actor.label", "Unconfirmed draft")); await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().dirtyCount, 0); assert.deepEqual(h.problems, [FAILURE]); assert.deepEqual(h.notices, []);
-      assert.equal(h.commands.length, 1, "an unknown outcome is never silently retried");
-      assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message|Retry|Saving/u);
+      // The served value decides: the stored write shows silently; anything else is the previous value and one failure toast.
+      const stored = failure === "lost-response" || failure === "foreign-result" || failure === "wrong-family";
+      await vi.waitFor(async () => { await settingsAction(() => undefined); assert.ok(stored ? labelValue(h) === "Unconfirmed draft" && h.controller().dirtyCount === 0 : h.problems.length === 1); }, { timeout: 5000, interval: 50 });
+      assert.equal(h.controller().dirtyCount, 0);
+      if (stored) { assert.deepEqual(h.problems, []); assert.deepEqual(h.notices, [], "a save found by reading back shows no message"); }
+      else { assert.deepEqual(h.problems, [FAILURE]); assert.deepEqual(h.notices, []); }
+      assert.equal(h.commands.length, 1, "an unknown outcome is read back, never resent");
+      if (failure !== "failed-readback") assert.equal(h.controller().locked, false, "the control works again without a reload");
+      assert.doesNotMatch(h.host.textContent ?? "", /synthetic-sensitive-server-message|Retry|Saving|unconfirmed/u);
       if (failure === "intervening-writer") {
         assert.equal(h.authority.read().revision, original.revision + 2);
         assert.equal(labelValue(h), "Later writer");
+      }
+      if (failure !== "failed-readback") {
+        // The read-back freed the command lock: the next edit reaches Relay.
+        h.ports.execute = request => h.authority.execute(request);
+        await settingsAction(() => h.controller().update("actor.label", "Next draft", true));
+        await vi.waitFor(async () => { await settingsAction(() => undefined); assert.equal(h.commands.length, 2); }, { timeout: 5000, interval: 50 });
       }
     });
   }
@@ -81,22 +93,28 @@ for (const family of ["protected"] as const) {
     let settle: ((value: unknown) => void) | undefined;
     h.ports.execute = () => new Promise<unknown>(resolve => { settle = resolve; });
     const control = () => h.controller().protectedEditor;
-    await settingsAction(() => control().update("ucpathUserId", "retained"));
+    const value = "https://example.test/retained-roster";
+    await settingsAction(() => control().update("sharepointOnboardingRosterUrl", value));
     await settingsAction(() => control().submit());
     assert.equal(control().save.state, "saving"); const original = structuredClone(h.commands[0]);
     await h.render("general", true, 1);
     assert.equal(control().save.state, "unconfirmed");
-    await settingsAction(() => control().retry());
-    assert.equal(h.commands.length, 1, "retry cannot dispatch over the pending original attempt");
+    await settingsAction(() => control().submit());
+    assert.equal(h.commands.length, 1, "the pending original attempt holds the write lock");
     const draft = structuredClone(control().draft);
     assert.ok(settle);
     await settingsAction(() => settle?.({ state: "pending", commandId: (original as { commandId: string }).commandId }));
     assert.equal(control().save.state, "unconfirmed"); assert.equal(control().locked, true);
     assert.deepEqual(control().draft, draft);
     assert.equal(h.notices.length, 0); assert.equal(h.problems.length, 0);
-    h.ports.execute = request => ({ state: "pending", commandId: (request as { commandId: string }).commandId });
-    await settingsAction(() => control().retry());
-    assert.deepEqual(h.commands, [original, original]);
+    assert.equal(h.authority.execute(original).state, "applied");
+    await vi.waitFor(async () => { await settingsAction(() => undefined); assert.equal(control().locked, false); });
+    assert.equal(control().save.state, "idle"); assert.equal(control().dirtyCount, 0);
+    assert.equal(h.notices.length, 0); assert.equal(h.problems.length, 0);
+    const editor = h.controller().editor; assert.ok(editor.state === "loaded");
+    assert.ok(editor.document.protectedSettings.state === "available");
+    assert.equal(editor.document.protectedSettings.entries.sharepointOnboardingRosterUrl?.value, value);
+    assert.deepEqual(h.commands, [original]);
   });
 }
 

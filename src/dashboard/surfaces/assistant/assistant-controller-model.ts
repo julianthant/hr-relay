@@ -258,8 +258,8 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   });
 }
 
-export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void }) {
-  const { history, preferenceChanged } = options ?? {};
+export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void; readModels?: boolean }) {
+  const { history, preferenceChanged, readModels = true } = options ?? {};
   const [launcherBottom, setLauncherBottom] = useState<string>();
   useLayoutEffect(() => {
     if (!shellMounted) return;
@@ -301,11 +301,11 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const [models, setModels] = useState<AssistantModelCatalog['models']>();
   useEffect(() => {
     const client = sessions.client;
-    if (!accountAvailable || client.assistantModels === undefined) return;
+    if (!readModels || !accountAvailable || client.assistantModels === undefined) return;
     const request = new AbortController();
     client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
     return () => request.abort();
-  }, [accountAvailable, sessions.client]);
+  }, [readModels, accountAvailable, sessions.client]);
   return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => controller.choose(preference), authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in'),

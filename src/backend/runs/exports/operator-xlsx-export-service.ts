@@ -48,6 +48,7 @@ export interface OperatorXlsxExportServiceDependencies {
   readonly artifacts: ContentAddressedArtifactWriter;
   readonly authority: OperatorXlsxExportRepository;
   readonly search: CrossDateSearchQueryService;
+  readonly withSearchSnapshot: <Result>(read: () => Result) => Result;
   /** Reserved for the Activity arm; search composition must never read it. */
   readonly activityReport: (from: string, to: string, token: string) => ActivityReportSelection;
 }
@@ -88,6 +89,13 @@ function assertSnapshot(
 }
 
 export function collectSearchDocument(
+  deps: Pick<OperatorXlsxExportServiceDependencies, "search" | "sourceIdentity" | "withSearchSnapshot">,
+  selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>,
+) {
+  return deps.withSearchSnapshot(() => readSearchDocument(deps, selection));
+}
+
+function readSearchDocument(
   deps: Pick<OperatorXlsxExportServiceDependencies, "search" | "sourceIdentity">,
   selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>,
 ) {

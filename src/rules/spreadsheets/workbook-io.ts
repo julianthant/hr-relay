@@ -4,6 +4,8 @@ import { parse } from 'csv-parse/browser/esm/sync';
 import { ERROR_CATALOG } from '../../models/failures/error-catalog.js';
 import type { EditableWorkbook as LibraryWorkbook } from '../../models/dashboard/workbooks.js';
 import { assertSpreadsheetWithinInflateLimit, SpreadsheetInflateLimitError } from './spreadsheet-inflate-limit.js';
+import { cellText } from './cell-text.js';
+export { cellText };
 import { MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue, workbookSizeIssue } from './workbook-size.js';
 export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['fill']; background?: string; numFmt?: string; richText?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['richText']; hyperlink?: string; tooltip?: string }>;
 export type SheetRow = Readonly<{ id: string; sourceRow?: number; cells: readonly SheetCell[] }>;
@@ -76,9 +78,6 @@ function defaultCellFont(font: unknown): boolean {
     && value.name === 'Calibri' && value.size === 11 && value.family === 2 && value.scheme === 'minor'
     && value.color !== null && typeof value.color === 'object'
     && Object.keys(value.color).length === 1 && (value.color as Record<string, unknown>).theme === 1;
-}
-export function cellText(cell: SheetCell): string {
-  return cell.value instanceof Date ? cell.value.toISOString().slice(0, 10) : cell.value === null ? '' : String(cell.value);
 }
 /** Imports retain all records; Excel's table filter rules are presentation metadata. */
 async function spreadsheetValueInput(data: ArrayBuffer): Promise<{ data: ArrayBuffer; dimensions: ReadonlyMap<string, { width: number; height: number }> }> {

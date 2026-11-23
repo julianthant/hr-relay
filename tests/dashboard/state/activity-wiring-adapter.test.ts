@@ -18,8 +18,11 @@ import { createActivityReportFixtures } from "../../support/helpers/dashboard/ac
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => vi.unstubAllGlobals());
 const sources = Object.freeze({ fixture: "hidden" as const });
-function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ status: "done", durationMs: 0 }, { status: "failed", durationMs: 42000 }, { status: "queued" }]): ActivityPopulationSelection {
-  const empty = createActivityReportFixtures().EMPTY;
+function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ status: "done", durationMs: 0 }, { status: "failed", durationMs: 42000 }, { status: "queued" }], from?: string): ActivityPopulationSelection {
+  const fixture = createActivityReportFixtures().EMPTY;
+  const empty = from === undefined ? fixture : { ...fixture, from,
+    assistantMessages: { ...fixture.assistantMessages, days: fixture.assistantMessages.days.filter(row => row.day >= from) },
+    assistantActions: { ...fixture.assistantActions, days: fixture.assistantActions.days.filter(row => row.day >= from) } };
   const population = rowsInput.map((row, index) => ({ runId: RunIdSchema.parse(`00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`), workflowId: "fixture", title: `Person ${index + 1}`, attempt: 1, parentRunId: null, shape: "single" as const, day: "2026-08-03", status: "queued" as const, terminal: ["done", "failed", "cancelled", "partial"].includes(row.status ?? "queued"), durationMs: null, readback: null, receiptResult: null, warningCount: null, ...row }));
   const count = (status: string) => population.filter(row => row.status === status).length;
   const terminal = population.filter(row => row.terminal);
@@ -171,8 +174,53 @@ it("keeps initial loading, read refusal, empty success and client replacement se
     assert.equal(loaded.report.total, 0);
     const oldExport = state!.exportCsv;
     await act(async () => root.render(createElement(Scene, { current: failing })));
-    await assert.rejects(oldExport(), /no longer matches/u);
+    await assert.rejects(oldExport(), /The Analytics selection is out of date\. Select the period again\./u);
     assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("holds the settled report, with export refused, while another range loads, and blanks only on a cold read", async () => {
+  const first = selection();
+  const requested = { from: "2026-08-02", to: "2026-08-07" };
+  const second = selection([{ status: "done", durationMs: 0 }], requested.from);
+  const range = () => { const data = current().data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.range; };
+  const client = clientOf(first);
+  const resolvers: ((value: ActivityPopulationSelection) => void)[] = [];
+  client.activityPopulation = vi.fn(() => new Promise<ActivityPopulationSelection>(resolve => resolvers.push(resolve)));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  const current = (): ReturnType<typeof useActivityWiring> => state;
+  const total = () => { const data = current().data; if (data.state !== "loaded") throw new Error(`loaded expected, got ${data.state}`); return data.report.total; };
+  function Scene({ range }: { range: { from: string; to: string } }) { state = useActivityWiring(client, range, null, sources, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Scene, { range: first.report })));
+    assert.equal(current().data.state, "loading");
+    await act(async () => resolvers[0](first));
+    assert.equal(total(), 3);
+    assert.equal(current().exportReady, true);
+    await act(async () => root.render(createElement(Scene, { range: requested })));
+    assert.equal(total(), 3);
+    assert.deepEqual(range(), { from: first.report.from, to: first.report.to });
+    assert.equal(current().exportReady, false);
+    await assert.rejects(current().exportCsv(), /The Analytics selection is out of date\. Select the period again\./u);
+    assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
+    await act(async () => resolvers[1](second));
+    assert.equal(total(), 1);
+    assert.deepEqual(range(), requested);
+    assert.equal(current().exportReady, true);
+    await current().exportCsv();
+    assert.deepEqual(vi.mocked(client.exportActivityPopulationCsv).mock.calls.map(([exported]) => [exported.snapshot.from, exported.snapshot.to]), [[requested.from, requested.to]]);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("a cold view with no client and no command binding is unavailable and holds nothing", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Scene() { state = useActivityWiring(undefined, { from: "2026-08-01", to: "2026-08-07" }, null, sources, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Scene)));
+    assert.deepEqual(state!.data, { state: "unavailable", reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text });
+    assert.equal(state!.exportReady, false);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -203,7 +251,7 @@ it("refuses a served detail without exact day membership before reading any logs
   const client = clientOf(selected);
   client.dashboardDay = vi.fn(async () => ({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [] }));
   const run = selected.population[0];
-  await assert.rejects(projectActivityBrowse(client, selected, browseResult(selected, { metric: "completed", page: 0, run: run.runId }), { fixture: "served" }, new AbortController().signal), /no longer matches/u);
+  await assert.rejects(projectActivityBrowse(client, selected, browseResult(selected, { metric: "completed", page: 0, run: run.runId }), { fixture: "served" }, new AbortController().signal), /The Analytics selection is out of date\. Select the period again\./u);
   assert.equal(vi.mocked(client.runDetail).mock.calls.length, 0);
 });
 
@@ -218,10 +266,10 @@ it("renders an invalid browse as a named refusal and revokes export after unmoun
     await act(async () => root.render(createElement(Scene)));
     assert.deepEqual(state!.browse, { state: "unavailable", reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text });
     assert.equal(vi.mocked(client.readActivityPopulation).mock.calls.length, 0);
-    await assert.rejects(state!.exportCsv(), /no longer matches/u);
+    await assert.rejects(state!.exportCsv(), /The Analytics selection is out of date\. Select the period again\./u);
     const exported = state!.exportCsv;
     await act(async () => root.unmount());
-    await assert.rejects(exported(), /no longer matches/u);
+    await assert.rejects(exported(), /The Analytics selection is out of date\. Select the period again\./u);
     assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 0);
   } finally { host.remove(); }
 });

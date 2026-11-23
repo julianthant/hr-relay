@@ -5,7 +5,6 @@ import { createPreflightReadinessResource,preflightReadinessResource } from "../
 import type { PreflightReadinessWire } from "../../../src/models/preflight/preflight-contract.js";
 import { buildPreflightReport,requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { projectPreflight } from "../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
 
 const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
 const identity = { configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64) };
@@ -98,13 +97,6 @@ for (const priorReport of [true, false]) it(`keeps checking visible with ${prior
   try {
     assert.equal(reads, 1, "an automatic read must await the active check instead of exposing its temporary missing evidence");
     assert.equal(resource.snapshot().state, "running");
-    const projected = projectPreflight(resource.snapshot(), Date.parse(report.checkedAt));
-    assert.equal(projected.state, priorReport ? "refreshing" : "running");
-    if (priorReport) {
-      assert.equal(projected.state, "refreshing");
-      if (projected.state !== "refreshing") throw new Error("previous report must remain while checking");
-      assert.deepEqual(projected.report, report);
-    }
   } finally {
     completed = true;
     pending.resolve(response({ state: "completed", commandId: command.commandId, report }));

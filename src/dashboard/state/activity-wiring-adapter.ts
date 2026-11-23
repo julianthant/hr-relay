@@ -1,3 +1,4 @@
+import { useDashboardCommandBinding } from "./client-context.js";
 import { useSettingsRead } from "./settings-read-model.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityPopulationBrowseSchema, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationRun } from "../../models/dashboard/activity-population.js";
@@ -102,6 +103,11 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   const resource = useSettingsRead<ActivityPopulationSelection>(client ?? unavailableActivityClient, `activity:${range.from}:${range.to}`);
   const base = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   const selection = enabled ? base.value : undefined;
+  const authority = useDashboardCommandBinding()?.authority.epoch ?? client;
+  const settledReport = useRef<{ authority: object | undefined; selection: ActivityPopulationSelection } | undefined>(undefined);
+  if (selection !== undefined) settledReport.current = { authority, selection };
+  /** The last settled report, shown while another range loads; a cold read, a refusal or new authority shows none. */
+  const held = enabled && client !== undefined && selection === undefined && base.state !== "failed" && settledReport.current !== undefined && settledReport.current.authority === authority ? settledReport.current.selection : undefined;
   const browseKey = canonicalJsonStringify(browse === null ? null : JSON.parse(JSON.stringify(browse)));
   const browseInput = useMemo(() => enabled && browseKey !== "null" ? ActivityPopulationBrowseSchema.safeParse(JSON.parse(browseKey)) : undefined, [enabled, browseKey]);
   const browseRequest = useMemo(() => ({ request, selection, browse: browseKey, sources }), [request, selection, browseKey, sources]);
@@ -144,7 +150,7 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
     if (completed !== undefined && (held?.selection !== completed.selection || held.browse !== completed.browse)) pairResource.accept(completed);
   }, [completed, pairResource]);
   const history = !invalidBrowse && completed === undefined && pair.value?.resource === resource ? pair.value : undefined;
-  const displayed = history?.selection ?? selection;
+  const displayed = history?.selection ?? selection ?? held;
   const projected = useMemo(() => displayed === undefined ? undefined : projectActivityPopulation(displayed), [displayed]);
   const data: ActivityViewState = displayed === undefined && base.state === "failed" ? { state: "unavailable", reason: activityFailureText(base.error) }
     : !enabled || client === undefined ? { state: "unavailable", reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }

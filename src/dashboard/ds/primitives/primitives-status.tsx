@@ -71,7 +71,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     dot: "bg-[var(--ds-info-solid-bg)]",
     dotBorder: "border-[color:var(--ds-info-solid-bg)]",
     meaning:
-      "Stopped at a gate for a decision. Nothing is written until you answer. Open Review to act.",
+      "Waiting for your decision.",
   },
   failed: {
     label: DISPLAY_STATUS_LABELS.failed,
@@ -83,7 +83,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     soloTone: "text-[color:var(--ds-status-failed-fg)]",
     dot: "bg-[var(--ds-status-failed-mark)]",
     dotBorder: "border-[color:var(--ds-status-failed-mark)]",
-    meaning: "Stopped on an error. Retry replays the same input.",
+    meaning: "Stopped on an error.",
   },
   parked: {
     label: DISPLAY_STATUS_LABELS.parked,
@@ -98,7 +98,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     dot: "bg-[var(--ds-status-parked-mark)]",
     dotBorder: "border-[color:var(--ds-status-parked-mark)]",
     meaning:
-      "A write may or may not have landed. Never auto-retried — you resolve present or absent.",
+      "Check whether the write landed.",
   },
   doneWarnings: {
         // Word is just `Done` — same length as verified Done. Amber tint + the △ count
@@ -116,7 +116,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     dot: "bg-[var(--ds-status-done-warnings-mark)]",
     dotBorder: "border-[color:var(--ds-status-done-warnings-mark)]",
     meaning:
-      "Finished, but something needs your eyes — a fallback, a gap, a rejected page. The △ count beside the pill names how many.",
+      "Finished with warnings to check.",
   },
   running: {
     label: DISPLAY_STATUS_LABELS.running,
@@ -130,7 +130,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     dot: "bg-[var(--ds-status-running-mark)]",
     dotBorder: "border-[color:var(--ds-status-running-mark)]",
     spin: true,
-    meaning: "A worker owns it right now. Only cancel is offered.",
+    meaning: "In progress.",
   },
   cancelling: {
     label: DISPLAY_STATUS_LABELS.cancelling,
@@ -142,7 +142,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     soloTone: "text-[color:var(--ds-status-running-fg)]",
     dot: "bg-[var(--ds-status-running-mark)]",
     dotBorder: "border-[color:var(--ds-status-running-mark)]",
-    meaning: "Cancellation requested. The worker has not settled the run yet.",
+    meaning: "Cancelling.",
   },
   queued: {
     label: DISPLAY_STATUS_LABELS.queued,
@@ -155,7 +155,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     soloTone: "text-[color:var(--ds-status-queued-fg)]",
     dot: "bg-[var(--ds-status-queued-mark)]",
     dotBorder: "border-[color:var(--ds-status-queued-mark)]",
-    meaning: "Accepted, nothing has run. Can be bumped or cancelled.",
+    meaning: "Waiting to start.",
   },
   cancelled: {
     // Tinted neutral: neither amber nor red, and quieter than Done; a deliberate stop is not an alert.
@@ -168,7 +168,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     soloTone: "text-[color:var(--ds-status-cancelled-fg)]",
     dot: "bg-[var(--ds-status-cancelled-mark)]",
     dotBorder: "border-[color:var(--ds-status-cancelled-mark)]",
-    meaning: "You stopped it. Not an alert — a deliberate act.",
+    meaning: "Stopped by you.",
   },
   verifiedDone: {
         // `Verified done` → `Done`. Both terminal dones share the short word; green solid
@@ -184,7 +184,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     dot: "bg-[var(--ds-status-verified-done-mark)]",
     dotBorder: "border-[color:var(--ds-status-verified-done-mark)]",
     meaning:
-      "Finished and read back from the system.",
+      "Finished and confirmed.",
   },
 };
 

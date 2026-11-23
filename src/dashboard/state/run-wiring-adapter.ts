@@ -75,12 +75,15 @@ export interface RunLogSnapshot {
 
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
+  // The first log page is requested with the detail; the detail's identity and capability checks still gate its use.
+  const firstPage = client.runSection(row.runId, "logs", undefined, signal).catch((error: unknown) => ({ error }));
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
-  const section = await client.runSection(row.runId, "logs", undefined, signal);
+  const section = await firstPage;
+  if ("error" in section) throw section.error;
   if (section.section !== "logs" || section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   let logs = section.payload;
   logRowsOf(logs, "initial");
@@ -123,6 +126,46 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   validateRunLogSnapshot(snapshot);
   if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
   return snapshot;
+}
+
+/** How many runs' loaded logs a page keeps; the least recently used is dropped first. */
+export const KEPT_RUN_LOGS_LIMIT = 20;
+
+/** The authority a kept snapshot was read under: a sign-in, profile or actor change discards everything kept. */
+interface RunLogAuthority { readonly epoch: object | undefined; readonly actorId: string | undefined }
+const keptRunLogs = new WeakMap<object, { authority: RunLogAuthority; runs: Map<string, RunLogSnapshot> }>();
+
+function keptFor(client: object, authority: RunLogAuthority): Map<string, RunLogSnapshot> {
+  let kept = keptRunLogs.get(client);
+  if (kept === undefined || kept.authority.epoch !== authority.epoch || kept.authority.actorId !== authority.actorId) {
+    kept = { authority, runs: new Map() };
+    keptRunLogs.set(client, kept);
+  }
+  return kept.runs;
+}
+
+function keepRunLogs(client: object, authority: RunLogAuthority, snapshot: RunLogSnapshot): void {
+  const runs = keptFor(client, authority);
+  runs.delete(snapshot.detail.runId);
+  runs.set(snapshot.detail.runId, snapshot);
+  for (const oldest of runs.keys()) {
+    if (runs.size <= KEPT_RUN_LOGS_LIMIT) break;
+    runs.delete(oldest);
+  }
+}
+
+/** The last loaded logs of this exact run under this authority. A finished run's logs cannot change, so a kept
+ * snapshot of the same attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
+export function keptRunLogsState(client: object, authority: RunLogAuthority, row: LogSelection["row"]): RunWiringState | undefined {
+  const runs = keptFor(client, authority);
+  const snapshot = runs.get(row.runId);
+  if (snapshot === undefined) return undefined;
+  const { detail } = snapshot;
+  const same = detail.header.traceId === row.traceId && detail.header.attempt === row.attempt && detail.header.workflowId === row.workflowId;
+  if (!same) return undefined;
+  runs.delete(row.runId);
+  runs.set(row.runId, snapshot);
+  return detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision ? { state: "loaded", snapshot } : { state: "loading", snapshot };
 }
 
 function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
@@ -532,7 +575,15 @@ function gateOpen(detail: RunDetailWire): boolean {
   return detail.gate.state === "open" && detail.gate.nodeId !== undefined && detail.captures !== undefined && detail.captures.state !== "error";
 }
 
-export type RunWiringState = Readonly<{ state: "loading" | "loaded" | "failed"; snapshot?: RunLogSnapshot; error?: string; diagnostic?: unknown }>;
+export type RunWiringState = Readonly<{ state: "loading" | "loaded" | "failed"; snapshot?: RunLogSnapshot; error?: string; retryable?: boolean; diagnostic?: unknown }>;
+
+/** One staff sentence for why the logs were refused; the internal code stays in the diagnostic. */
+function identityRefusalReason(cause: unknown): string {
+  const code = cause instanceof Error ? cause.message : "";
+  if (code.endsWith("_MISSING")) return "These logs lack the details that tie them to this run.";
+  if (code.endsWith("_DUPLICATE")) return "These logs repeat an entry.";
+  return "These logs don't match this run.";
+}
 
 interface GateCommandOwner {
   readonly client: DashboardClient;
@@ -602,18 +653,20 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
     epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
   [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
-  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>({ request, value: { state: "loading" } });
+  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>(() => ({ request, value: keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" } }));
   const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
     && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
   const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
-    : { state: "loading", ...(sameRun && settled.value.snapshot ? { snapshot: settled.value.snapshot } : {}) }, [settled, request, sameRun]);
+    : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
+    : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
+    if (keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, request.selection.row)?.state === "loaded") return;
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
-    void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) { ended(); setSettled({ request, value: { state: "loaded", snapshot } }); }
+    const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
+      if (active.current === request && !controller.signal.aborted) { ended(); keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot); setSettled({ request, value: { state: "loaded", snapshot } }); }
     }, cause => {
       if (active.current !== request || controller.signal.aborted) return;
       ended();
@@ -623,17 +676,20 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         request.refreshDay();
         return;
       }
-      const error = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED")
-        ? formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_IDENTITY_REFUSED", {})).text
+      const refused = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED");
+      const retryable = !refused && !(cause instanceof DashboardClientError && !cause.retryable && cause.kind !== "schema");
+      const error = refused ? identityRefusalReason(cause)
         : cause instanceof DashboardClientError && cause.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED"
         ? formatErrorCatalogFailure(createErrorCatalogFailure("RUN_LOG_DISPLAY_VALUE_UNMAPPED", {})).text
         : cause instanceof DashboardClientError && cause.kind !== "schema"
         ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
-      setSettled(current => ({ request, value: { state: "failed", error, diagnostic: cause,
+      setSettled(current => ({ request, value: { state: "failed", error, retryable, diagnostic: cause,
         ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
           : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
+    // Start after the mount settles: a mount cancelled in the same tick sends nothing.
+    queueMicrotask(() => { if (!controller.signal.aborted) read(); });
     return () => { controller.abort(); reading.current = false; };
   }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
@@ -650,7 +706,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     return launches;
   }, [binding]);
   const launch = useMemo(() => binding === undefined ? undefined : createRunLaunchService(client, binding.scope.actorId,
-    { uuid: () => crypto.randomUUID(), now: () => binding.authority.nowIso }), [client, binding]);
+    { uuid: () => crypto.randomUUID(), now: () => binding.authority.now() }), [client, binding]);
   const matchesGate = useCallback((envelope: DashboardCommandRequest) => envelope.family === "gate" && envelope.type === "answer-gate-arm"
     ? detailGate?.state === "open" && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf()
       && detailGate.decision?.options.some(({ send }) => send.via === "gate-arm" && send.gateNodeId === envelope.target.gateId.valueOf()
@@ -796,13 +852,13 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const onChildRetry = useCallback(() => {
     if (value.state !== "loaded" || binding === undefined || detail?.childRetry?.kind !== "command") return;
     const composed = composeCommandRequest(detail.childRetry, { runId: row.runId, expectedVersion: row.rowRevision }, {
-      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, childRetry: detail.childRetry });
+      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), childRetry: detail.childRetry });
     if (composed.state === "ready") dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse(composed.request));
   }, [value.state, binding, detail, row.runId, row.rowRevision]);
   const onBatchMemberRetry = useCallback(() => {
     if (value.state !== "loaded" || binding === undefined || batchRetry === undefined) return;
     const composed = composeCommandRequest(batchRetry, { runId: row.runId, expectedVersion: row.rowRevision }, {
-      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, batchMemberRetry: row });
+      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), batchMemberRetry: row });
     if (composed.state === "ready") dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse(composed.request));
   }, [value.state, binding, batchRetry, row]);
   const preparingCorrection = useRef(false);
@@ -821,7 +877,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (choice.state !== "available" || choice.action.kind !== "command" || option === undefined || option.send.via !== "action" || option.send.actionKey !== choice.action.key
         || !decisionAnswerValid(option, answer) || candidate === undefined) return;
       const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
-        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookReferenceChoice: reference,
+        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), workbookReferenceChoice: reference,
         workbookReferenceAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId,
           ...(candidate.referenceDigest === undefined || candidate.workbookVersion === undefined ? {}
             : { referenceDigest: candidate.referenceDigest, workbookVersion: candidate.workbookVersion }) } });
@@ -837,7 +893,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (choice.state !== "available" || choice.action.kind !== "command" || option === undefined || option.send.via !== "action" || option.send.actionKey !== choice.action.key
         || !decisionAnswerValid(option, answer) || candidate === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
-        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookWrite: operation,
+        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), workbookWrite: operation,
         workbookAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId } });
       if (composed.state !== "ready") return;
       const envelope = DashboardCommandRequestSchema.parse(composed.request);
@@ -857,7 +913,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution === undefined
           || !decisionAnswerValid(option, answer)) return;
         dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse({ family: "failure-resolution", type: "annotate-failure", commandId: crypto.randomUUID(),
-          requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail",
+          requestedAt: binding.authority.now(), requestedBy: binding.scope.actorId, source: "run-detail",
           target: { runId: row.runId, failureId: served.failureId, expectedVersion: resolution.capture.resolution.version },
           payload: { action: "resolve" } }));
         return;
@@ -875,7 +931,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
           () => dispatchIfDecisionCurrent.current(envelope));
       };
       if (option.send.via === "action" && option.send.actionKey === retry.key) {
-        const envelope = DashboardCommandRequestSchema.parse({ family: "run", type: "retry", commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
+        const envelope = DashboardCommandRequestSchema.parse({ family: "run", type: "retry", commandId: crypto.randomUUID(), requestedAt: binding.authority.now(),
           requestedBy: binding.scope.actorId, source: "run-detail", target: { runId: row.runId, expectedVersion: row.rowRevision } });
         showConfirm(envelope, false);
       } else if (option.send.via === "start-plan" && launch !== undefined && !preparingCorrection.current) {
@@ -901,7 +957,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       const descriptor = write.payload.actions.find(candidate => candidate.key === key);
       if (descriptor?.kind !== "command" || descriptor.confirm === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: row.rowRevision },
-        { actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, parkedWrite: write.payload,
+        { actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.now(), parkedWrite: write.payload,
           ...(descriptor.command === "recheck-write" && write.payload.acceptsTransactionId && option.input?.kind === "text"
             ? { transactionId: answer.text?.trim() } : {}) });
       if (composed.state !== "ready") return;
@@ -919,7 +975,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       const rowId = answeredRow(option, answer)?.id;
       const target = { runId: row.runId, gateId: option.send.gateNodeId, expectedVersion: option.send.expectedVersion };
       const envelope = DashboardCommandRequestSchema.parse({ family: "gate", type: "answer-gate-arm", commandId: crypto.randomUUID(),
-        requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail", target,
+        requestedAt: binding.authority.now(), requestedBy: binding.scope.actorId, source: "run-detail", target,
         payload: { arm: option.send.arm, ...(rowId === undefined ? {} : { rowId }) } });
       if (option.confirm === undefined) { dispatch(envelope); return; }
       if (confirm === undefined) return;
@@ -963,7 +1019,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     }
     const optionRef = answeredRow(option, answer)?.id;
     const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: gate.expectedVersion }, { actorId: binding.scope.actorId, source: "run-detail",
-      requestedAt: binding.authority.nowIso, gate: section.payload, gateId: openGate.nodeId,
+      requestedAt: binding.authority.now(), gate: section.payload, gateId: openGate.nodeId,
       ...(optionRef !== undefined ? { gateAnswer: { decision: "approved", optionRef } } : {}) });
     if (composed.state !== "ready") return;
     const envelope = DashboardCommandRequestSchema.parse(composed.request);

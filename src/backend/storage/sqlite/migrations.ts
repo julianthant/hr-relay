@@ -9,7 +9,7 @@ import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 import { CHANGE_LOG_MIGRATION } from "./authority-change-log.js";
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
-import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "./workbook-library-repository.js";
+import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { CapturedWorkbookWriteSourceSchema, RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -132,6 +132,52 @@ export const COMMAND_ROW_STATE_MIGRATION = deepFreeze({ version: COMMAND_ROW_STA
         BEGIN SELECT RAISE(ABORT,'commands-parent-kind'); END`,
   ...COMMANDS_CHANGE_LOG_OBJECTS,
 ] });
+
+/** Migration 37 indexes the dashboard and worker statements that scanned a table growing with runs. */
+export const QUERY_INDEX_SCHEMA_VERSION = 37;
+export const SCHEMA_37_QUERY_INDEXES = deepFreeze({
+  checkpoints_run_idx: { on: "run_checkpoints(run_id,node_id,attempt,claim_generation)",
+    serves: "a run's checkpoints in run deletion, the search index's latest node checkpoint and the stale-queue custody probe" },
+  // The run state and pause indexes are partial, so reads of terminal or unpaused runs keep their own lookups.
+  runs_queued_idx: { on: "runs(created_at,id) WHERE state='queued'", serves: "the cross-workflow claim of queued runs" },
+  runs_parked_gate_idx: { on: "runs(created_at,id) WHERE state='parked-gate'", serves: "runs.listParkedAtGate" },
+  runs_pause_idx: { on: "runs(pause_state,created_at,id) WHERE pause_state IS NOT NULL", serves: "runs.listByPauseState" },
+  runs_batch_idx: { on: "runs(batch_id,created_at,id)", serves: "runs.listBySession" },
+  runs_trace_idx: { on: "runs(trace_id,created_at,id)", serves: "runs.findByTrace" },
+  commands_request_run_idx: { on: "commands(family,json_extract(request_json,'$.request.runId'))",
+    serves: "lifecycle commands by request run: delegation refreshes and invocations, gate transitions, cancellation sources" },
+  commands_outcome_run_idx: { on: "commands(family,json_extract(outcome_json,'$.result.runId'))",
+    serves: "lifecycle commands by outcome run: the terminal evidence owner, resumes, continuation and root origins" },
+  commands_target_run_idx: { on: "commands(family,json_extract(request_json,'$.target.runId'))", serves: "commands.listRunResumes and listRunBumpCommands" },
+  commands_target_idx: { on: "commands(family,target_id)", serves: "lifecycleJournal.listDelegationAdmissions and findDelegationOwner" },
+  commands_runtime_generation_idx: { on: "commands(family,json_extract(request_json,'$.request.runtimeGeneration'))",
+    serves: "the application admission and quit holds read on every claim" },
+  commands_manifest_idx: { on: "commands(family,json_extract(request_json,'$.request.manifestId'))", serves: "lifecycleJournal.findDelegationInvocation" },
+  commands_source_command_idx: { on: "commands(family,json_extract(request_json,'$.request.sourceCommandId'))",
+    serves: "lifecycleJournal.findDelegationParentHold" },
+  command_audits_target_run_idx: { on: "command_audits(json_extract(payload_json,'$.request.target.runId'),created_at,id)",
+    serves: "the parked-write checks for a run" },
+  write_intents_status_idx: { on: "write_intents(status,id)", serves: "the attempting write intents of one item" },
+  write_intents_payload_run_idx: { on: "write_intents(json_extract(payload_json,'$.runId'),created_at,id)", serves: "writeIntents.listByRun" },
+  diagnostics_retention_idx: { on: "diagnostic_snapshots(retention_kind,purge_after,id)",
+    serves: "the ordinary diagnostic retention sweep, listRetentionDue and the retained-bytes total" },
+});
+/** The unique key UNIQUE(workflow,item_id,node_id,attempt,claim_generation) already serves checkpoint replay. */
+export const QUERY_INDEX_MIGRATION = deepFreeze({ version: QUERY_INDEX_SCHEMA_VERSION, statements: [
+  "DROP INDEX checkpoints_replay_idx",
+  ...Object.entries(SCHEMA_37_QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
+] });
+
+const SCHEMA_38_QUERY_INDEXES = deepFreeze({
+  runs_queued_idx: { on: "runs(workflow,CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id) WHERE state='queued' AND pause_state IS NULL",
+    serves: "the workflow-scoped worker claim" },
+  runs_workflow_day_idx: { on: "runs(workflow,local_day,id)", serves: "workflow-filtered queue pagination" },
+  runs_nonterminal_idx: { on: "runs(id) WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'",
+    serves: "the command kernel's active-run check, including state drift" },
+});
+
+/** The current query indexes exercised by the store query plan test. */
+export const QUERY_INDEXES = deepFreeze({ ...SCHEMA_37_QUERY_INDEXES, ...SCHEMA_38_QUERY_INDEXES });
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   { version: 1, statements: [`CREATE TABLE database_states (
@@ -897,7 +943,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       WHEN OLD.kind IN ('generated','extracted') OR (OLD.kind='imported' AND json_type(OLD.payload_json,'$.submittedJson')='text')
       BEGIN SELECT RAISE(ABORT,'artifact-evidence-retained'); END`,
   ] },
-  { version: 13, statements: WORKBOOK_MASTER_MIGRATION.statements },
+  WORKBOOK_MASTER_MIGRATION,
   EXCLUSIVE_SESSION_LEASE_MIGRATION,
   { version: 15, statements: [
     "ALTER TABLE runs ADD COLUMN pause_state TEXT CHECK(pause_state IS NULL OR pause_state IN ('requested','paused'))",
@@ -1096,6 +1142,12 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
   ] },
   WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION,
+  QUERY_INDEX_MIGRATION,
+  { version: WORKBOOK_PAYLOAD_MIGRATION.version, statements: [
+    ...WORKBOOK_PAYLOAD_MIGRATION.statements,
+    "DROP INDEX runs_queued_idx",
+    ...Object.entries(SCHEMA_38_QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
@@ -1119,6 +1171,7 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
     && (version >= 14 || name !== "exclusive_session_leases")
     && (version >= 17 || !name.startsWith("ocr_"))
     && (version >= 25 || name !== "workflow_workbook_selections")
+    && (version >= WORKBOOK_PAYLOAD_MIGRATION.version || name !== "workbook_payloads")
     && (version >= 18 || !["workbook_library_state", "workbook_library_actions", "workbook_library_snapshots"].includes(name))
     && (version >= 13 || !["workbook_creations", "workbook_types", "workbook_operations"].includes(name)))];
   // The retired grant table keeps its registry position (after settings) so predecessor content fingerprints are unchanged.

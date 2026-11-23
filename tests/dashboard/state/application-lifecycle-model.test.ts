@@ -48,9 +48,9 @@ it("exposes read failure until the operator refreshes, without retaining old aut
   } finally { await act(async () => root.unmount()); }
 });
 
-it("re-renders only when the lifecycle answer changes", async () => {
+it("re-renders only when the polled lifecycle answer changes", async () => {
   vi.useFakeTimers();
-  let pause: "running" | "paused" = "running", failing = false;
+  let pause: "pause-pending" | "paused" = "pause-pending", failing = false;
   const transport = createDashboardClient({ baseUrl: "http://fixture.test" });
   const client = { ...transport, async applicationLifecycle() {
     if (failing) throw new DashboardClientError({ kind: "http", status: 503, code: "DASHBOARD_READ_FAILED", message: "fixture failure" });
@@ -71,7 +71,39 @@ it("re-renders only when the lifecycle answer changes", async () => {
     assert.equal(result?.resource.state === "loaded" && result.resource.value.pause, "paused");
     assert.equal(renders, settled + 1);
     failing = true;
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => result?.refresh());
     assert.equal(result?.resource.state, "failed");
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+});
+
+it("stops polling when idle, polls while a change is pending and re-reads when the tab shows again", async () => {
+  vi.useFakeTimers();
+  let reads = 0, pause: "running" | "pause-pending" | "paused" = "running";
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test" });
+  const client = { ...transport, async applicationLifecycle() {
+    reads++;
+    return ApplicationLifecycleSchema.parse({ runtimeGeneration: 2, state: "ready", pause, targets: [], update: "installer-unavailable" });
+  } };
+  const authority = {};
+  let result: ReturnType<typeof useApplicationLifecycle> | undefined;
+  function Probe() { result = useApplicationLifecycle(client, authority); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    assert.equal(reads, 1);
+    pause = "pause-pending";
+    await act(async () => result?.refresh());
+    const pending = reads;
+    pause = "paused";
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    assert.equal(reads, pending + 1);
+    assert.equal(result?.resource.state === "loaded" && result.resource.value.pause, "paused");
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    assert.equal(reads, pending + 1);
+    pause = "running";
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    assert.equal(reads, pending + 2);
+    assert.equal(result?.resource.state === "loaded" && result.resource.value.pause, "running");
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
 });

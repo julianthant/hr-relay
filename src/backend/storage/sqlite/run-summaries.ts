@@ -1,3 +1,4 @@
+import { runIndex } from "./isolated-history-store.js";
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
@@ -22,6 +23,13 @@ export const RunSummaryQuerySchema = SummaryQuerySchema.extend({
 }).refine(query => query.fromDay === undefined || query.toDay === undefined || query.fromDay <= query.toDay,
   { message: "run-summary-range-invalid" });
 export type RunSummaryQuery = z.infer<typeof RunSummaryQuerySchema>;
+
+/** Every workflow with a stored run, in order: one seek of the workflow index per workflow instead of a scan of every run. */
+export function listRunWorkflows(database: DatabaseSync): string[] {
+  return database.prepare(`WITH RECURSIVE workflows(workflow) AS (SELECT min(workflow) FROM runs
+    UNION ALL SELECT (SELECT min(workflow) FROM runs WHERE workflow>workflows.workflow) FROM workflows WHERE workflow IS NOT NULL)
+    SELECT workflow FROM workflows WHERE workflow IS NOT NULL`).all().map(row => z.object({ workflow: z.string() }).parse(row).workflow);
+}
 
 export function createRunSummaries(database: DatabaseSync, waitState: (run: RunRecord) => DelegationWaitState | null,
   parentage: (envelopes: readonly RunRecord["envelope"][]) => ReadonlyMap<string, QueueParent | null>) {
@@ -106,7 +114,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
   };
   return {
     workflows(_sourceGeneration: number) {
-      return database.prepare("SELECT DISTINCT workflow FROM runs ORDER BY workflow").all().map(row => z.object({ workflow: z.string() }).parse(row).workflow);
+      return listRunWorkflows(database);
     },
     read(sourceGeneration: number) {
       return snapshot(sourceGeneration).map(({ cancelRequested, ...summary }) => { void cancelRequested; return summary; });
@@ -136,7 +144,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       for (;;) {
         const cursorClause = after === undefined ? "" : " AND (local_day>? OR (local_day=? AND id>?))";
         const cursorValues = after === undefined ? [] : [after.localDay, after.localDay, after.runId];
-        const candidates = database.prepare(`SELECT * FROM runs INDEXED BY runs_day_idx WHERE ${clauses.join(" AND ")}${cursorClause}
+        const candidates = database.prepare(`SELECT * FROM runs ${runIndex(database, "runs_workflow_day_idx")} WHERE ${clauses.join(" AND ")}${cursorClause}
           ORDER BY local_day,id LIMIT ?`).all(...values, ...cursorValues, query.limit + 1).map(runRecordFromRow);
         if (query.topLevel === true) {
           const missing = candidates.filter(run => !parents.has(run.envelope.runId));
@@ -167,36 +175,67 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       const { month, day, today } = CalendarQuerySchema.extend({ today: z.iso.date() }).parse(input);
       if (day > today) throw new Error("calendar-future-day");
       const countRow = z.object({ day: z.iso.date(), count: z.number().int().positive() });
-      const counts = new Map(database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
-        WHERE parent_id IS NULL AND local_day<=? GROUP BY local_day ORDER BY local_day`).all(today)
+      const monthStart = `${month}-01`, monthEnd = `${month}-31`;
+      const counts = new Map(database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs ${runIndex(database, "runs_day_idx")}
+        WHERE parent_id IS NULL AND local_day BETWEEN ? AND ? AND local_day<=? GROUP BY local_day ORDER BY local_day`)
+        .all(monthStart, monthEnd, today)
         .map(raw => { const row = countRow.parse(raw); return [row.day, row.count] as const; }));
+      const date = z.iso.date().nullable();
+      const roots = z.strictObject({ first: date, last: date, previous: date, next: date }).parse(database.prepare(`
+        SELECT min(local_day) AS first,max(local_day) AS last,
+          max(CASE WHEN local_day<? THEN local_day END) AS previous,
+          min(CASE WHEN local_day>? THEN local_day END) AS next
+        FROM runs ${runIndex(database, "runs_day_idx")} WHERE parent_id IS NULL AND local_day<=?`).get(day, day, today));
+      const days = new Set(counts.keys());
+      for (const boundary of Object.values(roots)) if (boundary !== null) days.add(boundary);
+      const dateBindings: string[] = [];
+      let childDays = "";
+      // A child can only change month counts or extend a boundary already established by a root.
+      if (roots.first !== null && roots.last !== null) {
+        const relevant = ["local_day BETWEEN ? AND ?", "local_day<?", "local_day>?"];
+        dateBindings.push(monthStart, monthEnd, roots.first, roots.last);
+        if (roots.previous !== null) {
+          relevant.push("(local_day>? AND local_day<?)");
+          dateBindings.push(roots.previous, day);
+        }
+        if (roots.next !== null) {
+          relevant.push("(local_day>? AND local_day<?)");
+          dateBindings.push(day, roots.next);
+        }
+        childDays = `AND (${relevant.join(" OR ")})`;
+      }
       const parentRow = z.object({ parentId: RunIdSchema, childRunId: RunIdSchema });
+      const selectParents = database.prepare(`SELECT parent_id AS parentId,min(id) AS childRunId FROM runs ${runIndex(database, "runs_parent_idx")}
+        WHERE parent_id IS NOT NULL AND parent_id>? AND local_day<=? ${childDays}
+        GROUP BY parent_id ORDER BY parent_id LIMIT ?`);
+      const selectEnvelope = database.prepare("SELECT envelope_json FROM runs WHERE id=?");
+      const selectLinkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs ${runIndex(database, "runs_day_idx")}
+        WHERE id IN (SELECT value FROM json_each(?)) AND parent_id=? AND local_day<=? ${childDays} GROUP BY local_day ORDER BY local_day`);
       let afterParent = "";
       for (;;) {
-        const parents = database.prepare(`SELECT parent_id AS parentId,min(id) AS childRunId FROM runs INDEXED BY runs_parent_idx
-          WHERE parent_id IS NOT NULL AND parent_id>? AND local_day<=?
-          GROUP BY parent_id ORDER BY parent_id LIMIT ?`).all(afterParent, today, 500).map(raw => parentRow.parse(raw));
+        const parents = selectParents.all(afterParent, today, ...dateBindings, 500).map(raw => parentRow.parse(raw));
         for (const parent of parents) {
-          const raw = z.object({ envelope_json: z.string() }).parse(database.prepare("SELECT envelope_json FROM runs WHERE id=?").get(parent.childRunId));
+          const raw = z.object({ envelope_json: z.string() }).parse(selectEnvelope.get(parent.childRunId));
           const envelope = RunEnvelopeSchema.parse(JSON.parse(raw.envelope_json));
           if (envelope.runId !== parent.childRunId || envelope.parent?.runId !== parent.parentId) throw new Error("queue-parent-source-unavailable");
           const linked = [...parentage([envelope])].filter(([, fact]) => fact?.runId === parent.parentId && fact.visibility === "linked").map(([runId]) => runId);
           if (linked.length === 0) continue;
-          const linkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
-            WHERE id IN (SELECT value FROM json_each(?)) AND parent_id=? AND local_day<=? GROUP BY local_day ORDER BY local_day`)
-            .all(JSON.stringify(linked), parent.parentId, today).map(raw => countRow.parse(raw));
-          for (const row of linkedCounts) counts.set(row.day, (counts.get(row.day) ?? 0) + row.count);
+          const linkedCounts = selectLinkedCounts.all(JSON.stringify(linked), parent.parentId, today, ...dateBindings).map(raw => countRow.parse(raw));
+          for (const row of linkedCounts) {
+            days.add(row.day);
+            if (row.day >= monthStart && row.day <= monthEnd) counts.set(row.day, (counts.get(row.day) ?? 0) + row.count);
+          }
         }
         const last = parents.at(-1);
         if (parents.length < 500 || last === undefined) break;
         afterParent = last.parentId;
       }
-      const days = [...counts.keys()].sort();
-      const next = days.find(candidate => candidate > day) ?? null;
+      const ordered = [...days].sort();
+      const next = ordered.find(candidate => candidate > day) ?? null;
       return CalendarWireSchema.parse({ month, day, today, authorityGeneration: sourceGeneration,
-        monthCounts: days.filter(candidate => candidate.startsWith(`${month}-`)).map(day => ({ day, count: counts.get(day) })),
-        firstDay: days.at(0) ?? null, lastDay: days.at(-1) ?? null,
-        previousDay: days.filter(candidate => candidate < day).at(-1) ?? null,
+        monthCounts: [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count })),
+        firstDay: ordered.at(0) ?? null, lastDay: ordered.at(-1) ?? null,
+        previousDay: ordered.findLast(candidate => candidate < day) ?? null,
         nextDay: day < today && (next === null || today < next) ? today : next });
     },
   };

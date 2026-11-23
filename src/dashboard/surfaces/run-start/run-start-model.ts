@@ -18,6 +18,10 @@ export interface RunInputPreview {
   readonly entries: readonly Readonly<{ index: number; sourceText: string }>[];
   readonly submissions: readonly JsonValue[];
   readonly problem: string | null;
+  /** Rows that failed on their own; absent when the whole text was refused together. */
+  readonly refusedIndexes?: readonly number[];
+  /** Typed date fields that are missing or not a real day, by field; the entries themselves are not at fault. */
+  readonly dateProblems?: Readonly<Record<string, string>>;
 }
 export function typedInputMode(surface: TypedInputSurface, draft: TypedInputDraft) {
   const value = draft[surface.modeField] ?? surface.initialMode;
@@ -39,6 +43,17 @@ function typedDates(surface: TypedInputSurface, mode: string, draft: TypedInputD
     const text = typeof value === "string" ? value.trim() : "";
     if (text === "" ? control.required : parseTypedDate(text) === undefined) throw new Error(control.refusal);
     return text === "" ? [] : [[control.field, text]];
+  }));
+}
+
+/** The date controls `typedDates` would refuse, with their declared wording; `entered` skips the ones still empty. */
+function invalidDates(surface: TypedInputSurface, draft: TypedInputDraft, entered = false): Record<string, string> {
+  const mode = typedInputMode(surface, draft);
+  if (mode === undefined) return {};
+  return Object.fromEntries(typedDateControls(surface, mode.value).flatMap(control => {
+    const value = draft[control.field];
+    const text = typeof value === "string" ? value.trim() : "";
+    return (text === "" ? control.required && !entered : parseTypedDate(text) === undefined) ? [[control.field, control.refusal]] : [];
   }));
 }
 
@@ -175,7 +190,10 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
 }
 
 export function previewRunInput(surface: InputRunSurface, text: string, draft: TypedInputDraft = {}, sourceInput?: JsonValue): RunInputPreview {
-  if (text.trim().length === 0) return { entries: [], submissions: [], problem: null };
+  if (text.trim().length === 0) {
+    const dateProblems = surface.typedInput === undefined ? {} : invalidDates(surface.typedInput, draft, true);
+    return { entries: [], submissions: [], problem: null, ...(Object.keys(dateProblems).length === 0 ? {} : { dateProblems }) };
+  }
   try {
     if (surface.typedInput !== undefined) {
       const declaration = surface.typedInput;
@@ -196,10 +214,16 @@ export function previewRunInput(surface: InputRunSurface, text: string, draft: T
       const submissions = [...unique.values()];
       return { entries: submissions.map((person, index) => ({ index, sourceText: typedInputText(declaration, person) })), submissions, problem: null };
     }
-    const entries = parseInputRunText(surface.parser, text);
+    const parsed = parseInputRunText(surface.parser, text);
+    const entries = parsed.filter((entry, index) => parsed.findIndex(other => JSON.stringify(toRawSubmission(other)) === JSON.stringify(toRawSubmission(entry))) === index).map((entry, index) => ({ ...entry, index }));
     return { entries, submissions: entries.map(entry => JsonValueSchema.parse(toRawSubmission(entry))), problem: null };
   } catch (caught) {
-    return { entries: refusedRows(surface, text, draft), submissions: [], problem: plainRefusal(caught) };
+    const rows = refusedRows(surface, text, draft);
+    const dateProblems = surface.typedInput === undefined ? {} : invalidDates(surface.typedInput, draft);
+    if (Object.keys(dateProblems).length > 0) return { entries: rows, submissions: [], problem: plainRefusal(caught), refusedIndexes: [], dateProblems };
+    const single = surface.typedInput === undefined ? surface.parser : undefined;
+    const refusedIndexes = single === undefined ? undefined : rows.flatMap(row => { try { parseInputRunText(single, row.sourceText); return []; } catch { return [row.index]; } });
+    return { entries: rows, submissions: [], problem: plainRefusal(caught), ...(refusedIndexes === undefined || refusedIndexes.length === 0 ? {} : { refusedIndexes }) };
   }
 }
 
@@ -242,7 +266,7 @@ export function inputRunDelimiterHint(parser: InputParserSpec): string {
 
 /** State this dialog’s missing input surface, not an unsupported claim that all start routes refuse. */
 export const START_DOOR_ABSENCE = Object.freeze({
-  "no-typed-input": "This workflow declares no typed-input surface, so this dialog has no box for it.",
+  "no-typed-input": "This dialog can't start the workflow from typed values.",
 });
 export type StartDoorAbsenceCode = keyof typeof START_DOOR_ABSENCE;
 
@@ -264,7 +288,7 @@ export const START_METHOD_LABEL: Readonly<Record<StartMethod, string>> = Object.
 
 /** Missing spreadsheet support is the module’s absent intake declaration, not a client-invented restriction. */
 export const SPREADSHEET_METHOD_ABSENCE =
-  "This workflow declares no intake projection, so it is not spreadsheet-capable.";
+  "This workflow can't start from a spreadsheet.";
 
 
 
@@ -506,7 +530,7 @@ export function toggleStepSelection(
 /** The footer's short reason while Continue is held; the sentence below stays as the refusal text. */
 export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
 /** The one sentence for a required reference spreadsheet that was never chosen. */
-export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
+export const MISSING_REFERENCE_TEXT = ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text;
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
@@ -546,10 +570,10 @@ export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: R
   const name = source ?? (refused.length > 1 || entry.entry > 1 ? `Entry ${String(entry.entry)}` : "This item");
   if (entry.code === "active-run-exists") {
     if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
-    return { sentence: `${name} already has a run in progress. Find it in the queue or wait for it to finish.`, goesToQueue: true };
+    return { sentence: `${name} already has a run in progress.`, goesToQueue: true };
   }
   if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
-  if (entry.code === "dry-run-unsupported") return { sentence: "This workflow cannot do a dry run. Turn Dry run off to start it.", goesToQueue: false };
-  if (entry.code === "preflight-failed") return { sentence: "A check failed for this run. Go back to Checks to fix it.", goesToQueue: false };
-  return { sentence: "Relay cannot run this right now. Try again later.", goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: "No dry run here. Turn Dry run off.", goesToQueue: false };
+  if (entry.code === "preflight-failed") return { sentence: "A check failed. Fix it in Checks.", goesToQueue: false };
+  return { sentence: "Relay can't run this now. Try later.", goesToQueue: false };
 }

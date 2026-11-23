@@ -30,7 +30,7 @@ export function BrowserWindowRow({ binding }: { binding: BrowserWindowBinding })
     binding.update("display.screenHeight", String(height));
   };
   return <div className="settings-compact-row" data-settings-path="browser.headless">
-    <ResultRow label="Browser window" description="Size of the browser Relay opens. Hidden keeps it out of sight."
+    <ResultRow label="Browser window"
       value={<Select aria-label="Browser window" value={value} disabled={binding.disabled} onChange={event => choose(event.target.value)}>
         <option value="Hidden">Hidden</option>
         {Object.keys(SIZES).map(name => <option key={name} value={name}>{name}</option>)}

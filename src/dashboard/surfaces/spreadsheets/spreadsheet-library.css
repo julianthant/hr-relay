@@ -1,6 +1,5 @@
 .hub-sheets-library { color:var(--ui-primary); font-family:var(--font-sans); font-size:13px; }
 
-.hub-sheets-library :is(button,a,select):focus-visible { background:var(--hub-focus-fill)!important; color:var(--hub-focus-ink)!important; outline:none!important; box-shadow:none!important; }
 html[data-motion=off] .hub-sheets-library * { transition:none!important; animation:none!important; transform:none!important; }
 @media (prefers-reduced-motion:reduce) { .hub-sheets-library * { transition:none!important; animation:none!important; transform:none!important; } }
 html[data-motion=off] .hub-sheets-library button { translate:none!important; }

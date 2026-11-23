@@ -1,16 +1,18 @@
 import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Button, Dialog, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice } from "../../ds/ui.js";
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice } from "../../ds/ui.js";
 import { AssistantServedActivity } from "./assistant-thread.js";
 import { publishAssistantModelChoice } from "./assistant-approval-model.js";
 import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";
 import { chatAge, createLocalHubChatsPort, useHubChats, useHubPanelPosition, useLogsTop, type HubChatsPort } from "./hub-shell-model.js";
-import { AssistantPanel } from "./assistant-panel.js";
 import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 import { useDashboardClient } from '../../state/client-context.js';
+import { FirstScreenRevealedContext } from '../../app/startup/first-screen.js';
+import { mockParam } from '../../app/mock-surfaces.js';
+import { PanelBoundary } from '../shared/panel-boundary.js';
 import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
@@ -19,24 +21,34 @@ const HISTORY_TABS = [{ value: "chats", label: "Chats" }, { value: "activity", l
 type HubShellProps = { authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string, target?: string) => void; settingsOpen: boolean; onLogout: () => void; logoutOpen: boolean; onLogoutOpenChange: (open: boolean) => void; chatsPort?: HubChatsPort; commands?: DashboardCommandBinding };
 export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
+  useState(() => { assistantOpen.init(false); });
+  const revealed = useContext(FirstScreenRevealedContext);
+  useLayoutEffect(() => { if (!revealed && mockParam("assistantOpen") !== "1") assistantOpen.set(false); }, [revealed]);
+  const opened = useAssistantOpen();
+  const canRead = opened && (revealed || mockParam("assistantOpen") === "1");
+  const [everOpened, setEverOpened] = useState(canRead);
+  if (canRead && !everOpened) setEverOpened(true);
+  // History loads with the dashboard because its notices show on the closed panel; only the model catalog waits for the first open.
   const history = useAssistantHistory(client, true, props.authority);
   return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
-    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyNotice={history.notice} />;
+    preferenceChanged={history.preferenceChanged} assistantOpened={everOpened} modelPreference={history.preference} historyPending={history.pending || history.blocked || history.store === undefined} historyLoading={history.pending} historyNotice={history.notice} />;
 }
-function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+// The panel's code loads the first time the assistant opens; a failed load reaches PanelBoundary.
+const AssistantPanel = lazy(() => import("./assistant-panel.js").then(module => ({ default: module.AssistantPanel })));
+function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLogoutOpenChange, chatsPort, authority, commands, subjectRef, history, historyPending, historyLoading, historyNotice, modelPreference, preferenceChanged, assistantOpened }: HubShellProps & { assistantOpened: boolean; history?: AssistantHistory; historyPending: boolean; historyLoading: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const client = useDashboardClient();
   const panelPosition = useHubPanelPosition(4);
-  useState(() => { assistantOpen.init(false); });
+  const revealed = useContext(FirstScreenRevealedContext);
   const opened = useAssistantOpen();
   useLogsTop(opened && !settingsOpen);
   useEffect(() => {
     const toggle = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j" || event.altKey || event.shiftKey || settingsOpen) return;
+      if (!revealed || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j" || event.altKey || event.shiftKey || settingsOpen) return;
       event.preventDefault(); panelPosition.reset(); assistantOpen.toggle();
     };
     document.addEventListener("keydown", toggle);
     return () => document.removeEventListener("keydown", toggle);
-  }, [settingsOpen, panelPosition]);
+  }, [settingsOpen, panelPosition, revealed]);
   const [list, setList] = useState(false);
   const [tab, setTab] = useState<"chats" | "activity">("chats");
   const [query, setQuery] = useState("");
@@ -48,7 +60,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const localChats = useMemo(() => history?.chats ?? createLocalHubChatsPort(), [history]);
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant((id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
-  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels: assistantOpened });
   const { models: catalog, chooseModel } = servedController;
   const choose = useRef(chooseModel);
   choose.current = chooseModel;
@@ -94,15 +106,15 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
         </div> : <div className="hub-transcript">{client.assistantActivity ? <AssistantServedActivity query={query} read={signal => client.assistantActivity!(signal)} /> : <EmptyState title="No activity today" />}</div>}
         </div> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
-          {current && currentSession && <AssistantPanel key={current.id} loading={historyPending} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={served} onAutomaticTitle={title => currentSession.autoTitle(title)} conversationPort={currentSession.conversationPort} draft={currentSession.draft} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
-            onClose={closePanel} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={() => edit("rename", current.id)} ></AssistantPanel>}
+          {(opened || assistantOpened) && current && currentSession && <PanelBoundary resetKey={current.id} sentence="Couldn't open the assistant."><Suspense fallback={null}><AssistantPanel key={current.id} loading={historyLoading} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={served} onAutomaticTitle={title => currentSession.autoTitle(title)} conversationPort={currentSession.conversationPort} draft={currentSession.draft} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
+            onClose={closePanel} onChats={() => { setList(true); }} onNewChat={() => { void model.create(); setList(false); }} onRename={historyPending ? undefined : () => edit("rename", current.id)} ></AssistantPanel></Suspense></PanelBoundary>}
         </div>
       </section>
     <span role="status" className="sr-only">{announcement}</span>
-    <Dialog open={logoutOpen} onOpenChange={onLogoutOpenChange}><DialogContent hideClose size="sm" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><Button variant="secondary" onClick={() => onLogoutOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={() => { onLogoutOpenChange(false); onLogout(); }}>Log out</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose size="sm" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
+    <Dialog open={logoutOpen} onOpenChange={onLogoutOpenChange}><DialogContent size="sm" title="Log out?" description="End your current Relay session?" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>(".hub-logout")?.focus(); }}><DialogFooter><Button variant="secondary" onClick={() => onLogoutOpenChange(false)}>Cancel</Button><Button variant="primary" onClick={() => { onLogoutOpenChange(false); onLogout(); }}>Log out</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent size="sm" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
       onCloseAutoFocus={event => { event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : document.querySelector<HTMLElement>(".hub-chat-open") ?? document.querySelector<HTMLElement>("[data-assistant-launcher]"))?.focus({ preventScroll: true }); }}>
-      <form onSubmit={event => {
+      <form className="flex min-h-0 flex-col" onSubmit={event => {
         event.preventDefault(); if (!editing || saving) return;
         const { id, kind } = editing;
         setSaving(true);
@@ -113,7 +125,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
           else { served.forgetSession(id); assistant.forgetSession(id); setAnnouncement("Chat deleted."); }
         });
       }}>
-        {editing?.kind === "rename" && <Input aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} />}
+        {editing?.kind === "rename" && <DialogBody><Input aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} /></DialogBody>}
         <DialogFooter><Button variant="secondary" type="button" onClick={() => setEditing(undefined)}>Cancel</Button><Button variant={editing?.kind === "delete" ? "danger" : "primary"} type="submit" aria-busy={saving || undefined} disabled={saving || editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</Button></DialogFooter>
       </form></DialogContent></Dialog>
   </>;

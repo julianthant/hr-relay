@@ -3,9 +3,10 @@ import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { createServer, type Server } from "node:net";
 import { join } from "node:path";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { writeDashboardBuildIdentity } from "../../../../../src/backend/app/composition/dashboard/build-identity.js";
+import { probeOwnedViteServer } from "../../../../../src/backend/app/host/local-vite-probe.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import type { DashboardComposeInput } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import { readLocalDebugLog } from "../../../../../src/backend/storage/events/local-debug-log.js";
@@ -113,6 +114,55 @@ it("T2 refuses an unowned dev-frontend host and lets an owned probe reach sign-i
     assert.deepEqual(proceeded.json, { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
     assert.equal(f.machine.readProfileRegistry().activeProfileId, before);
   } finally { await close(runtime, listener, f); }
+});
+
+it("T2b refuses an unowned dev-frontend host when the probe cannot release the response it refused", async () => {
+  const f = await fixture();
+  let listener: Server | undefined, runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  const bodies = [
+    new ReadableStream<Uint8Array>({ cancel() { throw new Error("fixture cancel refused"); } }),
+    new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error("fixture transfer reset")); } }),
+  ];
+  try {
+    listener = await occupy(FRONTEND);
+    runtime = await compose(f, { frontendProbe: async (input) => {
+      vi.stubGlobal("fetch", () => Promise.resolve(new Response(bodies.shift(), { status: 503 })));
+      try { return await probeOwnedViteServer({ ...input, ownerNonce: "b".repeat(64) }); } finally { vi.unstubAllGlobals(); }
+    } });
+    for (let round = 0; round < 2; round++) {
+      const state = await request(runtime.port, "/api/v1/profile/state", `127.0.0.1:${String(FRONTEND)}`);
+      assert.equal(state.status, 403);
+      assert.deepEqual(state.json, { state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" });
+    }
+    assert.equal(bodies.length, 0);
+    const boot = readLocalDebugLog(f.machine.stateRoot);
+    if (boot.state !== "present") throw new Error("boot log missing");
+    assert.equal(boot.records.filter(record => record.payload.kind === "debug"
+      && record.payload.event.reason === "frontend-probe-cleanup-failed").length, 2);
+  } finally { await close(runtime, listener, f); }
+});
+
+it("T2c keeps the refusal and writes a fallback diagnostic when the spool rejects the cleanup record but has room for the refusal record", async () => {
+  const f = await fixture();
+  let listener: Server | undefined, runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  const stderr = vi.spyOn(process.stderr, "write");
+  try {
+    listener = await occupy(FRONTEND);
+    const cleanupFailure = new Error("fixture cancel refused");
+    cleanupFailure.stack = `Error: fixture cancel refused\n${"    at fixtureFrame (fixture.ts:1:1)\n".repeat(900)}`;
+    runtime = await compose(f, { frontendProbe: async () => ({ state: "not-owned", reason: "owner-endpoint-refused", cleanupFailure }) });
+    // Only the cleanup record is rejected; a spool that also rejects the refusal record turns it into LOGGING_UNAVAILABLE in debug-responses.
+    const logs = join(f.machine.stateRoot, "logs");
+    mkdirSync(logs, { recursive: true, mode: 0o700 });
+    writeFileSync(join(logs, "boot.jsonl"), "x".repeat(5 * 1024 * 1024 - 16 * 1024), { mode: 0o600 });
+    const state = await request(runtime.port, "/api/v1/profile/state", `127.0.0.1:${String(FRONTEND)}`);
+    assert.equal(state.status, 403);
+    assert.deepEqual(state.json, { state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" });
+    const fallback = stderr.mock.calls.map(([line]) => String(line)).filter(line => line.includes("frontend-probe-cleanup-failed"));
+    assert.equal(fallback.length, 1);
+    assert.match(fallback[0] ?? "", /boot-log-write-failed/u);
+    assert.equal(fallback[0]?.includes("fixture cancel refused"), false);
+  } finally { stderr.mockRestore(); await close(runtime, listener, f); }
 });
 
 it("T3 passes ports.available for the built bundle while the dev frontend port is occupied", async () => {

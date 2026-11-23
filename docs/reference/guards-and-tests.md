@@ -55,7 +55,7 @@ helpers that hide test registrations behind a helper-style name.
 
 | Layer | Owner and selection | Evidence |
 | --- | --- | --- |
-| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. |
+| Unit | `<module>.test.ts`; Vitest `unit` | Deterministic decisions, schemas, fake task contexts, and DOM wiring with injected ports. A unit test may use an isolated temporary store or folder it creates and removes. |
 | Integration | `<module>.integration.test.ts`; Vitest `integration` | Real isolated SQLite, sockets, processes, browser adapters, and composed execution. |
 | Architecture | `tests/architecture/**/*.test.ts`; Vitest `architecture` | Repository-wide boundaries, registries, source/AST checks, and negative controls. Some guards also exercise real adapters. |
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
@@ -123,10 +123,13 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`development.yml` (`Development`) calls `checks.yml` with kind `fast`: names and plan together,
-lint, static, privacy, three unit shards, two architecture shards and the `development` gate,
-at most ten runner jobs. It starts no integration, perf, smoke or macOS job. Its gate folds the
-unit and architecture proofs into the final job and fails failed or cancelled dependencies.
+`development.yml` (`Development`) calls `checks.yml` with kind `fast` on `task/**` pushes and
+non-task pull requests: plan, lint, static, privacy, three unit shards, two architecture shards
+and the affected integration shards (at most eight). It starts no perf,
+smoke or macOS job. `proof` folds the shard results and fails failed or cancelled dependencies.
+The `development` gate checks names and the workflow allowlist on pull requests, then requires
+this run's `proof` or, for `task/**` and edited pull requests, the `proof` of another run at the
+head SHA.
 `staging.yml` (`Staging`) runs only on pull requests from `development` into `staging` and admits
 `checks.yml` with kind `portable`; its `staging` gate needs `names` and `checks`.
 `production.yml` (`Production`) keeps main pull requests, CodeQL on main pushes and operator
@@ -292,9 +295,9 @@ native work and fail the required source-head check. Operator manual releases se
 native suites. Machine-readable docs count as configuration. Release authorization belongs to the
 root check rules. Protected branch pushes do not repeat CI.
 
-All three event entries use per-PR/manual-branch workflow concurrency with cancellation enabled.
-New pushes supersede older runs for the same key. Development has no shared admission lane;
-four runs of at most ten jobs fit the forty job slots. Staging admits one complete reusable call
+All three event entries use per-PR/manual-branch workflow concurrency with cancellation enabled;
+a Development edited event queues instead of cancelling. New pushes supersede older runs for the
+same key. Development has no shared admission lane; a run uses at most nineteen job slots. Staging admits one complete reusable call
 through the `ci-runners` FIFO; Production uses `release-runners`. Both use `queue: max` and
 `cancel-in-progress: false`; no callee reacquires admission.
 
@@ -429,21 +432,19 @@ executable enforcement.
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `development`, `dependabot/*`,
-`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `feature/*`, `fix/*`, `chore/*` or
-`dependabot/*`; only `development` targets `staging`. A pull request title must be `<Area>: <text>`; a conventional title such as
+`task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `fix/*`, `chore/*`,
+`dependabot/*`, or `task/<kebab>/<kebab>`. Only `development` (or `main`, the release sync) targets `staging`. A pull request title must be `<Area>: <text>`. A conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
 `.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first job; Development combines it with planning in
 `checks.yml`, and every other started job waits on it. `pull_request` includes `edited`, so a
 title change at the same head runs the check again. `--all` lists off-pattern local branches and
-worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`,
-including a detached worktree named by `tasks.worktree`. An open ticket that owns the path, an
-open ticket on the checkout branch, or an open ticket on a branch named by a path owner, keeps
-that worktree unlisted. A closed checkout branch still lists the path when no open ticket owns it
-and no open ticket names a branch recorded on that path. The ledger is
-`~/.concord-ledger/<package.json name>/.concord/concord.db`, or the `--ledger` path.
-A missing ledger adds no ticket rows. An unreadable ledger fails the command. `--all` only lists;
-it never deletes.
+linked worktrees without deleting them.
+
+`allowed-workflows` (`tests/architecture/tooling/allowed-workflows.test.ts`) exercises the check in
+the shared static CI job. Pull requests may add workflow YAML only at the four approved paths
+`checks.yml`, `development.yml`, `staging.yml`, and `production.yml` under `.github/workflows/`.
+Adding any other workflow requires `needs-human` on the pull request.
 
 Removal names where the invariant goes and updates its inventory entry and consumers in the same
 change. The manifest protects against accidental removal or glob orphaning. It cannot prevent a
@@ -584,6 +585,10 @@ A dashboard change accounts for the client/shared schema, producer/view-model, c
 controls, and every consumer of changed shared data. Wiring tests exercise both command refusal
 arms (`rejected` and `conflict`), late settlements, request identity, and focus/remount behavior
 where relevant. A visible assertion pairs with an independent wire or authority fact.
+
+A storage statement over a table that grows with runs uses an index or a bound, which the store
+query plan guard checks. A new index lands in a forward migration that names the statement it
+serves. A whole-table read kept by design records its reason in the guard's audit.
 
 Focused tests establish the changed behavior, then lint and affected generated checks establish
 the candidate. Full acceptance uses the assigned final gate. Actual commands, exits, failures,

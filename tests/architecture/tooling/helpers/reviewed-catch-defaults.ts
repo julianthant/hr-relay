@@ -309,17 +309,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     ]
   },
   {
-    "path": "src/dashboard/surfaces/settings/editor/settings-facts-model.ts",
-    "reason": "createSettingsRead publishes failed before the facts observation rejects. useSettingsFacts returns SETTINGS_INITIAL_READ_UNAVAILABLE with any held facts, and FactsPane renders the catalog failure beside those exact facts; superseded identity reads cannot publish.",
-    "statements": [
-      {
-        "kind": "promise",
-        "sha256": "54e0a82aafc7827b544c7831298fcaaaae9a085c95802852e7ab4fae379a9d08",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
     "path": "src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.ts",
     "reason": "Only CellCoercionError or ZodError makes the field-validation predicate false; the caller marks the supplied value invalid. Unknown field IDs and unexpected errors throw. Blank cells are explicitly optional and never substituted.",
     "statements": [

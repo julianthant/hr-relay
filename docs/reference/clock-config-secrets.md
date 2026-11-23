@@ -561,7 +561,7 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 36. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 38. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
@@ -569,7 +569,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 and 30. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 36` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 38` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -713,6 +713,46 @@ the bytes again before publication. Changed content, identity, permissions or an
 Startup owns automatic same-person repair before ordinary admission, providers or HTTP. It selects the newest verified supported backup that preserves current write fences, attempts, evidence, deletion tombstones and generated-file publication records. It refuses when current critical evidence or immutable identity cannot be inspected, or when a backup would weaken it; it never unions databases. Current runtime roots must match the admitted person.
 
 The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and retains an on-disk repair record with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8, then to registry document 4 and marker 9; old physical completed-restore entries are checked during that conversion and removed from current control.
+
+### Isolated library import
+
+`importIsolatedWorkbookLibrary(admission, database, request, clock?)` in
+`storage/maintenance/isolated-library-import.ts` copies the Spreadsheets library of one verified
+production person backup into one staging or development person. It is the only supported way to
+give an isolated copy production data; seed copies only through it.
+
+- Sign up first. The person signs up in the isolated copy (Relay login and Duo), which issues that
+  installation's own installation and profile IDs and its own credentials. The import never creates
+  a person and never changes either identity.
+- Call it from the copy's own staging or development controller with its lifetime lock held, after
+  stopping its dashboard: acquire the copy's exclusive entrypoint admission, admit the signed-up person
+  and open its `state.db` through `AuthorityDatabase.open` with that admission. Pass that admission and
+  database with
+  `{ source: { manifestPath, binding: { installationId, profileId } }, destination: { installationId, profileId } }`.
+- The source is a current-schema backup manifest (version 4), checked against the named source
+  binding with the same identity and inspection checks restore uses (`verifyBackupManifestAtPath`).
+  The verified read-only copy admission holds the backup file and refuses one with a second link. The
+  manifest's size and SHA-256 are proved on the private snapshot that the inspection and the library
+  read use, with an empty write-ahead log. Nothing beside the backup, including empty `-wal` or `-shm`
+  files, is written or removed.
+- It refuses (`IsolatedLibraryImportRefusedError`) when the store was not opened by this exclusive
+  admission or is not its `state.db` (`destination-store-unbound`), when the admission, open store and
+  named destination differ, when the controller holds the production lifetime lock, its workspace lies
+  inside the production application data or the destination shares the source's installation
+  (`destination-not-isolated`), when the source differs from its binding or is not current, and when a
+  source workbook type differs from the destination's type of the same ID. These checks run again
+  inside the write transaction.
+- It brings only each local workbook's current content and the workbook types. Each source entry
+  lands on a library ID derived from both bindings and the source entry, so a repeated call refreshes
+  the same entries. History, journals, tags, workflow outputs, SharePoint links, runs, evidence,
+  settings, assistant state, credentials, sessions and queued work stay behind.
+- Run it again to update a copy. It creates entries new in the source and refreshes an imported entry
+  only while its journal and library revision show nothing but the import's own writes and it has no
+  pending operation. Entries the copy created, and imported entries the copy edited, removed, acted on
+  or still has pending operations on, are left unchanged and counted as `keptLocal`; their pending
+  operations stay queued. Entries removed from the source stay in the copy.
+- All writes are one store transaction: a failure part way writes nothing, and a call with nothing
+  new writes nothing.
 
 ## Settings and readiness readback
 

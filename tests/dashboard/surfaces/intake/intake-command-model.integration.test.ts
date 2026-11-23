@@ -147,7 +147,7 @@ function UnsubscribedDay({ children, today }: { children: ReactNode; today?: str
   const binding = useDashboardCommandBinding();
   assert.ok(binding);
   return createElement(DashboardCommandBindingProvider, { binding: { ...binding,
-    authority: { ...binding.authority, ...(today === undefined ? {} : { today, nowIso: `${today}T17:10:00.000Z` }), dayState: { ...binding.authority.dayState, day: { state: "loading" } } } }, children });
+    authority: { ...binding.authority, ...(today === undefined ? {} : { today, now: () => `${today}T17:10:00.000Z` }), dayState: { ...binding.authority.dayState, day: { state: "loading" } } } }, children });
 }
 async function mount(client: ReturnType<typeof createDashboardClient>, capture: (value: ReturnType<typeof useIntakeCommands>) => void, adopt: (session: IntakeSessionWire) => void, actorId: string = ACTOR, requestKey = 0, visible = true, unsubscribed = false, today?: string) {
   if (root === undefined) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); }

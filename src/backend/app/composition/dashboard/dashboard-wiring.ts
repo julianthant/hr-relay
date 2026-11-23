@@ -30,6 +30,7 @@ import { createOcrSourceService } from "../../../runs/commands/ocr-source-servic
 import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../runs/commands/start-plan-service.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
+import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { createApplicationLifecycle } from "../../../runs/lifecycle/application-lifecycle.js";
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { createWorkerCommandResultQuery } from "../../../runs/queries/worker-command-result.js";
@@ -68,7 +69,8 @@ import { prepareDashboardEnvironment,prepareDashboardRuntime } from "./runtime-r
 import { composeShell } from "./shell.js";
 import { composeDashboardShutdown } from "./shutdown-custody.js";
 import { composeStorage } from "./storage.js";
-import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
+import { startNotificationPolling } from "./notifications.js";
+import { composeDashboardTimeline } from "./timeline.js";
 import { composeWorkerPool,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
 
@@ -105,7 +107,10 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
-  const ledger = createTransactionHistory(database.authority);
+  const history = database.dashboardHistory();
+  const reader = history === database ? lifecycle : new RunRecordService({ database: history, clock, ids,
+    publishQueued: () => { throw new Error("isolated-history-read-only"); }, resolveDescriptor: descriptors.resolve });
+  const ledger = createTransactionHistory(history.authority);
   const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
   const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
     if (request.target.profileId !== admission.profileBinding.profileId || request.target.epoch !== context.profileEpoch) {
@@ -117,13 +122,13 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     return { commandId: request.commandId };
   };
 
-  const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger });
-  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
-  const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle), summaries };
+  const { activity, activityPopulation } = composeActivity({ database: history, clock, descriptors, ledger });
+  const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => activity.read(from, to) };
+  const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
   const workerMembers = (): readonly WorkerMemberView[] => snapshotWorkers();
   let startupPending: (workflowId: string) => boolean = () => false;
-  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
+  const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
 
   const { noteWriter, timelineTimer, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
 
@@ -175,7 +180,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     admission,
   });
   await artifactReader.ready;
-  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, stateRoot, projection, workerMembers, artifacts, artifactReader,
+  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, history, reader, stateRoot, projection, workerMembers, artifacts, artifactReader,
     operatorName: () => { assertCurrent(); return readAdmittedProfileIdentity(machineAdmission, admission).displayName; } });
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
@@ -275,11 +280,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
 
-  const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
-    host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
-    command: commandId => database.authority.commands.readForNotice(commandId),
-    bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
-  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
+  const notificationTarget = createNotificationTargetQuery({ get: history.authority.notifications.get, read: id => reader.read(id), failure: history.authority.failures.get,
+    host: run => history.withAuthorityReadSnapshot(() => ocrHostRun(history.authority, run)),
+    command: commandId => history.authority.commands.readForNotice(commandId),
+    bulk: bulkCommandId => { const acceptance = history.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: history.authority.commands.listBulkChildren(bulkCommandId) }; } });
+  const notifications = composeNotificationRoutes({ database: history, clock, lifecycle: reader, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
   const dataQueries = composeDataQueries(runDetailDeps);
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const assistantProposals = createAssistantProposals({ ocrSources: () => ocrSources, database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
@@ -374,7 +379,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     notifications,
     ...(staticBundle === undefined ? {} : { staticBundle }),
-    requestIdentity: { identify: request => { assertCurrent(); return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request); } },
+    requestIdentity: { identify: request => {
+      if (input.applicationTransport === undefined) assertCurrent();
+      else input.applicationTransport.consumeAdmission(request);
+      return createSoloRequestIdentityCheckpoint(resolved.config.actor).identify(request);
+    } },
     preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),
     ...shell,
     projection,
@@ -425,9 +434,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
   }));
   dashboardPreflightRunners.markBackendOwned(server.port);
-  void notificationObserver.observe();
-  const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
-  gateParkTimer.unref();
+  const gateParkTimer = startNotificationPolling(database, clock, notificationObserver);
   startupCleanups.push(() => clearInterval(gateParkTimer));
   const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",

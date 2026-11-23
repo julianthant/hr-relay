@@ -185,7 +185,7 @@ it("publishes failed reload, keeps its draft, and blocks new submissions", async
   await settingsAction(() => h.controller().update("actor.label", "Retained after reload"));
   h.ports.read = () => { throw new Error("unavailable"); };
   await settingsAction(() => h.controller().reload());
-  assert.match(h.controller().readProblem ?? "", /could not be read/u);
+  assert.match(h.controller().readProblem ?? "", /Settings could not refresh\. Your drafts are kept\./u);
   assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Retained after reload" });
   await settingsAction(() => h.controller().submit()); assert.equal(h.commands.length, 0);
 });

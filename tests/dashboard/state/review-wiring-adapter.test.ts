@@ -223,7 +223,7 @@ function editorWorld(unknownOnce = false, delegated = true) {
   let refresh: () => void = () => undefined;
   let refreshPaused = false;
   const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-    authority: { epoch, catalog: [], nowIso: FIXTURE_BOOTSTRAP.serverClock.now, today: day, day,
+    authority: { epoch, catalog: [], now: () => FIXTURE_BOOTSTRAP.serverClock.now, today: day, day,
       dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" },
         refresh: () => { if (!refreshPaused) refresh(); }, subscribePublications: () => () => undefined }, selection: { route: { start: false }, workflowId: "ocr" } } };
   function Harness() {

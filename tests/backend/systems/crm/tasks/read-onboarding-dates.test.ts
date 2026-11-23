@@ -89,7 +89,7 @@ describe("Person Lookup task implementations", () => {
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: observedWrong },
       }),
-      /CRM dates subject binding is invalid/,
+      /The CRM dates do not belong to this person\./u,
     );
 
     const mismatchedOutputs = createDeterministicCrmOnboardingDriver({
@@ -112,7 +112,7 @@ describe("Person Lookup task implementations", () => {
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
-      /CRM dates subject binding is invalid/,
+      /The CRM dates do not belong to this person\./u,
     );
   })
   it("admits dates not-read only for an unavailable name with no observed dates", async () => {
@@ -120,8 +120,8 @@ describe("Person Lookup task implementations", () => {
     const absent = { emplId: candidate.emplId, state: "no-confident-record" as const, employmentDate: null, oathDate: null, reason: "No confident CRM record" };
     const driver = { ...base, async readOnboardingDates() { return { binding: { state: "not-read" as const, expectedEid: candidate.emplId }, output: absent }; } };
     assert.deepEqual(await readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId }, ctx: { ...commonCtx, driver } }), absent);
-    await assert.rejects(readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId, name: candidate.name }, ctx: { ...commonCtx, driver } }), /CRM dates subject binding is invalid/);
+    await assert.rejects(readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId, name: candidate.name }, ctx: { ...commonCtx, driver } }), /The CRM dates do not belong to this person\./u);
     const populated = { ...driver, async readOnboardingDates() { return { binding: { state: "not-read" as const, expectedEid: candidate.emplId }, output: { ...absent, employmentDate: crmDates.employmentDate } }; } };
-    await assert.rejects(readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId }, ctx: { ...commonCtx, driver: populated } }), /CRM dates subject binding is invalid/);
+    await assert.rejects(readOnboardingDatesTask.impl.run({ input: { eid: candidate.emplId }, ctx: { ...commonCtx, driver: populated } }), /The CRM dates do not belong to this person\./u);
   });
 });

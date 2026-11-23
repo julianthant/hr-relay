@@ -104,7 +104,7 @@ The accepted C1 producer evidence records native Mac unit **3,386 tests / 440 fi
 
 Seven synthetic executor/SQLite OCR positives cover oath, emergency contact, both I-9 sections, boilerplate, unrelated, and blank pages. Two negative controls refuse undeclared and contradictory observations. These are imported execution receipts at the named C1 pin, not checks run for this document. They establish neither live HR success nor browser/mock, coverage/performance, account/model/public-context authority, or release acceptance. [OCR integration assertions](../tests/backend/processing/providers/chatgpt-ocr-adapter.integration.test.ts), [Explorer assertions](../tests/backend/runs/queries/explorer-review-spec.test.ts).
 
-The [Git instructions](../AGENTS.md#git) own branch, review and release procedures; [repository governance](repository-governance.md) describes the `development`, `staging` and `production` required gates. Feature, fix and chore branches start from `origin/development` and open one pull request into `development`; its fast check has at most ten jobs. Only `development` opens pull requests into `staging`, which runs the full portable check. Production accepts `staging` or `hotfix/*`.
+The [Git instructions](../AGENTS.md#git) own branch, review and release procedures; [repository governance](repository-governance.md) describes the `development`, `staging` and `production` required gates. Feature, fix and chore branches start from `origin/development` and open one pull request into `development`; its fast check runs on the task push, and the pull request gate reuses that run. Only `development` opens pull requests into `staging`, which runs the full portable check. Production accepts `staging` or `hotfix/*`.
 
 ## What the rebuild changes
 
@@ -118,4 +118,4 @@ At whole-app freeze, recheck workflow ports and served activation, OCR and Recor
 
 **How do you prevent duplicate submissions?** Persist the intent before the click, bind authority to a generation, retain uncertain outcomes, and refuse generic retry until the exact write is resolved. [Sequencer](../src/backend/runtime/writes/write-sequencer.ts), [intent policy](../src/backend/runtime/policies/durable-intent.ts).
 
-**What is complete?** Separate implemented code, integrated composition, verified behavior, and operator acceptance. Person Lookup being served does not certify other workflows or the current availability of external systems. [Source policy](../config/dashboard-workflow-sources.json), [activation requirements](roadmap/roadmap.md#dashboard-ready-on-the-mac).
+**What is complete?** Separate implemented code, integrated composition, verified behavior, and operator acceptance. Person Lookup being served does not certify other workflows or the current availability of external systems. [Source policy](../config/dashboard-workflow-sources.json), [activation requirements](https://github.com/users/julianthant/projects/5).

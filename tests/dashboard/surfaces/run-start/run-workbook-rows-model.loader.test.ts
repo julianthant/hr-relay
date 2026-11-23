@@ -76,7 +76,7 @@ it("shows current read errors with retained disabled rows and refuses mismatched
   await render({ client, identity: "workflow/catalog-revision-2/library" });
   expect(observed?.state).toBe("error"); expect(observed?.error).toBe(ERROR_CATALOG.DASHBOARD_READ_FAILED.text); expect(observed?.choices).toHaveLength(1);
   await render({ client: { workbookLibraryVersion: async () => view("second") } });
-  expect(observed?.state).toBe("error"); expect(observed?.error).toBe("The supplied data does not match the expected contract.");
+  expect(observed?.state).toBe("error"); expect(observed?.error).toBe("The data sent was not in the expected form.");
 });
 
 it.each([

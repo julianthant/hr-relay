@@ -72,7 +72,7 @@ describe("independent protected Settings surface", () => {
     const before = structuredClone(h.controller().protectedEditor.draft);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "conflict"); assert.deepEqual(h.controller().protectedEditor.draft, before); assert.equal(h.commands.length, 1);
-    assert.match(h.host.textContent ?? "", /Credentials changed.*Your draft is retained\. Review the current values before retrying\./u);
+    assert.doesNotMatch(h.host.textContent ?? "", /Credentials changed|Retry edit/u); // the model toasts the conflict once
     const current = h.controller().editor;
     assert.equal(current.state, "loaded");
     if (current.state !== "loaded" || current.document.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
@@ -83,7 +83,7 @@ describe("independent protected Settings surface", () => {
     assert.equal(h.controller().protectedEditor.save.state, "applied");
   });
   for (const failure of ["lost-response", "failed-readback", "pending-reply", "intervening-writer", "foreign-result", "legacy-readback"] as const) {
-    it(`keeps exact protected attempt and truthful uncertainty for ${failure}`, async () => {
+    it(`reads the protected attempt back by itself, never resending it, and settles after ${failure}`, async () => {
       const h = await setup();
       h.ports.execute = input => {
         const result = h.authority.execute(input); const request = ProtectedSettingsCommandRequestSchema.parse(input);
@@ -97,15 +97,20 @@ describe("independent protected Settings surface", () => {
       };
       await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/draft-secret-sentinel"));
       await settingsAction(() => h.controller().protectedEditor.submit());
-      assert.equal(h.controller().protectedEditor.save.state, "unconfirmed"); assert.equal(h.controller().protectedEditor.dirtyCount, 1);
-      assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel/u);
-      const exact = structuredClone(h.commands[0]);
-      await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/divergent-secret-sentinel"));
-      assert.deepEqual(h.controller().protectedEditor.draft.sharepointOnboardingRosterUrl, { kind: "set", raw: "https://example.test/draft-secret-sentinel" });
+      // The transport recovers; the model reads the stored write back and settles it with no message.
       h.ports.read = h.authority.read; h.ports.execute = h.authority.execute;
-      await settingsAction(() => h.controller().protectedEditor.retry());
-      assert.deepEqual(h.commands[1], exact);
-      assert.equal(h.controller().protectedEditor.save.state, failure === "intervening-writer" ? "conflict" : "applied");
+      await vi.waitFor(async () => { await settingsAction(() => undefined); assert.equal(h.controller().protectedEditor.locked, false); }, { timeout: 5000, interval: 50 });
+      assert.equal(h.controller().protectedEditor.save.state, "idle");
+      assert.equal(h.controller().protectedEditor.dirtyCount, 0);
+      assert.equal(h.commands.length, 1, "an unknown outcome is read back, never resent");
+      // Another value served over this save is no proof that it landed, so it ends as one failure.
+      if (failure === "intervening-writer") assert.deepEqual(h.problems.map(problem => problem.title), ["Credentials weren't saved"]);
+      else assert.deepEqual(h.problems, [], "the stored write is found by the read-back");
+      assert.deepEqual(h.notices, [], "a save found by reading back shows no message");
+      assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel|unconfirmed|Retry exact attempt/u);
+      await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", "https://example.test/next-secret-sentinel"));
+      await settingsAction(() => h.controller().protectedEditor.submit());
+      assert.equal(h.commands.length, 2, "the read-back freed the lock: the next save reaches Relay");
     });
   }
   it("recovers definitive write-id reuse with new identity and the unchanged draft", async () => {
@@ -149,15 +154,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { SettingsSaveState } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { SettingsSaveFeedback } from "../../../../src/dashboard/surfaces/settings/editor/settings-feedback.js";
 it.each([
-  [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", "Retry edit"],
-  [{ state: "unconfirmed", message: "Readback unavailable" }, "Credentials save unconfirmed", "Retry exact attempt"],
-  [{ state: "refused", message: "Draft refused" }, "Credentials weren't saved", "Retry edit"],
-  [{ state: "applied", replayed: false }, "Saved", ""],
-  [{ state: "applied", replayed: true }, "Already saved", ""],
-] satisfies [SettingsSaveState, string, string][])("preserves the feedback title and retry affordance for %j", (save, title, retry) => {
-  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retry: () => {}, retryConflict: () => {} }));
-  assert.ok(html.includes(title.replace("'", "&#x27;")));
-  assert.equal(html.includes(retry || "Retry"), retry !== "");
+  [{ state: "conflict", message: "Current revision changed" }, ""],
+  [{ state: "refused", message: "Draft refused" }, ""],
+  [{ state: "applied", replayed: false }, "Saved"],
+  [{ state: "applied", replayed: true }, "Already saved"],
+] satisfies [SettingsSaveState, string][])("shows only a landed save inline for %j, never a button", (save, text) => {
+  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save }));
+  assert.equal(html.includes(text || "Credentials"), text !== "");
+  assert.equal(html.includes("<button"), false);
 });
 
 it("retains applied feedback until the next draft changes its state", async () => {
@@ -168,13 +172,11 @@ it("retains applied feedback until the next draft changes its state", async () =
   try {
     await act(async () => root.render(createElement(SettingsSaveFeedback, {
       save: { state: "applied", replayed: true },
-     
-      retry: () => undefined,
     })));
     assert.match(host.textContent ?? "", /Already saved/u);
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     assert.match(host.textContent ?? "", /Already saved/u);
-    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" }, retry: () => undefined })));
+    await act(async () => root.render(createElement(SettingsSaveFeedback, { save: { state: "idle" } })));
     assert.equal(host.textContent, "");
     assert.doesNotMatch(host.textContent ?? "", /Already saved/u);
   } finally {
@@ -189,7 +191,7 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 
 describe("closing Settings", () => {
-  it("closes on the back arrow and on Escape unless a dialog or list has the key", async () => {
+  it("closes on the X button and on Escape unless a dialog or list has the key", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -199,9 +201,9 @@ describe("closing Settings", () => {
         client: {} as DashboardClient,
         children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: closed, section: "budgets", actorId: "local-operator", descriptorFingerprint: "a".repeat(64), onSection: () => undefined }),
       })));
-      const exit = host.querySelector<HTMLButtonElement>('button[aria-label="Back to dashboard"]');
+      const exit = host.querySelector<HTMLButtonElement>('button[aria-label="Close settings"]');
       assert.ok(exit);
-      assert.ok(exit.querySelector("svg.lucide-arrow-left"));
+      assert.ok(exit.querySelector("svg.lucide-x"));
       const dialog = document.body.appendChild(document.createElement("div"));
       dialog.setAttribute("role", "dialog");
       const inner = dialog.appendChild(document.createElement("button"));

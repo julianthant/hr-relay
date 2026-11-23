@@ -1,6 +1,6 @@
 import type { RefObject, ReactNode } from "react";
-import { Check, FlaskConical, X } from "lucide-react";
-import { useEffect } from "react";
+import { Check, CircleAlert, FlaskConical, X } from "lucide-react";
+import { useEffect, useId } from "react";
 import type { SurfaceField, InputRunSurface, TypedDateControl, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
@@ -358,6 +358,7 @@ export function TypedInput({
   /** the dialog's handle on the box, so an exit from a banner can focus it */
   inputRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
+  const errorBase = useId();
   const declaration = surface.typedInput;
   const values = declaration === undefined ? draft : { ...typedInputDefaults(declaration), ...draft };
   const mode = declaration === undefined ? undefined : typedInputMode(declaration, values);
@@ -399,14 +400,17 @@ export function TypedInput({
         {dates.map(control =>
           <RunListRow key={control.field} title={control.label} description={INPUT_NOTES[control.field]}>
             <div className="w-[var(--ds-w-body-control-standard)]"><DateInput className="w-full" hideLabel label={control.label} required={control.required} textEntry textDateFormat="MM/DD/YYYY"
-              value={typeof values[control.field] === "string" ? String(values[control.field]) : ""} onChange={next => onValue?.(control.field, next)} /></div>
+              value={typeof values[control.field] === "string" ? String(values[control.field]) : ""} onChange={next => onValue?.(control.field, next)}
+              {...(preview.dateProblems?.[control.field] === undefined ? {} : { errorId: `${errorBase}-${control.field}` })} />
+              {preview.dateProblems?.[control.field] !== undefined && <p id={`${errorBase}-${control.field}`} role="alert" className="m-0 mt-1 text-caption text-ui-danger">{preview.dateProblems[control.field]}</p>}</div>
           </RunListRow>)}
       </RunList>}
     </>}
-    {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}{preview.problem !== null && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
+    {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}{preview.problem !== null && preview.dateProblems === undefined && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
       : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
     {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
-      {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className={cn("font-mono", preview.problem !== null && "text-ui-danger")}>{entry.sourceText}</span>}>
+      {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className={cn("font-mono", preview.problem !== null && (preview.refusedIndexes === undefined || preview.refusedIndexes.includes(entry.index)) && "text-ui-danger")}>{entry.sourceText}</span>}>
+        {preview.problem !== null && preview.refusedIndexes?.includes(entry.index) === true && <span className="flex items-center gap-2 text-body text-ui-secondary"><CircleAlert aria-hidden className={`${dsIcon.md} text-ui-danger`} />Not valid</span>}
         {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
           onClick={() => {
             onText(entryText(preview.entries.filter(candidate => candidate.index !== entry.index)));
@@ -446,7 +450,7 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
   const options = sheets.map((sheet): PickerOption => {
     const uncoverable = sheet.worksheets.length === 0 && sheet.versions.length < 2;
     return { libraryId: sheet.libraryId, name: sheet.name, names: sheet.worksheets, pinned: sheet.pinned === true, disabled: uncoverable,
-      description: sheet.worksheets.length > 0 ? sheet.worksheets.join(", ") : uncoverable ? `No worksheet has ${requiredLabel}` : `Current version has no worksheet with ${requiredLabel}. Choose an earlier version.` };
+      description: sheet.worksheets.length > 0 ? sheet.worksheets.join(", ") : uncoverable ? `No worksheet has ${requiredLabel}` : `No current worksheet has ${requiredLabel}. Pick an earlier version.` };
   });
   const note = missingSheet ? "Previous worksheet unavailable; choose again" : worksheetsState === "loading" ? "Loading worksheets…" : undefined;
   return <div className="flex min-w-0 flex-col gap-3">
@@ -487,7 +491,7 @@ function CheckPickedRows({ sheets, busy, onVersion, onSheets, onRemove }: { shee
 
 /** The optional check's section: the same row pattern as the reference spreadsheet. */
 export function RunCheckRows({ sheets, busy, ...callbacks }: { sheets: readonly CheckSheet[]; busy: boolean } & CheckCallbacks) {
-  return <SpreadsheetSection title="Also check" description="Optional. Extra spreadsheets to check each person against. They do not replace the reference spreadsheet above."
+  return <SpreadsheetSection title="Also check" description="Optional. Extra spreadsheets to check each person against."
     picker={<SpreadsheetPicker label="Add spreadsheet" options={checkOptions(sheets)} busy={busy} onPick={callbacks.onAdd} />}>
     <CheckPickedRows sheets={sheets} busy={busy} {...callbacks} />
   </SpreadsheetSection>;

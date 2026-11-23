@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV, PARENT_BUILD_ID_ENV } from "../config/secrets.js";
+import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV, PARENT_BUILD_ID_ENV, RUNTIME_PROFILE_ENV } from "../config/secrets.js";
 
 const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.enum(["SystemRoot", "ProgramFiles", "ProgramFiles(x86)"])]);
 const PROCESS_MECHANICS_ENVIRONMENT_OWNER = "src/models/config/secrets.ts";
@@ -131,6 +131,7 @@ const TEST_ONLY_ENVIRONMENT_KEYS = [
   "RELAY_TEST_HOST",
   "NOTIFICATIONS_MOCK_OUT", "NOTIFICATIONS_MOCK_THEMES", "NOTIFICATIONS_MOCK_WIDTH", "NOTIFICATIONS_MOCK_SCALE", "ONBOARDING_MOCK_OUT", "SPREADSHEET_MOCK_OUT", "AX_MOCK_OUT", "AX_MOCK_THEMES", "AX_MOCK_WIDTH", "AX_MOCK_ONLY", "AX_MOCK_SCALE", "STATUS_MOCK_OUT", "STATUS_MOCK_THEMES", "STATUS_MOCK_WIDTH", "STATUS_MOCK_ONLY", "STATUS_MOCK_SCALE", "LOGS_CARDS_OUT", "LOGS_CARDS_ONLY", "LOGS_CARDS_HEIGHT",
   "CHECK_FIX_OUT", "FAILURE_NOTICE_MOCK_OUT", "NEEDS_DUO_MOCK_OUT", "REFERENCE_GATE_OUT", "SETTINGS_GENERAL_CHATGPT_MOCK_OUT", "SWEEP_FIXTURES_OUT",
+  "COMMAND_READBACK_MOCK_OUT", "TOASTS_TEXT_ONLY_MOCK_OUT", "RELAY_DASHBOARD_SKELETON_EVIDENCE",
   "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
 ] as const;
 
@@ -171,6 +172,9 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   NOTIFICATIONS_MOCK_WIDTH: ["tests/mocks/notifications-mock.test.ts"],
   NOTIFICATIONS_MOCK_SCALE: ["tests/mocks/notifications-mock.test.ts", "tests/mocks/notifications-sweep-decisions.test.ts", "tests/mocks/notifications-sweep.test.ts"],
   ONBOARDING_MOCK_OUT: ["tests/mocks/onboarding-mock.test.ts"],
+  COMMAND_READBACK_MOCK_OUT: ["tests/mocks/command-readback-mock.test.ts"],
+  TOASTS_TEXT_ONLY_MOCK_OUT: ["tests/mocks/toasts-text-only-mock.test.ts"],
+  RELAY_DASHBOARD_SKELETON_EVIDENCE: ["tests/smoke/dashboard-skeletons.smoke.ts"],
   SPREADSHEET_MOCK_OUT: ["tests/mocks/spreadsheets-fills-mock.test.ts", "tests/mocks/spreadsheets-library-mock.test.ts"],
   AX_MOCK_OUT: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
   AX_MOCK_THEMES: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
@@ -229,6 +233,8 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     owner: "src/models/config/secrets.ts",
     documented: true,
   },
+  { key: RUNTIME_PROFILE_ENV, classification: "non-secret-config", disposition: "active", channel: "host-storage",
+    owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER, documented: true },
   {
     key: DEVELOPMENT_DEBUG_MIRROR_ENV,
     classification: "non-secret-config",
@@ -306,6 +312,7 @@ export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReader
   { key: "ProgramFiles", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "ProgramFiles(x86)", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "LOCALAPPDATA", paths: ["src/models/config/secrets.ts"] },
+  { key: RUNTIME_PROFILE_ENV, paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
   { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: PARENT_BUILD_ID_ENV, paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
@@ -351,7 +358,7 @@ function computedReader(input: ComputedReaderInput): z.input<typeof ComputedEnvi
 
 export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReaderSchema.array().parse([
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "assertNoMigratedEnvironmentKeys", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: RETIRED_ENVIRONMENT_KEYS, families: [] } }),
-  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...RETIRED_ENVIRONMENT_KEYS, HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
+  computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "bulk", occurrenceCount: 3, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...RETIRED_ENVIRONMENT_KEYS, HOST_PRIMARY_DISPLAY_ENV, RUNTIME_PROFILE_ENV], families: [] } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "runDevDashboard", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
@@ -424,7 +431,9 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
     if (spec.channel === "process-mechanics" && (spec.key === "SystemRoot" || spec.key === PARENT_BUILD_ID_ENV)) continue;
-    const expectedOwner = spec.channel === "host-programs" && ["ProgramFiles", "ProgramFiles(x86)"].includes(spec.key) && spec.classification === "non-secret-config"
+    const expectedOwner = spec.channel === "host-storage" && spec.key === RUNTIME_PROFILE_ENV && spec.classification === "non-secret-config"
+      ? PROCESS_MECHANICS_ENVIRONMENT_OWNER
+      : spec.channel === "host-programs" && ["ProgramFiles", "ProgramFiles(x86)"].includes(spec.key) && spec.classification === "non-secret-config"
       ? PROCESS_MECHANICS_ENVIRONMENT_OWNER
       : spec.channel === "host-storage" && spec.key === "LOCALAPPDATA" && spec.classification === "direct-identifier"
       ? "src/models/config/secrets.ts"

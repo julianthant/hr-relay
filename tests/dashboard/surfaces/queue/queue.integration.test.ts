@@ -452,7 +452,9 @@ describe("Queue consumes the served day boundary", () => {
       assert.deepEqual(calls[0]?.[1], { runId: queued.runId, expectedVersion: queued.rowRevision });
       const row = host.querySelector<HTMLElement>(`[data-demo-row-id="${queued.runId}"]`);
       assert.ok(row);
-      await act(async () => { row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+      const open = row.querySelector<HTMLButtonElement>("button[data-queue-open]");
+      assert.ok(open);
+      await act(async () => { open.click(); });
       assert.deepEqual(selections, [queued.runId]);
       await act(async () => { root.render(draw(QueueSurfaceWireSchema.parse({ ...queued, actions: [] }))); });
       assert.equal(host.querySelector('button[aria-label^="Cancel run"]'), null);

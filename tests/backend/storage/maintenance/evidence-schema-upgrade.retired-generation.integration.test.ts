@@ -90,7 +90,8 @@ it("admits a store written by the pre-initials build as retired history without 
           assert.equal(database.evidenceSchemaHash(owner, f.run.input, stored, fresh), stored);
           assert.throws(() => database.evidenceSchemaHash(owner, { ...f.run.input, parsed: { ...f.run.input.parsed, protectedBindings: [] } }, stored, fresh), /source-changed/u);
           assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemaMac: "0".repeat(64) }), /seal-invalid/u);
-          assert.throws(() => createReceiptService({ database, runReader: testRunService(database, CLOCK), descriptors: [descriptor] }).ensureReceipt(f.run.envelope.runId), /canonical-input/u);
+          // The receipt the pre-initials build stored reads back unchanged.
+          assert.deepEqual(createReceiptService({ database, runReader: testRunService(database, CLOCK), descriptors: [descriptor] }).ensureReceipt(f.run.envelope.runId), f.receipt);
           assert.deepEqual(frozenRows(f.path), before);
         } finally { database.close(); admission.release(); }
       } finally { await runtime.close(); machine.release(); }

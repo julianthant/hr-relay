@@ -1315,82 +1315,82 @@ export async function executeClaimedRun(
         },
       );
 
-      const run = RunnableTaskSchema.parse(task.impl.run);
-      const ctxCommon = {
-        signal: controller.signal,
-        log: taskLogger,
-        fail: (code: string, message: string, options?: Readonly<{
-          subject?: string; transient?: boolean; cause?: unknown;
-        }>): never => {
-          throw new TaskError(contract.id, code, message, options);
-        },
-        recordData: collector.recordData,
-      } as const;
-
-      const declaredProviders = contract.providers ?? [];
-      let providerClients: Readonly<Record<string, ProviderClient<ProviderCapabilityId>>> | undefined;
-      if (declaredProviders.length > 0) {
-        const provider = capabilityWiring.providers;
-        if (provider === undefined) {
-          throw new Error(
-            `${contract.id} requires provider capabilities but reached invocation without wiring; `
-            + "executeTaskNode must refuse before invoking",
-          );
-        }
-        // Mint one provider client per capability and invocation; it is not reusable authority.
-        const clients: Record<string, ProviderClient<ProviderCapabilityId>> = {};
-        for (const declared of declaredProviders) {
-          const capability = ProviderCapabilityIdSchema.parse(declared);
-          const client = admittedClientFor(capability, {
-            execution: {
-              runId,
-              attempt: envelope.attempt,
-              nodeId: String(node.id),
-              taskId: contract.id,
-            },
-            configSnapshotId: envelope.configSnapshotId,
-            configFingerprint: envelope.configFingerprint,
-            configSnapshot: provider.storedSnapshot,
-            runSignal: controller.signal,
-            adapters: provider.wiring.adapters,
-            observe: event => {
-              taskLogger.debug("provider request", { ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
-                capability: event.capability, state: event.state, nodeId: String(node.id), taskId: contract.id });
-              if (event.state !== "produced") deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "provider",
-                code: "PROVIDER_CALL_FAILED", correlationId: event.requestId ?? runId,
-                reason: event.state === "timeout" ? "provider-timeout" : event.state === "aborted" ? "provider-aborted"
-                  : event.state === "invalid-response" ? "provider-response-invalid" : "provider-unavailable" }, { kind: "run", runId }, envelope.workflow);
-            },
-            clock,
-            idFactory: provider.wiring.idFactory,
-            deadlineScheduler: deps.scheduler,
-          });
-          if (memberRetry !== undefined && memberRetry.nodeId === node.id && capability === "ocr.approved-snapshot") {
-            clients[capability] = Object.freeze({ ...client, async call(payload: Parameters<typeof client.call>[0]) {
-              const response = await client.call(payload);
-              if (response.state === "produced") {
-                const result = schemaBoundValueSchema(OcrApprovalReadResultSchema, deriveSchemaHash(OcrApprovalReadResultSchema, "output"))
-                  .parse(response.value).value;
-                if (result.state === "record") memberRetry.assertRetained(RunCheckpointRecordSchema.shape.output.parse({ schemaHash: deriveSchemaHash(contract.output, "output"),
-                  value: JsonValueSchema.parse(contract.output.parse({ record: result.record })),
-                  ...(retainedRunProtectedBindings(initial).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(initial) }) }));
-              }
-              return response;
-            } });
-          } else clients[capability] = client;
-        }
-        providerClients = Object.freeze(clients);
-      }
-      const ctxExtras = {
-        ...(providerClients === undefined ? {} : { providers: providerClients }),
-        ...(capabilityWiring.artifacts === undefined ? {} : { artifacts: capabilityWiring.artifacts }),
-      } as const;
-
-      const retain = deps.retainCallback === undefined ? undefined : (operation: Promise<unknown>) => {
-        deps.retainCallback?.({ runId, claimGeneration: claim.claimGeneration, attempt: envelope.attempt }, operation);
-      };
       let raw: unknown;
       try {
+        const run = RunnableTaskSchema.parse(task.impl.run);
+        const ctxCommon = {
+          signal: controller.signal,
+          log: taskLogger,
+          fail: (code: string, message: string, options?: Readonly<{
+            subject?: string; transient?: boolean; cause?: unknown;
+          }>): never => {
+            throw new TaskError(contract.id, code, message, options);
+          },
+          recordData: collector.recordData,
+        } as const;
+
+        const declaredProviders = contract.providers ?? [];
+        let providerClients: Readonly<Record<string, ProviderClient<ProviderCapabilityId>>> | undefined;
+        if (declaredProviders.length > 0) {
+          const provider = capabilityWiring.providers;
+          if (provider === undefined) {
+            throw new Error(
+              `${contract.id} requires provider capabilities but reached invocation without wiring; `
+              + "executeTaskNode must refuse before invoking",
+            );
+          }
+          // Mint one provider client per capability and invocation; it is not reusable authority.
+          const clients: Record<string, ProviderClient<ProviderCapabilityId>> = {};
+          for (const declared of declaredProviders) {
+            const capability = ProviderCapabilityIdSchema.parse(declared);
+            const client = admittedClientFor(capability, {
+              execution: {
+                runId,
+                attempt: envelope.attempt,
+                nodeId: String(node.id),
+                taskId: contract.id,
+              },
+              configSnapshotId: envelope.configSnapshotId,
+              configFingerprint: envelope.configFingerprint,
+              configSnapshot: provider.storedSnapshot,
+              runSignal: controller.signal,
+              adapters: provider.wiring.adapters,
+              observe: event => {
+                taskLogger.debug("provider request", { ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
+                  capability: event.capability, state: event.state, nodeId: String(node.id), taskId: contract.id });
+                if (event.state !== "produced") deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "provider",
+                  code: "PROVIDER_CALL_FAILED", correlationId: event.requestId ?? runId,
+                  reason: event.state === "timeout" ? "provider-timeout" : event.state === "aborted" ? "provider-aborted"
+                    : event.state === "invalid-response" ? "provider-response-invalid" : "provider-unavailable" }, { kind: "run", runId }, envelope.workflow);
+              },
+              clock,
+              idFactory: provider.wiring.idFactory,
+              deadlineScheduler: deps.scheduler,
+            });
+            if (memberRetry !== undefined && memberRetry.nodeId === node.id && capability === "ocr.approved-snapshot") {
+              clients[capability] = Object.freeze({ ...client, async call(payload: Parameters<typeof client.call>[0]) {
+                const response = await client.call(payload);
+                if (response.state === "produced") {
+                  const result = schemaBoundValueSchema(OcrApprovalReadResultSchema, deriveSchemaHash(OcrApprovalReadResultSchema, "output"))
+                    .parse(response.value).value;
+                  if (result.state === "record") memberRetry.assertRetained(RunCheckpointRecordSchema.shape.output.parse({ schemaHash: deriveSchemaHash(contract.output, "output"),
+                    value: JsonValueSchema.parse(contract.output.parse({ record: result.record })),
+                    ...(retainedRunProtectedBindings(initial).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(initial) }) }));
+                }
+                return response;
+              } });
+            } else clients[capability] = client;
+          }
+          providerClients = Object.freeze(clients);
+        }
+        const ctxExtras = {
+          ...(providerClients === undefined ? {} : { providers: providerClients }),
+          ...(capabilityWiring.artifacts === undefined ? {} : { artifacts: capabilityWiring.artifacts }),
+        } as const;
+
+        const retain = deps.retainCallback === undefined ? undefined : (operation: Promise<unknown>) => {
+          deps.retainCallback?.({ runId, claimGeneration: claim.claimGeneration, attempt: envelope.attempt }, operation);
+        };
         if (need === undefined) {
           raw = await withBrowserActionNotes(clock, () => raceAbortable(
             Promise.resolve().then(() => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } })),

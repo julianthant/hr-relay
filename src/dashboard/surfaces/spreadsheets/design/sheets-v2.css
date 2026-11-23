@@ -1,6 +1,5 @@
 
 /* Dialogs keep their compact size and take the dashboard's blue primary. */
-.sv2-dialog { --ds-accent: var(--ui-info); --ds-accent-hover: var(--ui-info); --ds-accent-fg: var(--ui-canvas); }
 
 /* Page hierarchy from the shared body tokens. */
 .hub-sheets-library .ds-body-section { margin-bottom:var(--ds-settings-section-gap); }
