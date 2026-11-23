@@ -60,7 +60,7 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         if (!active || activeRequest.current !== request) return;
         request.publishPublication(publication);
       } } }),
-      onDay: (next) => {
+      onDay: (next, cursor = next.snapshotCursor) => {
         if (!active) return;
         if (next.day !== day) {
           const error = protocolError("day-request-identity-mismatch");
@@ -68,7 +68,7 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         } else {
           opened = true;
           // A superseded stream can still deliver between the next render and this effect's cleanup; it keeps nothing.
-          if (owns()) keptDays.keep(client, [authorityEpoch, actorId], day, { value: next, at: next.snapshotCursor });
+          if (owns()) keptDays.keep(client, [authorityEpoch, actorId], day, { value: next, at: cursor });
           value = { ...value, day: loaded(next) };
         }
         publish();

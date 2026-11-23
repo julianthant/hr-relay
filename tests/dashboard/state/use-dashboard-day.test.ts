@@ -281,6 +281,18 @@ describe("useDashboardDay — the last known day first", () => {
     assert.equal(day.state === "loaded" ? day.value : undefined, fresh);
   });
 
+  it("keeps a changed day at the change's cursor, so a return after an SSE change shows it at that position", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    const first = frame(DAY, "pc:1");
+    await h.serve(0, first);
+    const changed = { ...first, queueSurfaces: [] };
+    await act(async () => h.subscriptions[0].input.onDay(changed, "pc:4"));
+    await h.show(OTHER_DAY);
+    const back = await h.show(DAY);
+    assert.deepEqual(back?.state.day.state === "loading" ? back.state.day.kept : undefined, { value: changed, at: "pc:4" });
+  });
+
   it("never paints a superseded day's response", async () => {
     const h = await mountDays();
     await h.show(DAY);
