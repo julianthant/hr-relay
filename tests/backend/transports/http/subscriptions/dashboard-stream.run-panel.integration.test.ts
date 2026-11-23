@@ -544,4 +544,26 @@ describe("dashboard stream run panel rows", () => {
     assert.equal(refused.error.code, "DASHBOARD_READ_FAILED");
     assert.equal(timers.live(), 1, "the failed read is read again");
   });
+
+  it("starts no read for a snapshot whose day build throws, so none outlives the reset or moves retry state", async () => {
+    const { w, hub, reader, timers } = await harness();
+    seedTwoRuns(w);
+    const connection = await hub.connect({ day: DAY, run: R });
+    reader.reads[0]?.resolve(1);
+    await take(connection, 2);
+    const before = reader.reads.length;
+
+    const build = w.projection.buildDashboardDayWire.bind(w.projection);
+    const spy = vi.spyOn(w.projection, "buildDashboardDayWire").mockImplementation(() => { throw new Error("synthetic day build failure"); });
+    w.authority.records.delete(R);
+    assert.throws(() => w.projection.refreshRun(R), /synthetic day build failure/u);
+    spy.mockImplementation(build);
+    w.projection.rebuildFromTimeline();
+
+    const started = reader.reads.slice(before);
+    assert.deepEqual(started.map(read => read.signal.aborted), started.map(() => true), "no read started for the failed snapshot outlives the reset");
+    for (const read of started) read.reject(new Error("store unavailable"));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(timers.live(), 0, "a stale completion schedules no retry");
+  });
 });

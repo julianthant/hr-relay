@@ -304,17 +304,20 @@ export class DashboardStreamHub {
     if (cursor === undefined) throw new Error(`projection produced a malformed cursor: ${change.cursor}`);
     if (change.kind === "snapshot") {
       this.#retain({ cursorNumber: cursor, kind: "snapshot" });
+      // Every day is frozen before any read starts, so a failed build leaves no read outside an outbox.
       const byDay = new Map<string, FrozenSnapshot>();
+      for (const { day } of this.#subscribers) {
+        if (byDay.has(day)) continue;
+        const snapshot = this.#snapshot(day);
+        if (snapshot.cursor !== change.cursor) {
+          throw new Error(`dashboard stream snapshot was built at ${snapshot.cursor}, not at its change cursor ${change.cursor}`);
+        }
+        byDay.set(day, snapshot);
+      }
       const reads = this.#readsFor([...this.#subscribers]);
       for (const subscriber of this.#subscribers) {
-        let snapshot = byDay.get(subscriber.day);
-        if (snapshot === undefined) {
-          snapshot = this.#snapshot(subscriber.day);
-          if (snapshot.cursor !== change.cursor) {
-            throw new Error(`dashboard stream snapshot was built at ${snapshot.cursor}, not at its change cursor ${change.cursor}`);
-          }
-          byDay.set(subscriber.day, snapshot);
-        }
+        const snapshot = byDay.get(subscriber.day);
+        if (snapshot === undefined) throw new Error(`dashboard stream froze no snapshot for ${subscriber.day}`);
         this.#push(subscriber, { kind: "snapshot", snapshot, reads: this.#readOf(reads, subscriber) });
       }
       return;
