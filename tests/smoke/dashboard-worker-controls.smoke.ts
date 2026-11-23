@@ -21,10 +21,13 @@ test("worker add and remove settle after delayed or refused replies and clear on
   let added = false;
   let version = 0;
   let reply: ReturnType<typeof Promise.withResolvers<boolean>> | undefined;
-  const source = await page.request.get(new URL(`/api/v1/dashboard?day=${seeded.day}`, seeded.baseUrl).href);
-  expect(source.ok()).toBe(true);
-  const day = DashboardDayWireSchema.parse(await source.json());
-  const workerDay = () => version === 0 ? day : DashboardDayWireSchema.parse({
+  const readSeededDay = async () => {
+    const source = await page.request.get(new URL(`/api/v1/dashboard?day=${seeded.day}`, seeded.baseUrl).href);
+    expect(source.ok()).toBe(true);
+    return DashboardDayWireSchema.parse(await source.json());
+  };
+  const initialDay = await readSeededDay();
+  const workerDay = (day = initialDay) => version === 0 ? day : DashboardDayWireSchema.parse({
       ...day,
       workerAuthority: { state: "present", members: [...day.workerAuthority.members, ...(added ? [slot] : [])] },
       workerCards: [...day.workerCards, ...(added ? [card] : [])],
@@ -46,9 +49,9 @@ test("worker add and remove settle after delayed or refused replies and clear on
       return new Response(body, { status: response.status, headers: response.headers });
     };
   });
-  // Give subsequent commands the same snapshot that confirmed the previous command's HTTP readback.
-  const publishWorkers = () => {
-    const snapshot = workerDay();
+  // A new stream connection advances the server cursor, so overlay the worker change on a fresh day.
+  const publishWorkers = async () => {
+    const snapshot = workerDay(await readSeededDay());
     const envelope = DashboardStreamEnvelopeSchema.parse({
       type: "snapshot", topic: "dashboard-day", cursor: snapshot.snapshotCursor, position: 0, payload: snapshot,
     });
