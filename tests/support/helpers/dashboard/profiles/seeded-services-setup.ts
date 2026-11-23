@@ -129,7 +129,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
       sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
     const scripted = scripting === undefined ? undefined : createScriptedExecutor({ database, clock, lifecycle, emitter: spans, library,
-      profilePath: scripting.profilePath, reportWorker: scripting.reportWorker, publish: () => { projection.ingestFromTimeline(); } });
+      profilePath: scripting.profilePath, reportWorker: scripting.reportWorker });
     // A scripted plan binds the active runtime config, as production plans do.
     const activeConfig = scripting === undefined ? undefined : database.authority.runtimeConfig.get();
     if (scripting !== undefined && activeConfig === undefined) throw new Error("the seeded authority holds no runtime config");
@@ -213,7 +213,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
           work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
       },
-      preflight: healthyDashboardPreflightExecutor(clock),
+      preflight: { ...healthyDashboardPreflightExecutor(clock), read: () => ({ state: "present" as const, report: healthyDashboardPreflightReport(clock) }) },
       applicationLifecycle: createApplicationLifecycle({ database,
         requestQuit: () => { throw new Error("seeded fixture cannot quit the process"); },
         onFailure: error => { throw error; },
@@ -285,7 +285,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     });
 
 
-  return { app, hub, scripted, notificationInbox: trustNotifications?.inbox };
+  return { app, hub, scripted, lifecycle, notificationInbox: trustNotifications?.inbox };
   }
 
   return { composeSeededServices };
