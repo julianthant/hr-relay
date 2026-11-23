@@ -64,8 +64,11 @@ function recordFromJson(json: string): TimelineEventRecord {
 }
 
 // Validate mirrored columns on reads; external writes can bypass SQLite checks.
-// A predecessor store (before migration 39) still holds its debug rows in the timeline, pinned ones as protected.
-export function timelineEventFromRow(raw: unknown, predecessorDebug = false): TimelineEventRecord {
+export const timelineEventFromRow = (raw: unknown): TimelineEventRecord => storedTimelineEvent(raw, false);
+/** A predecessor store (before migration 39) still holds its debug rows in the timeline, pinned ones as protected. */
+export const predecessorTimelineEventFromRow = (raw: unknown): TimelineEventRecord => storedTimelineEvent(raw, true);
+
+function storedTimelineEvent(raw: unknown, predecessorDebug: boolean): TimelineEventRecord {
   const parsedRow = RowSchema.safeParse(raw);
   if (!parsedRow.success) throw new TimelineRecordError("timeline-record-invalid");
   const row = parsedRow.data;

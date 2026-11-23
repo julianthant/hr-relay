@@ -109,7 +109,7 @@ import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type
 import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
-import { DEBUG_EVENTS_MIGRATION,TimelineRecordError,createTimelineRepository,debugEventFromRow,timelineEventFromRow } from "./timeline-repository.js";
+import { DEBUG_EVENTS_MIGRATION,TimelineRecordError,createTimelineRepository,debugEventFromRow,predecessorTimelineEventFromRow,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
@@ -1482,7 +1482,7 @@ function validateStoredRow(context: StoredRowContext, table: AuthorityTableName,
         else if (table === "assistant_conversations") assistantConversationFromRow(raw);
         else if (table === "assistant_messages") assistantMessageFromRow(raw);
         else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
-        else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw,expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version),false,read);
+        else if (table === "timeline_events") assertTimelineOwner(database,(expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow)(raw),false,read);
         else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
