@@ -107,9 +107,11 @@ export class DashboardPage {
     await expect(this.toasts).toHaveCount(0);
   }
 
-  /** The press raised exactly one toast, and nothing on the page reads as internal text. */
-  async expectOneToast(text: string | RegExp): Promise<void> {
+  /** The press raised exactly one toast; `standing` names a state toast the page shows regardless of the press (a workflow with no worker). Nothing on the page reads as internal text. */
+  async expectOneToast(text: string | RegExp, standing?: string): Promise<void> {
     await expect(this.toasts.filter({ hasText: text })).toHaveCount(1);
+    if (standing !== undefined) await expect(this.toasts.filter({ hasText: standing })).toHaveCount(1);
+    await expect(this.toasts, "no other toast").toHaveCount(standing === undefined ? 1 : 2);
     expect(await noBannedText({ page: this.page } as StateRuleContext), "text an operator must never read").toEqual([]);
   }
 
