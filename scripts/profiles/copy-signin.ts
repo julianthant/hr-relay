@@ -1,13 +1,13 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, writeSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { mkdirSync, realpathSync, writeSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseEnv } from "node:util";
 import type { BrowserContext } from "playwright";
 import { z } from "zod";
-import { applicationDataWorkspace, rebuildRuntimeIsolation, runtimeProfile } from "../../src/backend/app/config/runtime-isolation.js";
+import { applicationDataWorkspace, rebuildRuntimeIsolation, runtimeProfile, useCopySigninFixtureWorkspace } from "../../src/backend/app/config/runtime-isolation.js";
 import { probeOwnedViteServer } from "../../src/backend/app/host/local-vite-probe.js";
 import { noSymlinkAncestry, readPrivateFile, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
 import { createDashboardClient, type DashboardClient } from "../../src/dashboard/client/index.js";
@@ -57,6 +57,17 @@ export function assertCopySigninTarget(profile: CopyProfile, workspace: string,
   } catch { throw new CopySigninError("copy-signin-target-refused"); }
 }
 
+/** Test fixtures only: binds this process to an existing temporary copy workspace before anything reads or writes one. */
+export function useCopySigninFixture(profile: CopyProfile, workspace: string): void {
+  let real: string;
+  try { real = realpathSync(workspace); } catch { throw new CopySigninError("copy-signin-target-refused"); }
+  if (runtimeProfile !== profile || real !== workspace || basename(workspace) !== runtimeProfiles[profile].namespace
+    || !dirname(workspace).startsWith(`${realpathSync(tmpdir())}${sep}`) || workspace === applicationDataWorkspace(undefined, profile)) {
+    throw new CopySigninError("copy-signin-target-refused");
+  }
+  useCopySigninFixtureWorkspace(workspace);
+}
+
 type ProfileDashboard = Pick<DashboardClient, "readProfileSession" | "resumeProfile" | "signInProfile" | "signUpProfile"
   | "openProfileOnboardingPortal" | "completeProfileOnboarding">;
 
@@ -98,8 +109,9 @@ function operatorCredentials(): SignInCredentials {
   return readCopySigninCredentials(join(homedir(), ".config", "relay", "operator-signin.env"));
 }
 
-async function runCopyBackend(profile: CopyProfile): Promise<void> {
+async function runCopyBackend(profile: CopyProfile, fixtureWorkspace: string | undefined): Promise<void> {
   if (process.send === undefined || !process.connected || runtimeProfile !== profile) throw new CopySigninError("copy-signin-profile-refused");
+  if (fixtureWorkspace !== undefined) useCopySigninFixture(profile, fixtureWorkspace);
   assertCopySigninTarget(profile, applicationDataWorkspace(undefined, profile), rebuildRuntimeIsolation);
   const { captureBuildId } = await import("../../src/backend/runtime/build-id.js");
   captureBuildId();
@@ -131,7 +143,8 @@ async function waitForFrontend(port: number, ownerNonce: string, signal: AbortSi
   throw new CopySigninError("copy-signin-dashboard-not-owned");
 }
 
-async function openCopyDashboard(profile: CopyProfile): Promise<void> {
+async function openCopyDashboard(profile: CopyProfile, fixtureWorkspace: string | undefined): Promise<void> {
+  if (fixtureWorkspace !== undefined) useCopySigninFixture(profile, fixtureWorkspace);
   const ports = runtimeProfiles[profile], workspace = applicationDataWorkspace(undefined, profile);
   assertCopySigninTarget(profile, workspace, ports);
   const origin = `http://127.0.0.1:${String(ports.frontendPort)}`;
@@ -139,6 +152,7 @@ async function openCopyDashboard(profile: CopyProfile): Promise<void> {
   let approvals = 0, context: BrowserContext | undefined;
   const finished = runDevDashboard({ profile, signals, copySignin: {
     backendEntry: fileURLToPath(import.meta.url),
+    ...(fixtureWorkspace === undefined ? {} : { fixtureWorkspace }),
     ready: ready.resolve,
     phone() { approvals = 1; },
   } }).finally(() => { stop.abort(); });
@@ -154,7 +168,7 @@ async function openCopyDashboard(profile: CopyProfile): Promise<void> {
     statDirectory(browserDirectory, "copy sign-in browser", 0o700);
     const { chromium } = await import("playwright");
     context = await chromium.launchPersistentContext(browserDirectory, {
-      headless: false, channel: "chromium", acceptDownloads: false,
+      headless: fixtureWorkspace !== undefined, channel: "chromium", acceptDownloads: false,
       args: ["--no-proxy-server", "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
     });
     const closed = new Promise<void>(resolve => { context?.once("close", () => { resolve(); }); });
@@ -199,11 +213,12 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
   delete process.env.DEBUG;
   try {
     const args = process.argv.slice(2);
-    const child = args[0] === "--owned-backend" && args.length === 2;
-    const profile = CopyProfileSchema.safeParse(args.length === 1 ? args[0] : child ? args[1] : undefined);
+    const child = args[0] === "--owned-backend" && (args.length === 2 || args.length === 3);
+    const fixture = !child && args.length === 3 && args[1] === "--fixture-workspace";
+    const profile = CopyProfileSchema.safeParse(args.length === 1 || fixture ? args[0] : child ? args[1] : undefined);
     if (!profile.success) throw new CopySigninError("Usage: tsx scripts/profiles/copy-signin.ts <staging|development>");
-    if (child) await runCopyBackend(profile.data);
-    else await openCopyDashboard(profile.data);
+    if (child) await runCopyBackend(profile.data, args[2]);
+    else await openCopyDashboard(profile.data, fixture ? args[2] : undefined);
   } catch (error) {
     process.stderr.write(`${error instanceof CopySigninError ? error.message : "copy-signin-failed"}\n`);
     process.exitCode = 1;

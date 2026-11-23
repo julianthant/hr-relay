@@ -29,7 +29,7 @@ export interface DashboardLauncherOptions {
   readonly frontendOwnerFile?: string;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
-  readonly copySignin?: Readonly<{ backendEntry: string; ready(launchNonce: string): void; phone(): void }>;
+  readonly copySignin?: Readonly<{ backendEntry: string; fixtureWorkspace?: string; ready(launchNonce: string): void; phone(): void }>;
 }
 
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
@@ -135,7 +135,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
   }
   const backend = launch("bff", ["--conditions=development", "--import", "tsx",
     copySignin?.backendEntry ?? fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)),
-    ...(copySignin === undefined ? ["cli", "dashboard"] : ["--owned-backend", profile])], true);
+    ...(copySignin === undefined ? ["cli", "dashboard"] : ["--owned-backend", profile, ...(copySignin.fixtureWorkspace === undefined ? [] : [copySignin.fixtureWorkspace])])], true);
   progress = setInterval(() => {
     if (stopping || ready) return;
     writeError("[dashboard] still starting (preparing saved data)...\n");

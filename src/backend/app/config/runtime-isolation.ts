@@ -36,7 +36,17 @@ function currentApplicationDataHostFacts(): ApplicationDataHostFacts {
     : { platform, homeDirectory: userInfo().homedir };
 }
 
-export function applicationDataWorkspace(host: ApplicationDataHostFacts = currentApplicationDataHostFacts(), profile: RuntimeProfile = runtimeProfile): string {
+let copySigninFixtureWorkspace: string | undefined;
+
+/** Copy sign-in fixtures only: the caller has proved the workspace is a temporary fixture root for this non-production profile. */
+export function useCopySigninFixtureWorkspace(workspace: string): void {
+  if (runtimeProfile === "production" || copySigninFixtureWorkspace !== undefined) throw new Error("copy-signin-target-refused");
+  copySigninFixtureWorkspace = workspace;
+}
+
+export function applicationDataWorkspace(host?: ApplicationDataHostFacts, profile: RuntimeProfile = runtimeProfile): string {
+  if (host === undefined && copySigninFixtureWorkspace !== undefined && profile === runtimeProfile) return copySigninFixtureWorkspace;
+  host ??= currentApplicationDataHostFacts();
   const { namespace } = runtimeProfiles[profile];
   if (host.platform !== "win32") {
     if (!posix.isAbsolute(host.homeDirectory) || posix.resolve(host.homeDirectory) !== host.homeDirectory) throw new Error("application-data-home-invalid");
