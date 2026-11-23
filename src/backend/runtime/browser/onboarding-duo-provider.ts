@@ -143,6 +143,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   type OwnedBrowser = {
     owner: DraftDuoBrowserOwner; profileDirectory: string; launch: BrowserRootLaunch; rootInput: BrowserRootLaunchInput; context?: BrowserContext; worker?: Worker;
     launching?: Promise<BrowserContext>; startup?: Promise<void>; pump?: Promise<void>; setup?: Page; setupOpening?: Promise<Page>; portal?: Page; portalOpening?: Promise<void>;
+    enrollingCopy?: true;
     revoked: boolean; contextClosed: boolean; launchStarted: boolean; closureFailure?: unknown; pumpFailure?: unknown; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
     targets: Map<Page, { tabId: number; windowId: number }>; platforms: Map<Page, Promise<DuoPlatformAuthenticator>>; relayTarget?: NativeFocusTarget;
     process?: OwnedBrowserProcess; draining?: Promise<void>; profileRemovalProved?: true;
@@ -436,7 +437,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   }
   async function selectSetup(resource: ProviderSession): Promise<void> {
     const session = browser;
-    if (!session || session.revoked || !session.setup || session.setup.isClosed()) return;
+    if (!session || session.revoked || session.enrollingCopy || !session.setup || session.setup.isClosed()) return;
     if (session.context !== resource.context || session.worker !== resource.worker || session.profileDirectory !== resource.profileDirectory || !sameOwner(session.owner, resource.attempt)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     if (!session.worker || session.setup.url() !== new URL("options.html", session.worker.url()).href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     await selectPage(session, session.setup);
@@ -612,7 +613,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
         if (options.copySignin !== undefined && session.owner.readState().state === PROFILE_ONBOARDING_STATE) {
-          await enrollCopy(session, page, landing, options.copySignin);
+          session.enrollingCopy = true;
+          try { await enrollCopy(session, page, landing, options.copySignin); }
+          finally { delete session.enrollingCopy; }
         } else if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
         browserCurrent(session);
       } catch (error) {

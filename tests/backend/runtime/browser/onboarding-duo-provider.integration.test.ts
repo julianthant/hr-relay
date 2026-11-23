@@ -421,7 +421,7 @@ it("copy enrollment clicks the owned Duo tab after arming and records both Fast 
     opening = profile.session.openOnboardingPortal(draft.token, draft.operationId);
     void opening.catch(() => undefined);
     const read = () => profile.session.readOnboarding(draft.token, draft.operationId);
-    await Promise.race([opening, expect.poll(() => read().methods.key.state, { timeout: 10_000 }).toBe("complete")]);
+    await Promise.race([opening, expect.poll(() => read().step, { timeout: 10_000 }).toBe("ready")]);
     const ready = await opening;
     for (const method of ["key", "touch"] as const) {
       assert.equal(ready.methods[method].state, "complete");
