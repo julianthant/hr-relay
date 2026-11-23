@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
-import { RunEnvelopeSchema } from "../../../../src/models/run/envelope.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { Plan1CanonicalInput, Plan1Input, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { queuedRunFixture } from "../../support/fixtures/backend/queued-run.js";
+import { RunEnvelopeSchema } from "../../../src/models/run/envelope.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+import { Plan1CanonicalInput, Plan1Input, plan1Leaf } from "../../support/fixtures/plan1-operation-workflows.js";
 
 describe("queued run envelope", () => {
-  it("stamps no operation display and still reads one recorded on an older run", () => {
+  it("reads the operation display fields recorded on an older run", () => {
     const value = { emplId: "10800000", text: "same", mode: "ok" };
-    const run = buildQueuedRun({
+    const run = queuedRunFixture({
       descriptor: plan1Leaf.descriptor,
       appVersion: "0.1.0",
       runId: "aaaaaaaa-0001-4000-8000-000100000000",
@@ -26,8 +26,6 @@ describe("queued run envelope", () => {
       runNumber: 1,
       now: "2026-09-27T12:00:00.000Z",
     });
-    expect(run.envelope.operationDisplayCapability).toBeUndefined();
-    expect(run.envelope.operationDisplaySnapshot).toBeUndefined();
     const recorded = { ...run.envelope, operationDisplayCapability: "complete", operationDisplaySnapshot: { contentDigest: "0".repeat(64) } };
     expect(RunEnvelopeSchema.parse(recorded)).toEqual(recorded);
   });

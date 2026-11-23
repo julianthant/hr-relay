@@ -16,9 +16,6 @@ export function commitGeneratedCheckpoint(input:Readonly<{
   for(const update of input.updates)repositories.artifactOutbox.insert(update);
  });
 }
-export async function projectGeneratedUpdates(projector:Readonly<{projectOutbox(ids:readonly string[]):Promise<Readonly<{projected:number}>>}>,ids:readonly string[]):Promise<void>{
- await projector.projectOutbox(ids);
-}
 
 /** IDs commit to the complete source checkpoint, not the workbook's reusable key. */
 export function generatedUpdateId(checkpoint: RunCheckpointRecord, row: DerivedArtifactProjectionRow): string {

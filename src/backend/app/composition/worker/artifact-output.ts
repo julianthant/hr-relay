@@ -4,7 +4,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import type { ContentAddressedArtifactWriter } from "../../../../workflow-kit/artifacts.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
-import { createArtifactSinkProjector, type ArtifactSinkProjector } from "../../../storage/artifacts/artifact-sink-projector.js";
+import { createArtifactSinkProjector } from "../../../storage/artifacts/artifact-sink-projector.js";
 import { createNamedFileOutputSink } from "../../../storage/artifacts/named-file-output-sink.js";
 import { fixedLayoutOutputPath,readFixedLayoutIntent } from "../../../storage/maintenance/fixed-layout.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../../storage/source-closure.js";
@@ -15,7 +15,7 @@ import { i9CheckTrackerTable } from "../../../../rules/i9-check/workbook.js";
 
 export function composeWorkerArtifactProjector(input: Readonly<{
   admission: RuntimeAdmission; database: AuthorityDatabase; artifacts: ContentAddressedArtifactWriter; clock: Clock;
-}>): ArtifactSinkProjector {
+}>) {
   const admission = requireRuntimeAdmission(input.admission), { database } = input;
   const assertCurrent = () => admission.assertProfileRuntime();
   assertCurrent();

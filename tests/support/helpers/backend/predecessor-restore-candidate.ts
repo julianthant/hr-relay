@@ -16,7 +16,7 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import { readRestoreWriteFences, restoreWriteFenceDigest } from "../../../../src/backend/storage/sqlite/restore-write-fences.js";
+import { readRestoreWriteFences } from "../../../../src/backend/storage/sqlite/restore-write-fences.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { runClaim } from "../../../../src/models/run/record.js";
@@ -88,7 +88,7 @@ export async function capturePredecessorRestoreFixture(replaced: boolean) {
   const input: AuthorityRestoreInput = { operationId, profile, authorityPath: f.path, stagedPath, suspectPath, backupPath, manifestPath,
     manifestSha256: fileIdentity(manifestPath).sha256, backupSha256: manifest.sha256, sourceDatabaseIdentity: manifest.sourceDatabaseIdentity,
     authorityGeneration: manifest.authorityGeneration, authorityContentFingerprint: manifest.authorityContentFingerprint,
-    browserMembershipDigest: originalDigest, retainedFilesDigest: restoreRetainedFilesDigest(f.stateRoot), unresolvedWriteDigest: restoreWriteFenceDigest(fences),
+    browserMembershipDigest: originalDigest, retainedFilesDigest: restoreRetainedFilesDigest(f.stateRoot), unresolvedWriteDigest: hash(fences),
     backupTime: manifest.createdAt, restoredAt: systemClock.now().toISOString(), live: fileIdentity(f.path), staged: fileIdentity(stagedPath), suspect: fileIdentity(suspectPath), companions };
   writeFileSync(browserPath, canonicalJsonStringify(prior));
   stopped.beginAuthorityRestore(input, operation);
