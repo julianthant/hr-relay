@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement, Suspense, useEffect } from "react";
+import { act, Component, createElement, Suspense, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, it } from "vitest";
-import { preloadable } from "../../../src/dashboard/lib/preloadable.js";
+import { afterEach, it, vi } from "vitest";
+import { CodeLoading, preloadable } from "../../../src/dashboard/lib/preloadable.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
@@ -42,4 +42,31 @@ it("loads again after a failed load", async () => {
   await assert.rejects(page.preload(), /offline/);
   await page.preload();
   assert.equal(attempts, 2);
+});
+
+class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  override render() { return this.state.failed ? createElement("button", { onClick: () => this.setState({ failed: false }) }, "Retry") : this.props.children; }
+}
+
+it("fails code still loading at the deadline into the boundary, whose retry waits on the same load", async () => {
+  vi.useFakeTimers();
+  try {
+    let loads = 0;
+    let release: (() => void) | undefined;
+    const page = preloadable(() => { loads += 1; return new Promise<() => ReturnType<typeof createElement>>(resolve => { release = () => resolve(() => createElement("b", null, "ready")); }); });
+    const host = document.createElement("div"); root = createRoot(host);
+    await act(async () => root?.render(createElement(Boundary, null, createElement(Suspense, { fallback: createElement(CodeLoading, { deadlineMs: 1_000 }) }, createElement(page.Component, {})))));
+    assert.equal(host.innerHTML, '<span data-loading-layout=""></span>');
+    await act(async () => { await vi.advanceTimersByTimeAsync(999); });
+    assert.equal(host.innerHTML, '<span data-loading-layout=""></span>');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    assert.equal(host.textContent, "Retry");
+    await act(async () => host.querySelector("button")?.click());
+    assert.equal(host.innerHTML, '<span data-loading-layout=""></span>');
+    await act(async () => release?.());
+    assert.equal(host.textContent, "ready");
+    assert.equal(loads, 1);
+  } finally { vi.useRealTimers(); }
 });

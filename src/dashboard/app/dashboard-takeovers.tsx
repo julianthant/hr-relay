@@ -12,6 +12,7 @@ import { IntakeWorkspace } from "../surfaces/intake/intake.js";
 import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
 import type { DemoTheme } from "../ds/ui.js";
 import { PanelBoundary } from "../surfaces/shared/panel-boundary.js";
+import { STARTUP_READ_DEADLINE_MS } from "./startup/first-screen.js";
 import {
 RUN_START_DOOR_ID,
 type DashboardTakeoverCloseFocusTargetId
@@ -24,7 +25,7 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
-// The pages' code loads with the dashboard, under the startup loader, which waits for a page the URL opens; a failed load reaches PanelBoundary.
+// The pages' code loads with the dashboard, under the startup loader, which waits for a page the URL opens; a failed or stalled load reaches PanelBoundary.
 const settingsPage = preloadable(() => import("../surfaces/settings/settings.js").then(module => module.SettingsPage));
 const activityReport = preloadable(() => import("../surfaces/activity/activity.js").then(module => module.ActivityReport));
 const workflowExplorer = preloadable(() => import("../surfaces/explorer/explorer.js").then(module => module.WorkflowExplorer));
@@ -37,7 +38,7 @@ function SettingsLoading({ onExitGuardChange }: { onExitGuardChange: (guard: Set
    onExitGuardChange(proceed => proceed());
    return () => onExitGuardChange(undefined);
  }, [onExitGuardChange]);
- return <CodeLoading />;
+ return <CodeLoading deadlineMs={STARTUP_READ_DEADLINE_MS} />;
 }
 export function DashboardTakeovers({client,useActivityReport,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
@@ -72,7 +73,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
               accountPage={accountPage}
               section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
-              dataContent={dataContent === undefined ? undefined : <Suspense fallback={<CodeLoading />}>{dataContent}</Suspense>}
+              dataContent={dataContent === undefined ? undefined : <Suspense fallback={<CodeLoading deadlineMs={STARTUP_READ_DEADLINE_MS} />}>{dataContent}</Suspense>}
               actorId={boot.actor.id}
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
