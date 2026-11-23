@@ -3,6 +3,8 @@ import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-
 import { approveScriptedGate, seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
 import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, I9_CHECK_START_SCRIPT, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
 import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import readXlsxFile from "read-excel-file/node";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
 import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
@@ -256,6 +258,9 @@ test("I-9 Check Start: start, both PDF reviews approved, each person checked, do
   await expect(row).toContainText("Done");
   await expect(row).not.toContainText("Running");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-workbook", eid: "" }]);
+  const tracker = (await readXlsxFile(join(seeded.scripted.documentsDirectory(), "i9-check-tracker.xlsx"))).find(sheet => sheet.sheet === "I-9 Check");
+  expect(tracker?.data.slice(1).map(cells => [cells[0], cells[2], cells[5], cells[6]])).toEqual([
+    ["Example, Avery", "10000001", "Yes", "Keep"], ["Example, Blair", "10000002", "Yes", "Keep"]]);
 
   await dashboard.settleReads();
   await page.reload();
