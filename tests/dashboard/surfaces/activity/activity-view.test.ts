@@ -64,11 +64,11 @@ it('resets the workflow filter to All when the selected workflow leaves the peri
   assert.doesNotMatch(document.body.textContent, /No workflow activity in this period/);
 });
 
-it('counts a parked run as open, not as finished', async () => {
+it('counts the chart\'s runs in the header and labels open runs as a separate count', async () => {
   if (data.state !== 'loaded') throw new Error('sample not loaded');
   const [first] = data.report.analytics.workflows; assert(first);
   await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, running: 1, workflows: [{ ...first, done: 0, failed: 0, attention: 1 }] } } });
-  assert.match(document.body.textContent, /0 finished runs · 1 still open/);
+  assert.match(document.body.textContent, /1 run in this period · 1 open now/);
 });
 
 const days = (count: number) => Array.from({ length: count }, (_, index) => `2026-09-${String(20 + index)}`);
@@ -110,7 +110,7 @@ it('shows each assistant section empty when the range has no assistant use', asy
 
 it('leaves the run sections as they were', async () => {
   await render(withAssistant([1], [1]));
-  assert.match(document.body.textContent, /finished runs/);
+  assert.match(document.body.textContent, /\d+ runs? in this period/);
   assert(document.querySelector('figure[aria-label="Runs per day"]'));
   assert(document.querySelector('table[aria-label="Workflows"]'));
 });
@@ -128,7 +128,7 @@ it('offers one Retry beneath a plain sentence when the report cannot be shown', 
 it('says one plain sentence for an empty period and keeps the period control', async () => {
   await render(activitySample(ACTIVITY_SAMPLE_RANGE, 'empty'));
   assert.match(document.body.textContent, /No runs in this period/);
-  assert.doesNotMatch(document.body.textContent, /0 finished runs|Open a row to see what went wrong/);
+  assert.doesNotMatch(document.body.textContent, /0 runs in this period|Open a row to see what went wrong/);
   assert([...document.querySelectorAll('fieldset legend')].some(item => item.textContent === 'Report period'));
 });
 
@@ -213,4 +213,22 @@ it('a held empty report names its own period until the chosen period arrives', a
   assert.match(document.body.textContent, /No runs in this period/);
   assert.doesNotMatch(document.body.textContent, new RegExp(analyticsPeriodLabel(ACTIVITY_SAMPLE_RANGE)));
   assert.equal(document.querySelector('[data-analytics-stale]'), null);
+});
+
+it('agrees on one run total across the header, the legend and the table, with one name per state', async () => {
+  if (data.state !== 'loaded') throw new Error('sample not loaded');
+  await render(data);
+  const rows = data.report.analytics.workflows;
+  const total = rows.reduce((n, row) => n + row.done + row.failed + row.attention, 0);
+  assert.match(document.body.textContent, new RegExp(`${total} runs? in this period`));
+  const tableTotal = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr:not([data-open]) td:nth-child(3)')].reduce((n, cell) => n + Number(cell.textContent), 0);
+  assert.equal(tableTotal, total);
+  await act(async () => (document.querySelector('button[aria-expanded]') as HTMLButtonElement).click());
+  assert.doesNotMatch(document.body.textContent, /Waiting/);
+  assert.match(document.body.textContent, /Needs attention/);
+});
+
+it('opens runs with a real button', async () => {
+  await render(data);
+  assert.equal(document.querySelector('a[href="#"]'), null);
 });

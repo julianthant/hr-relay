@@ -41,16 +41,17 @@ export function ActivityView({ data, range, today, onRange, onExport, onRetry, n
     catch { if (requestRef.current === request && latest.current === report) setExportError({ report, reason: 'CSV export unavailable. Try again from this report.' }); }
     finally { if (requestRef.current === request) { requestRef.current = undefined; setExporting(undefined); } }
   };
+  const browsing = data.state === 'loaded' && !!selection && !!onSelection;
   return <section aria-label="Analytics report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     {selection && onSelection && data.state === 'loaded' && <ActivityBreadcrumbs report={data.report} selection={selection} onSelection={onSelection} browse={browse} />}
-    <PageHeading title="Analytics" description="How your workflows are going." />
-    <AnalyticsToolbar range={range} today={today} onRange={onRange}
+    {!browsing && <PageHeading title="Analytics" description="How your workflows are going." />}
+    {!browsing && <AnalyticsToolbar range={range} today={today} onRange={onRange}
       workflows={data.state === "loaded" ? data.report.analytics.workflows : []} workflow={workflow} onWorkflow={setWorkflow}
-      exportButton={<span className="flex items-center gap-2">{held && <StaleMark />}<Button variant="secondary" aria-busy={!!exporting || undefined} disabled={data.state !== "loaded" || pending || blocked || !onExport || !!exporting} icon={exporting ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void exportCsv()}>Export</Button></span>} />
+      exportButton={<span className="flex items-center gap-2">{held && <StaleMark />}<Button variant="secondary" aria-busy={!!exporting || undefined} disabled={data.state !== "loaded" || pending || blocked || !onExport || !!exporting} icon={exporting ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void exportCsv()}>Export</Button></span>} />}
     {exportError?.report === data && <p role="alert" className="m-0 text-body text-ui-danger">{exportError.reason}</p>}
     {notice && data.state === "loaded" && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}
     <div className="min-w-0" aria-busy={data.state === "loading" || pending || held || undefined}>
-      {data.state === "loaded" ? selection && onSelection ? <ActivityDrilldown report={data.report} selection={selection} onSelection={onSelection} browse={browse} pending={pending} blocked={blocked} /> : noRuns(data.report.analytics) ? <EmptyState icon={<BarChart3 aria-hidden className="size-6 text-ui-muted" />} title="No runs in this period" description={held ? analyticsPeriodLabel(data.report.range) : "Pick another period to see how your workflows are going."} /> : <AnalyticsSections data={data.report.analytics} range={held ? data.report.range : range} workflow={workflow} onRange={onRange} openRunsLocked={held} onOpenRuns={onSelection && data.report.runs ? id => onSelection({ metric: data.report.analytics.workflows.find(row => row.id === id)?.failed ? "failed" : "completed", workflow: id, page: 0 }) : undefined} />
+      {data.state === "loaded" ? selection && onSelection ? <ActivityDrilldown report={data.report} selection={selection} onSelection={onSelection} browse={browse} pending={pending} blocked={blocked} onRetry={onRetry} /> : noRuns(data.report.analytics) ? <EmptyState icon={<BarChart3 aria-hidden className="size-6 text-ui-muted" />} title="No runs in this period" description={held ? analyticsPeriodLabel(data.report.range) : "Pick another period to see how your workflows are going."} /> : <AnalyticsSections data={data.report.analytics} range={held ? data.report.range : range} workflow={workflow} onRange={onRange} openRunsLocked={held} onOpenRuns={onSelection && data.report.runs ? id => onSelection({ metric: data.report.analytics.workflows.find(row => row.id === id)?.failed ? "failed" : "completed", workflow: id, page: 0 }) : undefined} />
         : data.state === "loading" ? <ActivitySkeleton />
         : onRetry ? <FailureNotice sentence="Couldn't load Analytics." action={{ label: "Retry", onClick: onRetry }} />
         : <p role="alert" className="m-0 text-body text-ui-danger">{data.reason}</p>}
