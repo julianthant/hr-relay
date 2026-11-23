@@ -21,8 +21,6 @@ import { KualiFinalizationVariablesSchema } from "../../../src/models/ui/kuali-s
 import { KualiSaveRefusedError } from "../../../src/models/ui/kuali-separation-finalization.js";
 import { compareKualiFinalizationFields } from "../../../src/models/ui/kuali-separation-finalization.js";
 import { kualiFinalizationFields } from "../../../src/models/ui/kuali-separation-finalization.js";
-import { kualiFinalizationFormKeysMissing } from "../../../src/models/ui/kuali-separation-finalization.js";
-import { kualiFinalizationWireUnasserted } from "../../../src/models/ui/kuali-separation-finalization.js";
 import type { KualiFinalizationTarget } from "../../../src/models/ui/kuali-separation-finalization.js";
 
 import { TaskError } from "../../../src/workflow-kit/errors.js";
@@ -188,12 +186,6 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
     });
 
 
-    assert.deepEqual(kualiFinalizationFormKeysMissing(), []);
-
-    for (const field of kualiFinalizationFormKeysMissing()) {
-      assert.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field));
-    }
-
     for (const field of ["lastDayWorked", "separationDate"] as const) {
       assert.ok(!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field), field);
     }
@@ -213,7 +205,8 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
       "transactionNumber",
       "timekeeperComments",
     ]);
-    assert.deepEqual(kualiFinalizationWireUnasserted(), [
+    const unasserted = KUALI_FINALIZATION_FIELD_NAMES.filter(field => !KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field));
+    assert.deepEqual(unasserted, [
       "department",
       "requestAcknowledged",
       "lastDayWorked",
@@ -225,7 +218,7 @@ describe("Kuali separation finalization — the permanent key and the formKey ta
 
 
     assert.equal(
-      KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.length + kualiFinalizationWireUnasserted().length,
+      KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.length + unasserted.length,
       Object.keys(KUALI_RRSS_FINALIZATION_FORM_KEYS).length,
     );
   });

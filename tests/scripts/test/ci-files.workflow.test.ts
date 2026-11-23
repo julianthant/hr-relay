@@ -134,10 +134,10 @@ describe("development fast check", () => {
     expect(job(checks, "static")).toContain("if: github.event_name == 'pull_request' && inputs.kind != 'fast'");
   });
 
-  it("decides on the schedule and starts every full job only on the decision", () => {
+  it("decides only for scheduled and dispatched runs on development and starts every full job only on the decision", () => {
     expect(development).toContain("schedule:\n    - cron: '7,27,47 * * * *'");
     const decide = job(development, "decide");
-    expect(decide).toContain("if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}");
+    expect(decide).toContain("if: ${{ github.ref == 'refs/heads/development' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}");
     expect(decide).toContain("checks: read");
     expect(decide).toContain("sparse-checkout: scripts/ci");
     expect(decide).toContain("decideFullRun({ github, context, now: Date.now() })");

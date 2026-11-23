@@ -63,6 +63,7 @@ import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import type { TestClock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
+import { protectedSecretSource } from "../../protected-secret-source.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
 createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
@@ -128,7 +129,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
       sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
     const scripted = scripting === undefined ? undefined : createScriptedExecutor({ database, clock, lifecycle, emitter: spans, library,
-      profilePath: scripting.profilePath, reportWorker: scripting.reportWorker, publish: () => { projection.ingestFromTimeline(); } });
+      profilePath: scripting.profilePath, reportWorker: scripting.reportWorker });
     // A scripted plan binds the active runtime config, as production plans do.
     const activeConfig = scripting === undefined ? undefined : database.authority.runtimeConfig.get();
     if (scripting !== undefined && activeConfig === undefined) throw new Error("the seeded authority holds no runtime config");
@@ -159,7 +160,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       authorityRead: database,
       descriptors,
       clock,
-      ...(scripting === undefined ? {} : { workbooks: library }),
+      ...(scripting === undefined ? {} : { workbooks: library, protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper" }) }),
       ids: scripting === undefined ? { uuid: () => uuidOf(8000) } : sequentialIdFactory("8"),
       planTtlMs: 10 * 60 * 1000,
       configFingerprint: activeConfig?.configFingerprint ?? CONFIG_FINGERPRINT,
@@ -284,7 +285,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     });
 
 
-  return { app, hub, scripted, notificationInbox: trustNotifications?.inbox };
+  return { app, hub, scripted, lifecycle, notificationInbox: trustNotifications?.inbox };
   }
 
   return { composeSeededServices };
