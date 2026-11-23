@@ -131,12 +131,15 @@ test("Work-Study: a write whose answer is lost parks the run and is asked for on
   await dashboard.openRun(runId);
   const run = await seeded.scripted.drive(runId);
   expect(await run.advance()).toEqual({ at: "step", nodeId: "save-transaction" });
+  await expect(row).toContainText("Running");
   expect(await run.parkWrite()).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
+  await expect(row).toContainText("Write parked");
+  await expect(row).not.toContainText("Running");
   await dashboard.settleReads();
   await page.reload();
   await dashboard.expectRunOpen(runId);
-  await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("Write parked");
+  await expect(row).toContainText("Write parked");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
 });
 
@@ -170,8 +173,9 @@ test("Work-Study: a slow step keeps the run Running and its duration is recorded
   await run.advance(90_000);
   await expect(row).toContainText("Running");
   expect(await run.advance()).toMatchObject({ at: "settled" });
-  const durations = RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).timeline.events.flatMap(event => event.durationMs?.state === "present" ? [event.durationMs.ms] : []);
-  expect(Math.max(0, ...durations)).toBeGreaterThanOrEqual(90_000);
+  const longest = async () => Math.max(0, ...RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).timeline.events
+    .flatMap(event => event.durationMs?.state === "present" ? [event.durationMs.ms] : []));
+  await expect.poll(longest, { message: "the timeline watcher folds the slow step's duration" }).toBeGreaterThanOrEqual(90_000);
 });
 
 test("Person Lookup: start, each step held, done, and nothing written", async ({ dashboard, seeded, page, failures }) => {
