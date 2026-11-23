@@ -15,7 +15,7 @@ import { ProfileOnboardingStateSchema } from "../../../../src/models/profiles/pu
 
 interface CopyPortalFixture {
   buttons(): readonly string[];
-  click(name: string): void;
+  click(name: string): void | Promise<void>;
   wait(): Promise<void>;
   phone(): void;
 }
@@ -45,7 +45,7 @@ function copyPortalLocator(portal: CopyPortalFixture | undefined, names: readonl
     async elementHandle() {
       const matches = matching();
       assert.equal(matches.length, 1, "expected one visible Duo button");
-      return { async click() { portal?.click(matches[0]); }, async dispose() {} };
+      return { async click() { await portal?.click(matches[0]); }, async dispose() {} };
     },
   };
 }
@@ -619,18 +619,29 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
-  it("prompts before one Duo Push and waits for the device list", async () => {
+  it.each([
+    { destination: "https://test.duosecurity.com/", accepted: true },
+    { destination: "https://test-devices.duosecurity.com/", accepted: true },
+    { destination: "https://duosecurity.com.example.invalid/", accepted: false },
+  ])("prompts once and checks the device list after approval redirects to $destination", async ({ destination, accepted }) => {
     const actions: string[] = [];
-    const waiting = Promise.withResolvers<void>(), approved = Promise.withResolvers<void>();
+    const pushed = Promise.withResolvers<void>(), approved = Promise.withResolvers<void>();
+    const waiting = Promise.withResolvers<void>(), devices = Promise.withResolvers<void>();
     let buttons = ["Other options"];
     const w = world("key", "darwin", {
       buttons: () => buttons,
-      click(label) {
+      async click(label) {
         actions.push(label);
         buttons = label === "Other options" ? ["Touch ID", "Security key", "Duo Push Send to phone"] : [];
+        if (label === "Duo Push Send to phone") {
+          pushed.resolve();
+          await approved.promise;
+          w.reachDuo(destination);
+          if (!accepted) buttons = ["Add a device"];
+        }
       },
       phone() { actions.push("phone prompt"); },
-      async wait() { waiting.resolve(); await approved.promise; },
+      async wait() { waiting.resolve(); await devices.promise; },
     });
     w.landPortal("https://test.duosecurity.com/");
     const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
@@ -640,11 +651,19 @@ describe("draft Duo provider", () => {
     });
     try {
       const opening = w.provider.openPortal(w.owner);
-      await Promise.race([waiting.promise, opening.then(() => { throw new Error("Duo portal completed before verification"); })]);
+      const premature = opening.then(() => { throw new Error("Duo portal completed before verification"); });
+      await Promise.race([pushed.promise, premature]);
       const expectedActions = ["Other options", "phone prompt", "Duo Push Send to phone"];
       assert.deepEqual(actions, expectedActions);
-      buttons = ["Add a device"];
       approved.resolve();
+      if (!accepted) {
+        await assert.rejects(opening, { cause: new Error("copy-signin-duo-scope") });
+        assert.deepEqual(actions, expectedActions);
+        return;
+      }
+      await Promise.race([waiting.promise, premature]);
+      buttons = ["Add a device"];
+      devices.resolve();
       await opening;
       await w.provider.openPortal(w.owner);
       assert.deepEqual(actions, expectedActions);
@@ -653,7 +672,7 @@ describe("draft Duo provider", () => {
       buttons = ["Other options"];
       await assert.rejects(w.provider.openPortal(w.owner), { cause: new Error("copy-signin-duo-phone-already-requested") });
       assert.deepEqual(actions, [...expectedActions, "Other options"]);
-    } finally { approved.resolve(); await w.cleanup(); }
+    } finally { approved.resolve(); devices.resolve(); await w.cleanup(); }
   });
 
   it("leaves the UCSD sign-in form empty and continues when the page reaches Duo", async () => {

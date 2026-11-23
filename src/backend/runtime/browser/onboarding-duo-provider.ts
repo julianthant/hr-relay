@@ -529,33 +529,41 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const duo = (url: URL) => url.hostname !== "duo.ucsd.edu" && duoSignInHost(url.href);
     const timeout = 120_000;
     await page.waitForURL(duo, { timeout });
-    const origin = new URL(page.url()).origin;
-    const current = () => {
+    const ownedDuoOrigin = () => {
       browserCurrent(session);
-      if (page.isClosed() || session.portal !== page || new URL(page.url()).origin !== origin) throw new Error("copy-signin-duo-scope");
+      const url = URL.parse(page.url());
+      if (page.isClosed() || session.portal !== page || url === null || !duo(url)) throw new Error("copy-signin-duo-scope");
+      return url.origin;
+    };
+    let origin = ownedDuoOrigin();
+    const current = () => {
+      if (ownedDuoOrigin() !== origin) throw new Error("copy-signin-duo-scope");
     };
     const control = (name: RegExp) => page.getByRole("button", { name }).or(page.getByRole("link", { name })).filter({ visible: true });
-    const click = async (locator: Locator, beforeClick?: () => void) => {
+    const click = async (locator: Locator, approval?: "phone") => {
       current();
       const target = await locator.elementHandle({ timeout });
       try {
         current();
-        beforeClick?.();
+        if (approval === "phone") {
+          if (copyPhonePrompted) throw new Error("copy-signin-duo-phone-already-requested");
+          copyPhonePrompted = true;
+          copy.phone();
+        }
         await target.click({ timeout });
       } finally { await target.dispose(); }
-      current();
+      if (approval === "phone") ownedDuoOrigin();
+      else current();
     };
     const add = control(/^Add a device\b/iu);
     const other = control(/^Other options$/iu);
     await add.or(other).first().waitFor({ timeout });
     if (!await add.isVisible()) {
       await click(other);
-      await click(control(/^(?:Verified )?Duo Push\b/iu), () => {
-        if (copyPhonePrompted) throw new Error("copy-signin-duo-phone-already-requested");
-        copyPhonePrompted = true;
-        copy.phone();
-      });
+      await click(control(/^(?:Verified )?Duo Push\b/iu), "phone");
       await add.waitFor({ timeout });
+      origin = ownedDuoOrigin();
+      if (!await add.isVisible()) throw new Error("copy-signin-duo-device-list-unavailable");
     }
 
     for (const method of ["key", "touch"] as const) {
