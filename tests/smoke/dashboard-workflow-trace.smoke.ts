@@ -472,6 +472,12 @@ test("Onboarding: start, each step held, the hire review answered, done, and the
   await expect(row).toContainText("Done");
   await expect(row).not.toContainText("Running");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "i9-profile-save", eid: ONBOARDING_EMAIL }, { runId, nodeId: "hire-create", eid: ONBOARDING_EMAIL }]);
+  await dashboard.settleReads();
+  await page.reload();
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  expect(seeded.scripted.writes()).toHaveLength(2);
+});
 
 /** Each step, broken, ends the run as Failed; the writes before it stand and the ones after it never happen. */
 for (const [step, writesBefore] of [["resolve-action", 0], ["document", 0], ["name-search", 0], ["job-summary", 0], ["timecard-search", 0], ["timecard", 0], ["file-termination", 0], ["finalize-kuali", 1]] as const) {
