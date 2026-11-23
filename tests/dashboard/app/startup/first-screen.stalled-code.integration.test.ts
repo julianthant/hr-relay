@@ -30,7 +30,7 @@ it("leaves a Settings page whose code failed to load with Back", async () => {
   const app = await start({}, (url, init) => new URL(url).pathname === "/api/v1/profile/state" ? Response.json(active) : server(url, init));
   try {
     await vi.waitFor(() => assert.equal(app.frames.at(-1), "dashboard"), { timeout: 10_000, interval: 50 });
-    await act(async () => (app.host.querySelector("#settings-gear") as HTMLElement | null)?.click());
+    await act(async () => app.host.querySelector<HTMLElement>("#settings-gear")?.click());
     assert.match(window.location.search, /settings=/u);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, STARTUP_READ_DEADLINE_MS + 500)); });
     assert.match(app.host.textContent ?? "", /Couldn't open Settings\./u);
