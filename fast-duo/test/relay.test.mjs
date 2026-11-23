@@ -470,11 +470,11 @@ async function contentWorld() {
   const { runInNewContext } = await import('node:vm');
   const listeners = new Map();
   const sent = []; const output = [];
-  let headings = [], mutation;
+  const headings = [];
   const window = { addEventListener: (type, listener) => listeners.set(type, listener), postMessage: value => output.push(value) };
   const context = { window, location: { origin: ORIGIN, href: `${ORIGIN}/setup` },
     document: { documentElement: {}, querySelectorAll: () => headings }, DuoUsername: { findUsernames: () => ['alex@example.edu'] },
-    MutationObserver: class { constructor(callback) { mutation = callback; } observe() {} }, AbortController,
+    MutationObserver: class { observe() {} }, AbortController,
     chrome: { runtime: { id: 'owned-extension', onMessage: { addListener() {} }, sendMessage: async message => {
       sent.push(message);
       return message.type === 'DUO_AUTOPILOT_ENROLL' ? { success: true, result: { ok: true } } : { success: true };
@@ -577,7 +577,7 @@ test('failed exact acceptance never reaches backend signing or confirms the loca
 
  test('diagnostics preserve all worker symbols and bound unknown exception names without free text', () => {
   assert.deepEqual(relayFailureEvent(new Error('ONBOARDING_DUO_SCOPE'), 42), { stage: 'refused', detail: 'scope', code: 'ONBOARDING_DUO_SCOPE', durationMs: 42 });
-  for (const code of ['ONBOARDING_DUO_REVOKED', 'ONBOARDING_DUO_BROKER_BUSY', 'ONBOARDING_DUO_NATIVE_REQUIRED', 'ONBOARDING_DUO_ENROLL_REFUSED']) {
+  for (const code of ['ONBOARDING_DUO_REVOKED', 'ONBOARDING_DUO_BROKER_BUSY', 'ONBOARDING_DUO_KEY_REQUIRED', 'ONBOARDING_DUO_ENROLL_REFUSED']) {
     assert.equal(relayFailureEvent(new Error(code), 1).code, code);
   }
   const failure = new TypeError('secret-password', { cause: new Error('private-key-material') });
