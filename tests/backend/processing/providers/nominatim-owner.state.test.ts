@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { createNominatimService } from "../../../../src/backend/processing/providers/nominatim-owner.js";
 import type { NominatimOwnerEvent, NominatimOwnerState } from "../../../../src/backend/processing/providers/nominatim-owner.js";
 import { ProviderRequestEnvelopeSchema } from "../../../../src/models/providers/providers.js";
@@ -27,9 +27,11 @@ const expected = {
 
 const request = ProviderRequestEnvelopeSchema.parse({ capability: "geocode.nominatim", payload: { schemaHash: "a".repeat(64), value: { street: "1 Test Road", country: "US" } } });
 const cleanups: Array<() => Promise<void> | void> = [];
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => {
+  try { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); }
+  finally { vi.useRealTimers(); }
+});
 
-function sleep(ms: number): Promise<void> { return new Promise(done => setTimeout(done, ms)); }
 function connectedChild(): ChildProcess {
   return Object.assign(new EventEmitter(), { connected: true, send: () => true }) as unknown as ChildProcess;
 }
@@ -40,44 +42,43 @@ function synthetic(clock: Clock) {
   return { response: { state: "unavailable" as const, reason: { code: "adapter-unavailable" as const, message: "synthetic" } }, evidence: { summary: "synthetic", capturedAt: IsoInstantSchema.parse(clock.now().toISOString()) } };
 }
 
-interface Harness { service: ReturnType<typeof createNominatimService>; clock: TestClock; release: () => void; fetches: () => number; shutdown?: Promise<void> }
+interface Harness { service: ReturnType<typeof createNominatimService>; clock: TestClock; entered: Promise<void>; drained: Promise<void>; release: () => void; fetches: () => number; shutdown?: Promise<void> }
 
 function harness(hold: boolean): Harness {
   const clock = manualClock(new Date("2026-01-01T00:00:00.000Z"));
-  let release = () => {};
-  const gate = new Promise<void>(done => { release = done; });
+  const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>(), drained = Promise.withResolvers<void>();
   let fetches = 0;
   const service = createNominatimService({
     clock,
-    fetchFn: async () => { fetches += 1; if (hold) await gate; return Response.json([]); },
-    adapter: fetchFn => ({ capability: "geocode.nominatim", invoke: async () => { await fetchFn("https://synthetic.invalid"); return synthetic(clock); } }),
+    fetchFn: async () => { fetches += 1; entered.resolve(); if (hold) await gate.promise; return Response.json([]); },
+    adapter: fetchFn => ({ capability: "geocode.nominatim", invoke: async () => { await fetchFn("https://synthetic.invalid"); drained.resolve(); return synthetic(clock); } }),
   });
-  const opened: Harness = { service, clock, release, fetches: () => fetches };
-  cleanups.push(async () => { opened.release(); opened.clock.advanceMonotonic(10_000); await opened.shutdown?.catch(() => {}); await opened.service.stop().catch(() => {}); });
+  const opened: Harness = { service, clock, release: gate.resolve, entered: entered.promise, drained: drained.promise, fetches: () => fetches };
+  cleanups.push(async () => {
+    const shutdown = opened.service.stop();
+    opened.release();
+    opened.clock.advanceMonotonic(10_000);
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(1);
+    await shutdown.catch((error: unknown) => { if (!(error instanceof Error) || error.message !== "nominatim-owner-closure-unproven") throw error; });
+  });
   return opened;
-}
-
-async function waitForFetch(opened: Harness): Promise<void> {
-  const started = Date.now();
-  while (opened.fetches() < 1) {
-    if (Date.now() - started > 5_000) throw new Error("nominatim-owner-test-fetch-timed-out");
-    await sleep(10);
-  }
 }
 
 async function reach(phase: NominatimOwnerState): Promise<Harness> {
   if (phase === "running") return harness(false);
   if (phase === "stopped") { const opened = harness(false); await opened.service.stop(); return opened; }
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "hrtime"] });
   const opened = harness(true);
-  void opened.service.invoke(request, callOptions(opened.clock)).catch(() => {});
-  await waitForFetch(opened);
+  const inFlight = opened.service.invoke(request, callOptions(opened.clock));
+  void inFlight.catch(() => {});
+  let entered = false;
+  void opened.entered.then(() => { entered = true; });
+  await vi.advanceTimersByTimeAsync(1000);
+  assert.equal(entered, true, "nominatim owner did not enter its first paced fetch");
   const shutdown = opened.service.stop();
   opened.shutdown = shutdown;
   if (phase === "stopping") return opened;
-  const started = Date.now();
-  opened.clock.advanceMonotonic(5_000);
-  await assert.rejects(shutdown, /closure-unproven/u);
-  assert.ok(Date.now() - started < 2_000, "drain-timeout follows the service clock");
+  await expectDrainTimeout(opened, shutdown);
   return opened;
 }
 
@@ -111,6 +112,7 @@ async function observeStop(phase: NominatimOwnerState, opened: Harness): Promise
     const again = opened.service.stop();
     let settled = false;
     void opened.shutdown?.then(() => { settled = true; }, () => { settled = true; });
+    await vi.advanceTimersByTimeAsync(0);
     if (again !== opened.shutdown || settled) throw new Error("stopping stop did not keep the pending shutdown");
     return { effect: "same-promise" };
   }
@@ -128,24 +130,38 @@ async function observeDrained(phase: NominatimOwnerState, opened: Harness): Prom
     await opened.service.invoke(request, callOptions(opened.clock));
     return opened.fetches() === before ? NOT_STOPPING : { effect: "queued" };
   }
-  if (phase === "stopping") { opened.release(); await opened.shutdown; return { effect: "stopped" }; }
+  if (phase === "stopping") {
+    opened.release();
+    await opened.drained;
+    await vi.advanceTimersByTimeAsync(1);
+    await opened.shutdown;
+    return { effect: "stopped" };
+  }
   opened.release();
-  await sleep(20);
+  await opened.drained;
   const again = opened.service.stop();
   if (again !== opened.shutdown) throw new Error("drained after stop-failed replaced the rejection");
   await assert.rejects(again, /closure-unproven/u);
   return NOT_STOPPING;
 }
 
-async function observeTimeout(phase: NominatimOwnerState, opened: Harness): Promise<Cell> {
-  const started = Date.now();
+async function expectDrainTimeout(opened: Harness, shutdown: Promise<void>): Promise<void> {
+  let settled = false;
+  void shutdown.then(() => { settled = true; }, () => { settled = true; });
+  await vi.advanceTimersByTimeAsync(1);
+  assert.equal(settled, false, "shutdown is pending before the service clock reaches the drain deadline");
   opened.clock.advanceMonotonic(5_000);
+  await vi.advanceTimersByTimeAsync(1);
+  assert.equal(settled, true, "shutdown settles at the service-clock deadline");
+  await assert.rejects(shutdown, /closure-unproven/u);
+}
+
+async function observeTimeout(phase: NominatimOwnerState, opened: Harness): Promise<Cell> {
   if (phase === "running") { opened.service.attach(connectedChild(), { register() {} }); return NOT_STOPPING; }
   if (phase === "stopping") {
     const shutdown = opened.shutdown;
     if (shutdown === undefined) throw new Error("nominatim-owner-test-missing-shutdown");
-    await assert.rejects(shutdown, /closure-unproven/u);
-    assert.ok(Date.now() - started < 2_000, "drain-timeout follows the service clock");
+    await expectDrainTimeout(opened, shutdown);
     return { effect: "stop-failed" };
   }
   if (phase === "stopped") { await opened.service.stop(); return NOT_STOPPING; }

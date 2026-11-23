@@ -757,7 +757,7 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(envelopes.slice(0, 3).map(({ type }) => type), ["hello", "snapshot", "health"]);
     assert.equal(envelopes.filter(({ type }) => type === "reset-required").length, 1);
     assert.equal(envelopes.at(-1)?.type, "reset-required");
-    assert.ok(envelopes.slice(3, -1).every(({ type }) => type === "patch"), "no envelope is dropped or reordered before the reset");
+    assert.ok(envelopes.slice(3, -1).every(({ type }) => type === "change"), "no envelope is dropped or reordered before the reset");
 
     response.destroy();
     for (let attempt = 0; attempt < 50 && hub.subscriberCount() > 0; attempt += 1) {

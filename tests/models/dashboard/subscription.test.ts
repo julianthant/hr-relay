@@ -6,13 +6,15 @@ import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/sub
 const { RUN_1, RUN_2, HASH_A, QUEUE, DAY } = createDashboardModelFixtures();
 
 
-describe("subscription snapshots, patches, and resets", () => {
-  const snapshot = { topic: "dashboard-day", payload: DAY };
-  const patch = { topic: "dashboard-day", payload: { operation: "replace-queue-surface", target: { runId: RUN_1, rowRevision: 1 }, replacement: QUEUE } };
+describe("subscription snapshots, changes, and resets", () => {
+  const snapshot = { topic: "dashboard-day", position: 4, payload: DAY };
+  const change = { topic: "dashboard-day", after: "pc:1", position: 4, day: { operation: "replace-queue-surface", target: { runId: RUN_1, rowRevision: 1 }, replacement: QUEUE } };
 
-  it("parses the dashboard-day snapshot and patch arms", () => {
+  it("parses the dashboard-day snapshot and change arms", () => {
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", cursor: "pc:2", ...snapshot }).success, true);
-    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "patch", cursor: "pc:2", ...patch }).success, true);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change }).success, true);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", topic: "dashboard-day", cursor: "pc:2", after: "pc:1", position: 0 }).success, true,
+      "a change without a day part moves the cursor only");
     const hello = { type: "hello", wireVersion: 1, descriptorHash: HASH_A, projectionGeneration: 1, cursor: "pc:2" };
     assert.equal(DashboardStreamEnvelopeSchema.safeParse(hello).success, true);
     assert.equal(DashboardStreamEnvelopeSchema.safeParse(hello).success, true, "duplicate cursor delivery remains representable and idempotent");
@@ -26,12 +28,20 @@ describe("subscription snapshots, patches, and resets", () => {
 
   it("rejects topic/payload mismatches, wrong arms, and identity/revision drift", () => {
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "run-detail", cursor: "pc:2", payload: DAY }).success, false);
-    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "patch", topic: "dashboard-day", cursor: "pc:2", payload: DAY }).success, false);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change, day: DAY }).success, false);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "patch", topic: "dashboard-day", cursor: "pc:2", payload: change.day }).success, false,
+      "the patch envelope is gone");
+    for (const missing of ["after", "position"] as const) {
+      const { [missing]: _omitted, ...rest } = change;
+      assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...rest }).success, false, `a change names its ${missing}`);
+    }
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "dashboard-day", cursor: "pc:2", payload: DAY }).success, false,
+      "a snapshot names its position");
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "reset-required", reason: "silent-drop", cursor: "pc:2" }).success, false);
-    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "dashboard-day", payload: DAY }).success, false);
-    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "patch", cursor: "pc:2", ...patch,
-      payload: { operation: "replace-queue-surface", target: { runId: RUN_2, rowRevision: 1 }, replacement: QUEUE } }).success, false);
-    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "patch", cursor: "pc:2", ...patch,
-      payload: { ...patch.payload, update: { runId: RUN_2 } } }).success, false);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", topic: "dashboard-day", position: 4, payload: DAY }).success, false);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change,
+      day: { operation: "replace-queue-surface", target: { runId: RUN_2, rowRevision: 1 }, replacement: QUEUE } }).success, false);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change,
+      day: { ...change.day, update: { runId: RUN_2 } } }).success, false);
   });
 });
