@@ -54,12 +54,12 @@ it('uses injected wall time for countdown and confirmed refresh without advancin
   const host = document.createElement('div'), root = createRoot(host);
   try {
     await act(async () => root.render(createElement(Harness)));
-    assert.equal(idle?.countdowns['sample-worker-4'].dueAt - clock.nowMs(), IDLE_REFRESH_MS);
+    assert.equal((idle?.countdowns['sample-worker-4']?.dueAt ?? 0) - clock.nowMs(), IDLE_REFRESH_MS);
     await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS));
     assert.equal(requests.length, 0, 'timer movement cannot substitute for the injected clock');
     clock.advanceWall(IDLE_REFRESH_MS - 1);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
-    assert.equal(idle?.countdowns['sample-worker-4'].dueAt - clock.nowMs(), 1);
+    assert.equal((idle?.countdowns['sample-worker-4']?.dueAt ?? 0) - clock.nowMs(), 1);
     clock.advanceWall(1);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     assert.equal(requests.length, 1);
@@ -69,7 +69,7 @@ it('uses injected wall time for countdown and confirmed refresh without advancin
     assert.equal(requests.length, 1);
     idle?.confirmed(requests[0]);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
-    assert.equal(idle?.countdowns['sample-worker-4'].dueAt - clock.nowMs(), IDLE_REFRESH_MS);
+    assert.equal((idle?.countdowns['sample-worker-4']?.dueAt ?? 0) - clock.nowMs(), IDLE_REFRESH_MS);
     clock.advanceWall(IDLE_REFRESH_MS);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     assert.equal(requests.length, 2);
@@ -120,7 +120,7 @@ it('retains the original held refresh across its own version move, cancels Remov
 it('ticks only the ring while a countdown runs: no panel or worker card re-render', async () => {
   vi.useFakeTimers(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const data = sessionsSample('active'); assert(data.state === 'ready');
-  const worker = data.workers.find(candidate => candidate.id === 'sample-worker-4'); assert(worker);
+  const found = data.workers.find(candidate => candidate.id === 'sample-worker-4'); assert(found); const worker: typeof found = found;
   let panel = 0, card = 0;
   const Card = (props: Parameters<typeof WorkerCard>[0]) => { card += 1; return createElement(WorkerCard, props); };
   function Panel() {
