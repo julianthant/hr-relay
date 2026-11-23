@@ -13,7 +13,8 @@ import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
 import { seed } from "../served-fixtures/seeded-lifecycle.js";
 
-import { SCRIPTED_WORKFLOW, type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
+import { type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
+import { scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
 import { FIXTURE_ACTIVE_PROFILE_STATE } from "./fixture-profile-setup.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
@@ -39,7 +40,7 @@ export interface SeededServer {
   readonly baseUrl: string;
   readonly day: string;
   readonly runIds: Readonly<Record<string, string>>;
-  /** Drives Work-Study runs through the real executor; present only when started with `scriptedRuns`. */
+  /** Drives scripted runs through the real executor; present only when started with `scriptedRuns`. */
   readonly scripted: ScriptedExecutor;
   close(): Promise<void>;
 }
@@ -104,7 +105,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; /** Opt-in, with productApp: Work-Study runs execute on a script the test holds. */ scriptedRuns?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog. */ productApp?: boolean; /** Opt-in, with productApp: Runs of the scripted workflows execute on a script the test holds. */ scriptedRuns?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
@@ -140,7 +141,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     seedRuntimeConfig(database, clock);
     const descriptors = {
       resolve: (workflowId: string) => workflowId === WORKFLOW_ID ? personLookupDescriptor
-        : input.scriptedRuns === true && workflowId === SCRIPTED_WORKFLOW.id ? SCRIPTED_WORKFLOW : undefined,
+        : input.scriptedRuns === true ? scriptedDescriptorOf(workflowId) : undefined,
     };
     const projection = createRunQueueProjection({
       timeline: database.authority.timelineEvents,
@@ -185,7 +186,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
     const runIds = seed({ database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
-      workers });
+      workers, leaveQueueEmpty: input.scriptedRuns === true });
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
       if (source === undefined) throw new Error("date-proof-source-run-missing");

@@ -67,6 +67,8 @@ interface SeedWorld {
   readonly workers: Map<string, WorkerActivity>;
   readonly spans: ReturnType<typeof createTimelineEmitter>;
   readonly notes: ReturnType<typeof createNoteTimelineWriter>;
+  /** Leaves out the rows that stay queued, so a scripted Person Lookup run is the oldest queued one a worker claims. */
+  readonly leaveQueueEmpty?: boolean;
 }
 
 
@@ -536,19 +538,21 @@ export function seed(world: SeedWorld): Record<string, string> {
   if (cancelTransition.state !== "applied") throw new Error("cancel transition was refused");
   reportWorker(world, claimOf(cancelled).workerId);
 
-  // The group and its members, then the row that must stay queued — enqueued
-  // last so no claimNext above could have taken them.
-  enqueueRun(world, { seed: 30, title: "Onboarding packet — 3 people", shape: "operation" });
-  const memberSeeds = [31, 32, 33];
-  for (const memberSeed of memberSeeds) {
-    enqueueRun(world, {
-      seed: memberSeed,
-      title: `Member ${String(memberSeed - 30)}`,
-      shape: "operation-member",
-      parentSeed: 30,
-    });
+  if (world.leaveQueueEmpty !== true) {
+    // The group and its members, then the row that must stay queued — enqueued
+    // last so no claimNext above could have taken them.
+    enqueueRun(world, { seed: 30, title: "Onboarding packet — 3 people", shape: "operation" });
+    const memberSeeds = [31, 32, 33];
+    for (const memberSeed of memberSeeds) {
+      enqueueRun(world, {
+        seed: memberSeed,
+        title: `Member ${String(memberSeed - 30)}`,
+        shape: "operation-member",
+        parentSeed: 30,
+      });
+    }
+    enqueueRun(world, { seed: 1, title: "EID 10873698 — queued" });
   }
-  enqueueRun(world, { seed: 1, title: "EID 10873698 — queued" });
 
   return {
     queuedRun: uuidOf(1),
