@@ -1,0 +1,77 @@
+// @vitest-environment jsdom
+import assert from "node:assert/strict";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, it, vi } from "vitest";
+import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
+import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
+import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
+import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
+import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
+import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+Element.prototype.scrollIntoView = () => {};
+let root: Root | undefined;
+afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, "", "/"); });
+
+const settle = (ms = 20) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
+/** A browser forward entry the dashboard reads as its own, then the real Back. */
+const forward = async (search: string) => {
+  await act(async () => { window.history.pushState({ hrDashboardRouteCursor: 1 }, "", search); window.dispatchEvent(new PopStateEvent("popstate", { state: { hrDashboardRouteCursor: 1 } })); });
+  await settle();
+};
+const back = async () => { await act(async () => { window.history.back(); await new Promise(resolve => setTimeout(resolve, 20)); }); };
+
+it("Back to a kept day with its run open shows both at once, marked Updating, then the fresh day", async () => {
+  const day = FIXTURE_DAY_WIRE.day;
+  const otherDay = "2026-08-02";
+  const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.parent === null);
+  assert(run);
+  const other = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, day: otherDay, queueSurfaces: [], attemptHistory: undefined, monthCounts: [{ day: otherDay, count: 0 }] });
+  const { app } = createFixtureBff();
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
+  const streams: { day: string; serve: (frame: DashboardDayWire) => void }[] = [];
+  const client: DashboardClient = { ...transport, subscribeDay: input => {
+    streams.push({ day: input.day, serve: frame => { input.onDay(frame); input.onState({ state: "live" }); } });
+    return { close: () => undefined };
+  } };
+  window.history.replaceState(null, "", `/?day=${day}&run=${run.runId}`);
+  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
+  await settle();
+  await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
+  const queueColumn = () => host.querySelector(".dashboard-queue-column");
+  const runRow = () => host.querySelector(`[data-demo-row-id="${run.runId}"]`);
+  const runTitle = () => host.querySelector('[aria-label="Selected run logs"] h2')?.textContent;
+  const updating = () => [...host.querySelectorAll('[aria-label="Log date controls"] [role="status"]')].find(node => node.textContent === "Updating");
+  await vi.waitFor(() => assert.equal(runTitle(), run.title));
+
+  await forward(`/?day=${otherDay}`);
+  assert.equal(streams.at(-1)?.day, otherDay);
+  await act(async () => streams.at(-1)?.serve(other));
+  await vi.waitFor(() => assert.equal(runRow(), null));
+
+  await back();
+  assert.equal(new URLSearchParams(window.location.search).get("run"), run.runId);
+  assert.equal(streams.at(-1)?.day, day, "the return reads the day again");
+  assert.ok(runRow(), "the kept day's queue shows at once");
+  assert.equal(queueColumn()?.getAttribute("aria-busy"), "true");
+  assert.equal(runTitle(), run.title, "the open run shows from the kept day, not a skeleton");
+  assert.equal(host.querySelector(`[data-demo-row-id="${run.runId}"] [aria-label^="Actions"]`), null);
+  assert.ok(updating()?.classList.contains("invisible"), "a fast reload shows no mark");
+  await settle(350);
+  assert.equal(updating()?.classList.contains("invisible"), false, "a slow reload shows Updating");
+
+  await act(async () => streams.at(-1)?.serve(FIXTURE_DAY_WIRE));
+  await vi.waitFor(() => assert.equal(queueColumn()?.hasAttribute("aria-busy"), false));
+  assert.equal(updating(), undefined);
+  assert.ok(runRow());
+  assert.equal(runTitle(), run.title);
+});

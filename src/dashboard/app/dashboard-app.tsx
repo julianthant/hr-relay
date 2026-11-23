@@ -47,7 +47,7 @@ import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useSkeletonWait,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
@@ -320,6 +320,12 @@ interface LoadedAppProps {
 
 
 /** A stored command result opens its run through the same validated served navigation as a run notice. */
+/** The queue shows a kept copy of this day while it reloads: the muted Updating mark Sessions and Analytics use, after the skeleton wait. */
+function KeptDayMark() {
+  const waiting = useSkeletonWait();
+  return <span role="status" className={`text-body text-ui-muted pr-2${waiting ? " invisible" : ""}`}>Updating</span>;
+}
+
 function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {
   if (destination.kind !== "command-result") return destination;
   const request = destination.request;
@@ -400,7 +406,8 @@ function LoadedApp({
   const retainedLogRow = useRef<{ identity: object; row: QueueSurfaceWire } | undefined>(undefined);
   if (selectedRow !== undefined) retainedLogRow.current = { identity: logIdentity, row: selectedRow };
   else if (dayResource.state !== "loading" || retainedLogRow.current?.identity !== logIdentity) retainedLogRow.current = undefined;
-  const logRow = selectedRow ?? (dayResource.state === "loading" ? retainedLogRow.current?.row : undefined);
+  // Back to a kept day with its run open shows that run's kept row; its logs stay display-only until the day is fresh.
+  const logRow = selectedRow ?? (dayResource.state === "loading" ? retainedLogRow.current?.row ?? keptDay?.queueSurfaces.find(row => row.runId === route.run) : undefined);
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
     || shownQueueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
@@ -1139,7 +1146,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
             }
           />
-                <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
+                <div role="group" aria-label="Log date controls" className="dashboard-log-date">{keptDay !== undefined && <KeptDayMark />}<DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
             <PanelBoundary resetKey={`${route.run ?? ""}:${logsAttempt}`} sentence="Couldn't show this run.">
