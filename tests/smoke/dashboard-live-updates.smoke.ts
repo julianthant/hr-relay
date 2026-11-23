@@ -24,10 +24,10 @@ function watchRequests(page: Page): string[] {
 }
 
 /** Resolves once no request has started for a full quiet window. */
-async function quiet(page: Page, seen: readonly string[]): Promise<void> {
+async function quiet(page: Page, seen: readonly string[], windowMs = QUIET_MS): Promise<void> {
   for (let count = -1; count !== seen.length;) {
     count = seen.length;
-    await page.waitForTimeout(QUIET_MS);
+    await page.waitForTimeout(windowMs);
   }
 }
 
@@ -61,13 +61,13 @@ const BASELINE: Record<RunEvent, Partial<Record<View, readonly string[]>>> = {
   "run starting": {
     "queue only": [],
     "that run open": [RUN, LOGS],
-    "another run open": [RUN, LOGS],
+    "another run open": [],
   },
   // The detail read is ahead of the held row, so the day stream is reopened and every view reads again.
   "run starting, its row not yet reconciled": {
     "queue only": [],
     "that run open": [RUN, RUN, LOGS, LOGS, STREAM, "GET /api/v1/notifications", "GET /api/v1/notifications", "GET /api/v1/notifications/status", "GET /api/v1/notifications/status", "GET /api/v1/settings/editable"],
-    "another run open": [RUN, LOGS],
+    "another run open": [],
   },
   "step finishing": {
     "queue only": [],
@@ -77,7 +77,7 @@ const BASELINE: Record<RunEvent, Partial<Record<View, readonly string[]>>> = {
   "gate parking": {
     "queue only": [],
     "that run open": [RUN, LOGS, "GET /api/v1/runs/{id}/identity-gate"],
-    "another run open": [RUN, LOGS],
+    "another run open": [],
   },
 };
 
@@ -140,7 +140,8 @@ for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
     const row = page.locator(`[data-demo-row-id="${runId}"]`).first();
     await expect(row).toContainText("Running");
     if (view === "that run open") await dashboard.openRun(runId);
-    await quiet(page, seen);
+    // The failed workflow-preference save reads Settings back up to 1.5 s apart; it must finish before counting.
+    await quiet(page, seen, 2_000);
     seen.length = 0;
 
     expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
