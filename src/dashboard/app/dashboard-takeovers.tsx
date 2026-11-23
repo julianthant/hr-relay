@@ -1,7 +1,9 @@
 import type { WorkflowSourcePolicy } from "./workflow-sources.js";
 import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
-import { lazy,Suspense,useEffect,type ComponentProps,type ReactNode } from "react";
+import { Suspense,useContext,useEffect,type ComponentProps,type ReactNode } from "react";
+import { preloadable } from "../lib/preloadable.js";
+import { FirstScreenRevealedContext } from "./startup/first-screen.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import {
 type FrontendBootstrapWire
@@ -23,10 +25,13 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
-// The local server answers in milliseconds, so a page shows nothing while its code loads; a failed load reaches PanelBoundary.
-const SettingsPage = lazy(() => import("../surfaces/settings/settings.js").then(module => ({ default: module.SettingsPage })));
-const ActivityReport = lazy(() => import("../surfaces/activity/activity.js").then(module => ({ default: module.ActivityReport })));
-const WorkflowExplorer = lazy(() => import("../surfaces/explorer/explorer.js").then(module => ({ default: module.WorkflowExplorer })));
+// The pages' code loads once the first screen shows; a click before then shows nothing until it arrives, and a failed load reaches PanelBoundary.
+const settingsPage = preloadable(() => import("../surfaces/settings/settings.js").then(module => module.SettingsPage));
+const activityReport = preloadable(() => import("../surfaces/activity/activity.js").then(module => module.ActivityReport));
+const workflowExplorer = preloadable(() => import("../surfaces/explorer/explorer.js").then(module => module.WorkflowExplorer));
+const SettingsPage = settingsPage.Component;
+const ActivityReport = activityReport.Component;
+const WorkflowExplorer = workflowExplorer.Component;
 /** Nothing is drafted before the Settings code arrives, so leaving proceeds. */
 function SettingsLoading({ onExitGuardChange }: { onExitGuardChange: (guard: SettingsExitGuard | undefined) => void }) {
  useEffect(() => {
@@ -51,6 +56,11 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  onSettingsSaveProblem?: ComponentProps<typeof SettingsPage>["onSaveProblem"];
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
+ const revealed = useContext(FirstScreenRevealedContext);
+ useEffect(() => {
+   if (!revealed) return;
+   for (const page of [settingsPage, activityReport, workflowExplorer]) page.preload().catch(() => undefined);
+ }, [revealed]);
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
  const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
