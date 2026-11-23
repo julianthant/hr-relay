@@ -64,18 +64,20 @@ function recordFromJson(json: string): TimelineEventRecord {
 }
 
 // Validate mirrored columns on reads; external writes can bypass SQLite checks.
-export function timelineEventFromRow(raw: unknown): TimelineEventRecord {
+// A predecessor store (before migration 39) still holds its debug rows in the timeline, pinned ones as protected.
+export function timelineEventFromRow(raw: unknown, predecessorDebug = false): TimelineEventRecord {
   const parsedRow = RowSchema.safeParse(raw);
   if (!parsedRow.success) throw new TimelineRecordError("timeline-record-invalid");
   const row = parsedRow.data;
   const record = recordFromJson(row.payload_json);
-  if (record.payload.kind === "debug") throw new TimelineRecordError("timeline-record-invalid");
+  if (record.payload.kind === "debug" && !predecessorDebug) throw new TimelineRecordError("timeline-record-invalid");
+  const retentionClass = record.payload.kind === "debug" ? (record.payload.event.pinned ? "protected" : "ordinary") : timelineRetentionClass(record);
   if (row.cursor !== record.cursor || row.id !== record.eventId || row.workflow !== (record.workflow ?? null)
     || row.run_id !== (record.scope.kind === "run" ? record.scope.runId : null)
     || row.worker_id !== (record.scope.kind === "worker" ? record.scope.workerId : null)
     || row.retention_date !== record.retentionDate || row.recorded_at !== record.recordedAt || row.occurred_at !== record.occurredAt
     || row.kind !== (record.payload.kind === "span" ? record.payload.event.t : record.payload.kind)
-    || row.retention_class !== timelineRetentionClass(record)
+    || row.retention_class !== retentionClass
     || row.operation_id !== (record.payload.kind === "operation-confirmed" ? record.payload.facts.writeIntentId : null)
     || row.operation_generation !== (record.payload.kind === "operation-confirmed" ? record.payload.facts.intentGeneration : null)
     || row.confirmed_at !== (record.payload.kind === "operation-confirmed" ? record.payload.facts.confirmedAt : null)
@@ -115,6 +117,10 @@ export const DEBUG_EVENTS_MIGRATION = deepFreeze({ version: 39, statements: [
   `INSERT INTO debug_events(cursor,id,workflow,run_id,worker_id,occurred_at,recorded_at,retention_date,pinned,payload_json)
     SELECT cursor,id,workflow,run_id,worker_id,occurred_at,recorded_at,retention_date,retention_class='protected',payload_json
     FROM timeline_events WHERE kind='debug' ORDER BY cursor`,
+  // Debug cursors continue past every cursor the timeline issued, so a diagnostics cursor from before the upgrade still resumes.
+  `UPDATE sqlite_sequence SET seq=(SELECT MAX(seq) FROM sqlite_sequence WHERE name IN ('timeline_events','debug_events')) WHERE name='debug_events'`,
+  `INSERT INTO sqlite_sequence(name,seq) SELECT 'debug_events',seq FROM sqlite_sequence
+    WHERE name='timeline_events' AND NOT EXISTS(SELECT 1 FROM sqlite_sequence WHERE name='debug_events')`,
   // The moved rows leave no change entries: no reader re-validates a row that is no longer in the timeline.
   "DELETE FROM authority_changes WHERE table_name='timeline_events' AND json_extract(row_key,'$[0]') IN (SELECT cursor FROM debug_events)",
   "DROP TRIGGER timeline_events_change_delete",
@@ -165,12 +171,17 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
     statements.set(sql, statement);
     return statement;
   };
+  const timelineRow = (id: string) => {
+    const row = prepare("SELECT * FROM timeline_events WHERE id = ?").get(id);
+    return row === undefined ? undefined : timelineEventFromRow(row);
+  };
+  const debugRow = (id: string) => {
+    const row = prepare("SELECT * FROM debug_events WHERE id = ?").get(id);
+    return row === undefined ? undefined : debugEventFromRow(row);
+  };
   const get = (eventId: string): TimelineEventRecord | undefined => ports.read(() => {
     const id = EventIdSchema.parse(eventId);
-    const row = prepare("SELECT * FROM timeline_events WHERE id = ?").get(id);
-    if (row !== undefined) return timelineEventFromRow(row);
-    const debug = prepare("SELECT * FROM debug_events WHERE id = ?").get(id);
-    return debug === undefined ? undefined : debugEventFromRow(debug);
+    return timelineRow(id) ?? debugRow(id);
   });
   const pageRequest = (input: z.input<typeof TimelinePageRequestSchema>) => {
     const request = TimelinePageRequestSchema.parse(input);
@@ -191,7 +202,8 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const content = canonicalJsonStringify(record);
       if (Buffer.byteLength(content, "utf8") > 256 * 1024) throw new Error("timeline-event-size-exceeded");
       const result = ports.mutate<ReturnType<TimelineRepository["append"]> | "budget-full">(() => {
-        const existing = get(record.eventId);
+        // Each kind checks only its own table: predecessor stores written offline have no debug table.
+        const existing = record.payload.kind === "debug" ? debugRow(record.eventId) : timelineRow(record.eventId);
         if (existing !== undefined) {
           if (timelineAppendContent(existing) !== content) throw new Error("timeline-event-identity-conflict");
           ports.assertOwner(existing, false);

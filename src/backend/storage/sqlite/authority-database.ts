@@ -109,7 +109,7 @@ import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type
 import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
-import { TimelineRecordError,createTimelineRepository,debugEventFromRow,timelineEventFromRow } from "./timeline-repository.js";
+import { DEBUG_EVENTS_MIGRATION,TimelineRecordError,createTimelineRepository,debugEventFromRow,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
@@ -722,8 +722,8 @@ export function authenticateStoredParkedWriteRecheck(
 }
 
 const JsonRowSchema = z.strictObject({ payload_json: z.string() });
-// Notes are the timeline's high-volume stream; storage inspection never reads them.
-const INSPECTED_TIMELINE_KINDS = "kind <> 'note'";
+// Notes are the timeline's high-volume stream; storage inspection never reads them, nor a predecessor store's debug rows.
+const INSPECTED_TIMELINE_KINDS = "kind NOT IN ('debug','note')";
 export type EarlierRunEvents = (runId: string, beforeCursor: number, each: (record: TimelineEventRecord) => void) => void;
 const RecordKeyRowSchema = z.strictObject({ id: z.string() });
 const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
@@ -1482,7 +1482,7 @@ function validateStoredRow(context: StoredRowContext, table: AuthorityTableName,
         else if (table === "assistant_conversations") assistantConversationFromRow(raw);
         else if (table === "assistant_messages") assistantMessageFromRow(raw);
         else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
-        else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw),false,read);
+        else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw,expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version),false,read);
         else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
