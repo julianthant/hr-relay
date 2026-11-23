@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
-import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { createRowStore, type DashboardClient, type RowStoreWriter } from "../../../src/dashboard/client/index.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { KEPT_RUN_LOGS_LIMIT, useRunWiring, type RunWiringState } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
@@ -11,6 +11,7 @@ import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import { NotePageSchema, NativeRunEventWireSchema, RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { serveRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -39,8 +40,24 @@ function clientFor(terminal: boolean, hold?: Promise<void>) {
 }
 let root: Root | undefined;
 let seen: RunWiringState | undefined;
-const bindingOf = (epoch: object, actorId: string): DashboardCommandBinding => ({ scope: { actorId }, executor: { retainedAttempts: () => [] }, authority: { epoch, day: "2026-08-03", nowIso: AT,
-  dayState: { request: {}, refresh: () => undefined, day: { state: "loaded" } } } }) as unknown as DashboardCommandBinding;
+const stores = new WeakMap<DashboardCommandBinding, RowStoreWriter>();
+const bindingOf = (epoch: object, actorId: string): DashboardCommandBinding => {
+  const rows = createRowStore();
+  const binding = ({ scope: { actorId }, executor: { retainedAttempts: () => [] }, authority: { epoch, day: "2026-08-03", nowIso: AT,
+  dayState: { rows, request: {}, refresh: () => undefined, day: { state: "loaded" } } } }) as unknown as DashboardCommandBinding;
+  stores.set(binding, rows);
+  return binding;
+};
+const serve = (binding: DashboardCommandBinding, client: DashboardClient, runId: string) => {
+  const rows = stores.get(binding);
+  if (rows === undefined) throw new Error("binding without a row store");
+  return serveRunPanel(rows, client, runId);
+};
+/** A visit of `run` whose stream has delivered its panel. */
+async function visitServed(client: DashboardClient, run: LogSelection, binding: DashboardCommandBinding) {
+  await visit(client, run, binding);
+  await act(async () => serve(binding, client, run.row.runId));
+}
 function Probe({ client, run = selection, binding }: Readonly<{ client: DashboardClient; run?: LogSelection; binding?: DashboardCommandBinding }>) { seen = useRunWiring(client, run, binding); return null; }
 async function visit(client: DashboardClient, run: LogSelection = selection, binding?: DashboardCommandBinding) {
   const host = document.createElement("div");
@@ -53,67 +70,64 @@ beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); seen = undef
 afterEach(async () => { await leave(); vi.unstubAllGlobals(); });
 
 describe("Logs return visit", () => {
-  it("renders the kept value on the first frame, marked stale, before the read settles", async () => {
-    let release!: () => void;
+  it("renders the kept value on the first frame, marked stale, before the stream's panel arrives", async () => {
     const { client, reads } = clientFor(false);
-    await visit(client);
+    const epoch = {};
+    await visitServed(client, selection, bindingOf(epoch, "operator-a"));
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
     await leave();
-    const held = new Promise<void>(resolve => { release = resolve; });
-    // Same client identity keeps its value: re-read through the first client with a held detail.
-    (client as unknown as { runDetail: () => Promise<unknown> }).runDetail = async () => { reads.detail += 1; await held; return detail(false); };
-    await act(async () => { await visit(client); });
+    const fresh = bindingOf(epoch, "operator-a");
+    await visit(client, selection, fresh);
     assert.equal(seen?.state, "loading");
-    assert.ok(seen?.snapshot, "the kept snapshot shows while the fresh read runs");
-    release();
-    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
-    assert.equal(reads.detail, 2);
+    assert.ok(seen?.snapshot, "the kept snapshot shows while the stream's panel is awaited");
+    await act(async () => serve(fresh, client, RUN));
+    assert.equal(seen?.state, "loaded");
+    assert.equal(reads.detail, 2, "only the two panels built for the stream read the run");
   });
-  it("reads a finished run's logs once", async () => {
+  it("shows a finished run's kept logs without waiting for the stream", async () => {
     const { client, reads } = clientFor(true);
-    await visit(client);
+    const epoch = {};
+    await visitServed(client, selection, bindingOf(epoch, "operator-a"));
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
     await leave();
-    await visit(client);
+    await visit(client, selection, bindingOf(epoch, "operator-a"));
     assert.equal(seen?.state, "loaded");
     assert.ok(seen?.snapshot);
-    assert.equal(reads.detail, 1);
+    assert.equal(reads.detail, 1, "the visit reads nothing");
   });
-  it("shows nothing kept after the sign-in authority changes, and reads again", async () => {
+  it("shows nothing kept after the sign-in authority changes, until the stream delivers", async () => {
     const { client, reads } = clientFor(true);
     const first = bindingOf({}, "operator-a");
-    await visit(client, selection, first);
+    await visitServed(client, selection, first);
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
     await leave();
-    let release!: () => void;
-    reads.hold = new Promise<void>(resolve => { release = resolve; });
-    await visit(client, selection, bindingOf({}, "operator-a"));
+    const renewed = bindingOf({}, "operator-a");
+    await visit(client, selection, renewed);
     assert.equal(seen?.state, "loading", "a new epoch keeps nothing");
     assert.equal(seen?.snapshot, undefined);
-    assert.equal(reads.detail, 2, "and a read starts");
-    release();
-    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    await act(async () => serve(renewed, client, RUN));
+    assert.equal(seen?.state, "loaded");
     await leave();
-    reads.hold = new Promise<void>(() => undefined);
     await visit(client, selection, bindingOf((first.authority as { epoch: object }).epoch, "operator-b"));
+    assert.equal(seen?.state, "loading");
     assert.equal(seen?.snapshot, undefined, "another actor keeps nothing");
-    assert.equal(reads.detail, 3);
+    assert.equal(reads.detail, 2, "the two panels built for the stream are the only reads");
   });
   it("keeps the most recent runs only", async () => {
     const { client, reads } = clientFor(true);
     const epoch = {};
-    const binding = bindingOf(epoch, "operator-a");
     for (let index = 0; index <= KEPT_RUN_LOGS_LIMIT; index += 1) {
-      await visit(client, selectionOf(runIdOf(index)), binding);
+      await visitServed(client, selectionOf(runIdOf(index)), bindingOf(epoch, "operator-a"));
       await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
       await leave();
     }
     const before = reads.detail;
-    await visit(client, selectionOf(runIdOf(KEPT_RUN_LOGS_LIMIT)), binding);
+    await visit(client, selectionOf(runIdOf(KEPT_RUN_LOGS_LIMIT)), bindingOf(epoch, "operator-a"));
     assert.equal(seen?.state, "loaded", "the newest run is still kept");
-    assert.equal(reads.detail, before, "a kept finished run sends no read");
     await leave();
-    await visit(client, selectionOf(runIdOf(0)), binding);
-    assert.equal(reads.detail, before + 1, "the 21st visit evicted the oldest, so it reads again");
+    await visit(client, selectionOf(runIdOf(0)), bindingOf(epoch, "operator-a"));
+    assert.equal(seen?.state, "loading", "the 21st visit evicted the oldest");
+    assert.equal(seen?.snapshot, undefined);
+    assert.equal(reads.detail, before, "no visit sends a read");
   });
 });

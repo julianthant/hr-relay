@@ -12,6 +12,7 @@ import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../mocks/helpers/fixture-queue.js';
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
 import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from '../../mocks/helpers/workflow-composition.js';
+import { serveRunPanel, streamingRunPanel } from '../../support/helpers/dashboard/serve-run-panel.js';
 import { createFixtureBff } from '../../support/helpers/dashboard/fixture-bff.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -27,7 +28,7 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   const transport = createDashboardClient({ baseUrl: 'http://fixture.test', fetchImpl: async (url, init) => app.request(url, init) });
   const client = { ...transport, subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
     input.onState({ state: 'stopped', error });
-    return { close: () => undefined };
+    return { select() {}, close: () => undefined };
   } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -54,7 +55,7 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
     runDetail: async (runId, signal) => ({ ...await transport.runDetail(runId, signal), captures: { state: 'absent', reason: 'not-captured' } }),
     runSection: async (runId, section, cursor, signal) => runId === run.runId && section === 'identity-gate'
       ? RunDetailSectionResponseSchema.parse({ section, payload: { state: 'available', value: oneClick } }) : transport.runSection(runId, section, cursor, signal),
-    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: 'live' }); return { close: () => undefined }; },
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: 'live' }); return streamingRunPanel(input, client); },
     executeCommand: async (raw: unknown) => { sent.push(DashboardCommandRequestSchema.parse(raw)); return transport.executeCommand(raw); } };
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -96,7 +97,7 @@ for (const destination of ['confirm', 'other-run', 'no-run'] as const) it(`keeps
     { decision: 'approved', gateRef: oneClick.gateRef, optionRef: oneClick.options[0]?.ref });
 });
 
-for (const catchesUp of [false, true]) it(`retains stale Logs during a day refresh and ${catchesUp ? 'loads the caught-up row' : 'refuses persistent lag after one refresh'}`, async () => {
+for (const catchesUp of [false, true]) it(`retains stale Logs while the streamed panel is behind the row and ${catchesUp ? 'loads once the stream catches up' : 'stays stale without a day refresh while it lags'}`, async () => {
   const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === FIXTURE_IDS.openGateRun);
   assert(run);
   const { app } = createFixtureBff();
@@ -116,7 +117,7 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
     subscribeDay: input => {
       subscriptions.push(input);
       if (subscriptions.length === 1) { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: 'live' }); }
-      return { close: () => undefined };
+      return streamingRunPanel(input, client);
     },
     executeCommand: async raw => { sent.push(DashboardCommandRequestSchema.parse(raw)); return transport.executeCommand(raw); },
   };
@@ -129,28 +130,29 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
   const approve = [...block.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Confirm');
   assert(approve); assert.equal(approve.disabled, false);
 
-  ahead = true;
+  // The day frame moves the row ahead of the panel the stream last delivered.
   await act(async () => {
-    subscriptions[0].onDay({ ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => ({ ...row })) });
+    subscriptions[0].onDay({ ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row =>
+      row.runId === run.runId ? { ...row, rowRevision: nextRevision } : row) });
     await new Promise(resolve => setTimeout(resolve, 20));
   });
-  assert.equal(subscriptions.length, 2, 'one new day subscription is the admitted refresh');
+  assert.equal(subscriptions.length, 1, 'a lagging panel asks for no day refresh');
   assert.equal(host.querySelector('form[aria-label="Is this the right person?"]'), block, 'the loaded Logs mount survives loading');
   assert.ok(host.querySelector('.dashboard-log-column')?.textContent?.includes('Refreshing'));
   assert.equal(approve.disabled, true, 'stale authority cannot approve a gate');
   await act(async () => approve.click());
   assert.equal(sent.length, 0);
 
-  await act(async () => {
-    subscriptions[1].onDay({ ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row =>
-      row.runId === run.runId && catchesUp ? { ...row, rowRevision: nextRevision } : row) });
-    subscriptions[1].onState({ state: 'live' });
-    await new Promise(resolve => setTimeout(resolve, 20));
-  });
+  if (catchesUp) {
+    ahead = true;
+    const rows = subscriptions[0].rows; assert(rows);
+    await act(async () => { await serveRunPanel(rows, client, run.runId); await new Promise(resolve => setTimeout(resolve, 20)); });
+  } else {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+  }
   const text = host.querySelector('.dashboard-log-column')?.textContent ?? '';
-  const refusal = 'Relay could not refresh these logs.';
-  assert.equal(subscriptions.length, 2, 'a persistent lag must not start another refresh');
-  assert.equal((host.textContent ?? '').includes(refusal), !catchesUp, text); // the plain refresh refusal is a toast, outside the log column
+  assert.equal(subscriptions.length, 1, 'no day refresh starts');
+  assert.equal(text.includes('Refreshing'), !catchesUp, text);
   assert.equal(approve.disabled, !catchesUp);
   assert.equal(sent.length, 0);
 });

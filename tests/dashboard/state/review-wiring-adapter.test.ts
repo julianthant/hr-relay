@@ -19,6 +19,7 @@ import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue
 import { ocrReviewPageFixture } from "../../support/fixtures/dashboard/ocr-review.js";
 import { SOURCE_RUN_ID } from "../../support/fixtures/ocr/source-pages.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
+import { createRowStore } from "../../../src/dashboard/client/index.js";
 
 let root: Root | undefined;
 beforeEach(() => {
@@ -224,7 +225,7 @@ function editorWorld(unknownOnce = false, delegated = true) {
   let refreshPaused = false;
   const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
     authority: { epoch, catalog: [], now: () => FIXTURE_BOOTSTRAP.serverClock.now, today: day, day,
-      dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" },
+      dayState: { rows: createRowStore(), request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "connecting" },
         refresh: () => { if (!refreshPaused) refresh(); }, subscribePublications: () => () => undefined }, selection: { route: { start: false }, workflowId: "ocr" } } };
   function Harness() {
     const [revision, setRevision] = useState(runVersion);

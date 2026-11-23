@@ -3,8 +3,18 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
-import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
-import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { createDashboardClient, createRowStore, type DashboardClient, type RowStore, type RowStoreWriter } from "../../../src/dashboard/client/index.js";
+import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
+import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
+import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
+import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
+import { serverLocalDay } from "../../../src/dashboard/surfaces/shell/date-navigation-model.js";
+import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
+import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import type { RunPanel } from "../../../src/models/dashboard/subscription.js";
+import { serveRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { projectRunLogs, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
@@ -61,29 +71,55 @@ function servedClient(hold?: () => Promise<void>, failed = failure()): Dashboard
   return client;
 }
 
+/** A command binding whose day state streams run panels into its own row store. */
+/** The writers behind the stores the fixtures hand out, so a test can stream a panel into the store a binding reads. */
+const writers = new WeakMap<RowStore, RowStoreWriter>();
+function openStore(): RowStoreWriter { const writer = createRowStore(); writers.set(writer, writer); return writer; }
+function serveRows(rows: RowStore, client: Parameters<typeof serveRunPanel>[1], runId: string, panel?: RunPanel) {
+  const writer = writers.get(rows); assert.ok(writer, "the binding's row store was not made by the fixture");
+  return serveRunPanel(writer, client, runId, panel);
+}
+function commandBindingFixture(client: DashboardClient) {
+  const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, serverClock: { ...FIXTURE_BOOTSTRAP.serverClock, now: NOW, zone: "America/Los_Angeles" } });
+  const epoch = Object.freeze({ client, bootstrap });
+  const day = serverLocalDay(bootstrap.serverClock);
+  const request = Object.freeze({ client, day, epoch, revision: 0 });
+  const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
+  const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
+    authority: { epoch, catalog: [], now: () => bootstrap.serverClock.now, today: day, day,
+      dayState: { rows: openStore(), subscribePublications: () => { throw new Error("fixture publications are not served"); }, request,
+        day: { state: "loaded", value: DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, day }) }, connection: { state: "connecting" }, refresh: () => undefined },
+      selection: { route: { start: false }, workflowId: "launch-proof" } } };
+  return { binding };
+}
+
 let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals(); });
 async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); }
 
 describe("Logs of a run that failed in its first step", () => {
-  it("settles its read while day frames re-serve the same queue row", async () => {
-    let release: (() => void) | undefined;
-    const held = new Promise<void>(resolve => { release = resolve; });
-    const client = servedClient(() => held);
+  it("shows the streamed panel while day frames re-serve the same queue row, with no client read", async () => {
+    const client = servedClient();
+    const h = commandBindingFixture(client);
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
+    client.calls = 0;
     let state: ReturnType<typeof useRunWiring> | undefined;
-    function Probe({ selection }: { selection: LogSelection }) { state = useRunWiring(client, selection, undefined); return null; }
+    function Probe({ selection }: { selection: LogSelection }) { state = useRunWiring(client, selection, h.binding); return null; }
     await mount(createElement(Probe, { selection: { row: failedRow(), workflowLabel: "Onboarding" } }));
-    // Each dashboard-day frame parses a fresh, equal row while the first read is still in flight.
-    for (let frame = 0; frame < 3; frame++) await act(async () => root?.render(createElement(Probe, { selection: { row: failedRow(), workflowLabel: "Onboarding" } })));
-    await act(async () => { release?.(); await held; });
     assert.equal(state?.state, "loaded");
-    assert.equal(client.calls, 1);
+    // Each dashboard-day frame parses a fresh, equal row.
+    for (let frame = 0; frame < 3; frame++) await act(async () => root?.render(createElement(Probe, { selection: { row: failedRow(), workflowLabel: "Onboarding" } })));
+    assert.equal(state?.state, "loaded");
+    assert.equal(client.calls, 0);
   });
 
   it("lists the planned steps and the failed step's failure card", async () => {
     const client = servedClient();
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: { row: failedRow(), workflowLabel: "Onboarding" } }) }));
+    const h = commandBindingFixture(client);
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+      children: createElement(LogSample, { selection: { row: failedRow(), workflowLabel: "Onboarding" } }) }) }));
     const text = document.body.textContent ?? "";
     for (const [, label] of PLANNED) assert.match(text, new RegExp(label, "u"));
     assert.match(text, /Nothing was written|No changes were made/u);

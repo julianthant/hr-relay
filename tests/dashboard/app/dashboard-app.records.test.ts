@@ -51,8 +51,11 @@ it("opens shared-lookup records through real routes and keyboard selection witho
       return Response.json(path.endsWith("/review") ? { section: "review", payload: page } : path.endsWith("/logs") ? { section: "logs", payload: logs } : detail);
     }
     if (url.includes("/events/v1?")) return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      // The stream carries the selected run's panel, as the server's snapshot row does.
+      const opened = new URL(url).searchParams.get("topics")?.includes(`run:${owner.runId}`) === true;
+      const rows = opened ? [{ model: "run-panel", key: owner.runId, value: { state: "available", detail, logs, sections: [] } }] : [];
       const messages = [{ type: "hello", wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor },
-        { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: day.snapshotCursor, payload: day }];
+        { type: "snapshot", topic: "dashboard-day", rows, position: 0, cursor: day.snapshotCursor, payload: day }];
       for (const message of messages) controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
       init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
     } }), { headers: { "content-type": "text/event-stream" } });
