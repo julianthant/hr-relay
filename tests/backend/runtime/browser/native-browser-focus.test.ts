@@ -8,7 +8,7 @@ function browser(processes = [{ type: "browser", id: 421321 }], errors: { send?:
   const calls: string[] = [];
   const page = {} as Page;
   const context = { newCDPSession: async (target: Page) => {
-    assert.equal(target, page);
+    assert.equal(target, page); calls.push("window-attach");
     return {
       async send(method: string, input?: unknown) {
         calls.push(method);
@@ -43,7 +43,8 @@ it("activates the owned macOS browser process on each show and returns to the ca
   assert.match(script, /frontmostApplication\.processIdentifier/u);
   assert.doesNotMatch(script, /System Events|AXRaise|activateWithOptions\(2\)/u);
   assert.ok(calls.every(call => call.timeoutMs === 5000));
-  assert.deepEqual(owned.calls, Array.from({ length: 2 }, () => ["SystemInfo.getProcessInfo", "detach", "Browser.getWindowForTarget", "Browser.setWindowBounds", "Page.bringToFront", "window-detach"]).flat());
+  assert.deepEqual(owned.calls, ["SystemInfo.getProcessInfo", "detach", "window-attach", "Browser.getWindowForTarget", "Browser.setWindowBounds", "Page.bringToFront",
+    "SystemInfo.getProcessInfo", "detach", "Browser.getWindowForTarget", "Browser.setWindowBounds", "Page.bringToFront"]);
 });
 
 it("foregrounds the owned Windows process and preserves the original Relay window for return", async () => {

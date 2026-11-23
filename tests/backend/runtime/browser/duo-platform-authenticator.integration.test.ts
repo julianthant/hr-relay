@@ -4,6 +4,7 @@ import { chromium, type CDPSession } from "playwright";
 import { it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { prepareDuoPlatformAuthenticator } from "../../../../src/backend/runtime/browser/duo-platform-authenticator.js";
+import { createDuoBrowserFocus } from "../../../../src/backend/runtime/browser/native-browser-focus.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 it("rehydrates the actual platform credential while preserving discovery and refusing native assertions after handoff", async () => {
@@ -73,4 +74,26 @@ it("rehydrates the actual platform credential while preserving discovery and ref
     finally { clearTimeout(timer); }
   }, { credentialId: credential.credentialId, timeoutMs: scaledMs(250) });
   assert.ok(["AbortError", "NotAllowedError"].includes(outcome), `unexpected native assertion outcome: ${outcome}`);
+});
+
+it("keeps the enrollment platform credential readable after macOS focus shows the Duo tab", async () => {
+  const browser = await chromium.launch({ headless: true });
+  onTestFinished(() => browser.close());
+  const context = await browser.newContext();
+  await context.route("https://synthetic.duosecurity.com/**", route => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Synthetic Duo</title>" }));
+  const page = await context.newPage(); await page.goto("https://synthetic.duosecurity.com/");
+  const platform = await prepareDuoPlatformAuthenticator(context, page, { purpose: "enrollment" });
+  const focus = createDuoBrowserFocus(5000, "darwin", async () => "focused");
+  await focus.show(context, page);
+  const id = await page.evaluate(async () => {
+    const credential = await navigator.credentials.create({ publicKey: {
+      challenge: new TextEncoder().encode("synthetic-focus-challenge"), rp: { id: "duosecurity.com", name: "Synthetic Duo" },
+      user: { id: new TextEncoder().encode("synthetic-user"), name: "synthetic@ucsd.edu", displayName: "Synthetic Operator" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }], authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "required" },
+    } });
+    if (!(credential instanceof PublicKeyCredential)) throw new Error("actual platform attestation required");
+    return credential.id;
+  });
+  await focus.show(context, page);
+  assert.equal((await platform.credential(id, "duosecurity.com", "2026-11-23T12:00:00.000Z")).credentialId, id);
 });
