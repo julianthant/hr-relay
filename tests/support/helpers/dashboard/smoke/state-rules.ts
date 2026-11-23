@@ -203,8 +203,8 @@ export async function dialogsShareShape({ page, storyId, story, dialogShapes }: 
   const viewport = page.viewportSize();
   const found: string[] = [];
   for (const { kind, variant, shape } of await page.evaluate(measureDialogs)) {
-    if ((variant === null || !DIALOG_REFERENCE_VARIANTS.includes(variant)) && usesIndependentDialogReferences(storyId.split("/")[0])) {
-      throw new Error(`${storyId} draws ${kind} with a cross-story reference. Move its surface to the shared-reference gallery shard.`);
+    if ((variant === null || !DIALOG_REFERENCE_VARIANTS.includes(variant)) && usesIndependentDialogReferences(storyId)) {
+      throw new Error(`${storyId} draws ${kind} with a cross-story reference. Move its story group to the shared-reference gallery shard.`);
     }
     const key = `${kind} at ${String(viewport?.width)}x${String(viewport?.height)}`;
     let reference = dialogShapes.get(key);

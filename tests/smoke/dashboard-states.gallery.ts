@@ -9,8 +9,8 @@ import { CATALOGUE } from "../support/helpers/dashboard/smoke/stories/catalogue.
 
 const dialogShapes: StateRuleContext["dialogShapes"] = new Map();
 
-function galleryTags(surface: string): string[] {
-  return usesIndependentDialogReferences(surface) ? [`@${surface}`, "@gallery-independent"] : [`@${surface}`];
+function galleryTags(id: string, surface: string): string[] {
+  return usesIndependentDialogReferences(id) ? [`@${surface}`, "@gallery-independent"] : [`@${surface}`];
 }
 
 test.afterAll(() => {
@@ -22,7 +22,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     test.use({ viewport });
 
     for (const { id, surface, story } of CATALOGUE) {
-      test(`${id} passes the state rules`, { tag: galleryTags(surface) }, async ({ mount, page, diagnostics }) => {
+      test(`${id} passes the state rules`, { tag: galleryTags(id, surface) }, async ({ mount, page, diagnostics }) => {
         if (story.clock === true) await page.clock.install();
         await mount(id);
         await story.play?.(page);
@@ -49,7 +49,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 
       if (known.length === 0) continue;
       const annotation = [...new Set(known.map(({ ticket }) => ticket))].map(ticket => ({ type: "issue", description: ticket }));
-      test(`${id} has its recorded breaks`, { tag: galleryTags(surface), annotation }, async ({ mount, page, diagnostics }) => {
+      test(`${id} has its recorded breaks`, { tag: galleryTags(id, surface), annotation }, async ({ mount, page, diagnostics }) => {
         if (story.clock === true) await page.clock.install();
         await mount(id);
         await story.play?.(page);
