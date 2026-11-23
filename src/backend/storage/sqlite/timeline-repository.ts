@@ -120,9 +120,10 @@ export const DEBUG_EVENTS_MIGRATION = deepFreeze({ version: 39, statements: [
   "DROP TRIGGER timeline_events_change_delete",
   "DROP TRIGGER timeline_events_confirmed_retained",
   "DELETE FROM timeline_events WHERE kind='debug'",
+  // Same text as the original trigger, so an upgraded store's schema matches a fresh one.
   `CREATE TRIGGER timeline_events_confirmed_retained BEFORE DELETE ON timeline_events
-    WHEN OLD.retention_class IN ('confirmed-operation','protected') AND NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id)
-    BEGIN SELECT RAISE(ABORT,'protected-timeline-owner-deletion-required'); END`,
+WHEN OLD.retention_class IN ('confirmed-operation','protected') AND NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id)
+BEGIN SELECT RAISE(ABORT,'protected-timeline-owner-deletion-required'); END`,
   ...changeLogTriggers("timeline_events").filter(trigger => trigger.startsWith("CREATE TRIGGER timeline_events_change_delete ")),
 ] });
 
