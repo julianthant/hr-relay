@@ -415,7 +415,7 @@ export function createScriptedExecutor(deps: Readonly<{
   const approveOcrReviews = async (request: SeededRequest, now: string, rootRunId: string): Promise<void> => {
     const root = database.authority.runs.get(rootRunId);
     if (root === undefined) throw new Error(`scripted run ${rootRunId} does not exist`);
-    const { assertedEid } = scriptedWorkflow(root.envelope.workflow);
+    const script = scriptedWorkflow(root.envelope.workflow);
     const parked = database.authority.runs.listChildren(rootRunId).filter(child => child.envelope.workflow === "ocr" && child.lifecycle.state === "parked-gate");
     if (parked.length === 0) throw new Error(`scripted run ${rootRunId} has no OCR review parked at its gate`);
     for (const ocr of parked) {
@@ -424,7 +424,7 @@ export function createScriptedExecutor(deps: Readonly<{
         const review = database.authority.ocrReviews.latest(ocrRunId);
         const record = review?.records.find(candidate => candidate.recordId === recordId);
         if (review === undefined || record === undefined) throw new Error(`scripted OCR record ${recordId} is gone`);
-        const eid = assertedEid?.(Object.fromEntries(record.fields.answers.map(answer => [answer.path, answer.state === "read" ? answer.raw : undefined])));
+        const eid = script.assertedEid?.(Object.fromEntries(record.fields.answers.map(answer => [answer.path, answer.state === "read" ? answer.raw : undefined])));
         if (eid === undefined) throw new Error(`the script asserts no employee ID for OCR record ${recordId}`);
         const result = CommandResultSchema.parse(await request("/api/v1/commands", { ...operatorCommand(now), family: "ocr-review", type: "correct-ocr-record",
           target: { runId: ocrRunId, expectedRevision: review.revision }, payload: { recordId, fields: record.fields, assertedEid: eid } }));
