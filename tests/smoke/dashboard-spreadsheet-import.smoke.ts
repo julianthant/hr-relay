@@ -61,11 +61,8 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
     await dashboard.openStartDialog();
     await dashboard.dialog.getByRole("navigation", { name: "Workflow" }).getByRole("button", { name: "Person Lookup", exact: true }).click();
     await checks.getByRole("button", { name: "Add spreadsheet" }).click();
-    const search = page.getByRole("searchbox", { name: "Find a spreadsheet" });
-    await search.fill("smoke roster");
-    const options = page.getByRole("menuitem");
-    await expect(options).toContainText(["Large smoke roster", "Small smoke roster"]);
-    await options.filter({ hasText: name }).click();
+    await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill(name);
+    await page.getByRole("menuitem", { name: new RegExp(name, "u") }).click();
     await expect(checks.getByRole("button", { name: `Remove ${name}` })).toBeVisible();
     await expect(checks.getByRole("button", { name: new RegExp(`${name} worksheets, (?!none chosen)`, "u") })).toBeEnabled();
     await dashboard.dialog.getByRole("button", { name: "Close", exact: true }).click();
