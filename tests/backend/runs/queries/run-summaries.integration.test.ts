@@ -7,7 +7,7 @@ import { default as assert } from 'node:assert/strict';
 import { createOperatorProjection, createOperatorRunDetail } from '../../../../src/backend/app/composition/dashboard/operator.js';
 import { RunRecordService } from '../../../../src/backend/runs/lifecycle/run-record-service.js';
 import { buildRunDetail } from '../../../../src/backend/runs/queries/run-detail.js';
-import { queryActivitySummaries, queryQueueSummaries, queryRunSummarySource } from '../../../../src/backend/runs/queries/run-summaries.js';
+import { queryActivitySummaries, queryQueueSummaries } from '../../../../src/backend/runs/queries/run-summaries.js';
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createTimelineEmitter } from '../../../../src/backend/storage/events/timeline-emitter.js';
 import { createTransactionHistory } from '../../../../src/backend/storage/sqlite/transaction-history.js';
@@ -613,9 +613,9 @@ it("keeps unrelated source facts unchanged, rolls nested mutations back and page
     assert.deepEqual(semanticRows(f.db.readRunSummaries().filter(row=>row.runId===before[0].runId)),semanticRows(before));
     const read=f.db.readRunSummaries.bind(f.db);f.db.readRunSummaries=()=>{throw new Error("whole-reader-forbidden");};
     try {
-      const first=queryRunSummarySource(f.db,{workflow:"person-lookup",limit:1});
+      const first=f.db.queryRunSummaries({workflow:"person-lookup",limit:1});
       assert.equal(first.items.length,1);assert.ok(first.next);
-      const second=queryRunSummarySource(f.db,{workflow:"person-lookup",limit:1,after:first.next});
+      const second=f.db.queryRunSummaries({workflow:"person-lookup",limit:1,after:first.next});
       assert.equal(second.items.length,1);assert.equal(second.next,null);
       assert.notEqual(first.items[0].runId,second.items[0].runId);
       assert.deepEqual(f.db.summaryWorkflows(),["person-lookup"]);
