@@ -1,9 +1,10 @@
 name: Development
 
-run-name: ${{ github.event_name == 'schedule' && format('Full run {0}', github.sha) || github.event.pull_request.title || github.ref_name }}
+run-name: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && format('Full run {0}', github.sha) || github.event.pull_request.title || github.ref_name }}
 
 on:
-  # The full run checks every 20 minutes and starts only when development changed (scripts/ci/full-run.ts).
+  # dev-auto dispatches the full run; the cron is a backup GitHub has never fired. Either starts only per scripts/ci/full-run.ts.
+  workflow_dispatch:
   schedule:
     - cron: '7,27,47 * * * *'
   pull_request:
@@ -17,14 +18,14 @@ permissions:
   actions: read
   pull-requests: read
 
-# An edited run queues behind the pull request's test run instead of cancelling it; scheduled runs never cancel each other.
+# An edited run queues behind the pull request's test run instead of cancelling it; scheduled and dispatched runs never cancel each other.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'schedule' && github.run_id) || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || (contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && github.run_id) || github.ref }}
   cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
   decide:
-    if: ${{ github.event_name == 'schedule' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -82,7 +83,7 @@ jobs:
   development:
     name: development
     needs: proof
-    if: ${{ always() && github.event_name != 'schedule' }}
+    if: ${{ always() && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

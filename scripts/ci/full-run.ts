@@ -2,6 +2,7 @@
 
 const WORKFLOW = ".github/workflows/development.yml";
 const SIX_HOURS = 6 * 60 * 60_000;
+const FULL_EVENTS = ["schedule", "workflow_dispatch"];
 export const START_STEP = "Start the full run";
 
 interface Run { id: number; event: string; path: string; head_sha: string; html_url: string; head_repository?: { full_name: string } | null }
@@ -29,7 +30,7 @@ export interface GitHub {
 }
 export interface Context { repo: Repo; runId: number; sha: string; payload: { pull_request?: PullRequest } }
 
-// A green full run is the `full` job of a scheduled development.yml run at exactly this commit.
+// A green full run is the `full` job of a scheduled or dispatched development.yml run at exactly this commit.
 export async function greenFullRun(github: GitHub, repo: Repo, sha: string): Promise<Run | undefined> {
   const checks = await github.paginate<CheckRun>(github.rest.checks.listForRef,
     { ...repo, ref: sha, check_name: "full", filter: "all", per_page: 100 });
@@ -38,7 +39,7 @@ export async function greenFullRun(github: GitHub, repo: Repo, sha: string): Pro
     const { data: job } = await github.rest.actions.getJobForWorkflowRun({ ...repo, job_id: check.id });
     if (job.name !== "full" || job.conclusion !== "success" || job.head_sha !== sha) continue;
     const { data: run } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: job.run_id });
-    if (run.event === "schedule" && run.path.split("@")[0] === WORKFLOW && run.head_sha === sha
+    if (FULL_EVENTS.includes(run.event) && run.path.split("@")[0] === WORKFLOW && run.head_sha === sha
       && run.head_repository?.full_name === `${repo.owner}/${repo.repo}`) return run;
   }
   return undefined;
@@ -56,9 +57,11 @@ export async function decideFullRun({ github, context, now }: { github: GitHub; 
       .filter(run => run.id !== context.runId));
   }
   if (busy.length === 0) return { start: true, reason: `Development ${sha} has no green full run and CI is idle.` };
-  const recent = (await github.paginate<Run>(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: "development.yml",
-    event: "schedule", created: `>=${new Date(now - SIX_HOURS).toISOString()}`, per_page: 100 }))
-    .filter(run => run.id !== context.runId);
+  const recent: Run[] = [];
+  for (const event of FULL_EVENTS) {
+    recent.push(...(await github.paginate<Run>(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: "development.yml",
+      event, created: `>=${new Date(now - SIX_HOURS).toISOString()}`, per_page: 100 })).filter(run => run.id !== context.runId));
+  }
   for (const run of recent) {
     const jobs = await github.paginate<Job>(github.rest.actions.listJobsForWorkflowRun,
       { ...repo, run_id: run.id, filter: "latest", per_page: 100 });

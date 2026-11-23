@@ -92,10 +92,12 @@ describe("development fast check", () => {
 
   it("tests task pushes and other pull requests, and gives task pull requests one gate job", () => {
     expect(development).toContain("name: Development");
-    expect(development).toContain("run-name: ${{ github.event_name == 'schedule' && format('Full run {0}', github.sha) || github.event.pull_request.title || github.ref_name }}");
+    expect(development).toContain(`run-name: \${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && format('Full run {0}', github.sha) || github.event.pull_request.title || github.ref_name }}`);
     expect(development).toContain("branches: [development]");
     expect(development).toContain("push:\n    branches: ['task/**']");
-    expect(development).not.toMatch(/workflow_dispatch:|ci-runners/u);
+    expect(development).toContain("on:\n  # dev-auto dispatches the full run");
+    expect(development).toMatch(/\n {2}workflow_dispatch:\n {2}schedule:/u);
+    expect(development).not.toMatch(/ci-runners|workflow_dispatch:\n {4}inputs/u);
     expect(jobNames(development)).toEqual(["decide", "checks", "proof", "development", "full-checks", "codeql", "dependencies", "full"]);
     expect(job(development, "checks")).toContain("uses: ./.github/workflows/checks.yml");
     expect(job(development, "checks")).toContain("kind: fast");
@@ -104,6 +106,7 @@ describe("development fast check", () => {
       { github: { event_name, event: { action }, head_ref }, startsWith: (value: string, prefix: string) => value.startsWith(prefix) });
     expect(runsChecks("push", undefined, "")).toBe(true);
     expect(runsChecks("schedule", undefined, "")).toBe(false);
+    expect(runsChecks("workflow_dispatch", undefined, "")).toBe(false);
     for (const head of ["fix/x", "chore/x"]) {
       for (const action of ["opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft"]) {
         expect(runsChecks("pull_request", action, head)).toBe(true);
@@ -118,7 +121,7 @@ describe("development fast check", () => {
     const gate = job(development, "development");
     expect(gate).toContain("name: development");
     expect(gate).toContain("needs: proof");
-    expect(gate).toContain("if: ${{ always() && github.event_name != 'schedule' }}");
+    expect(gate).toContain("if: ${{ always() && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}");
     expect(gate).toContain("npm run names:check");
     expect(gate).toContain('node scripts/ci/allowed-workflows.ts "$PR_BASE_SHA" "$PR_LABELS"');
     expect(gate).toContain('git cat-file -e "$PR_BASE_SHA^{commit}"');
@@ -134,7 +137,7 @@ describe("development fast check", () => {
   it("decides on the schedule and starts every full job only on the decision", () => {
     expect(development).toContain("schedule:\n    - cron: '7,27,47 * * * *'");
     const decide = job(development, "decide");
-    expect(decide).toContain("if: ${{ github.event_name == 'schedule' }}");
+    expect(decide).toContain("if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}");
     expect(decide).toContain("checks: read");
     expect(decide).toContain("sparse-checkout: scripts/ci");
     expect(decide).toContain("decideFullRun({ github, context, now: Date.now() })");
@@ -166,11 +169,13 @@ describe("development fast check", () => {
     const group = header.match(/^ {2}group: (.+)$/mu)?.[1];
     assert.ok(group);
     const key = (event_name: string, number: number | undefined, run_id: number, ref: string) => group.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) =>
-      String(runInNewContext(code, { github: { workflow: "Development", event_name, run_id, ref, event: { pull_request: { number } } } })));
+      String(runInNewContext(code, { github: { workflow: "Development", event_name, run_id, ref, event: { pull_request: { number } } },
+        contains: (list: string[], item: string) => list.includes(item), fromJSON: JSON.parse as (text: string) => string[] })));
     expect(key("pull_request", 7, 1, "refs/pull/7/merge")).toBe(key("pull_request", 7, 2, "refs/pull/7/merge"));
     expect(key("pull_request", 7, 1, "refs/pull/7/merge")).toBe("ci-Development-7");
     expect(key("push", undefined, 1, "refs/heads/task/a/b")).toBe("ci-Development-refs/heads/task/a/b");
     expect(key("schedule", undefined, 1, "refs/heads/development")).not.toBe(key("schedule", undefined, 2, "refs/heads/development"));
+    expect(key("workflow_dispatch", undefined, 1, "refs/heads/development")).not.toBe(key("workflow_dispatch", undefined, 2, "refs/heads/development"));
     const cancel = header.match(/^ {2}cancel-in-progress: \$\{\{ (.+) \}\}$/mu)?.[1];
     assert.ok(cancel);
     const cancels = (action?: string): unknown => runInNewContext(cancel, { github: { event: { action } } });
@@ -583,6 +588,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(selectUsingAdapter("release", "pull_request", "main", "staging", filters).fullRelease).toBe(false);
     expect(selectUsingAdapter("release", "pull_request", "main", "fix/other", filters).fullRelease).toBe(false);
     expect(selectUsingAdapter("full", "schedule", "", "development", {})).toMatchObject({ workflow: "full", fullRelease: true, perf: true, smoke: true, testJobs: 40 });
+    expect(selectUsingAdapter("full", "workflow_dispatch", "", "development", {})).toMatchObject({ workflow: "full", fullRelease: true, testJobs: 40 });
     expect(selectUsingAdapter("release", "pull_request", "main", "hotfix/x", filters)).toEqual(planFor("release", { head: "hotfix/x" }));
     expect(planFor("release", { head: "hotfix/x" }).fullRelease).toBe(true);
     expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {})).toMatchObject({ perf: false, smoke: false });

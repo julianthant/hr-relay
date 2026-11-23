@@ -47,9 +47,10 @@ function fake({ runs = [], busy = {}, foreignChecks = [], commits = {} }: Fake) 
             steps: [{ name: START_STEP, conclusion: run?.started ? "success" : "skipped" }] }];
         }),
         listWorkflowRuns: method("runs", ({ workflow_id, event, created }) => {
-          expect({ workflow_id, event }).toEqual({ workflow_id: "development.yml", event: "schedule" });
+          expect(workflow_id).toBe("development.yml");
+          expect(["schedule", "workflow_dispatch"]).toContain(event);
           const since = Date.parse(String(created).slice(2));
-          return runs.filter(run => Date.parse(run.created_at) >= since).map(run => ({ ...run, html_url: `https://example.test/runs/${run.id}` }));
+          return runs.filter(run => run.event === event && Date.parse(run.created_at) >= since).map(run => ({ ...run, html_url: `https://example.test/runs/${run.id}` }));
         }),
         listWorkflowRunsForRepo: method("busy", ({ status }) => (busy[String(status)] ?? []).map(id => ({ id }))),
       },
@@ -116,6 +117,14 @@ describe("scheduled full-run decision", () => {
   it("never overlaps a running full run, which keeps CI busy", async () => {
     const running = scheduled(1, { full: undefined, created_at: hours(1) });
     expect(await decide({ runs: [running], busy: { in_progress: [1] } })).toMatchObject({ start: false });
+  });
+
+  it("counts a dispatched full run as proof and as a recent start", async () => {
+    const dispatched = scheduled(1, { event: "workflow_dispatch" });
+    expect(await greenFullRun(fake({ runs: [dispatched] }).github, repo, sha)).toMatchObject({ id: 1 });
+    const recent = scheduled(2, { event: "workflow_dispatch", head_sha: "b".repeat(40), created_at: hours(2) });
+    const { github } = fake({ runs: [recent], busy: { in_progress: [5] } });
+    expect((await decideFullRun({ github, context: context(), now })).start).toBe(false);
   });
 
   it("ignores success claims that are not the scheduled development full job at this commit", async () => {
