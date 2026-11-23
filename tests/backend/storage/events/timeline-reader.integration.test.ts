@@ -68,3 +68,5 @@ describe("D actual HTTP admission", () => {
     } finally { await f.dispose(); }
   });
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

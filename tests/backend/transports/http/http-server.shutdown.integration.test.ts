@@ -103,3 +103,5 @@ for (const observer of ["absent", "records", "throws"] as const) for (const fail
     }
   }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

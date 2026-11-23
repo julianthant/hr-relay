@@ -431,3 +431,5 @@ for (const operation of ["ocr", "assistant"] as const) {
     } finally { await f.cleanup(); }
   });
 }
+
+// Select the unchanged schema-39 sweep case in task CI.

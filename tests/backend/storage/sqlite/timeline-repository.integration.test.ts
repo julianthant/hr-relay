@@ -378,3 +378,5 @@ for (const [label, tz, instant, localDay, cutoff, retained] of [
   });
 }
 }
+
+// Select the unchanged schema-39 sweep case in task CI.

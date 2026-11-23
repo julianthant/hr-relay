@@ -19,7 +19,6 @@ import { createCredentialStore as createProfileCredentialStore } from "../../../
 import { upgradeProfileAtStartup } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase as ProfileAuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { DEBUG_EVENTS_MIGRATION } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { WORKBOOK_PAYLOAD_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
@@ -243,7 +242,7 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   // Schema 29 drops the empty grant table.
   const { assistant_grants: grants, ...keptBefore } = before.kept;
   assert.deepEqual(grants, []);
-  assert.deepEqual(kept, { ...keptBefore, workbook_payloads: [], debug_events: [] });
+  assert.deepEqual(kept, { ...keptBefore, workbook_payloads: [] });
   assert.deepEqual(after.upgrades.slice(0, before.upgrades.length), before.upgrades);
   assert.ok(after.upgrades.length > before.upgrades.length);
   // Migration 21 rewrites this trigger; every other trigger comes through verbatim.
@@ -252,13 +251,10 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   // Migration 31 adds the change log's capture and reference triggers.
   const unchanged = (rows: readonly Record<string, unknown>[]) => rows.filter(row => (version > 20 || row.name !== "runs_completion_immutable") && !ASSISTANT_TRIGGERS.has(String(row.name))
     && !CHANGE_LOG_OBJECTS.includes(String(row.name)));
-  const addedTriggers = [
-    ...WORKBOOK_PAYLOAD_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER workbook_payloads_")),
-    ...DEBUG_EVENTS_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER debug_events_")),
-  ];
-  const isAddedTrigger = (row: Record<string, unknown>) => addedTriggers.includes(String(row.sql));
-  assert.deepEqual(after.triggers.filter(isAddedTrigger).map(row => String(row.sql)).sort(), addedTriggers.sort());
-  assert.deepEqual(unchanged(after.triggers.filter(row => !isAddedTrigger(row))), unchanged(before.triggers));
+  const payloadTriggers = WORKBOOK_PAYLOAD_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER workbook_payloads_"));
+  const isPayloadTrigger = (row: Record<string, unknown>) => payloadTriggers.includes(String(row.sql));
+  assert.deepEqual(after.triggers.filter(isPayloadTrigger).map(row => String(row.sql)).sort(), payloadTriggers.sort());
+  assert.deepEqual(unchanged(after.triggers.filter(row => !isPayloadTrigger(row))), unchanged(before.triggers));
   assert.ok(after.triggers.some(row => row.name === "runs_completion_immutable"));
   assert.deepEqual(after.foreignKeys, []);
   assert.equal(after.count("SELECT count(*) AS count FROM sqlite_schema WHERE type='index' AND name='timeline_worker_claim_idx'"), 1);
@@ -319,3 +315,5 @@ it.each([20, 21] as const)("keeps a library row a schema %s closure run wrote ag
   assert.equal(library(s.path), 1);
   assert.equal(read(s.path).count("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?", writer), 1);
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

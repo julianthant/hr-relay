@@ -406,3 +406,5 @@ describe("Gate#release preserves the original error when the store's release() i
     assert.equal(leaseRow(database).state, "released");
   });
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

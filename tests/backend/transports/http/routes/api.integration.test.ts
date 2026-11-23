@@ -116,3 +116,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 import { assertHttpFaultOnly, disposeHttpRouteHarness, faultAuthoritySnapshot, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
+
+// Select the unchanged schema-39 sweep case in task CI.

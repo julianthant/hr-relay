@@ -237,3 +237,5 @@ it("updates both dates when a rename coincides with an insertion on another day"
   assert.deepEqual(warmCounts, ["2026-08-04"]);
   assert.deepEqual(after.monthCounts, [{ day: DAY, count: 2 }, { day: "2026-08-04", count: 1 }]);
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

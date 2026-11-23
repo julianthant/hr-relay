@@ -199,3 +199,5 @@ it("reads only changed run facts after its first snapshot", async () => {
     assert.equal(traceSqliteStatements(() => query(request)).statements.some(({ sql }) => fullRunRead(sql)), false);
   } finally { native.close(); await fixture.close(); }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

@@ -749,3 +749,5 @@ it("never remembers a failed model list read", async () => {
     assert.equal(reads(), before + 2);
   } finally { await w.f.cleanup(); }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

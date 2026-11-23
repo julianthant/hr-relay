@@ -100,3 +100,5 @@ it("loads the finite historical fixture helpers through the compiled child-proce
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toBe("function/function/function");
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

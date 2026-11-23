@@ -168,3 +168,5 @@ it("reports a failed Nominatim reply send through the child process error event"
   ]);
   assert.equal(JSON.stringify(diagnostics).includes(failure.message), false);
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

@@ -137,3 +137,5 @@ describe("slow storage operations in the debug report", () => {
     }
   });
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

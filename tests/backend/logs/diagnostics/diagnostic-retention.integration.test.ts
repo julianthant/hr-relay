@@ -218,3 +218,5 @@ it("clears the retention timer when the composed dashboard shuts down normally",
     await fixture.close();
   }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

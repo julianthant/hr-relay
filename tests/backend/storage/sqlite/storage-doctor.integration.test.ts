@@ -411,3 +411,5 @@ afterEach(_afterEachFixture0);
   });
 });
 }
+
+// Select the unchanged schema-39 sweep case in task CI.

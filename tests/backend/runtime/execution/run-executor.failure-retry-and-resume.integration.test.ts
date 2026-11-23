@@ -340,3 +340,5 @@ describe("failure, retry, and resume", () => {
     assert.equal(database.authority.runs.listByWorker(claim.workerId).some(owned => runClaim(owned) !== undefined), false);
   });
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

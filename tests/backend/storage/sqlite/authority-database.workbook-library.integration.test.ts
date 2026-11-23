@@ -267,3 +267,5 @@ it('reuses frozen wire records across diagnostic writes and refreshes edited wor
     assert.deepEqual(edited, encodeSavedWorkbook(service.read(created.libraryId)));
   } finally { database.close(); }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

@@ -388,3 +388,5 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     hub.close();
   }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

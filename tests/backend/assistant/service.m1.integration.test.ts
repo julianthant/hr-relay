@@ -409,3 +409,5 @@ it("replays no refused or delivery-unknown operator turn to the provider and kee
     assert.deepEqual(w.service().conversation(chat)?.messages.map(row => row.delivery), ["delivery-unknown", "refused", "answered", "settled"]);
   } finally { await w.close(); }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

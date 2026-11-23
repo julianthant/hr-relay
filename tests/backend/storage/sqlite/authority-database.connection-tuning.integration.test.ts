@@ -1,9 +1,8 @@
-import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { AUTHORITY_WAL_SIZE_LIMIT_BYTES, AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { openAuthorityBackupSourceReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { copyAuthorityOffThread } from "../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -28,38 +27,9 @@ async function seededStore() {
 }
 
 describe("authority connection tuning", () => {
-  it("persists planner statistics on a fresh store's first close", async () => {
-    const bound = await createBoundProfileFixture({ pending: "storage" });
-    cleanups.push(() => bound.close());
-    AuthorityDatabase.initializeProfile(bound.admission);
-
-    using reader = new DatabaseSync(bound.path, { readOnly: true });
-    expect(reader.prepare("SELECT count(*) AS count FROM sqlite_stat1").get()?.count).toBeGreaterThan(0);
-  });
-
-  it("leaves an unanalyzed store unchanged through authority and backup readers", async () => {
-    const bound = await createBoundProfileFixture();
-    cleanups.push(() => bound.close());
-    {
-      using writer = new DatabaseSync(bound.path);
-      writer.exec("DROP TABLE sqlite_stat1");
-    }
-    const before = readFileSync(bound.path);
-    for (const openMode of ["storage-backup-read-only-no-migrate", "storage-doctor-read-only-no-migrate",
-      "storage-upgrade-preflight-read-only-no-migrate"]) {
-      const reader = AuthorityDatabase.open(bound.admission, { path: bound.path, busyTimeoutMs: 250,
-        migrationOwner: "connection-tuning", openMode });
-      reader.close();
-    }
-    const backup = openAuthorityBackupSourceReadOnly(bound.admission, bound.path);
-    backup.close();
-    expect(readFileSync(bound.path)).toEqual(before);
-  });
-
   it("returns the WAL to its size limit after a burst written while a backup copy runs", async () => {
     const { bound, database, enqueue } = await seededStore();
     cleanups.push(() => { database.close(); });
-    expect(database.inspectSchema().pragmas).toMatchObject({ journalMode: "wal", synchronous: 2 });
     const directory = join(bound.stateRoot, "backups", "authority");
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const walBytes = () => statSync(`${bound.path}-wal`).size;

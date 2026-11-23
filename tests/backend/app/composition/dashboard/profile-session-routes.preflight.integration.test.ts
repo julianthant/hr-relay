@@ -198,3 +198,5 @@ it("T5 names a compose failure PROFILE_RUNTIME_START_FAILED and logs only its ke
     assert.equal(JSON.stringify(boot.records).includes("detail"), false);
   } finally { await close(runtime, undefined, f); }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

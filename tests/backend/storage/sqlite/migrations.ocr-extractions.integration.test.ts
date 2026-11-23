@@ -134,3 +134,5 @@ it("upgrades populated OCR schema twelve to workbook masters without rewriting s
     assert.throws(() => database.exec('DELETE FROM artifacts'), /artifact-evidence-retained/u);
   } finally { database.close(); }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

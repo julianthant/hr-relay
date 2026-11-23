@@ -98,3 +98,5 @@ describe("authority write lock scope", () => {
     } finally { raw.close(); database.close(); await profile.close(); }
   });
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

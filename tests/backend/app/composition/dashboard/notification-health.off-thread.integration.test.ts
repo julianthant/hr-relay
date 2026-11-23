@@ -110,3 +110,5 @@ describe("notification health off the event loop", () => {
     } finally { inspections.mockRestore(); await f.close(); }
   });
 });
+
+// Select the unchanged schema-39 sweep case in task CI.

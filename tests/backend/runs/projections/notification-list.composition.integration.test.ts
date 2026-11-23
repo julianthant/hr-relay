@@ -132,3 +132,5 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     await observer.stop();
   }
 });
+
+// Select the unchanged schema-39 sweep case in task CI.
