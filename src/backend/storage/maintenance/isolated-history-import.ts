@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import type { IsoInstant } from "../../../rules/identity/ids.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { createPrivateDirectory, fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
 import { checkStagedHistory, historyArchivePath, writeHistoryArchive } from "../sqlite/isolated-history-store.js";
 
 /** Publish only after the source verifier and the workbook transaction both finish. */
 export async function withStagedHistory<T>(admission: RuntimeAdmission,
-  work: (stage: (source: Parameters<typeof writeHistoryArchive>[0], at: string) => void) => Promise<T>) {
+  work: (stage: (source: Parameters<typeof writeHistoryArchive>[0], at: IsoInstant) => void) => Promise<T>) {
   const directory = join(admission.stateRoot, "files");
   const stage = join(directory, `.imported-history-${randomUUID()}.sqlite`);
   let history: ReturnType<typeof writeHistoryArchive> | undefined;

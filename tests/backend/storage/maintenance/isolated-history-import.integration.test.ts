@@ -9,7 +9,7 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, WriteAttemptIdSchema } from "../../../../src/rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -75,7 +75,7 @@ it("retains confirmed write evidence for dashboard history without admitting it 
   expect(history.authority.runs.listNonTerminal()).toEqual([]);
   expect(history.authority.runs.listParkedAtGate()).toEqual([]);
   expect(copy.database.authority.writeIntents.listByBusinessKey(ledger.system, ledger.idempotencyKeyDigest)).toEqual([]);
-  expect(copy.database.authority.writeAttempts.get(fixture.attempt.writeAttemptId)).toBeUndefined();
+  expect(copy.database.authority.writeAttempts.get(WriteAttemptIdSchema.parse(fixture.attempt.writeAttemptId))).toBeUndefined();
   expect(copy.database.authority.runCheckpoints.listByItem(ledger.workflowId, ledger.itemId)).toEqual([]);
   expect(() => history.withAuthorityTransaction(() => undefined)).toThrow("isolated-history-read-only");
 });

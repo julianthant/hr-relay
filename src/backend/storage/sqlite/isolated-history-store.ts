@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
+import type { IsoInstant } from "../../../rules/identity/ids.js";
+import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
@@ -40,7 +41,7 @@ export function runIndex(database: DatabaseSync, name: "runs_day_idx" | "runs_wo
   return validatedVersion.has(database) ? "" : `INDEXED BY ${name}`;
 }
 
-export function writeHistoryArchive(source: DatabaseSync, path: string, binding: ProfileDatabaseBinding, at: string) {
+export function writeHistoryArchive(source: DatabaseSync, path: string, binding: ProfileDatabaseBinding, at: IsoInstant) {
   const archive = new DatabaseSync(path);
   try {
     archive.exec("BEGIN");
