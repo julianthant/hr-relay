@@ -23,6 +23,7 @@ import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-mod
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { formatDuration, formatTimeWithSeconds } from "../lib/date-format.js";
 import { plainStepLabel } from "./log-display.js";
+import { createKeptResults } from "./async-resource.js";
 import { REPLACED_READING, typedValuesEntry, usesTypedEntry } from "../surfaces/run-detail/logs/typed-values-model.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
@@ -133,38 +134,20 @@ export const KEPT_RUN_LOGS_LIMIT = 20;
 
 /** The authority a kept snapshot was read under: a sign-in, profile or actor change discards everything kept. */
 interface RunLogAuthority { readonly epoch: object | undefined; readonly actorId: string | undefined }
-const keptRunLogs = new WeakMap<object, { authority: RunLogAuthority; runs: Map<string, RunLogSnapshot> }>();
-
-function keptFor(client: object, authority: RunLogAuthority): Map<string, RunLogSnapshot> {
-  let kept = keptRunLogs.get(client);
-  if (kept === undefined || kept.authority.epoch !== authority.epoch || kept.authority.actorId !== authority.actorId) {
-    kept = { authority, runs: new Map() };
-    keptRunLogs.set(client, kept);
-  }
-  return kept.runs;
-}
+const keptRunLogs = createKeptResults<RunLogSnapshot>(KEPT_RUN_LOGS_LIMIT);
 
 function keepRunLogs(client: object, authority: RunLogAuthority, snapshot: RunLogSnapshot): void {
-  const runs = keptFor(client, authority);
-  runs.delete(snapshot.detail.runId);
-  runs.set(snapshot.detail.runId, snapshot);
-  for (const oldest of runs.keys()) {
-    if (runs.size <= KEPT_RUN_LOGS_LIMIT) break;
-    runs.delete(oldest);
-  }
+  keptRunLogs.keep(client, [authority.epoch, authority.actorId], snapshot.detail.runId, { value: snapshot, at: snapshot.detail.rowRevision });
 }
 
 /** The last loaded logs of this exact run under this authority. A finished run's logs cannot change, so a kept
  * snapshot of the same attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
 export function keptRunLogsState(client: object, authority: RunLogAuthority, row: LogSelection["row"]): RunWiringState | undefined {
-  const runs = keptFor(client, authority);
-  const snapshot = runs.get(row.runId);
+  const snapshot = keptRunLogs.get(client, [authority.epoch, authority.actorId], row.runId)?.value;
   if (snapshot === undefined) return undefined;
   const { detail } = snapshot;
   const same = detail.header.traceId === row.traceId && detail.header.attempt === row.attempt && detail.header.workflowId === row.workflowId;
   if (!same) return undefined;
-  runs.delete(row.runId);
-  runs.set(row.runId, snapshot);
   return detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision ? { state: "loaded", snapshot } : { state: "loading", snapshot };
 }
 
