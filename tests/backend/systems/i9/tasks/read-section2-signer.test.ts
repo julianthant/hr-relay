@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createI9Driver } from "../../../../../src/backend/systems/i9/driver/interpreter.js";
-import { createDeterministicI9Driver } from "../../../../support/fixtures/backend/i9-driver-fake.js";
+import { createDeterministicI9Driver } from "../../../../../src/backend/systems/i9/driver/fake.js";
 import { readSection2SignerTask } from "../../../../../src/backend/systems/i9/tasks/read-section2-signer.js";
 import { createTaskProvenanceCollector } from "../../../../../src/backend/runs/provenance/task-provenance.js";
 import { redactObservedDataPoints } from "../../../../../src/backend/logs/observed-data.js";

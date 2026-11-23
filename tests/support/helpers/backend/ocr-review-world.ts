@@ -48,7 +48,7 @@ import { ocrPageStore } from "../../../../src/workflows/ocr-page/task-registry.j
 import { ReadManualOcrReading } from "../../../../src/models/workflows/ocr-page/read-manual-reading.js";
 import { readManualOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-manual-reading.js";
 import { OcrPageWorkflowInputSchema } from "../../../../src/models/workflows/ocr-page/input.js";
-import { createDeterministicI9Driver } from "../../fixtures/backend/i9-driver-fake.js";
+import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { I9LookupError, type I9LookupInput } from "../../../../src/models/systems/i9/read-section2-signer.js";
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { i9PageSubmission } from "../../fixtures/i9-check-start.js";

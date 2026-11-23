@@ -38,7 +38,7 @@ import { createWriteSequencer } from "../../../../src/backend/runtime/writes/wri
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing/providers/workbook-library-adapter.js";
 import type { ProviderAdapter } from "../../../../src/workflow-kit/providers.js";
-import { createDeterministicI9Driver } from "../../fixtures/backend/i9-driver-fake.js";
+import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { deterministicHireOperations } from "../../../../src/backend/systems/ucpath/driver/hire-fake.js";
 import { UCPATH_HIRE_SUBJECT } from "../../../../src/models/ui/ucpath-hire.js";
 import type { z } from "zod";

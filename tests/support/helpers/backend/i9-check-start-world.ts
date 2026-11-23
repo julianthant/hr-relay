@@ -1,5 +1,5 @@
 import { i9CheckStartModule } from "../registered-workflows.js";
-import { createDeterministicI9Driver } from "../../fixtures/backend/i9-driver-fake.js";
+import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { WorkbookNamedReferenceSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";

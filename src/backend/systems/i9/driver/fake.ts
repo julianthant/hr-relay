@@ -1,16 +1,16 @@
-import { redactedEvidenceId } from "../../../../src/rules/redaction/redaction.js";
-import { AbsentEvidenceSchema } from "../../../../src/rules/write-safety/write-safety-primitives.js";
-import { IsoInstantSchema, FingerprintSchema, EvidenceRefSchema } from "../../../../src/rules/identity/ids.js";
+import { redactedEvidenceId } from "../../../../rules/redaction/redaction.js";
+import { AbsentEvidenceSchema } from "../../../../rules/write-safety/write-safety-primitives.js";
+import { IsoInstantSchema, FingerprintSchema, EvidenceRefSchema } from "../../../../rules/identity/ids.js";
 import type { z } from "zod";
-import type { I9Driver } from "../../../../src/models/ui/i9.js";
+import type { I9Driver } from "../../../../models/ui/i9.js";
 import { I9_PROFILE_STAGED, I9_REMOTE_STAGED, I9_SEARCH_READ, I9_SEARCH_RESULTS, I9ProfileTargetSchema, I9RemoteTargetSchema,
   I9ProfileProofSchema, I9RemoteProofSchema, i9ProfileKey, i9RemoteKey, I9_PROFILE_SUBJECT,
-  type I9ProfileTarget, type I9RemoteTarget } from "../../../../src/models/ui/i9-creation.js";
-import type { I9SignerOutput } from "../../../../src/models/systems/i9/read-section2-signer.js";
-import { assertMintedMutationCapability } from "../../../../src/workflow-kit/mutation-capability.js";
-import { containsDryRunSample } from "../../../../src/models/workflow/dry-run.js";
-import { deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
-import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+  type I9ProfileTarget, type I9RemoteTarget } from "../../../../models/ui/i9-creation.js";
+import type { I9SignerOutput } from "../../../../models/systems/i9/read-section2-signer.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { containsDryRunSample } from "../../../../models/workflow/dry-run.js";
+import { deriveIdempotencyKeyDigest } from "../../../../rules/write-safety/write-safety.js";
+import { sha256Hex } from "../../../../rules/validation/sha256.js";
 
 export function createDeterministicI9Driver(options: Readonly<{
   lookup: I9SignerOutput;

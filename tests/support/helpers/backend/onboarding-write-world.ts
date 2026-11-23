@@ -19,7 +19,7 @@ import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
-import { createDeterministicI9Driver } from "../../fixtures/backend/i9-driver-fake.js";
+import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
