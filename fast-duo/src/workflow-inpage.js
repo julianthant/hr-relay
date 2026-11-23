@@ -36,7 +36,7 @@
     }));
     return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
       id: result.credentialId.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), rawId: decode(result.credentialId), type: 'public-key',
-      authenticatorAttachment: result.transport === 'usb' ? 'cross-platform' : 'platform', response, getClientExtensionResults: () => ({}),
+      authenticatorAttachment: 'cross-platform', response, getClientExtensionResults: () => ({}),
     }));
   };
 })();

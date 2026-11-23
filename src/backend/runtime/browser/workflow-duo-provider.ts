@@ -4,7 +4,6 @@ import { z } from "zod";
 import type { Config } from "../../../models/config/schema.js";
 import { DuoWorkflowRequestSchema, type DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { duoAccountMatches } from "../../profiles/profile-onboarding.js";
-import { prepareDuoPlatformAuthenticator } from "./duo-platform-authenticator.js";
 
 const RequestSchema = z.strictObject({ id: z.uuid(), request: DuoWorkflowRequestSchema });
 
@@ -24,13 +23,6 @@ export async function provisionWorkflowDuo(input: Readonly<{
   const signingCurrent = (): void => { current(); input.assertSigningScope(); };
   const ownedWorker = (url: string): boolean => /^chrome-extension:\/\/[a-p]{32}\/src\/workflow-background\.js$/u.test(url);
   current();
-  const platformCredentials = source.platformCredentials();
-  if (platformCredentials.length > 0) {
-    const page = context.pages()[0] ?? await context.newPage();
-    current();
-    await prepareDuoPlatformAuthenticator(context, page, { purpose: "login", credentials: platformCredentials });
-    current();
-  }
   const workers = context.serviceWorkers().filter(worker => ownedWorker(worker.url()));
   if (workers.length > 1) throw new Error("duo-worker-ambiguous");
   const worker = workers[0] ?? await context.waitForEvent("serviceworker", { predicate: value => ownedWorker(value.url()), timeout: config.timeouts.navigationMs });
@@ -59,11 +51,10 @@ export async function provisionWorkflowDuo(input: Readonly<{
       const owner = input.accountName.includes("@") ? input.accountName : `${input.accountName}@ucsd.edu`;
       if (request.accountNames.some(name => !duoAccountMatches(owner, name))
         || request.allowCredentials.length === 0 && request.accountNames.length === 0) throw new Error("duo-account-mismatch");
-      const candidates = source.credentials().filter(credential => credential.rpId === request.rpId
+      const credential = source.credentials().find(credential => credential.rpId === request.rpId
         && (request.allowCredentials.length > 0
           ? request.allowCredentials.some(allowed => Buffer.from(allowed, "base64").equals(Buffer.from(credential.credentialId, "base64url")))
           : credential.isResidentCredential && credential.userHandle !== undefined && credential.userHandle.length > 0));
-      const credential = candidates.find(row => row.transport === (request.allowCredentials.length > 0 ? "internal" : "usb")) ?? candidates[0];
       let value: unknown = { passThrough: true };
       if (credential !== undefined) {
         const assertion = await source.sign({ requestId: request.requestId, origin: request.origin, rpId: request.rpId,

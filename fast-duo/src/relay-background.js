@@ -10,11 +10,6 @@ const refusalDetails = {
   ONBOARDING_DUO_ENROLL_REFUSED: 'enroll-refused',
   ONBOARDING_DUO_EVENT_UNRECORDED: 'event-unrecorded',
   ONBOARDING_DUO_KEY_REQUIRED: 'key-required',
-  ONBOARDING_DUO_NATIVE_FAILED: 'native-failed',
-  ONBOARDING_DUO_NATIVE_ORIGIN: 'native-origin',
-  ONBOARDING_DUO_NATIVE_REQUIRED: 'native-required',
-  ONBOARDING_DUO_NATIVE_UNAVAILABLE: 'native-unavailable',
-  ONBOARDING_DUO_NATIVE_UNRECORDED: 'native-unrecorded',
   ONBOARDING_DUO_PORTAL_UNRECORDED: 'portal-unrecorded',
   ONBOARDING_DUO_REFUSED: 'refused',
   ONBOARDING_DUO_REQUEST: 'request',
@@ -116,8 +111,8 @@ export function createRelayWorker(api, reportEvent) {
     requireSender(sender);
     const data = message.request;
     if (!data || data.origin !== sender.origin || data.rpId !== 'duosecurity.com') throw new Error('ONBOARDING_DUO_SCOPE_REQUEST');
-    if (message.type === 'RELAY_CAPABILITIES') return { softwareKey: installed.method === 'key' };
-    if (message.type === 'DUO_AUTOPILOT_SIGN' && (installed.method === 'touch' || !pending)) return { passThrough: true };
+    if (message.type === 'RELAY_CAPABILITIES') return { softwareKey: true };
+    if (message.type === 'DUO_AUTOPILOT_SIGN' && !pending) return { passThrough: true };
     if (message.type === 'DUO_AUTOPILOT_ENROLL') {
       intercept({ requestId: data.requestId }, sender);
       await reportEvent({ stage: 'forwarded', requestId: data.requestId });
@@ -128,11 +123,6 @@ export function createRelayWorker(api, reportEvent) {
       pending = { scope, sender, requestId: data.requestId, accountName };
       const binding = await checked(() => call('bind', { documentId: scope.documentId, tabId: scope.tabId,
         origin: scope.origin, rpId: data.rpId }));
-      if (installed.method === 'touch') {
-        if (data.authenticatorAttachment !== 'platform') throw new Error('ONBOARDING_DUO_NATIVE_REQUIRED');
-        await assertScope();
-        return { native: true, requestId: data.requestId };
-      }
       if (data.authenticatorAttachment === 'platform') throw new Error('ONBOARDING_DUO_KEY_REQUIRED');
       const aliases = data.username === accountName ? [] : [data.username];
       await checked(() => service.run('SAVE_ACCOUNT', { id: binding.accountId, username: accountName, aliases, enabled: true }));
@@ -151,17 +141,6 @@ export function createRelayWorker(api, reportEvent) {
       throw new Error('ONBOARDING_DUO_SCOPE');
     }
     if (data.requestId !== pending.requestId) throw new Error('ONBOARDING_DUO_SCOPE');
-    if (message.type === 'RELAY_NATIVE_FAILED') {
-      if (installed.method !== 'touch') throw new Error('ONBOARDING_DUO_SCOPE');
-      await checked(() => call('native-failed', { requestId: data.requestId }));
-      throw new Error('ONBOARDING_DUO_NATIVE_FAILED');
-    }
-    if (message.type === 'RELAY_NATIVE_CREATED') {
-      if (installed.method !== 'touch' || data.attachment !== 'platform' || pending.credentialId) throw new Error('ONBOARDING_DUO_NATIVE_REQUIRED');
-      await checked(() => call('native-created', { credentialId: data.credentialId, requestId: data.requestId }));
-      pending.credentialId = data.credentialId;
-      return { observed: true };
-    }
     if (message.type === 'RELAY_PORTAL_ACCEPTED') {
       if (!pending.credentialId) throw new Error('ONBOARDING_DUO_SCOPE');
       if (!pending.accepted) await checked(() => call('portal-accepted', { credentialId: pending.credentialId, requestId: pending.requestId }));
@@ -188,7 +167,7 @@ export function createRelayWorker(api, reportEvent) {
       return { observed: true };
     },
     async install(input) {
-      if (installed || stopped || !['key', 'touch'].includes(input.method)) throw new Error('ONBOARDING_DUO_REVOKED');
+      if (installed || stopped || input.method !== 'key') throw new Error('ONBOARDING_DUO_REVOKED');
       const session = api.storage.session;
       if (typeof session?.setAccessLevel !== 'function') throw new Error('ONBOARDING_DUO_SESSION_UNAVAILABLE');
       await session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
@@ -274,7 +253,7 @@ if (typeof chrome !== 'undefined') {
     if (!Object.hasOwn(kinds, message.type) || Object.keys(message).some(key => !['type', 'method', 'attemptId'].includes(key))) throw new Error('ONBOARDING_DUO_REQUEST');
     const kind = kinds[message.type];
     if (['state', 'portal', 'portal-show', 'return'].includes(kind) && (message.method !== undefined || message.attemptId !== undefined)
-      || ['start', 'cancel', 'confirm'].includes(kind) && !['key', 'touch'].includes(message.method)
+      || ['start', 'cancel', 'confirm'].includes(kind) && message.method !== 'key'
       || kind === 'start' && message.attemptId !== undefined
       || ['cancel', 'confirm'].includes(kind) && (typeof message.attemptId !== 'string' || !/^[0-9a-f-]{36}$/i.test(message.attemptId))) throw new Error('ONBOARDING_DUO_REQUEST');
     return browserCall({ kind,
@@ -379,10 +358,8 @@ if (typeof chrome !== 'undefined') {
       if (sender.url?.startsWith(chrome.runtime.getURL(''))) return browserReceive(message, sender);
       if (message?.type === 'RELAY_DUO_EVENT') {
         requireBrowser(); requireDuoSender(chrome, sender);
-        if (!message.event || !['intercepted', 'replied', 'refused'].includes(message.event.stage)
-          || Object.keys(message.event).some(key => !['stage', 'requestId', 'detail'].includes(key))
-          || (message.event.stage === 'refused' ? !['native-scope', 'native-origin', 'native-unavailable', 'native-security', 'native-not-allowed', 'native-other'].includes(message.event.detail)
-            : message.event.detail !== undefined)) throw new Error('ONBOARDING_DUO_REQUEST');
+        if (!message.event || !['intercepted', 'replied'].includes(message.event.stage)
+          || Object.keys(message.event).some(key => !['stage', 'requestId'].includes(key))) throw new Error('ONBOARDING_DUO_REQUEST');
         if (message.event.stage === 'intercepted') relay?.intercept(message.event, sender);
         await browserCall({ kind: 'event', event: message.event });
         return { observed: true };
@@ -394,10 +371,7 @@ if (typeof chrome !== 'undefined') {
       if (message?.type === 'RELAY_CAPABILITIES') {
         if (message.request?.origin !== sender.origin || message.request?.rpId !== 'duosecurity.com') throw new Error('ONBOARDING_DUO_SCOPE');
         await observeDuo(sender);
-        const platformAvailable = await browserCall({ kind: 'platform', url: sender.url });
-        await observeDuo(sender);
-        const support = relay ? await relay.receive(message, sender) : { softwareKey: false };
-        return { ...support, platformAvailable };
+        return relay ? relay.receive(message, sender) : { softwareKey: false };
       }
       if (!relay) {
         requireBrowser(); requireDuoSender(chrome, sender);

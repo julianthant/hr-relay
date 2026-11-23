@@ -128,23 +128,20 @@ for (const pendingClose of [false, true]) it(pendingClose
     await profile.session.openOnboardingPortal(draft.token, draft.operationId); assert.equal(context.pages().length, 2);
     assert.equal(portal.url(), "https://duo.ucsd.edu/devices"); assert.equal(submissions, 0);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
-    for (const method of ["key", "touch"] as const) {
-      const label = method === "key" ? "Security key" : "Touch ID";
-      await setup.locator(`.relay-method-card[data-method="${method}"]`).click();
-      await setup.getByRole("button", { name: `Set up ${label}`, exact: true }).click();
-      await expect(setup.getByRole("button", { name: "Cancel setup", exact: true })).toBeEnabled();
-      assert.equal(read().methods[method].state, "pending");
-      await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
-      await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
-      await expect(setup.getByRole("button", { name: `Set up ${label}`, exact: true })).toBeEnabled();
-      assert.equal(read().methods[method].state, "idle");
-    }
+    await setup.locator('.relay-method-card[data-method="key"]').click();
+    await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
+    await expect(setup.getByRole("button", { name: "Cancel setup", exact: true })).toBeEnabled();
+    assert.equal(read().methods.key.state, "pending");
+    await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
+    await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
+    await expect(setup.getByRole("button", { name: "Set up Security key", exact: true })).toBeEnabled();
+    assert.equal(read().methods.key.state, "idle");
     assert.equal(launches, 1); assert.equal(submissions, 0);
     await context.route("https://foreign.invalid/**", route => route.fulfill({ contentType: "text/html", body: "Foreign page" }));
     await portal.goto("https://foreign.invalid/");
     await assert.rejects(profile.session.openOnboardingPortal(draft.token, draft.operationId));
     assert.equal(submissions, 0); assert.equal(context.pages().length, 2);
-    await setup.getByRole("button", { name: "Set up Touch ID", exact: true }).click();
+    await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
     const portalFailure = "Relay could not trust this Duo page. Do not enter your password. Close the Duo tab, then try Show Duo again.";
     await expect(setup.locator("#message")).toHaveText(portalFailure);
     assert.equal(submissions, 0);
@@ -155,7 +152,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     }));
     await expect(setup.locator("#message")).toHaveText(portalFailure);
     await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
-    await expect(setup.getByRole("button", { name: "Set up Touch ID", exact: true })).toBeEnabled();
+    await expect(setup.getByRole("button", { name: "Set up Security key", exact: true })).toBeEnabled();
     const methodsBeforeReopen = read().methods;
     await setup.close();
     await Promise.all([profile.session.showOnboardingBrowser(draft.token, draft.operationId), profile.session.showOnboardingBrowser(draft.token, draft.operationId)]);
@@ -218,10 +215,8 @@ for (const pendingClose of [false, true]) it(pendingClose
       } finally { debugAdmission.release(); }
       assert.equal(retained.ceremonyObserved, true); assert.equal(retained.portalAccepted, false);
       assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
-      assert.equal(read().methods.touch.state, "idle"); assert.equal(submissions, 0);
+      assert.equal(submissions, 0);
       await expect(context.pages()[0].locator("#accountList")).toContainText("Not confirmed");
-      await profile.session.startOnboardingDuo(draft.token, draft.operationId, "touch");
-      assert.equal(read().methods.touch.state, "pending");
       assert.equal(read().methods.key.state, "unknown"); assert.equal(read().methods.key.attemptId, captured.attemptId); assert.equal(launches, 3);
       assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
       assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent());
@@ -246,7 +241,7 @@ for (const pendingClose of [false, true]) it(pendingClose
   if (failure !== undefined) throw new Error("onboarding fixture failed", { cause: failure });
 });
 
-for (const scenario of ["software", "abort", "timeout", "platform"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
+for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-enrollment-")));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
   const machine = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
@@ -274,13 +269,9 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
     assert.ok(context);
     const page = await context.newPage();
     await page.goto("https://enrollment.duosecurity.com/");
-    const method = scenario === "platform" ? "touch" : "key";
-    await profile.session.startOnboardingDuo(draft.token, draft.operationId, method);
+    await profile.session.startOnboardingDuo(draft.token, draft.operationId, "key");
     await page.bringToFront();
     assert.equal(await page.evaluate(() => document.hasFocus()), true);
-    if (scenario === "platform") {
-      assert.equal(await page.evaluate(() => PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()), true);
-    }
     const outcome = await page.evaluate(async scenario => {
       const controller = new AbortController();
       if (scenario === "abort") window.addEventListener("message", event => {
@@ -294,9 +285,9 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
           challenge: new TextEncoder().encode("synthetic-enrollment-challenge"),
           user: { id: new TextEncoder().encode("synthetic-handle"), name: "synthetic-enrollment@ucsd.edu", displayName: "Synthetic Enrollment" },
           pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-          excludeCredentials: [{ type: "public-key", id: new Uint8Array([8, 9]), transports: ["usb", "internal"] }],
-          authenticatorSelection: { authenticatorAttachment: scenario === "platform" ? "platform" : "cross-platform",
-            residentKey: "discouraged", requireResidentKey: false, userVerification: scenario === "platform" ? "required" : "discouraged" },
+          excludeCredentials: [{ type: "public-key", id: new Uint8Array([8, 9]), transports: ["usb"] }],
+          authenticatorSelection: { authenticatorAttachment: "cross-platform",
+            residentKey: "discouraged", requireResidentKey: false, userVerification: "discouraged" },
           attestation: "direct", timeout: scenario === "timeout" ? 1 : 10000,
         } });
         if (!(credential instanceof PublicKeyCredential)) throw new Error("credential missing");
@@ -316,13 +307,13 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
       const restarted = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(restarted.state, "pending"); assert.notEqual(restarted.attemptId, failed.attemptId);
     } else {
-      assert.deepEqual(outcome, { state: "created", attachment: scenario === "platform" ? "platform" : "cross-platform" });
-      const state = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
+      assert.deepEqual(outcome, { state: "created", attachment: "cross-platform" });
+      const state = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(state.state, "pending"); assert.equal(state.ceremonyObserved, true); assert.equal(state.operatorConfirmed, false);
       await page.evaluate(heading => { const element = document.createElement("h2"); element.textContent = heading; document.body.append(element); },
-        scenario === "platform" ? "Added Touch ID (Chrome)" : "Added security key");
-      await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods[method].state).toBe("complete");
-      const done = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
+        "Added security key");
+      await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state).toBe("complete");
+      const done = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(done.portalAccepted, true); assert.equal(done.operatorConfirmed, false);
     }
     const debugAdmission = machine.admitProfile(draft.profileId);
@@ -331,7 +322,7 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
         const events = repository.debugPage({ after: 0, through: repository.debugHighWaterMark(), limit: 500 });
         const reasons = events.flatMap(entry => entry.payload.kind === "debug" && entry.payload.event.category === "duo" ? [entry.payload.event.reason] : []);
         assert.ok(reasons.includes("intercepted"));
-        if (scenario === "software" || scenario === "platform") {
+        if (scenario === "software") {
           for (const reason of ["forwarded", "backend-received", "replied"]) assert.ok(reasons.includes(reason), reason);
         } else assert.ok(reasons.includes(scenario === "abort" ? "aborted" : "timed-out"));
         assert.doesNotMatch(JSON.stringify(events), /synthetic-enrollment@ucsd.edu|synthetic-enrollment-password|synthetic-handle|synthetic-enrollment-challenge|privateKey|publicKey|stack/);
@@ -351,7 +342,7 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
     } catch (diagnosticError) { failure = new AggregateError([error, diagnosticError], "enrollment fixture and diagnostics failed"); }
   }
   try {
-    if (profile.session.readOnboarding(draft.token, draft.operationId).methods[scenario === "platform" ? "touch" : "key"].state === "unknown") {
+    if (profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state === "unknown") {
       await assert.rejects(profile.close(), error => error instanceof RuntimeCustodyUncertainError
         && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
     } else await profile.close();
@@ -383,7 +374,7 @@ it("measures, centers and clamps the exact native setup normal window and execut
     await expect.poll(() => context.pages().some(page => page.url() === target.url)).toBe(true);
     const page = context.pages().find(page => page.url() === target.url); assert.ok(page);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-    const initial = { methods: { key: idle, touch: idle } };
+    const initial = { methods: { key: idle } };
     const reply = worker.evaluate(async initial => {
       const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
       if (typeof owner !== "object" || owner === null) throw new Error("fixture broker required");
@@ -557,7 +548,7 @@ for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
     credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     const call = (action: string, extra = {}) => post(`onboarding/${action}`, { operationId: draft.operationId, ...extra });
-    assert.equal((await call("duo/start", { method: "touch" })).status, 200);
+    assert.equal((await call("duo/start", { method: "key" })).status, 200);
     const operationPath = join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
     const readOperation = () => SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
     const old = readOperation().onboarding?.attempts[0]; assert.ok(old); assert.equal(old.state, "unknown");

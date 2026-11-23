@@ -55,15 +55,15 @@ function scene(title: string, input: SignInScene, shows?: string): Story {
 const STEP = {
   login: scene("Log in, nothing typed", { step: "login" }),
   signup: scene("Sign up, nothing typed", { step: "signup" }),
-  duo: scene("Duo step, nothing started", { step: "duo", draft: duoDraft("idle", "idle") }),
-  ready: scene("Setup finished, ready for the dashboard", { step: "ready", draft: duoDraft("complete", "complete") }),
+  duo: scene("Duo step, nothing started", { step: "duo", draft: duoDraft("idle") }),
+  ready: scene("Setup finished, ready for the dashboard", { step: "ready", draft: duoDraft("complete") }),
 } satisfies Record<OnboardingStep, Story>;
 
 const SESSION = {
   "signed-out": scene("Signed out of a machine with no profile", { step: "signup", session: { state: "signed-out", signUpRequired: true } }),
   error: scene("The session could not be read", { step: "login", session: { state: "error", code: ErrorCodeSchema.parse("PROFILE_AUTHORITY_UNAVAILABLE") } }),
   cancelling: scene("A log out still settling", { step: "login", session: { state: "cancelling", operationId: OPERATION } }),
-  onboarding: scene("A sign-up part way through Duo", { step: "duo", draft: duoDraft("pending", "idle"), session: duoDraft("pending", "idle") }),
+  onboarding: scene("A sign-up part way through Duo", { step: "duo", draft: duoDraft("pending"), session: duoDraft("pending") }),
   refused: scene("A sign-in the session refused", { step: "login", session: { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" } }),
 } satisfies Record<SessionState, Story>;
 
@@ -81,15 +81,15 @@ const PROBLEM = {
 } satisfies Record<SignInProblem, Story>;
 
 const METHOD = {
-  unavailable: scene("Security key cannot be set up from here", { step: "duo", draft: duoDraft("unavailable", "idle") }),
-  idle: scene("Security key not started", { step: "duo", draft: duoDraft("idle", "idle") }),
-  pending: scene("Waiting for Duo to add the security key", { step: "duo", draft: duoDraft("pending", "idle") }, "Waiting for Duo to add Security key"),
-  complete: scene("Security key added, Touch ID not started", { step: "duo", draft: duoDraft("complete", "idle") }),
-  unknown: scene("Security key attempt not confirmed", { step: "duo", draft: duoDraft("unknown", "idle") },
+  unavailable: scene("Security key cannot be set up from here", { step: "duo", draft: duoDraft("unavailable") }),
+  idle: scene("Security key not started", { step: "duo", draft: duoDraft("idle") }),
+  pending: scene("Waiting for Duo to add the security key", { step: "duo", draft: duoDraft("pending") }, "Waiting for Duo to add Security key"),
+  complete: scene("Security key added", { step: "duo", draft: duoDraft("complete") }),
+  unknown: scene("Security key attempt not confirmed", { step: "duo", draft: duoDraft("unknown") },
     "Relay could not confirm Security key. In Duo, remove any device you do not recognize, then start over."),
 } satisfies Record<MethodState, Story>;
 
-const withBrowser = (browser: ProfileOnboardingBrowser) => ({ step: "duo", draft: duoDraft("idle", "idle", browser) }) as const satisfies SignInScene;
+const withBrowser = (browser: ProfileOnboardingBrowser) => ({ step: "duo", draft: duoDraft("idle", browser) }) as const satisfies SignInScene;
 const BROWSER = {
   checking: scene("Checking the setup window", { ...withBrowser({ state: "checking", generation: 1 }), unavailable: true }),
   opening: scene("Opening the setup window", withBrowser({ state: "opening", generation: 1 }), "Opening setup window…"),
@@ -105,31 +105,30 @@ type InFlight = "logging-in" | "creating-profile" | "opening-slow" | "waiting-sl
 const ACTION = {
   "logging-in": scene("Log in sent, waiting for an answer", { step: "login", fill: true, press: ["Log in"] }, "Logging in…"),
   "creating-profile": scene("Sign up sent, waiting for an answer", { step: "signup", fill: true, press: ["Create profile"] }, "Creating profile…"),
-  "opening-slow": scene("Setup window taking longer than usual", { step: "duo", draft: duoDraft("idle", "idle", { state: "opening", generation: 1 }), wait: 10_000 }, "Still opening setup window…"),
-  "waiting-slow": scene("Duo taking longer than usual", { step: "duo", draft: duoDraft("pending", "idle"), wait: 10_000 }, "Still waiting for Duo to add Security key"),
-  "cancel-confirm": scene("Asked to confirm cancelling the sign-up", { step: "duo", draft: duoDraft("pending", "idle"), press: ["Cancel sign-up"] }, "Cancel sign-up?"),
-  cancelling: scene("Cancelling the sign-up", { step: "duo", draft: duoDraft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"] }, "Cancelling…"),
-  "cancel-no-reply": scene("No reply to cancelling the sign-up", { step: "duo", noReply: true, draft: duoDraft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"] },
+  "opening-slow": scene("Setup window taking longer than usual", { step: "duo", draft: duoDraft("idle", { state: "opening", generation: 1 }), wait: 10_000 }, "Still opening setup window…"),
+  "waiting-slow": scene("Duo taking longer than usual", { step: "duo", draft: duoDraft("pending"), wait: 10_000 }, "Still waiting for Duo to add Security key"),
+  "cancel-confirm": scene("Asked to confirm cancelling the sign-up", { step: "duo", draft: duoDraft("pending"), press: ["Cancel sign-up"] }, "Cancel sign-up?"),
+  cancelling: scene("Cancelling the sign-up", { step: "duo", draft: duoDraft("pending"), press: ["Cancel sign-up", "Cancel sign-up"] }, "Cancelling…"),
+  "cancel-no-reply": scene("No reply to cancelling the sign-up", { step: "duo", noReply: true, draft: duoDraft("pending"), press: ["Cancel sign-up", "Cancel sign-up"] },
     "No reply from Relay. Reload the page to check."),
-  finishing: scene("Finish setup sent, waiting for an answer", { step: "duo", draft: duoDraft("complete", "complete"), press: ["Finish setup"] }, "Finishing…"),
-  "finish-no-reply": scene("No reply to Finish setup", { step: "duo", noReply: true, draft: duoDraft("complete", "complete"), press: ["Finish setup"] },
+  finishing: scene("Finish setup sent, waiting for an answer", { step: "duo", draft: duoDraft("complete"), press: ["Finish setup"] }, "Finishing…"),
+  "finish-no-reply": scene("No reply to Finish setup", { step: "duo", noReply: true, draft: duoDraft("complete"), press: ["Finish setup"] },
     "No reply from Relay. Reload the page to check."),
-  "opening-dashboard": scene("Go to dashboard sent, waiting for an answer", { step: "ready", draft: duoDraft("complete", "complete"), press: ["Go to dashboard"] }, "Opening dashboard…"),
+  "opening-dashboard": scene("Go to dashboard sent, waiting for an answer", { step: "ready", draft: duoDraft("complete"), press: ["Go to dashboard"] }, "Opening dashboard…"),
 } satisfies Record<InFlight, Story>;
 
 /** The Duo setup window the browser opens, and setting Duo up again over a signed-in profile. */
-type SetupWindow = "not-started" | "key-pending" | "still-waiting" | "key-complete" | "both-complete" | "key-failed" | "duo-page" | "duo-confirm" | "reenrol-switching" | "reenrol-cancelling";
+type SetupWindow = "not-started" | "key-pending" | "still-waiting" | "key-complete" | "key-failed" | "duo-page" | "duo-confirm" | "reenrol-switching" | "reenrol-cancelling";
 const SETUP = {
-  "not-started": scene("Setup window, nothing started", { setup: "fast", draft: duoDraft("idle", "idle") }),
-  "key-pending": scene("Setup window waiting for the security key", { setup: "fast", draft: duoDraft("pending", "idle") }),
-  "still-waiting": scene("Setup window waiting longer than usual", { setup: "fast", draft: duoDraft("pending", "idle"), wait: 10_000 }, "Still waiting for Duo."),
-  "key-complete": scene("Setup window with the security key added", { setup: "fast", draft: duoDraft("complete", "idle") }),
-  "both-complete": scene("Setup window with both methods added", { setup: "fast", draft: duoDraft("complete", "complete") }),
-  "key-failed": scene("Setup window with the key not confirmed", { setup: "fast", draft: duoDraft("unknown", "idle") }),
-  "duo-page": scene("Setup window on the Duo page", { setup: "duo", draft: duoDraft("pending", "idle") }),
-  "duo-confirm": scene("Asked to confirm the device Duo added", { setup: "duo", draft: duoDraft("pending", "idle"), confirm: true }),
-  "reenrol-switching": scene("Switching to the new devices", { setup: "fast", reenrol: true, draft: duoDraft("complete", "complete"), press: ["Use new devices"] }, "Switching…"),
-  "reenrol-cancelling": scene("Cancelling setting Duo up again", { setup: "fast", reenrol: true, draft: duoDraft("complete", "complete"), press: ["Cancel setup"] }, "Cancelling…"),
+  "not-started": scene("Setup window, nothing started", { setup: "fast", draft: duoDraft("idle") }),
+  "key-pending": scene("Setup window waiting for the security key", { setup: "fast", draft: duoDraft("pending") }),
+  "still-waiting": scene("Setup window waiting longer than usual", { setup: "fast", draft: duoDraft("pending"), wait: 10_000 }, "Still waiting for Duo."),
+  "key-complete": scene("Setup window with the security key added", { setup: "fast", draft: duoDraft("complete") }),
+  "key-failed": scene("Setup window with the key not confirmed", { setup: "fast", draft: duoDraft("unknown") }),
+  "duo-page": scene("Setup window on the Duo page", { setup: "duo", draft: duoDraft("pending") }),
+  "duo-confirm": scene("Asked to confirm the device Duo added", { setup: "duo", draft: duoDraft("pending"), confirm: true }),
+  "reenrol-switching": scene("Switching to the new key", { setup: "fast", reenrol: true, draft: duoDraft("complete"), press: ["Use new key"] }, "Switching…"),
+  "reenrol-cancelling": scene("Cancelling setting Duo up again", { setup: "fast", reenrol: true, draft: duoDraft("complete"), press: ["Cancel setup"] }, "Cancelling…"),
 } satisfies Record<SetupWindow, Story>;
 
 export const SIGN_IN_STORIES = defineSurface("sign-in", { step: STEP, session: SESSION, problem: PROBLEM, method: METHOD, browser: BROWSER, action: ACTION, setup: SETUP });

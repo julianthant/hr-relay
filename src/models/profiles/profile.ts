@@ -18,7 +18,6 @@ export const ProfileIdSchema = z.uuid();
 export const ProfileOnboardingCompletionSchema = z.strictObject({
   generation: z.number().int().safe().positive(), finishId: z.uuid(), finishedAt: IsoInstantSchema,
   key: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), confirmation: z.enum(["operator", "portal-accepted", "exact-credential-request"]) }),
-  touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: IsoInstantSchema.optional() }),
 });
 
 export const ProfileRegistryRowSchema = z.strictObject({
@@ -40,7 +39,7 @@ export const ProfileRegistryRowSchema = z.strictObject({
 export type ProfileRegistryRow = z.infer<typeof ProfileRegistryRowSchema>;
 
 export const ProfileRegistryDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(4),
+  schemaVersion: z.literal(5),
   installationId: z.uuid(),
   revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   profiles: z.array(ProfileRegistryRowSchema),
@@ -219,11 +218,10 @@ export const ProfileOnboardingDuoEventSchema = z.strictObject({
 export type ProfileOnboardingDuoEvent = z.infer<typeof ProfileOnboardingDuoEventSchema>;
 
 export const SignUpDuoAttemptSchema = z.strictObject({
-  attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.enum(["key", "touch"]),
+  attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.literal("key"),
   expiresAt: IsoInstantSchema, state: z.enum(["pending", "complete", "unknown", "closed"]),
   scope: DuoEnrollmentScopeSchema.optional(),
-  ceremony: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
-    mechanism: z.enum(["fast-duo", "native-platform", "chromium-platform"]), softwareInterceptionDisabled: z.boolean() }).optional(),
+  ceremony: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1) }).optional(),
   portal: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
     acceptance: z.enum(["portal-accepted", "exact-credential-request"]) }).optional(),
   operatorConfirmedAt: IsoInstantSchema.optional(),
@@ -297,17 +295,13 @@ export type DuoReenrolOperation = z.infer<typeof DuoReenrolOperationSchema>;
 
 export type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
 
-/** Both methods of the draft's current generation proved under its own account, as sign-up and re-enrolment both require. */
+/** The security key of the draft's current generation proved under its own account, as sign-up and re-enrolment both require. */
 export function assertProvedDuoMethods(draft: Readonly<{ accountId: string; generation: number; attempts: readonly SignUpDuoAttempt[] }>): void {
-  for (const method of ["key", "touch"] as const) {
-    const attempt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
-    if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
-      || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
-      || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "portal-accepted" && !(method === "key" && attempt.portal?.acceptance === "exact-credential-request")
-      || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo"
-        : (attempt.ceremony.mechanism !== "native-platform" && attempt.ceremony.mechanism !== "chromium-platform") || !attempt.ceremony.softwareInterceptionDisabled)) {
-      throw new Error("profile-onboarding-incomplete");
-    }
+  const attempt = draft.attempts.findLast(entry => entry.generation === draft.generation);
+  if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
+    || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
+    || attempt.operatorConfirmedAt === undefined && attempt.portal === undefined) {
+    throw new Error("profile-onboarding-incomplete");
   }
 }
 

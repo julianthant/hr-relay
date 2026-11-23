@@ -55,7 +55,7 @@ it("evicts settled leases once drain proves provider and receipt closure, so rep
   const { operationId, owner } = rig("closed");
   for (let round = 0; round < 3; round++) {
     await owner.start(operationId, "key");
-    await owner.start(operationId, "touch");
+    await owner.start(operationId, "key");
     await owner.drain(operationId);
   }
   owner.assertClosed();
@@ -65,7 +65,7 @@ it("evicts settled leases once drain proves provider and receipt closure, so rep
 it("keeps the lease of an attempt whose closure is unproved", async () => {
   const { operationId, owner } = rig("uncertain");
   await owner.start(operationId, "key");
-  await assert.rejects(owner.start(operationId, "touch"));
+  await assert.rejects(owner.start(operationId, "key"));
   await assert.rejects(owner.drain(operationId));
   assert.throws(() => owner.assertClosed());
   assert.throws(() => owner.recoverClosed(operationId));
@@ -140,5 +140,4 @@ it("answers a repeated cancel of a closed attempt from its receipt, leaving a ne
   await owner.cancelAttempt(operationId, "key", first);
   assert.equal(cancels(), 1);
   assert.equal(owner.hasLiveAttempt(second), true);
-  await assert.rejects(owner.cancelAttempt(operationId, "touch", first));
 });

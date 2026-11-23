@@ -517,7 +517,7 @@ describe_m1("served sign-up Finish", () => {
 
   it_m1("moves to login when the published sign-up cannot start the dashboard", async () => {
     const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
-    const ready = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+    const ready = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method } };
     let finished = false;
     const client = { ...appClient(), readProfileSession: async () => finished ? { state: "signed-out" as const, signUpRequired: false } : ready,
       completeProfileOnboarding: async () => { finished = true; return PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE" }); } };

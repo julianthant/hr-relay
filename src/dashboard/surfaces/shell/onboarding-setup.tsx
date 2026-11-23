@@ -1,12 +1,12 @@
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useRef, useState } from "react";
-import { Check, Fingerprint, KeyRound, LoaderCircle } from "lucide-react";
+import { Check, KeyRound, LoaderCircle } from "lucide-react";
 import { Button, Card, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
 import { duoSummary, useServedDuoSetup, useWaitStage, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
 import { AppLockup } from "./app-lockup.js";
 import "./onboarding-setup.css";
 
-const methods = [["key", "Security key", "Use a security key or passkey with Duo."], ["touch", "Touch ID", "Use Touch ID on this computer."]] as const;
+const methods = [["key", "Security key", "Use a security key or passkey with Duo."]] as const;
 const statusLabels = { idle: "Not started", pending: "Waiting for Duo", complete: "Added", unknown: "Not confirmed", unavailable: "Unavailable" } as const;
 
 export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: ServedOnboardingPort }) {
@@ -56,14 +56,10 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
     : preparing ? preparingStage === "still" ? "Still preparing the setup browser…" : "Relay is preparing the setup browser." : undefined;
   const canReopen = browser?.state === "failed" || browser?.state === "closed";
   const statusReadFailed = port.unavailable === true && !failedMethod;
-  const both = setup.methods.key && setup.methods.touch;
+  const added = setup.methods.key;
   const selectionDisabled = setup.listening || draft !== undefined && Object.values(draft.methods).some(method => method.state === "pending");
-  const selectMethod = (method: "key" | "touch") => { setup.cancel(); setup.setMethod(method); };
-  useEffect(() => {
-    if (setup.methods[setup.method] && !both) setup.setMethod(setup.method === "key" ? "touch" : "key");
-  }, [both, setup]);
   const instruction = failedMethod ? "In Duo, open Manage devices and remove any device you do not recognize, then add this one again."
-    : both ? "Both devices are added. Go back to Relay to finish."
+    : added ? "Your security key is added. Go back to Relay to finish."
     : setup.listening ? "In Duo, add the matching device. Relay moves on once it sees it."
     : "In Duo, approve with your current method, then choose Other options and Manage devices.";
   const waitingAttempt = methodState === "pending" ? draft?.methods[setup.method].attemptId ?? setup.method : setup.listening ? setup.method : undefined;
@@ -78,13 +74,12 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
     <main id="setup-main"><header className="heading"><h1>{reenrol ? "Set up Duo again" : "Set up Duo"}</h1><p>{instruction}</p></header>
       <ul className="method-list">{methods.map(([method, label, help]) => {
         const state = draft?.methods[method].state ?? (setup.methods[method] ? "complete" : setup.listening && setup.method === method ? "pending" : "idle");
-        const added = state === "complete";
-        const selected = setup.method === method && !added;
-        const Icon = method === "key" ? KeyRound : Fingerprint;
+        const complete = state === "complete";
+        const selected = setup.method === method && !complete;
         return <li key={method}><Card selected={selected} tone={state === "unknown" || state === "unavailable" ? "danger" : "default"}>
-          <button type="button" className="method-head" aria-pressed={selected} disabled={selectionDisabled || added} onClick={() => selectMethod(method)}>
-            <Icon className="icon" aria-hidden /><span className="method-name"><strong>{label}</strong><span>{help}</span></span>
-            <span className="method-status" data-state={state}>{added && <Check className="icon" aria-hidden />}{statusLabels[state]}</span>
+          <button type="button" className="method-head" aria-pressed={selected} disabled={selectionDisabled || complete} onClick={() => { setup.cancel(); setup.setMethod(method); }}>
+            <KeyRound className="icon" aria-hidden /><span className="method-name"><strong>{label}</strong><span>{help}</span></span>
+            <span className="method-status" data-state={state}>{complete && <Check className="icon" aria-hidden />}{statusLabels[state]}</span>
           </button>
           {selected && <div className="method-actions">
             {canReopen && !statusReadFailed && <Button variant="secondary" size="lg" disabled={reopening} onClick={() => void reopen()}>{reopening ? "Reopening…" : "Reopen"}</Button>}
@@ -102,11 +97,11 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port: Se
       {!statusReadFailed && status !== undefined && browserNotice === undefined && <p role="status" className="setup-notice" data-tone="info">{status}</p>}
     </main>
     <footer className="setup-footer">{closeFailure !== undefined && <p role="alert" className="setup-notice" data-tone="failure">{closeFailure}</p>}
-      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing !== undefined} aria-busy={closing === "cancel" || undefined} onClick={() => void closeReenrol("cancel")}>{closing === "cancel" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "cancel" ? "Cancelling…" : "Cancel setup"}</Button><Button variant={both ? "primary" : "secondary"} size="lg" disabled={!both || closing !== undefined} aria-busy={closing === "complete" || undefined} onClick={() => void closeReenrol("complete")}>{closing === "complete" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "complete" ? "Switching…" : "Use new devices"}</Button></div>
-        : <div className="action-row"><Button variant="secondary" size="lg" onClick={() => window.close()}>Close</Button><Button variant={both ? "primary" : "secondary"} size="lg" onClick={() => setup.returnToParent()}>Back to Relay</Button></div>}
+      {reenrol ? <div className="action-row"><Button variant="secondary" size="lg" disabled={closing !== undefined} aria-busy={closing === "cancel" || undefined} onClick={() => void closeReenrol("cancel")}>{closing === "cancel" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "cancel" ? "Cancelling…" : "Cancel setup"}</Button><Button variant={added ? "primary" : "secondary"} size="lg" disabled={!added || closing !== undefined} aria-busy={closing === "complete" || undefined} onClick={() => void closeReenrol("complete")}>{closing === "complete" && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{closing === "complete" ? "Switching…" : "Use new key"}</Button></div>
+        : <div className="action-row"><Button variant="secondary" size="lg" onClick={() => window.close()}>Close</Button><Button variant={added ? "primary" : "secondary"} size="lg" onClick={() => setup.returnToParent()}>Back to Relay</Button></div>}
     </footer>
     <span className="sr-only" role="status">{summary}</span>
-    <Dialog open={confirming} onOpenChange={open => { if (!open) dismissConfirmation(); }}><DialogContent size="sm" title={(confirmation?.method ?? setup.method) === "key" ? "Add security key?" : "Add Touch ID?"} description="Confirm once Duo shows the device as added."><DialogFooter><Button variant="secondary" onClick={dismissConfirmation}>Cancel</Button><Button variant="primary" onClick={() => {
+    <Dialog open={confirming} onOpenChange={open => { if (!open) dismissConfirmation(); }}><DialogContent size="sm" title="Add security key?" description="Confirm once Duo shows the device as added."><DialogFooter><Button variant="secondary" onClick={dismissConfirmation}>Cancel</Button><Button variant="primary" onClick={() => {
         if (confirmation !== undefined) setup.confirm(confirmation);
         dismissConfirmation();
       }}>Device added</Button></DialogFooter></DialogContent></Dialog>

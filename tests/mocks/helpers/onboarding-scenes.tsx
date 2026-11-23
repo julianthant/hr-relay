@@ -16,9 +16,8 @@ const method = (state: MethodKind): ProfileOnboardingMethodState => ({
   ceremonyObserved: state === "complete", portalAccepted: state === "complete", operatorConfirmed: state === "complete", exactCredentialRequestObserved: state === "complete",
 });
 
-function draft(key: MethodKind, touch: MethodKind, browser: ProfileOnboardingBrowser = { state: "open", generation: 1 }): ProfileOnboardingState {
-  return { state: "onboarding", operationId: OPERATION, profileId: PROFILE,
-    step: key === "complete" && touch === "complete" ? "ready" : "duo", methods: { key: method(key), touch: method(touch) }, browser };
+function draft(key: MethodKind, browser: ProfileOnboardingBrowser = { state: "open", generation: 1 }): ProfileOnboardingState {
+  return { state: "onboarding", operationId: OPERATION, profileId: PROFILE, step: key === "complete" ? "ready" : "duo", methods: { key: method(key) }, browser };
 }
 
 const never = <T,>() => new Promise<T>(() => undefined);
@@ -51,33 +50,31 @@ export const ONBOARDING_SCENES = {
   "signup-empty": { step: "signup" },
   "signup-errors": { step: "signup", submit: true },
   "signup-creating-profile": { step: "signup", fill: true, press: ["Create profile"], shows: "Creating profile…" },
-  "duo-not-started": { step: "duo", draft: draft("idle", "idle") },
-  "duo-opening": { step: "duo", draft: draft("idle", "idle", { state: "opening", generation: 1 }), shows: "Opening setup window…" },
-  "duo-still-opening": { step: "duo", draft: draft("idle", "idle", { state: "opening", generation: 1 }), wait: 10_000, shows: "Still opening setup window…" },
-  "duo-key-pending": { step: "duo", draft: draft("pending", "idle"), shows: "Waiting for Duo to add Security key" },
-  "duo-still-waiting": { step: "duo", draft: draft("pending", "idle"), wait: 10_000, shows: "Still waiting for Duo to add Security key" },
-  "duo-attempt-unconfirmed": { step: "duo", draft: draft("unknown", "idle"), shows: "Relay could not confirm Security key. In Duo, remove any device you do not recognize, then start over." },
-  "duo-cancel-confirm": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up"], shows: "Cancel sign-up?" },
-  "duo-cancelling": { step: "duo", draft: draft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "Cancelling…" },
-  "duo-cancel-no-reply": { step: "duo", noReply: true, draft: draft("pending", "idle"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "No reply from Relay. Reload the page to check." },
-  "duo-both-complete": { step: "duo", draft: draft("complete", "complete") },
-  "duo-finishing": { step: "duo", draft: draft("complete", "complete"), press: ["Finish setup"], shows: "Finishing…" },
-  "duo-finish-no-reply": { step: "duo", noReply: true, draft: draft("complete", "complete"), press: ["Finish setup"], shows: "No reply from Relay. Reload the page to check." },
-  "duo-key-complete": { step: "duo", draft: draft("complete", "idle") },
-  "duo-browser-failed": { step: "duo", draft: draft("idle", "idle", { state: "failed", generation: 1, code: "DUO_SETUP_OPEN_FAILED" }) },
-  "duo-reopen-failed": { step: "duo", draft: draft("idle", "idle", { state: "failed", generation: 2, code: "DUO_SETUP_STOP_FAILED" }), shows: "Could not reopen setup window" },
-  "ready": { step: "ready", draft: draft("complete", "complete") },
-  "ready-opening-dashboard": { step: "ready", draft: draft("complete", "complete"), press: ["Go to dashboard"], shows: "Opening dashboard…" },
-  "setup-not-started": { setup: true, draft: draft("idle", "idle") },
-  "setup-key-pending": { setup: true, draft: draft("pending", "idle") },
-  "setup-still-waiting": { setup: true, draft: draft("pending", "idle"), wait: 10_000, shows: "Still waiting for Duo." },
-  "setup-key-complete": { setup: true, draft: draft("complete", "idle") },
-  "setup-both-complete": { setup: true, draft: draft("complete", "complete") },
-  "setup-key-failed": { setup: true, draft: draft("unknown", "idle") },
-  "setup-duo-waiting": { setup: true, duo: true, draft: draft("pending", "idle") },
-  "setup-duo-confirm": { setup: true, duo: true, confirm: true, draft: draft("pending", "idle") },
-  "setup-reenrol-switching": { setup: true, reenrol: true, draft: draft("complete", "complete"), press: ["Use new devices"], shows: "Switching…" },
-  "setup-reenrol-cancelling": { setup: true, reenrol: true, draft: draft("complete", "complete"), press: ["Cancel setup"], shows: "Cancelling…" },
+  "duo-not-started": { step: "duo", draft: draft("idle") },
+  "duo-opening": { step: "duo", draft: draft("idle", { state: "opening", generation: 1 }), shows: "Opening setup window…" },
+  "duo-still-opening": { step: "duo", draft: draft("idle", { state: "opening", generation: 1 }), wait: 10_000, shows: "Still opening setup window…" },
+  "duo-key-pending": { step: "duo", draft: draft("pending"), shows: "Waiting for Duo to add Security key" },
+  "duo-still-waiting": { step: "duo", draft: draft("pending"), wait: 10_000, shows: "Still waiting for Duo to add Security key" },
+  "duo-attempt-unconfirmed": { step: "duo", draft: draft("unknown"), shows: "Relay could not confirm Security key. In Duo, remove any device you do not recognize, then start over." },
+  "duo-cancel-confirm": { step: "duo", draft: draft("pending"), press: ["Cancel sign-up"], shows: "Cancel sign-up?" },
+  "duo-cancelling": { step: "duo", draft: draft("pending"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "Cancelling…" },
+  "duo-cancel-no-reply": { step: "duo", noReply: true, draft: draft("pending"), press: ["Cancel sign-up", "Cancel sign-up"], shows: "No reply from Relay. Reload the page to check." },
+  "duo-finishing": { step: "duo", draft: draft("complete"), press: ["Finish setup"], shows: "Finishing…" },
+  "duo-finish-no-reply": { step: "duo", noReply: true, draft: draft("complete"), press: ["Finish setup"], shows: "No reply from Relay. Reload the page to check." },
+  "duo-key-complete": { step: "duo", draft: draft("complete") },
+  "duo-browser-failed": { step: "duo", draft: draft("idle", { state: "failed", generation: 1, code: "DUO_SETUP_OPEN_FAILED" }) },
+  "duo-reopen-failed": { step: "duo", draft: draft("idle", { state: "failed", generation: 2, code: "DUO_SETUP_STOP_FAILED" }), shows: "Could not reopen setup window" },
+  "ready": { step: "ready", draft: draft("complete") },
+  "ready-opening-dashboard": { step: "ready", draft: draft("complete"), press: ["Go to dashboard"], shows: "Opening dashboard…" },
+  "setup-not-started": { setup: true, draft: draft("idle") },
+  "setup-key-pending": { setup: true, draft: draft("pending") },
+  "setup-still-waiting": { setup: true, draft: draft("pending"), wait: 10_000, shows: "Still waiting for Duo." },
+  "setup-key-complete": { setup: true, draft: draft("complete") },
+  "setup-key-failed": { setup: true, draft: draft("unknown") },
+  "setup-duo-waiting": { setup: true, duo: true, draft: draft("pending") },
+  "setup-duo-confirm": { setup: true, duo: true, confirm: true, draft: draft("pending") },
+  "setup-reenrol-switching": { setup: true, reenrol: true, draft: draft("complete"), press: ["Use new key"], shows: "Switching…" },
+  "setup-reenrol-cancelling": { setup: true, reenrol: true, draft: draft("complete"), press: ["Cancel setup"], shows: "Cancelling…" },
 } as const satisfies Record<string, Scene>;
 export type OnboardingSceneId = keyof typeof ONBOARDING_SCENES;
 export const ONBOARDING_SCENE_IDS = Object.keys(ONBOARDING_SCENES) as OnboardingSceneId[];
