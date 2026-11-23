@@ -18,8 +18,8 @@ const bar = (title: string, data: SessionsViewState, { open = true, operations }
     {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
 /** The Add workers control stays shown and switched off whenever the bar cannot act, with nothing to choose. */
 const DEAD_ADD = { knownFailures: { "no-dead-disabled-control": "#532" } } as const;
-/** A browser chip with a nickname or a served reason is focusable and has no accessible name of its own. */
-const UNNAMED_CHIP = { knownFailures: { "named-and-focusable": "#532" } } as const;
+/** A focusable browser chip (a nickname or a served reason) and the dialog surface carry no accessible name of their own. */
+const UNNAMED_CONTROL = { knownFailures: { "named-and-focusable": "#532" } } as const;
 const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ state: "ready", workers });
 
 const worker = (title: string, state: SessionWorkerState): Story => bar(title, ready(SESSION_WORKER_BY_STATE[state]));
@@ -34,7 +34,7 @@ const browser = (title: string, state: SessionBrowserState): Story => bar(title,
 const BROWSER = {
   ready: browser("A browser signed in and idle", "ready"), active: browser("A browser in use by the step", "active"), starting: browser("A browser opening", "starting"),
   unopened: browser("A browser the worker has not opened", "unopened"), closed: browser("A browser that was closed", "closed"),
-  unavailable: { ...browser("A browser Relay cannot read, with its reason", "unavailable"), ...UNNAMED_CHIP }, failed: browser("A browser whose sign-in failed", "failed"),
+  unavailable: { ...browser("A browser Relay cannot read, with its reason", "unavailable"), ...UNNAMED_CONTROL }, failed: browser("A browser whose sign-in failed", "failed"),
   "needs-duo": browser("A browser waiting on Duo", "needs-duo"), "signed-out": browser("A browser signed out", "signed-out"),
 } satisfies Record<SessionBrowserState, Story>;
 
@@ -58,8 +58,8 @@ const COMBINATION = {
   mixed: bar("Cards for busy workers, rows for quiet idle ones", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
   stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }, {}, DEAD_ADD),
-  wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER), {}, UNNAMED_CHIP),
-  "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
+  wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER), {}, UNNAMED_CONTROL),
+  "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]', ...UNNAMED_CONTROL,
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
 } satisfies Record<string, Story>;
 
