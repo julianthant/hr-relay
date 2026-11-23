@@ -89,7 +89,7 @@ describe('confirmed Settings feedback through the current editor', () => {
     await act(async () => segments[1].blur());
     assert.equal(commands.length, 1); assert.equal(notices.length, 1);
   });
-  it('waits until focus leaves the credential field before reporting the login change refusal', async () => {
+  it('saves the UCPath username once when focus leaves the credential field', async () => {
     const { controller, host, commands, notices, problems, render } = await setup();
     await render('credentials');
     const input = inputNamed(host, 'ucpathUserId');
@@ -101,13 +101,13 @@ describe('confirmed Settings feedback through the current editor', () => {
     assert.equal(commands.length, 0); assert.deepEqual(notices, []); assert.deepEqual(problems, []);
     await act(async () => input.focus());
     await act(async () => input.blur());
-    assert.equal(commands.length, 1); assert.deepEqual(notices, []);
-    assert.equal(controller().protectedEditor.save.state, 'refused');
-    assert.equal(controller().protectedEditor.dirtyCount, 1);
-    assert.deepEqual(problems, [{ tone: 'danger', title: "Credentials weren't saved. Your draft is kept." }]);
-    assert.doesNotMatch(JSON.stringify(problems), /private-blur-sentinel/);
+    assert.equal(commands.length, 1); assert.deepEqual(notices, [{ key: 'settings-save', title: 'Saved UCPath username' }]);
+    assert.equal(controller().protectedEditor.save.state, 'applied');
+    assert.equal(controller().protectedEditor.dirtyCount, 0);
+    assert.deepEqual(problems, []);
+    assert.doesNotMatch(JSON.stringify({ notices, problems }), /private-blur-sentinel/);
     await act(async () => vi.advanceTimersByTimeAsync(2000));
-    assert.equal(commands.length, 1); assert.equal(problems.length, 1);
+    assert.equal(commands.length, 1); assert.equal(notices.length, 1); assert.equal(problems.length, 0);
   });
   it('notifies a refused save once without exposing the draft or raw server message', async () => {
     const { controller, commands, notices, problems, ports, render } = await setup();
