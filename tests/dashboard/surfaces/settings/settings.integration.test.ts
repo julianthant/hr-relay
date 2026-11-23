@@ -34,10 +34,11 @@ describe("independent protected Settings surface", () => {
     assert.doesNotMatch(savedText(h.host), /synthetic-(?:password|url|sentinel)/u);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
-    assert.equal(h.authority.credentials.read().revision, before.revision + 1);
-    assert.equal(h.authority.credentials.read().entries.sharepointOnboardingRosterUrl?.value, values.sharepointOnboardingRosterUrl);
-    assert.equal(h.authority.credentials.read().entries.ucpathUserId?.value, values.ucpathUserId);
-    assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, values.ucpathPassword);
+    const applied = h.authority.credentials.read();
+    assert.equal(applied.revision, before.revision + 1);
+    assert.equal(applied.entries.sharepointOnboardingRosterUrl?.value, values.sharepointOnboardingRosterUrl);
+    assert.equal(applied.entries.ucpathUserId?.value, values.ucpathUserId);
+    assert.equal(applied.entries.ucpathPassword?.value, values.ucpathPassword);
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
     const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
     const history = h.authority.database.authority.commands.getSettingsHistory(request.commandId);
@@ -45,7 +46,7 @@ describe("independent protected Settings surface", () => {
     assert.doesNotMatch(JSON.stringify({ history, audit }), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
     assert.doesNotMatch(savedText(h.host), /synthetic-password-sentinel/u);
     assert.doesNotMatch(h.host.textContent ?? "", /show password|reveal|restart required/iu);
-    const cleared = h.authority.protectedApply({ ucpathUserId: { clear: true }, ucpathPassword: { clear: true } }, before.revision + 1);
+    const cleared = h.authority.protectedApply({ ucpathUserId: { clear: true }, ucpathPassword: { clear: true } }, applied.revision);
     assert.equal(cleared.state, "applied");
     const saved = h.authority.credentials.read();
     assert.equal(saved.revision, before.revision + 2);
