@@ -2,11 +2,16 @@
  * Run one surface alone with `--grep @<surface>`, for example `--grep @queue`. */
 import { DESKTOP_VIEWPORTS } from "../support/helpers/dashboard/smoke/dashboard-page.js";
 import { expect, saveStateFrame, test, writeStateFrameIndex } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
+import { usesIndependentDialogReferences } from "../support/helpers/dashboard/smoke/gallery-shards.js";
 import { STATE_RULE_NAMES } from "../support/helpers/dashboard/smoke/state-rule-limits.js";
 import { STATE_RULES, type StateRuleContext } from "../support/helpers/dashboard/smoke/state-rules.js";
 import { CATALOGUE } from "../support/helpers/dashboard/smoke/stories/catalogue.js";
 
 const dialogShapes: StateRuleContext["dialogShapes"] = new Map();
+
+function galleryTags(surface: string): string[] {
+  return usesIndependentDialogReferences(surface) ? [`@${surface}`, "@gallery-independent"] : [`@${surface}`];
+}
 
 test.afterAll(() => {
   writeStateFrameIndex(CATALOGUE, DESKTOP_VIEWPORTS.map(viewport => viewport.width));
@@ -17,7 +22,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     test.use({ viewport });
 
     for (const { id, surface, story } of CATALOGUE) {
-      test(`${id} passes the state rules`, { tag: `@${surface}` }, async ({ mount, page, diagnostics }) => {
+      test(`${id} passes the state rules`, { tag: galleryTags(surface) }, async ({ mount, page, diagnostics }) => {
         if (story.clock === true) await page.clock.install();
         await mount(id);
         await story.play?.(page);
@@ -44,7 +49,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 
       if (known.length === 0) continue;
       const annotation = [...new Set(known.map(({ ticket }) => ticket))].map(ticket => ({ type: "issue", description: ticket }));
-      test(`${id} has its recorded breaks`, { tag: `@${surface}`, annotation }, async ({ mount, page, diagnostics }) => {
+      test(`${id} has its recorded breaks`, { tag: galleryTags(surface), annotation }, async ({ mount, page, diagnostics }) => {
         if (story.clock === true) await page.clock.install();
         await mount(id);
         await story.play?.(page);

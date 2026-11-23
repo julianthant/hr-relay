@@ -1,6 +1,7 @@
 /** The operator's rules for every dashboard state. Each rule is one named function that returns what it found
  * wrong, with its own failure message; the check loop runs all of them on every story. */
 import { expect, type Page } from "@playwright/test";
+import { usesIndependentDialogReferences } from "./gallery-shards.js";
 import { BANNED_PATTERNS, BANNED_PHRASES, BANNED_TERMS, WORD_LIMITS, type StateRuleName } from "./state-rule-limits.js";
 import { DIALOG_REFERENCE_SURFACE, DIALOG_REFERENCE_VARIANTS } from "./story-catalogue.js";
 import type { Story } from "./story-catalogue.js";
@@ -202,6 +203,9 @@ export async function dialogsShareShape({ page, storyId, story, dialogShapes }: 
   const viewport = page.viewportSize();
   const found: string[] = [];
   for (const { kind, variant, shape } of await page.evaluate(measureDialogs)) {
+    if ((variant === null || !DIALOG_REFERENCE_VARIANTS.includes(variant)) && usesIndependentDialogReferences(storyId.split("/")[0])) {
+      throw new Error(`${storyId} draws ${kind} with a cross-story reference. Move its surface to the shared-reference gallery shard.`);
+    }
     const key = `${kind} at ${String(viewport?.width)}x${String(viewport?.height)}`;
     let reference = dialogShapes.get(key);
     // A dialog built on the design system is held to the design system's own dialog of that size.
