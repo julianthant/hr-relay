@@ -29,11 +29,16 @@ export interface DashboardLauncherOptions {
   readonly frontendOwnerFile?: string;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
+  readonly copySignin?: Readonly<{ backendEntry: string; ready(launchNonce: string): void; phone(): void }>;
 }
 
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
   const mode = options.mode ?? "dashboard";
   const profile = options.profile ?? readRuntimeProfile();
+  const copySignin = options.copySignin;
+  if (copySignin !== undefined && (profile !== "staging" && profile !== "development" || mode !== "dashboard")) {
+    throw new Error("copy-signin-profile-refused");
+  }
   const frontendOwnerFile = options.frontendOwnerFile ?? join(repositoryRoot, "node_modules", ".cache", "relay-dashboard", profile === "production" ? "frontend-owner" : `frontend-owner-${profile}`);
   const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
   let launchNonce: string;
@@ -127,17 +132,24 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     launchWeb();
     return done;
   }
-  const backend = launch("bff", ["--conditions=development", "--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
+  const backend = launch("bff", ["--conditions=development", "--import", "tsx",
+    copySignin?.backendEntry ?? fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)),
+    ...(copySignin === undefined ? ["cli", "dashboard"] : ["--owned-backend", profile])], true);
   progress = setInterval(() => {
     if (stopping || ready) return;
     writeError("[dashboard] still starting (preparing saved data)...\n");
   }, STARTUP_PROGRESS_MS);
   backend.on("message", (message: unknown) => {
+    if (!stopping && copySignin !== undefined && message !== null && typeof message === "object"
+      && "type" in message && message.type === "relay-copy-signin-phone") {
+      copySignin.phone();
+      return;
+    }
     if (stopping || ready || message === null || typeof message !== "object"
       || !("type" in message) || message.type !== "hrauto-dashboard-ready") return;
     ready = true;
     stopProgress();
-    if (mode === "dashboard") launchWeb();
+    if (mode === "dashboard") { launchWeb(); copySignin?.ready(launchNonce); }
     else {
       try {
         mkdirSync(dirname(frontendOwnerFile), { recursive: true });

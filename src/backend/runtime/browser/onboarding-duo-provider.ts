@@ -8,8 +8,9 @@ import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signi
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
-import type { BrowserContext, Page, Worker } from "playwright";
+import { submitPinnedUcsdSsoCredentials, waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
+import type { BrowserContext, Locator, Page, Worker } from "playwright";
+import type { RuntimeProfile } from "../../../models/config/define-runtime-isolation.js";
 import { z } from "zod";
 import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -82,6 +83,11 @@ export interface OnboardingDuoProviderOptions {
   readonly launcher?: PersistentContextLauncher;
   readonly platform?: NodeJS.Platform;
   readonly focus?: DuoBrowserFocus;
+  readonly copySignin?: Readonly<{
+    profile: Exclude<RuntimeProfile, "production">;
+    credentials(): Readonly<{ userId: string; password: string }>;
+    phone(): void;
+  }>;
 }
 
 
@@ -510,6 +516,72 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     cause.name = "TimeoutError";
     throw new Error("UCSD_SSO_SUBMIT_TIMEOUT", { cause });
   }
+
+  async function enrollCopy(session: OwnedBrowser, page: Page, landing: "sso-form" | "duo",
+    copy: NonNullable<OnboardingDuoProviderOptions["copySignin"]>): Promise<void> {
+    if (landing === "sso-form") {
+      try {
+        await submitPinnedUcsdSsoCredentials(page, async () => copy.credentials(), () => browserCurrent(session),
+          options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
+      } catch { throw new Error("UCSD_SSO_FIELDS"); }
+    }
+    const duo = (url: URL) => url.hostname !== "duo.ucsd.edu" && duoSignInHost(url.href);
+    const timeout = 120_000;
+    await page.waitForURL(duo, { timeout });
+    const origin = new URL(page.url()).origin;
+    const current = () => {
+      browserCurrent(session);
+      if (page.isClosed() || session.portal !== page || new URL(page.url()).origin !== origin) throw new Error("copy-signin-duo-scope");
+    };
+    const control = (name: RegExp) => page.getByRole("button", { name }).or(page.getByRole("link", { name })).filter({ visible: true });
+    const click = async (locator: Locator) => {
+      current();
+      const target = await locator.elementHandle({ timeout });
+      try { current(); await target.click({ timeout }); }
+      finally { await target.dispose(); }
+      current();
+    };
+    const add = control(/^Add a device\b/iu);
+    const other = control(/^Other options$/iu);
+    const manage = control(/^Manage devices\b/iu);
+    await add.or(manage).or(other).first().waitFor({ timeout });
+    if (!await add.isVisible()) {
+      if (!await manage.isVisible()) await click(other);
+      await click(manage);
+      const verify = page.getByRole("heading", { name: "Verify your identity before managing devices", exact: true });
+      await add.or(verify).first().waitFor({ timeout });
+      if (!await add.isVisible()) {
+        await click(control(/^(?:Verified )?Duo Push\b/iu));
+        copy.phone();
+        await add.waitFor({ timeout });
+      }
+    }
+
+    for (const method of ["key", "touch"] as const) {
+      current();
+      const state = session.owner.readState().methods[method].state;
+      if (state === "complete") continue;
+      if (state !== "idle") throw new Error("copy-signin-duo-method-unavailable");
+      await session.owner.start(method);
+      await click(add);
+      const select = method === "key" ? /^Security key\b/iu : /^(?:Touch ID|Windows Hello)\b/iu;
+      const added = page.getByRole("heading", { name: method === "key" ? /^Added security key\b/iu : /^Added (?:Touch ID|Windows Hello)\b/iu });
+      const next = control(/^(?:Continue|Done)$/iu);
+      await click(control(select));
+      await added.or(next).first().waitFor({ timeout });
+      if (!await added.isVisible()) await click(next);
+      const deadline = options.clock.monotonicMs() + timeout;
+      for (;;) {
+        current();
+        const result = session.owner.readState().methods[method].state;
+        if (result === "complete") break;
+        if (result !== "pending" || options.clock.monotonicMs() >= deadline) throw new Error("copy-signin-duo-receipt-unavailable");
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+      }
+      if (method === "key" && !await add.isVisible()) await click(next);
+    }
+  }
+
   async function openPortal(session: OwnedBrowser): Promise<void> {
     browserCurrent(session);
     const context = session.context;
@@ -528,7 +600,10 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         browserCurrent(session);
         const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-        if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
+        if (options.copySignin !== undefined && session.owner.readState().state === "onboarding") {
+          try { await enrollCopy(session, page, landing, options.copySignin); }
+          catch { throw new Error("copy-signin-duo-enrollment-failed"); }
+        } else if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
         browserCurrent(session);
       } catch (error) {
         try { reportDuoEvent(session.owner, failureEvent(error, "portal-open", Math.max(0, options.clock.monotonicMs() - started))); }
@@ -539,7 +614,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const opening = session.portalOpening;
     try { await opening; }
     catch (error) {
-      if (session.portalOpening === opening) delete session.portalOpening;
+      if (options.copySignin === undefined && session.portalOpening === opening) delete session.portalOpening;
       if (session.portal && trustedPortalUrl(session.portal.url())) await focusPage(session, session.portal);
       throw error;
     }
