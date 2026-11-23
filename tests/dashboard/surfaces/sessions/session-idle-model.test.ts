@@ -14,6 +14,8 @@ import { IDLE_REFRESH_MS,IdleSessionSchedule,useIdleSessionRefresh } from '../..
 import { type SessionPreviewRequest } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
 import { sessionsSample } from '../../../support/fixtures/dashboard/sessions-sample.js';
 import type { SessionsViewState } from '../../../../src/dashboard/surfaces/sessions/sessions-view-model.js';
+import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
+import { WorkerCard } from '../../../../src/dashboard/surfaces/sessions/worker-card.js';
 import { manualClock } from '../../../../src/rules/time/clock.js';
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -52,12 +54,12 @@ it('uses injected wall time for countdown and confirmed refresh without advancin
   const host = document.createElement('div'), root = createRoot(host);
   try {
     await act(async () => root.render(createElement(Harness)));
-    assert.equal(idle?.countdowns['sample-worker-4'].remainingMs, IDLE_REFRESH_MS);
+    assert.equal(idle?.countdowns['sample-worker-4'].dueAt - clock.nowMs(), IDLE_REFRESH_MS);
     await act(async () => vi.advanceTimersByTimeAsync(IDLE_REFRESH_MS));
     assert.equal(requests.length, 0, 'timer movement cannot substitute for the injected clock');
     clock.advanceWall(IDLE_REFRESH_MS - 1);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
-    assert.equal(idle?.countdowns['sample-worker-4'].remainingMs, 1);
+    assert.equal(idle?.countdowns['sample-worker-4'].dueAt - clock.nowMs(), 1);
     clock.advanceWall(1);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     assert.equal(requests.length, 1);
@@ -67,7 +69,7 @@ it('uses injected wall time for countdown and confirmed refresh without advancin
     assert.equal(requests.length, 1);
     idle?.confirmed(requests[0]);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
-    assert.equal(idle?.countdowns['sample-worker-4'].remainingMs, IDLE_REFRESH_MS);
+    assert.equal(idle?.countdowns['sample-worker-4'].dueAt - clock.nowMs(), IDLE_REFRESH_MS);
     clock.advanceWall(IDLE_REFRESH_MS);
     await act(async () => vi.advanceTimersByTimeAsync(1000));
     assert.equal(requests.length, 2);
@@ -113,4 +115,27 @@ it('retains the original held refresh across its own version move, cancels Remov
   replaced.sync(view(replacement), IDLE_REFRESH_MS * 8, { [card.workerId]: { request: original, state: 'confirmed', message: 'Original refresh confirmed' } });
   assert.deepEqual(replaced.view(IDLE_REFRESH_MS * 8)[card.workerId], { remainingMs: IDLE_REFRESH_MS, waiting: false }, 'the new lifetime starts its own full countdown, never the original timer');
   assert.deepEqual(replaced.due(IDLE_REFRESH_MS * 9 - 1, () => false), []);
+});
+
+it('ticks only the ring while a countdown runs: no panel or worker card re-render', async () => {
+  vi.useFakeTimers(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const data = sessionsSample('active'); assert(data.state === 'ready');
+  const worker = data.workers.find(candidate => candidate.id === 'sample-worker-4'); assert(worker);
+  let panel = 0, card = 0;
+  const Card = (props: Parameters<typeof WorkerCard>[0]) => { card += 1; return createElement(WorkerCard, props); };
+  function Panel() {
+    panel += 1;
+    const idle = useIdleSessionRefresh(data, {}, async () => {});
+    return createElement(TooltipProvider, null, createElement(Card, { worker, countdown: idle.countdowns[worker.id], onControl: () => {} }));
+  }
+  const host = document.createElement('div'), root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(Panel)));
+    const [panelAfterMount, cardAfterMount] = [panel, card];
+    const ring = () => host.querySelector('[role="img"]')?.getAttribute('aria-label');
+    const before = ring(); assert(before?.startsWith('Refreshes in'));
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    assert.notEqual(ring(), before, 'the ring counts down');
+    assert.deepEqual([panel, card], [panelAfterMount, cardAfterMount]);
+  } finally { await act(async () => root.unmount()); }
 });
