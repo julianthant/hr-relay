@@ -4,6 +4,7 @@ import { createScriptedExecutor } from "../served-fixtures/seeded-scripted-execu
 import { SCRIPTED_WORKFLOWS, scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
 import { dataOriginViewsOf, gateNodeViewsOf, writeContractViewsOf } from "../../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import { readRunPanel } from "../../../../../src/backend/runs/queries/run-detail.js";
 import type { WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
 import type { AnyWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
@@ -194,6 +195,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     };
     const hub = createDashboardStreamHub({
       projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
+      runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
       ...(trustNotifications === undefined ? {} : { notificationPublications: composeNotificationPublications({
         database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox }) }),
     });
