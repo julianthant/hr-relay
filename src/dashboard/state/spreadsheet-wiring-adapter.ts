@@ -9,7 +9,8 @@ import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibraryAction
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { draftHasUnsavedWork, draftHoldsSave, draftTransition, isDraftRefusal, type DraftEvent, type SpreadsheetDraft } from './spreadsheet-draft.js';
-import { cellText, type EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
+import { cellText } from '../../rules/spreadsheets/cell-text.js';
+import type { EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
 import { NOT_MAPPED, spreadsheetEditorField, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 
 type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'
