@@ -279,19 +279,21 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await expect(seededQueueCard(dashboard, dashboard.runId("doneRun"))).toBeVisible();
       });
 
-      for (const surface of ["Settings", "Spreadsheets", "Explorer", "Analytics", "Run logs"] as const) {
-        test(`${surface === "Settings" ? "warm Settings" : surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
+      // The first Settings opening is recorded unprimed; the warm one reopens it after a close.
+      for (const surface of ["first Settings", "warm Settings", "Spreadsheets", "Explorer", "Analytics", "Run logs"] as const) {
+        test(`${surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
           const runId = dashboard.runId("doneRun");
           const control = surface === "Run logs" ? seededQueueCard(dashboard, runId).locator("button[data-queue-open]")
-            : surface === "Settings" ? page.getByRole("button", { name: surface, exact: true }) : await dataPageLink(page, surface);
+            : surface.endsWith("Settings") ? page.getByRole("button", { name: "Settings", exact: true }) : await dataPageLink(page, surface);
           const content = {
-            Settings: page.locator(THEME_FIELD),
+            "first Settings": page.locator(THEME_FIELD),
+            "warm Settings": page.locator(THEME_FIELD),
             Spreadsheets: page.getByText("No spreadsheets yet", { exact: true }),
             Explorer: page.locator("#explorer-step-1"),
             Analytics: page.getByRole("figure", { name: "Runs per day" }),
             "Run logs": dashboard.runPanel.getByRole("region", { name: "Run logs" }),
           }[surface];
-          if (surface === "Settings") {
+          if (surface === "warm Settings") {
             await control.click();
             await expect(content).toBeVisible();
             await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/ }).click();
