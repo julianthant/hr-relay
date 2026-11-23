@@ -52,7 +52,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
     }
     if (url.includes("/events/v1?")) return new Response(new ReadableStream<Uint8Array>({ start(controller) {
       const messages = [{ type: "hello", wireVersion: 1, descriptorHash: day.descriptorHash, projectionGeneration: day.projectionGeneration, cursor: day.snapshotCursor },
-        { type: "snapshot", topic: "dashboard-day", position: 0, cursor: day.snapshotCursor, payload: day }];
+        { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: day.snapshotCursor, payload: day }];
       for (const message of messages) controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(message)}\n\n`));
       init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
     } }), { headers: { "content-type": "text/event-stream" } });
