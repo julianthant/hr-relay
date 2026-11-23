@@ -10,6 +10,7 @@ import { assistantOpen } from "../../../src/dashboard/surfaces/shell/assistant-l
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../mocks/helpers/fixture-queue.js";
 import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
+import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 
 const broken = vi.hoisted(() => ({ settings: false, assistant: false, dialog: false, logs: false }));
 const crash = () => { throw new Error("Synthetic panel crash"); };
@@ -53,6 +54,7 @@ async function mount(search: string): Promise<HTMLElement> {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host, { onCaughtError() {} });
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: logsPreviewThrows }) })));
   await settle();
+  await loadLazyPages();
   return host;
 }
 const notice = (sentence: string) => [...document.querySelectorAll("[role=alert]")].filter(node => node.textContent?.includes(sentence));

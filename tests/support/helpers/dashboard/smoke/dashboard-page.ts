@@ -3,6 +3,7 @@ import { expect, type Locator, type Page, type Request } from "@playwright/test"
 import type { SeededServer } from "../served-fixtures/seeded-bff.js";
 
 export const WORKFLOW_LABELS = ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Work-Study", "Emergency Contact"] as const;
+const QUIET_MS = 300;
 export const DATA_PAGE_LABELS = ["Spreadsheets", "Explorer", "Analytics"] as const;
 /** The supported minimum canvas and the default one. */
 export const DESKTOP_VIEWPORTS = [{ width: 1280, height: 720 }, { width: 1024, height: 720 }] as const;
@@ -25,16 +26,19 @@ export class DashboardPage {
     this.dialog = page.getByRole("dialog", { name: "Start run", exact: true });
     // A running run arms the leave-page prompt; a test that reloads or navigates away means to leave.
     page.on("dialog", dialog => { if (dialog.type() === "beforeunload") void dialog.accept(); });
-    page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/")) this.reads.add(request); });
-    page.on("requestfinished", request => { this.reads.delete(request); });
-    page.on("requestfailed", request => { this.reads.delete(request); });
+    page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/")) { this.reads.add(request); this.lastReadAt = Date.now(); } });
+    page.on("requestfinished", request => { this.reads.delete(request); this.lastReadAt = Date.now(); });
+    page.on("requestfailed", request => { this.reads.delete(request); this.lastReadAt = Date.now(); });
   }
 
   private readonly reads = new Set<Request>();
+  private lastReadAt = 0;
 
-  /** Leaving a page aborts its open reads and the browser reports each abort; a test that navigates waits for them to finish first. */
+  /** Leaving a page aborts its open reads and the browser reports each abort; a test that navigates waits until no read has been open or finished for QUIET_MS, so a chained read cannot slip through. */
   async settleReads(): Promise<void> {
-    await expect.poll(() => this.reads.size, { message: "API reads still open" }).toBe(0);
+    await expect
+      .poll(() => this.reads.size === 0 && Date.now() - this.lastReadAt >= QUIET_MS, { message: "API reads never went quiet" })
+      .toBe(true);
   }
 
   async open(): Promise<void> {

@@ -5,8 +5,8 @@ import { MOCK_DIST_DIR } from "../support/helpers/dashboard/served-fixtures/bund
 import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
 /** Bytes before compression. Raise a budget only with the reason in the same change; split the bundle instead where possible. */
-const SCRIPT_BUDGET_BYTES = 2_950_000;
-const STYLE_BUDGET_BYTES = 770_000;
+const SCRIPT_BUDGET_BYTES = 2_925_000;
+const STYLE_BUDGET_BYTES = 767_000;
 const IDLE_STYLE_WRITE_LIMIT = 20;
 
 function assetBytes(extension: string, exclude: RegExp): number {
