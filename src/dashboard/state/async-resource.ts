@@ -58,6 +58,11 @@ export function observeAsyncResource<Value>(
 
 const keptStores = new Set<{ readonly drop: (owner: object) => void }>();
 
+/** Another cache of kept results joins sign-out and stream-reset invalidation. */
+export function onKeptResultsDropped(drop: (owner: object) => void): void {
+  keptStores.add({ drop });
+}
+
 /** The last result per view key, held per owner (a client) under one authority (sign-in epoch, actor):
  * a different authority drops everything the owner kept, and past `limit` the least recently used goes first. */
 export function createKeptResults<Value>(limit: number) {

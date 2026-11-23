@@ -3,6 +3,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { SETTINGS_READ_DEADLINE_MS, readWithDeadline } from "../client/read-deadline.js";
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { useDashboardCommandBinding } from "./client-context.js";
+import { onKeptResultsDropped } from "./async-resource.js";
 
 export class SettingsReadSuperseded extends Error {}
 
@@ -20,6 +21,8 @@ export function createSettingsRead<Value>() {
   const publish = (next: RetainedRead<Value>): void => { snapshot = next; for (const listener of listeners) listener(); };
   return {
     snapshot: () => snapshot,
+    /** Nothing shows it and nothing reads it: dropping it loses only a kept copy. */
+    idle: () => listeners.size === 0 && pending === undefined,
     subscribe(this: void, listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     supersede,
     reset() { sequence += 1; pending = undefined; snapshot = { state: "idle" }; },
@@ -45,6 +48,8 @@ export function createSettingsRead<Value>() {
   };
 }
 export type SettingsRead<Value> = ReturnType<typeof createSettingsRead<Value>>;
+/** How many named reads one client keeps; past it, the least recently used idle read is forgotten. */
+export const SETTINGS_READS_LIMIT = 16;
 const scopes = new WeakMap<object, { authority: object; coordinate: string; resources: Map<string, SettingsRead<unknown>> }>();
 export function settingsReadResource<Value>(client: object, authority: object, coordinate: string, name: string): SettingsRead<Value> {
   let scope = scopes.get(client);
@@ -54,9 +59,28 @@ export function settingsReadResource<Value>(client: object, authority: object, c
     scopes.set(client, scope);
   }
   let resource = scope.resources.get(name) as SettingsRead<Value> | undefined;
-  if (resource === undefined) { resource = createSettingsRead<Value>(); scope.resources.set(name, resource); }
+  if (resource === undefined) resource = createSettingsRead<Value>();
+  scope.resources.delete(name);
+  scope.resources.set(name, resource);
+  for (const [oldest, held] of scope.resources) {
+    if (scope.resources.size <= SETTINGS_READS_LIMIT) break;
+    if (oldest === name || !held.idle()) continue;
+    held.reset();
+    scope.resources.delete(oldest);
+  }
   return resource;
 }
+/** Sign-out and a stream reset forget every kept read nothing is showing; a read on screen is not a kept copy and stays. */
+function dropIdleSettingsReads(client: object): void {
+  const scope = scopes.get(client);
+  if (scope === undefined) return;
+  for (const [name, resource] of scope.resources) {
+    if (!resource.idle()) continue;
+    resource.reset();
+    scope.resources.delete(name);
+  }
+}
+onKeptResultsDropped(dropIdleSettingsReads);
 export function clearSettingsReads(client: object): void {
   const scope = scopes.get(client);
   if (scope !== undefined) for (const resource of scope.resources.values()) resource.reset();
