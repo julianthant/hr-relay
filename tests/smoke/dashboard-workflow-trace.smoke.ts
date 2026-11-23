@@ -114,10 +114,12 @@ test("Work-Study: a write whose answer is lost parks the run and is asked for on
   expect(await run.advance()).toEqual({ at: "step", nodeId: "save-transaction" });
   expect(await run.parkWrite()).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
+  await expect(row).toContainText("Write parked");
+  await expect(row).not.toContainText("Running");
   await dashboard.settleReads();
   await page.reload();
   await dashboard.expectRunOpen(runId);
-  await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("Write parked");
+  await expect(row).toContainText("Write parked");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
 });
 
