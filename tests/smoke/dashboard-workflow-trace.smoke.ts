@@ -2,11 +2,13 @@
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { seededRequestOver, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
+import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 import { expect, test } from "../support/helpers/dashboard/smoke/scripted-run-fixtures.js";
 
 test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Forward and Reload hold the URL's state", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   const status = async (runId: string) => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status;
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
   await dashboard.openWorkflow("Work-Study");
 
@@ -31,6 +33,9 @@ test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Fo
     await route.continue();
   });
   const approve = dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true });
+  await approve.waitFor({ timeout: 15_000 }).catch(async (error: unknown) => {
+    throw new Error(`no Continue anyway; panel shows: ${await dashboard.runPanel.innerText()} / ${String(error)}`);
+  });
   await approve.click();
   await approve.click({ timeout: 1000 }).catch(() => undefined);
   release();
@@ -59,6 +64,7 @@ test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Fo
 
 test("Work-Study: a failed step shows Failed on the row and writes nothing", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
   await dashboard.openWorkflow("Work-Study");
   const written = seeded.scripted.writes().length;
