@@ -5,15 +5,59 @@ import { expect, it, vi } from "vitest";
 import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
+import { startNotificationPolling } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
+import { readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
+import { createNotificationObserver } from "../../../../../src/backend/runs/notifications/observation.js";
 import type { StartupCleanup } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
-import { declareProjectionWorker, DESCRIPTOR_SET_HASH, workerMemberOf } from "../../../../support/helpers/backend/dashboard-harness.js";
+import { declareProjectionWorker, DESCRIPTOR_SET_HASH, runRecordOf, workerMemberOf } from "../../../../support/helpers/backend/dashboard-harness.js";
+import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
+import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import { trustWorld } from "../../../../support/helpers/backend/trust-authority-fixture.js";
+
+it("publishes a peer commit on the next tick while an earlier publication is still in flight", async () => {
+  const { fixture, seedRun } = createNotificationCompositionTestWorld();
+  const f = await fixture();
+  const peer = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "notification-peer" }, f.clock);
+  const gate = (seed: number) => runRecordOf({ seed, lifecycle: { state: "parked-gate", gateId: "confirm",
+    parkedAt: f.clock.now().toISOString(), resumeAt: "collect" } });
+  const first = seedRun(f, gate(1));
+  const release = Promise.withResolvers<void>();
+  const publish = vi.fn(f.inbox.publish.bind(f.inbox)).mockImplementationOnce(async (event, source) => {
+    await release.promise;
+    return f.inbox.publish(event, source);
+  });
+  const observer = createNotificationObserver({ inbox: { publish }, read: () => readNotificationSources(f.db, f.reader),
+    health: async () => {} });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  const timer = startNotificationPolling(f.db, f.clock, { ...observer, healthDueAt: () => Infinity });
+  try {
+    await vi.advanceTimersByTimeAsync(0);
+    expect(publish).toHaveBeenCalledTimes(1);
+    const second = seedRun({ ...f, db: peer }, gate(2));
+    await vi.advanceTimersByTimeAsync(1000);
+    const links = () => f.inbox.list("local-operator").flatMap(row => row.links);
+    expect(links()).toContainEqual({ kind: "run", runId: second.envelope.runId });
+    expect(links()).not.toContainEqual({ kind: "run", runId: first.envelope.runId });
+    expect(publish).toHaveBeenCalledTimes(2);
+    release.resolve();
+    await observer.stop();
+    expect(links()).toContainEqual({ kind: "run", runId: first.envelope.runId });
+    expect(observer.status()).toEqual({ state: "stopped", pending: 0 });
+  } finally {
+    clearInterval(timer);
+    release.resolve();
+    await observer.stop();
+    vi.useRealTimers();
+    peer.close();
+    await f.close();
+  }
+});
 
 it("polls only changed projection inputs, including peer commits, lease expiry and a quiet safety pass", async () => {
   const f = await trustWorld();
