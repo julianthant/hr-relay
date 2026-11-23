@@ -19,7 +19,7 @@ describe_m0("current receipt — the commit action carries what proved the write
     result: evidence.result,
     checkpoints: evidence.checkpoints,
     writes: evidence.writes,
-  }, 5).receipt.receipt;
+  }, 5).receipt;
 
   it_m0("retains the current transaction digest and exact private fence identity", () => {
     const commit = receipt.actions.find((action) => action.kind === "commit");
