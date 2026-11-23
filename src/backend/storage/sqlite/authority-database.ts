@@ -1440,11 +1440,13 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
 }
 
 /** The library, the assistant preference and settings are each validated as one family; returns the library rows validated. */
-function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads = true, families: ReadonlySet<AuthorityFamily> = ALL_AUTHORITY_FAMILIES): number {
+/** `payloadDigests` limits the workbook payload check to those rows; omitted, every payload is checked. */
+function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads = true, families: ReadonlySet<AuthorityFamily> = ALL_AUTHORITY_FAMILIES,
+  payloadDigests?: ReadonlySet<string>): number {
   const { database, expectedSchemaVersion, convertPreferences } = context;
   let validated = 0;
   if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
-    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_PAYLOAD_MIGRATION.version);
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_PAYLOAD_MIGRATION.version, payloadDigests);
   // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
@@ -1618,13 +1620,15 @@ function changeLogHighWater(database: DatabaseSync): number {
 }
 
 function authorityChangeClosure() {
-  return { keys: new Set<DependencyKey>(), rows: new Map<string, { table: AuthorityTableName; rowKey: ChangeEntry["rowKey"] }>(), searchRuns: new Set<string>() };
+  return { keys: new Set<DependencyKey>(), rows: new Map<string, { table: AuthorityTableName; rowKey: ChangeEntry["rowKey"] }>(), searchRuns: new Set<string>(),
+    payloads: new Set<string>() };
 }
 
 function includeAuthorityChange(closure: ReturnType<typeof authorityChangeClosure>, entry: ChangeEntry): void {
   const { table, rowKey } = entry;
   for (const key of entry.keys) closure.keys.add(key);
   if (table === "run_search") closure.searchRuns.add(String(rowKey[0]));
+  if (table === "workbook_payloads" && entry.op !== "delete") closure.payloads.add(String(rowKey[0]));
   if (entry.op !== "delete" && table !== RUN_REFERENCES_TABLE && validatedRowByRow(table)) {
     closure.rows.set(`${table}:${JSON.stringify(rowKey)}`, { table, rowKey });
   }
@@ -1770,7 +1774,8 @@ function validateStoredChanges(database: DatabaseSync, closure: ReturnType<typeo
     if (table === "run_search" && (search !== "all" || !searchReady)) continue;
     for (const row of rows.values()) validateStoredRow(context, table, row);
   }
-  validateAuthorityFamilies(context, true, new Set([...ofKind("family")].map(family => z.enum(["workbook", "assistant-preference", "settings"]).parse(family))));
+  // Payloads are immutable and kept while named, so only the logged ones can have changed since the last check.
+  validateAuthorityFamilies(context, true, new Set([...ofKind("family")].map(family => z.enum(["workbook", "assistant-preference", "settings"]).parse(family))), closure.payloads);
   const violations = invariantViolations(database, { run: runs, worker: ofKind("worker"), snapshot: ofKind("snapshot"), intent: ofKind("intent"), command: ofKind("command") });
   if (violations.length > 0) throw new Error("current composite authority is invalid");
   if (search === "none") return "scoped";

@@ -1212,8 +1212,12 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   return repository;
 }
 
-/** Validates the whole library in the layout of its schema: master (13), catalog (18), pin and tags (30), sync status (36), payloads (38). */
-export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true, syncStatus = pinTags, payloads = syncStatus): number {
+/**
+ * Validates the whole library in the layout of its schema: master (13), catalog (18), pin and tags (30), sync status (36), payloads (38).
+ * `payloadDigests` checks only those payload rows instead of every one.
+ */
+export function validateWorkbookLibrary(database: DatabaseSync, master = true, catalog = true, pinTags = true, syncStatus = pinTags, payloads = syncStatus,
+  payloadDigests?: ReadonlySet<string>): number {
   const read: PayloadReader = payloads ? json => withWorkbook(database, json) : embeddedPayload;
   if (!master) {
     const records = database.prepare('SELECT * FROM workbook_library').all().map(raw => fromRow(read, raw));
@@ -1225,7 +1229,9 @@ export function validateWorkbookLibrary(database: DatabaseSync, master = true, c
   }
   const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('workbook-validation-read-only'); }, beforePinTags: !pinTags, embeddedWorkbooks: !payloads });
   let count = repository.types().length;
-  if (payloads) for (const raw of database.prepare('SELECT digest,payload_json FROM workbook_payloads ORDER BY digest').iterate()) {
+  const payloadRows = !payloads ? [] : payloadDigests === undefined ? database.prepare('SELECT digest,payload_json FROM workbook_payloads ORDER BY digest').iterate()
+    : [...payloadDigests].flatMap(digest => database.prepare('SELECT digest,payload_json FROM workbook_payloads WHERE digest=?').all(digest));
+  for (const raw of payloadRows) {
     const row = z.strictObject({ digest: WorkbookDigestSchema, payload_json: z.string() }).parse(raw);
     if (sha256Hex(row.payload_json) !== row.digest || canonicalJsonStringify(EditableWorkbookWireSchema.parse(JSON.parse(row.payload_json))) !== row.payload_json) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     count++;
