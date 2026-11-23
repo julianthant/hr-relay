@@ -75,8 +75,8 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
 
   // Capture positions before the initial fold so a peer commit during startup remains visible.
   const workerTables = ["runs", "deleted_runs", "worker_slots", "worker_pools", "run_batches", "auth_leases", "write_intents"] as const;
-  const revision = database.trackAuthorityTables(["timeline_events", ...workerTables]);
-  const startupWorkerRevision = database.trackAuthorityTables(workerTables);
+  const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
+  const startupWorkerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
   const startupWorkers = startupWorkerRevision();
   let key: string | { state: "retry" } = JSON.stringify(database.changeKey()), observed = revision();
   let lastWall = clock.nowMs(), leaseExpiry = Infinity;

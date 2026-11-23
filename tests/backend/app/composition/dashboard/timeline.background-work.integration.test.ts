@@ -84,7 +84,19 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     };
     createTimelineEmitter({ repository: loggingRepository, clock, uuid: () => eventId }).emit(observation);
     expect(projection.runFold(run.envelope.runId)).toBeUndefined();
+    const secondPage = Promise.withResolvers<void>(), finishPage = Promise.withResolvers<void>();
+    poll.mockImplementationOnce((read, now) => pollBackground(async request => {
+      if (request.through !== undefined) {
+        secondPage.resolve();
+        await finishPage.promise;
+      }
+      return read({ ...request, limit: 1 });
+    }, now));
     tick(750);
+    await secondPage.promise;
+    try {
+      expect(projection.runFold(runId)).toBeDefined();
+    } finally { finishPage.resolve(); }
     await runtime.settled();
     expect(projection.runFold(run.envelope.runId)).toBeDefined();
     expect(projection.runLogSnapshot(runId).entries.map(entry => entry.line.file.path)).toEqual([`timeline:${eventId}`]);
@@ -166,23 +178,33 @@ it("degrades on a refused peer snapshot and rebuilds after the peer repairs it",
     const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
       lifecycle: f.service, loggingRepository, debugEvents: createDebugEventWriter({ repository: loggingRepository, clock, build: "test" }) });
     const startupCursor = projection.cursor();
-    f.create(821);
+    const run = f.create(821);
     await runtime.settled();
     expect(projection.cursor()).not.toBe(startupCursor);
     const generation = projection.generation();
     peer.exec("CREATE TABLE unexpected_peer_table (id INTEGER)");
+    const poll = projection.pollBackground.bind(projection);
+    const reads = vi.spyOn(projection, "pollBackground");
     for (let attempt = 0; attempt < 2; attempt++) {
       vi.advanceTimersByTime(250);
       await runtime.settled();
+      expect(reads).toHaveBeenCalledTimes(attempt + 1);
       const health = projection.health();
       expect(health.state).toBe("degraded");
-      expect(health.lastError).toContain("run-search-index-rebuild-required");
+      expect(health.lastError).toBe("timeline background read failed: authority-native-schema-shape-mismatch");
     }
     peer.exec("DROP TABLE unexpected_peer_table");
+    const writer = createTimelineEmitter({ repository: loggingRepository, clock });
+    const { runId, workflow, traceId, attempt } = run.envelope;
+    clock.advanceWall(1000);
+    writer.emit({ t: "run.claimed", ts: clock.now().toISOString(), runId, workflow, traceId, attempt, spanPath: traceId, workerId: f.workerId });
+    writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Queued run" }));
+    reads.mockImplementationOnce((read, now) => poll(request => read({ ...request, limit: 1 }), now));
     vi.advanceTimersByTime(250);
     await runtime.settled();
     expect(projection.health().state).toBe("live");
     expect(projection.generation()).toBeGreaterThan(generation);
+    expect(projection.runFold(runId)?.claimedBy).toBe(f.workerId);
   } finally {
     for (const cleanup of startupCleanups.reverse()) await cleanup();
     peer.exec("DROP TABLE IF EXISTS unexpected_peer_table");

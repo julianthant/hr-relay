@@ -4289,15 +4289,25 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
-  trackAuthorityTables(tables: readonly AuthorityTableName[]): () => number | undefined {
+  trackAuthorityTables(tables: readonly AuthorityTableName[], mode: "validated" | "poll-hint" = "validated"): () => number | undefined {
     const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
     let cursor: number | undefined;
     let revision = 0;
+    let peerVersion: number | undefined, schemaCookie: number | undefined;
     return () => {
       if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
       return this.#withReadSnapshot(() => {
-        this.#validateExternalQuerySources();
+        if (mode === "validated") this.#validateExternalQuerySources();
         const through = changeLogHighWater(this.#database);
+        if (mode === "poll-hint") {
+          const version = readIntPragma(this.#database, "data_version"), cookie = readIntPragma(this.#database, "schema_version");
+          // Unknown or large changes wake the observer. Only its admitted reader validates and serves rows.
+          const uncertain = cursor !== undefined && (cookie !== schemaCookie || (version !== peerVersion && through === cursor)
+            || through < cursor || through - cursor > 256);
+          peerVersion = version;
+          schemaCookie = cookie;
+          if (uncertain) { cursor = through; return ++revision; }
+        }
         if (cursor === through) return revision;
         if (cursor !== undefined) {
           const first = z.strictObject({ seq: z.number().int().positive().nullable() }).parse(

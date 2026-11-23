@@ -1,4 +1,5 @@
 // A resumed stream replays only a retained cursor range; otherwise reset requires a new snapshot.
+import { setImmediate as yieldTurn } from "node:timers/promises";
 import { z } from "zod";
 import {
   DashboardStreamEnvelopeSchema,
@@ -45,12 +46,14 @@ export interface DashboardStreamHubDeps {
   readonly maxPending?: number;
 }
 
+type PendingEnvelope = DashboardStreamEnvelope | (() => Promise<DashboardStreamEnvelope | undefined>);
+
 /** One subscriber's delivery phase. A waiter exists only on an empty open queue. */
 type SubscriberQueue =
   | {
       readonly state: "open";
-      readonly queue: readonly DashboardStreamEnvelope[];
-      readonly waiter?: (envelope: DashboardStreamEnvelope | undefined) => void;
+      readonly queue: readonly PendingEnvelope[];
+      readonly waiter?: (envelope: PendingEnvelope | undefined) => void;
     }
   | { readonly state: "reset-pending"; readonly reason: "cursor-expired" }
   | { readonly state: "closed" };
@@ -80,6 +83,7 @@ export class DashboardStreamHub {
   #disposeProjection: () => void;
   #disposePublications?: () => void;
   #sourcesDisposed = false;
+  #snapshotTurn = Promise.resolve();
 
   constructor(deps: DashboardStreamHubDeps) {
     this.#projection = deps.projection;
@@ -165,12 +169,28 @@ export class DashboardStreamHub {
     if (change.kind === "snapshot") {
 
       this.#retain({ cursorNumber: cursor, generation: this.#projection.generation(), kind: "snapshot" });
-      const byDay = new Map<string, DashboardStreamEnvelope>();
+      const generation = this.#projection.generation();
+      const byDay = new Map<string, PendingEnvelope>();
       for (const subscriber of this.#subscribers) {
-        let envelope = byDay.get(subscriber.day);
+        const { day } = subscriber;
+        let envelope = byDay.get(day);
         if (envelope === undefined) {
-          envelope = this.#snapshot(this.#projection.buildDashboardDayWire(subscriber.day));
-          byDay.set(subscriber.day, envelope);
+          const build = () => this.#snapshot(this.#projection.buildDashboardDayWire(day));
+          if (change.onDemand) {
+            let materialized: Promise<DashboardStreamEnvelope | undefined> | undefined;
+            envelope = () => {
+              if (materialized === undefined) {
+                this.#snapshotTurn = this.#snapshotTurn.then(() => yieldTurn());
+                materialized = this.#snapshotTurn.then(() => {
+                  if (this.#sourcesDisposed) return undefined;
+                  if (generation === this.#projection.generation()) return build();
+                  return DashboardStreamEnvelopeSchema.parse({ type: "reset-required", reason: "generation-changed", cursor: this.#projection.cursor() });
+                });
+              }
+              return materialized;
+            };
+          } else envelope = build();
+          byDay.set(day, envelope);
         }
         this.#push(subscriber, envelope);
       }
@@ -199,7 +219,7 @@ export class DashboardStreamHub {
     if (this.#retained.length > this.#retention) this.#retained = this.#retained.slice(-this.#retention);
   }
 
-  #push(subscriber: Subscriber, envelope: DashboardStreamEnvelope): void {
+  #push(subscriber: Subscriber, envelope: PendingEnvelope): void {
     const phase = subscriber.phase;
     switch (phase.state) {
       case "closed":
@@ -228,7 +248,7 @@ export class DashboardStreamHub {
     }
   }
 
-  #read(subscriber: Subscriber): Promise<DashboardStreamEnvelope | undefined> {
+  #read(subscriber: Subscriber): Promise<PendingEnvelope | undefined> {
     const phase = subscriber.phase;
     switch (phase.state) {
       case "closed":
@@ -242,15 +262,12 @@ export class DashboardStreamHub {
           cursor: this.#projection.cursor(),
         }));
       case "open": {
-        if (phase.waiter !== undefined) {
-          return Promise.reject(new Error("dashboard stream connection already has an outstanding next(); one consumer, one demand at a time"));
-        }
         const [queued, ...rest] = phase.queue;
         if (queued !== undefined) {
           subscriber.phase = { state: "open", queue: rest };
           return Promise.resolve(queued);
         }
-        return new Promise<DashboardStreamEnvelope | undefined>((resolve) => {
+        return new Promise<PendingEnvelope | undefined>((resolve) => {
           subscriber.phase = { state: "open", queue: [], waiter: resolve };
         });
       }
@@ -316,7 +333,17 @@ export class DashboardStreamHub {
     initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: live ? "live" : "degraded" }));
 
     this.#subscribers.add(subscriber);
-    const read = (): Promise<DashboardStreamEnvelope | undefined> => this.#read(subscriber);
+    let reading = false;
+    const read = async (): Promise<DashboardStreamEnvelope | undefined> => {
+      if (reading) throw new Error("dashboard stream connection already has an outstanding next(); one consumer, one demand at a time");
+      reading = true;
+      try {
+        const entry = await this.#read(subscriber);
+        if (typeof entry !== "function") return entry;
+        const envelope = await entry();
+        return this.#subscribers.has(subscriber) ? envelope : undefined;
+      } finally { reading = false; }
+    };
     const pendingCount = (): number => this.#pending(subscriber);
     return Object.freeze({
       initial: Object.freeze(initial),

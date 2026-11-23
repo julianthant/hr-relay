@@ -144,6 +144,29 @@ describe("dashboard stream hub", () => {
       assert.equal(reconnects, 0); assert.equal(fetches, 1);
     } finally { subscription.close(); connection.close(); }
   });
+  it("builds background snapshots on demand and yields between distinct subscribed days", async () => {
+    const { w, hub } = await harness();
+    const a = await hub.connect({ day: DAY });
+    const b = await hub.connect({ day: DAY });
+    const other = await hub.connect({ day: "2026-08-02" });
+    const build = vi.spyOn(w.projection, "buildDashboardDayWire");
+    const fingerprint = w.projection.descriptorSetHash();
+    try {
+      await w.projection.pollBackground(async () => ({
+        through: 0, cursor: 0, records: [], workers: { fingerprint, next: null, slotWorkflows: [], batchVersions: [], heldDuoLeases: [] },
+      }), w.clock.nowMs());
+      assert.equal(build.mock.calls.length, 0);
+      const first = a.next(), shared = b.next(), second = other.next();
+      assert.equal(await first, await shared);
+      assert.deepEqual(build.mock.calls, [[DAY]]);
+      assert.equal((await second)?.type, "snapshot");
+      assert.deepEqual(build.mock.calls, [[DAY], ["2026-08-02"]]);
+    } finally {
+      build.mockRestore();
+      a.close(); b.close(); other.close();
+    }
+  });
+
   it("opens with hello -> snapshot -> health and stamps the projection identity", async () => {
     const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });

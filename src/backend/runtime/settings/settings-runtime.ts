@@ -172,7 +172,7 @@ export function startSettingsKeepAwake(input: KeepAwakeOptions & Readonly<{
   };
   const report = () => input.debugEvents.emit({ category: "boot", phase: "failed", area: "keep-awake",
     reason: "keep-awake-observation-failed", correlationId: randomUUID() });
-  const revision = database.trackAuthorityTables(["settings", "settings_snapshots", "commands", "command_audits", "runs"]);
+  const revision = database.trackAuthorityTables(["settings", "settings_snapshots", "commands", "command_audits", "runs"], "poll-hint");
   let observed: number | undefined, safetyAt = -Infinity;
   const poll = async () => {
     const current = revision(), now = systemClock.monotonicMs();
