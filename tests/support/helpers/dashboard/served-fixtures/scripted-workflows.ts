@@ -30,6 +30,10 @@ import { I9CheckStartInput } from "../../../../../src/models/workflows/i9-check/
 import { randomUUID } from "node:crypto";
 import { createDeterministicCrmOnboardingDriver } from "../../../../../src/backend/systems/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/fake.js";
+import { deterministicHireOperations } from "../../../../../src/backend/systems/ucpath/driver/hire-fake.js";
+import { CrmReadHireData } from "../../../../../src/models/systems/crm/read-hire-data.js";
+import { UCPATH_HIRE_SUBJECT } from "../../../../../src/models/ui/ucpath-hire.js";
+import { OnboardingInput } from "../../../../../src/models/workflows/onboarding/input.js";
 import { deterministicPayPathOperations } from "../../../../../src/backend/systems/ucpath/driver/paypath-fake.js";
 import { ReadOnboardingDatesOutputSchema } from "../../../../../src/models/systems/crm/read-onboarding-dates.js";
 import { CrmDiscoveredRecordSchema } from "../../../../../src/models/systems/crm/search-onboarding-records.js";
@@ -454,8 +458,61 @@ export const SEPARATIONS_SCRIPT: ScriptedWorkflow = {
   },
 };
 
+export const ONBOARDING_EMAIL = "hire@example.test";
 
-export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT, CRM_DOC_DOWNLOAD_SCRIPT, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, SEPARATIONS_SCRIPT]);
+/**
+ * Onboarding: a CRM hire read, a UCPath person match, an I-9 profile and the UCPath hire. Each step holds where it first meets its
+ * system; the hire's Save and Submit and the I-9 profile save are recorded when asked, never sent.
+ */
+export const ONBOARDING_SCRIPT: ScriptedWorkflow = {
+  module: catalogModule("onboarding"),
+  children: [childModule("i9-lookup")],
+  writeNode: "hire-create",
+  submission: email => ({ email, mode: "new-hire", configuredJobEndDate: "06/30/2027" }),
+  subjectOf: (input, workflowId) => workflowId === undefined || workflowId === "onboarding" ? OnboardingInput.parse(input).email : "",
+  drivers(world) {
+    const hires = new Map<string, ReturnType<typeof deterministicHireOperations>>();
+    const i9s = new Map<string, ReturnType<typeof createDeterministicI9Driver>>();
+    const keyed = <T>(known: Map<string, T>, make: () => T): T => {
+      const subject = world.run().subject;
+      const found = known.get(subject) ?? make();
+      known.set(subject, found);
+      return found;
+    };
+    const now = () => world.clock.now().toISOString();
+    return {
+      crm: () => ({ ...createDeterministicCrmOnboardingDriver({ discovery: [], record: { state: "absent", queriedEid: EidSchema.parse("10000001"), reason: "unused" },
+        dates: ReadOnboardingDatesOutputSchema.parse({ emplId: EidSchema.parse("10000001"), state: "no-confident-record", employmentDate: null, oathDate: null, reason: "" }) }),
+        readHireData: async () => { await world.hold(); return CrmReadHireData.example; } }),
+      ucpath: () => {
+        const base = createDeterministicUcpathPersonOrgDriver();
+        const hire = keyed(hires, () => deterministicHireOperations({ now: now() }));
+        return { ...base, ...hire, read: async (id: Parameters<typeof base.read>[0]) => id === UCPATH_HIRE_SUBJECT ? hire.readHireSubject() : base.read(id),
+          searchPersonMatch: async () => { await world.hold(); return { hits: [], confirmed: [], dropped: [] }; },
+          stageHire: async (...args: Parameters<typeof hire.stageHire>) => { await world.hold(); return hire.stageHire(...args); },
+          submitHire: async (...args: Parameters<typeof hire.submitHire>) => {
+            const run = world.run();
+            world.record({ runId: run.runId, nodeId: run.heldNode(), eid: run.subject });
+            await world.hold();
+            const proof = await hire.submitHire(...args);
+            if (run.loseAnswer()) throw new Error("the hire submit answer was not observed");
+            return proof;
+          } };
+      },
+      i9: () => {
+        const i9 = keyed(i9s, () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: now() }));
+        return { ...i9, readSection2Signer: async (...args: Parameters<typeof i9.readSection2Signer>) => { await world.hold(); return i9.readSection2Signer(...args); },
+          saveProfile: async (...args: Parameters<typeof i9.saveProfile>) => {
+            const run = world.run();
+            world.record({ runId: run.runId, nodeId: run.heldNode(), eid: run.subject });
+            return i9.saveProfile(...args);
+          } };
+      },
+    };
+  },
+};
+
+export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT, CRM_DOC_DOWNLOAD_SCRIPT, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, SEPARATIONS_SCRIPT, ONBOARDING_SCRIPT]);
 
 export function scriptedWorkflow(workflowId: string): ScriptedWorkflow {
   const script = SCRIPTED_WORKFLOWS.find(candidate => candidate.module.descriptor.id === workflowId);

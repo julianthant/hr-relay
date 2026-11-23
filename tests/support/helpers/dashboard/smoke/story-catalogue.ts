@@ -22,6 +22,8 @@ export interface Story {
   readonly expects?: readonly { readonly pattern: RegExp; readonly reason: string }[];
   /** Rules today's dashboard breaks in this state, each with its dashboard-audit-fixes ticket id. */
   readonly knownFailures?: Readonly<Partial<Record<StateRuleName, string>>>;
+  /** A recorded break that shows only at these viewport widths (text metrics differ by platform); without an entry it applies at every width. */
+  readonly knownFailureWidths?: Readonly<Partial<Record<StateRuleName, readonly number[]>>>;
 }
 
 /** The gallery's reference dialogs: the design system's own dialog at each size, plain and banded, mounted as
