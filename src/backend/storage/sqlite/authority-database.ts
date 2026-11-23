@@ -109,7 +109,7 @@ import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type
 import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
-import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
+import { DEBUG_EVENTS_MIGRATION,TimelineRecordError,createTimelineRepository,debugEventFromRow,predecessorTimelineEventFromRow,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
@@ -722,7 +722,7 @@ export function authenticateStoredParkedWriteRecheck(
 }
 
 const JsonRowSchema = z.strictObject({ payload_json: z.string() });
-// Native diagnostics and notes are the timeline's high-volume streams; storage inspection never reads them.
+// Notes are the timeline's high-volume stream; storage inspection never reads them, nor a predecessor store's debug rows.
 const INSPECTED_TIMELINE_KINDS = "kind NOT IN ('debug','note')";
 export type EarlierRunEvents = (runId: string, beforeCursor: number, each: (record: TimelineEventRecord) => void) => void;
 const RecordKeyRowSchema = z.strictObject({ id: z.string() });
@@ -1482,7 +1482,8 @@ function validateStoredRow(context: StoredRowContext, table: AuthorityTableName,
         else if (table === "assistant_conversations") assistantConversationFromRow(raw);
         else if (table === "assistant_messages") assistantMessageFromRow(raw);
         else if (table === "assistant_attachments") assistantAttachmentFromRow(raw);
-        else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw),false,read);
+        else if (table === "timeline_events") assertTimelineOwner(database,(expectedSchemaVersion < DEBUG_EVENTS_MIGRATION.version ? predecessorTimelineEventFromRow : timelineEventFromRow)(raw),false,read);
+        else if (table === "debug_events") assertTimelineOwner(database,debugEventFromRow(raw),false,read);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
           if (kind === "imported") importedArtifactFromRow(raw);
@@ -3805,16 +3806,16 @@ export class AuthorityDatabase implements Disposable {
       if (request.runId !== undefined && readTimelineRun(database, request.runId) === undefined) throw new Error("timeline-event-owner-missing");
       const repository = createTimelineRepository({ database, read: work => work(),
         mutate: () => { throw new Error("timeline-diagnostic-read-only"); }, assertOwner: record => assertTimelineOwner(database, record) });
-      const highWaterMark = repository.highWaterMark();
+      const highWaterMark = repository.debugHighWaterMark();
       const through = Math.min(request.through ?? highWaterMark, highWaterMark);
       if (request.after > through) throw new Error("timeline-diagnostic-cursor-out-of-range");
       const records: TimelineEventRecord[] = [];
       let nextCursor = request.after;
       for (let page = 0; page < pages; page += 1) {
-        const scanned = repository.page({ ...request, after: nextCursor, through });
+        const scanned = repository.debugPage({ ...request, after: nextCursor, through });
         for (const record of scanned) {
           assertTimelineOwner(database, record);
-          if (record.payload.kind === "debug") records.push(record);
+          records.push(record);
         }
         nextCursor = scanned.at(-1)?.cursor ?? through;
         if (nextCursor === through) break;
@@ -3826,7 +3827,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /**
-   * Visits, in cursor order, every timeline record except native diagnostics and notes, with the
+   * Visits, in cursor order, every timeline record except notes, with the
    * complete authority identity of the same read-only snapshot. Records are read a page at a time,
    * so the inspection holds no more than one page however long ordinary retention lets the timeline grow.
    * `earlier` re-reads, from the same snapshot, one run's run-scoped events before a cursor.
@@ -4312,6 +4313,12 @@ export class AuthorityDatabase implements Disposable {
     this.#assertOpen();
     const key = this.#rawChangeKey();
     return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#temporaryProjectionChanges });
+  }
+
+  /** What `trackAuthorityTables` revisions read: change-log high water and schema cookie, both still across debug-only commits. */
+  capturedChangeKey(): Readonly<{ changeLogSeq: number; schemaCookie: number }> {
+    this.#assertOpen();
+    return Object.freeze({ changeLogSeq: changeLogHighWater(this.#database), schemaCookie: readIntPragma(this.#database, "schema_version") });
   }
 
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
@@ -8003,6 +8010,8 @@ export class AuthorityDatabase implements Disposable {
           for (const { id } of this.#database.prepare("SELECT id FROM write_intents WHERE run_id=?").all(request.runId)) assertConfirmationPublication(this.#database, String(id));
           const prepared = prepareNativeRunDeletion(this.#database,run,request,ref => inspectArtifactDeletionFile(this.#admission,ref));
           const record = executeNativeRunDeletion(this.#database,prepared,step => this.#lifecycleHooks?.afterDeleteStep?.({runId:request.runId,step}));
+          // Debug entries are diagnostics, not run evidence: they leave with the run and stay out of its deletion receipt.
+          this.#database.prepare("DELETE FROM debug_events WHERE run_id=?").run(request.runId);
           return {result:record,changes:1 + record.removed.reduce((sum,entry) => sum + entry.rows,0)};
         });
       },

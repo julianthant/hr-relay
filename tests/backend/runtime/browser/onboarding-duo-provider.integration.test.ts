@@ -206,7 +206,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       const debugAdmission = machine.admitProfile(draft.profileId);
       try {
         AuthorityDatabase.withProfileOnboardingTimeline(debugAdmission, systemClock, repository => {
-          const events = repository.page({ after: 0, through: repository.highWaterMark(), limit: 500 });
+          const events = repository.debugPage({ after: 0, through: repository.debugHighWaterMark(), limit: 500 });
           const failure = events.find(entry => entry.payload.kind === "debug" && entry.payload.event.correlationId === captured.attemptId);
           assert.ok(failure); assert.equal(failure.payload.kind, "debug");
           if (failure.payload.kind !== "debug") throw new Error("onboarding debug event missing");
@@ -328,7 +328,7 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
     const debugAdmission = machine.admitProfile(draft.profileId);
     try {
       AuthorityDatabase.withProfileOnboardingTimeline(debugAdmission, systemClock, repository => {
-        const events = repository.page({ after: 0, through: repository.highWaterMark(), limit: 500 });
+        const events = repository.debugPage({ after: 0, through: repository.debugHighWaterMark(), limit: 500 });
         const reasons = events.flatMap(entry => entry.payload.kind === "debug" && entry.payload.event.category === "duo" ? [entry.payload.event.reason] : []);
         assert.ok(reasons.includes("intercepted"));
         if (scenario === "software" || scenario === "platform") {
@@ -343,7 +343,7 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
       const debugAdmission = machine.admitProfile(draft.profileId);
       try {
         AuthorityDatabase.withProfileOnboardingTimeline(debugAdmission, systemClock, repository => {
-          const reasons = repository.page({ after: 0, through: repository.highWaterMark(), limit: 500 })
+          const reasons = repository.debugPage({ after: 0, through: repository.debugHighWaterMark(), limit: 500 })
             .flatMap(entry => entry.payload.kind === "debug" && entry.payload.event.category === "duo" ? [entry.payload.event.reason] : []);
           failure = new Error(`enrollment fixture ${scenario}: ${reasons.join(", ")}`, { cause: error });
         });
