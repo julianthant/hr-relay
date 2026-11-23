@@ -11,6 +11,7 @@ import { disposeHttpRouteHarness, harness as backendHarness, type Harness as Bac
 import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m0 } from "../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert_m0 from "node:assert/strict";
+import { loadLazyPages } from "../../support/helpers/dashboard/lazy-pages.js";
 import { act as act_m0,createElement as createElement_m0 } from "react";
 import { createRoot as createRoot_m0,type Root as Root_m0 } from "react-dom/client";
 import { it as it_m0 } from "vitest";
@@ -78,6 +79,7 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
   await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
+  await loadLazyPages();
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -134,6 +136,9 @@ it_m0("spreadsheet import is a Settings destination and leaves the Run launch fo
 try {
   let uploads = 0;
   await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
+  // The assistant panel mounts on first open and stays mounted while closed.
+  const launcher = document.querySelector<HTMLButtonElement>("[data-assistant-launcher]"); assert_m0.ok(launcher);
+  await click(launcher); await click(launcher);
   await click(button("Start run"));
   const launch = document.querySelector('[role="dialog"]'); assert_m0.ok(launch);
   assert_m0.equal(launch.querySelectorAll('input[type="file"]').length, 0);
@@ -216,6 +221,7 @@ async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}
   const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
   await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition, previewPreferences: shellPreferences })})));
   await settle();
+  await loadLazyPages();
   return client;
 }
 async function historyMove(direction: "back" | "forward") { window.history[direction](); await settle(); await settle(); }
