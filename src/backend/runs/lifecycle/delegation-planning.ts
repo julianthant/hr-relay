@@ -12,9 +12,10 @@ import { hasProtectedSubject, protectedSubjectMatchKey } from "../start/protecte
 export function canonicalDelegationChild(context: ChildRunContext, target: AnyWorkflowDescriptor, bound: unknown, schemaReader?: EvidenceSchemaReader) {
   const input = JsonValueSchema.parse(target.canonicalInput.parse(bound));
   const parentInput = parseCanonicalInputSnapshot(context.descriptor.canonicalInput, context.run.input.parsed, { owner: { kind: "run-input", id: context.run.envelope.runId }, source: context.run.input, schemaReader });
-  const bindings = retainedRunProtectedBindings(context.run).filter(binding => input !== null && typeof input === "object"
+  const retainedBindings = retainedRunProtectedBindings(context.run);
+  const bindings = retainedBindings.filter(binding => input !== null && typeof input === "object"
     && !Array.isArray(input) && Object.hasOwn(input, binding.inputPath));
-  for (const binding of retainedRunProtectedBindings(context.run)) {
+  for (const binding of retainedBindings) {
     const source: unknown = Reflect.get(Object(parentInput), binding.inputPath);
     const contains = (value: unknown): boolean => value !== null && typeof value === "object" ? Object.values(value).some(contains) : value === source;
     const remaining = input !== null && typeof input === "object" && !Array.isArray(input)
