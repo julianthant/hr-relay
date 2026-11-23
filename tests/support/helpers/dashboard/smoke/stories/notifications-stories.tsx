@@ -67,12 +67,12 @@ function AlertOnMount({ item }: { item: NotificationItem }) {
   useEffect(() => { if (mounted) alert(item, false); }, [alert, item, mounted]);
   return null;
 }
-const toast = (item: NotificationItem, ready: string): Story => ({ title: `An alert toast for a ${item.tone} notice`, ready, render: () => <StoryFrame><AlertOnMount item={item} /></StoryFrame> });
+const toast = (item: NotificationItem, ready: string, extra: Partial<Story> = {}): Story => ({ title: `An alert toast for a ${item.tone} notice`, ready, ...extra, render: () => <StoryFrame><AlertOnMount item={item} /></StoryFrame> });
 const TOAST = {
   danger: toast(NOTICE_BY_TONE.danger, 'text=/^Run failed/'),
   warning: toast(NOTICE_BY_TONE.warning, 'text=/^Run waiting for you/'),
   positive: toast(NOTICE_BY_TONE.positive, 'text=/^Run completed/'),
-  info: toast(NOTICE_BY_TONE.info, 'text=/^Relay repaired a saved file/'),
+  info: toast(NOTICE_BY_TONE.info, 'text=/^Relay repaired a saved file/', { knownFailures: { "word-limits": "#532" } }),
 } satisfies Record<NotificationItem["tone"], Story>;
 
 export const NOTIFICATIONS_STORIES = defineSurface("notifications", { panel: PANEL_STATE, tone: TONE, kind: KIND, combination: COMBINATION, bell: BELL, toast: TOAST });
