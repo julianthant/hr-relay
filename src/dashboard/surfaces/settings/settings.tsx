@@ -248,7 +248,7 @@ export function SettingsPage({
         </div> : groups.map(group => <div key={group.id} className="settings-nav-group"><span>{group.heading}</span>{group.entries.map(entry => <SectionButton key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => openSection(entry.id)} />)}</div>)}
       </nav>
 
-      <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
+      <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content outline-none flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
         {openedForCheckName !== undefined && <div className="settings-fix-banner"><Banner tone="info" title={`${openedForCheckName}: change the highlighted setting`} /></div>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
