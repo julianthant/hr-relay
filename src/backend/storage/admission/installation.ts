@@ -2686,7 +2686,7 @@ function convertedProfileRegistry(locator: RuntimeLocator, prior: z.infer<typeof
     if (prior.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
     return securityKeyOnlyRegistry(seededTimekeeperInitials(prior));
   }
-  return securityKeyOnlyRegistry(seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...prior, schemaVersion: 3, installationId: locator.installationId, revision: 1 }));
+  return securityKeyOnlyRegistry(seededTimekeeperInitials(StoppedProfileRegistryDocumentV3Schema.parse({ ...prior, schemaVersion: 3, installationId: locator.installationId, revision: 1 })));
 }
 function convertedProfileControl(locator: RuntimeLocator, _prior: z.infer<typeof StoppedProfileContinuitySchema>, document: ProfileRegistryDocument) {
   return profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document);
