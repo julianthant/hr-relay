@@ -142,6 +142,29 @@ it("T2b refuses an unowned dev-frontend host when the probe cannot release the r
   } finally { await close(runtime, listener, f); }
 });
 
+it("T2c keeps the refusal and writes a fallback diagnostic when the probe cleanup failure cannot be logged", async () => {
+  const f = await fixture();
+  let listener: Server | undefined, runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  const stderr = vi.spyOn(process.stderr, "write");
+  try {
+    listener = await occupy(FRONTEND);
+    const cleanupFailure = new Error("fixture cancel refused");
+    cleanupFailure.stack = `Error: fixture cancel refused\n${"    at fixtureFrame (fixture.ts:1:1)\n".repeat(900)}`;
+    runtime = await compose(f, { frontendProbe: async () => ({ state: "not-owned", reason: "owner-endpoint-refused", cleanupFailure }) });
+    // The spool keeps room for the refusal's own record but not for the cleanup failure's stack.
+    const logs = join(f.machine.stateRoot, "logs");
+    mkdirSync(logs, { recursive: true, mode: 0o700 });
+    writeFileSync(join(logs, "boot.jsonl"), "x".repeat(5 * 1024 * 1024 - 16 * 1024), { mode: 0o600 });
+    const state = await request(runtime.port, "/api/v1/profile/state", `127.0.0.1:${String(FRONTEND)}`);
+    assert.equal(state.status, 403);
+    assert.deepEqual(state.json, { state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" });
+    const fallback = stderr.mock.calls.map(([line]) => String(line)).filter(line => line.includes("frontend-probe-cleanup-failed"));
+    assert.equal(fallback.length, 1);
+    assert.match(fallback[0] ?? "", /boot-log-write-failed/u);
+    assert.equal(fallback[0]?.includes("fixture cancel refused"), false);
+  } finally { stderr.mockRestore(); await close(runtime, listener, f); }
+});
+
 it("T3 passes ports.available for the built bundle while the dev frontend port is occupied", async () => {
   const f = await fixture();
   let listener: Server | undefined, runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;

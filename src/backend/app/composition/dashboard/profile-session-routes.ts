@@ -185,9 +185,15 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       const probe = await (input.frontendProbe ?? probeOwnedViteServer)({ port: frontendPort, signal: c.req.raw.signal,
         deadlineMonotonicMs: clock.monotonicMs() + FRONTEND_PROBE_MS, clock, ownerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] });
       if (probe.state === "not-owned" && probe.cleanupFailure !== undefined) {
-        appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: "DASHBOARD_FRONTEND_NOT_OWNED", area: "profile-request",
-          reason: "frontend-probe-cleanup-failed", now: clock.now(),
-          error: probe.cleanupFailure instanceof Error ? probe.cleanupFailure : new Error("frontend-probe-cleanup-failed", { cause: probe.cleanupFailure }) });
+        try {
+          appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: "DASHBOARD_FRONTEND_NOT_OWNED", area: "profile-request",
+            reason: "frontend-probe-cleanup-failed", now: clock.now(),
+            error: probe.cleanupFailure instanceof Error ? probe.cleanupFailure : new Error("frontend-probe-cleanup-failed", { cause: probe.cleanupFailure }) });
+        } catch (logFailure) {
+          // The refusal still answers; codes and class names only, since messages can carry paths.
+          process.stderr.write(`${JSON.stringify({ code: "DASHBOARD_FRONTEND_NOT_OWNED", reason: "frontend-probe-cleanup-failed",
+            diagnostic: "boot-log-write-failed", cause: logFailure instanceof Error ? logFailure.name : typeof logFailure })}\n`);
+        }
       }
       if (probe.state !== "owned") return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }), 403);
       frontendOwned = true;
