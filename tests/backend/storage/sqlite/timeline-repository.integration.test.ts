@@ -124,6 +124,38 @@ describe("native logging authority", () => {
       assert.equal(f.database.authority.timelineEvents.page({ runId: run.envelope.runId }).some(record => record.eventId === written.eventId), false);
     } finally { await f.dispose(); }
   });
+  it("keeps the authority and search generations and search state across debug-only commits", async () => {
+    const f = await trustWorld();
+    const peer = new DatabaseSync(f.profile.path, { readOnly: true });
+    try {
+      f.create(831);
+      const state = () => peer.prepare("SELECT authority_generation, search_generation, search_state FROM database_states WHERE id=1").get();
+      const before = state();
+      const repository = f.database.authority.timelineEvents;
+      createDebugEventWriter({ repository, clock: f.world.clock, build: "test" }).emit({ category: "http", phase: "failed", correlationId: "search-still" });
+      assert.equal(repository.pruneDebugBefore("2999-01-01"), 1);
+      assert.deepEqual(state(), before);
+    } finally { peer.close(); await f.dispose(); }
+  });
+  it.each(["timeline then debug", "debug then timeline"] as const)("refuses one event ID in both tables, %s", order => {
+    const { database, repository } = fixture();
+    try {
+      const debug = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" })
+        .emit({ category: "http", phase: "failed", correlationId: "shared-id" }).record;
+      const { cursor: _cursor, ...debugAppend } = debug;
+      const note = { ...debugAppend, workflow: "person-lookup", scope: { kind: "worker", workerId: "worker-1" },
+        payload: { kind: "note", note: { workflow: "person-lookup", workerId: "worker-1", spanPath: "worker-1", ts: AT.toISOString(), pid: 1, level: "step", message: "shared" } } };
+      if (order === "timeline then debug") {
+        database.exec("DELETE FROM debug_events");
+        repository.append(note);
+        assert.throws(() => repository.append(debugAppend), /timeline-event-identity-conflict/u);
+      } else {
+        assert.throws(() => repository.append(note), /timeline-event-identity-conflict/u);
+      }
+      const count = (table: string) => Number(database.prepare(`SELECT count(*) AS n FROM ${table} WHERE id=?`).get(debug.eventId)?.n);
+      assert.equal(count("timeline_events") + count("debug_events"), 1);
+    } finally { database.close(); }
+  });
   it("maintains the optional diagnostic byte cap through outer rollback, prune and external commits", () => {
     const root = mkdtempSync(join(tmpdir(), "logging-cap-"));
     const path = join(root, "state.db");
