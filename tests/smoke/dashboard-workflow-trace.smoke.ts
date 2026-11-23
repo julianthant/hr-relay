@@ -34,7 +34,7 @@ test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Fo
   });
   const approve = dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true });
   await approve.waitFor({ timeout: 15_000 }).catch(async (error: unknown) => {
-    throw new Error(`no Continue anyway; panel shows: ${await dashboard.runPanel.innerText()} / ${String(error)}`);
+    throw new Error(`no Continue anyway; buttons: ${JSON.stringify(await dashboard.runPanel.getByRole("button").allInnerTexts())} / ${String(error)}`);
   });
   await approve.click();
   await approve.click({ timeout: 1000 }).catch(() => undefined);
