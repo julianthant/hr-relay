@@ -31,7 +31,7 @@ it("imports the newest production workbook library into the independently signed
   library.create({ name: "Example roster", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [],
     rows: [{ id: "row", cells: [{ value: "Example" }] }] }] });
   await takeBackup(source);
-  library.create({ name: "Latest workbook", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [] }] });
+  library.create({ name: "Latest workbook", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "Latest" }] }] }] });
   const backup = await takeBackup(source);
   const binding = destination.admission.profileBinding, sourceProfile = source.admission.profileBinding.profileId;
   const generation = source.database.getMeta().authorityGeneration;
