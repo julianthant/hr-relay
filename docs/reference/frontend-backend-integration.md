@@ -362,12 +362,17 @@ reports keep their identity and migration authority.
 
 `useDashboardDay` opens one day subscription only when its composition needs served data. The
 subscription states are `connecting`, `live`, `reconnecting`, `degraded`, and `stopped`.
-`DashboardStreamEnvelopeSchema` names `hello`, `snapshot`, `patch`, `reset-required`, `health`,
+`DashboardStreamEnvelopeSchema` names `hello`, `snapshot`, `change`, `reset-required`, `health`,
 and `notification-publication`.
 The client holds projection generation and `pc:<number>` cursor. A generation change resets both
 snapshot and cursor. A snapshot behind the held cursor is stale; a same-cursor snapshot replaces
-the day. A patch at or below the cursor is ignored. Missing baseline, cursor gaps, and invalid
-patch application trigger a resnapshot. Malformed envelopes or non-network stream failures stop
+the day. Every `snapshot` and `change` has its own cursor and names `position`, the timeline
+position the projection had folded. A `change` names `after`, the cursor of the previous `snapshot`
+or `change` sent on that connection, and may carry one queue-row replacement or removal as `day`.
+A change at or below the held cursor is ignored. A change whose `after` is above the held cursor is
+a gap. Missing baseline, gaps, and invalid row application trigger a resnapshot. A reconnect is
+resumable while every retained change above the presented cursor is still held; the server then
+replays them and closes with a `change` that carries no row. Malformed envelopes or non-network stream failures stop
 with visible error. Network loss resumes using `lastEventId` and `lastProjectionGeneration`.
 Superseded stream completions cannot reconnect the new stream.
 
