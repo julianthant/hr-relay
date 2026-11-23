@@ -151,7 +151,8 @@ async function measure(
       throw new Error("Missing timestamps for the matched read, hold window or release");
     }
     expect.soft(releasedAt - windowStartedAt, "minimum hold window").toBeGreaterThanOrEqual(SKELETON_READ_HOLD_MS);
-    const pendingAt = Math.max(start, requestedAt);
+    // The page is pending from the operator's action; the held request itself goes out a few milliseconds later.
+    const pendingAt = start;
     const pendingFrames = samples.filter(frame => frame.at >= pendingAt && frame.at < releasedAt);
     expect.soft(pendingFrames.length, "sampled during the hold").toBeGreaterThan(0);
     const checkAppearance = (firstAt: number | undefined, indicator: string) => {
@@ -209,9 +210,9 @@ async function measure(
 type Box = { width: number; height: number } | undefined;
 /** One log line per case: the CI job log is the evidence. */
 function measurementLine(result: { start?: number; viewport: { width: number; height: number }; frames: readonly { at: number; skeletons: number; feedback: boolean; pendingBounds?: Box; settledBounds?: Box }[] },
-  timing: { requestedAt?: number; releasedAt?: number } | undefined) {
+  timing: { releasedAt?: number } | undefined) {
   const { start = 0, frames } = result;
-  const pendingAt = Math.max(start, timing?.requestedAt ?? start);
+  const pendingAt = start;
   const skeletons = frames.filter(frame => frame.skeletons > 0);
   const ms = (at: number | undefined, from: number) => at === undefined ? "none" : `+${Math.round(at - from)}ms`;
   const size = (box: Box) => box === undefined ? "-" : `${Math.round(box.width)}x${box.height}`;
