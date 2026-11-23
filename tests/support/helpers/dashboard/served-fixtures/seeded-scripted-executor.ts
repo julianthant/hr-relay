@@ -33,7 +33,6 @@ import { createNoteTimelineWriter } from "../../../../../src/backend/storage/eve
 import type { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import type { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/index.js";
 import type { WorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
-import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import type { WorkbookActiveSelectionSchema } from "../../../../../src/models/dashboard/workbook-library.js";

@@ -305,7 +305,7 @@ export const ONBOARDING_EMAIL = "hire@example.test";
 export const ONBOARDING_SCRIPT: ScriptedWorkflow = {
   module: catalogModule("onboarding"),
   children: [childModule("i9-lookup")],
-  writeNode: "ucpath-hire",
+  writeNode: "hire-create",
   submission: email => ({ email, mode: "new-hire", configuredJobEndDate: "06/30/2027" }),
   subjectOf: (input, workflowId) => workflowId === undefined || workflowId === "onboarding" ? OnboardingInput.parse(input).email : "",
   drivers(world) {
@@ -339,7 +339,12 @@ export const ONBOARDING_SCRIPT: ScriptedWorkflow = {
       },
       i9: () => {
         const i9 = keyed(i9s, () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: now() }));
-        return { ...i9, readSection2Signer: async (...args: Parameters<typeof i9.readSection2Signer>) => { await world.hold(); return i9.readSection2Signer(...args); } };
+        return { ...i9, readSection2Signer: async (...args: Parameters<typeof i9.readSection2Signer>) => { await world.hold(); return i9.readSection2Signer(...args); },
+          saveProfile: async (...args: Parameters<typeof i9.saveProfile>) => {
+            const run = world.run();
+            world.record({ runId: run.runId, nodeId: run.heldNode(), eid: run.subject });
+            return i9.saveProfile(...args);
+          } };
       },
     };
   },
