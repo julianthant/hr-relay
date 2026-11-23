@@ -38,9 +38,11 @@ test("Work-Study: start, gate, answered once, done, then Back, Forward and Reloa
   await expect(row).not.toContainText("Running");
   expect(seeded.scripted.writes().slice(written)).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
 
+  await dashboard.settleReads();
   await page.reload();
   await dashboard.expectRunOpen(runId);
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  await dashboard.settleReads();
   await page.goBack();
   await expect(page.getByText("No run open")).toBeVisible();
   await page.goForward();

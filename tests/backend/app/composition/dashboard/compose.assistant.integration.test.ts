@@ -36,6 +36,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.j
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { unexpectedWorkbookSync } from "../../../../support/helpers/backend/workbook-sync.js";
+import { StorageHealthConcernSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
 
 vi.mock("../../../../../src/backend/runs/commands/run-worker-capacity.js", async importOriginal => {
   const actual = await importOriginal<typeof workerCapacity>();
@@ -129,6 +130,9 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     };
 
     ready = true;
+    // The startup storage-health pass writes its rows on its own schedule; settle it so no checked span contains it.
+    await vi.waitFor(() => assert.ok(StorageHealthConcernSchema.options.every(concern => concern === "outbox-stalled"
+      || context.database.authority.notificationHealth.get(concern) !== undefined)), { timeout: 30_000, interval: 50 });
     await body({ profile: f, context, transport, clock, originalFetch, origin, post });
   } catch (error) { primary = { error }; owner.primary = primary; }
   if (!ready) {
