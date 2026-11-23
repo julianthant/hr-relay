@@ -12,6 +12,10 @@ const SHEETS = 'section[aria-label="Spreadsheets"]';
 const FILE_DIALOG = '[role="dialog"]';
 const RUN_PANEL = '[aria-label="Selected run logs"]';
 const QUEUE = '[aria-label="Queue"]';
+const RUN_LOADING = `${RUN_PANEL} div:has(> [aria-label="Loading logs"])`;
+const RUN_SETTLED = `${RUN_PANEL} [role="region"][aria-label="Run logs"]`;
+const QUEUE_LOADING = `${QUEUE} [aria-label="Loading queue"]`;
+const QUEUE_SETTLED = `${QUEUE} .queue-filter-content`;
 const SETTINGS_FORM = '#dashboard-settings-content .settings-compact-form';
 const RUNS_SECTION = '.ds-body-section:has(> figure[aria-label="Runs per day"])';
 const REPORT = 'section[aria-label="Analytics report"]';
@@ -123,6 +127,7 @@ async function measure(
     result = await stopFrames();
     timing = await readTiming();
     await writeFile(test.info().outputPath("measurements.json"), JSON.stringify({ test: test.info().title, ...result, timing, actionEvidence }, null, 2));
+    console.log(measurementLine(result, timing));
   }
 
   const { start, frames: samples } = result;
@@ -146,7 +151,8 @@ async function measure(
       throw new Error("Missing timestamps for the matched read, hold window or release");
     }
     expect.soft(releasedAt - windowStartedAt, "minimum hold window").toBeGreaterThanOrEqual(SKELETON_READ_HOLD_MS);
-    const pendingAt = Math.max(start, requestedAt);
+    // The page is pending from the operator's action; the held request itself goes out a few milliseconds later.
+    const pendingAt = start;
     const pendingFrames = samples.filter(frame => frame.at >= pendingAt && frame.at < releasedAt);
     expect.soft(pendingFrames.length, "sampled during the hold").toBeGreaterThan(0);
     const checkAppearance = (firstAt: number | undefined, indicator: string) => {
@@ -201,6 +207,22 @@ async function measure(
   expect.soft(samples.at(-1)?.skeletons, "no skeleton left after settlement").toBe(0);
 }
 
+type Box = { width: number; height: number } | undefined;
+/** One log line per case: the CI job log is the evidence. */
+function measurementLine(result: { start?: number; viewport: { width: number; height: number }; frames: readonly { at: number; skeletons: number; feedback: boolean; pendingBounds?: Box; settledBounds?: Box }[] },
+  timing: { releasedAt?: number } | undefined) {
+  const { start = 0, frames } = result;
+  const pendingAt = start;
+  const skeletons = frames.filter(frame => frame.skeletons > 0);
+  const ms = (at: number | undefined, from: number) => at === undefined ? "none" : `+${Math.round(at - from)}ms`;
+  const size = (box: Box) => box === undefined ? "-" : `${Math.round(box.width)}x${box.height}`;
+  return [`SKELETON ${result.viewport.width}x${result.viewport.height}`, test.info().title,
+    `skeletonFrames=${skeletons.length}/${frames.length}`, `firstSkeleton=${ms(skeletons[0]?.at, pendingAt)}`,
+    `hold=${timing?.releasedAt === undefined ? "none" : `${Math.round(timing.releasedAt - pendingAt)}ms`}`,
+    `pending=${size(skeletons.at(-1)?.pendingBounds)}`, `settled=${size(frames.at(-1)?.settledBounds)}`,
+    `feedback=${ms(frames.find(frame => frame.feedback)?.at, start)}`].join(" | ");
+}
+
 function navigate(page: Page, params: Record<string, string>) {
   return page.evaluate(next => {
     const url = new URL(location.href);
@@ -220,13 +242,20 @@ async function seedRoster(page: Page, baseUrl: string) {
   return WorkbookImportResultSchema.parse(await response.json()).workbook.libraryId;
 }
 
+/** Data pages are Settings sections: open Settings, then measure the section link. */
+async function dataPageLink(page: Page, label: string) {
+  const sections = page.getByRole("navigation", { name: "Settings sections" });
+  if (!(await sections.isVisible())) await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(sections).toBeVisible();
+  return sections.getByRole("link", { name: label, exact: true });
+}
+
 function seededQueueCard(dashboard: DashboardPage, runId: string) {
   return dashboard.queue.locator(`[role="group"][data-demo-row-id="${runId}"]`);
 }
 
 for (const viewport of DESKTOP_VIEWPORTS) {
   test.describe(`dashboard skeletons at ${viewport.width}x${viewport.height}`, () => {
-    test.skip(process.env.RELAY_DASHBOARD_SKELETON_EVIDENCE !== "1", "runs in the dedicated dashboard evidence workflow");
     test.use({ viewport, colorScheme: "dark" });
 
     test("a held cold Settings read measures the fixed General form", async ({ dashboard, page, seeded }) => {
@@ -251,19 +280,21 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await expect(seededQueueCard(dashboard, dashboard.runId("doneRun"))).toBeVisible();
       });
 
-      for (const surface of ["Settings", "Spreadsheets", "Explorer", "Analytics", "Run logs"] as const) {
-        test(`${surface === "Settings" ? "warm Settings" : surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
+      // The first Settings opening is recorded unprimed; the warm one reopens it after a close.
+      for (const surface of ["first Settings", "warm Settings", "Spreadsheets", "Explorer", "Analytics", "Run logs"] as const) {
+        test(`${surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
           const runId = dashboard.runId("doneRun");
           const control = surface === "Run logs" ? seededQueueCard(dashboard, runId).locator("button[data-queue-open]")
-            : (surface === "Settings" ? page : dashboard.workflows).getByRole("button", { name: surface, exact: true });
+            : surface.endsWith("Settings") ? page.getByRole("button", { name: "Settings", exact: true }) : await dataPageLink(page, surface);
           const content = {
-            Settings: page.locator(THEME_FIELD),
+            "first Settings": page.locator(THEME_FIELD),
+            "warm Settings": page.locator(THEME_FIELD),
             Spreadsheets: page.getByText("No spreadsheets yet", { exact: true }),
             Explorer: page.locator("#explorer-step-1"),
             Analytics: page.getByRole("figure", { name: "Runs per day" }),
             "Run logs": dashboard.runPanel.getByRole("region", { name: "Run logs" }),
           }[surface];
-          if (surface === "Settings") {
+          if (surface === "warm Settings") {
             await control.click();
             await expect(content).toBeVisible();
             await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/ }).click();
@@ -274,8 +305,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         });
       }
 
-      test("a held first Explorer read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-        const open = dashboard.workflows.getByRole("button", { name: "Explorer", exact: true });
+      test("a held first Explorer read uses no guessed-height skeleton", async ({ page }) => {
+        const open = await dataPageLink(page, "Explorer");
         const picker = page.getByRole("combobox", { name: "Explorer workflow" });
         const pickerSelector = 'button[aria-label="Explorer workflow"]';
         const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/explorer" });
@@ -288,8 +319,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         }, { keep: { selector: pickerSelector }, focus: pickerSelector }, hold);
       });
 
-      test("a held first Analytics read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-        const open = dashboard.workflows.getByRole("button", { name: "Analytics", exact: true });
+      test("a held first Analytics read uses no guessed-height skeleton", async ({ page }) => {
+        const open = await dataPageLink(page, "Analytics");
         const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/reports/activity/population" });
         await measure(page, open, () => open.click(), () => expect(page.locator(RUNS_SECTION)).toBeVisible(), {}, hold);
       });
@@ -337,8 +368,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await expect(drillIn).toBeVisible();
       });
 
-      test("a held catalog read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-        const open = dashboard.workflows.getByRole("button", { name: "Spreadsheets", exact: true });
+      test("a held catalog read uses no guessed-height skeleton", async ({ page }) => {
+        const open = await dataPageLink(page, "Spreadsheets");
         const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/workbooks/catalog" });
         await measure(page, open, () => open.click(), () => expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible(), {}, hold);
       });
@@ -383,7 +414,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         const open = seededQueueCard(dashboard, runId).locator("button[data-queue-open]");
         const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/runs/${runId}` });
         await measure(page, open, () => open.press("Enter"), () => expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible(), {
-          pendingRegion: RUN_PANEL, bounds: { pending: RUN_PANEL, settled: RUN_PANEL },
+          pendingRegion: RUN_PANEL, bounds: { pending: RUN_LOADING, settled: RUN_SETTLED },
         }, hold);
       });
 
@@ -393,7 +424,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await measure(page, null, () => navigate(page, { day }), async () => {
           await expect(page.getByRole("status", { name: "Loading queue" })).toBeHidden();
           await expect(dashboard.queue).toBeVisible();
-        }, { pendingRegion: QUEUE, bounds: { pending: QUEUE, settled: QUEUE }, checkSessionBar: true }, hold);
+        }, { pendingRegion: QUEUE, bounds: { pending: QUEUE_LOADING, settled: QUEUE_SETTLED }, checkSessionBar: true }, hold);
       });
 
       for (const day of ["2099-01-01", "invalid-date"]) {
