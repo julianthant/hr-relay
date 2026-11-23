@@ -7,6 +7,7 @@ describe("frontend presentation producers", () => {
     assert.equal(activityCompletionRate(38, 40), "95%");
     assert.equal(activityCompletionRate(0, 0), "No finished runs");
     assert.equal(activityDuration(4643), "1h 17m");
+    assert.equal(activityDuration(0), "<1s");
     const missing = activitySample(ACTIVITY_SAMPLE_RANGE, "incomplete");
     const empty = activitySample(ACTIVITY_SAMPLE_RANGE, "empty");
     if (missing.state !== "loaded" || empty.state !== "loaded") throw new Error("samples must load");
