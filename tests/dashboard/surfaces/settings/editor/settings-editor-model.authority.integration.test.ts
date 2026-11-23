@@ -1,4 +1,4 @@
-import { afterAll,afterEach,it } from "vitest";
+import { afterAll,afterEach,it,vi } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -103,23 +103,37 @@ for (const problem of ["rollback", "divergent-fingerprint", "divergent-values", 
   });
 }
 
-for (const family of ["protected"] as const) {
-  it(`retains the unknown ${family} envelope across actor replacement without dispatching it as the new actor`, async () => {
-    const h = await setup();
-    const control = () => h.controller().protectedEditor;
-    await act(async () => control().update("ucpathUserId", "Retained draft"));
-    await act(async () => control().submit());
-    assert.equal(control().save.state, "unconfirmed"); const original = structuredClone(h.writes[0]);
-    const draft = structuredClone(control().draft);
-    await h.render(h.client, "other-operator");
-    await act(async () => control().retry());
-    assert.equal(control().save.state, "unconfirmed"); assert.equal(control().locked, true);
-    assert.deepEqual(control().draft, draft); assert.deepEqual(h.writes, [original]);
-    await h.render({ ...h.client });
-    await act(async () => control().retry());
-    assert.deepEqual(h.writes, [original, original]);
-  });
-}
+it("reads back an unknown protected save across actor replacement without resending it", async () => {
+  const h = await setup();
+  const control = () => h.controller().protectedEditor;
+  const value = "https://example.test/saved-roster";
+  const applied: string[] = [];
+  const client = { ...h.client, executeCommand: (request: unknown) => {
+    h.writes.push(request);
+    applied.push(h.authority.execute(request).state);
+    throw new Error("reply lost after save");
+  } };
+  await h.render(client);
+  await act(async () => control().update("sharepointOnboardingRosterUrl", value));
+  const readback = Promise.withResolvers<EditableSettingsWire>();
+  h.setRead(() => readback.promise);
+  await act(async () => control().submit());
+  assert.equal(control().save.state, "unconfirmed");
+  assert.deepEqual(applied, ["applied"]);
+  assert.equal(h.writes.length, 1);
+  const draft = structuredClone(control().draft);
+  await h.render(client, "other-operator");
+  assert.equal(control().save.state, "unconfirmed"); assert.equal(control().locked, true);
+  assert.deepEqual(control().draft, draft);
+  await act(async () => readback.resolve(h.authority.read()));
+  await vi.waitFor(async () => { await act(async () => undefined); assert.equal(control().locked, false); });
+  const editor = h.controller().editor; assert.ok(editor.state === "loaded");
+  assert.ok(editor.document.protectedSettings.state === "available");
+  assert.equal(editor.document.protectedSettings.entries.sharepointOnboardingRosterUrl?.value, value);
+  assert.equal(control().dirtyCount, 0); assert.equal(control().save.state, "idle");
+  assert.equal(h.writes.length, 1);
+  assert.equal("retry" in control(), false, "the protected editor offers no replay action");
+});
 
 it("hides old authority and retains drafts while blocking writes when replacement reads fail", async () => {
   const h = await setup();
