@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
+import { NotificationTriggerEventSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
 import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
 import { startNotificationPolling } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
@@ -67,8 +68,8 @@ it.each(["delayed", "retried"])("folds the fourth occurrence after a %s third oc
   const occurrence = (count: number) => {
     const { runId, workflow } = seedRun(f, runRecordOf({ seed: count })).envelope;
     return {
-      event: { kind: "repeating-failure" as const, runId, workflowId: workflow, failureId: randomUUID(),
-        failureFingerprint: "a".repeat(64), occurrences: count, threshold: 3 },
+      event: NotificationTriggerEventSchema.parse({ kind: "repeating-failure", runId, workflowId: workflow, failureId: randomUUID(),
+        failureFingerprint: "a".repeat(64), occurrences: count, threshold: 3 }),
       source: { identity: String(count).repeat(64), occurredAt: f.clock.now().toISOString() },
     };
   };
@@ -96,7 +97,9 @@ it.each(["delayed", "retried"])("folds the fourth occurrence after a %s third oc
       await observer.observeSources(() => false);
     }
     expect(published).toEqual([3, 4]);
-    expect(f.inbox.list(LOCAL_OPERATOR_ACTOR_ID)).toMatchObject([{ count: 2, summary: expect.stringContaining("occurred 4 times") }]);
+    const rows = f.inbox.list(LOCAL_OPERATOR_ACTOR_ID);
+    expect(rows.map(row => row.count)).toEqual([2]);
+    expect(rows[0].summary).toContain("occurred 4 times");
   } finally {
     release.resolve();
     await observer.stop();
