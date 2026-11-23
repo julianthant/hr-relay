@@ -621,6 +621,44 @@ for (const [system, recipe] of [
   });
 }
 
+it("signs in to ACT CRM through the pinned UCSD SSO POST route", async () => {
+  const browserContext = await guardedContext();
+  try {
+    const page = await browserContext.newPage();
+    const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "crm");
+    const entry = "https://crm.ucsd.edu/hr";
+    const sso = kronosSso + "?execution=fixture";
+    const application = "https://act-crm.my.site.com/hr/s/";
+    const posts: string[] = [];
+    let credentialReads = 0;
+    await browserContext.addCookies([{ url: application, name: "sid", value: "fixture" }]);
+    await browserContext.route("**/*", route => {
+      const request = route.request();
+      const url = request.url();
+      if (request.method() === "POST") {
+        posts.push(url);
+        if (url !== sso) return route.abort();
+        return route.fulfill({ contentType: "text/html",
+          body: `<meta http-equiv="refresh" content="1; url=${application}">` });
+      }
+      if (url === entry) return route.fulfill({ contentType: "text/html",
+        body: `<meta http-equiv="refresh" content="0; url=${sso}">` });
+      if (url === sso) return route.fulfill({ contentType: "text/html",
+        body: form(sso) + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>Active Directory</option></select>' });
+      if (url === application) return route.fulfill({ contentType: "text/html", body: "<main>Onboarding</main>" });
+      return route.abort();
+    });
+    const result = await crmLoginRecipe({
+      ...context, page,
+      get credentials() { credentialReads++; return context.credentials; },
+    });
+    assert.equal(result, "logged-in");
+    assert.equal(credentialReads, 1);
+    assert.deepEqual(posts, [sso]);
+    assert.equal(evidence()[0]?.url, application);
+  } finally { await browserContext.close(); }
+});
+
 it.each(["application", "duo", "embedded-duo"] as const)("binds terminal refusal text to the Duo document (%s)", async surface => {
   const browserContext = await guardedContext();
   try {
