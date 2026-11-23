@@ -25,7 +25,7 @@ export function HubShell(props: HubShellProps) {
   useState(() => { assistantOpen.init(false); });
   const revealed = useContext(FirstScreenRevealedContext);
   useLayoutEffect(() => { if (!revealed && mockParam("assistantOpen") !== "1") assistantOpen.set(false); }, [revealed]);
-  useEffect(() => { if (revealed) assistantPanel.preload().catch(() => undefined); }, [revealed]);
+  useEffect(() => { if (revealed) assistantPanel.preload().catch((error: unknown) => { window.reportError(error); }); }, [revealed]);
   const opened = useAssistantOpen();
   const canRead = opened && (revealed || mockParam("assistantOpen") === "1");
   const [everOpened, setEverOpened] = useState(canRead);

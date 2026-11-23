@@ -12,8 +12,8 @@ export function preloadable<Props extends object>(load: () => Promise<ComponentT
   );
   const Lazy = lazy(() => preload().then(component => ({ default: component })));
   function Preloadable(props: Props) {
-    const [Page] = useState<ComponentType<Props> | typeof Lazy>(() => loaded ?? Lazy);
-    return <Page {...props} />;
+    const [Shown] = useState<ComponentType<Props> | typeof Lazy>(() => loaded ?? Lazy);
+    return <Shown {...props} />;
   }
   return { Component: Preloadable, preload };
 }

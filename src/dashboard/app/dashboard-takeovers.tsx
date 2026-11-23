@@ -59,7 +59,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  const revealed = useContext(FirstScreenRevealedContext);
  useEffect(() => {
    if (!revealed) return;
-   for (const page of [settingsPage, activityReport, workflowExplorer]) page.preload().catch(() => undefined);
+   for (const page of [settingsPage, activityReport, workflowExplorer]) page.preload().catch((error: unknown) => { window.reportError(error); });
  }, [revealed]);
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
