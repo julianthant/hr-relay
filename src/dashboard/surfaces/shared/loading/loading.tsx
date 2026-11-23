@@ -58,9 +58,9 @@ export function QueueSkeleton() {
   </section>;
 }
 
-/** The loaded feed's padding, for log rows drawn outside the feed. */
+/** The loaded feed's padding and box, for log rows drawn outside the feed: it never grows past the panel. */
 export function LogFeedPadding({ children }: { children: ReactNode }) {
-  return <div className="min-w-0 flex-1 px-4 pb-6 pt-5">{children}</div>;
+  return <div className="min-w-0 flex-1 overflow-hidden px-4 pb-6 pt-5">{children}</div>;
 }
 
 export function LogSkeleton() {
