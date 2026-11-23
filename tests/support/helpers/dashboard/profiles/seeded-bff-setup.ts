@@ -216,7 +216,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
     const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
-      scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); projection.reconcileWorkerAuthority(); } } : undefined});
+      scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); } } : undefined});
     held.services = services;
     const { app, hub, scripted, notificationInbox } = services;
     // What the production poll does after a commit: fold the timeline, then reconcile authority no span reports.
