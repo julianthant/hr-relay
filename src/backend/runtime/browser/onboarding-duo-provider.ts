@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { prepareDuoPlatformAuthenticator, type DuoPlatformAuthenticator } from "./duo-platform-authenticator.js";
 import { createDuoBrowserFocus, type DuoBrowserFocus, type NativeFocusTarget } from "./native-browser-focus.js";
 import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess, type PersistentContextLauncher } from "./native-browser.js";
-import type { ProfileOnboardingBrowser } from "../../../models/profiles/public-profile.js";
+import { PROFILE_ONBOARDING_STATE, type ProfileOnboardingBrowser } from "../../../models/profiles/public-profile.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
@@ -600,9 +600,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         browserCurrent(session);
         const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-        if (options.copySignin !== undefined && session.owner.readState().state === "onboarding") {
-          try { await enrollCopy(session, page, landing, options.copySignin); }
-          catch { throw new Error("copy-signin-duo-enrollment-failed"); }
+        if (options.copySignin !== undefined && session.owner.readState().state === PROFILE_ONBOARDING_STATE) {
+          await enrollCopy(session, page, landing, options.copySignin);
         } else if (landing === "sso-form") await waitForManualUcsdSignIn(page, session);
         browserCurrent(session);
       } catch (error) {

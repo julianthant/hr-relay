@@ -9,7 +9,7 @@ import {
   registerWorkerComposer,
   startRebuildRuntime,
 } from "./backend/app/composition/runtime-composition.js";
-import { composeDashboardApplication, type DashboardComposeInput } from "./backend/app/composition/dashboard/compose.js";
+import { composeDashboardApplication } from "./backend/app/composition/dashboard/compose.js";
 import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./backend/app/dry-run/manifests.js";
 import { parseDryRunScenarioManifest } from "./models/trust/dry-run-scenario.js";
 import { composeTestDataCommand } from "./backend/app/test-data/compose.js";
@@ -27,8 +27,7 @@ import type { RuntimeLifetime } from "./backend/app/bootstrap/secure-env-bootstr
 /** The checkout that owns this cli module, never the caller's CWD. */
 const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-export async function runCli(admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime,
-  copySignin?: DashboardComposeInput["copySignin"]): Promise<void> {
+export async function runCli(admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime): Promise<void> {
   admission.assertLive();
   if (process.argv[2] === "storage" && process.argv[3] === "transactions") {
     process.stdout.write(composeTransactionExportCommand(admission, process.argv.slice(4)));
@@ -37,7 +36,7 @@ export async function runCli(admission: RuntimeAdmission, acceptDashboardAdmissi
   registerDashboardComposer(async (runtimeIsolation, options) => {
     if (!(lifetime.lock instanceof RuntimeLifetimeLock)) throw new Error("dashboard-runtime-lifetime-lock-required");
     const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend,
-      lifetimeLock: lifetime.lock, copySignin, shutdownBackup: detachedShutdownBackup(productionWorkerLaunch(REPOSITORY_ROOT, undefined, options.frontend === "vite-dev")) });
+      lifetimeLock: lifetime.lock, copySignin: lifetime.copySignin, shutdownBackup: detachedShutdownBackup(productionWorkerLaunch(REPOSITORY_ROOT, undefined, options.frontend === "vite-dev")) });
     acceptDashboardAdmission?.();
     return application;
   });

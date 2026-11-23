@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseEnv } from "node:util";
-import { chromium, type BrowserContext } from "playwright";
+import type { BrowserContext } from "playwright";
 import { z } from "zod";
 import { applicationDataWorkspace, rebuildRuntimeIsolation, runtimeProfile } from "../../src/backend/app/config/runtime-isolation.js";
 import { probeOwnedViteServer } from "../../src/backend/app/host/local-vite-probe.js";
@@ -104,16 +104,15 @@ async function runCopyBackend(profile: CopyProfile): Promise<void> {
   const { captureBuildId } = await import("../../src/backend/runtime/build-id.js");
   captureBuildId();
   const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");
-  const { runCli } = await import("../../src/cli.js");
   await runSecureEnvironmentBootstrap(["cli", "dashboard"], {
-    runCli: (admission, accept, lifetime) => runCli(admission, accept, lifetime, {
+    copySignin: {
       profile,
       credentials() {
         const { UCPATH_USERNAME: userId, UCPATH_PASSWORD: password } = operatorCredentials();
         return { userId, password };
       },
       phone() { process.send?.({ type: "relay-copy-signin-phone" }); },
-    }),
+    },
   });
 }
 
@@ -154,11 +153,12 @@ async function openCopyDashboard(profile: CopyProfile): Promise<void> {
     const browserDirectory = join(workspace, "copy-signin-browser");
     mkdirSync(browserDirectory, { mode: 0o700, recursive: true });
     statDirectory(browserDirectory, "copy sign-in browser", 0o700);
+    const { chromium } = await import("playwright");
     context = await chromium.launchPersistentContext(browserDirectory, {
       headless: false, channel: "chromium", acceptDownloads: false,
       args: ["--no-proxy-server", "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
     });
-    const closed = new Promise<void>(resolve => { context?.once("close", resolve); });
+    const closed = new Promise<void>(resolve => { context?.once("close", () => { resolve(); }); });
     const page = context.pages()[0] ?? await context.newPage();
     await page.goto(`${origin}${stateRoute}`);
     let proof = await page.evaluate(({ origin, resumeKey }) => {
@@ -198,8 +198,6 @@ async function openCopyDashboard(profile: CopyProfile): Promise<void> {
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
   delete process.env.DEBUG;
-  delete process.env.PWDEBUG;
-  delete process.env.NODE_DEBUG;
   try {
     const args = process.argv.slice(2);
     const child = args[0] === "--owned-backend" && args.length === 2;

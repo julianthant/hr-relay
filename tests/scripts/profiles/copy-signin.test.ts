@@ -48,6 +48,17 @@ it("refuses production ports or roots, including the production launcher profile
     .toThrow("copy-signin-profile-refused");
 });
 
+it("refuses copy onboarding in the production bootstrap before acquiring a lifetime lock", async () => {
+  const { runSecureEnvironmentBootstrap } = await import("../../../src/backend/app/bootstrap/secure-env-bootstrap.js");
+  const acquireLifetimeLock = vi.fn(() => { throw new Error("production lock touched"); });
+  await expect(runSecureEnvironmentBootstrap(["cli", "dashboard"], { acquireLifetimeLock, copySignin: {
+    profile: "development",
+    credentials() { throw new Error("credentials read before admission"); },
+    phone() { throw new Error("approval before admission"); },
+  } })).rejects.toThrow("copy-signin-profile-refused");
+  expect(acquireLifetimeLock).not.toHaveBeenCalled();
+});
+
 const active = { state: "active", profileId: "10000000-0000-4000-8000-000000000001", duoState: "ready", epoch: 1 };
 const activeResponse = () => Response.json(active, { headers: { "x-relay-session": "synthetic-session", "x-relay-resume": "synthetic-resume" } });
 

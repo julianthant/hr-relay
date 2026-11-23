@@ -50,7 +50,8 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     writeError('[dashboard] Start npm run backend first and wait for "listening".\n');
     return Promise.resolve(1);
   }
-  const childEnvironment = { ...process.env, [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
+  const childEnvironment = { ...process.env, [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1",
+    ...(copySignin === undefined ? {} : { DEBUG: undefined, PWDEBUG: undefined, NODE_DEBUG: undefined }) };
   const signals = options.signals ?? process;
   const managed: Managed[] = [];
   let stopping = false;
