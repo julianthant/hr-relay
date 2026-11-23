@@ -168,7 +168,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   const browserRoots = mockBrowserRootPort().browserRoots;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
     ...(copyPortal === undefined ? {} : { copySignin: { profile: "development" as const,
-      credentials() { throw new Error("direct Duo landing must not read SSO credentials"); }, phone: copyPortal.phone } }),
+      credentials() { throw new Error("direct Duo landing must not read SSO credentials"); }, phone: () => copyPortal.phone() } }),
     focus: { async captureRelay() { capturedRelay++; if (captureFailure) throw captureFailure; return relayTarget; }, async show(owned) { assert.equal(owned, context); osFocusCount++; if (focusFailure) throw focusFailure; },
       async returnToRelay(target) { assert.equal(target, relayTarget); returnedRelay++; if (returnFailure) throw returnFailure; } },
     launcher: { launch: async input => {
