@@ -36,8 +36,23 @@ const HealthEnvelopeSchema = z.strictObject({
   state: z.enum(["live", "reconnecting", "degraded"]),
 });
 
-const SnapshotEnvelopeSchema = z.strictObject({ type: z.literal("snapshot"), topic: z.literal("dashboard-day"), cursor: ProjectionCursorSchema, payload: DashboardDayWireSchema });
-const PatchEnvelopeSchema = z.strictObject({ type: z.literal("patch"), topic: z.literal("dashboard-day"), cursor: ProjectionCursorSchema, payload: DashboardDayPatchSchema });
+/** The highest `timeline_events.cursor` the projection had folded when it built the envelope. */
+const TimelinePositionSchema = z.number().int().nonnegative();
+
+const SnapshotEnvelopeSchema = z.strictObject({
+  type: z.literal("snapshot"), topic: z.literal("dashboard-day"), cursor: ProjectionCursorSchema,
+  position: TimelinePositionSchema, payload: DashboardDayWireSchema,
+});
+/** `after` is the cursor of the previous `change` or `snapshot` sent on the same connection.
+ * A `change` without a `day` part moves the cursor only. */
+const ChangeEnvelopeSchema = z.strictObject({
+  type: z.literal("change"),
+  topic: z.literal("dashboard-day"),
+  cursor: ProjectionCursorSchema,
+  after: ProjectionCursorSchema,
+  position: TimelinePositionSchema,
+  day: DashboardDayPatchSchema.optional(),
+});
 
 export const NotificationPublicationWireSchema = z.strictObject({
   sourceId: FingerprintSchema,
@@ -61,7 +76,7 @@ export const DashboardStreamEnvelopeSchema = z.union([
   HelloEnvelopeSchema,
   NotificationPublicationEnvelopeSchema,
   SnapshotEnvelopeSchema,
-  PatchEnvelopeSchema,
+  ChangeEnvelopeSchema,
   ResetRequiredEnvelopeSchema,
   HealthEnvelopeSchema,
 ]);

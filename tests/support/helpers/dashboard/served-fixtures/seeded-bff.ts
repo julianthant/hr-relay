@@ -12,7 +12,7 @@ export const {
   startSeededServer
 } = createSeededBffSetup( {
   seedRuntimeConfig: (database: AuthorityDatabase) => seedSyntheticRuntimeConfig(database),
-  composeFixtureServices: (input) => { const { app, hub, scripted, lifecycle } = composeSeededServices(input); return { app, hub, scripted, lifecycle }; },
+  composeFixtureServices: (input) => { const { app, hub, scripted, lifecycle, notificationInbox } = composeSeededServices(input); return { app, hub, scripted, lifecycle, notificationInbox }; },
   assertServedBundle,
   dateNavigationReader,
   seedDateNavigation

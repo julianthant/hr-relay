@@ -11,7 +11,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
-import { seed } from "../served-fixtures/seeded-lifecycle.js";
+import { finishRunningStep, parkRunningRunAtGate, seed, seededDoneNotificationEvent, startQueuedRun, type SeedWorld } from "../served-fixtures/seeded-lifecycle.js";
 
 import { type ScriptedExecutor } from "../served-fixtures/seeded-scripted-executor.js";
 import { scriptedDescriptorOf } from "../served-fixtures/scripted-workflows.js";
@@ -45,14 +45,30 @@ export interface SeededServer {
   readonly runIds: Readonly<Record<string, string>>;
   /** Drives scripted runs through the real executor; present only when started with `scriptedRuns`. */
   readonly scripted: ScriptedExecutor;
+  /** One real event at a time on the running server; each returns after the projection has taken it. */
+  readonly drive: SeededDrive;
   close(): Promise<void>;
+}
+
+export interface SeededDrive {
+  /** The seeded queued run is claimed and moved to running; answers its run id. */
+  startQueuedRun(): string;
+  /** The same start, seen between two production polls: the claim span is folded, the later
+   * transitions are not reconciled, so the run's detail is ahead of its queue row. */
+  startQueuedRunAheadOfItsRow(): string;
+  /** The running run's open task span ends; answers its run id. */
+  finishRunningStep(): string;
+  /** The running Person Lookup run takes the parked-gate lifecycle at its task node `cross-verify`; answers its run id. */
+  parkRunningRunAtGate(): string;
+  /** A notification is published through the inbox and reaches every open stream. Product app only. */
+  publishNotification(): Promise<void>;
 }
 
 const retainedSeededFixtureOwners = new Set<object>();
 
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
-composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub" | "scripted" | "lifecycle">;
+composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub" | "scripted" | "lifecycle" | "notificationInbox">;
 assertServedBundle: typeof BundleTypes.assertServedBundle;
 dateNavigationReader: typeof DateNavigationServerTypes.dateNavigationReader;
 seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
@@ -189,8 +205,9 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     });
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
-    const runIds = seed({ database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
-      workers, leaveQueueEmpty: input.scriptedRuns === true });
+    const world: SeedWorld = { database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
+      workers, leaveQueueEmpty: input.scriptedRuns === true };
+    const runIds = seed(world);
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
       if (source === undefined) throw new Error("date-proof-source-run-missing");
@@ -201,7 +218,23 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
       scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); projection.reconcileWorkerAuthority(); } } : undefined});
     held.services = services;
-    const { app, hub, scripted } = services;
+    const { app, hub, scripted, notificationInbox } = services;
+    // What the production poll does after a commit: fold the timeline, then reconcile authority no span reports.
+    const settle = <Result>(result: Result): Result => {
+      projection.ingestFromTimeline();
+      projection.reconcileWorkerAuthority();
+      return result;
+    };
+    const drive: SeededDrive = Object.freeze({
+      startQueuedRun: () => settle(startQueuedRun(world)),
+      startQueuedRunAheadOfItsRow: () => startQueuedRun(world),
+      finishRunningStep: () => settle(finishRunningStep(world)),
+      parkRunningRunAtGate: () => settle(parkRunningRunAtGate(world)),
+      publishNotification: async () => {
+        if (notificationInbox === undefined) throw new Error("the seeded server publishes notifications only as the product app");
+        await notificationInbox.publish(seededDoneNotificationEvent());
+      },
+    });
     const watcherCleanups: StartupCleanup[] = [];
     if (input.scriptedRuns === true) {
       composeDashboardTimeline({ database, clock, projection, startupCleanups: watcherCleanups, admission: profile.admission,
@@ -257,6 +290,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
         if (scripted === undefined) throw new Error("start the seeded server with scriptedRuns to drive runs");
         return scripted;
       },
+      drive,
       close: (): Promise<void> => {
         if (closePromise !== undefined) return closePromise;
         closePromise = (async () => {
