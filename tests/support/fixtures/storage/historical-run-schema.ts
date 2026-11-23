@@ -71,8 +71,26 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
+/**
+ * Steps a current authority back to schema 38: debug entries back in the timeline, after its own events in the timeline's
+ * cursor space, and no debug table.
+ */
+export function restoreSchema38DebugEvents(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 39);
+  database.exec(`CREATE TEMP TABLE debug_capture AS SELECT row_number() OVER (ORDER BY cursor)
+      + COALESCE((SELECT seq FROM sqlite_sequence WHERE name='timeline_events'),0) AS timeline_cursor, * FROM debug_events;
+    INSERT INTO timeline_events(cursor,id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+      SELECT timeline_cursor,id,workflow,run_id,worker_id,'debug',occurred_at,recorded_at,retention_date,
+        CASE pinned WHEN 1 THEN 'protected' ELSE 'ordinary' END,json_set(payload_json,'$.cursor',timeline_cursor) FROM debug_capture ORDER BY cursor;
+    DROP TABLE debug_capture;
+    DROP TABLE debug_events;
+    UPDATE database_states SET schema_version=38;
+    PRAGMA user_version=38`);
+}
+
 /** Restores the embedded workbooks and run indexes of schema 37. */
 export function restoreSchema37WorkbookPayloads(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 39) restoreSchema38DebugEvents(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 38);
   embedWorkbookPayloads(database);
   database.exec(`DROP INDEX runs_workflow_day_idx;
@@ -85,7 +103,7 @@ export function restoreSchema37WorkbookPayloads(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 36: none of the query indexes, and checkpoint replay keeps its own index. */
 export function restoreSchema36QueryIndexes(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 38) restoreSchema37WorkbookPayloads(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 38) restoreSchema37WorkbookPayloads(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 37);
   const replay = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE INDEX checkpoints_replay_idx [^;]+/u)?.[0];
   assert.ok(replay);

@@ -613,7 +613,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   };
   const claimed: string[] = [];
   const debugEvents = createDebugEventWriter({ repository: f.database.authority.timelineEvents, clock: f.clock, build: "test" });
-  const debugAfter = f.database.authority.timelineEvents.highWaterMark();
+  const debugAfter = f.database.authority.timelineEvents.debugHighWaterMark();
   let report: Awaited<ReturnType<typeof runWorkerLoop>>;
   try {
     report = await runWorkerLoop({ ...f.harness.deps, debugEvents, ...(diagnostics === undefined ? {} : { diagnostics }), workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
@@ -657,7 +657,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "yielded-delegation", "done", "done"], "the replacement yields to its OnBase child, which files, then re-enters");
   const saves = f.children().flatMap(child => f.database.authority.writeIntents.listByRun(child.envelope.runId));
   assert.equal(new Set(saves.map(intent => intent.itemId)).size, saves.length, "each member's Save runs exactly once");
-  assert.deepEqual(f.database.authority.timelineEvents.page({ after: debugAfter, limit: 1000 }).filter(record => record.payload.kind === "debug"
+  assert.deepEqual(f.database.authority.timelineEvents.debugPage({ after: debugAfter, limit: 1000 }).filter(record => record.payload.kind === "debug"
     && record.payload.event.reason === "run-failed"), [], "a held or lost failure settlement records no failure event");
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
   assert.equal(f.current().lifecycle.state, "queued");

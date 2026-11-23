@@ -41,11 +41,12 @@ describe("native logging authority", () => {
       const repository = createTimelineRepository({ database, read: read => read(),
         assertOwner: () => { throw new Error("read-only query attempted owner mutation"); },
         mutate: () => { throw new Error("read-only query attempted mutation"); } });
-      const rows = repository.page({});
+      const rows = repository.debugPage({});
       assert.equal(rows.length, 1);
+      assert.deepEqual(repository.page({}), []);
       assert.deepEqual(repository.get(rows[0].eventId), rows[0]);
-      assert.equal(repository.highWaterMark(), rows[0].cursor);
-      assert.deepEqual(database.prepare("SELECT name FROM sqlite_temp_master WHERE name LIKE 'timeline_diagnostic_bytes%'").all(), []);
+      assert.equal(repository.debugHighWaterMark(), rows[0].cursor);
+      assert.deepEqual(database.prepare("SELECT name FROM sqlite_temp_master WHERE name LIKE 'debug_event_bytes%'").all(), []);
     } finally {
       database.close();
       try {
@@ -63,12 +64,12 @@ describe("native logging authority", () => {
         stack: `Error ${message}`, route: "/run?unlabelled=NATIVE_ROUTE_SECRET#fragment", pinned: true };
       assert.equal(writer.emit(input).state, "inserted");
       assert.equal(writer.emit(input).state, "existing");
-      const rows = repository.page({}); assert.equal(rows.length, 1);
+      const rows = repository.debugPage({}); assert.equal(rows.length, 1);
       const payload = rows[0].payload; assert.equal(payload.kind, "debug");
       if (payload.kind !== "debug") throw new Error("debug event expected");
       assert.equal(payload.event.route, "/run"); assert.equal(payload.event.pinned, true);
       assert.equal(payload.event.correlationId, "native-redaction"); assert.ok(payload.event.message?.includes("Ada"));
-      const stored = JSON.stringify(database.prepare("SELECT payload_json FROM timeline_events").all());
+      const stored = JSON.stringify(database.prepare("SELECT payload_json FROM debug_events").all());
       for (const secret of ["NATIVE_PASSWORD_SECRET", "NATIVE_COOKIE_SECRET", "NATIVE_TOKEN_SECRET", "NATIVE_ROUTE_SECRET"]) assert.equal(stored.includes(secret), false, secret);
     } finally { database.close(); }
   });
@@ -90,9 +91,69 @@ describe("native logging authority", () => {
     try {
       const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
       writer.emit({ category: "http", phase: "failed", correlationId: "request-1", message: "ok" });
-      const { cursor: _cursor, ...first } = repository.page({})[0];
+      const { cursor: _cursor, ...first } = repository.debugPage({})[0];
       assert.throws(() => repository.append({ ...first, workflow: "person-lookup", scope: { kind: "worker", workerId: "worker-1" }, eventId: crypto.randomUUID(), payload: { kind: "note", note: { workflow: "person-lookup", workerId: "worker-1", spanPath: "worker-1", ts: AT.toISOString(), pid: 1, level: "debug", message: "a".repeat(256 * 1024) } } }), /size-exceeded/u);
-      assert.equal(repository.page({}).length, 1);
+      assert.equal(repository.page({}).length, 0);
+      assert.equal(repository.debugPage({}).length, 1);
+    } finally { database.close(); }
+  });
+  it("keeps a debug write off the timeline and out of the change log", () => {
+    const { database, repository } = fixture();
+    try {
+      const changes = () => Number(database.prepare("SELECT count(*) AS n FROM authority_changes").get()?.n);
+      const before = changes();
+      const written = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" })
+        .emit({ category: "http", phase: "failed", correlationId: "debug-only" }).record;
+      assert.equal(Number(database.prepare("SELECT count(*) AS n FROM timeline_events").get()?.n), 0);
+      assert.equal(changes(), before);
+      assert.equal(repository.highWaterMark(), 0);
+      assert.deepEqual(repository.debugPage({}), [written]);
+    } finally { database.close(); }
+  });
+  it("wakes no timeline or run reader for a run-scoped debug write", async () => {
+    const f = await trustWorld();
+    try {
+      const run = f.create(830);
+      const timeline = f.database.trackAuthorityTables(["timeline_events"]);
+      const runs = f.database.trackAuthorityTables(["runs", "run_results", "run_failures"]);
+      const before = { timeline: timeline(), runs: runs(), cursor: f.database.authority.timelineEvents.highWaterMark() };
+      const written = createDebugEventWriter({ repository: f.database.authority.timelineEvents, clock: f.world.clock, build: "test" })
+        .emit({ category: "worker", phase: "failed", correlationId: "run-scoped" }, { kind: "run", runId: run.envelope.runId }, run.envelope.workflow).record;
+      assert.deepEqual({ timeline: timeline(), runs: runs(), cursor: f.database.authority.timelineEvents.highWaterMark() }, before);
+      assert.deepEqual(f.database.authority.timelineEvents.debugPage({ runId: run.envelope.runId }), [written]);
+      assert.equal(f.database.authority.timelineEvents.page({ runId: run.envelope.runId }).some(record => record.eventId === written.eventId), false);
+    } finally { await f.dispose(); }
+  });
+  it("keeps the authority and search generations and search state across debug-only commits", async () => {
+    const f = await trustWorld();
+    const peer = new DatabaseSync(f.profile.path, { readOnly: true });
+    try {
+      f.create(831);
+      const state = () => peer.prepare("SELECT authority_generation, search_generation, search_state FROM database_states WHERE id=1").get();
+      const before = state();
+      const repository = f.database.authority.timelineEvents;
+      createDebugEventWriter({ repository, clock: f.world.clock, build: "test" }).emit({ category: "http", phase: "failed", correlationId: "search-still" });
+      assert.equal(repository.pruneDebugBefore("2999-01-01"), 1);
+      assert.deepEqual(state(), before);
+    } finally { peer.close(); await f.dispose(); }
+  });
+  it.each(["timeline then debug", "debug then timeline"] as const)("refuses one event ID in both tables, %s", order => {
+    const { database, repository } = fixture();
+    try {
+      const debug = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" })
+        .emit({ category: "http", phase: "failed", correlationId: "shared-id" }).record;
+      const { cursor: _cursor, ...debugAppend } = debug;
+      const note = { ...debugAppend, workflow: "person-lookup", scope: { kind: "worker", workerId: "worker-1" },
+        payload: { kind: "note", note: { workflow: "person-lookup", workerId: "worker-1", spanPath: "worker-1", ts: AT.toISOString(), pid: 1, level: "step", message: "shared" } } };
+      if (order === "timeline then debug") {
+        database.exec("DELETE FROM debug_events");
+        repository.append(note);
+        assert.throws(() => repository.append(debugAppend), /timeline-event-identity-conflict/u);
+      } else {
+        assert.throws(() => repository.append(note), /timeline-event-identity-conflict/u);
+      }
+      const count = (table: string) => Number(database.prepare(`SELECT count(*) AS n FROM ${table} WHERE id=?`).get(debug.eventId)?.n);
+      assert.equal(count("timeline_events") + count("debug_events"), 1);
     } finally { database.close(); }
   });
   it("maintains the optional diagnostic byte cap through outer rollback, prune and external commits", () => {
@@ -100,8 +161,8 @@ describe("native logging authority", () => {
     const path = join(root, "state.db");
     const { database, repository } = fixture(path);
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
-    const actualBytes = () => Number(database.prepare("SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM timeline_events WHERE kind='debug' AND retention_class='ordinary'").get()?.bytes);
-    const cachedBytes = () => Number(database.prepare("SELECT bytes FROM timeline_diagnostic_bytes WHERE id=1").get()?.bytes);
+    const actualBytes = () => Number(database.prepare("SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))),0) AS bytes FROM debug_events WHERE pinned=0").get()?.bytes);
+    const cachedBytes = () => Number(database.prepare("SELECT bytes FROM debug_event_bytes WHERE id=1").get()?.bytes);
     try {
       database.exec("BEGIN IMMEDIATE");
       writer.emit({ category: "http", phase: "failed", correlationId: "first-initialization-rollback" });
@@ -120,7 +181,7 @@ describe("native logging authority", () => {
       assert.ok(cachedBytes() > before);
       database.exec("ROLLBACK");
       assert.equal(cachedBytes(), before);
-      assert.equal(repository.pruneBefore("2027-01-01"), 2);
+      assert.equal(repository.pruneDebugBefore("2027-01-01"), 1);
       assert.equal(cachedBytes(), 0);
       const peer = new DatabaseSync(path);
       try {
@@ -128,43 +189,47 @@ describe("native logging authority", () => {
         createDebugEventWriter({ repository: peerRepository, clock: manualClock(AT), build: "test" }).emit({ category: "http", phase: "failed", correlationId: "external" });
         writer.emit({ category: "http", phase: "failed", correlationId: "after-external" });
         assert.equal(cachedBytes(), actualBytes());
-        peer.exec("DELETE FROM timeline_events WHERE retention_class='ordinary'");
+        peer.exec("DELETE FROM debug_events WHERE pinned=0");
         writer.emit({ category: "http", phase: "failed", correlationId: "after-external-delete" });
         assert.equal(cachedBytes(), actualBytes());
-        const trigger = peer.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get();
+        const trigger = peer.prepare("SELECT sql FROM sqlite_master WHERE name='debug_events_immutable'").get();
         assert.equal(typeof trigger?.sql, "string");
-        peer.exec("DROP TRIGGER timeline_events_immutable");
-        peer.prepare("UPDATE timeline_events SET payload_json=payload_json || printf('%*s',?,'') WHERE retention_class='ordinary'").run(250 * 1024 * 1024);
+        peer.exec("DROP TRIGGER debug_events_immutable");
+        peer.prepare("UPDATE debug_events SET payload_json=payload_json || printf('%*s',?,'') WHERE pinned=0").run(250 * 1024 * 1024);
         peer.exec(String(trigger?.sql));
         const reads = vi.spyOn(StatementSync.prototype, "get");
         const byteScans = () => reads.mock.contexts.filter(stmt =>
-          stmt instanceof StatementSync && /SUM\(.*payload_json.*FROM timeline_events/iu.test(stmt.sourceSQL)).length;
+          stmt instanceof StatementSync && /SUM\(.*payload_json.*FROM debug_events/iu.test(stmt.sourceSQL)).length;
         try {
           assert.equal(emitOptionalDiagnostic(() => writer.emit({ category: "boot", phase: "settled", correlationId: "optional" })), "budget-full");
           assert.equal(byteScans(), 1);
           assert.throws(() => emitOptionalDiagnostic(() => writer.emit({ category: "invalid" })));
           assert.throws(() => writer.emit({ category: "http", phase: "failed", correlationId: "over-cap" }), /timeline-diagnostic-cap-exceeded/u);
           assert.equal(byteScans(), 1, "repeated refusal must reuse the refreshed byte count");
-          assert.equal(Number(database.prepare("SELECT count(*) AS n FROM timeline_events").get()?.n), 2);
+          assert.equal(Number(database.prepare("SELECT count(*) AS n FROM debug_events").get()?.n), 2);
           assert.deepEqual(repository.get(pinned.eventId), pinned);
-          peer.exec("DELETE FROM timeline_events WHERE retention_class='ordinary'");
+          peer.exec("DELETE FROM debug_events WHERE pinned=0");
           assert.equal(writer.emit({ category: "http", phase: "settled", correlationId: "space-reopened" }).state, "inserted");
           assert.equal(byteScans(), 2, "a peer commit must refresh the byte count");
         } finally { reads.mockRestore(); }
       } finally { peer.close(); }
     } finally { database.close(); rmSync(root, { recursive: true, force: true }); }
   });
-  it("pins unresolved recovery and applies seven-day successful SSE retention", () => {
+  it("removes unpinned debug entries older than the debug cutoff and keeps pinned ones", () => {
     const { database, repository } = fixture();
     try {
-      const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
-      writer.emit({ category: "sse", phase: "settled", correlationId: "successful" });
-      writer.emit({ category: "sse", phase: "failed", correlationId: "failed" });
-      writer.emit({ category: "duo", phase: "failed", correlationId: "unresolved", pinned: true });
-      assert.equal(repository.pruneBefore("2026-09-18"), 1);
-      const remaining = repository.page({}); assert.equal(remaining.length, 2);
-      assert.equal(repository.pruneBefore("2027-01-01"), 1);
-      assert.equal(repository.page({}).length, 1);
+      const clock = manualClock(AT);
+      const writer = createDebugEventWriter({ repository, clock, build: "test" });
+      writer.emit({ category: "sse", phase: "failed", correlationId: "old" });
+      const pinned = writer.emit({ category: "duo", phase: "failed", correlationId: "unresolved", pinned: true }).record;
+      clock.advanceWall(24 * 60 * 60 * 1000);
+      const recent = writer.emit({ category: "http", phase: "failed", correlationId: "recent" }).record;
+      assert.equal(repository.pruneBefore("2027-01-01"), 0);
+      assert.equal(repository.pruneDebugBefore("2026-10-10"), 0);
+      assert.equal(repository.pruneDebugBefore("2026-10-11"), 1);
+      assert.deepEqual(repository.debugPage({}), [pinned, recent]);
+      assert.equal(repository.pruneDebugBefore("2027-01-01"), 1);
+      assert.deepEqual(repository.debugPage({}), [pinned]);
     } finally { database.close(); }
   });
 
@@ -195,7 +260,7 @@ describe("native logging authority", () => {
     } finally { await f.dispose(); }
   });
 
-  it("expires an SSE start and its successful settle together seven days after settlement", () => {
+  it("expires an SSE start and its settle together, when the later one expires", () => {
     const { database, repository } = fixture();
     try {
       const clock = manualClock(new Date(2026, 9, 10, 23, 59));
@@ -203,12 +268,13 @@ describe("native logging authority", () => {
       const started = writer.emit({ category: "sse", phase: "started", correlationId: "successful" }).record;
       clock.advanceWall(120_000);
       const settled = writer.emit({ category: "sse", phase: "settled", correlationId: "successful" }).record;
+      clock.advanceWall(24 * 60 * 60 * 1000);
       const unrelated = writer.emit({ category: "sse", phase: "started", correlationId: "other" }).record;
 
-      assert.equal(repository.pruneBefore("2026-09-18"), 0);
-      assert.deepEqual(repository.page({}), [started, settled, unrelated]);
-      assert.equal(repository.pruneBefore("2026-09-19"), 2);
-      assert.deepEqual(repository.page({}), [unrelated]);
+      assert.equal(repository.pruneDebugBefore("2026-10-11"), 0);
+      assert.deepEqual(repository.debugPage({}), [started, settled, unrelated]);
+      assert.equal(repository.pruneDebugBefore("2026-10-12"), 2);
+      assert.deepEqual(repository.debugPage({}), [unrelated]);
     } finally { database.close(); }
   });
 });
@@ -222,7 +288,7 @@ describe("loopback debug reporting", () => {
       const report = { reportId: randomUUID_m0(), clientId: "browser-1", release: "test", route: "/", surface: "app",
         code: "INTERNAL_FAILURE", reason: "cause-unavailable", message: "UnknownError", stack: "UnknownError\n    at assets/index-abc.js:1:2" };
       const firstResponse = await send(report); assert.equal(firstResponse.status, 201, await firstResponse.text());
-      const rows = f.db.authority.timelineEvents.page({});
+      const rows = f.db.authority.timelineEvents.debugPage({});
       assert.equal(rows.filter(row => row.payload.kind === "debug" && row.payload.event.category === "client").length, 1);
       assert.equal(JSON.stringify(rows).includes("CANARY"), false);
       assert.equal((await send({ ...report, headers: { authorization: "CANARY" } })).status, 400);
@@ -230,7 +296,7 @@ describe("loopback debug reporting", () => {
       assert.equal((await send({ ...report, message: "a".repeat(65537) })).status, 413);
       for (let i = 0; i < 27; i++) assert.equal((await send({ ...report, reportId: randomUUID_m0() })).status, 201);
       assert.equal((await send(report)).status, 429);
-      assert.equal(JSON.stringify(f.db.authority.timelineEvents.page({})).includes("CANARY"), false);
+      assert.equal(JSON.stringify(f.db.authority.timelineEvents.debugPage({})).includes("CANARY"), false);
     } finally { await f.dispose(); }
   });
   it("refuses a closed cause row that carries message text or a private frame", async () => {
@@ -242,7 +308,7 @@ describe("loopback debug reporting", () => {
         code: "INTERNAL_FAILURE", reason: "cause-unavailable", message: "UnknownError", stack: "UnknownError\n    at assets/index-abc.js:1:2" };
       assert.equal((await send({ ...report, message: "token=CANARY" })).status, 400);
       assert.equal((await send({ ...report, stack: "UnknownError\n    at /Users/CANARY/record.js:1:2" })).status, 400);
-      assert.equal(JSON.stringify(f.db.authority.timelineEvents.page({})).includes("CANARY"), false);
+      assert.equal(JSON.stringify(f.db.authority.timelineEvents.debugPage({})).includes("CANARY"), false);
     } finally { await f.dispose(); }
   });
 });
@@ -284,6 +350,7 @@ const probe = String.raw`
     assert.equal(f.kernel.execute(command).state, 'already-applied');
     assert.equal(state(), beforeReplay, 'exact replay changes no authority');
     f.db.authority.timelineEvents.pruneBefore(cutoff);
+    f.db.authority.timelineEvents.pruneDebugBefore(cutoff);
     assert.equal(f.db.authority.timelineEvents.get(resolution.eventId) !== undefined, retained === 'yes');
     assert.equal(f.db.authority.timelineEvents.get(ordinaryId) !== undefined, retained === 'yes');
     const afterPrune = state();
