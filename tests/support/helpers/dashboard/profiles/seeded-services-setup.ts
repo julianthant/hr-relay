@@ -25,7 +25,7 @@ import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
 import { join } from "node:path";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
-import { composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
+import { composeNotificationPublications, composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { ocrHostRun } from "../../../../../src/backend/runs/queries/ocr-record-members.js";
 import { createNotificationTargetQuery } from "../../../../../src/backend/runs/queries/notifications.js";
 import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/commands/workbook-intake-service.js";
@@ -115,7 +115,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         database,
         descriptors: {
           resolve: (workflowId: string) =>
-            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : scripting === undefined ? undefined : scriptedDescriptorOf(workflowId)),
         },
       },
       trust,
@@ -171,8 +171,9 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     const modules = productWorkflows === true
       ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
       : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
-    const productAppDeps = (): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
-      const { observer } = createTrustNotifications({ database, clock, ids: sequentialIdFactory("n"), reader: lifecycle });
+    const strictDescriptors = { resolve: (id: string) => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } };
+    const trustNotifications = productWorkflows === true ? createTrustNotifications({ database, clock, ids: sequentialIdFactory("b"), reader: lifecycle }) : undefined;
+    const productAppDeps = ({ observer }: NonNullable<typeof trustNotifications>): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
       const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
         host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
         command: commandId => database.authority.commands.readForNotice(commandId),
@@ -186,13 +187,17 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
       };
       return {
-        notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
+        notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: strictDescriptors, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
         workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: modules.map(module => module.descriptor) },
         assistant,
       };
     };
-    const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
-    const productDeps = productWorkflows === true ? productAppDeps() : {};
+    const hub = createDashboardStreamHub({
+      projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
+      ...(trustNotifications === undefined ? {} : { notificationPublications: composeNotificationPublications({
+        database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox }) }),
+    });
+    const productDeps = trustNotifications === undefined ? {} : productAppDeps(trustNotifications);
     const app = createFixtureDashboardApp({
       ...productDeps,
       requestIdentity: createSoloRequestIdentityCheckpoint({
@@ -279,7 +284,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
     });
 
 
-  return { app, hub, scripted };
+  return { app, hub, scripted, notificationInbox: trustNotifications?.inbox };
   }
 
   return { composeSeededServices };

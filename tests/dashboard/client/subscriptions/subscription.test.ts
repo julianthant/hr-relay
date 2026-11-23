@@ -27,15 +27,22 @@ function hello(cursor: string, projectionGeneration = 7): Record<string, unknown
 }
 
 function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[], projectionGeneration = 7): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+  return { type: "snapshot", topic: "dashboard-day", position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+}
+
+/** The cursor a change follows when nothing was skipped: the one before its own. */
+function cursorBefore(cursor: string): string {
+  return `pc:${String(Math.max(1, Number(cursor.slice(3)) - 1))}`;
 }
 
 function replacePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "replace-queue-surface",
       target: { runId: RUN_ID, rowRevision },
       replacement: surfaceOf(rowRevision),
@@ -45,10 +52,12 @@ function replacePatch(cursor: string, rowRevision: number): Record<string, unkno
 
 function removePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "remove-queue-surface",
       target: { runId: RUN_ID, rowRevision },
       reason: "the run was deleted from the queue",
@@ -204,7 +213,29 @@ describe("dashboard day subscription — cursor idempotence", () => {
     h.close();
   });
 
-  it("applies a snapshot at the HELD cursor, because one projection batch stamps both", () => {
+  it("applies a change that skips cursors this connection was never sent", () => {
+    const h = liveAtCursorTwo();
+    h.streams[0].push({ ...replacePatch("pc:7", 3), after: "pc:2" });
+    assert.equal(h.days.length, 3);
+    assert.equal(h.days[2].queueSurfaces[0].rowRevision, 3);
+    assert.equal(h.streams.length, 1);
+    assert.deepEqual(h.scheduled, []);
+    h.close();
+  });
+
+  it("moves the held cursor on a change with no day part and delivers no day", () => {
+    const h = liveAtCursorTwo();
+    h.streams[0].push({ type: "change", topic: "dashboard-day", cursor: "pc:5", after: "pc:2", position: 0 });
+    assert.equal(h.days.length, 2);
+    h.streams[0].push(replacePatch("pc:6", 3));
+    assert.equal(h.days.length, 3, "the next change follows the cursor the empty change set");
+    h.streams[0].push({ ...replacePatch("pc:4", 4), after: "pc:2" });
+    assert.equal(h.days.length, 3, "a change below the moved cursor is already applied");
+    assert.deepEqual(h.scheduled, []);
+    h.close();
+  });
+
+  it("applies a snapshot at the HELD cursor", () => {
 
     const h = liveAtCursorTwo();
     h.streams[0].push(snapshotEnvelope("pc:2", [surfaceOf(9)]));
@@ -401,7 +432,7 @@ it("rejects a wrong-day snapshot and ignores callbacks from superseded handles",
   h.streams[1].push(hello("pc:2"));
   h.streams[1].push(snapshotEnvelope("pc:3", [surfaceOf(3)]));
   assert.equal(h.days.length, prior + 1);
-  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:4",
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:4",
     payload: { ...dayOf([surfaceOf(4)], "pc:4"), day: "2026-08-02" } });
   assert.equal(h.days.length, prior + 1);
   const state = h.states.at(-1); assert.equal(state?.state, "stopped");
@@ -418,7 +449,7 @@ describe("dashboard day subscription authority", () => {
       const h = subscribe();
       h.streams[0].push(hello("pc:1"));
       const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : field === "projectionGeneration" ? 8 : "pc:2" };
-      h.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+      h.streams[0].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload });
       assert.equal(h.days.length, 0);
       assert.equal(h.states.at(-1)?.state, "stopped");
       h.close();
@@ -441,7 +472,7 @@ it("rejects a lower-cursor snapshot with stale authority instead of silently dis
   for (const field of ["day", "descriptorHash", "projectionGeneration"] as const) {
     const h = liveAtCursorTwo();
     const payload = { ...dayOf([], "pc:1"), [field]: field === "day" ? "2026-08-04" : field === "descriptorHash" ? "e".repeat(64) : 8 };
-    h.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+    h.streams[0].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload });
     assert.equal(h.days.length, 2);
     const state = h.states.at(-1);
     assert.equal(state?.state, "stopped");
@@ -459,7 +490,7 @@ it("resets a high cursor on same-generation descriptor replacement and publishes
   assert.equal(h.streams[1].lastEventId, "pc:2");
   assert.equal(h.streams[1].lastProjectionGeneration, 7);
   h.streams[1].push({ ...hello("pc:1"), descriptorHash });
-  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload: { ...dayOf([surfaceOf(5)], "pc:1"), descriptorHash } });
+  h.streams[1].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload: { ...dayOf([surfaceOf(5)], "pc:1"), descriptorHash } });
   assert.equal(h.days.length, 3);
   assert.equal(h.days[2].descriptorHash, descriptorHash);
   assert.equal(h.days[2].queueSurfaces[0].rowRevision, 5);

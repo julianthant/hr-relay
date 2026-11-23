@@ -326,7 +326,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     assert.equal(section.value.order, record.cursor);
   });
 
-  it("advertises the section for a parked-gate run and for no other lifecycle", async () => {
+  it("advertises the section for a parked identity gate and for no other gate or lifecycle", async () => {
     const w = await world();
     seed(w);
     const detail = buildRunDetail(depsOf(w), RUN_ID);
@@ -340,6 +340,10 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
       queued.projection.runFold(RUN_ID) ?? (() => { throw new Error("no fold"); })(),
       queued.authority.getRun(RUN_ID) ?? (() => { throw new Error("no run"); })(),
     ).includes("identity-gate"));
+
+    const otherGate = await world();
+    seed(otherGate, { lifecycle: { ...PARKED_GATE_LIFECYCLE, gateId: "reference-check-review" } });
+    assert.ok(!buildRunDetail(depsOf(otherGate), RUN_ID).availableSections.includes("identity-gate"));
   });
 
   it("serves the review authority stored as display text, with the refs an answer must carry", async () => {
