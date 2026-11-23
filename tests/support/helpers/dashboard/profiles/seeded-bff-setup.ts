@@ -52,7 +52,7 @@ const retainedSeededFixtureOwners = new Set<object>();
 
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
-composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub" | "scripted">;
+composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub" | "scripted" | "lifecycle">;
 assertServedBundle: typeof BundleTypes.assertServedBundle;
 dateNavigationReader: typeof DateNavigationServerTypes.dateNavigationReader;
 seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
