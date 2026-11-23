@@ -8,7 +8,9 @@ import {
   type DashboardStreamEnvelope,
   type NotificationPublicationWire,
 } from "../../../models/dashboard/subscription.js";
+import { RunIdSchema } from "../../../rules/identity/ids.js";
 import { applyDashboardDayPatch } from "../queries/day-state.js";
+import type { RowStoreWriter } from "./row-store.js";
 import { DashboardClientError, protocolError } from "../errors.js";
 import type { DashboardTransport, StreamHandle } from "../transport.js";
 
@@ -42,6 +44,10 @@ export interface DashboardDaySubscriptionDeps {
   readonly day: string;
   readonly onDay: (day: DashboardDayWire) => void;
   readonly onState: (state: SubscriptionState) => void;
+  /** The run whose panel rides the stream; `select` changes it. */
+  readonly run?: string;
+  /** Where the stream's rows are held. */
+  readonly rows?: RowStoreWriter;
   readonly publications?: Readonly<{ actorId: string; onPublication: (publication: NotificationPublicationWire) => void }>;
   /** Injectable reconnect timer; defaults to setTimeout. */
   readonly schedule?: (delayMs: number, run: () => void) => () => void;
@@ -49,6 +55,8 @@ export interface DashboardDaySubscriptionDeps {
 }
 
 export interface DashboardDaySubscription {
+  /** Names the run whose panel the stream carries, or none. The stream reopens once, resuming from the held cursor. */
+  select(run: string | undefined): void;
   close(): void;
 }
 
@@ -85,6 +93,12 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
   let baseline: Baseline = {};
   let nextIdentity = 0;
   const published = new Set<string>();
+  const runOf = (value: string | undefined): string | undefined => {
+    const parsed = value === undefined ? undefined : RunIdSchema.safeParse(value);
+    return parsed?.success === true ? parsed.data : undefined;
+  };
+  let run = runOf(deps.run);
+  deps.rows?.open(run);
 
   /** The only writer of `phase`, and the only caller of `onState`. */
   function enter(next: StreamPhase, shown?: SubscriptionState): void {
@@ -136,7 +150,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     const generation = baseline.authority?.generation;
     const lastProjectionGeneration = lastEventId === undefined || generation === undefined ? undefined : generation;
     const identity = ++nextIdentity;
-    const stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
+    const stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}${run === undefined ? "" : `,run:${run}`}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),
       onMessage: (message) => {
@@ -271,6 +285,8 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       authority,
       held: { snapshot: envelope.payload, cursorNumber: cursor, cursorId: envelope.cursor },
     };
+    // Rows land before the day, so a view never holds a day row newer than the panel that came with it.
+    deps.rows?.apply(envelope.rows);
     deps.onDay(envelope.payload);
   }
 
@@ -307,6 +323,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       ...(authority === undefined ? {} : { authority }),
       held: { snapshot: next, cursorNumber: cursor, cursorId: envelope.cursor },
     };
+    deps.rows?.apply(envelope.rows);
     if (envelope.day !== undefined) deps.onDay(next);
   }
 
@@ -341,5 +358,14 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
 
   enter(phase, { state: "connecting" });
   openStream(false);
-  return Object.freeze({ close: (): void => stop() });
+  function select(value: string | undefined): void {
+    const next = runOf(value);
+    if (next === run || phase.phase === "stopped") return;
+    run = next;
+    deps.rows?.open(run);
+    // A waiting subscription opens with the new topics; an open one reopens at once, resuming from the held cursor.
+    if (phase.phase !== "waiting") openStream(true);
+  }
+
+  return Object.freeze({ select, close: (): void => stop() });
 }

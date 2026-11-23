@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { RunPanel } from "../../models/dashboard/subscription.js";
 import type { StartPlanWire } from "../../models/dashboard/start-plan.js";
 import { createRunLaunchService } from "../surfaces/run-start/run-launch-model.js";
-import { DashboardClientError } from "../client/errors.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandExecutionScope } from "../app/commands/command-executor.js";
@@ -66,6 +66,8 @@ function sameHeldOccurrence(envelope: DashboardCommandRequest, write: ParkedWrit
 }
 
 type RunReads = Pick<DashboardClient, "runDetail" | "runSection">;
+/** What a panel is checked against: the queue row's identity and revision. */
+type RowIdentity = Pick<LogSelection["row"], "runId" | "attempt" | "traceId" | "workflowId" | "rowRevision">;
 export interface RunLogSnapshot {
   readonly detail: RunDetailWire;
   readonly logs: NotePage;
@@ -97,14 +99,27 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
     if (next.section !== "logs") throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
     logs = appendLogPage(logs, cursor, next.payload);
   }
-  if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
-  if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
+  const unavailableEvidence = checkRunPanelLogs(row, detail, logs);
   signal.throwIfAborted();
-  const unavailableEvidence: string[] = [];
-  if (detail.captures?.state === "error") unavailableEvidence.push("Captures unavailable");
   const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"].includes(name)
     && (name !== "captures" || detail.captures?.state === "available"))
     .map(name => client.runSection(row.runId, name, undefined, signal)));
+  const snapshot = checkRunPanelSections(row, detail, logs, sections, unavailableEvidence);
+  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
+  return snapshot;
+}
+
+/** The checks a panel's detail and log must pass against the selected row, before its sections are looked at. */
+function checkRunPanelLogs(row: RowIdentity, detail: RunDetailWire, logs: NotePage): string[] {
+  if (detail.captures !== undefined && detail.captures.state !== "error" && ((detail.captures.state === "available") !== detail.availableSections.includes("captures"))) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
+  if (logRowsOf(logs, "identity").some(log => log.kind !== "note" && (log.attempt > row.attempt || log.traceId !== row.traceId))) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_MISMATCH");
+  const unavailableEvidence: string[] = [];
+  if (detail.captures?.state === "error") unavailableEvidence.push("Captures unavailable");
+  return unavailableEvidence;
+}
+
+/** The checks each section must pass against the detail and the selected row; returns the validated panel. */
+function checkRunPanelSections(row: RowIdentity, detail: RunDetailWire, logs: NotePage, sections: readonly RunDetailSectionResponse[], unavailableEvidence: string[]): RunLogSnapshot {
   for (const section of sections) {
     if (section.section === "workbook-writes" && section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_WORKBOOK_IDENTITY_MISMATCH");
     if (section.section === "workbook-writes" && section.payload.referenceChoices?.some(choice => choice.resolution.state === "available"
@@ -124,7 +139,6 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   }
   const snapshot: RunLogSnapshot = { detail, logs, sections, unavailableEvidence };
   validateRunLogSnapshot(snapshot);
-  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
   return snapshot;
 }
 
@@ -156,7 +170,7 @@ function keepRunLogs(client: object, authority: RunLogAuthority, snapshot: RunLo
 
 /** The last loaded logs of this exact run under this authority. A finished run's logs cannot change, so a kept
  * snapshot of the same attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
-export function keptRunLogsState(client: object, authority: RunLogAuthority, row: LogSelection["row"]): RunWiringState | undefined {
+export function keptRunLogsState(client: object, authority: RunLogAuthority, row: RowIdentity): RunWiringState | undefined {
   const runs = keptFor(client, authority);
   const snapshot = runs.get(row.runId);
   if (snapshot === undefined) return undefined;
@@ -585,6 +599,40 @@ function identityRefusalReason(cause: unknown): string {
   return "These logs don't match this run.";
 }
 
+/** The composite the stream carried for this run, held to the checks `readRunLogs` makes: detail against the row,
+ * log rows against the row, each section against the detail. A panel read after the row is ahead of it, and is shown. */
+function streamedRunSnapshot(row: RowIdentity, panel: Extract<RunPanel, { state: "available" }>): RunLogSnapshot {
+  const { detail, logs, sections } = panel;
+  if (detail.runId !== row.runId || detail.header.traceId !== row.traceId
+    || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
+  if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
+  if (logs.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
+  logRowsOf(logs, "initial");
+  return checkRunPanelSections(row, detail, logs, sections, checkRunPanelLogs(row, detail, logs));
+}
+
+/** The failed state of a panel the server refused, worded as the route's refusal was. */
+function refusedPanelState(error: Extract<RunPanel, { state: "refused" }>["error"]): RunWiringState {
+  if (error.code === "LOGS_IDENTITY_REFUSED") return { state: "failed", retryable: false, diagnostic: error, error: identityRefusalReason(undefined) };
+  const catalog = error.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED" ? "RUN_LOG_DISPLAY_VALUE_UNMAPPED" : "DASHBOARD_READ_FAILED";
+  return { state: "failed", retryable: error.retryable, diagnostic: error, error: formatErrorCatalogFailure(createErrorCatalogFailure(catalog, {})).text };
+}
+
+/** What the run panel shows for the row: nothing yet, a refusal as the route would have answered it, a panel
+ * that has not caught up with the row, or the validated composite. */
+function streamedRunState(client: object, authority: RunLogAuthority, row: RowIdentity, panel: RunPanel | undefined): RunWiringState {
+  if (panel === undefined) return keptRunLogsState(client, authority, row) ?? { state: "loading" };
+  if (panel.state === "refused") return refusedPanelState(panel.error);
+  try {
+    const snapshot = streamedRunSnapshot(row, panel);
+    return snapshot.detail.rowRevision < row.rowRevision ? { state: "loading", snapshot } : { state: "loaded", snapshot };
+  } catch (cause) {
+    if (panel.detail.runId === row.runId && panel.detail.rowRevision < row.rowRevision) return { state: "loading" };
+    if (!(cause instanceof RunLogIdentityError)) throw cause;
+    return { state: "failed", retryable: false, diagnostic: cause, error: identityRefusalReason(cause) };
+  }
+}
+
 interface GateCommandOwner {
   readonly client: DashboardClient;
   readonly runId: string;
@@ -621,21 +669,14 @@ export function runCommandRefreshesDay(view: CommandAttemptView, type: string): 
 
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
-  // Every day frame re-serves the row as a new object, and a running run's revision moves with each worker heartbeat.
-  // A row of the same run that lands while the read is in flight must not restart it, or frequent frames keep Logs
-  // loading forever; the read lands, then a newer revision or a row that landed after it settled (a day refresh) reads again.
-  const readRow = useRef(row);
-  const reading = useRef(false);
-  const latestRow = useRef(row);
-  const settledRow = useRef(row);
-  latestRow.current = row;
-  const previous = readRow.current;
-  if (previous.runId !== row.runId || previous.attempt !== row.attempt || previous.traceId !== row.traceId || previous.workflowId !== row.workflowId
-    || !reading.current && (previous.rowRevision !== row.rowRevision || row !== settledRow.current && row !== previous)) readRow.current = row;
-  const servedRow = readRow.current;
-  const request = useMemo(() => ({ client, runId: servedRow.runId, revision: servedRow.rowRevision, day: binding?.authority.day, selection: { row: servedRow, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
-    epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
-  [client, servedRow, selection.workflowLabel, binding?.authority.day, binding?.scope, binding?.authority.epoch, binding?.authority.dayState.day.state, binding?.authority.dayState.request, binding?.authority.dayState.refresh]);
+  const rows = binding?.authority.dayState.rows;
+  const subscribeRows = useCallback((listener: () => void) => rows?.subscribe(listener) ?? (() => undefined), [rows]);
+  const panel = useSyncExternalStore(subscribeRows, () => rows?.runPanel(row.runId));
+  const authority = useMemo<RunLogAuthority>(() => ({ epoch: binding?.authority.epoch, actorId: binding?.scope.actorId }), [binding?.authority.epoch, binding?.scope.actorId]);
+  // A day frame re-serves the row as a new object; only its identity and revision change what the panel shows.
+  const { runId, attempt, traceId, workflowId, rowRevision } = row;
+  const value = useMemo(() => streamedRunState(client, authority, { runId, attempt, traceId, workflowId, rowRevision }, panel), [client, authority, runId, attempt, traceId, workflowId, rowRevision, panel]);
+  useEffect(() => { if (value.snapshot !== undefined && value.state === "loaded") keepRunLogs(client, authority, value.snapshot); }, [client, authority, value]);
   const commandOwner = useMemo<GateCommandOwner>(() => ({ client, runId: row.runId, day: binding?.authority.day,
     epoch: binding?.authority.epoch, dayRequest: binding?.authority.dayState.request, scope: binding?.scope }),
   [client, row.runId, binding?.authority.day, binding?.authority.epoch, binding?.authority.dayState.request, binding?.scope]);
@@ -648,50 +689,6 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const [command, setCommand] = useState<{ owner: GateCommandOwner; envelope: DashboardCommandRequest; state: RunCommandState; feedback?: string }>();
   const commandRef = useRef(command);
   commandRef.current = command;
-  const active = useRef(request);
-  active.current = request;
-  const refreshBudget = useMemo(() => ({ client, runId: row.runId, actorId: binding?.scope.actorId,
-    epoch: binding?.authority.epoch, day: binding?.authority.day, revisions: new Set<number>() }),
-  [client, row.runId, binding?.scope.actorId, binding?.authority.epoch, binding?.authority.day]);
-  const [settled, setSettled] = useState<{ request: typeof request; value: RunWiringState }>(() => ({ request, value: keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" } }));
-  const sameRun = settled.request.client === client && settled.request.runId === row.runId && settled.request.day === binding?.authority.day
-    && settled.request.epoch === request.epoch && settled.request.actorId === request.actorId;
-  const value = useMemo<RunWiringState>(() => settled.request === request ? settled.value
-    : sameRun && settled.value.snapshot ? { state: "loading", snapshot: settled.value.snapshot }
-    : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
-  useEffect(() => {
-    if (request.dayState !== undefined && request.dayState !== "loaded") return;
-    if (keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, request.selection.row)?.state === "loaded") return;
-    const controller = new AbortController();
-    reading.current = true;
-    const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
-    const read = () => void readRunLogs(client, request.selection, controller.signal).then(snapshot => {
-      if (active.current === request && !controller.signal.aborted) { ended(); keepRunLogs(client, { epoch: request.epoch, actorId: request.actorId }, snapshot); setSettled({ request, value: { state: "loaded", snapshot } }); }
-    }, cause => {
-      if (active.current !== request || controller.signal.aborted) return;
-      ended();
-      if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
-        refreshBudget.revisions.add(request.revision);
-        setSettled({ request, value: { state: "loading", snapshot: cause.snapshot } });
-        request.refreshDay();
-        return;
-      }
-      const refused = cause instanceof RunLogIdentityError || (cause instanceof DashboardClientError && cause.code === "LOGS_IDENTITY_REFUSED");
-      const retryable = !refused && !(cause instanceof DashboardClientError && !cause.retryable && cause.kind !== "schema");
-      const error = refused ? identityRefusalReason(cause)
-        : cause instanceof DashboardClientError && cause.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED"
-        ? formatErrorCatalogFailure(createErrorCatalogFailure("RUN_LOG_DISPLAY_VALUE_UNMAPPED", {})).text
-        : cause instanceof DashboardClientError && cause.kind !== "schema"
-        ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
-        : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
-      setSettled(current => ({ request, value: { state: "failed", error, retryable, diagnostic: cause,
-        ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
-          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
-    });
-    // Start after the mount settles: a mount cancelled in the same tick sends nothing.
-    queueMicrotask(() => { if (!controller.signal.aborted) read(); });
-    return () => { controller.abort(); reading.current = false; };
-  }, [client, request, row.runId, refreshBudget]);
   const gate = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "identity-gate") : undefined;
   const detail = value.snapshot?.detail;
   const batchRetry = batchMemberRetryAction(row);

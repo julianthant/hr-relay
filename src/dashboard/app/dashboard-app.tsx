@@ -372,7 +372,7 @@ function LoadedApp({
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
-  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id);
+  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, route.run);
   const dayResource = dayState.day;
   snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
     .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
