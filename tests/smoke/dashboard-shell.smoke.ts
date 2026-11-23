@@ -100,6 +100,7 @@ test("Back, Forward and Reload follow the URL", async ({ dashboard, failures, pa
   await expect(dashboard.pageHeading("Separations queue")).toBeVisible();
   await dashboard.settleReads();
   await page.goForward();
+  await dashboard.settleReads();
   await page.goForward();
   await expect(dashboard.pageHeading("Analytics")).toBeVisible();
   await dashboard.settleReads();
