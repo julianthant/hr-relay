@@ -254,6 +254,30 @@ it("refuses copying a protected value to another field during delegation admissi
   assert.deepEqual(f.database.authority.dependencies.listByParentRun(runId), []);
 });
 
+it("refuses replacing a protected value in the same field during delegation admission", async () => {
+  let admitting = false;
+  const workflow = childPolicyModules("cascade", "inline", input => admitting ? { ...input, emplId: "10800001" } : input);
+  const f = await fixture("cascade", false, false, plan1Stores, undefined, false, workflow);
+  const runId = f.root.envelope.runId;
+  const admit = f.execution.lifecycle.admitDelegation.bind(f.execution.lifecycle);
+  const refusal = vi.spyOn(f.execution.lifecycle, "admitDelegation").mockImplementationOnce((batch, plans) => {
+    admitting = true;
+    return admit(batch, plans);
+  });
+
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "failed");
+  assert.equal(refusal.mock.calls.length, 1);
+  const result = refusal.mock.results[0];
+  assert.ok(result?.type === "throw");
+  const cause: unknown = result.value;
+  assert.ok(cause instanceof Error);
+  assert.equal(cause.message, "delegation-protected-input-mismatch");
+  assert.deepEqual(f.database.authority.runs.listChildren(runId), []);
+  assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(runId), []);
+  assert.deepEqual(f.database.authority.lifecycleJournal.listDelegationInvocations(runId), []);
+  assert.deepEqual(f.database.authority.dependencies.listByParentRun(runId), []);
+});
+
 it("refuses attempting and UNKNOWN parked parent writes at delegation admission without partial publication", async () => {
   const f = await fixture("cascade");
   const native = delegationAdmission.admitDelegation;

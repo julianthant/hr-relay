@@ -85,10 +85,11 @@ it("keeps a connected day cursor contiguous across a log-only poll", async () =>
 
     writer.emit({ ...task, t: "span.started", kind: "task", name: "searching" });
     w.projection.ingestFromTimeline();
-    const patch = await connection.next();
-    assert.equal(patch?.type, "patch");
-    assert.equal(patch.cursor, `pc:${Number(baseline.cursor.slice(3)) + 1}`);
-    assert.equal(afterLogs, baseline.cursor);
+    const change = await connection.next();
+    assert.equal(change?.type, "change");
+    assert.equal(change.cursor, `pc:${Number(baseline.cursor.slice(3)) + 1}`);
+    assert.equal(change.after, baseline.cursor);
+    assert.equal(afterLogs, baseline.cursor, "folded log activity moves no cursor");
     connection.close();
   } finally {
     hub.close();
@@ -294,15 +295,22 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     const tag = first.headers.get("ETag");
     assert.ok(tag, "the first Queue response supplies a validator");
     assert.equal(first.headers.get("Cache-Control"), "private, no-cache");
-    const wire: unknown = await first.json();
+    const firstWire = DashboardDayWireSchema.parse(await first.json());
     assert.equal(queueReads, 1);
     for (let tab = 0; tab < 2; tab += 1) {
       const connection = await hub.connect({ day: DAY });
       const snapshot = connection.initial.find(event => event.type === "snapshot");
       assert.ok(snapshot);
-      assert.equal(JSON.stringify(snapshot.payload), JSON.stringify(wire));
+      // Each fresh connection mints its own cursor; the reused day is stamped with it.
+      assert.equal(JSON.stringify(snapshot.payload), JSON.stringify({ ...firstWire, snapshotCursor: snapshot.cursor }));
       connection.close();
     }
+    const wire = { ...firstWire, snapshotCursor: projection.cursor() };
+    const restamped = await readDay(`W/${tag}`);
+    assert.equal(restamped.status, 200, "a minted cursor changes the day's validator");
+    assert.deepEqual(await restamped.json(), wire);
+    const currentTag = restamped.headers.get("ETag");
+    assert.ok(currentTag);
     const listsBeforeDiagnostics = runLists;
     const cursorBeforeDiagnostics = projection.cursor();
     const debug = createDebugEventWriter({ repository: w.timeline, clock: w.clock, build: APP_VERSION });
@@ -315,11 +323,11 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     const repeated = await readDay();
     assert.equal(repeated.status, 200);
     assert.deepEqual(await repeated.json(), wire);
-    assert.equal(repeated.headers.get("ETag"), tag);
+    assert.equal(repeated.headers.get("ETag"), currentTag);
     const beforeValidation = daySnapshots;
-    const validated = await readDay(`"older", W/${tag}`);
+    const validated = await readDay(`"older", W/${currentTag}`);
     assert.equal(validated.status, 304);
-    assert.equal(validated.headers.get("ETag"), tag);
+    assert.equal(validated.headers.get("ETag"), currentTag);
     assert.equal(validated.headers.get("Cache-Control"), "private, no-cache");
     assert.equal(await validated.text(), "");
     assert.equal(daySnapshots, beforeValidation, "the SQLite source check already owns the snapshot for a cache hit");
@@ -351,9 +359,9 @@ it("shares an unchanged day across a GET and stream connects and refreshes it wh
     assert.equal(queueReads, 1, "renaming an unlinked run outside the month reuses the day build");
 
     assert.equal(rename(uuidOf(99), uuidOf(1), "Renamed August run").state, "applied");
-    const afterSelectedRename = await readDay(tag);
+    const afterSelectedRename = await readDay(currentTag);
     assert.equal(afterSelectedRename.status, 200);
-    assert.notEqual(afterSelectedRename.headers.get("ETag"), tag);
+    assert.notEqual(afterSelectedRename.headers.get("ETag"), currentTag);
     assert.deepEqual(DashboardDayWireSchema.parse(await afterSelectedRename.json()).queueSurfaces[0]?.displayName,
       { state: "present", value: "Renamed August run" });
     assert.equal(queueReads, 2, "renaming a selected run invalidates its cached day before the next poll");
