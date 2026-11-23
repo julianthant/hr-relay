@@ -242,7 +242,12 @@ describe("useDashboardDay — the last known day first", () => {
       return { close: () => { entry.closed = true; } };
     } } as DashboardClient;
     const renders: { day: string; state: DashboardDayState }[] = [];
-    function Probe({ day, epoch }: { day: string; epoch: object }) { renders.push({ day, state: useDashboardDay(day, undefined, epoch, "local-operator") }); return null; }
+    let duringRender: (() => void) | undefined;
+    function Probe({ day, epoch }: { day: string; epoch: object }) {
+      renders.push({ day, state: useDashboardDay(day, undefined, epoch, "local-operator") });
+      const during = duringRender; duringRender = undefined; during?.();
+      return null;
+    }
     const root = createRoot(document.createElement("div"));
     mounted = root;
     const epoch = {};
@@ -253,7 +258,7 @@ describe("useDashboardDay — the last known day first", () => {
     };
     const serve = async (index: number, day: DashboardDayWire) => { await act(async () => subscriptions[index].input.onDay(day)); };
     const state = async (index: number, connection: SubscriptionState) => { await act(async () => subscriptions[index].input.onState(connection)); };
-    return { subscriptions, renders, show, serve, state, latest: () => renders.at(-1)!.state };
+    return { subscriptions, renders, show, serve, state, latest: () => renders.at(-1)!.state, beforeCleanup: (act: () => void) => { duringRender = act; } };
   }
 
   it("renders a returning day's kept frame in the switch's first render, then the fresh frame", async () => {
@@ -298,6 +303,29 @@ describe("useDashboardDay — the last known day first", () => {
     const day = h.latest().day;
     assert.equal(day.state, "loading");
     assert.equal(day.state === "loading" ? day.kept?.value : undefined, first);
+  });
+
+  it("keeps nothing a superseded stream delivers between the next render and its cleanup", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    const first = frame(DAY, "pc:1");
+    await h.serve(0, first);
+    h.beforeCleanup(() => h.subscriptions[0].input.onDay(frame(DAY, "pc:9")));
+    await h.show(OTHER_DAY);
+    assert.equal(h.subscriptions[0].closed, true);
+    const back = await h.show(DAY);
+    assert.equal(back?.state.day.state === "loading" ? back.state.day.kept?.at : undefined, "pc:1");
+  });
+
+  it("forgets every kept frame on a stream reset before the request's first frame", async () => {
+    const h = await mountDays();
+    await h.show(DAY);
+    await h.serve(0, frame(DAY, "pc:1"));
+    await h.show(OTHER_DAY);
+    await h.state(1, { state: "live" });
+    await h.state(1, { state: "connecting" });
+    const back = await h.show(DAY);
+    assert.deepEqual(back?.state.day, { state: "loading" });
   });
 
   it("forgets every kept frame on a stream reset", async () => {

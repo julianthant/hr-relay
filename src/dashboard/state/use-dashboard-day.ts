@@ -43,7 +43,9 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
     let active = true;
     let shown = request.kept;
     let value: DashboardDayState = { request, day: loadingWith(shown), connection: { state: "connecting" }, refresh, subscribePublications };
-    let served = false;
+    // Whether this stream has served a frame or reported itself up; connecting again after either is a reset.
+    let opened = false;
+    const owns = (): boolean => active && activeRequest.current === request;
     const publish = (): void => { if (active) setResult({ request, value }); };
     publish();
     if (day === undefined) return () => { active = false; };
@@ -61,17 +63,22 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
           const error = protocolError("day-request-identity-mismatch");
           value = { request, day: failed(error), connection: { state: "stopped", error }, refresh, subscribePublications };
         } else {
-          served = true;
-          keptDays.keep(client, [authorityEpoch, actorId], day, { value: next, at: next.snapshotCursor });
+          opened = true;
+          // A superseded stream can still deliver between the next render and this effect's cleanup; it keeps nothing.
+          if (owns()) keptDays.keep(client, [authorityEpoch, actorId], day, { value: next, at: next.snapshotCursor });
           value = { ...value, day: loaded(next) };
         }
         publish();
       },
       onState: (connection) => {
         if (!active) return;
-        // Connecting again after a served frame is a stream reset: nothing kept from before it may show.
-        const reset = served && connection.state === "connecting";
-        if (reset) { served = false; shown = undefined; dropKeptResults(client); }
+        // A stream reset, even before this request's first frame: nothing kept from before it may show.
+        if (connection.state === "connecting" && opened) {
+          opened = false;
+          shown = undefined;
+          if (owns()) dropKeptResults(client);
+        }
+        if (connection.state !== "connecting" && connection.state !== "stopped") opened = true;
         value = { request, day: connection.state === "stopped" && connection.error !== undefined
           ? failed(connection.error) : connection.state === "connecting" ? loadingWith(shown) : value.day, connection, refresh, subscribePublications };
         publish();
