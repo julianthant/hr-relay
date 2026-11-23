@@ -27,17 +27,15 @@ export type WorkerSessionBrowser =
  */
 export type WorkerSessionState = WorkerSessionBrowser | Readonly<{ state: "failed"; browser: WorkerSessionBrowser }>;
 
-const WORKER_SESSION_BROWSER_KEYS = deepFreeze([
-  "closed",
-  "starting/launching",
-  "starting/signing-in",
-  "authenticated/idle",
-  "authenticated/leased",
-  "closing/acquisition",
-  "closing/session",
-  "closure-unproved",
-] as const);
-export type WorkerSessionBrowserKey = (typeof WORKER_SESSION_BROWSER_KEYS)[number];
+export type WorkerSessionBrowserKey =
+  | "closed"
+  | "starting/launching"
+  | "starting/signing-in"
+  | "authenticated/idle"
+  | "authenticated/leased"
+  | "closing/acquisition"
+  | "closing/session"
+  | "closure-unproved";
 export type WorkerSessionStateKey = WorkerSessionBrowserKey | `failed/${WorkerSessionBrowserKey}`;
 
 export type WorkerSessionEvent =
