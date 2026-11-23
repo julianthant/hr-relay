@@ -82,7 +82,7 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
           period: find(`${runs} figure .text-control`)?.textContent?.trim(),
           updating: findTarget({ selector: `${toolbar} [role="status"]`, text: "Updating" }) !== undefined,
           exportLocked: findTarget({ selector: `${toolbar} button:disabled`, text: "Export" }) !== undefined,
-          drillInLocked: drillIn instanceof HTMLAnchorElement && drillIn.getAttribute("aria-disabled") === "true"
+          drillInLocked: drillIn instanceof HTMLButtonElement && drillIn.disabled
             && drillIn.tabIndex === -1 && getComputedStyle(drillIn).pointerEvents === "none",
           bounds: analyticsBoxes(drillIn),
         },
