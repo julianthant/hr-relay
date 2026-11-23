@@ -9,8 +9,34 @@ import { stoppedWorkerToasts } from "../../../../src/dashboard/app/commands/work
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import type { ControlHarness } from "../../../support/helpers/backend/dashboard-pool-world.js";
 
-const { WORKFLOW, WORKER_1, openControlHarness, dashboardLaunch, launchCommands, planWorkers, nextCommandId, settleMicrotasks, view, cleanup } = createDashboardPoolTestWorld();
+const { WORKFLOW, WORKER_1, openControlHarness, dashboardLaunch, launchCommands, planWorkers, nextCommandId, view, cleanup } = createDashboardPoolTestWorld();
 afterEach(cleanup);
+
+function waitForWorkerExit(h: ControlHarness) {
+  return vi.waitFor(() => {
+    const worker = view(h);
+    assert.equal(worker.state, "exited");
+    assert.equal(worker.exit?.settlement, "settled", "worker exit did not settle");
+  }, { timeout: 5_000 });
+}
+
+function waitForStartupSettled(h: ControlHarness, after = 0) {
+  return vi.waitFor(() => {
+    assert.ok(h.startupPending.length > after, "detached worker startup was not observed");
+    assert.equal(h.startupPending.at(-1), false, "detached worker startup did not settle");
+  }, { timeout: 5_000 });
+}
+
+async function replyWhileStartupHeld(h: ControlHarness, commands: ReturnType<typeof launchCommands>, request: ReturnType<typeof dashboardLaunch>["request"]) {
+  const submitted = commands.submit(request);
+  let settled = false;
+  void submitted.then(() => { settled = true; }, () => { settled = true; });
+  await vi.waitFor(() => assert.ok(settled, "Start's reply waited for worker startup"), { timeout: 5_000 });
+  const reply = await submitted;
+  await vi.waitFor(() => assert.equal(commands.startupPending(WORKFLOW), true, "worker startup did not reach its held state after Start replied"), { timeout: 5_000 });
+  assert.equal(h.detachedStartupFailures.length, 0);
+  return reply;
+}
 
 /** What the dashboard serves for the fixture workflow: its worker cards, its queued rows' no-worker flag, and the sticky queued-run notices. */
 function served(h: ControlHarness, startupPending: (workflowId: string) => boolean) {
@@ -28,7 +54,7 @@ describe("automatic Run capacity", () => {
     const h = await openControlHarness();
     const { request } = dashboardLaunch(h, "10873690", { items: 2 });
     assert.equal((await launchCommands(h).submit(request)).state, "applied");
-    await settleMicrotasks();
+    await waitForStartupSettled(h);
     assert.equal(h.children.length, 1);
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
     assert.equal((await launchCommands(h).submit(request)).state, "already-applied");
@@ -49,9 +75,10 @@ describe("automatic Run capacity", () => {
 
   it("uses every running member without adding another", async () => {
     const h = await openControlHarness();
-    await planWorkers(h, 2); await settleMicrotasks();
+    await planWorkers(h, 2);
+    await vi.waitFor(() => assert.equal(h.workers.pool.snapshot().filter(member => member.state === "running").length, 2));
     assert.equal((await launchCommands(h).submit(dashboardLaunch(h).request)).state, "applied");
-    await settleMicrotasks();
+    await waitForStartupSettled(h);
     assert.equal(h.children.length, 2);
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 2);
     assert.deepEqual(h.detachedStartupFailures, []);
@@ -59,11 +86,12 @@ describe("automatic Run capacity", () => {
 
   it("replaces a crashed sole member once without expanding the pool", async () => {
     const h = await openControlHarness();
-    await planWorkers(h, 1); await settleMicrotasks();
-    h.children[0]?.exit(null, "SIGKILL"); await settleMicrotasks();
+    await planWorkers(h, 1);
+    await vi.waitFor(() => assert.equal(view(h).state, "running"));
+    h.children[0]?.exit(null, "SIGKILL"); await waitForWorkerExit(h);
     assert.equal(view(h).state, "exited");
     assert.equal((await launchCommands(h).submit(dashboardLaunch(h).request)).state, "applied");
-    await settleMicrotasks();
+    await waitForStartupSettled(h);
     assert.equal(h.children.length, 2);
     assert.equal(view(h, WORKER_1).state, "running");
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
@@ -72,19 +100,20 @@ describe("automatic Run capacity", () => {
   it("respawns the stopped sole member when a run is resumed, and the resumed run is queued for it", async () => {
     const h = await openControlHarness();
     const { request } = dashboardLaunch(h);
-    const started = await launchCommands(h).submit(request); assert.ok(started.state === "applied"); await settleMicrotasks();
+    const started = await launchCommands(h).submit(request); assert.ok(started.state === "applied"); await waitForStartupSettled(h);
     const run = started.affectedTargets.find(target => target.family === "run"); assert.ok(run?.family === "run");
     const runCommand = (type: "pause" | "resume") => ({ commandId: nextCommandId(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
       source: "dashboard", family: "run", type, target: { runId: run.runId, expectedVersion: h.database.authority.runs.get(run.runId)?.version ?? 0 } });
     assert.equal((await launchCommands(h).submit(runCommand("pause"))).state, "applied");
-    h.children[0]?.exit(0, null); await settleMicrotasks();
+    h.children[0]?.exit(0, null); await waitForWorkerExit(h);
     assert.equal(view(h).state, "exited");
-    const resumed = await launchCommands(h).submit(runCommand("resume")); await settleMicrotasks();
+    const beforeResume = h.startupPending.length;
+    const resumed = await launchCommands(h).submit(runCommand("resume")); await waitForStartupSettled(h, beforeResume);
     assert.equal(resumed.state, "applied");
     assert.equal(resumed.state === "applied" ? resumed.workerStartup : "unexpected", undefined);
     assert.equal(h.children.length, 2);
     assert.equal(h.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 1);
-    assert.equal(view(h, WORKER_1).state, "running");
+    await vi.waitFor(() => assert.equal(view(h, WORKER_1).state, "running"));
     const current = h.database.authority.runs.get(run.runId);
     assert.equal(current?.lifecycle.state, "queued");
     assert.equal(current?.pause, undefined);
@@ -93,7 +122,7 @@ describe("automatic Run capacity", () => {
   it("respawns the stopped sole member once when a bulk Resume re-queues its runs", async () => {
     const h = await openControlHarness();
     const { request } = dashboardLaunch(h, "10873690", { items: 2 });
-    const started = await launchCommands(h).submit(request); assert.ok(started.state === "applied"); await settleMicrotasks();
+    const started = await launchCommands(h).submit(request); assert.ok(started.state === "applied"); await waitForStartupSettled(h);
     const runIds = started.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []);
     assert.equal(runIds.length, 2);
     const bulk = (type: "pause" | "resume") => { const bulkCommandId = nextCommandId(); return { commandId: bulkCommandId, bulkCommandId,
@@ -107,8 +136,9 @@ describe("automatic Run capacity", () => {
     const executeBulk = (body: unknown) => ingress.executeBulk(body, accepted => commands.executeBulk(accepted));
     const paused = await executeBulk(bulk("pause"));
     assert.ok(paused.state === "vector" && paused.results.every(result => result.outcome === "applied"));
-    h.children[0]?.exit(0, null); await settleMicrotasks();
-    const resumed = await executeBulk(bulk("resume")); await settleMicrotasks();
+    h.children[0]?.exit(0, null); await waitForWorkerExit(h);
+    const beforeResume = h.startupPending.length;
+    const resumed = await executeBulk(bulk("resume")); await waitForStartupSettled(h, beforeResume);
     assert.ok(resumed.state === "vector");
     assert.deepEqual(resumed.results.map(result => result.outcome === "applied" && result.workerStartup === undefined), [true, true]);
     assert.equal(h.children.length, 2);
@@ -122,18 +152,17 @@ describe("automatic Run capacity", () => {
         const planned = planWorkers(h, 1);
         await vi.waitFor(() => assert.equal(h.children.length, 1));
         h.children[0]?.ready(); await planned;
-        h.children[0]?.exit(null, "SIGKILL"); await settleMicrotasks();
+        h.children[0]?.exit(null, "SIGKILL"); await waitForWorkerExit(h);
       }
       const before = h.children.length;
-      const submitted = launchCommands(h).submit(dashboardLaunch(h).request);
-      const reply = await Promise.race([submitted, settleMicrotasks(20).then(() => undefined)]);
+      const reply = await replyWhileStartupHeld(h, launchCommands(h), dashboardLaunch(h).request);
       assert.ok(reply !== undefined, "Start's reply waited for the worker's ready message");
       assert.ok(reply.state === "applied", JSON.stringify(reply));
       assert.equal(reply.workerStartup, undefined);
       assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).filter(run => run.lifecycle.state === "queued").length, 1);
       await vi.waitFor(() => assert.equal(h.children.length, before + 1));
       assert.equal(view(h).state, "starting");
-      h.children.at(-1)?.ready(); await settleMicrotasks();
+      h.children.at(-1)?.ready(); await waitForStartupSettled(h);
       assert.equal(view(h).state, "running");
       assert.deepEqual(h.faults, []);
     });
@@ -141,14 +170,14 @@ describe("automatic Run capacity", () => {
 
   it("reports a member that never becomes ready once, after Start has replied, and shows it failed on its card", async () => {
     const h = await openControlHarness({ ready: false });
-    const reply = await Promise.race([launchCommands(h).submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    const reply = await replyWhileStartupHeld(h, launchCommands(h), dashboardLaunch(h).request);
     assert.ok(reply?.state === "applied" && reply.workerStartup === undefined, JSON.stringify(reply));
     await vi.waitFor(() => assert.equal(h.children.length, 1));
     assert.equal(h.detachedStartupFailures.length, 0);
     h.clock.advanceMonotonic(60_000);
     for (const entry of h.scheduler.pending()) entry.fire();
-    await settleMicrotasks();
-    h.children[0]?.exit(null, "SIGKILL"); await settleMicrotasks();
+    await vi.waitFor(() => assert.deepEqual(h.children[0]?.kills, ["SIGKILL"]));
+    h.children[0]?.exit(null, "SIGKILL"); await waitForStartupSettled(h);
     assert.deepEqual(h.children[0]?.kills, ["SIGKILL"]);
     assert.deepEqual(h.faults.map(fault => "code" in fault ? fault.code : fault.message), ["WORKER_START_TIMED_OUT"]);
     assert.equal(view(h).state, "exited");
@@ -160,11 +189,11 @@ describe("automatic Run capacity", () => {
   it("keeps a second Start's reply off the first Start's worker startup, and starts one worker for both", async () => {
     const h = await openControlHarness({ ready: false });
     const commands = launchCommands(h);
-    const first = await Promise.race([commands.submit(dashboardLaunch(h, "10873690").request), settleMicrotasks(20).then(() => undefined)]);
-    const second = await Promise.race([commands.submit(dashboardLaunch(h, "10873691").request), settleMicrotasks(20).then(() => undefined)]);
+    const first = await replyWhileStartupHeld(h, commands, dashboardLaunch(h, "10873690").request);
+    const second = await replyWhileStartupHeld(h, commands, dashboardLaunch(h, "10873691").request);
     assert.deepEqual([first?.state, second?.state], ["applied", "applied"]);
     assert.equal(h.children.length, 1);
-    h.children[0]?.ready(); await settleMicrotasks();
+    h.children[0]?.ready(); await waitForStartupSettled(h);
     assert.equal(h.children.length, 1);
     assert.equal(h.database.authority.workerSlots.active(WORKFLOW).length, 1);
     assert.deepEqual([h.faults, h.detachedStartupFailures], [[], []]);
@@ -173,11 +202,11 @@ describe("automatic Run capacity", () => {
   it("serves a first Start's pending worker as starting, with no queued-run notice, until it runs", async () => {
     const h = await openControlHarness({}, undefined, { holdPreflight: true });
     const commands = launchCommands(h);
-    const reply = await Promise.race([commands.submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    const reply = await replyWhileStartupHeld(h, commands, dashboardLaunch(h).request);
     assert.equal(reply?.state, "applied");
     await vi.waitFor(() => assert.equal(h.preflight.entered(), 1));
     assert.deepEqual(served(h, commands.startupPending), { cards: ["starting"], notStarting: [], notices: 0 });
-    h.preflight.release(); await settleMicrotasks();
+    h.preflight.release(); await waitForStartupSettled(h);
     assert.deepEqual(served(h, commands.startupPending), { cards: ["idle"], notStarting: [], notices: 0 });
     assert.deepEqual([h.startupPending, h.faults, h.detachedStartupFailures], [[true, false], [], []]);
   });
@@ -188,9 +217,9 @@ describe("automatic Run capacity", () => {
     await vi.waitFor(() => assert.equal(h.preflight.entered(), 1));
     h.preflight.release(); await vi.waitFor(() => assert.equal(h.children.length, 1));
     h.children[0]?.ready(); await planned;
-    h.children[0]?.exit(null, "SIGKILL"); await settleMicrotasks();
+    h.children[0]?.exit(null, "SIGKILL"); await waitForWorkerExit(h);
     const commands = launchCommands(h);
-    const reply = await Promise.race([commands.submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    const reply = await replyWhileStartupHeld(h, commands, dashboardLaunch(h).request);
     assert.equal(reply?.state, "applied");
     await vi.waitFor(() => assert.equal(h.preflight.entered(), 2));
     const phases = [served(h, commands.startupPending)];
@@ -198,8 +227,8 @@ describe("automatic Run capacity", () => {
     phases.push(served(h, commands.startupPending));
     h.clock.advanceMonotonic(60_000);
     for (const entry of h.scheduler.pending()) entry.fire();
-    await settleMicrotasks();
-    h.children[1]?.exit(null, "SIGKILL"); await settleMicrotasks();
+    await vi.waitFor(() => assert.deepEqual(h.children[1]?.kills, ["SIGKILL"]));
+    h.children[1]?.exit(null, "SIGKILL"); await waitForStartupSettled(h);
     phases.push(served(h, commands.startupPending));
     assert.deepEqual(phases, [{ cards: ["starting"], notStarting: [], notices: 0 }, { cards: ["starting"], notStarting: [], notices: 0 },
       { cards: ["failed"], notStarting: ["NO_WORKER"], notices: 1 }]);
@@ -209,13 +238,13 @@ describe("automatic Run capacity", () => {
   it("closes a pending worker preflight when the pool stops after Start, and settles the detached startup before the stop returns", async () => {
     const h = await openControlHarness({}, undefined, { holdPreflight: true });
     const commands = launchCommands(h);
-    const reply = await Promise.race([commands.submit(dashboardLaunch(h).request), settleMicrotasks(20).then(() => undefined)]);
+    const reply = await replyWhileStartupHeld(h, commands, dashboardLaunch(h).request);
     assert.equal(reply?.state, "applied");
     await vi.waitFor(() => assert.equal(h.preflight.entered(), 1));
     await h.workers.pool.stopAll("shutdown");
     assert.deepEqual(h.detachedStartupFailures.map(error => error instanceof RunWorkerStartupError ? error.failure.state : error), ["refused"]);
     assert.equal(h.startupPending.at(-1), false);
-    h.preflight.release(); await settleMicrotasks();
+    h.preflight.release();
     assert.equal(h.children.length, 0, "no member starts once the pool has stopped");
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW)[0]?.lifecycle.state, "queued");
   });

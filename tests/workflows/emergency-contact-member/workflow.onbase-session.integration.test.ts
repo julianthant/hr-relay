@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -23,22 +23,27 @@ const need = { system: "onbase", access: "read", session: "reuse-worker", exclus
 const ACTIVE_RUN_STATES = "('claimed', 'validating', 'running')";
 const ActiveOwnerSchema = z.strictObject({ workerId: z.string(), runId: z.string() });
 
-// Runs the two-worker scenario; `wait` lets a test drive the clock while the second filing is blocked.
-async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manualClock>; scheduler: ManualScheduler; database: ReturnType<typeof exclusiveLeaseFixture>["database"];
+async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manualClock>; scheduler: ManualScheduler; polls: ManualScheduler; releaseFingerprint(manager: WorkerSessionManager): void; signal: AbortSignal; database: ReturnType<typeof exclusiveLeaseFixture>["database"];
   first: WorkerSessionManager; second: WorkerSessionManager; launcher1: ReturnType<ReturnType<typeof createBrowserSessionFactoryFixtures>["fakeLauncher"]>; launcher2: ReturnType<ReturnType<typeof createBrowserSessionFactoryFixtures>["fakeLauncher"]> }>) => Promise<void>): Promise<void> {
-  // Each lease poll advances the shared clock, so a never-released lease reaches the acquisition deadline quickly.
   const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
-  const pollScheduler = { schedule: (_deadline: number, callback: () => void) => { const timer = setTimeout(() => { clock.advanceMonotonic(200); callback(); }, 1); return { cancel: () => clearTimeout(timer) }; } };
+  const pollScheduler = new ManualScheduler(clock);
   const f = createBrowserSessionFactoryFixtures(clock, "11111111-1111-4111-8111-111111111111", pollScheduler);
   const fingerprint = FingerprintSchema.parse("1".repeat(64));
   const sessionScheduler = new ManualScheduler(clock);
   await f.withTempRuntime(async ({ config, root }) => {
     const { database, repository } = exclusiveLeaseFixture();
-    database.exec("ALTER TABLE runs ADD COLUMN workflow TEXT; UPDATE runs SET workflow='onbase'");
-    const runs: Pick<AuthorityDatabase["authority"]["runs"], "listActiveOwners"> = { listActiveOwners: (workflow: string) => database.prepare(`SELECT owner_worker_id AS workerId, id AS runId FROM runs WHERE workflow = ? AND state IN ${ACTIVE_RUN_STATES}`)
-      .all(workflow).map(row => ActiveOwnerSchema.parse(row)) };
     const managers: WorkerSessionManager[] = [];
+    const bound = new Set<WorkerSessionManager>();
+    const filing = new AbortController();
+    const failures: unknown[] = [];
+    const releaseFingerprint = (manager: WorkerSessionManager) => {
+      manager.releaseRunConfigFingerprint();
+      bound.delete(manager);
+    };
     try {
+      database.exec("ALTER TABLE runs ADD COLUMN workflow TEXT; UPDATE runs SET workflow='onbase'");
+      const runs: Pick<AuthorityDatabase["authority"]["runs"], "listActiveOwners"> = { listActiveOwners: (workflow: string) => database.prepare(`SELECT owner_worker_id AS workerId, id AS runId FROM runs WHERE workflow = ? AND state IN ${ACTIVE_RUN_STATES}`)
+        .all(workflow).map(row => ActiveOwnerSchema.parse(row)) };
       const bindings: BrowserSystemBindings = { onbase: { system: "onbase", exclusive: true, createDriver: () => ({ system: "onbase" }),
         login: async () => "logged-in", verifyAuthenticated: async context => {
           const probe = await f.verifierFor().verify(context);
@@ -54,73 +59,98 @@ async function withTwoWorkers(body: (w: Readonly<{ clock: ReturnType<typeof manu
           acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: await fixtureDuoCeremonyGates(clock), browserScreenshotCapture: { capture: async () => undefined } });
         managers.push(manager);
         manager.bindRunConfigFingerprint(fingerprint, undefined, { runId: `00000000-0000-4000-8000-00000000009${String(ordinal)}`, descriptorFingerprint: fingerprint });
+        bound.add(manager);
         return manager;
       };
       const launcher1 = f.fakeLauncher(), launcher2 = f.fakeLauncher();
       const first = await worker(1, "11111111-1111-4111-8111-111111111111", launcher1);
       const second = await worker(2, "33333333-3333-4333-8333-333333333333", launcher2);
-      await body({ clock, scheduler: sessionScheduler, database, first, second, launcher1, launcher2 });
-    } finally {
-      for (const manager of managers) { try { manager.releaseRunConfigFingerprint(); } catch { /* already released */ } await manager.closeAll("worker-stop").catch(() => undefined); }
-      database.close();
+      await body({ clock, scheduler: sessionScheduler, polls: pollScheduler, releaseFingerprint, signal: filing.signal, database, first, second, launcher1, launcher2 });
+    } catch (error) { failures.push(error); }
+    filing.abort();
+    for (const manager of managers) {
+      try { if (bound.has(manager)) releaseFingerprint(manager); }
+      catch (error) { failures.push(error); }
+      try { await manager.closeAll("worker-stop"); }
+      catch (error) { failures.push(error); }
     }
+    try { database.close(); }
+    catch (error) { failures.push(error); }
+    if (failures.length > 0) throw new AggregateError(failures, "OnBase two-worker fixture failed or its cleanup failed");
   });
 }
 
-const file = (manager: WorkerSessionManager) => manager.withDriver(need, "prod", new AbortController().signal, async driver => { assert.equal(driver.system, "onbase"); });
-// Fires session-acquisition expiry timers that are due, as a real scheduler would.
-const fireDue = (scheduler: ManualScheduler, clock: ReturnType<typeof manualClock>) => { for (const entry of scheduler.pending()) if (entry.deadlineMonotonicMs <= clock.monotonicMs()) entry.fire(); };
+const file = (manager: WorkerSessionManager, signal: AbortSignal) => manager.withDriver(need, "prod", signal, async driver => { assert.equal(driver.system, "onbase"); });
+function nextPoll(scheduler: ManualScheduler) {
+  return vi.waitFor(() => {
+    const [poll] = scheduler.pending();
+    assert.ok(poll, "second filing did not schedule its OnBase lease poll");
+    return poll;
+  });
+}
+
+function observeFiling(manager: WorkerSessionManager, signal: AbortSignal) {
+  const filing = file(manager, signal);
+  let outcome: { value: unknown } | undefined;
+  void filing.then(() => { outcome = { value: "opened" }; }, (error: unknown) => { outcome = { value: error }; });
+  return { filing, outcome: () => outcome };
+}
 
 describe("Emergency Contact member OnBase filing and the exclusive OnBase session", () => {
   it("member workers share the exclusive OnBase session: a second worker's filing waits and opens once the first worker parks for member work", async () => {
-    await withTwoWorkers(async ({ database, first, second, launcher1, launcher2 }) => {
-      await file(first);
+    await withTwoWorkers(async ({ clock, polls, releaseFingerprint, signal, database, first, second, launcher1, launcher2 }) => {
+      await file(first, signal);
       assert.equal(launcher1.launches().length, 1);
 
-      const filing = file(second);
-      await new Promise(resolve => setTimeout(resolve, 20));
+      const { filing, outcome } = observeFiling(second, signal);
+      const poll = await nextPoll(polls);
+      assert.equal(outcome(), undefined, "the second filing is still waiting for the lease");
       assert.equal(launcher2.launches().length, 0, "the second filing waits for the lease instead of failing or launching");
 
-      first.releaseRunConfigFingerprint();
+      releaseFingerprint(first);
       await first.parkForExecution(member, taskStoreRegistry);
       assert.equal(database.prepare("SELECT released_at FROM exclusive_session_leases").get()?.released_at !== null, true);
 
+      clock.advanceMonotonic(poll.deadlineMonotonicMs - clock.monotonicMs());
+      poll.fire();
       await filing;
       assert.equal(launcher2.launches().length, 1);
     });
   });
 
   it("a filing waits past sessionAcquireMs while another worker is still filing", async () => {
-    await withTwoWorkers(async ({ clock, scheduler, database, first, second, launcher2 }) => {
-      await file(first);
-      const filing = file(second);
-      let done = false, outcome: unknown;
-      void filing.then(() => "opened", (error: unknown) => error).then(result => { outcome = result; done = true; });
-      const started = clock.monotonicMs();
-      while (!done && clock.monotonicMs() - started < 2 * FIXTURE_SESSION_ACQUIRE_MS) { await new Promise(resolve => setTimeout(resolve, 1)); fireDue(scheduler, clock); }
-      assert.equal(done, false, `the waiting filing must not settle while the holder is actively running onbase: ${String(outcome)}`);
+    await withTwoWorkers(async ({ clock, scheduler, polls, releaseFingerprint, signal, database, first, second, launcher2 }) => {
+      await file(first, signal);
+      const { filing, outcome } = observeFiling(second, signal);
+      let poll = await nextPoll(polls);
+      for (let step = 0; step < 3; step++) {
+        clock.advanceMonotonic(FIXTURE_SESSION_ACQUIRE_MS - 1);
+        for (const expiry of scheduler.pending()) if (expiry.deadlineMonotonicMs <= clock.monotonicMs()) expiry.fire();
+        poll.fire();
+        poll = await nextPoll(polls);
+      }
+      assert.equal(outcome(), undefined, `the waiting filing must not settle while the holder is actively running onbase: ${String(outcome()?.value)}`);
       assert.equal(launcher2.launches().length, 0);
 
       database.exec("UPDATE runs SET state='completed' WHERE id='run-1'");
-      first.releaseRunConfigFingerprint();
+      releaseFingerprint(first);
       await first.parkForExecution(member, taskStoreRegistry);
+      clock.advanceMonotonic(poll.deadlineMonotonicMs - clock.monotonicMs());
+      poll.fire();
       await filing;
       assert.equal(launcher2.launches().length, 1);
     });
-  }, 60_000);
+  });
 
   it("a filing still fails with OnbaseSessionHeldError at the deadline when the holder has no active run", async () => {
-    await withTwoWorkers(async ({ clock, scheduler, database, first, second, launcher2 }) => {
-      await file(first);
+    await withTwoWorkers(async ({ clock, polls, signal, database, first, second, launcher2 }) => {
+      await file(first, signal);
       database.exec("UPDATE runs SET state='completed' WHERE id='run-1'");
-      const filing = file(second);
-      const settled = filing.then(() => undefined, (error: unknown) => error);
-      const started = clock.monotonicMs();
-      while (clock.monotonicMs() - started < 3 * FIXTURE_SESSION_ACQUIRE_MS) {
-        if (await Promise.race([settled.then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 5))])) break;
-        fireDue(scheduler, clock);
-      }
-      assert.ok(await settled instanceof OnbaseSessionHeldError);
+      const { filing } = observeFiling(second, signal);
+      const poll = await nextPoll(polls);
+      clock.advanceMonotonic(FIXTURE_SESSION_ACQUIRE_MS);
+      poll.fire();
+      await assert.rejects(filing, OnbaseSessionHeldError);
       assert.equal(launcher2.launches().length, 0);
     });
   });
