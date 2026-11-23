@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, realpathSync, writeSync } from "node:fs";
+import { mkdirSync, realpathSync, statSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -64,7 +64,12 @@ export function assertCopySigninFixture(profile: CopyProfile, workspace: string,
   const canonical = (path: string) => { try { return realpathSync(path); } catch { return path; } };
   let real: string;
   try { real = realpathSync(workspace); } catch { throw new CopySigninError("copy-signin-target-refused"); }
-  if (real !== workspace || basename(workspace) !== runtimeProfiles[profile].namespace || !within(dirname(workspace), canonical(temporary))
+  // Case-insensitive volumes alias one directory under several spellings, so existing live roots are matched by device and inode.
+  const identity = (path: string) => { try { const { dev, ino } = statSync(path, { bigint: true }); return `${String(dev)}:${String(ino)}`; } catch { return undefined; } };
+  const live = new Set(liveRoots.map(identity).filter(id => id !== undefined));
+  const ancestry = (path: string): string[] => dirname(path) === path ? [path] : [path, ...ancestry(dirname(path))];
+  if (real !== workspace || ancestry(real).some(path => live.has(identity(path) ?? ""))
+    || basename(workspace) !== runtimeProfiles[profile].namespace || !within(dirname(workspace), canonical(temporary))
     || liveRoots.some(root => within(workspace, canonical(root)) || within(workspace, root))) throw new CopySigninError("copy-signin-target-refused");
 }
 

@@ -60,6 +60,13 @@ it("refuses a fixture under any live profile root even when the temporary root r
   expect(() => assertCopySigninFixture("staging", outside, directory, [production])).toThrow("copy-signin-target-refused");
 });
 
+it("refuses a fixture reached through a case alias of a live profile root that holds the temporary root", () => {
+  const live = join(directory, "Live"), alias = join(directory, "live"), fixture = join(alias, "tmp", "fixture", "Relay-development");
+  mkdirSync(join(live, "tmp", "fixture", "Relay-development"), { recursive: true });
+  // Case-sensitive volumes have no alias; the check must refuse either way.
+  expect(() => assertCopySigninFixture("development", fixture, join(alias, "tmp"), [live])).toThrow("copy-signin-target-refused");
+});
+
 it("keeps the OS keychain and the real Duo provider unless a fixture workspace is bound", () => {
   expect(selectedCredentialSecretStore()).toBe(osCredentialSecretStore);
   expect(copySigninFixtureDuoProvider()).toBeUndefined();
