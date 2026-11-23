@@ -140,8 +140,9 @@ describe("flat CI plan", () => {
     for (const job of ["macos", "unit-proofs", "perf", "smoke"]) {
       expect(() => verifyCiResults(plan, { ...releaseResults, [job]: { result: "skipped" } })).toThrow();
     }
-    for (const invalid of [{ ...full, head: "task/ci/x" }, { ...full, event: "push" }, { ...full, workflow: "release" },
-      context("portable", { event: "schedule" })]) {
+    expect(createCiPlan({ ...full, event: "workflow_dispatch" })).toEqual(plan);
+    for (const invalid of [{ ...full, event: "workflow_dispatch", head: "task/ci/x" }, { ...full, head: "task/ci/x" }, { ...full, event: "push" }, { ...full, workflow: "release" },
+      context("portable", { event: "schedule" }), context("fast", { event: "workflow_dispatch" })]) {
       expect(() => createCiPlan(invalid)).toThrow();
     }
   });

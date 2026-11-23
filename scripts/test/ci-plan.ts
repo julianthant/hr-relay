@@ -28,8 +28,8 @@ export function createCiPlan(input: unknown): CiPlan {
   const manual = context.event === "workflow_dispatch";
   const fast = context.workflow === "fast";
   const full = context.workflow === "full";
-  if (full !== (context.event === "schedule") || (full && context.head !== "development")) {
-    throw new Error("Full CI runs only on the development schedule.");
+  if (full ? !(manual || context.event === "schedule") || context.head !== "development" : context.event === "schedule") {
+    throw new Error("Full CI runs only on the development schedule or dispatch.");
   }
   if (context.event === "push" && !(fast && context.head.startsWith("task/"))) {
     throw new Error("Push CI runs only fast checks on task branches.");
@@ -73,8 +73,8 @@ export function createCiPlan(input: unknown): CiPlan {
   const macos = fullRelease ? jobs("native", nativeShards) : [];
   return ciPlanSchema.parse({ ...selected, workflow: context.workflow, fullRelease,
     lint: !fast || !context.draft,
-    perf: !fast && !manual && !context.draft,
-    smoke: !manual && !context.draft && (!fast || (taskPush && context.filters.smoke === "true")),
+    perf: !fast && (full || !manual) && !context.draft,
+    smoke: (full || !manual) && !context.draft && (!fast || (taskPush && context.filters.smoke === "true")),
     ubuntu: { include: ubuntu }, macos: { include: macos },
     testJobs: ubuntu.length + macos.length,
   });
