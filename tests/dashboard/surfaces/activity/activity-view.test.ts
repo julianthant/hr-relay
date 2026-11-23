@@ -218,7 +218,7 @@ it('agrees on one run total across the header, the legend and the table for the 
   await render(data);
   const header = /(\d+) runs? in this period/.exec(document.body.textContent ?? '');
   assert(header, 'the Runs header counts runs');
-  const legend = [...document.querySelectorAll('ul[aria-label="Key figures"] li')].reduce((n, item) => n + Number(/^(\d+) ·/.exec(item.querySelector('span:last-child')?.textContent ?? '')?.[1]), 0);
+  const legend = [...document.querySelectorAll('ul[aria-label="Key figures"] li')].reduce((n, item) => n + Number(/^(\d+) ·/.exec(item.lastElementChild?.textContent ?? '')?.[1]), 0);
   const table = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr:not([data-open]) td:nth-child(3)')].reduce((n, cell) => n + Number(cell.textContent), 0);
   assert.equal(Number(header[1]), legend);
   assert.equal(legend, table);
