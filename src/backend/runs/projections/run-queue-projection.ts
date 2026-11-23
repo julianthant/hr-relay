@@ -1470,7 +1470,8 @@ export class RunQueueProjection {
       const revision = this.#deps.authority.checkDaySources?.(parsedDay, current.sources.through);
       const now = this.#deps.clock.nowMs();
       if (revision?.kind === "unchanged" && current.builtAt <= now && now < current.validUntil) {
-        return atCursor(current.wire);
+        current.wire = atCursor(current.wire);
+        return current.wire;
       }
     }
     this.#dayCache.delete(parsedDay);
@@ -1480,7 +1481,8 @@ export class RunQueueProjection {
       const previous = current !== undefined && current.builtAt <= now && now < current.validUntil ? current : undefined;
       const revision = summaries === undefined ? undefined : this.#deps.authority.checkDaySources?.(parsedDay, previous?.sources);
       if (previous !== undefined && revision?.kind === "unchanged" && previous.refreshedRuns.size === 0) {
-        return { wire: atCursor(previous.wire), cache: { ...previous, sources: { ...previous.sources, through: revision.through } } };
+        const wire = atCursor(previous.wire);
+        return { wire, cache: { ...previous, wire, sources: { ...previous.sources, through: revision.through } } };
       }
       let patch: QueueDayPatch | undefined;
       if (previous !== undefined && revision?.kind === "runs") {
