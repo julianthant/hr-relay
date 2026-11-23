@@ -30,7 +30,7 @@ import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, ManualSched
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { CONFIG_SNAPSHOT, UUID_4, UUID_5, UUID_6 } from "../../fixtures/phase1c-contract-fixtures.js";
-import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../fixtures/backend/queued-run.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import { type RunParent } from "../../../../src/models/run/envelope.js";
@@ -185,7 +185,7 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
     now: string,
     options: Readonly<{ protectedValue?: boolean; parent?: RunParent }> = {},
   ): RunRecord {
-    return buildQueuedRun({
+    return queuedRunFixture({
       descriptor: actionBindingCompiled.descriptor,
       appVersion: "0.1.0",
       runId: UUID_5,

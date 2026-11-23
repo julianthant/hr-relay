@@ -1,16 +1,16 @@
 
-import type { JsonValue } from "../../../rules/validation/canonical-json.js";
-import { IsoInstantSchema } from "../../../rules/identity/ids.js";
-import type { BrowserPresentationMode, InstanceSelection, RunParent, RunPriority, RunShape } from "../../../models/run/envelope.js";
-import type { StepOmissions } from "../../../models/workflow/step-omission.js";
-import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
-import { RunRecordSchema } from "../../../models/run/record.js";
-import type { RunRecord } from "../../../models/run/record.js";
-import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { currentBuildId } from "../../runtime/build-id.js";
+import type { JsonValue } from "../../../../src/rules/validation/canonical-json.js";
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import type { BrowserPresentationMode, InstanceSelection, RunParent, RunPriority, RunShape } from "../../../../src/models/run/envelope.js";
+import type { StepOmissions } from "../../../../src/models/workflow/step-omission.js";
+import { RunEnvelopeSchema } from "../../../../src/models/run/envelope.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import type { RunRecord } from "../../../../src/models/run/record.js";
+import type { SchemaBoundCanonicalValue } from "../../../../src/models/validation/schema-bound-value.js";
+import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 
-export interface QueuedRunSpec {
+interface QueuedRunFixtureInput {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly runId: string;
   readonly itemId: string;
@@ -40,7 +40,7 @@ export interface QueuedRunSpec {
   readonly now: string;
 }
 
-export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
+export function queuedRunFixture(spec: QueuedRunFixtureInput): RunRecord {
   const enqueuedAt = IsoInstantSchema.parse(spec.now);
   const envelope = RunEnvelopeSchema.parse({
     runId: spec.runId,

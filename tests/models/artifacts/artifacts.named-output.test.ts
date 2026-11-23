@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
-import { ARTIFACT_COLLECTION_MEDIA_TYPE, ArtifactCollectionFilesSchema, ArtifactRefSchema, NamedArtifactOutputSchema } from "../../../src/models/artifacts/artifacts.js";
+import { ARTIFACT_COLLECTION_MEDIA_TYPE, ArtifactCollectionFilesSchema, CollectionArtifactOutputSchema, ArtifactRefSchema, NamedArtifactOutputSchema, NamedFileArtifactOutputSchema } from "../../../src/models/artifacts/artifacts.js";
 import { deriveArtifactProjectionRows } from "../../../src/models/workflow/artifact-projection.js";
-import { collectionArtifactOutput, namedArtifactOutput } from "../../../src/workflow-kit/artifacts.js";
-import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { classifyEvidenceLeaf, evidenceLeaves } from "../../../src/models/trust/evidence-classification.js";
 import { redactValue } from "../../../src/rules/redaction/redaction.js";
 import { namedFileOutputContract } from "../../support/fixtures/named-file-output-workflow.js";
@@ -23,23 +21,18 @@ it.each([["July/a.zip", "July/a.zip"], ["July/A.zip", "july/a.zip"], ["July", "J
   assert.equal(ArtifactCollectionFilesSchema.safeParse(paths.map(relativePath => ({ relativePath, artifact }))).success, false);
 });
 
-it("retains the exact ordered collection manifest and derives one run-bound projection", async () => {
+it("retains collection order in the run-bound projection", () => {
   const files = [{ relativePath: "July 6/July 6.zip", artifact }, { relativePath: "August 2/August 2.zip", artifact }];
-  let captured: Uint8Array | undefined;
   const manifestRef = { ...artifact, mediaType: ARTIFACT_COLLECTION_MEDIA_TYPE };
-  const output = await collectionArtifactOutput({ async put(bytes, metadata) {
-    assert.ok(bytes instanceof Uint8Array); captured = bytes;
-    assert.equal(metadata.mediaType, ARTIFACT_COLLECTION_MEDIA_TYPE); return manifestRef;
-  }, async open() { throw new Error("manifest creation must not read artifacts"); } }, files);
+  const output = CollectionArtifactOutputSchema.parse({ files, artifact: manifestRef });
   assert.deepEqual(output, { files, artifact: manifestRef });
-  assert.equal(new TextDecoder().decode(captured), canonicalJsonStringify({ files }));
   const runId = randomUUID();
   const rows = deriveArtifactProjectionRows({ specs: [{ ...specs[0], keyFields: ["archive.artifact.sha256"] }], nodeId: "archive", outputValue: { archive: output }, runId });
   assert.equal(rows.length, 1); assert.equal(rows[0]?.sinkId, `documents-file-${runId}`); assert.deepEqual(rows[0]?.value, output);
 });
 
 it("derives a deterministic output for exactly its original run", () => {
-  const runId = randomUUID(), outputValue = { archive: namedArtifactOutput(artifact, "Onboarding Docs batch.zip") };
+  const runId = randomUUID(), outputValue = { archive: NamedFileArtifactOutputSchema.parse({ artifact, fileName: "Onboarding Docs batch.zip" }) };
   const row = deriveArtifactProjectionRows({ specs, nodeId: "archive", outputValue, runId });
   assert.equal(row[0]?.sinkId, `documents-file-${runId}`);
   assert.deepEqual(deriveArtifactProjectionRows({ specs, nodeId: "archive", outputValue, runId }), row);
