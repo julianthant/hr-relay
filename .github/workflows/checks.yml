@@ -461,7 +461,15 @@ jobs:
         run: |
           dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:smoke
+      - run: npm run test:smoke -- --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/smoke-profile.json
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: smoke-profile
+          path: ${{ runner.temp }}/smoke-profile.json
+          if-no-files-found: error
 
   unit:
     name: unit
