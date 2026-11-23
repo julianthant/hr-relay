@@ -10,7 +10,7 @@ import { boundProfileAdmission, findProfileFixtureAdmission } from "../../../sup
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createRunDiagnosticCapture } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
-import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../../support/fixtures/backend/deterministic-provider.js";
 import { createProviderClient } from "../../../../src/backend/processing/providers/provider-client.js";
 import { runRuntimeMatches } from "../../../../src/backend/runs/lifecycle/run-claim-admission.js";
 import { selectNewRunIdentity,selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";

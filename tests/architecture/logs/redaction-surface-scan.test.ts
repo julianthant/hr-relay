@@ -15,7 +15,7 @@ import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryRe
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
-import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { LedgerEntrySchema } from "../../../src/rules/runs/ledger.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
@@ -874,12 +874,12 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
       "the exit run's checkpoints must actually carry the subject name",
     );
 
-    const receipt = buildRunEvidenceReceipt({
+    const receipt = deriveRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
       run: seeded.run,
       result: database.authority.runResults.get(EXIT_RUN_ID),
       checkpoints: seeded.checkpoints,
-    });
+    }).receipt;
     const serialized = canonicalJsonStringify(receipt);
     assert.ok(serialized.includes(subjectName), "the receipt omitted the retained subject name");
     assert.ok(serialized.includes("Battistessa"), "the receipt omitted the retained surname");

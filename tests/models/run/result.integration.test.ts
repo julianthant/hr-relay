@@ -49,7 +49,7 @@ import { writeFixtureDescriptor } from "../../support/fixtures/write-sequencer-f
 
 
 
-import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import type { ReceiptBuildInput } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import type { RunEvidenceReceipt } from "../../../src/models/trust/evidence.js";
@@ -357,7 +357,7 @@ function runUnderMovedClosure(patch: Readonly<{
 }
 
 function receiptFrom(overrides: Partial<ReceiptBuildInput> = {}): RunEvidenceReceipt {
-  return buildRunEvidenceReceipt({ descriptor, ...kualiReceiptEvidence(), ...overrides });
+  return deriveRunEvidenceReceipt({ descriptor, ...kualiReceiptEvidence(), ...overrides }).receipt;
 }
 
 function refusalFor(overrides: Partial<ReceiptBuildInput>): string {

@@ -2,7 +2,7 @@ import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/so
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { requireLifecycleApplied,workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../../support/fixtures/backend/queued-run.js";
 import { planStart,resolveInstances } from "../../../../src/backend/runs/start/plan.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { RunInputStorageSchema } from "../../../../src/models/run/record.js";
@@ -41,7 +41,7 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     assert.ok(planned);
     assert.deepEqual(planned.input.protectedBindings?.map(binding => binding.kind), ["test-data-local", "profile"]);
     const runId = h.ids.uuid();
-    const run = buildQueuedRun({ descriptor: separationsDescriptor, runId, itemId: planned.itemId,
+    const run = queuedRunFixture({ descriptor: separationsDescriptor, runId, itemId: planned.itemId,
       traceId: deriveTraceId(separationsDescriptor.code, runId, h.clock), rawInput: planned.rawInput,
       canonicalInput: planned.input, ingressSchemaHash: deriveSchemaHash(separationsDescriptor.input, "input"),
       configFingerprint: snapshot.configFingerprint, configSnapshotId: snapshot.configSnapshotId,
