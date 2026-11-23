@@ -8,7 +8,7 @@ import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-pat
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerInvocationConfig } from "../../../src/models/config/schema.js";
 import { ProviderCapabilityIdSchema } from "../../../src/rules/identity/ids.js";
 import { PROVIDER_ADAPTER_SPECS, ProviderIdSchema } from "../../../src/models/runtime/runtime-dependencies.js";
-import { createDeterministicProviderHarness } from "../../../src/backend/processing/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../support/fixtures/backend/deterministic-provider.js";
 import { gitVisibleFiles, REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const NETWORK_MODULE_PATTERN = /^(?:node:)?(?:http|https|http2)$|^(?:axios|got|undici|openai)$/u;
@@ -169,7 +169,6 @@ describe("provider capability boundary", () => {
       gitVisibleFiles(["src/backend/processing/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
       [
         "src/backend/processing/providers/chatgpt-ocr-adapter.ts",
-        "src/backend/processing/providers/deterministic-provider.ts",
         "src/backend/processing/providers/geocode-adapters.ts",
         "src/backend/processing/providers/nominatim-owner.ts",
         "src/backend/processing/providers/ocr-approved-snapshot-adapter.ts",
@@ -178,7 +177,7 @@ describe("provider capability boundary", () => {
         "src/backend/processing/providers/sharepoint-browser-transport.ts",
         "src/backend/processing/providers/workbook-library-adapter.ts",
       ].sort(),
-      "the registered local workbook, subscription OCR, deterministic, geocoding and bounded SharePoint transport modules are the complete provider modules",
+      "the registered local workbook, subscription OCR, geocoding and bounded SharePoint transport modules are the complete provider modules",
     );
     assert.deepEqual(
       gitVisibleFiles(["src/backend/app/host/local-vite-probe.ts"])

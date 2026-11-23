@@ -4,7 +4,7 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
-import { createDeterministicProviderHarness } from "../../../../src/backend/processing/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../../support/fixtures/backend/deterministic-provider.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { FingerprintSchema, IsoInstantSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";

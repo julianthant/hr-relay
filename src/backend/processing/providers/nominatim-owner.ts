@@ -89,15 +89,17 @@ export function createNominatimService(input: Readonly<{
     const timer = setTimeout(abort, remaining);
     const cancelled = () => unavailable(clock, requestQueued() ? (options.signal.aborted ? "aborted" : "timeout") : "adapter-unavailable");
     const work = tail.then(async () => {
-      if (controller.signal.aborted || !requestQueued()) return cancelled();
-      nextStart ??= machineMonotonicMs() + 1000;
-      const waitMs = nextStart - machineMonotonicMs();
-      if (waitMs > 0) await new Promise<void>(done => {
-        const wake = () => { clearTimeout(wait); done(); };
-        const wait = setTimeout(() => { controller.signal.removeEventListener("abort", wake); done(); }, Math.ceil(waitMs));
-        controller.signal.addEventListener("abort", wake, { once: true });
-      });
-      if (controller.signal.aborted || !requestQueued() || clock.monotonicMs() >= options.deadlineMonotonicMs) return cancelled();
+      for (;;) {
+        if (controller.signal.aborted || !requestQueued() || clock.monotonicMs() >= options.deadlineMonotonicMs) return cancelled();
+        nextStart ??= machineMonotonicMs() + 1000;
+        const waitMs = nextStart - machineMonotonicMs();
+        if (waitMs <= 0) break;
+        await new Promise<void>(done => {
+          const wake = () => { clearTimeout(wait); done(); };
+          const wait = setTimeout(() => { controller.signal.removeEventListener("abort", wake); done(); }, Math.ceil(waitMs));
+          controller.signal.addEventListener("abort", wake, { once: true });
+        });
+      }
       try {
         adapter ??= input.adapter((...args) => {
           try { return (input.fetchFn ?? fetch)(...args); }

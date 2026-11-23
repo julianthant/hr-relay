@@ -4,10 +4,10 @@ import { createRunBrowserScreenshotCapture } from "../../../src/backend/logs/dia
 import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
-import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../../support/fixtures/backend/queued-run.js";
 import { buildRerunPlan } from "../../../src/backend/runs/start/rerun.js";
 import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
@@ -164,7 +164,7 @@ async function makeCase(testCase: Case) {
   });
   assert.equal(plan.refused.length, 0);
   const entry = plan.planned[0]; assert.ok(entry);
-  const queued = buildQueuedRun({ descriptor: personLookupDescriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "pl-090000-2222",
+  const queued = queuedRunFixture({ descriptor: personLookupDescriptor, runId: "22222222-2222-4222-8222-222222222222", itemId: entry.itemId, traceId: "pl-090000-2222",
     rawInput: entry.rawInput, canonicalInput: entry.input, ingressSchemaHash: plan.ingressSchemaHash, configFingerprint: plan.configFingerprint, configSnapshotId: plan.configSnapshotId,
     resolvedInstance: plan.resolvedInstance, shape: plan.shape, priority: plan.priority, dryRun: false, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: clock.now().toISOString() });
   return { harness, queued, input, plan };
@@ -202,8 +202,8 @@ describe("approved Person Lookup scenarios", () => {
     const terminal = database.authority.runResults.get(queued.envelope.runId); assert.ok(terminal);
     const output = PersonLookupResultSchema.parse(terminal.result.value);
     const receiptRun = database.authority.runs.get(queued.envelope.runId); assert.ok(receiptRun);
-    const actualReceipt = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor, run: receiptRun, result: terminal,
-      checkpoints: database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId) });
+    const actualReceipt = deriveRunEvidenceReceipt({ descriptor: personLookupDescriptor, run: receiptRun, result: terminal,
+      checkpoints: database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId) }).receipt;
     const agreement = actualReceipt.verification.find(row => row.obligation === "identity.eid-agrees-across-sources");
     const selection = actualReceipt.verification.find(row => row.obligation === "identity.ucpath-selection-is-unambiguous");
     assert.ok(agreement); assert.ok(selection);
@@ -212,8 +212,8 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(selection.verdict === "verified", output.activeStatus.ucpathSelection === "resolved");
     if (input.mode === "match" && input.ssn !== undefined) {
       const run = database.authority.runs.get(queued.envelope.runId); assert.ok(run);
-      const receipt = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, result: terminal,
-        checkpoints: database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId) });
+      const receipt = deriveRunEvidenceReceipt({ descriptor: personLookupDescriptor, run, result: terminal,
+        checkpoints: database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId) }).receipt;
       const ssn = receipt.input.find(fact => fact.field === "ssn"); assert.ok(ssn?.state === "satisfied");
       assert.equal(Object.hasOwn(ssn.value, "rawValue"), false);
       assert.equal(JSON.stringify(receipt).includes(matchInput.ssn), false);

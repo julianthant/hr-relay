@@ -115,6 +115,34 @@ it("spaces actual owned fetch starts across process workers and config snapshots
   assert.equal(starts.length, 5); for (let i = 1; i < starts.length; i++) assert.ok((starts[i] ?? 0) - (starts[i - 1] ?? 0) >= 1000, JSON.stringify(starts));
   assert.equal(maximumActive, 1); assert.equal(urls[0]?.searchParams.get("countrycodes"), "us"); assert.equal(urls[0]?.searchParams.get("limit"), "1");
 }, scaledMs(15_000));
+it("keeps fetch starts 1,000 ms apart when the pacing timer wakes early", async () => {
+  const starts: number[] = [];
+  const owner = createNominatimGeocodeAdapter({ clock: systemClock, fetchFn: async () => {
+    starts.push(performance.now());
+    return Response.json([]);
+  } });
+  cleanups.push(() => owner.stop());
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance", "hrtime"] });
+  try {
+    const first = owner.invoke(request, options());
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal((await first).response.state, "produced");
+
+    const schedule = globalThis.setTimeout;
+    const timers = vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args: unknown[]) =>
+      schedule(callback, delay === 1000 ? 995 : delay, ...args));
+    try {
+      const second = owner.invoke(request, options());
+      await vi.advanceTimersByTimeAsync(1000);
+      assert.deepEqual(starts, [1000, 2000]);
+      assert.equal((await second).response.state, "produced");
+    } finally {
+      timers.mockRestore();
+    }
+  } finally {
+    vi.useRealTimers();
+  }
+});
 it("cancels queued requests and honors their original deadline before any fetch", async () => {
   let calls = 0;
   const clock = manualClock(new Date("2026-01-01T00:00:00.000Z"));

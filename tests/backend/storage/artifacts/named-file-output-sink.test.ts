@@ -1,3 +1,4 @@
+import { NamedFileArtifactOutputSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -11,7 +12,7 @@ import { ArtifactSinkConflictError } from "../../../../src/backend/storage/artif
 import { createNamedFileOutputSink, type NamedFilePublicationPoint } from "../../../../src/backend/storage/artifacts/named-file-output-sink.js";
 import { ArtifactOutboxStorageRecordSchema } from "../../../../src/models/artifacts/generated-artifact.js";
 import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
-import { collectionArtifactOutput, namedArtifactOutput } from "../../../../src/workflow-kit/artifacts.js";
+import { fixtureArtifactCollection } from "../../../support/fixtures/backend/artifact-collection.js";
 
 async function fixture(fault?: (point: NamedFilePublicationPoint) => void) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "named-file-output-")), directory = join(root, "documents");
@@ -21,7 +22,7 @@ async function fixture(fault?: (point: NamedFilePublicationPoint) => void) {
   const runId = randomUUID(), fileName = "Onboarding Docs 2026-11-01 batch.zip";
   const row = ArtifactOutboxStorageRecordSchema.parse({ outboxId: randomUUID(), artifactId: randomUUID(), projectionId: "batch-archive", stableKeyFingerprint: "a".repeat(64),
     keyValues: [{ field: "archive.fileName", value: fileName }], sinkId: `documents-file-${runId}`, sourceRunId: runId, sourceNodeId: "archive", state: "pending",
-    payload: { schemaHash: "b".repeat(64), value: namedArtifactOutput(artifact, fileName) }, createdAt: "2026-11-01T12:00:00.000Z" });
+    payload: { schemaHash: "b".repeat(64), value: NamedFileArtifactOutputSchema.parse({ artifact, fileName }) }, createdAt: "2026-11-01T12:00:00.000Z" });
   const sink = createNamedFileOutputSink({ artifacts, documentsDirectory: () => directory, ...(fault === undefined ? {} : { fault }) });
   let prepared: ArtifactRef | undefined;
   const request = { row, head: undefined, previousArtifact: undefined, lockPath: await sink.writerLockPath(row), assertCurrent: async () => admission.assertLive(),
@@ -42,7 +43,7 @@ it("publishes the exact retained artifact under its requested filename", async (
 async function collectionFixture(fault?: (point: NamedFilePublicationPoint) => void) {
   const f = await fixture(fault);
   const secondBytes = Buffer.from("second worksheet archive"), second = await f.artifacts.put(secondBytes, { mediaType: "application/zip" });
-  const output = await collectionArtifactOutput(f.artifacts, [
+  const output = await fixtureArtifactCollection(f.artifacts, [
     { relativePath: "July 6/July 6.zip", artifact: f.artifact },
     { relativePath: "August 2/August 2.zip", artifact: second },
   ]);
