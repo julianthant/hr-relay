@@ -116,17 +116,17 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
   await expect(day).toHaveText("15");
   await expect(year).toHaveText("2027");
 
-  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Performance", exact: true }).click();
-  const scheduling = page.getByRole("button", { name: /Worker scheduling/u });
+  const search = page.getByRole("searchbox", { name: "Search settings" });
+  await search.fill("Default workers");
+  await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: /^Default workers/u }).click();
+  await expect(dashboard.pageHeading("Performance")).toBeVisible();
   const workers = page.getByRole("textbox", { name: "Default workers", exact: true });
-  await scheduling.click();
   await workers.fill("3");
   await expect(workers).toHaveValue("3");
   await expect(saved("Default workers")).toBeVisible();
   await dashboard.settleReads();
   await page.reload();
   await expect(dashboard.pageHeading("Performance")).toBeVisible();
-  await scheduling.click();
   await expect(workers).toHaveValue("3");
 });
 

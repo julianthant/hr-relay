@@ -1,8 +1,11 @@
 import { DashboardDayWireSchema, WorkerCardWireSchema } from "../../src/models/dashboard/projection.js";
+import { DashboardStreamEnvelopeSchema } from "../../src/models/dashboard/subscription.js";
 import { workerPoolMember, WorkerSlotRecordSchema } from "../../src/models/run/worker-slot.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../src/rules/commands/commands.js";
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { expect, SEEDED_PREFERENCE_WRITE, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
+
+test.use({ actionTimeout: 10_000 });
 
 test("worker add and remove settle after delayed or refused replies and clear on workflow switch", async ({ dashboard, page, seeded, failures }) => {
   failures.allow(SEEDED_PREFERENCE_WRITE, "The seeded server does not implement the selected workflow preference.");
@@ -44,11 +47,14 @@ test("worker add and remove settle after delayed or refused replies and clear on
     };
   });
   // Give subsequent commands the same snapshot that confirmed the previous command's HTTP readback.
-  const publishWorkers = () => page.evaluate(snapshot => {
-    window.dispatchEvent(new MessageEvent("seeded-worker-snapshot", {
-      data: `data: ${JSON.stringify({ type: "snapshot", topic: "dashboard-day", cursor: snapshot.snapshotCursor, payload: snapshot })}\n\n`,
-    }));
-  }, workerDay());
+  const publishWorkers = () => {
+    const snapshot = workerDay();
+    const envelope = DashboardStreamEnvelopeSchema.parse({
+      type: "snapshot", topic: "dashboard-day", cursor: snapshot.snapshotCursor, position: 0, payload: snapshot,
+    });
+    return page.evaluate(data => window.dispatchEvent(new MessageEvent("seeded-worker-snapshot", { data })),
+      `data: ${JSON.stringify(envelope)}\n\n`);
+  };
   await page.route("**/api/v1/commands", async route => {
     const request = CommandRequestSchema.parse(route.request().postDataJSON());
     if (request.family !== "worker-browser") { await route.fallback(); return; }
