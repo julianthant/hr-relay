@@ -21,6 +21,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { join } from "node:path";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
+import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
+import type { StartupCleanup } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
+import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -177,7 +180,8 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       pid: 4242,
     });
 
-    const spans: ReturnType<typeof createTimelineEmitter> = Object.freeze({
+    // Scripted runs publish only through the production timeline watcher, composed below.
+    const spans: ReturnType<typeof createTimelineEmitter> = input.scriptedRuns === true ? timelineWriter : Object.freeze({
       emit: (event: unknown): void => {
         timelineWriter.emit(event);
         database.afterAuthorityCommit(() => projection.ingestFromTimeline());
@@ -195,9 +199,15 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
     const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true,
-      scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); } } : undefined});
+      scripting: input.scriptedRuns === true ? { profilePath: profile.path, reportWorker: (workerId, activity) => { workers.set(workerId, activity); projection.reconcileWorkerAuthority(); } } : undefined});
     held.services = services;
     const { app, hub, scripted } = services;
+    const watcherCleanups: StartupCleanup[] = [];
+    if (input.scriptedRuns === true) {
+      composeDashboardTimeline({ database, clock, projection, startupCleanups: watcherCleanups, admission: profile.admission,
+        lifecycle: services.lifecycle, loggingRepository: database.authority.timelineEvents,
+        debugEvents: createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "test" }) });
+    }
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
@@ -257,6 +267,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
           });
           hub.close();
           await scripted?.close();
+          for (const cleanup of watcherCleanups.reverse()) await cleanup();
         } catch (error) {
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workers } });

@@ -104,8 +104,6 @@ export function createScriptedExecutor(deps: Readonly<{
   profilePath: string;
   /** Tells the seeded pool what the scripted worker is doing, as a worker process reports its activity. */
   reportWorker: (workerId: string, activity: WorkerActivity) => void;
-  /** Stands in for the dashboard's timeline poll: folds what the run just wrote and publishes it. */
-  publish: () => void;
 }>): ScriptedExecutor {
   const { database, clock, lifecycle, library } = deps;
   const recorded: RecordedWrite[] = [];
@@ -208,7 +206,7 @@ export function createScriptedExecutor(deps: Readonly<{
     runtimes.set(script.module.descriptor.id, runtime);
     const { execute } = await runtime.catch((error: unknown) => { driven = undefined; throw error; });
     const next = (): Promise<ScriptedPosition> => new Promise((resolve, reject) => {
-      current.arrive = (reached) => { position = reached; deps.publish(); resolve(reached); };
+      current.arrive = (reached) => { position = reached; resolve(reached); };
       current.abort = reject;
     });
     const first = next();
@@ -241,9 +239,7 @@ export function createScriptedExecutor(deps: Readonly<{
         current.releaseAll = true;
         current.release?.("pass");
         delete current.release;
-        const settled = await outcome;
-        deps.publish();
-        return settled;
+        return outcome;
       },
     };
   }
