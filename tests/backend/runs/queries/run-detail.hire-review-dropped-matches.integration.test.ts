@@ -32,6 +32,7 @@ describe("the run-detail route at Onboarding's hire review", () => {
       canonical: { database: f.database, reader, descriptors } }), root.envelope.runId);
     assert.ok(detail.gate.state === "open" && detail.gate.decision !== undefined, "the served gate carries its decision packet");
     assert.equal(detail.gate.nodeId, "hire-review");
+    assert.ok(!detail.availableSections.includes("identity-gate"), "hire review holds no identity review");
     assert.deepEqual(detail.gate.decision.options.map(option => [option.id, option.label, option.hint]),
       [["new-hire", "File as a new hire", undefined]]);
     assert.equal(detail.gate.decision.context, "Legal: last Hire, first Fixture, middle Marie · Preferred: last Hire, first Fix · UCPath: 3 matches, 0 confirmed · Searched: name, DOB · "
