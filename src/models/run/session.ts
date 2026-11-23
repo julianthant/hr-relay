@@ -37,8 +37,3 @@ export const RunSessionRecordSchema = z.strictObject({
   }
 });
 export type RunSessionRecord = z.infer<typeof RunSessionRecordSchema>;
-
-/** The actor who started the session. */
-export function runSessionActorId(record: RunSessionRecord): string {
-  return record.origin.actorId;
-}

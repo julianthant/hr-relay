@@ -244,14 +244,6 @@ const NOT_RUN_SENTENCE: Record<TerminalNotRunReason, (id: string) => string> = {
   "operator-asserted": (id) => `node "${id}" did not run: the operator asserted its facts at start`,
 };
 
-export function buildRunEvidenceReceipt(
-  input: ReceiptBuildInput,
-  composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
-): RunEvidenceReceipt {
-  return deriveRunEvidenceReceipt(input, composition).receipt;
-}
-
-
 function recordedTransactionOutcome(record: RunCheckpointRecord): z.infer<typeof TransactionOutcomeSchema> {
   const parsed = TransactionOutcomeSchema.safeParse(record.output.value);
   if (!parsed.success) {

@@ -219,14 +219,6 @@ export const KUALI_RRSS_FINALIZATION_FORM_KEYS: Readonly<
   timekeeperComments: "J_upFRq074",
 });
 
-/** The fields whose `formKey` this repository has never observed — the list the next live `ActionPage` read closes. */
-export function kualiFinalizationFormKeysMissing(): readonly KualiFinalizationFieldName[] {
-  return Object.freeze(
-    KUALI_FINALIZATION_FIELD_NAMES.filter(
-      (field) => KUALI_RRSS_FINALIZATION_FORM_KEYS[field] === null,
-    ),
-  );
-}
 
 /** The fields whose wire value IS the staged string, so the save's payload check can compare them with no invented transformation. */
 export const KUALI_RRSS_FINALIZATION_WIRE_ASSERTED: readonly KualiFinalizationFieldName[] =
@@ -238,14 +230,6 @@ export const KUALI_RRSS_FINALIZATION_WIRE_ASSERTED: readonly KualiFinalizationFi
     "timekeeperComments",
   ]);
 
-/** The fields whose wire value is not asserted — every gadget kind whose model value is not the staged string; all twelve `formKey`s are known, but seven still cannot be checked. */
-export function kualiFinalizationWireUnasserted(): readonly KualiFinalizationFieldName[] {
-  return Object.freeze(
-    KUALI_FINALIZATION_FIELD_NAMES.filter(
-      (field) => !KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field),
-    ),
-  );
-}
 
 /* ── The write's records ──────────────────────────────────────────────────── */
 

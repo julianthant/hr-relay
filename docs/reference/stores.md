@@ -422,7 +422,7 @@ The result distinguishes complete advice, ambiguous fields, and unavailable advi
 
 The worker composition does not provide an `ocr.extract` adapter. The OCR task and contract exist,
 but provider availability remains a separate admission requirement.
-`src/backend/processing/providers/deterministic-provider.ts` is a scripted test harness.
+`tests/support/fixtures/backend/deterministic-provider.ts` is a scripted test harness.
 
 ## 3 · Workflow consumers
 

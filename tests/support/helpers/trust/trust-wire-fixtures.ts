@@ -1,5 +1,5 @@
 
-import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import type { RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { separationsKualiFinalizationDescriptor } from "../registered-workflows.js";
@@ -7,13 +7,13 @@ import { kualiReceiptEvidence } from "../../fixtures/receipt-run-fixtures.js";
 
 export function receiptWireFixture(): RunEvidenceReceipt {
   const evidence = kualiReceiptEvidence();
-  return buildRunEvidenceReceipt({
+  return deriveRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
     run: evidence.run,
     result: evidence.result,
     checkpoints: evidence.checkpoints,
     writes: evidence.writes,
-  });
+  }).receipt;
 }
 
 /** A cross-verify subject mismatch — the failed run the corpora already tell. */

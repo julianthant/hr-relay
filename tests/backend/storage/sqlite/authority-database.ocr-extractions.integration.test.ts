@@ -14,7 +14,7 @@ import { operatorRequestedCapture } from "../../../../src/backend/logs/diagnosti
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
-import { containsDeletionArtifactReference } from "../../../../src/backend/storage/sqlite/artifact-references.js";
+import { deletionArtifactReferenceMatcher } from "../../../../src/backend/storage/sqlite/artifact-references.js";
 
 const world = createAuthorityAccountingTestWorld();
 afterEach(world.cleanup);
@@ -79,8 +79,8 @@ for (const binding of ["unbound-source", "source-bound"] as const) {
       finally { raw.close(); }
       if (stored.binding === "unbound-source") {
         const { sourceSha256: _source, ...withoutSource } = stored.extraction;
-        assert.equal(containsDeletionArtifactReference({ ...stored, extraction: withoutSource }, image), false);
-        assert.equal(containsDeletionArtifactReference(stored, document), false);
+        assert.equal(deletionArtifactReferenceMatcher([image])({ ...stored, extraction: withoutSource }).has(image.sha256), false);
+        assert.equal(deletionArtifactReferenceMatcher([document])(stored).has(document.sha256), false);
       }
       const sourcePath = join(w.profile.admission.artifactRoot, `${image.sha256}.artifact`);
       const before = readFileSync(sourcePath);
@@ -104,7 +104,7 @@ for (const binding of ["unbound-source", "source-bound"] as const) {
       assert.deepEqual(readFileSync(sourcePath), before);
       assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${unrelated.attachments[0]?.digest}.artifact`)), false);
       assert.deepEqual(w.database.authority.ocrExtractions.get(stored.extractionId), stored);
-      assert.equal(containsDeletionArtifactReference(stored, image), true);
+      assert.equal(deletionArtifactReferenceMatcher([image])(stored).has(image.sha256), true);
       const stream = await artifacts.open(image), chunks: Uint8Array[] = [];
       for await (const chunk of stream) {
         assert.ok(chunk instanceof Uint8Array);

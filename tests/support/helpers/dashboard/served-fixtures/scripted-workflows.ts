@@ -24,8 +24,17 @@ import contactFixture from "../../../fixtures/ui/ucpath/emergency-contact.fixtur
 import { createDeterministicI9Driver } from "../../../../../src/backend/systems/i9/driver/fake.js";
 import { healthyCrmDriver } from "../../phase1f-executor-harness.js";
 import { READING_ID, submittedPage } from "../../../fixtures/ocr/source-pages.js";
+import { i9Candidate, i9Search } from "../../../fixtures/i9-check.js";
+import { i9PageSubmission } from "../../../fixtures/i9-check-start.js";
+import { I9CheckStartInput } from "../../../../../src/models/workflows/i9-check/start.js";
+import type { UcpathPersonOrgDriver } from "../../../../../src/models/ui/ucpath-person-org.js";
+import { randomUUID } from "node:crypto";
 import { createDeterministicCrmOnboardingDriver } from "../../../../../src/backend/systems/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/fake.js";
+import { deterministicHireOperations } from "../../../../../src/backend/systems/ucpath/driver/hire-fake.js";
+import { CrmReadHireData } from "../../../../../src/models/systems/crm/read-hire-data.js";
+import { UCPATH_HIRE_SUBJECT } from "../../../../../src/models/ui/ucpath-hire.js";
+import { OnboardingInput } from "../../../../../src/models/workflows/onboarding/input.js";
 import { deterministicPayPathOperations } from "../../../../../src/backend/systems/ucpath/driver/paypath-fake.js";
 import { ReadOnboardingDatesOutputSchema } from "../../../../../src/models/systems/crm/read-onboarding-dates.js";
 import { CrmDiscoveredRecordSchema } from "../../../../../src/models/systems/crm/search-onboarding-records.js";
@@ -65,6 +74,8 @@ export interface ScriptedWorkflow {
   readonly children?: readonly Readonly<{ descriptor: (typeof DASHBOARD_CATALOG_MODULES)[number]["descriptor"] }>[];
   /** The task stores that replace the registered ones for this workflow's runs, such as a PDF renderer that needs no renderer. */
   stores?(world: ScriptWorld): readonly RegisteredTaskStore[];
+  /** The employee ID the operator asserts for an OCR record, read from its answers (raw values by field path); undefined when the review asserts none. */
+  assertedEid?(answers: Readonly<Record<string, unknown>>): string | undefined;
   /** Builds the submission for a workflow whose input needs more than the subject, such as an uploaded document. */
   prepare?(world: ScriptWorld, subject: string): Promise<Record<string, unknown>>;
   /** The subject (an employee ID) a run of `workflowId` (this workflow, or a child) names in its stored input. */
@@ -293,7 +304,119 @@ export const EMERGENCY_CONTACT_SCRIPT: ScriptedWorkflow = {
   },
 };
 
-export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT, CRM_DOC_DOWNLOAD_SCRIPT, EMERGENCY_CONTACT_SCRIPT]);
+/** The people an I-9 Check Start PDF holds, one PDF each: their employee ID, the name on the form and the first name that tells the review which ID to assert. */
+export const I9_PEOPLE = Object.freeze([
+  { eid: "10000001", name: "Example, Avery", firstName: "Avery" },
+  { eid: "10000002", name: "Example, Blair", firstName: "Blair" },
+] as const);
+
+/**
+ * I-9 Check Start: one PDF per person, each read by an OCR child (entered manually, so no provider is asked) and reviewed by the operator,
+ * then one person check per approved person against UCPath, then one results workbook. The subject is a comma list of employee IDs.
+ */
+export const I9_CHECK_START_SCRIPT: ScriptedWorkflow = {
+  module: catalogModule("i9-check-start"),
+  children: ["ocr", "ocr-page", "person-lookup", "i9-lookup", "i9-check"].map(childModule),
+  writeNode: "save-workbook",
+  submission: () => { throw new Error("an I-9 Check Start run is started with its uploaded PDFs: use the executor's submission()"); },
+  subjectOf: () => "",
+  assertedEid: answers => I9_PEOPLE.find(person => person.firstName === answers["firstName"])?.eid,
+  async prepare(world, subject) {
+    const people = subject.split(",").map(eid => I9_PEOPLE.find(person => person.eid === eid));
+    const documents = [];
+    const actorId = "local-operator";
+    for (const [index, person] of people.entries()) {
+      if (person === undefined) throw new Error(`the scripted I-9 Check Start PDFs know no person for ${subject}`);
+      const document = await world.uploadPdf(new TextEncoder().encode(`%PDF-1.7\nSynthetic I-9 ${person.eid}\n%%EOF`));
+      const image = await world.putImage(PNG_PAGE);
+      const rendered = { pageCount: 2, pages: [{ sourcePage: 1, image }, { sourcePage: 2, image }] };
+      pagesOf(world).set(document.sha256, rendered);
+      const readingId = randomUUID();
+      const facts = [{ eid: person.eid, firstName: person.firstName, kind: "i9-section1" as const, dob: "01/15/2000" },
+        { eid: person.eid, firstName: person.firstName, kind: "i9-section2" as const, hireDate: "06/01/2020" }];
+      const assertions = ocrPageInputs(buildOcrSourceManifest(document, rendered), readingId, "i9").map((page, pageIndex) => {
+        const fact = facts[pageIndex];
+        if (fact === undefined) throw new Error("the scripted I-9 PDF has two pages");
+        const reading = bindManualOcrPageReading(page, actorId, { ...i9PageSubmission(page, fact), source: { kind: "operator", actorId } });
+        return { sourcePage: reading.input.sourcePage, extraction: reading.extraction };
+      });
+      documents.push({ document, fileName: `source-${String(index)}.pdf`, readingId, reading: { kind: "manual" as const, actorId, assertions } });
+    }
+    return I9CheckStartInput.parse({ documents, asOf: "2026-11-01", reviewerName: "Example Reviewer" });
+  },
+  stores: world => EMERGENCY_CONTACT_SCRIPT.stores?.(world) ?? [],
+  drivers(world) {
+    const candidates = I9_PEOPLE.map(person => ({ ...i9Candidate, emplId: EidSchema.parse(person.eid), name: person.name, startDate: "06/01/2020" }));
+    const now = () => world.clock.now().toISOString();
+    return { crm: () => healthyCrmDriver(), i9: () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: now() }),
+      ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
+        async searchPersonOrg(input) {
+          await world.hold();
+          return i9Search(candidates.filter(candidate => input.kind === "by-name" ? candidate.name === input.name : candidate.emplId === input.emplId));
+        },
+        async searchPersonMatch(input) {
+          await world.hold();
+          const confirmed = candidates.filter(candidate => candidate.name === `${input.lastName}, ${input.firstName}`).map(candidate => ({ emplId: candidate.emplId, name: candidate.name }));
+          return { hits: confirmed, confirmed, dropped: [] };
+        } }) };
+  },
+};
+
+export const ONBOARDING_EMAIL = "hire@example.test";
+
+/**
+ * Onboarding: a CRM hire read, a UCPath person match, an I-9 profile and the UCPath hire. Each step holds where it first meets its
+ * system; the hire's Save and Submit and the I-9 profile save are recorded when asked, never sent.
+ */
+export const ONBOARDING_SCRIPT: ScriptedWorkflow = {
+  module: catalogModule("onboarding"),
+  children: [childModule("i9-lookup")],
+  writeNode: "hire-create",
+  submission: email => ({ email, mode: "new-hire", configuredJobEndDate: "06/30/2027" }),
+  subjectOf: (input, workflowId) => workflowId === undefined || workflowId === "onboarding" ? OnboardingInput.parse(input).email : "",
+  drivers(world) {
+    const hires = new Map<string, ReturnType<typeof deterministicHireOperations>>();
+    const i9s = new Map<string, ReturnType<typeof createDeterministicI9Driver>>();
+    const keyed = <T>(known: Map<string, T>, make: () => T): T => {
+      const subject = world.run().subject;
+      const found = known.get(subject) ?? make();
+      known.set(subject, found);
+      return found;
+    };
+    const now = () => world.clock.now().toISOString();
+    return {
+      crm: () => ({ ...createDeterministicCrmOnboardingDriver({ discovery: [], record: { state: "absent", queriedEid: EidSchema.parse("10000001"), reason: "unused" },
+        dates: ReadOnboardingDatesOutputSchema.parse({ emplId: EidSchema.parse("10000001"), state: "no-confident-record", employmentDate: null, oathDate: null, reason: "" }) }),
+        readHireData: async () => { await world.hold(); return CrmReadHireData.example; } }),
+      ucpath: () => {
+        const base = createDeterministicUcpathPersonOrgDriver();
+        const hire = keyed(hires, () => deterministicHireOperations({ now: now() }));
+        return { ...base, ...hire, read: async (id: Parameters<typeof base.read>[0]) => id === UCPATH_HIRE_SUBJECT ? hire.readHireSubject() : base.read(id),
+          searchPersonMatch: async () => { await world.hold(); return { hits: [], confirmed: [], dropped: [] }; },
+          stageHire: async (...args: Parameters<typeof hire.stageHire>) => { await world.hold(); return hire.stageHire(...args); },
+          submitHire: async (...args: Parameters<typeof hire.submitHire>) => {
+            const run = world.run();
+            world.record({ runId: run.runId, nodeId: run.heldNode(), eid: run.subject });
+            await world.hold();
+            const proof = await hire.submitHire(...args);
+            if (run.loseAnswer()) throw new Error("the hire submit answer was not observed");
+            return proof;
+          } };
+      },
+      i9: () => {
+        const i9 = keyed(i9s, () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: now() }));
+        return { ...i9, readSection2Signer: async (...args: Parameters<typeof i9.readSection2Signer>) => { await world.hold(); return i9.readSection2Signer(...args); },
+          saveProfile: async (...args: Parameters<typeof i9.saveProfile>) => {
+            const run = world.run();
+            world.record({ runId: run.runId, nodeId: run.heldNode(), eid: run.subject });
+            return i9.saveProfile(...args);
+          } };
+      },
+    };
+  },
+};
+
+export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT, CRM_DOC_DOWNLOAD_SCRIPT, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, ONBOARDING_SCRIPT]);
 
 export function scriptedWorkflow(workflowId: string): ScriptedWorkflow {
   const script = SCRIPTED_WORKFLOWS.find(candidate => candidate.module.descriptor.id === workflowId);
