@@ -210,6 +210,7 @@ function read(path: string) {
 
 const upgrade = (s: Awaited<ReturnType<typeof predecessorStore>>) => upgradeProfileAtStartup(profileBrowserClosure, s.profile.machine, s.profileId, hostFacts, systemClock);
 
+// Select this unchanged assertion in the task CI baseline.
 it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-crash closure from a verified backup and reads the kept store back strictly", async version => {
   const s = await predecessorStore(version, "converted");
   const before = read(s.path), keptRun = before.run(s.keptRunId);
