@@ -65,6 +65,7 @@ import { queueRowActions } from "./queue-row-actions.js";
 import { allowsSubjectIdentity, resolveResultTitle, verifiedResultDisplayValue, resolveSubjectTitle } from "./run-subject-title.js";
 import { lastRunOf, stepInterruptOf, workerCardOf, type WorkerCardWire } from "./worker-cards.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
+import type { DashboardBackgroundReadRequest, DashboardBackgroundReadResult } from "../../storage/sqlite/dashboard-background-read-worker.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
 import { nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
@@ -325,6 +326,7 @@ export class RunQueueProjection {
   #timelineCursor = 0;
 
   #workerAuthorityFingerprint: string;
+  #backgroundWorkers?: DashboardBackgroundReadResult["workers"];
   #publishedBatchVersions: ReadonlyMap<string, number> = new Map();
   #storedCanonical: { key: number; storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined;
   #cursorValue = 0;
@@ -379,9 +381,9 @@ export class RunQueueProjection {
   }
 
 
-  apply(event: SpanEventWire): void {
+  apply(event: SpanEventWire, line?: TimelineLine): void {
     try {
-      const affected = this.#foldEvent(event);
+      const affected = this.#foldEvent(event, line);
       if (affected !== undefined) this.#notify(affected);
     } catch (error) {
       this.#degrade(`projection apply failed for ${event.t}: ${error instanceof Error ? error.message : String(error)}`);
@@ -396,23 +398,62 @@ export class RunQueueProjection {
     }
     try {
       const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor, undefined, PROJECTION_SPAN_TYPES);
-      this.#timelineCursor = tail.cursor;
-      if (tail.records.length === 0) return;
-      const events = projectionEvents(tail.records);
-      const previousCursor = this.#cursorValue;
-      const runIds = new Set<string>();
-      let workerChanged = false;
-      for (const { event, line } of events) {
-        const affected = this.#foldEvent(event, line);
-        if (affected === undefined) continue;
-        for (const runId of affected.runIds) runIds.add(runId);
-        workerChanged ||= affected.workerChanged;
-      }
-      const queueRevisions = this.#cursorValue - previousCursor;
-      if (queueRevisions > 0) this.#notify({ runIds: [...runIds], workerChanged }, queueRevisions > 1);
+      this.#ingestTail(tail);
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  #ingestTail(tail: ReturnType<typeof readTimelineRecords>): void {
+    this.#timelineCursor = tail.cursor;
+    if (tail.records.length === 0) return;
+    const events = projectionEvents(tail.records);
+    const previousCursor = this.#cursorValue;
+    const runIds = new Set<string>();
+    let workerChanged = false;
+    for (const { event, line } of events) {
+      const affected = this.#foldEvent(event, line);
+      if (affected === undefined) continue;
+      for (const runId of affected.runIds) runIds.add(runId);
+      workerChanged ||= affected.workerChanged;
+    }
+    const queueRevisions = this.#cursorValue - previousCursor;
+    if (queueRevisions > 0) this.#notify({ runIds: [...runIds], workerChanged }, queueRevisions > 1);
+  }
+
+  async pollBackground(read: (request: DashboardBackgroundReadRequest) => Promise<DashboardBackgroundReadResult>, nowMs: number): Promise<number | undefined> {
+    const generation = this.#generationValue, rebuilding = this.#health.state === "degraded";
+    const after = rebuilding ? 0 : this.#timelineCursor;
+    const request = { limit: 128, spanTypes: PROJECTION_SPAN_TYPES, nowMs };
+    let page = await read({ ...request, after });
+    const { through } = page, records = [...page.records], workers = page.workers;
+    while (page.cursor < through || workers.next !== null) {
+      page = await read({ ...request, after: page.cursor, through, ...(workers.next === null ? {} : { workerCursor: workers.next }) });
+      records.push(...page.records);
+      if (workers.next !== null) {
+        workers.slotWorkflows.push(...page.workers.slotWorkflows);
+        workers.batchVersions.push(...page.workers.batchVersions);
+        workers.heldDuoLeases.push(...page.workers.heldDuoLeases);
+        workers.next = page.workers.next;
+      }
+    }
+    // A synchronous command or retention sweep may consume the same tail while the worker is reading.
+    if (generation !== this.#generationValue || rebuilding !== (this.#health.state === "degraded")) return undefined;
+    const first = this.#backgroundWorkers === undefined;
+    this.#backgroundWorkers = workers;
+    if (rebuilding) this.#rebuild({ records, cursor: through });
+    else {
+      if (first) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+      if (through > this.#timelineCursor) this.#ingestTail({ records: records.filter(record => record.cursor > this.#timelineCursor), cursor: through });
+      this.reconcileWorkerAuthority();
+    }
+    let expiry = Infinity;
+    for (const lease of workers.heldDuoLeases) expiry = Math.min(expiry, Date.parse(lease.expiresAt));
+    return expiry;
+  }
+
+  backgroundReadFailed(error: unknown): void {
+    this.#health = { state: "degraded", lastError: `timeline background read failed: ${error instanceof Error ? error.message : String(error)}` };
   }
 
   // Reconcile live leases independently of span ingestion; lifecycle changes need not emit spans.
@@ -423,7 +464,9 @@ export class RunQueueProjection {
       if (fingerprint === this.#workerAuthorityFingerprint) return;
       this.#workerAuthorityFingerprint = fingerprint;
       this.#cursorValue += 1;
-      this.#notify({ runIds: [], workerChanged: true });
+      this.#dayCache.clear();
+      const change: RunQueueProjectionChange = { kind: "snapshot", cursor: this.cursor() };
+      for (const listener of this.#listeners) listener(change);
     } catch (error) {
       this.#degrade(`worker authority reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -465,23 +508,7 @@ export class RunQueueProjection {
   rebuildFromTimeline(): void {
     try {
       const whole = readTimelineRecords(this.#deps.timeline, 0, undefined, PROJECTION_SPAN_TYPES);
-      const events = projectionEvents(whole.records)
-        .sort((left, right) => left.event.ts.localeCompare(right.event.ts) || left.line.lineNumber - right.line.lineNumber);
-      this.#rows.clear();
-      this.#workers.clear();
-      this.#runLogs.clear();
-      this.#notifiedRows.clear();
-      this.#cursorValue = 0;
-      for (const { event, line } of events) this.#foldEvent(event, line);
-      // The tail resumes from exactly what this rebuild consumed — set
-      // together with `live` so the two ingest paths can never overlap.
-      this.#timelineCursor = whole.cursor;
-      this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
-      this.#cursorValue = Math.max(1, this.#cursorValue);
-      this.#health = { state: "live" };
-      this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
-      const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
-      for (const listener of this.#listeners) listener(change);
+      this.#rebuild(whole);
     } catch (error) {
       this.#health = {
         state: "degraded",
@@ -490,6 +517,26 @@ export class RunQueueProjection {
     }
   }
 
+
+  #rebuild(whole: ReturnType<typeof readTimelineRecords>): void {
+    const events = projectionEvents(whole.records)
+      .sort((left, right) => left.event.ts.localeCompare(right.event.ts) || left.line.lineNumber - right.line.lineNumber);
+    this.#rows.clear();
+    this.#workers.clear();
+    this.#runLogs.clear();
+    this.#notifiedRows.clear();
+    this.#cursorValue = 0;
+    for (const { event, line } of events) this.#foldEvent(event, line);
+    // The tail resumes from exactly what this rebuild consumed — set
+    // together with `live` so the two ingest paths can never overlap.
+    this.#timelineCursor = whole.cursor;
+    this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
+    this.#cursorValue = Math.max(1, this.#cursorValue);
+    this.#health = { state: "live" };
+    this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+    const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
+    for (const listener of this.#listeners) listener(change);
+  }
 
   refreshRun(runId: string): void {
     this.#cursorValue += 1;
@@ -850,6 +897,16 @@ export class RunQueueProjection {
 
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */
   #captureSharedAuthorityFingerprint(canonicalRuns?: readonly RunRecord[]): string {
+    const facts = this.#backgroundWorkers;
+    if (facts !== undefined) {
+      const members = this.#deps.authority.workerMembers?.().map(view => ({
+        workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
+        duoLeases: facts.heldDuoLeases.filter(lease => lease.workerId === view.member.workerId).map(({ system, since }) => ({ system, since })),
+      }));
+      const startupPending = facts.slotWorkflows.filter(workflow => this.#deps.authority.workerStartupPending?.(workflow));
+      this.#publishedBatchVersions = new Map(facts.batchVersions.map(batch => [batch.sessionId, batch.version]));
+      return JSON.stringify([facts.fingerprint, members, startupPending]);
+    }
     const key = this.#deps.authority.changeKey?.();
     const stored = canonicalRuns === undefined && key !== undefined && this.#storedCanonical?.key === key ? this.#storedCanonical : undefined;
     let built: { storeJson: string; claimedIds: readonly string[]; batches: readonly { sessionId: string; version: number }[] } | undefined = stored;

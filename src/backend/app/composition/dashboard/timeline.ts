@@ -5,6 +5,7 @@ import { localDatePart } from "../../../../rules/time/clock.js";
 import type { createOperatorProjection } from "./queue.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { createNoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
+import { createDashboardBackgroundReader } from "../../../storage/sqlite/dashboard-background-read-worker.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/index.js";
 import { type StartupCleanup } from "./runtime-contracts.js";
 import { createDiagnosticRetentionSweep, type DiagnosticRetentionSweepDependencies } from "../../../logs/diagnostics/diagnostic-retention.js";
@@ -73,12 +74,10 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   startupCleanups.push(() => clearInterval(diagnosticRetentionTimer));
 
   // Capture positions before the initial fold so a peer commit during startup remains visible.
-  const timelineRevision = database.trackAuthorityTables(["timeline_events"]);
-  const workerRevision = database.trackAuthorityTables(["runs", "deleted_runs", "worker_slots", "worker_pools",
+  const revision = database.trackAuthorityTables(["timeline_events", "runs", "deleted_runs", "worker_slots", "worker_pools",
     "run_batches", "auth_leases", "write_intents"]);
-  let key: string | { state: "unreadable" } = JSON.stringify(database.changeKey());
-  let timeline = timelineRevision(), workers = workerRevision();
-  let lastWall = clock.nowMs(), leaseExpiry = database.nextDuoLeaseExpiry(lastWall);
+  let key: string | undefined = JSON.stringify(database.changeKey()), observed = revision();
+  let lastWall = clock.nowMs(), leaseExpiry = Infinity;
   let safetyAt = clock.monotonicMs() + 60_000;
 
   // Fold whatever span history already exists before serving a single count.
@@ -87,7 +86,21 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
+  const reader = createDashboardBackgroundReader(admission, database);
+  let pending: Promise<void> | undefined, stopped = false;
+  const startRead = (now: number) => {
+    pending = projection.pollBackground(reader.read, now).then(expiry => {
+      if (expiry === undefined) key = undefined;
+      else leaseExpiry = expiry;
+    }).catch((error: unknown) => {
+      key = undefined;
+      projection.backgroundReadFailed(error);
+    }).finally(() => { pending = undefined; });
+    return pending;
+  };
+  const ready = startRead(lastWall);
   const timelineTimer = setInterval(() => {
+    if (stopped || pending !== undefined) return;
     try {
       const current = JSON.stringify(database.changeKey());
       const now = clock.nowMs(), elapsed = clock.monotonicMs();
@@ -96,26 +109,24 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       lastWall = now;
       const degraded = projection.health().state === "degraded";
       if (current === key && !safety && !leaseDue && !degraded) return;
-      const nextTimeline = timelineRevision(), nextWorkers = workerRevision();
-      if (safety || degraded || nextTimeline === undefined || nextTimeline !== timeline) projection.ingestFromTimeline();
-      if (safety || degraded || leaseDue || nextWorkers === undefined || nextWorkers !== workers) {
-        leaseExpiry = database.nextDuoLeaseExpiry(now);
-        projection.reconcileWorkerAuthority();
-      }
+      const next = revision();
+      if (safety || leaseDue || degraded || key === undefined || next === undefined || next !== observed) void startRead(now);
       key = current;
-      timeline = nextTimeline;
-      workers = nextWorkers;
+      observed = next;
       if (safety) safetyAt = elapsed + 60_000;
-    } catch {
-      key = { state: "unreadable" };
-      // An unreadable revision requires both passes; the projection owns degradation and rebuild.
-      projection.ingestFromTimeline();
-      projection.reconcileWorkerAuthority();
+    } catch (error) {
+      key = undefined;
+      projection.backgroundReadFailed(error);
     }
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();
-  startupCleanups.push(() => clearInterval(timelineTimer));
-
-
-  return { noteWriter, timelineTimer, diagnosticRetentionTimer };
+  const settled = async () => { await pending; };
+  const stopTimeline = async () => {
+    stopped = true;
+    clearInterval(timelineTimer);
+    await settled();
+    await reader.close();
+  };
+  startupCleanups.push(stopTimeline);
+  return { noteWriter, timelineTimer, diagnosticRetentionTimer, ready, settled, stopTimeline };
 }
