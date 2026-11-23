@@ -70,9 +70,9 @@ function applyEnvelope(
   envelope: DashboardStreamEnvelope,
 ): DashboardDayWire | undefined {
   if (envelope.type === "snapshot" && envelope.topic === "dashboard-day") return envelope.payload;
-  if (envelope.type === "patch" && envelope.topic === "dashboard-day") {
-    if (day === undefined) assert.fail("patch arrived before any snapshot");
-    return applyDashboardDayPatch(day, envelope.payload);
+  if (envelope.type === "change" && envelope.day !== undefined) {
+    if (day === undefined) assert.fail("change arrived before any snapshot");
+    return applyDashboardDayPatch(day, envelope.day);
   }
   return day;
 }
@@ -261,7 +261,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
       lastEventId: currentCursor,
       lastProjectionGeneration: w.projection.generation(),
     });
-    assert.deepEqual(currentResume.initial.map(({ type }) => type), ["hello", "health"]);
+    assert.deepEqual(currentResume.initial.map(({ type }) => type), ["hello", "change", "health"], "nothing to replay; only the connection's own handoff");
     currentResume.close();
   });
 

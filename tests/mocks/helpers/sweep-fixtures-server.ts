@@ -73,7 +73,7 @@ export async function startOcrSweepServer(mode: "review" | "member-retry") {
     app.get("/events/v1", c => c.body(new ReadableStream<Uint8Array>({ start(controller) {
       for (const envelope of [
         { type: "hello", wireVersion: 1, descriptorHash, projectionGeneration: projection.generation(), cursor: projection.cursor() },
-        { type: "snapshot", topic: "dashboard-day", cursor: projection.cursor(), payload: snapshot() }, { type: "health", state: "live" },
+        { type: "snapshot", topic: "dashboard-day", position: 0, cursor: projection.cursor(), payload: snapshot() }, { type: "health", state: "live" },
       ]) controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(DashboardStreamEnvelopeSchema.parse(envelope))}\n\n`));
     } }), 200, { "content-type": "text/event-stream" }));
     const commands: unknown[] = [];
