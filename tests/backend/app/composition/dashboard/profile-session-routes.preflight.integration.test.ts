@@ -142,7 +142,7 @@ it("T2b refuses an unowned dev-frontend host when the probe cannot release the r
   } finally { await close(runtime, listener, f); }
 });
 
-it("T2c keeps the refusal and writes a fallback diagnostic when the probe cleanup failure cannot be logged", async () => {
+it("T2c keeps the refusal and writes a fallback diagnostic when the spool rejects the cleanup record but has room for the refusal record", async () => {
   const f = await fixture();
   let listener: Server | undefined, runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   const stderr = vi.spyOn(process.stderr, "write");
@@ -151,7 +151,7 @@ it("T2c keeps the refusal and writes a fallback diagnostic when the probe cleanu
     const cleanupFailure = new Error("fixture cancel refused");
     cleanupFailure.stack = `Error: fixture cancel refused\n${"    at fixtureFrame (fixture.ts:1:1)\n".repeat(900)}`;
     runtime = await compose(f, { frontendProbe: async () => ({ state: "not-owned", reason: "owner-endpoint-refused", cleanupFailure }) });
-    // The spool keeps room for the refusal's own record but not for the cleanup failure's stack.
+    // Only the cleanup record is rejected; a spool that also rejects the refusal record turns it into LOGGING_UNAVAILABLE in debug-responses.
     const logs = join(f.machine.stateRoot, "logs");
     mkdirSync(logs, { recursive: true, mode: 0o700 });
     writeFileSync(join(logs, "boot.jsonl"), "x".repeat(5 * 1024 * 1024 - 16 * 1024), { mode: 0o600 });
