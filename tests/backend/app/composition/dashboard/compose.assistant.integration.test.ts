@@ -128,11 +128,11 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
       const response = await originalFetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(value) });
       const body: unknown = await response.json(); return body;
     };
+
+    ready = true;
     // The startup storage-health pass writes its rows on its own schedule; settle it so no checked span contains it.
     await vi.waitFor(() => assert.ok(StorageHealthConcernSchema.options.every(concern => concern === "outbox-stalled"
       || context.database.authority.notificationHealth.get(concern) !== undefined)), { timeout: 30_000, interval: 50 });
-
-    ready = true;
     await body({ profile: f, context, transport, clock, originalFetch, origin, post });
   } catch (error) { primary = { error }; owner.primary = primary; }
   if (!ready) {
