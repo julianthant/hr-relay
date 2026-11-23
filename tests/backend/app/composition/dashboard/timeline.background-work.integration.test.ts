@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
+import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
 import { composeDashboardTimeline } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
 import type { StartupCleanup } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
@@ -155,6 +156,35 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     poll.mockClear();
     tick(60_000);
     expect(poll).toHaveBeenCalledTimes(1);
+    await runtime.settled();
+    const second = database.withAuthorityTransaction(repositories =>
+      admitFixtureSlot(repositories, "onboarding", 1, clock.now().toISOString()));
+    const generation = projection.generation(), beforeRace = projection.cursor();
+    const beforeLogs = projection.runLogSnapshot(runId);
+    let stale = false;
+    poll.mockImplementationOnce((read, now) => pollBackground(async request => {
+      if (request.workerCursor !== undefined) {
+        database.authority.workerSlots.setPaused({ workerId: second.workerId, paused: true, now: clock.now().toISOString() });
+        try { return await read({ ...request, limit: 1 }); }
+        catch (error) {
+          expect(error).toMatchObject({ message: "dashboard-background-worker-cursor-stale" });
+          stale = true;
+          throw error;
+        }
+      }
+      return read({ ...request, limit: 1 });
+    }, now));
+    tick(250);
+    await runtime.settled();
+    expect(stale).toBe(true);
+    expect(projection.health().state).toBe("live");
+    expect(projection.buildDashboardDayWire(beforeLogs.entries[0].line.file.date).queueSurfaces.map(row => row.runId)).toContain(runId);
+    expect(projection.runLogSnapshot(runId)).toEqual(beforeLogs);
+    tick(250);
+    await runtime.settled();
+    expect(poll).toHaveBeenCalledTimes(3);
+    expect(projection.generation()).toBe(generation);
+    expect(projection.cursor()).not.toBe(beforeRace);
     await runtime.stopTimeline();
     expect(synchronousIngest).toHaveBeenCalledTimes(1);
   } finally {
