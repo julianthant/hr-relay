@@ -1,5 +1,6 @@
 /** The state gallery's story shape. A surface keys one story table per state type it renders, each typed
  * `satisfies Record<StateType, Story>`, so a new state member without a story fails typecheck. */
+import type { Page } from "@playwright/test";
 import type { ReactNode } from "react";
 import type { StateRuleName } from "./state-rule-limits.js";
 
@@ -7,6 +8,10 @@ export interface Story {
   /** What the operator is looking at, in a few words. */
   readonly title: string;
   readonly render: () => ReactNode;
+  /** Brings the mounted story to the state it is for: types, presses, runs the page clock on. It runs before the ready point is awaited. */
+  readonly play?: (page: Page) => Promise<void>;
+  /** Set on a story that waits on timers: the loop installs the page clock before the story mounts, so `play` can run it on. */
+  readonly clock?: true;
   /** A selector that is visible once the story shows the state it is for. Without one, the theme root is the ready point. */
   readonly ready?: string;
   /** A selector that is visible once requests the story starts after its ready point have answered. */
