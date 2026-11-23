@@ -363,6 +363,80 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
   if (failure !== undefined) throw new Error("enrollment fixture failed", { cause: failure });
 });
 
+it("copy enrollment clicks the owned Duo tab after arming and records both Fast Duo receipts", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "copy-duo-enrollment-")));
+  for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
+  const machine = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
+  const browserRoot = join(machine.stateRoot, "browsers", "onboarding");
+  mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
+  const portal = "https://copy-enrollment.duosecurity.com/";
+  let context: BrowserContext | undefined;
+  const provider = createProfileOnboardingDuoProvider({
+    browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: realpathSync("fast-duo"), clock: systemClock, closeProofMs: 5000, platform: "win32",
+    focus: { async captureRelay() { return undefined; }, async show() {}, async returnToRelay() { throw new Error("unexpected native Return"); } },
+    copySignin: { profile: "development", credentials() { throw new Error("unexpected SSO"); }, phone() { throw new Error("unexpected phone approval"); } },
+    launcher: { async launch(input) {
+      if (input.nativeOnly) return DEFAULT_BROWSER_LAUNCHER.launch(input);
+      context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true });
+      await context.route("http*://**/*", async route => {
+        const url = route.request().url();
+        if (url === "https://duo.ucsd.edu/") await route.fulfill({ contentType: "text/html", body: `<script>location.replace(${JSON.stringify(portal)})</script>` });
+        else if (url === portal) await route.fulfill({ contentType: "text/html", body: `<!doctype html>
+          <main><button>Add a device</button></main><script>
+          const wizard = document.querySelector('main');
+          let method = 'key';
+          wizard.addEventListener('click', async ({target}) => {
+            if (target.textContent === 'Add a device') {
+              wizard.innerHTML = '<h1>Select an option</h1><button>Security key</button><button>Windows Hello</button>';
+            } else if (target.textContent === 'Security key' || target.textContent === 'Windows Hello') {
+              method = target.textContent === 'Security key' ? 'key' : 'touch';
+              wizard.innerHTML = '<h1>Set up your device</h1><button>Continue</button>';
+            } else if (target.textContent === 'Continue') {
+              const platform = method === 'touch';
+              wizard.textContent = 'Waiting for registration';
+              const credential = await navigator.credentials.create({publicKey: {
+                challenge: new TextEncoder().encode('synthetic-copy-enrollment-' + method),
+                rp: {id: 'duosecurity.com', name: 'Synthetic Duo'},
+                user: {id: new TextEncoder().encode('synthetic-copy'), name: 'synthetic-copy@example.edu', displayName: 'Synthetic Copy'},
+                pubKeyCredParams: [{type: 'public-key', alg: -7}], timeout: 5000,
+                authenticatorSelection: {authenticatorAttachment: platform ? 'platform' : 'cross-platform', userVerification: platform ? 'required' : 'discouraged'},
+              }});
+              if (!(credential instanceof PublicKeyCredential) || credential.authenticatorAttachment !== (platform ? 'platform' : 'cross-platform')) throw new Error('registration missing');
+              wizard.innerHTML = platform ? '<h1>Added Windows Hello</h1>' : '<h1>Added security key</h1><button>Done</button>';
+            } else if (target.textContent === 'Done') {
+              wizard.innerHTML = '<button>Add a device</button>';
+            }
+          });</script>` });
+        else await route.abort();
+      });
+      return context;
+    } },
+  });
+  const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock, onboardingDuo: provider });
+  let opening: ReturnType<typeof profile.session.openOnboardingPortal> | undefined;
+  try {
+    const draft = profile.session.signUp({ firstName: "Synthetic", lastName: "Copy", email: "synthetic-copy@example.edu",
+      password: "synthetic-copy-password", createdAt: systemClock.now().toISOString() });
+    if (draft.state !== "onboarding") throw new Error("fixture draft required");
+    opening = profile.session.openOnboardingPortal(draft.token, draft.operationId);
+    void opening.catch(() => undefined);
+    const read = () => profile.session.readOnboarding(draft.token, draft.operationId);
+    await Promise.race([opening, expect.poll(() => read().methods.key.state, { timeout: 10_000 }).toBe("complete")]);
+    const ready = await opening;
+    for (const method of ["key", "touch"] as const) {
+      assert.equal(ready.methods[method].state, "complete");
+      assert.equal(ready.methods[method].ceremonyObserved, true);
+      assert.equal(ready.methods[method].portalAccepted, true);
+    }
+  } finally {
+    try { await profile.close(); }
+    finally {
+      try { await context?.close(); await opening?.catch(() => undefined); }
+      finally { machine.release(); }
+    }
+  }
+});
+
 it("measures, centers and clamps the exact native setup normal window and executes owned app focus", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-popup-bounds-"))), extensionDirectory = join(root, "extension");
   stageFastDuoExtension(realpathSync("fast-duo"), extensionDirectory, PROFILE_ENROLLMENT_EXTENSION_MODE);

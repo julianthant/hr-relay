@@ -542,6 +542,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const control = (name: RegExp) => page.getByRole("button", { name }).or(page.getByRole("link", { name })).filter({ visible: true });
     const click = async (locator: Locator, approval?: "phone") => {
       current();
+      await selectPage(session, page);
+      current();
       const target = await locator.elementHandle({ timeout });
       try {
         current();
