@@ -6,7 +6,7 @@ import { RunIdSchema, ItemIdSchema } from '../../../src/rules/identity/ids.js';
 import { QueueSurfaceWireSchema } from '../../../src/models/dashboard/projection.js';
 import { LogFeed } from '../../../src/dashboard/surfaces/run-detail/logs/log-feed.js';
 import type { LogStep } from '../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js';
-import '../../../src/dashboard/app/index.css';
+import './harness.css';
 
 const uuid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 const absent = (reason: string) => ({ state: 'absent', reason });
