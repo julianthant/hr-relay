@@ -119,18 +119,22 @@ describe("Logs return visit", () => {
     release();
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
   });
-  it("shows no snapshot read before a day stream reset while the replacement read is held", async () => {
+  it("shows no snapshot read before a day stream reset while the replacement read is held, or after it is refused", async () => {
     const { client, reads } = clientFor(false);
     const epoch = {};
     const dayRequest = {};
     await visit(client, selection, bindingOf(epoch, "operator-a", dayRequest, {}));
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
-    reads.hold = new Promise<void>(() => undefined);
+    let refuse!: (cause: Error) => void;
+    reads.hold = new Promise<void>((_, reject) => { refuse = reject; });
     dropKeptResults(client);
     await act(async () => root?.render(createElement(Probe, { client, run: { ...selection, row: { ...selection.row } }, binding: bindingOf(epoch, "operator-a", dayRequest, {}) })));
     assert.equal(seen?.state, "loading");
     assert.equal(seen?.snapshot, undefined, "the pre-reset logs are gone, not shown as a kept copy");
     await vi.waitFor(() => assert.equal(reads.detail, 2));
+    await act(async () => { refuse(new Error("replacement read refused")); });
+    await vi.waitFor(() => assert.equal(seen?.state, "failed"));
+    assert.equal(seen?.snapshot, undefined, "a refused replacement read does not bring back the pre-reset logs");
   });
   it("reads a finished run with decision sections again when a day frame re-serves its row", async () => {
     const { client, reads } = clientFor(true, undefined, ["logs", "failure"]);

@@ -692,7 +692,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
       setSettled(current => ({ request, value: { state: "failed", error, retryable, diagnostic: cause,
         ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
-          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
+          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.request.dayStream === request.dayStream && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     // Start after the mount settles: a mount cancelled in the same tick sends nothing.
     queueMicrotask(() => { if (!controller.signal.aborted) read(); });
