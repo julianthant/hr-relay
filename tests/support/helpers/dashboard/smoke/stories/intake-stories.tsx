@@ -101,6 +101,6 @@ const BREAKS: Readonly<Record<string, readonly StateRuleName[]>> = {
 export const INTAKE_STORIES = defineSurface("intake", { resource: RESOURCE, session: SESSION, tab: TAB, manifest: MANIFEST, rerun: RERUN, problem: PROBLEM, pending: PENDING })
   .map(entry => {
     const broken = BREAKS[entry.id.slice("intake/".length)] ?? [];
-    const narrow = entry.id === "intake/rerun/changed" ? { knownFailureWidth: { "fits-viewport": 1024 } } : {};
+    const narrow = entry.id === "intake/rerun/changed" ? { knownFailureWidths: { "fits-viewport": [1024] } } : {};
     return broken.length === 0 ? entry : { ...entry, story: { ...entry.story, knownFailures: Object.fromEntries(broken.map(rule => [rule, AUDIT_TICKET])), ...narrow } };
   });

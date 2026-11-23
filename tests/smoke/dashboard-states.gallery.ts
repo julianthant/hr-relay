@@ -27,7 +27,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await saveStateFrame(page, id, viewport.width);
         const context: StateRuleContext = { page, storyId: id, story, diagnostics, dialogShapes };
         for (const name of STATE_RULE_NAMES) {
-          if (story.knownFailures?.[name] !== undefined && (story.knownFailureWidth?.[name] ?? viewport.width) === viewport.width) continue;
+          if (story.knownFailures?.[name] !== undefined && (story.knownFailureWidths?.[name] ?? [viewport.width]).includes(viewport.width)) continue;
           await test.step(name, async () => {
             expect.soft(await STATE_RULES[name].check(context), STATE_RULES[name].failure).toEqual([]);
           });
@@ -39,7 +39,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     for (const { id, surface, story } of CATALOGUE) {
       const known = STATE_RULE_NAMES.flatMap(name => {
         const ticket = story.knownFailures?.[name];
-        return ticket === undefined || (story.knownFailureWidth?.[name] ?? viewport.width) !== viewport.width ? [] : [{ name, ticket }];
+        return ticket === undefined || !(story.knownFailureWidths?.[name] ?? [viewport.width]).includes(viewport.width) ? [] : [{ name, ticket }];
       });
 
       for (const { name, ticket } of known) {
