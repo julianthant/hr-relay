@@ -159,7 +159,7 @@ it('while the report loads, shows a busy region and no guessed sections', async 
   assert.equal(document.querySelector('[data-slot="skeleton"]'), null);
 });
 
-const openRuns = () => [...document.querySelectorAll('a')].filter(link => link.textContent?.includes('Open runs'));
+const openRuns = () => [...document.querySelectorAll('button')].filter(link => link.textContent?.includes('Open runs'));
 
 it('while another range loads, keeps the last report under its own period with Export and Open runs locked', async () => {
   if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
@@ -170,7 +170,7 @@ it('while another range loads, keeps the last report under its own period with E
   const expand = document.querySelector<HTMLButtonElement>('table[aria-label="Workflows"] button[aria-expanded="false"]'); assert(expand);
   await act(async () => expand.click());
   const [link] = openRuns(); assert(link);
-  assert.equal(link.getAttribute('aria-disabled'), null);
+  assert.equal(link.disabled, false);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
   assert.equal(document.querySelector('[data-analytics-stale]'), null);
@@ -178,8 +178,7 @@ it('while another range loads, keeps the last report under its own period with E
   await act(async () => root?.render(createElement(ActivityView, { ...props, range: next, blocked: true })));
   assert(document.querySelector('table[aria-label="Workflows"] button[aria-expanded="true"]'));
   assert.deepEqual(openRuns(), [link]);
-  assert.equal(link.getAttribute('aria-disabled'), 'true');
-  assert.equal(link.tabIndex, -1);
+  assert.equal(link.disabled, true);
   await act(async () => link.click());
   assert.equal(opened.length, 1);
   assert.equal(button().disabled, true);

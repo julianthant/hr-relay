@@ -82,8 +82,7 @@ function startFrames(page: Page, trigger: Awaited<ReturnType<Locator["elementHan
           period: find(`${runs} figure .text-control`)?.textContent?.trim(),
           updating: findTarget({ selector: `${toolbar} [role="status"]`, text: "Updating" }) !== undefined,
           exportLocked: findTarget({ selector: `${toolbar} button:disabled`, text: "Export" }) !== undefined,
-          drillInLocked: drillIn instanceof HTMLButtonElement && drillIn.disabled
-            && drillIn.tabIndex === -1 && getComputedStyle(drillIn).pointerEvents === "none",
+          drillInLocked: drillIn instanceof HTMLButtonElement && drillIn.disabled,
           bounds: analyticsBoxes(drillIn),
         },
       };
