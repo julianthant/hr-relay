@@ -1,9 +1,10 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { answerScriptedGate, seededRequestOver, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
-import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, ONBOARDING_EMAIL, ONBOARDING_SCRIPT, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
+import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, ONBOARDING_EMAIL, ONBOARDING_SCRIPT, PERSON_LOOKUP_SCRIPT, SEPARATIONS_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import { COMPOSITION_EID } from "../support/helpers/separations-composition-fixtures.js";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
 import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
@@ -481,6 +482,42 @@ test("I-9 Check Start: a failed person check fails the run and saves no workbook
   expect(seeded.scripted.writes()).toHaveLength(0);
 });
 
+const SEPARATION_STEPS = ["resolve-action", "document", "name-search", "job-summary", "timecard-search", "timecard", "pending-set", "clear-pending", "file-termination", "filing-presence", "finalize-kuali"];
+
+test("Separations: start, each step held, done, and one write to UCPath and one to Kuali", async ({ dashboard, seeded, page, failures }) => {
+  const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  await dashboard.open();
+  await dashboard.openWorkflow("Separations");
+  const runId = await startScriptedRun(request, SEEDED_NOW, "4501", undefined, SEPARATIONS_SCRIPT);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  await dashboard.openRun(runId);
+  const run = await seeded.scripted.drive(runId);
+  await expect(row).toContainText("Running");
+  const held: string[] = [];
+  let position = run.position;
+  while (position.at === "step") {
+    held.push(position.nodeId);
+    position = await run.advance();
+  }
+  expect(position).toMatchObject({ at: "settled", outcome: { state: "done" } });
+  expect(held, "each system-touching step is held once, in order").toEqual(SEPARATION_STEPS);
+  await expect(row).toContainText("Done");
+  await expect(row).not.toContainText("Running");
+  expect(seeded.scripted.writes()).toEqual([
+    { runId, nodeId: "file-termination", eid: COMPOSITION_EID },
+    { runId, nodeId: "finalize-kuali", eid: COMPOSITION_EID },
+  ]);
+  await dashboard.settleReads();
+  await page.reload();
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  expect(seeded.scripted.writes()).toHaveLength(2);
+});
+
+
 const onboardingStarted = async ({ dashboard, seeded, page, failures }: { dashboard: DashboardPage; seeded: SeededServer; page: Page; failures: PageFailures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
@@ -525,13 +562,34 @@ test("Onboarding: start, each step held, the hire review answered, done, and the
   await expect(row).toContainText("Done");
   await expect(row).not.toContainText("Running");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "i9-profile-save", eid: ONBOARDING_EMAIL }, { runId, nodeId: "hire-create", eid: ONBOARDING_EMAIL }]);
-
   await dashboard.settleReads();
   await page.reload();
   await dashboard.expectRunOpen(runId);
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
   expect(seeded.scripted.writes()).toHaveLength(2);
 });
+
+/** Each step, broken, ends the run as Failed; the writes before it stand and the ones after it never happen. */
+for (const [step, writesBefore] of [["resolve-action", 0], ["document", 0], ["name-search", 0], ["job-summary", 0], ["timecard-search", 0], ["timecard", 0], ["file-termination", 0], ["finalize-kuali", 1]] as const) {
+  test(`Separations: a failed ${step} step shows Failed on the row and leaves ${String(writesBefore)} write${writesBefore === 1 ? "" : "s"}`, async ({ dashboard, seeded, page, failures }) => {
+    const request = seededRequestOver(seeded.baseUrl);
+    failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+    await dashboard.open();
+    await dashboard.openWorkflow("Separations");
+    const runId = await startScriptedRun(request, SEEDED_NOW, "4502", undefined, SEPARATIONS_SCRIPT);
+    failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+    const row = page.locator(`[data-demo-row-id="${runId}"]`);
+    await expect(row).toBeVisible();
+    const run = await seeded.scripted.drive(runId);
+    let position = run.position;
+    while (position.at === "step" && position.nodeId !== step) position = await run.advance();
+    expect(position).toEqual({ at: "step", nodeId: step });
+    expect(await run.fail()).toMatchObject({ at: "settled" });
+    await expect(row).toContainText("Failed");
+    await expect(row).not.toContainText("Running");
+    expect(seeded.scripted.writes()).toHaveLength(writesBefore);
+  });
+}
 
 test("Onboarding: a failed first read shows Failed on the row and writes nothing", async ({ dashboard, seeded, page, failures }) => {
   const { runId, row } = await onboardingStarted({ dashboard, seeded, page, failures });
