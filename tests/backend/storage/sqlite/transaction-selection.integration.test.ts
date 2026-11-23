@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync,readFileSync,unlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
-import { queryActivitySummaries } from "../../../../src/backend/runs/queries/run-summaries.js";
+import { queryActivitySummaries } from "../../../../src/backend/runs/queries/activity-summaries.js";
 import { deriveDiagnosticContentDigest } from "../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.js";
 import { fixtureUuid } from "../../../support/fixtures/ledger-projection-fixtures.js";

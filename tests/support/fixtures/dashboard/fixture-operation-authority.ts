@@ -23,7 +23,7 @@ import { supportsDryRun } from "../../../../src/backend/runs/start/plan.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
-import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
+import { queuedRunFixture } from "../backend/queued-run.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import type { RunParent } from "../../../../src/models/run/envelope.js";
@@ -96,7 +96,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     let sequence = 0;
     const createRun = (compiled: typeof plan1Parent, value: unknown, parent?: RunParent, itemId?: string) => {
       const number = ++sequence;
-      return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+      return queuedRunFixture({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
         itemId: itemId ?? `00000000-0000-4000-8001-${String(number).padStart(12, "0")}`, traceId: `fp-170000-${String(number).padStart(4, "0")}`,
         rawInput: JsonValueSchema.parse(value), canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value), protectedBindings: [] }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
         configFingerprint: fingerprint, configSnapshotId, resolvedInstance: separation ? { kuali: "prod", ucpath: "prod" } : mode === "browser" ? { ucpath: "prod" } : {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: supportsDryRun(compiled.descriptor),
@@ -153,7 +153,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     held.shell = shell;
     app.get("/events/v1", (c) => c.body(new ReadableStream<Uint8Array>({ start(controller) {
       for (const value of [{ type: "hello", wireVersion: 1, descriptorHash: hash, projectionGeneration: projection.generation(), cursor: projection.cursor() },
-        { type: "snapshot", topic: "dashboard-day", cursor: projection.cursor(), payload: projection.buildDashboardDayWire(day) }, { type: "health", state: "live" }]) {
+        { type: "snapshot", topic: "dashboard-day", position: 0, cursor: projection.cursor(), payload: projection.buildDashboardDayWire(day) }, { type: "health", state: "live" }]) {
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(DashboardStreamEnvelopeSchema.parse(value))}\n\n`));
       }
     } }), 200, { "content-type": "text/event-stream", "cache-control": "no-cache" }));

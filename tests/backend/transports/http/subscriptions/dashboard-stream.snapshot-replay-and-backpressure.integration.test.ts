@@ -96,9 +96,9 @@ async function drain(connection: { readonly pending: number; next(): Promise<Das
 
 function applyEnvelope(day: DashboardDayWire | undefined, envelope: DashboardStreamEnvelope): DashboardDayWire | undefined {
   if (envelope.type === "snapshot" && envelope.topic === "dashboard-day") return envelope.payload;
-  if (envelope.type === "patch" && envelope.topic === "dashboard-day") {
-    if (day === undefined) assert.fail("patch arrived before any snapshot");
-    return applyDashboardDayPatch(day, envelope.payload);
+  if (envelope.type === "change" && envelope.day !== undefined) {
+    if (day === undefined) assert.fail("change arrived before any snapshot");
+    return applyDashboardDayPatch(day, envelope.day);
   }
   return day;
 }
@@ -135,7 +135,7 @@ describe("dashboard stream hub", () => {
       await vi.waitFor(() => assert.equal(days.length, 2));
       const current = days.at(-1); assert.ok(current);
       assert.deepEqual(current, JSON.parse(JSON.stringify(w.projection.buildDashboardDayWire(DAY))));
-      assert.equal(Number(current.snapshotCursor.slice(3)), Number(before.snapshotCursor.slice(3)) + 4);
+      assert.equal(Number(current.snapshotCursor.slice(3)), Number(before.snapshotCursor.slice(3)) + 1, "four folded events, one envelope, one cursor");
       for (const seed of [1, 2]) {
         assert.equal(w.projection.runFold(uuidOf(seed))?.taskSpans.at(-1)?.outcome, "done");
         assert.notDeepEqual(current.queueSurfaces.find(row => row.runId === uuidOf(seed))?.pipeline,
@@ -280,7 +280,7 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
-  it("replays retained patches for a resumable cursor and never re-snapshots", async () => {
+  it("replays retained changes for a resumable cursor and never re-snapshots", async () => {
     const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -295,17 +295,17 @@ describe("dashboard stream hub", () => {
       lastEventId: cursorAt,
       lastProjectionGeneration: generationAt,
     });
-    assert.deepEqual(atHead.initial.map(({ type }) => type), ["hello", "health"]);
+    assert.deepEqual(atHead.initial.map(({ type }) => type), ["hello", "change", "health"], "at head: only the connection's own cursor-only handoff");
     atHead.close();
 
-    taskEventsOf(w, 1, "searching"); // count-neutral -> retained patch
+    taskEventsOf(w, 1, "searching"); // count-neutral -> retained change
     const resumed = await hub.connect({
       day: DAY,
       lastEventId: cursorAt,
       lastProjectionGeneration: generationAt,
     });
     const types = resumed.initial.map(({ type }) => type);
-    assert.deepEqual(types, ["hello", "patch", "health"]);
+    assert.deepEqual(types, ["hello", "change", "change", "health"], "the retained change, then the connection's own handoff");
     resumed.close();
     assert.equal(buildDay.mock.calls.length, 0);
   });
@@ -328,6 +328,7 @@ describe("dashboard stream hub", () => {
     const heldCursor = w.projection.cursor();
     const heldGeneration = w.projection.generation();
     queuedEventOf(w, { seed: 2 });
+    const currentCursor = w.projection.cursor();
 
     const buildDay = vi.spyOn(w.projection, "buildDashboardDayWire");
     const replaced = await hub.connect({
@@ -343,7 +344,7 @@ describe("dashboard stream hub", () => {
       reason: "snapshot-boundary",
       topic: "dashboard-day",
       requestedCursor: heldCursor,
-      currentCursor: w.projection.cursor(),
+      currentCursor,
       projectionGeneration: w.projection.generation(),
     }]);
     replaced.close();
@@ -449,7 +450,7 @@ describe("dashboard stream hub", () => {
     }
 
     assert.equal(snapshot.payload.projectionGeneration, hello.projectionGeneration);
-    assert.equal(snapshot.cursor, hello.cursor);
+    assert.equal(Number(snapshot.cursor.slice(3)), Number(hello.cursor.slice(3)) + 1, "the snapshot takes the cursor after the one the greeting read");
     assert.equal(hello.projectionGeneration, w.projection.generation());
     replacement.close();
   });
@@ -627,7 +628,7 @@ describe("dashboard stream hub", () => {
     const waiting = connection.next();
     taskEventsOf(w, 1, "searching");
     const envelope = await waiting;
-    assert.equal(envelope?.type, "patch");
+    assert.equal(envelope?.type, "change");
     assert.equal(connection.pending, 0);
     connection.close();
   });
@@ -640,8 +641,8 @@ describe("dashboard stream hub", () => {
     // Take two, then stop asking — exactly what a socket that stopped draining does.
     taskEventsOf(w, 1, "a");
     taskEventsOf(w, 1, "b");
-    assert.equal((await connection.next())?.type, "patch");
-    assert.equal((await connection.next())?.type, "patch");
+    assert.equal((await connection.next())?.type, "change");
+    assert.equal((await connection.next())?.type, "change");
     for (let step = 0; step < 50; step += 1) taskEventsOf(w, 1, `node-${String(step)}`);
     assert.equal(connection.pending, 1);
     const reset = await connection.next();
@@ -713,28 +714,5 @@ describe("dashboard stream hub", () => {
     assert.equal(a[0], b[0], "the shared day is ONE immutable envelope, not two equal ones");
     sameDayA.close();
     sameDayB.close();
-  });
-  it("PREMISE: one projection batch stamps its patch and its snapshot with the same cursor, in that order", async () => {
-
-    const { w, hub } = await harness();
-    w.writer.emit({
-      t: "span.started",
-      kind: "worker",
-      ts: w.clock.now().toISOString(),
-      workflow: "person-lookup",
-      workerId: "person-lookup-worker-1",
-      spanPath: "worker/person-lookup/person-lookup-worker-1",
-      name: "person-lookup",
-    });
-    queuedEventOf(w, { seed: 1, shape: "operation" });
-    queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1 });
-    const connection = await hub.connect({ day: DAY });
-    claimEventOf(w, 2);
-    const live = await drain(connection);
-    assert.deepEqual(live.map(({ type }) => type), ["patch", "snapshot"]);
-    const [patch, snapshot] = live;
-    if (patch?.type !== "patch" || snapshot?.type !== "snapshot") assert.fail("expected patch then snapshot");
-    assert.equal(patch.cursor, snapshot.cursor, "one batch, one cursor");
-    connection.close();
   });
 });

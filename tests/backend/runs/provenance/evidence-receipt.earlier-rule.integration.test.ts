@@ -25,7 +25,7 @@ import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-revie
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { LedgerEntryPayloadSchema } from "../../../../src/rules/runs/ledger.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { buildRunEvidenceReceipt, ensureRunEvidenceReceipt, type EvidenceReceiptStore } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt, ensureRunEvidenceReceipt, type EvidenceReceiptStore } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { finalizationPreviewDependencies } from "../../../support/helpers/kuali-finalization-fixtures.js";
@@ -186,7 +186,7 @@ it("returns the issued first-transaction receipt wording and the producer's mand
     resultSchemaHash: hash, result: bound, resultDigest: deriveRunResultDigest(bound) });
   const run = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, dryRun: true },
     completion: { ...source.completion, resultDigest: result.resultDigest } });
-  const current = buildRunEvidenceReceipt({ descriptor: finalization, run, result, checkpoints });
+  const current = deriveRunEvidenceReceipt({ descriptor: finalization, run, result, checkpoints }).receipt;
   const summary = `this run was a DRY RUN: transaction node "${nodeId}" was previewed `
     + `(settled already-present at its present probe, before anything was staged, observed ${observedAt}) and the run ended `
     + "there. No external write was attempted — no write intent, no fence, no commit — so this "
@@ -261,7 +261,7 @@ it("keeps operator-asserted checkpoints present and rejects invented verificatio
   try {
     const fixture = await omissions.omittedStepFixture();
     const runId = fixture.run.envelope.runId;
-    const stored = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor, ...fixture });
+    const stored = deriveRunEvidenceReceipt({ descriptor: personLookupDescriptor, ...fixture }).receipt;
     const wiring = createCapabilityWiringTestWorld();
     const revised = wiring.fixtureDescriptor(personLookupDescriptor.id, personLookupDescriptor.code, wiring.providersOnlyContract);
     const store: EvidenceReceiptStore = {
@@ -361,7 +361,7 @@ it("reads a removed transaction through the receipt service using its SQLite con
 function settledTransaction() {
   const fixture = kualiReceiptEvidence();
   const run = RunRecordSchema.parse(fixture.run);
-  const stored = buildRunEvidenceReceipt({ descriptor: finalization, ...fixture });
+  const stored = deriveRunEvidenceReceipt({ descriptor: finalization, ...fixture }).receipt;
   const checkpoint = fixture.checkpoints.map(row => RunCheckpointRecordSchema.parse(row)).find(row => row.nodeId === "finalize-kuali");
   const intent = fixture.writes[0]?.intent;
   assert.ok(checkpoint && intent?.status === "committed");
@@ -406,7 +406,7 @@ it("reads an observed-present proof with its issuing rule and distinguishes a mi
     observedProof: ledger.proof, observedAt: ledger.fencedAt, createdAt: ledger.fencedAt, updatedAt: ledger.fencedAt });
   assert.ok(intent.status === "observed-present");
   const writes = [{ intent, attempts: [] }];
-  const issued = buildRunEvidenceReceipt({ descriptor: finalization, run, result, checkpoints, writes });
+  const issued = deriveRunEvidenceReceipt({ descriptor: finalization, run, result, checkpoints, writes }).receipt;
   const retained: EvidenceReceiptStore = { ...store, getRun: () => run, getResult: () => result, listCheckpointsByRun: () => checkpoints,
     listWritesByRun: () => writes, findReceiptByRun: () => issued, readConfirmedWrite: () => assert.fail("no fenced confirmation for an observation") };
   assert.deepEqual(ensureRunEvidenceReceipt(retained, finalization, runId), { state: "existing", receipt: issued });

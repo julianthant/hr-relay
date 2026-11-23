@@ -4,7 +4,7 @@ import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } fro
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterEach,describe,it } from "vitest";
-import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
 import type { RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
@@ -92,12 +92,12 @@ describe("the live person-lookup exit run explains itself", () => {
   it("answers the operator's whole double-check from the receipt alone", async () => {
     const database = await openDatabase();
     const seeded = seedPersonLookupExitRun(database);
-    const receipt = buildRunEvidenceReceipt({
+    const receipt = deriveRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
       run: ordinaryRun(seeded.run),
       result: database.authority.runResults.get(EXIT_RUN_ID),
       checkpoints: seeded.checkpoints,
-    });
+    }).receipt;
 
     // ── "which run am I looking at, and did it finish?" ──────────────────
     assert.equal(receipt.runId, EXIT_RUN_ID);
@@ -188,16 +188,16 @@ describe("the live person-lookup exit run explains itself", () => {
   it("is a pure function of authority: re-deriving the same run yields the same bytes", async () => {
     const database = await openDatabase();
     const seeded = seedPersonLookupExitRun(database);
-    const build = () => buildRunEvidenceReceipt({
+    const build = () => deriveRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
       run: database.authority.runs.get(EXIT_RUN_ID),
       result: database.authority.runResults.get(EXIT_RUN_ID),
       checkpoints: seeded.checkpoints,
-    });
+    }).receipt;
     assert.equal(JSON.stringify(build()), JSON.stringify(build()));
     // And the derivation reads authority through the repositories, not the
     // seeded objects: the checkpoint list the database returns is equivalent.
-    const fromDatabase = buildRunEvidenceReceipt({
+    const fromDatabase = deriveRunEvidenceReceipt({
       descriptor: personLookupDescriptor,
       run: database.authority.runs.get(EXIT_RUN_ID),
       result: database.authority.runResults.get(EXIT_RUN_ID),
@@ -205,7 +205,7 @@ describe("the live person-lookup exit run explains itself", () => {
         personLookupDescriptor.id,
         seeded.run.envelope.itemId,
       ),
-    });
+    }).receipt;
     assert.equal(JSON.stringify(fromDatabase), JSON.stringify(build()));
     const permute = (value: unknown): unknown => Array.isArray(value) ? value.map(permute)
       : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).reverse().map(([key, child]) => [key, permute(child)])) : value;
@@ -216,9 +216,9 @@ describe("the live person-lookup exit run explains itself", () => {
       JSON.stringify(originalCheckpoints.map(({ output }) => output.value)));
     assert.deepEqual(permutedCheckpoints.map(({ output }) => output.value),
       originalCheckpoints.map(({ output }) => output.value));
-    const permuted = buildRunEvidenceReceipt({ descriptor: personLookupDescriptor,
+    const permuted = deriveRunEvidenceReceipt({ descriptor: personLookupDescriptor,
       run: database.authority.runs.get(EXIT_RUN_ID), result: database.authority.runResults.get(EXIT_RUN_ID),
-      checkpoints: permutedCheckpoints });
+      checkpoints: permutedCheckpoints }).receipt;
     assert.equal(JSON.stringify(permuted), JSON.stringify(build()));
   });
 });
@@ -228,13 +228,13 @@ describe("the live person-lookup exit run explains itself", () => {
 describe("the Kuali finalization write explains itself", () => {
   it("answers the write double-check from the receipt alone", () => {
     const evidence = kualiReceiptEvidence();
-    const receipt = buildRunEvidenceReceipt({
+    const receipt = deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       run: ordinaryRun(evidence.run),
       result: evidence.result,
       checkpoints: evidence.checkpoints,
       writes: evidence.writes,
-    });
+    }).receipt;
 
     assert.equal(receipt.runId, KUALI_RUN_ID);
     assert.equal(receipt.result, "verified-done");
@@ -312,13 +312,13 @@ describe("the Kuali finalization write explains itself", () => {
       authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "the save response never arrived; the document was not read back"),
       message: "the save response never arrived; the document was not read back",
     });
-    const receipt = buildRunEvidenceReceipt({
+    const receipt = deriveRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       run: ordinaryRun(evidence.run),
       result: evidence.result,
       checkpoints: evidence.checkpoints,
       writes: [{ intent: parked, attempts: [] }],
-    });
+    }).receipt;
     const commit = receipt.actions.find((action) => action.kind === "commit");
     assert.equal(commit?.writeState, "unknown");
     assert.ok(receipt.warnings.some((warning) => warning.code === "RESIDUAL_WRITE_INTENT"));

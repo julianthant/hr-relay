@@ -1,3 +1,4 @@
+import { NamedFileArtifactOutputSchema } from "../../../../../src/models/artifacts/artifacts.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync,mkdtempSync,readFileSync,realpathSync,rmSync,statSync } from "node:fs";
@@ -17,7 +18,7 @@ import { executeClaimedRun } from "../../../../../src/backend/runtime/execution/
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { TraceIdSchema } from "../../../../../src/rules/identity/ids.js";
-import { collectionArtifactOutput, namedArtifactOutput } from "../../../../../src/workflow-kit/artifacts.js";
+import { fixtureArtifactCollection } from "../../../../support/fixtures/backend/artifact-collection.js";
 import { defineTaskStoreRegistry, defineWorkflowStore } from "../../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../../src/workflow-kit/task.js";
 import { namedFileOutputContract as contract,namedFileOutputDescriptor as descriptor,namedFileOutputScenario as scenario } from "../../../../support/fixtures/named-file-output-workflow.js";
@@ -32,8 +33,8 @@ it.each(["single", "collection"] as const)("publishes a task's %s output through
   const zip = new JSZip(); zip.file("Worksheet A/Synthetic One/document.pdf", "synthetic one"); zip.file("Worksheet B/Synthetic Two/document.pdf", "synthetic two");
   const bytes = await zip.generateAsync({ type: "nodebuffer" });
   const task = defineTask(contract, { sessions: [], async run({ ctx }) {
-    const archive = kind === "single" ? namedArtifactOutput(await ctx.artifacts.put(bytes, { mediaType: "application/zip" }), fileName)
-      : await collectionArtifactOutput(ctx.artifacts, await Promise.all([
+    const archive = kind === "single" ? NamedFileArtifactOutputSchema.parse({ artifact: await ctx.artifacts.put(bytes, { mediaType: "application/zip" }), fileName })
+      : await fixtureArtifactCollection(ctx.artifacts, await Promise.all([
         { relativePath: "July 6/July 6.zip", person: "Synthetic One", document: "synthetic one" },
         { relativePath: "August 2/August 2.zip", person: "Synthetic Two", document: "synthetic two" },
       ].map(async file => {
@@ -98,7 +99,7 @@ it("publishes retained run output at its moved physical destination without rewr
     const workspace = f.machine.readInstallationContext()?.workspace; assert.ok(workspace);
     const row = ArtifactOutboxStorageRecordSchema.parse({ outboxId: randomUUID(), artifactId: randomUUID(), projectionId: "batch-archive", stableKeyFingerprint: "a".repeat(64),
       keyValues: [{ field: "archive.fileName", value: fileName }], sinkId: `documents-file-${run.envelope.runId}`, sourceRunId: run.envelope.runId, sourceNodeId: "searching", state: "pending",
-      payload: { schemaHash: "b".repeat(64), value: namedArtifactOutput(artifact, fileName) }, createdAt: f.clock.now().toISOString() });
+      payload: { schemaHash: "b".repeat(64), value: NamedFileArtifactOutputSchema.parse({ artifact, fileName }) }, createdAt: f.clock.now().toISOString() });
     f.database.authority.artifactOutbox.insert(row);
     await f.closeController();
     lifetime = await RuntimeLifetimeLock.acquire(0);
@@ -134,7 +135,7 @@ it.each([
     const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission }); await artifacts.ready;
     const bytes = Buffer.from("synthetic retained publication"), artifact = await artifacts.put(bytes, { mediaType: "application/zip" });
     const fileName = `Interrupted ${randomUUID()}.zip`, sinkId = `documents-file-${f.run.envelope.runId}`;
-    const output = kind === "single" ? namedArtifactOutput(artifact, fileName) : await collectionArtifactOutput(artifacts,
+    const output = kind === "single" ? NamedFileArtifactOutputSchema.parse({ artifact, fileName }) : await fixtureArtifactCollection(artifacts,
       [{ relativePath: "July 6/July 6.zip", artifact }, { relativePath: "August 2/August 2.zip", artifact }]);
     const row = ArtifactOutboxStorageRecordSchema.parse({ outboxId: randomUUID(), artifactId: randomUUID(), projectionId: "batch-archive", stableKeyFingerprint: "a".repeat(64),
       keyValues: [{ field: "archive.fileName", value: fileName }], sinkId, sourceRunId: f.run.envelope.runId, sourceNodeId: "searching", state: "pending",
