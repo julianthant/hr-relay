@@ -1,0 +1,139 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { copyFileSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
+import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { importIsolatedProfileData } from "../../../../src/backend/storage/maintenance/isolated-library-import.js";
+import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
+import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
+import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { createBackupFixtures } from "../../../support/helpers/storage/backup-fixtures.js";
+import { historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
+
+const clock = manualClock(new Date("2026-11-23T12:00:00.000Z"));
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { try { for (const close of cleanups.splice(0).reverse()) await close(); } finally { vi.unstubAllGlobals(); } });
+const { openCurrentWorld, takeBackup } = createBackupFixtures(cleanups, clock);
+
+it("retains confirmed write evidence for dashboard history without admitting it to the local write sequencer", async () => {
+  const source = await historyWorld();
+  cleanups.push(() => source.dispose());
+  const fixture = source.commit(596);
+  const ledger = fixture.commit.transaction;
+  source.database.authority.notifications.create({ ...NOTIFICATION, links: [{ kind: "run", runId: ledger.runId }] });
+  const active = source.database.authority.runs.get(ledger.runId);
+  assert.ok(active?.lifecycle.state === "running");
+  expect(source.database.authority.runs.transition({ runId: ledger.runId, expectedVersion: active.version,
+    claim: { workerId: active.lifecycle.workerId, claimGeneration: active.claimGeneration }, now: ledger.confirmedAt,
+    lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: ledger.confirmedAt, resumeAt: "active-status" } }).state).toBe("applied");
+  const admission = boundProfileAdmission(source.path);
+  const directory = join(source.root, "backups", "authority");
+  const backup = await new AuthorityBackupService(admission, source.database, { directory }, clock)
+    .request({ trigger: "schema-migration", requiredGeneration: source.database.getMeta().authorityGeneration });
+  const manifest = backup.manifests[0];
+  assert.ok(manifest);
+  const copy = await openCurrentWorld();
+  const privateFiles = () => {
+    const folder = join(copy.stateRoot, "credentials");
+    const paths = readdirSync(folder, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name));
+    paths.push(join(copy.machine.stateRoot, "machine", "profile-verifiers.json"), join(copy.machine.stateRoot, "machine", "profile-pepper"));
+    return paths.sort().map(path => [path, createHash("sha256").update(readFileSync(path)).digest("hex")]);
+  };
+  const before = privateFiles();
+  expect(before.length).toBeGreaterThan(2);
+  const report = await importIsolatedProfileData(copy.admission, copy.database, { source: { manifestPath: join(directory, manifest.backupFileName + ".manifest.json"),
+    binding: admission.profileBinding }, destination: copy.admission.profileBinding }, clock);
+  expect(privateFiles()).toEqual(before);
+  const historyPath = join(copy.stateRoot, "files", "imported-history.sqlite");
+  const counts = (path: string) => withReadonlyAuthoritySnapshot(path, db => Object.fromEntries([
+    "runs", "run_batches", "deleted_runs", "run_delegations", "delegation_dependencies", "run_search",
+    "diagnostic_snapshots", "diagnostic_files", "dryrun_results", "ocr_approved_snapshots", "ocr_review_revisions", "run_checkpoints", "gate_results", "write_intents", "write_attempts", "run_results", "run_failures", "run_receipts", "timeline_events", "notifications",
+  ].map(name => [name, db.prepare(`SELECT count(*) AS count FROM ${name}`).get()?.count])));
+  expect(counts(historyPath)).toEqual(counts(join(directory, manifest.backupFileName)));
+  expect(report.history).toMatchObject({ write_intents: 1, write_attempts: 1, notifications: 1 });
+  const history = copy.database.dashboardHistory();
+  const range = { from: "0001-01-01", to: "9999-12-31" };
+  expect(createTransactionHistory(history.authority).query(range).rows).toEqual(source.history.query(range).rows);
+  expect(history.authority.notifications.listByActor("local-operator")).toEqual(source.database.authority.notifications.listByActor("local-operator"));
+  expect(history.authority.runs.listNonTerminal()).toEqual([]);
+  expect(history.authority.runs.listParkedAtGate()).toEqual([]);
+  expect(copy.database.authority.writeIntents.listByBusinessKey(ledger.system, ledger.idempotencyKeyDigest)).toEqual([]);
+  expect(copy.database.authority.writeAttempts.get(fixture.attempt.writeAttemptId)).toBeUndefined();
+  expect(copy.database.authority.runCheckpoints.listByItem(ledger.workflowId, ledger.itemId)).toEqual([]);
+  expect(() => history.withAuthorityTransaction(() => undefined)).toThrow("isolated-history-read-only");
+});
+
+it("refreshes imported runs beside copy-created runs and starts the dashboard with no imported work or outbound requests", async () => {
+  const source = await openCurrentWorld(), copy = await openCurrentWorld();
+  source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), clock,
+    { stateRoot: copy.stateRoot, artifactRoot: join(copy.stateRoot, "artifacts") });
+  copy.database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance });
+  const sourceRun = runRecordOf({ seed: 596, enqueuedAt: clock.now().toISOString() });
+  source.database.authority.runs.enqueue(sourceRun);
+  const timeline = source.database.authority.timelineEvents;
+  createTimelineEmitter({ repository: timeline, clock }).emit(runQueuedSpanEvent({ run: sourceRun, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic import" }));
+  const { runId, traceId, attempt } = sourceRun.envelope;
+  createNoteTimelineWriter({ repository: timeline, clock }).emitNote({ workflow: "person-lookup",
+    address: { runId, attempt, traceId, spanPath: traceId }, level: "step", message: "Archived step from source" });
+  const refresh = async () => {
+    const backup = await takeBackup(source);
+    return importIsolatedProfileData(copy.admission, copy.database, { source: { manifestPath: backup.manifestPath, binding: source.admission.profileBinding },
+      destination: copy.admission.profileBinding }, clock);
+  };
+  await refresh();
+  const local = runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() });
+  local.envelope.configFingerprint = resolved.fingerprint;
+  copy.database.authority.runs.enqueue(local);
+  source.database.authority.runs.enqueue(runRecordOf({ seed: 597, enqueuedAt: clock.now().toISOString() }));
+  expect((await refresh()).history.runs).toBe(2);
+  expect(copy.database.authority.runs.listNonTerminal()).toEqual([local]);
+  expect(copy.database.dashboardHistory().authority.runs.listByWorkflow("person-lookup")).toHaveLength(3);
+  source.database.authority.runs.enqueue(runRecordOf({ seed: 598, enqueuedAt: clock.now().toISOString() }));
+  await expect(refresh()).rejects.toThrow("isolated-history-local-id-collision: runs");
+  copy.closeDatabase();
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(copy.workspace, name));
+  const runtime = composeProfileRuntime({ admission: copy.machine, clock, hostFacts: { primaryDisplay: null } });
+  cleanups.push(() => runtime.close());
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  assert.ok(active.state === "active");
+  const lock = copy.admission.lifetime;
+  assert.ok(lock instanceof RuntimeLifetimeLock);
+  const realFetch = globalThis.fetch, outbound: string[] = [];
+  vi.stubGlobal("fetch", ((url, options) => {
+    const host = new URL(url instanceof Request ? url.url : url).hostname;
+    if (host !== "127.0.0.1") { outbound.push(host); throw new Error("unexpected-external-request"); }
+    return realFetch(url, options);
+  }) satisfies typeof fetch);
+  const spawn = vi.fn(() => { throw new Error("unexpected-worker-start"); });
+  const dashboard = await composeDashboardRuntime({ lifetimeLock: lock, admission: copy.machine, profile: { runtime, token: active.token },
+    repoRoot: copy.workspace, clock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {},
+    preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: { spawn } });
+  cleanups.push(() => dashboard.stop());
+  const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` });
+  expect((await client.runDetail(sourceRun.envelope.runId)).runId).toBe(sourceRun.envelope.runId);
+  const logs = await client.runSection(sourceRun.envelope.runId, "logs");
+  assert.ok(logs.section === "logs");
+  expect(logs.payload.notes.map(row => row.message)).toContain("Archived step from source");
+  expect((await client.activityReport("2026-11-23", "2026-11-23")).totalRuns).toBe(3);
+  expect((await client.runDetail(local.envelope.runId)).runId).toBe(local.envelope.runId);
+  expect(outbound).toEqual([]);
+  expect(spawn).not.toHaveBeenCalled();
+});

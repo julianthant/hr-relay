@@ -7,6 +7,7 @@ import { ProfileDatabaseBindingSchema, type ProfileDatabaseBinding } from "../..
 import { encodeSavedWorkbook, type SavedWorkbook, type WorkbookOperation, type WorkbookType } from "../../../models/dashboard/workbooks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
+import { withStagedHistory } from "./isolated-history-import.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
@@ -73,7 +74,9 @@ function assertIsolatedDestination(admission: RuntimeAdmission, database: Author
 }
 
 /** Reads the backup's local library through the supported verifier, from the same read-only snapshot its inspection checks. */
-function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: string, expected: ProfileDatabaseBinding) {
+type StageHistory = Parameters<Parameters<typeof withStagedHistory>[1]>[0];
+
+function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: string, expected: ProfileDatabaseBinding, stage?: StageHistory) {
   const manifest = parseBackupManifestFile(manifestPath);
   if (manifest.installationId !== expected.installationId || manifest.profileId !== expected.profileId
     || manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity({ kind: "profile", binding: expected })) {
@@ -81,6 +84,7 @@ function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: st
   }
   if (manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new IsolatedLibraryImportRefusedError("source-schema-not-current");
   const verified = readVerifiedBackupManifestAtPath(admission, manifestPath, { kind: "profile", binding: expected }, (database): SourceLibrary => {
+    stage?.(database, manifest.createdAt);
     const repository = createWorkbookLibraryRepository({ database, read: work => work(),
       mutate: () => { throw new Error("isolated-library-import-source-read-only"); } });
     const entries = repository.catalog();
@@ -107,6 +111,14 @@ function readVerifiedSourceLibrary(admission: RuntimeAdmission, manifestPath: st
  */
 export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmission, database: AuthorityDatabase, requestInput: unknown,
   clock: Clock = systemClock): Promise<IsolatedLibraryImportReport> {
+  return importLibrary(admissionInput, database, requestInput, clock);
+}
+
+export async function importIsolatedProfileData(admission: RuntimeAdmission, database: AuthorityDatabase, request: unknown, clock: Clock = systemClock) {
+  return withStagedHistory(admission, stage => importLibrary(admission, database, request, clock, stage));
+}
+
+async function importLibrary(admissionInput: RuntimeAdmission, database: AuthorityDatabase, requestInput: unknown, clock: Clock, stage?: StageHistory) {
   const admission = requireRuntimeAdmission(admissionInput);
   const request = IsolatedLibraryImportRequestSchema.parse(requestInput);
   admission.assertProfileRuntime();
@@ -118,7 +130,7 @@ export async function importIsolatedWorkbookLibrary(admissionInput: RuntimeAdmis
   const manifestPath = resolve(request.source.manifestPath);
   if (inside(admission.stateRoot, manifestPath)) throw new IsolatedLibraryImportRefusedError("source-inside-destination");
 
-  const { manifest, library } = readVerifiedSourceLibrary(admission, manifestPath, request.source.binding);
+  const { manifest, library } = readVerifiedSourceLibrary(admission, manifestPath, request.source.binding, stage);
   const target = database.authority.workbooks;
   const at = clock.now().toISOString();
   const issued = (sourceLibraryId: string) => importedLibraryId(request.source.binding, request.destination, sourceLibraryId);

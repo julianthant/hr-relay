@@ -6,6 +6,7 @@ import { TimelineAppendSchema, TimelineDiagnosticBudgetError, TimelineEventRecor
   timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 
 interface TimelineRepositoryPorts {
+  cursorOffset?(): number;
   database: DatabaseSync;
   /** Must use the owning connection's authority transaction and generation accounting. */
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
@@ -206,7 +207,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
     highWaterMark() {
       return ports.read(() => HighWaterMarkSchema.parse(prepare(
         "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'timeline_events'), 0) AS cursor",
-      ).get()).cursor);
+      ).get()).cursor + (ports.cursorOffset?.() ?? 0));
     },
     pruneBefore(retentionDate: string) {
       const cutoff = z.iso.date().parse(retentionDate);

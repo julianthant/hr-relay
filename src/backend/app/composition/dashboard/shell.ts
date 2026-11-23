@@ -22,8 +22,9 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   & DashboardStreamHubDeps
   & { projection: Pick<RunQueueProjection, "runFold">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
-  const { database, projection, clock, ids, artifacts } = input;
-  database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({
+  const { projection, clock, ids, artifacts } = input;
+  const database = input.database.dashboardHistory();
+  input.database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({
     workflow: descriptor.id, version: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
     subjectProjection: descriptor.subjectProjection ?? null,
   })));
@@ -57,7 +58,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     searchMetadataExports: {export: request=>exportSearchMetadata({search,withSearchSnapshot,sourceIdentity:database.getSourceDatabaseIdentity()},request)},
     calendar: createCalendarQuery(database, clock),
     xlsxExports: composeGeneratedExports({ clock, ids, sourceIdentity: database.getSourceDatabaseIdentity(),
-      artifacts, authority: database.authority.operatorXlsxExports, search, withSearchSnapshot,
+      artifacts, authority: input.database.authority.operatorXlsxExports, search, withSearchSnapshot,
       activityReport: (from, to, token) => input.activity.readSelected(from, to, token) }),
     hub: createDashboardStreamHub(input),
   };
