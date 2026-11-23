@@ -437,15 +437,11 @@ jobs:
       - run: npm run test:perf
 
   smoke:
-    name: smoke (${{ matrix.project }})
+    name: smoke
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).smoke }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [smoke, gallery]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -461,20 +457,16 @@ jobs:
       - name: Install Chromium
         run: npx playwright install chromium
       - run: npm run web:build
-        if: matrix.project == 'smoke'
       - name: Put test temp on tmpfs
         run: |
           dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:smoke
-        env:
-          RELAY_SMOKE_PROJECT: ${{ matrix.project }}
-          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/smoke-profile.json
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: smoke-profile-${{ matrix.project }}
-          path: ${{ runner.temp }}/smoke-profile.json
+          name: smoke-profile
+          path: tests/smoke/.output/results.json
           if-no-files-found: error
 
   unit:
