@@ -148,6 +148,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     process?: OwnedBrowserProcess; draining?: Promise<void>; profileRemovalProved?: true;
   };
   let browser: OwnedBrowser | undefined;
+  let copyPhonePrompted = false;
   let windowState: ProfileOnboardingBrowser = { state: "closed", generation: 0 };
   let reopening: Promise<void> | undefined;
   let reopeningGeneration: number | undefined;
@@ -534,11 +535,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (page.isClosed() || session.portal !== page || new URL(page.url()).origin !== origin) throw new Error("copy-signin-duo-scope");
     };
     const control = (name: RegExp) => page.getByRole("button", { name }).or(page.getByRole("link", { name })).filter({ visible: true });
-    const click = async (locator: Locator) => {
+    const click = async (locator: Locator, beforeClick?: () => void) => {
       current();
       const target = await locator.elementHandle({ timeout });
-      try { current(); await target.click({ timeout }); }
-      finally { await target.dispose(); }
+      try {
+        current();
+        beforeClick?.();
+        await target.click({ timeout });
+      } finally { await target.dispose(); }
       current();
     };
     const add = control(/^Add a device\b/iu);
@@ -546,8 +550,11 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     await add.or(other).first().waitFor({ timeout });
     if (!await add.isVisible()) {
       await click(other);
-      await click(control(/^(?:Verified )?Duo Push\b/iu));
-      copy.phone();
+      await click(control(/^(?:Verified )?Duo Push\b/iu), () => {
+        if (copyPhonePrompted) throw new Error("copy-signin-duo-phone-already-requested");
+        copyPhonePrompted = true;
+        copy.phone();
+      });
       await add.waitFor({ timeout });
     }
 

@@ -242,6 +242,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     refuseSubmit(error: Error) { portalSubmitFailure = error; },
     landPortal(url: string) { portalLanding = url; },
     reachDuo(next: string) { setPortalUrl(next); },
+    async closePortal() { const page = pages.find(page => page.url() === portalUrl); assert.ok(page); await page.close(); },
     typed: () => typedCount,
     portalUrl: () => portalUrl,
     manualSignInObserved: () => manualSignInObserved,
@@ -618,7 +619,7 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
-  it("uses Duo Push from the direct device portal factor menu and waits for the device list", async () => {
+  it("prompts before one Duo Push and waits for the device list", async () => {
     const actions: string[] = [];
     const waiting = Promise.withResolvers<void>(), approved = Promise.withResolvers<void>();
     let buttons = ["Other options"];
@@ -640,11 +641,18 @@ describe("draft Duo provider", () => {
     try {
       const opening = w.provider.openPortal(w.owner);
       await Promise.race([waiting.promise, opening.then(() => { throw new Error("Duo portal completed before verification"); })]);
-      assert.deepEqual(actions, ["Other options", "Duo Push Send to phone", "phone prompt"]);
+      const expectedActions = ["Other options", "phone prompt", "Duo Push Send to phone"];
+      assert.deepEqual(actions, expectedActions);
       buttons = ["Add a device"];
       approved.resolve();
       await opening;
+      await w.provider.openPortal(w.owner);
+      assert.deepEqual(actions, expectedActions);
       assert.equal(w.portalPages(), 1);
+      await w.closePortal();
+      buttons = ["Other options"];
+      await assert.rejects(w.provider.openPortal(w.owner), { cause: new Error("copy-signin-duo-phone-already-requested") });
+      assert.deepEqual(actions, [...expectedActions, "Other options"]);
     } finally { approved.resolve(); await w.cleanup(); }
   });
 

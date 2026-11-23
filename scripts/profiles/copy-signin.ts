@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -111,7 +111,10 @@ async function runCopyBackend(profile: CopyProfile): Promise<void> {
         const { UCPATH_USERNAME: userId, UCPATH_PASSWORD: password } = operatorCredentials();
         return { userId, password };
       },
-      phone() { process.send?.({ type: "relay-copy-signin-phone" }); },
+      phone() {
+        writeSync(process.stdout.fd, "approve the Duo request on your phone\n");
+        process.send?.({ type: "relay-copy-signin-phone" });
+      },
     },
   });
 }
@@ -137,12 +140,7 @@ async function openCopyDashboard(profile: CopyProfile): Promise<void> {
   const finished = runDevDashboard({ profile, signals, copySignin: {
     backendEntry: fileURLToPath(import.meta.url),
     ready: ready.resolve,
-    phone() {
-      if (approvals === 0) {
-        approvals = 1;
-        process.stdout.write("approve the Duo request on your phone\n");
-      }
-    },
+    phone() { approvals = 1; },
   } }).finally(() => { stop.abort(); });
   const halt = () => { signals.emit("SIGTERM"); };
   process.on("SIGINT", halt);
