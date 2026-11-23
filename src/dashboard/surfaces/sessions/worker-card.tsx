@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { Pause, Play, RotateCw, Square, Trash2 } from "lucide-react";
 import { Button, Tooltip, TooltipProvider } from "../../ds/ui.js";
 import { IconActionButton } from "../shared/actions/icon-action-button.js";
 import { cn } from "../../lib/utils.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import { IDLE_REFRESH_MS, type IdleSessionCountdown } from "./session-idle-model.js";
 import { SESSION_STATE_LABELS, sessionStateColor, type SessionControl, type SessionWorker } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
@@ -78,10 +80,13 @@ export function WorkerCard({ worker, countdown, operation, disabled = false, onC
 }
 
 /** The idle session's countdown to the next page refresh: a ring that drains with the remaining time (never spins), with the time in its Tooltip. */
-function IdleRefreshRing({ countdown }: { countdown: IdleSessionCountdown }) {
-  const seconds = Math.ceil(countdown.remainingMs / 1000);
+export function IdleRefreshRing({ countdown }: { countdown: IdleSessionCountdown }) {
+  const [now, setNow] = useState(() => systemClock.nowMs());
+  useEffect(() => { setNow(systemClock.nowMs()); const timer = setInterval(() => setNow(systemClock.nowMs()), 1000); return () => clearInterval(timer); }, [countdown.dueAt]);
+  const remainingMs = Math.max(0, countdown.dueAt - now);
+  const seconds = Math.ceil(remainingMs / 1000);
   const label = countdown.waiting ? 'Checking the session' : `Refreshes in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} to stay signed in`;
-  return <Tooltip side="top" content={label}><span role="img" aria-label={label} className="inline-flex size-4 shrink-0 text-ui-secondary"><svg aria-hidden viewBox="0 0 20 20" className="size-4 -rotate-90"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" opacity=".25" strokeWidth="2" /><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" pathLength="1" strokeDasharray="1" strokeDashoffset={1 - countdown.remainingMs / IDLE_REFRESH_MS} /></svg></span></Tooltip>;
+  return <Tooltip side="top" content={label}><span role="img" aria-label={label} className="inline-flex size-4 shrink-0 text-ui-secondary"><svg aria-hidden viewBox="0 0 20 20" className="size-4 -rotate-90"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" opacity=".25" strokeWidth="2" /><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" pathLength="1" strokeDasharray="1" strokeDashoffset={1 - remainingMs / IDLE_REFRESH_MS} /></svg></span></Tooltip>;
 }
 
 function WorkerOperationNote({ operation }: { operation?: SessionPreviewOperation }) {
