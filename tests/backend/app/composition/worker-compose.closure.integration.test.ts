@@ -262,5 +262,3 @@ it("retains database, child and process custody when its actual OCR account cann
     assert.ok(issued); issued.release(); await f.close();
   }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

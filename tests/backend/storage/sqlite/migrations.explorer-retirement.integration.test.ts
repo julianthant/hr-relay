@@ -110,5 +110,3 @@ it("admits only the current schema for ordinary inspection", () => {
   }
   finally { database.close(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

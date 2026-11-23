@@ -73,5 +73,3 @@ it("revalidates the admitted settings facts against each of their four authority
     assert.equal((await read(latest)).status, 500);
   } finally { await fixture.close(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

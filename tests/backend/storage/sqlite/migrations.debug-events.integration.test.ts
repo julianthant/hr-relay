@@ -150,5 +150,3 @@ describe("debug event migration 39", () => {
     assert.throws(() => database.exec("DELETE FROM timeline_events WHERE retention_class='protected'"), /protected-timeline-owner-deletion-required/u);
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

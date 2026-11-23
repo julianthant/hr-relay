@@ -123,5 +123,3 @@ it("preserves boot log bytes when the open descriptor fails custody", () => {
     }
   } finally { vi.restoreAllMocks(); rmSync(root, { recursive: true, force: true }); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

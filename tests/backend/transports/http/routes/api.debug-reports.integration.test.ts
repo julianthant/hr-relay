@@ -54,5 +54,3 @@ it("forwards the currently open run through the typed client's report path", asy
     }
   } finally { await f.dispose(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

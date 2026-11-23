@@ -122,5 +122,3 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     assert.equal(factory.mock.calls[0]?.[0].stateRoot, profile.stateRoot);
   } finally { if (dashboard !== undefined) await dashboard.stop(); else await runtime.close(); factory.mockRestore(); await transport.cleanup(); await profile.close(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

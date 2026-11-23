@@ -2506,6 +2506,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     assertAuthorityUpgradeAppend(database, { type: "forward-upgrade", from: version }, record.phase);
     database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
       .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
+    optimizeAuthorityPlanner(database);
     const inspection = inspectNormalAuthority(database);
     database.exec("COMMIT");
     return { ...inspection, schemaVersion: version, authorityContentFingerprint: fingerprint };
@@ -2899,6 +2900,10 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
 /** The WAL file is cut back to this size whenever a checkpoint lets it restart: two automatic checkpoints' worth of 4 KiB pages. */
 export const AUTHORITY_WAL_SIZE_LIMIT_BYTES = 8 * 1024 * 1024;
 
+function optimizeAuthorityPlanner(database: DatabaseSync): void {
+  database.exec("PRAGMA analysis_limit=1000; PRAGMA main.optimize=0x10002");
+}
+
 export function configureWritableConnection(database: DatabaseSync, busyTimeoutMs: number): void {
   database.exec("PRAGMA foreign_keys = ON");
   // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
@@ -2928,6 +2933,7 @@ export class AuthorityDatabase implements Disposable {
   #path: string;
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
+  #optimizeOnClose: boolean;
   #closed = false;
   #historyReader?: AuthorityDatabase;
   #historyOwner?: AuthorityDatabase;
@@ -3011,6 +3017,7 @@ export class AuthorityDatabase implements Disposable {
     const binding = this.#admission.profileBinding;
     const existed = options.path !== ":memory:" && existsSync(options.path);
     const readOnlyNoMigrate = options.openMode !== "read-write";
+    this.#optimizeOnClose = purpose === "profile-initialization";
     const mayCreate = purpose === "profile-initialization" || options.path === ":memory:";
     if (existed && purpose === "profile-initialization") throw new Error("profile-database-initialization-already-exists");
     if (!existed && !mayCreate && !readOnlyNoMigrate) throw new Error("profile-database-binding-required");
@@ -3111,6 +3118,7 @@ export class AuthorityDatabase implements Disposable {
     if (options.openMode !== "read-write") return database;
     try {
       database.resumeRunDeletionFiles();
+      database.#optimizeOnClose = options.path !== ":memory:";
       return database;
     } catch (error) {
       database.#takeStartupOwner();
@@ -4251,6 +4259,23 @@ export class AuthorityDatabase implements Disposable {
     this.#historyReader?.close();
     if (this.#dashboardReadSources.size > 0) throw new Error("dashboard-background-reader-open");
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
+    let plannerFailure: { error: unknown } | undefined;
+    if (this.#optimizeOnClose && !this.#database.isTransaction) {
+      let admitted = false;
+      try {
+        this.#admitMutation();
+        const file = fileStatus(this.#path, true);
+        admitted = file !== undefined && this.#openedFileIdentity !== undefined
+          && sameDirectory(this.#openedFileIdentity, { device: file.dev, inode: file.ino });
+      } catch { /* A failed ownership check only skips planner maintenance. */ }
+      if (admitted) {
+        try { optimizeAuthorityPlanner(this.#database); }
+        catch (error) {
+          // Another writer can hold the WAL lock during optional shutdown maintenance.
+          if (!(error instanceof Error && "errcode" in error && error.errcode === 5)) plannerFailure = { error };
+        }
+      }
+    }
     const owner = this.#takeStartupOwner();
     let checkpoint: StartupCheckpoint | undefined;
     if (owner !== undefined) {
@@ -4279,7 +4304,7 @@ export class AuthorityDatabase implements Disposable {
       } catch { /* Native close still releases the read transaction. No cache proof was published. */ }
     }
     try { this.#database.close(); }
-    catch (error) { this.#failNativeClosure([error]); }
+    catch (error) { this.#failNativeClosure(plannerFailure === undefined ? [error] : [plannerFailure.error, error]); }
     this.#closed = true;
     if (owner !== undefined && checkpoint !== undefined) {
       // The last SQLite close can checkpoint the WAL into the main file.
@@ -4290,6 +4315,7 @@ export class AuthorityDatabase implements Disposable {
         owner.checkpoints.set(this.#path, { ...checkpoint, file });
       }
     }
+    if (plannerFailure !== undefined) throw plannerFailure.error;
   }
 
   [Symbol.dispose](): void {

@@ -199,5 +199,3 @@ it.each(["dashboard", "worker"])("installs crash capture through the %s process 
     assert.equal(payload.event.message, undefined);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

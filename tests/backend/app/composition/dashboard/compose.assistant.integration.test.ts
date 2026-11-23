@@ -794,5 +794,3 @@ it('refuses a CRM document download while it is not served and confirms an attac
     assert.equal(sheets(), 1);
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

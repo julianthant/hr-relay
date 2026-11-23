@@ -724,5 +724,3 @@ it("publishes a sign-up whose methods both finished from Duo's success heading",
     assert.equal(completion.touch.operatorConfirmedAt, undefined);
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

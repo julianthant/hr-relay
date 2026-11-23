@@ -235,5 +235,3 @@ describe("storage doctor on a long-lived timeline", () => {
     assert.deepEqual(report, { state: "unavailable", cause: { code: "span-stream-invalid", summary: "timeline-record-invalid" } });
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardSnapshotQuery } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createDashboardBackgroundReader } from "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -27,17 +28,24 @@ it("returns ordered bounded pages and observes peer commits without advancing au
       const before = await reader.read(request);
       assert.deepEqual(before.records, []);
       assert.equal(before.cursor, start);
-      const writer = createDebugEventWriter({ repository: peer.authority.timelineEvents, clock: systemClock, build: "test" });
+      const timeline = peer.authority.timelineEvents;
+      const workflow = "person-lookup";
+      const debug = createDebugEventWriter({ repository: timeline, clock: systemClock, build: "test" });
+      const notes = createNoteTimelineWriter({ repository: timeline, clock: systemClock });
+      const note = (message: string) => notes.emitNote({ workflow, address: { workerId: "worker-1", spanPath: "worker-1" },
+        level: "step", message });
       const concurrent = reader.read(request);
       const records = peer.withAuthorityTransaction(repositories => {
-        const workflow = "person-lookup";
         const current = repositories.workerPools.get(workflow);
         const plan = repositories.workerPools.plan({ workflow, desiredWorkers: (current?.desiredWorkers ?? 0) + 1,
           expectedVersion: current?.version ?? 0, requestedBy: "local-operator", now: systemClock.now().toISOString() });
         assert.equal(plan.state, "applied");
-        return ["first", "second", "third"].map(correlationId =>
-          writer.emit({ category: "http", phase: "failed", correlationId }).record);
+        for (const message of ["first", "second", "third"]) note(message);
+        debug.emit({ category: "http", phase: "failed", correlationId: "outside-timeline" });
+        return timeline.page({ after: start, limit: 4 });
       });
+      assert.equal(records.length, 3);
+      assert.ok(records.every(record => record.payload.kind === "note"));
       const raced = await concurrent;
       const key = peer.changeKey();
       const page = await reader.read(request);
@@ -47,7 +55,7 @@ it("returns ordered bounded pages and observes peer commits without advancing au
       assert.notEqual(page.workers.fingerprint, before.workers.fingerprint);
       assert.deepEqual(peer.changeKey(), key);
       assert.deepEqual(raced, raced.through === start ? before : page);
-      writer.emit({ category: "http", phase: "failed", correlationId: "beyond-bound" });
+      note("beyond-bound");
       const last = await reader.read({ ...request, after: page.cursor, through: page.through });
       assert.deepEqual(last.records, records.slice(2));
       assert.equal(last.cursor, page.through);
@@ -199,5 +207,3 @@ it("reads only changed run facts after its first snapshot", async () => {
     assert.equal(traceSqliteStatements(() => query(request)).statements.some(({ sql }) => fullRunRead(sql)), false);
   } finally { native.close(); await fixture.close(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

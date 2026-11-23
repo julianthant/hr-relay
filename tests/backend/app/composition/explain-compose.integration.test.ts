@@ -684,5 +684,3 @@ describe("explain run", () => {
     }
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

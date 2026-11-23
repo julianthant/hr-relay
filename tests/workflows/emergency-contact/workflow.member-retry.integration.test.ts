@@ -770,5 +770,3 @@ it("offers and applies a member Retry after a restart re-activates the same conf
   const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
   assert.equal(replacement.envelope.configSnapshotId, previous.envelope.configSnapshotId);
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

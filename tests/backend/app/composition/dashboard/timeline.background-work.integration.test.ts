@@ -138,5 +138,3 @@ it("degrades on a refused peer snapshot and rebuilds after the peer repairs it",
     await f.dispose();
   }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

@@ -179,5 +179,3 @@ it("logs population failure metadata without retaining the caught value and serv
   assert.equal(diagnostic.payload.event.route, "/api/v1/reports/activity/population");
   assert.equal(JSON.stringify(diagnostic).includes(detail), false);
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

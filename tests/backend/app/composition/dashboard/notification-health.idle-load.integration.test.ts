@@ -65,5 +65,3 @@ describe("dashboard idle load", () => {
     expect(await idleReads(1, true)).toEqual(idle(1));
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

@@ -575,5 +575,3 @@ describe("worker run loop", () => {
     assert.equal(run.lifecycle.outcome, "cancelled");
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

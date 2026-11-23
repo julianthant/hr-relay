@@ -376,5 +376,3 @@ for (const boundary of ["prepared", "commit-intent", "after-commit", "done", "re
   it(`proves native Logout2 ${boundary} custody in an owned child before cleanup`, async () => {
     await runLogoutSettlementCase(boundary);
   });
-
-// Select the unchanged schema-39 sweep case in task CI.

@@ -658,5 +658,3 @@ it("keeps the current Windows machine-control command a no-work success", async 
     assert.deepEqual(files(f.workspace), before);
   } finally { machine.release(); await f.close(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

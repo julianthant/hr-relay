@@ -72,5 +72,3 @@ it("fresh native authority has the exact current physical inventory", async () =
     } finally { raw.close(); }
   } finally { await f.dispose(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

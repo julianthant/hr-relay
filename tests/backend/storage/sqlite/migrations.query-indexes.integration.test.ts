@@ -97,5 +97,3 @@ describe("query index migration 37", () => {
     } finally { await f.dispose(); }
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

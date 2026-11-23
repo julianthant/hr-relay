@@ -156,5 +156,3 @@ it("shares full inspection of an unchanged backup while verifying the manifest b
     await fixture.close();
   }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

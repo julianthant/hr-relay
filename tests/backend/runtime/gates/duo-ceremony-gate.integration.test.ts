@@ -67,6 +67,7 @@ describe("two workers, one credential, one ceremony at a time", () => {
     const timeline = database.authority.timelineEvents;
     fillDiagnosticBudget(DatabaseSync, syntheticDatabasePath(database), timeline, clock);
     const before = timeline.highWaterMark();
+    const beforeDebug = timeline.debugHighWaterMark();
     const report = workerSessionDiagnostics(createDebugEventWriter({ repository: timeline, clock, build: "test" }));
     const phases: string[] = [];
     const gate = createDuoCeremonyGateFactory({
@@ -85,8 +86,9 @@ describe("two workers, one credential, one ceremony at a time", () => {
       assert.equal(leaseRow(database).state, "released");
       assert.deepEqual(phases, ["acquired", "released"]);
       assert.equal(timeline.highWaterMark(), before);
+      assert.equal(timeline.debugHighWaterMark(), beforeDebug);
       report("duo", WORKER_A, { phase: "expired", correlationId: "fixture-expiry", pinned: true });
-      const [expiry] = timeline.page({ after: before });
+      const [expiry] = timeline.debugPage({ after: beforeDebug });
       assert.equal(expiry.payload.kind, "debug");
       assert.equal(expiry.payload.event.pinned, true);
     } finally { gate.dispose(); }
@@ -406,5 +408,3 @@ describe("Gate#release preserves the original error when the store's release() i
     assert.equal(leaseRow(database).state, "released");
   });
 });
-
-// Select the unchanged schema-39 sweep case in task CI.

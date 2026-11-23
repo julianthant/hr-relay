@@ -131,5 +131,3 @@ it("refuses a closure run whose write is unresolved and rolls the store back byt
     assert.equal(inspectNativeAuthority(s.raw, 22).schemaVersion, 22);
   } finally { s.raw.close(); }
 });
-
-// Select the unchanged schema-39 sweep case in task CI.
