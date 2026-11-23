@@ -15,6 +15,7 @@ import { EmergencyContactMemberInputSchema } from "../../../../../src/models/wor
 import { EmergencyContactInputSchema } from "../../../../../src/models/workflows/emergency-contact/input.js";
 import { bindManualOcrPageReading } from "../../../../../src/models/workflows/ocr/page-accounting.js";
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../../src/models/workflows/ocr/source-manifest.js";
+import type { UcpathStoreDriver } from "../../../../../src/models/ui/ucpath-driver.js";
 import { defineTask } from "../../../../../src/workflow-kit/task.js";
 import { defineServiceStore, type RegisteredTaskStore } from "../../../../../src/workflow-kit/task-registry.js";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
@@ -253,7 +254,7 @@ export const EMERGENCY_CONTACT_SCRIPT: ScriptedWorkflow = {
     const now = () => new Date(++ticks).toISOString();
     return { crm: () => ({ ...healthyCrmDriver(), searchOnboardingRecords: async () => [] }),
       i9: () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: world.clock.now().toISOString() }),
-      ucpath: () => {
+      ucpath: (): UcpathStoreDriver => {
       const base = createDeterministicUcpathPersonOrgDriver();
       let active: { eid: string; driver: ReturnType<typeof createDeterministicUcpathPersonOrgDriver> } | undefined;
       const forSubject = (input: { emplId: string; expectedName: string }) => {
