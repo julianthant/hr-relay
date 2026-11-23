@@ -111,10 +111,12 @@ async function harness(options: Readonly<{ maxPending?: number; reader?: ReturnT
   const gaps: Gap[] = [];
   const reader = options.reader ?? heldReader();
   const timers = manualTimers();
+  const clock = { ms: 0 };
   const hub = createDashboardStreamHub({
     projection: w.projection,
     runPanels: reader,
     schedule: timers.schedule,
+    now: () => clock.ms,
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
     backfillGaps: {
       detected: (input: unknown) => {
@@ -125,7 +127,7 @@ async function harness(options: Readonly<{ maxPending?: number; reader?: ReturnT
     },
   });
   hubs.push(hub);
-  return { w, hub, gaps, reader, timers };
+  return { w, hub, gaps, reader, timers, clock };
 }
 
 const Q = RunIdSchema.parse(uuidOf(1));
@@ -492,5 +494,54 @@ describe("dashboard stream run panel rows", () => {
     taskEventsOf(w, 2, "a");
     const [change] = await take(connection, 1);
     assert.deepEqual(panelRevisions(changeOf(change).rows), ["INTERNAL_FAILURE"], "the key is not stranded");
+  });
+
+  it("sends a read that settles past its deadline as a timed-out refusal before the deadline timer fires", async () => {
+    const { w, hub, reader, timers, clock } = await harness();
+    seedTwoRuns(w);
+    const connection = await hub.connect({ day: DAY, run: R });
+    clock.ms += 5_001;
+    reader.reads[0]?.resolve(7);
+    const [snapshot] = await take(connection, 2);
+    const refused = snapshotOf(snapshot).rows[0]?.value;
+    if (refused?.state !== "refused") assert.fail("expected the late panel to be refused");
+    assert.deepEqual({ code: refused.error.code, retryable: refused.error.retryable }, { code: "DASHBOARD_READ_FAILED", retryable: true });
+    assert.equal(reader.reads[0]?.signal.aborted, true);
+    assert.equal(timers.live(), 1, "the retry; the deadline timer is cancelled");
+  });
+
+  it("reserves a due retry behind the reads already queued, ahead of later private handoffs", async () => {
+    const { w, hub, reader, timers } = await harness();
+    seedTwoRuns(w);
+    const owed = await hub.connect({ day: DAY, run: R });
+    timers.fireOldest(); // the handoff read's deadline
+    await take(owed, 2);
+    reader.reads[0]?.resolve(9);
+
+    const first = await hub.connect({ day: DAY, run: R });
+    timers.fireOldest(); // the retry, while the first private handoff is active
+    const second = await hub.connect({ day: DAY, run: R });
+    reader.reads[1]?.resolve(5);
+    await vi.waitFor(() => assert.equal(reader.reads.length, 3));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(reader.reads.length, 3, "the later handoff's read waits behind the retry");
+    reader.reads[2]?.resolve(6);
+    const retried = await settledWithin(owed.next());
+    if (retried === "waiting") assert.fail("the retry waited behind a later private handoff");
+    assert.deepEqual(panelRevisions(changeOf(retried).rows), [6]);
+    first.close();
+    second.close();
+  });
+
+  it("settles a rejection whose message is empty as a refusal it retries", async () => {
+    const { w, hub, reader, timers } = await harness();
+    seedTwoRuns(w);
+    const connection = await hub.connect({ day: DAY, run: R });
+    reader.reads[0]?.reject(new Error(""));
+    const [snapshot] = await take(connection, 2);
+    const refused = snapshotOf(snapshot).rows[0]?.value;
+    if (refused?.state !== "refused") assert.fail("expected the failed read to be refused");
+    assert.equal(refused.error.code, "DASHBOARD_READ_FAILED");
+    assert.equal(timers.live(), 1, "the failed read is read again");
   });
 });

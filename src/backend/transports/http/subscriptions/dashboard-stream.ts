@@ -64,6 +64,8 @@ export interface DashboardStreamHubDeps {
   readonly maxPending?: number;
   /** Runs `task` after `delayMs` and answers its cancel; row read deadlines and retries use it. */
   readonly schedule?: (delayMs: number, task: () => void) => () => void;
+  /** Monotonic milliseconds; a read that settles past its deadline is refused even before its timer runs. */
+  readonly now?: () => number;
 }
 
 type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
@@ -136,14 +138,19 @@ function entryReady(entry: OutboxEntry): boolean {
   return entry.kind === "ready" || entry.reads.every(read => read.settled);
 }
 
-/** The refusal its route would have answered; a server failure is read again, a refusal is a value. */
+/** The refusal its route would have answered; a server failure is read again, a refusal is a value.
+ * An error the route's mapper cannot describe is a failed read. */
 function refusedRow(key: RunId, error: unknown): { row: RunPanelRow; retry: boolean } {
-  const { status, body } = failureStatus(error);
-  const wire = WireErrorSchema.parse({ state: "error", code: body.code, message: body.message, retryable: body.retryable });
-  return { row: { model: "run-panel", key, value: { state: "refused", error: wire } }, retry: status >= 500 };
+  try {
+    const { status, body } = failureStatus(error);
+    const wire = WireErrorSchema.parse({ state: "error", code: body.code, message: body.message, retryable: body.retryable });
+    return { row: { model: "run-panel", key, value: { state: "refused", error: wire } }, retry: status >= 500 };
+  } catch {
+    return { row: failedRow(key), retry: true };
+  }
 }
 
-function timedOutRow(key: RunId): RunPanelRow {
+function failedRow(key: RunId): RunPanelRow {
   return { model: "run-panel", key, value: { state: "refused", error: WireErrorSchema.parse({
     state: "error", code: "DASHBOARD_READ_FAILED", message: ERROR_CATALOG.DASHBOARD_READ_FAILED.text, retryable: true,
   }) } };
@@ -156,6 +163,7 @@ export class DashboardStreamHub {
   readonly #backfillGaps: Pick<BackfillGapNotifier, "detected">;
   readonly #runPanels: DashboardStreamRunPanels | undefined;
   readonly #schedule: (delayMs: number, task: () => void) => () => void;
+  readonly #now: () => number;
   readonly #subscribers = new Set<Subscriber>();
   /** The newest read of each key; the next read of that key starts once it has settled. */
   readonly #keyTails = new Map<RunId, Promise<void>>();
@@ -174,6 +182,7 @@ export class DashboardStreamHub {
     this.#backfillGaps = deps.backfillGaps;
     this.#runPanels = deps.runPanels;
     this.#schedule = deps.schedule ?? defaultSchedule;
+    this.#now = deps.now ?? (() => performance.now());
     this.#disposeProjection = deps.projection.onChange((change) => this.#onProjectionChange(change));
     const publications = deps.notificationPublications;
     this.#disposePublications = publications?.subscribe(publication => {
@@ -381,17 +390,28 @@ export class DashboardStreamHub {
       this.#afterRead(read);
     };
     read.controller.signal.addEventListener("abort", () => finish(undefined, false), { once: true });
+    const timedOut = (): void => {
+      // The late result is discarded; the key's next read starts now.
+      finish(failedRow(key), true);
+      read.controller.abort();
+    };
     const begin = (): void => {
       if (read.settled) return;
-      cancelDeadline = this.#schedule(ROW_READ_DEADLINE_MS, () => {
-        // The late result is discarded; the key's next read starts now.
-        finish(timedOutRow(key), true);
-        read.controller.abort();
-      });
+      const startedAt = this.#now();
+      cancelDeadline = this.#schedule(ROW_READ_DEADLINE_MS, timedOut);
+      // A read that blocks the event loop can settle before its timer runs; the clock decides.
+      const late = (): boolean => this.#now() - startedAt >= ROW_READ_DEADLINE_MS;
       new Promise<Extract<RunPanel, { state: "available" }>>(resolve => resolve(runPanels.read(key, read.controller.signal))).then(
-        value => finish({ model: "run-panel", key, value }, false),
+        value => {
+          if (late()) timedOut();
+          else finish({ model: "run-panel", key, value }, false);
+        },
         (error: unknown) => {
           if (read.settled) return;
+          if (late()) {
+            timedOut();
+            return;
+          }
           const refused = refusedRow(key, error);
           finish(refused.row, refused.retry);
         },
@@ -421,14 +441,9 @@ export class DashboardStreamHub {
     let live = true;
     const fire = (): void => {
       if (!live) return;
-      // A read queued for the key settles first; this retry is cancelled only if that read reached every owner.
-      const tail = this.#keyTails.get(key);
-      if (tail !== undefined) {
-        void tail.then(fire);
-        return;
-      }
       live = false;
       this.#retries.delete(key);
+      // Its read queues behind the key's reads so far, ahead of any handoff that connects later.
       this.#publishRows([key], this.#projection.position());
     };
     const cancelTimer = this.#schedule(ROW_RETRY_MS, fire);
