@@ -18,7 +18,9 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 
     for (const { id, surface, story } of CATALOGUE) {
       test(`${id} passes the state rules`, { tag: `@${surface}` }, async ({ mount, page, diagnostics }) => {
+        if (story.clock === true) await page.clock.install();
         await mount(id);
+        await story.play?.(page);
         // The story's own ready point: the state it is for is on screen, whatever its requests are still doing.
         await expect(page.locator(story.ready ?? "[data-app-root]").first()).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
@@ -42,7 +44,9 @@ for (const viewport of DESKTOP_VIEWPORTS) {
 
       for (const { name, ticket } of known) {
         test(`${id} breaks ${name} (${ticket})`, { tag: `@${surface}`, annotation: { type: "issue", description: ticket } }, async ({ mount, page, diagnostics }) => {
+          if (story.clock === true) await page.clock.install();
           await mount(id);
+          await story.play?.(page);
           await expect(page.locator(story.ready ?? "[data-app-root]").first()).toBeVisible();
           const found = await STATE_RULES[name].check({ page, storyId: id, story, diagnostics, dialogShapes });
           // Only the recorded break may fail from here on; a broken mount or rule has already thrown.
