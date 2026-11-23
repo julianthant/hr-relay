@@ -2,6 +2,7 @@ import { WorkerCardWireSchema, UnavailableWorkerCardWireSchema, type DashboardDa
 import type { SessionWorker } from '../../../../src/dashboard/surfaces/sessions/sessions-view-model.js';
 import { IDLE_REFRESH_MS } from '../../../../src/dashboard/surfaces/sessions/session-idle-model.js';
 import { sessionsFromDay } from '../../../../src/dashboard/surfaces/sessions/sessions-view-model.js';
+import { systemClock } from '../../../../src/rules/time/clock.js';
 import { WorkerCard } from '../../../../src/dashboard/surfaces/sessions/worker-card.js';
 
 const NOW = '2026-08-03T17:00:00.000Z';
@@ -93,7 +94,7 @@ export function SessionsStates() {
   const all = [...workers, ['One card that could not be built', { ...unavailable, id: 'state-unavailable' }] as const];
   return <div data-sessions-states className="grid w-[1560px] grid-cols-4 items-stretch gap-x-4 gap-y-6 p-6">{all.map(([title, worker]) => <div key={title} className="flex min-w-0 flex-col gap-2 [&>article]:flex-1">
     <span className="text-caption text-ui-secondary">{title}</span>
-    <WorkerCard countdown={worker.state === 'idle' ? { remainingMs: IDLE_REFRESH_MS, waiting: false } : undefined} worker={worker} onControl={() => {}} />
+    <WorkerCard countdown={worker.state === 'idle' ? { dueAt: systemClock.nowMs() + IDLE_REFRESH_MS, waiting: false } : undefined} worker={worker} onControl={() => {}} />
   </div>)}</div>;
 }
 
