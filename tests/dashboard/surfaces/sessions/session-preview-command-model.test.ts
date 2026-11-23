@@ -7,6 +7,7 @@ import { TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
 import { useSessionPreviewCommands, type SessionPreviewCommandPort, type SessionPreviewRequest, type SessionPreviewResult } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { SessionsView } from "../../../../src/dashboard/surfaces/sessions/sessions-view.js";
+import type { SessionsViewState } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { createFixtureSessionPort, previewSessionControl, sessionsSample } from "../../../support/fixtures/dashboard/sessions-sample.js";
 import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
@@ -135,6 +136,20 @@ describe("worker controls", () => {
     scope = {}; await act(async () => root?.render(createElement(Harness)));
     assert.equal(commands!.operations[target], undefined);
     assert.deepEqual(problems, []);
+  });
+
+  it("keeps the held workers when another day loads under the snapshot it mounted with", async () => {
+    const loadingSnapshot = {}; const loadedSnapshot = {};
+    let snapshot = loadingSnapshot; let initial: SessionsViewState = { state: "loading" };
+    let commands: ReturnType<typeof useSessionPreviewCommands> | undefined;
+    const never = () => new Promise<SessionPreviewResult>(() => undefined);
+    const port: SessionPreviewCommandPort = { send: never, check: never };
+    function Harness() { commands = useSessionPreviewCommands(initial, SERVED_CATALOG, port, { snapshot, scope: {}, actorId: "local-operator" }); return null; }
+    await mount(createElement(Harness));
+    const rerender = () => act(async () => root?.render(createElement(TooltipProvider, null, createElement(Harness))));
+    snapshot = loadedSnapshot; initial = sessionsSample("active"); await rerender();
+    snapshot = loadingSnapshot; await rerender();
+    assert.equal(commands!.data.state, "ready");
   });
 
   it("the fixture port separates the lost response from the original command's read-back", async () => {
