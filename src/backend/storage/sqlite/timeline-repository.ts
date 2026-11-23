@@ -205,8 +205,9 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const content = canonicalJsonStringify(record);
       if (Buffer.byteLength(content, "utf8") > 256 * 1024) throw new Error("timeline-event-size-exceeded");
       const result = ports.mutate<ReturnType<TimelineRepository["append"]> | "budget-full">(() => {
-        // Each kind checks only its own table: predecessor stores written offline have no debug table.
-        const existing = record.payload.kind === "debug" ? debugRow(record.eventId) : timelineRow(record.eventId);
+        // One event ID spans both tables; a predecessor store written offline has no debug table yet.
+        const hasDebugTable = prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='debug_events'").get() !== undefined;
+        const existing = timelineRow(record.eventId) ?? (hasDebugTable ? debugRow(record.eventId) : undefined);
         if (existing !== undefined) {
           if (timelineAppendContent(existing) !== content) throw new Error("timeline-event-identity-conflict");
           ports.assertOwner(existing, false);
@@ -228,7 +229,8 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           `).get(record.eventId,record.workflow ?? null,
             record.scope.kind === "run" ? record.scope.runId : null,record.scope.kind === "worker" ? record.scope.workerId : null,
             record.occurredAt,record.recordedAt,record.retentionDate,record.payload.event.pinned ? 1 : 0,content);
-          return { result: { state: "inserted" as const, record: debugEventFromRow(raw) }, changes: 1 };
+          // Debug rows are no authority change: no generation bump, search invalidation or run publication.
+          return { result: { state: "inserted" as const, record: debugEventFromRow(raw) }, changes: 0 };
         }
         const raw = prepare(`
           INSERT INTO timeline_events(id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,
@@ -348,8 +350,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
             AND COALESCE((SELECT expires FROM sse_expiry WHERE cursor = debug_events.cursor), 1)
             AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=debug_events.run_id AND r.state<>'terminal')`,
         ).run(cutoff);
-        const changes = z.number().int().nonnegative().parse(Number(result.changes));
-        return { result: changes, changes };
+        return { result: z.number().int().nonnegative().parse(Number(result.changes)), changes: 0 };
       });
     },
   });
