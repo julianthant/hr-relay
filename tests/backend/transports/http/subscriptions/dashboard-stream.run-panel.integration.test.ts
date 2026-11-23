@@ -116,7 +116,7 @@ async function harness(options: Readonly<{ maxPending?: number; reader?: ReturnT
     projection: w.projection,
     runPanels: reader,
     schedule: timers.schedule,
-    now: () => clock.ms,
+    clock: { monotonicMs: () => clock.ms },
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
     backfillGaps: {
       detected: (input: unknown) => {

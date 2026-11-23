@@ -16,6 +16,7 @@ import { LOCAL_OPERATOR_ACTOR_ID, ProjectionCursorSchema, type RunId } from "../
 import type { NotificationInbox, NotificationPublication } from "../../../runs/notifications/inbox.js";
 import type { BackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 import { failureStatus } from "../routes/failure-status.js";
+import { systemClock, type Clock } from "../../../../rules/time/clock.js";
 
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
 const ROW_READ_DEADLINE_MS = 5_000;
@@ -64,8 +65,8 @@ export interface DashboardStreamHubDeps {
   readonly maxPending?: number;
   /** Runs `task` after `delayMs` and answers its cancel; row read deadlines and retries use it. */
   readonly schedule?: (delayMs: number, task: () => void) => () => void;
-  /** Monotonic milliseconds; a read that settles past its deadline is refused even before its timer runs. */
-  readonly now?: () => number;
+  /** Its monotonic time decides a read that settles past its deadline, even before the deadline timer runs. */
+  readonly clock?: Pick<Clock, "monotonicMs">;
 }
 
 type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
@@ -163,7 +164,7 @@ export class DashboardStreamHub {
   readonly #backfillGaps: Pick<BackfillGapNotifier, "detected">;
   readonly #runPanels: DashboardStreamRunPanels | undefined;
   readonly #schedule: (delayMs: number, task: () => void) => () => void;
-  readonly #now: () => number;
+  readonly #clock: Pick<Clock, "monotonicMs">;
   readonly #subscribers = new Set<Subscriber>();
   /** The newest read of each key; the next read of that key starts once it has settled. */
   readonly #keyTails = new Map<RunId, Promise<void>>();
@@ -182,7 +183,7 @@ export class DashboardStreamHub {
     this.#backfillGaps = deps.backfillGaps;
     this.#runPanels = deps.runPanels;
     this.#schedule = deps.schedule ?? defaultSchedule;
-    this.#now = deps.now ?? (() => performance.now());
+    this.#clock = deps.clock ?? systemClock;
     this.#disposeProjection = deps.projection.onChange((change) => this.#onProjectionChange(change));
     const publications = deps.notificationPublications;
     this.#disposePublications = publications?.subscribe(publication => {
@@ -397,10 +398,10 @@ export class DashboardStreamHub {
     };
     const begin = (): void => {
       if (read.settled) return;
-      const startedAt = this.#now();
+      const startedAt = this.#clock.monotonicMs();
       cancelDeadline = this.#schedule(ROW_READ_DEADLINE_MS, timedOut);
       // A read that blocks the event loop can settle before its timer runs; the clock decides.
-      const late = (): boolean => this.#now() - startedAt >= ROW_READ_DEADLINE_MS;
+      const late = (): boolean => this.#clock.monotonicMs() - startedAt >= ROW_READ_DEADLINE_MS;
       new Promise<Extract<RunPanel, { state: "available" }>>(resolve => resolve(runPanels.read(key, read.controller.signal))).then(
         value => {
           if (late()) timedOut();
