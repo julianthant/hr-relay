@@ -398,7 +398,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         catch (diagnostic) { closureFailure = new DuoDiagnosticReportError(diagnostic, error); }
         try { session.launch.uncertain(closureFailure); } catch (failure) { closureFailure = failure; }
         windowState = { state: "failed", generation: windowState.generation, code: progress.operation === "close-native-proof" ? "DUO_SETUP_FILES_BUSY" : "DUO_SETUP_STOP_FAILED" };
-        session.closureFailure = workerStopFailure === undefined ? closureFailure : new AggregateError([workerStopFailure, closureFailure], "onboarding browser closure unproved"); return { state: "uncertain" as const }; }
+        const failures = [...new Set([attemptFailure, workerStopFailure, closureFailure].filter(failure => failure !== undefined))];
+        session.closureFailure = failures.length === 1 ? failures[0] : new AggregateError(failures, "onboarding browser closure unproved"); return { state: "uncertain" as const }; }
       finally { clearTimeout(timer); }
     })();
     return session.close;
