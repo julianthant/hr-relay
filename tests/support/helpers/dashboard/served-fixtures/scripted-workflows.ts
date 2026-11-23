@@ -198,7 +198,6 @@ export const SEPARATIONS_SCRIPT: ScriptedWorkflow = {
     const hold = async (): Promise<void> => {
       const run = world.run();
       const step = `${run.runId}/${run.heldNode()}`;
-      if (["resolve-action","document","name-search","job-summary","timecard-search","timecard","file-termination","finalize-kuali"].includes(run.heldNode())) return;
       if (parked.has(step)) return;
       parked.add(step);
       await world.hold();
