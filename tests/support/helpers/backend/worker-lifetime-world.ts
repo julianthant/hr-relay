@@ -15,31 +15,40 @@ import { fileURLToPath } from "node:url";
 import type { createRunRecordServiceTestWorld } from "./run-record-service-world.js";
 
 const ownerLines = new WeakMap<ChildProcess, () => Promise<string>>();
-function readOwnerLine(child: ChildProcess): Promise<string> {
+export function readOwnerLine(child: ChildProcess): Promise<string> {
   const existing = ownerLines.get(child);
   if (existing !== undefined) return existing();
   if (child.stdout === null) throw new Error("fence owner has no stdout");
   let pending = "";
   const queue: string[] = [];
   let notify: (() => void) | undefined;
+  let terminal: Error | undefined;
+  const finish = (error: Error) => { terminal ??= error; notify?.(); };
+  child.once("error", error => finish(new Error("fence owner process failed", { cause: error })));
+  child.stdout.once("error", error => finish(new Error("fence owner stdout failed", { cause: error })));
+  child.stdout.once("end", () => finish(new Error("fence owner closed its channel")));
+  child.once("close", () => finish(new Error("fence owner closed its channel")));
+  if (child.stdout.readableEnded || child.stdout.destroyed) finish(new Error("fence owner closed its channel"));
   child.stdout.setEncoding("utf8");
-  child.stdout.on("data", chunk => {
+  child.stdout.on("data", (chunk: string) => {
     pending += chunk;
     for (let newline = pending.indexOf("\n"); newline !== -1; newline = pending.indexOf("\n")) {
       queue.push(pending.slice(0, newline));
       pending = pending.slice(newline + 1);
-      notify?.();
-      notify = undefined;
     }
+    if (queue.length > 0) notify?.();
   });
   const read = async (): Promise<string> => {
-    const deadline = Date.now() + 15_000;
-    while (queue.length === 0) {
-      if (Date.now() > deadline) throw new Error("fence owner produced no line");
-      await new Promise<void>(resolve => { notify = resolve; setTimeout(resolve, 50); });
+    if (notify !== undefined) throw new Error("fence owner already has a pending line read");
+    if (queue.length === 0 && terminal === undefined) {
+      const wake = Promise.withResolvers<void>();
+      const timer = setTimeout(() => wake.reject(new Error("fence owner produced no line")), 15_000);
+      notify = () => wake.resolve();
+      try { await wake.promise; }
+      finally { clearTimeout(timer); notify = undefined; }
     }
     const line = queue.shift();
-    if (line === undefined) throw new Error("fence owner closed its channel");
+    if (line === undefined) throw terminal ?? new Error("fence owner produced no line");
     return line;
   };
   ownerLines.set(child, read);
@@ -64,9 +73,7 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     onSpawn?.(child);
     await once(child, "spawn");
     if (options?.fenceInOwner === true) {
-      const ready = readOwnerLine(child);
-      await h.lifetime.share(child);
-      await ready;
+      await Promise.all([readOwnerLine(child), h.lifetime.share(child)]);
     }
     if (child.pid === undefined) throw new Error("missing actual child pid");
     return { child, pid: child.pid };
