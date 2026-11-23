@@ -10,6 +10,7 @@ import { useEditableSettings } from "../../../../../src/dashboard/surfaces/setti
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
 import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
+import { dropKeptResults } from "../../../../../src/dashboard/state/async-resource.js";
 import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -210,3 +211,35 @@ it("does not let an older refresh poison a newer authoritative command readback"
   assert.equal(h.controller().readProblem, undefined); assert.equal(h.controller().locked, false);
   const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.equal(editor.document.revision, h.authority.read().revision);
 });
+
+for (const trigger of ["section return", "stream reset"] as const) {
+  it(`a ${trigger} keeps the shown document locked while it reads again, then settles on the fresh one`, async () => {
+    const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
+    const first = authority.read();
+    authority.apply({ "actor.label": { set: "Fresher saved values" } });
+    const fresh = authority.read();
+    let read = () => Promise.resolve(first);
+    const client = { editableSettings: () => read(), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
+    let controller: ReturnType<typeof useEditableSettings> | undefined;
+    function Harness({ view }: { view: string }) { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), view }); return null; }
+    const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+    cleanups.push(() => { act(() => root.unmount()); host.remove(); });
+    const render = (view: string) => act(async () => root.render(createElement(DashboardClientProvider, { client,
+      children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: 0, children: createElement(Harness, { view }) }) })));
+    await render("general");
+    await vi.waitFor(() => assert.equal(controller?.locked, false));
+    const shown = controller?.editor.state === "loaded" ? controller.editor.document : undefined;
+    assert.ok(shown);
+    let settle!: (value: EditableSettingsWire) => void;
+    read = () => new Promise(resolve => { settle = resolve; });
+    if (trigger === "section return") await render("paths");
+    else await act(async () => { dropKeptResults(client); });
+    assert.equal(controller?.locked, true, "a kept document decides nothing");
+    assert.equal(controller?.refreshing, true);
+    assert.equal(controller?.editor.state === "loaded" ? controller.editor.document : undefined, shown, "the kept document stays on screen");
+    await act(async () => { settle(fresh); });
+    await vi.waitFor(() => assert.equal(controller?.locked, false));
+    assert.equal(controller?.editor.state === "loaded" ? controller.editor.document.revision : undefined, fresh.revision);
+    assert.equal(controller?.refreshing, false);
+  });
+}

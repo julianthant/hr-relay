@@ -25,7 +25,7 @@ export type { SettingsSaveState } from "./settings-attempt-model.js";
 const IDLE_SAVE: SettingsSaveState = Object.freeze({ state: "idle" });
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
-export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener }>) {
+export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; view?: string; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener }>) {
   const client = useSettingsClient();
   const binding = useDashboardCommandBinding();
   const generation = useRef<object>({});
@@ -40,9 +40,13 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     previousRead.current = { request, resource };
   }
   const observation = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
+  const stale = useSyncExternalStore(resource.subscribe, resource.stale, resource.stale);
   const held = observation.value;
   const [observed, setObserved] = useState<{ resource: typeof resource; editor: EditableSettingsState }>({ resource, editor: held === undefined ? { state: "loading" } : { state: "loaded", document: held } });
-  const editor = useMemo<EditableSettingsState>(() => observed.resource === resource ? observed.editor : held === undefined ? { state: "loading" } : { state: "loaded", document: held }, [observed, resource, held]);
+  // A document the shared read settled since (a fresh read after a reset, a preference save's readback) replaces the shown one.
+  const editor = useMemo<EditableSettingsState>(() => observation.state === "loaded" && (observed.resource !== resource || observed.editor.state !== "loaded" || observed.editor.document !== observation.value)
+    ? { state: "loaded", document: observation.value }
+    : observed.resource === resource ? observed.editor : held === undefined ? { state: "loading" } : { state: "loaded", document: held }, [observed, resource, held, observation]);
   const setEditor = useCallback((editor: EditableSettingsState): void => setObserved({ resource, editor }), [resource]);
   const [reportedReadProblem, setReadProblem] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState<SettingsDraft>({});
@@ -50,7 +54,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const busy = useRef(false);
   /** Toggles and choices save without the typing wait; the last change decides. */
   const saveAtOnce = useRef(false);
-  const readReady = acceptedRequest.current === request && observation.state === "loaded";
+  // Edits wait for a fresh read of what is shown: a kept copy, or a document the resource has since replaced, decides nothing.
+  const readReady = acceptedRequest.current === request && observation.state === "loaded" && editor.state === "loaded" && editor.document === observation.value;
   const readProblem = reportedReadProblem;
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
@@ -81,7 +86,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     let active = true;
     void refresh().catch(() => { if (active && resource.snapshot().value === undefined) setEditor({ state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text }); });
     return () => { active = false; };
-  }, [refresh, resource, setEditor]);
+    // A section return and a stream reset read again; the shown document stays, locked, until the fresh one lands.
+  }, [refresh, resource, setEditor, stale, input.view]);
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {

@@ -16,35 +16,48 @@ export function createSettingsRead<Value>() {
   let snapshot: RetainedRead<Value> = { state: "idle" };
   let pending: Promise<Value> | undefined;
   let sequence = 0;
+  let stale = 0;
+  let last: { read: (signal: AbortSignal) => Promise<Value>; code: ErrorCatalogCode; milliseconds: number; signal?: AbortSignal } | undefined;
   const listeners = new Set<() => void>();
   const supersede = (): void => { sequence += 1; pending = undefined; snapshot = snapshot.value === undefined ? { state: "idle" } : { state: "loaded", value: snapshot.value }; };
   const publish = (next: RetainedRead<Value>): void => { snapshot = next; for (const listener of listeners) listener(); };
+  /** An aborted read (its section was left) is superseded at once, so a re-entry starts a fresh read. */
+  const startRead = (reader: (signal: AbortSignal) => Promise<Value>, code: ErrorCatalogCode, milliseconds = SETTINGS_READ_DEADLINE_MS, signal?: AbortSignal): Promise<Value> => {
+    last = { read: reader, code, milliseconds, ...(signal === undefined ? {} : { signal }) };
+    if (pending !== undefined) return pending;
+    const started = ++sequence;
+    publish({ state: "loading", value: snapshot.value });
+    signal?.addEventListener("abort", () => { if (started === sequence) supersede(); }, { once: true });
+    const reading = readWithDeadline(reader, code, milliseconds, signal).then(value => {
+      if (started !== sequence) throw new SettingsReadSuperseded();
+      publish({ state: "loaded", value });
+      return value;
+    }, (error: unknown) => {
+      if (started !== sequence || signal?.aborted === true) throw new SettingsReadSuperseded();
+      publish({ state: "failed", value: snapshot.value, error });
+      throw error;
+    }).finally(() => { if (started === sequence) pending = undefined; });
+    pending = reading;
+    return reading;
+  };
   return {
     snapshot: () => snapshot,
+    /** Counts stream resets this read lived through; an owner that shows it reads again when it moves. */
+    stale: () => stale,
     /** Nothing shows it and nothing reads it: dropping it loses only a kept copy. */
     idle: () => listeners.size === 0 && pending === undefined,
     subscribe(this: void, listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     supersede,
     reset() { sequence += 1; pending = undefined; snapshot = { state: "idle" }; },
     accept(value: Value) { sequence += 1; pending = undefined; publish({ state: "loaded", value }); },
-    /** An aborted read (its section was left) is superseded at once, so a re-entry starts a fresh read. */
-    read(read: (signal: AbortSignal) => Promise<Value>, code: ErrorCatalogCode, milliseconds = SETTINGS_READ_DEADLINE_MS, signal?: AbortSignal): Promise<Value> {
-      if (pending !== undefined) return pending;
-      const started = ++sequence;
+    /** A stream reset: what this read holds becomes a kept copy, display only, and its last read runs again. */
+    invalidate() {
+      sequence += 1; pending = undefined; stale += 1;
       publish({ state: "loading", value: snapshot.value });
-      signal?.addEventListener("abort", () => { if (started === sequence) supersede(); }, { once: true });
-      const reading = readWithDeadline(read, code, milliseconds, signal).then(value => {
-        if (started !== sequence) throw new SettingsReadSuperseded();
-        publish({ state: "loaded", value });
-        return value;
-      }, (error: unknown) => {
-        if (started !== sequence || signal?.aborted === true) throw new SettingsReadSuperseded();
-        publish({ state: "failed", value: snapshot.value, error });
-        throw error;
-      }).finally(() => { if (started === sequence) pending = undefined; });
-      pending = reading;
-      return reading;
+      const again = last;
+      if (again !== undefined && again.signal?.aborted !== true) void startRead(again.read, again.code, again.milliseconds, again.signal).catch(() => undefined);
     },
+    read(reader: (signal: AbortSignal) => Promise<Value>, code: ErrorCatalogCode, milliseconds?: number, signal?: AbortSignal): Promise<Value> { return startRead(reader, code, milliseconds, signal); },
   };
 }
 export type SettingsRead<Value> = ReturnType<typeof createSettingsRead<Value>>;
@@ -70,17 +83,17 @@ export function settingsReadResource<Value>(client: object, authority: object, c
   }
   return resource;
 }
-/** Sign-out and a stream reset forget every kept read nothing is showing; a read on screen is not a kept copy and stays. */
-function dropIdleSettingsReads(client: object): void {
+/** Sign-out and a stream reset forget every kept read nothing is showing, and read every shown one again. */
+function invalidateSettingsReads(client: object): void {
   const scope = scopes.get(client);
   if (scope === undefined) return;
-  for (const [name, resource] of scope.resources) {
-    if (!resource.idle()) continue;
+  for (const [name, resource] of [...scope.resources]) {
+    if (!resource.idle()) { resource.invalidate(); continue; }
     resource.reset();
     scope.resources.delete(name);
   }
 }
-onKeptResultsDropped(dropIdleSettingsReads);
+onKeptResultsDropped(invalidateSettingsReads);
 export function clearSettingsReads(client: object): void {
   const scope = scopes.get(client);
   if (scope !== undefined) for (const resource of scope.resources.values()) resource.reset();

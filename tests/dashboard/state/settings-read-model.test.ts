@@ -68,17 +68,22 @@ it("bounds one client's kept reads, forgetting the least recently used idle read
   assert.equal(shown.snapshot().value, 1);
   unsubscribe();
 });
-it("a stream reset or sign-out forgets kept reads nothing shows, and keeps the one on screen", () => {
+it("a stream reset forgets kept reads nothing shows, and reads the one on screen again, display only until it lands", async () => {
   const client = {}, authority = {};
   const kept = settingsReadResource<number>(client, authority, "c", "kept");
   kept.accept(1);
   const shown = settingsReadResource<number>(client, authority, "c", "shown");
-  shown.accept(2);
+  let served = 2;
   const unsubscribe = shown.subscribe(() => undefined);
+  assert.equal(await shown.read(async () => served, "SETTINGS_INITIAL_READ_UNAVAILABLE"), 2);
+  const stale = shown.stale();
+  served = 3;
   dropKeptResults(client);
   assert.equal(kept.snapshot().state, "idle");
   assert.notEqual(settingsReadResource<number>(client, authority, "c", "kept"), kept);
   assert.equal(settingsReadResource<number>(client, authority, "c", "shown"), shown);
-  assert.equal(shown.snapshot().value, 2);
+  assert.deepEqual(shown.snapshot(), { state: "loading", value: 2 }, "the pre-reset value is a kept copy, never loaded");
+  assert.equal(shown.stale(), stale + 1);
+  await vi.waitFor(() => assert.deepEqual(shown.snapshot(), { state: "loaded", value: 3 }));
   unsubscribe();
 });
