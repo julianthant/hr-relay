@@ -77,6 +77,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
   ): DashboardStreamEnvelope {
     return DashboardStreamEnvelopeSchema.parse({
       type: "snapshot",
+      rows: [],
       topic: "dashboard-day",
       cursor,
       position: 0,

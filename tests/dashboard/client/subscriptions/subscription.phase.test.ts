@@ -29,7 +29,7 @@ function hello(cursor: string, projectionGeneration = 7): Record<string, unknown
 }
 
 function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[], projectionGeneration = 7): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+  return { type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
 }
 
 /** The cursor a change follows when nothing was skipped: the one before its own. */
@@ -40,6 +40,7 @@ function cursorBefore(cursor: string): string {
 function replacePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
     type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
     after: cursorBefore(cursor),
@@ -55,6 +56,7 @@ function replacePatch(cursor: string, rowRevision: number): Record<string, unkno
 function removePatch(cursor: string, runId: string): Record<string, unknown> {
   return {
     type: "change",
+    rows: [],
     topic: "dashboard-day",
     cursor,
     after: cursorBefore(cursor),
@@ -252,6 +254,7 @@ describe("dashboard day subscription phase", () => {
   it("stops a greeted snapshot or patch whose cursor the schema rejects, without publishing or reconnecting", () => {
     const snapshot = {
       type: "snapshot",
+      rows: [],
       topic: "dashboard-day",
       position: 0,
       cursor: "pc:0",
@@ -433,6 +436,7 @@ describe("dashboard day subscription phase", () => {
     harness.streams[0].push(hello("pc:1"));
     harness.streams[0].push({
       type: "snapshot",
+      rows: [],
       topic: "dashboard-day",
       position: 0,
       cursor: "pc:1",
@@ -451,7 +455,7 @@ describe("dashboard day subscription phase", () => {
         ...dayOf([], "pc:1"),
         [field]: field === "descriptorHash" ? "e".repeat(64) : 8,
       };
-      harness.streams[0].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload });
+      harness.streams[0].push({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: "pc:1", payload });
       assertStopped(harness, /day-stream-authority-mismatch/);
       assert.equal(harness.days.length, 0);
       harness.close();
@@ -463,6 +467,7 @@ describe("dashboard day subscription phase", () => {
     harness.streams[0].push(hello("pc:1"));
     harness.streams[0].push({
       type: "snapshot",
+      rows: [],
       topic: "dashboard-day",
       position: 0,
       cursor: "pc:1",

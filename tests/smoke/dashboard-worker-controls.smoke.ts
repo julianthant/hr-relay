@@ -53,7 +53,7 @@ test("worker add and remove settle after delayed or refused replies and clear on
   const publishWorkers = async () => {
     const snapshot = workerDay(await readSeededDay());
     const envelope = DashboardStreamEnvelopeSchema.parse({
-      type: "snapshot", topic: "dashboard-day", cursor: snapshot.snapshotCursor, position: 0, payload: snapshot,
+      type: "snapshot", topic: "dashboard-day", rows: [], cursor: snapshot.snapshotCursor, position: 0, payload: snapshot,
     });
     return page.evaluate(data => window.dispatchEvent(new MessageEvent("seeded-worker-snapshot", { data })),
       `data: ${JSON.stringify(envelope)}\n\n`);

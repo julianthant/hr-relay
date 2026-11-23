@@ -964,7 +964,7 @@ const COMPATIBILITY_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
   ['libraries[].sheets[].mappings[].fieldId', 'operator-authored'],
 ];
 
-export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
+const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
     ...[
       "options[].choices[].label", "options[].choices[].value", "options[].id", "options[].initial", "options[].initial.by", "options[].initial.otherwise",
@@ -1450,6 +1450,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.remediation[].message", origin: "external-text" },
   { surface: "wire/run-detail-section", path: "payload.value.subject.expected.displayRedacted", origin: "declared-redacted" },
   { surface: "wire/run-detail-section", path: "payload.value.subject.observed.displayRedacted", origin: "declared-redacted" },
+  { surface: "wire/stream-envelope", path: "rows[].value.error.message", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.subject.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.value.summary", origin: "external-text" },
   { surface: "wire/run-detail-section", path: "payload.value.warnings[].summary", origin: "external-text" },
@@ -1978,6 +1979,27 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "os/notification-projection", path: "title", origin: "repository-authored" },
   ]),
 );
+
+/** A `run-panel` stream row carries the run detail, the logs page and the panel sections the routes serve, so their leaves keep the routes' origins. */
+const RUN_PANEL_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = (() => {
+  const carried = new Set(decidableLeaves(DashboardStreamEnvelopeSchema).map(({ path }) => path));
+  const prefixes: readonly (readonly [string, string, string])[] = [
+    ["wire/run-detail", "", "rows[].value.detail."],
+    ["wire/run-detail-section", "", "rows[].value.sections[]."],
+    ["wire/run-detail-section", "payload.", "rows[].value.logs."],
+  ];
+  const derived = new Map<string, SurfaceLeafOrigin>();
+  for (const entry of ROUTE_LEAF_ORIGINS) {
+    for (const [surface, strip, prefix] of prefixes) {
+      if (entry.surface !== surface || !entry.path.startsWith(strip)) continue;
+      const path = `${prefix}${entry.path.slice(strip.length)}`;
+      if (carried.has(path)) derived.set(path, { ...entry, surface: "wire/stream-envelope", path });
+    }
+  }
+  return [...derived.values()];
+})();
+
+export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze([...ROUTE_LEAF_ORIGINS, ...RUN_PANEL_LEAF_ORIGINS]);
 
 /* ── 7. module dispositions ───────────────────────────────────────────────── */
 
