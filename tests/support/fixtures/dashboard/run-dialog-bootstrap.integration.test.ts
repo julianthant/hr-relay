@@ -4,8 +4,7 @@ import snapshot from "./run-dialog-bootstrap.json" with { type: "json" };
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 
 it("the Run dialog's saved bootstrap is the served fixture bootstrap", () => {
-  const { workflows, workbookCompatibility, serverClock, actor } = FIXTURE_BOOTSTRAP;
-  assert.deepEqual(snapshot, JSON.parse(JSON.stringify({ workflows, workbookCompatibility, serverClock, actor })));
+  assert.deepEqual(snapshot, JSON.parse(JSON.stringify(FIXTURE_BOOTSTRAP)));
 });
 
 it("the intake sessions saved for the Run dialog stories are the served fixture sessions", async () => {

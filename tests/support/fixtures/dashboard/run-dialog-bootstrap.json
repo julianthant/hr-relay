@@ -1,4 +1,21 @@
 {
+ "wireVersion": 1,
+ "appVersion": "0.1.0",
+ "descriptorHash": "d3bd9418ee91601e3040d89ad42f4dae010ff81b28a29fae2034860649a5619f",
+ "settingsSchemaHash": "fbfbae972dfc97e52b8b69a9d0b9e7cc17ffddc95aac788835707483f82719e1",
+ "protectedSchemaHash": "2d7ec6671675d59980e74b368875e40b3828f94b1a817a1029b0867ad7f4e3f6",
+ "projectionGeneration": 1,
+ "actor": {
+  "id": "local-operator",
+  "label": "Jordan Lee"
+ },
+ "serverClock": {
+  "now": "2026-08-03T10:05:00.000-07:00",
+  "zone": "America/Los_Angeles"
+ },
+ "storage": {
+  "authority": "healthy"
+ },
  "workflows": [
   {
    "id": "person-lookup",
@@ -125,12 +142,60 @@
   "workflows": [],
   "libraries": []
  },
- "serverClock": {
-  "now": "2026-08-03T10:05:00.000-07:00",
-  "zone": "America/Los_Angeles"
- },
- "actor": {
-  "id": "local-operator",
-  "label": "Jordan Lee"
- }
+ "systemInstances": [
+  {
+   "system": "ucpath",
+   "prod": "available",
+   "test": {
+    "state": "available"
+   }
+  },
+  {
+   "system": "crm",
+   "prod": "available",
+   "test": {
+    "state": "unavailable",
+    "code": "not-configured",
+    "reason": "no CRM test instance is configured"
+   }
+  }
+ ],
+ "settingsSections": [
+  {
+   "id": "storage",
+   "label": "Storage checks",
+   "revision": 1
+  },
+  {
+   "id": "workflow-capabilities",
+   "label": "Workflow capabilities",
+   "revision": 1
+  }
+ ],
+ "featureAvailability": [
+  {
+   "feature": "ocr",
+   "availability": {
+    "state": "unavailable",
+    "code": "deferred",
+    "reason": "OCR review lands in 2h"
+   }
+  },
+  {
+   "feature": "archive",
+   "availability": {
+    "state": "unavailable",
+    "code": "deferred",
+    "reason": "archive lands in 2i"
+   }
+  },
+  {
+   "feature": "workflow-editor",
+   "availability": {
+    "state": "unavailable",
+    "code": "deferred",
+    "reason": "the editor lands in a later phase"
+   }
+  }
+ ]
 }

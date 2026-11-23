@@ -4,11 +4,14 @@ import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { z } from "zod";
 import { RerunValuesRequestSchema, RerunValuesResponseSchema, type RerunValuesResponse } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningWireSchema, type RerunWarningWire } from "../../../../src/models/dashboard/rerun-warning.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { StartPlanWireSchema, type StartPlanWire } from "../../../../src/models/dashboard/start-plan.js";
-import type { PreflightReadinessWire } from "../../../../src/models/preflight/preflight-contract.js";
+import { PreflightReadinessWireSchema, type PreflightCheckId, type PreflightReadinessWire } from "../../../../src/models/preflight/preflight-contract.js";
+import { expectedPreflightChecks, mandatoryCapabilitiesForPreflightCheck, RuntimeCapabilitySchema } from "../../../../src/rules/preflight/preflight-semantics.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "json" };
@@ -16,9 +19,9 @@ import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src
 import bootstrapSnapshot from "./run-dialog-bootstrap.json" with { type: "json" };
 
 /** The served bootstrap of the one registered workflow, saved so the gallery page stays free of backend modules; run-dialog-bootstrap.integration.test.ts keeps it current. */
-const FIXTURE_BOOTSTRAP: { readonly workflows: readonly unknown[]; readonly workbookCompatibility: { readonly workflows: readonly { readonly workflowId: string; readonly sources: RunStartWorkflow["referenceSources"] }[] } } = bootstrapSnapshot;
+export const RUN_DIALOG_BOOTSTRAP = FrontendBootstrapWireSchema.parse(bootstrapSnapshot);
+const FIXTURE_BOOTSTRAP = RUN_DIALOG_BOOTSTRAP;
 const RUN_ID = "10000000-0000-4000-8000-000000000001";
-export const RUN_DIALOG_BOOTSTRAP = bootstrapSnapshot;
 
 export const RUN_DIALOG_ACTOR = "local-operator";
 export const RUN_DIALOG_WORKFLOW = "person-lookup";
@@ -79,16 +82,22 @@ export const RUN_DIALOG_APPLIED: CommandResult = CommandResultSchema.parse({ sta
 export const RUN_DIALOG_CONFLICT: CommandResult = CommandResultSchema.parse({ state: "conflict", commandId: "3a000000-0000-4000-8000-000000000002",
   currentVersion: 7, message: "The start plan was built against version 4." });
 
-export type ServedCheck = Readonly<{ check: string; status: "pass" | "warning" | "fail"; summary?: string }>;
-/** One served readiness report: each named check with its verdict; a warned or failed check carries its summary. */
+export type ServedCheck = Readonly<{ check: PreflightCheckId; status: "pass" | "warning" | "fail"; summary?: string }>;
+const ALL_CAPABILITIES = RuntimeCapabilitySchema.options;
+/** One served readiness report: every check the capabilities select, passing unless a named check says otherwise; a warned or failed check carries its summary. */
 export function runDialogReadiness(checks: readonly ServedCheck[]): PreflightReadinessWire {
-  const results = checks.map(({ check, status, summary }) => status === "pass" ? { status, check, summary: summary ?? `${check} is ready` }
-    : status === "warning" ? { status, check, summary: summary ?? `${check} needs attention`, impact: "A feature may be unavailable.", remediation: "Review it." }
-    : { status, check, summary: summary ?? `${check} is not ready`, blocks: ["dashboard.serve"], remediation: "Fix it." });
-  return { state: "present", report: { configFingerprint: HASH, descriptorFingerprint: HASH, checkedAt: "2026-08-26T21:00:00.000Z",
-    requestedCapabilities: ["dashboard.serve"], results } } as unknown as PreflightReadinessWire;
+  const results = expectedPreflightChecks(ALL_CAPABILITIES).map(({ id }) => {
+    const named = checks.find(({ check }) => check === id);
+    const status = named?.status ?? "pass";
+    const summary = named?.summary ?? `${id} is ${status === "pass" ? "ready" : "not ready"}`;
+    return status === "pass" ? { status, check: id, summary }
+      : status === "warning" ? { status, check: id, summary, impact: "A feature may be unavailable.", remediation: "Review it." }
+      : { status, check: id, summary, blocks: mandatoryCapabilitiesForPreflightCheck(id, ALL_CAPABILITIES), remediation: "Fix it." };
+  });
+  return PreflightReadinessWireSchema.parse({ state: "present", report: { configFingerprint: HASH, descriptorFingerprint: HASH, checkedAt: "2026-08-26T21:00:00.000Z",
+    requestedCapabilities: ALL_CAPABILITIES, results } });
 }
-export const RUN_DIALOG_READY = runDialogReadiness([{ check: "config.valid", status: "pass" }, { check: "secrets.ucpath-sso", status: "pass" }]);
+export const RUN_DIALOG_READY = runDialogReadiness([]);
 
 /** A client that serves only what the story scripts and READY readiness; reaching for anything else fails the story loudly. */
 export function runDialogClient(served: Partial<DashboardClient> = {}): DashboardClient {
@@ -131,6 +140,10 @@ export function runDialogRerunWarning(repeats = true): RerunWarningWire {
 }
 
 /** The four intake sessions of the served fixture, saved like the bootstrap; run-dialog-intake.integration.test.ts keeps them current. */
-export const RUN_DIALOG_INTAKE = intakeSnapshot as unknown as Readonly<{ ids: Readonly<Record<"mapping" | "validated" | "manifest" | "rerun", string>>; sessions: Readonly<Record<string, unknown>> }>;
-export const intakeSession = (key: "mapping" | "validated" | "manifest" | "rerun", change: Record<string, unknown> = {}): IntakeSessionWire =>
-  IntakeSessionWireSchema.parse({ ...(RUN_DIALOG_INTAKE.sessions[RUN_DIALOG_INTAKE.ids[key]] as object), ...change });
+const INTAKE_KEYS = ["mapping", "validated", "manifest", "rerun"] as const;
+export const RUN_DIALOG_INTAKE = z.strictObject({
+  ids: z.strictObject(Object.fromEntries(INTAKE_KEYS.map(key => [key, z.string()])) as Record<(typeof INTAKE_KEYS)[number], z.ZodString>),
+  sessions: z.record(z.string(), IntakeSessionWireSchema),
+}).parse(intakeSnapshot);
+export const intakeSession = (key: (typeof INTAKE_KEYS)[number], change: Record<string, unknown> = {}): IntakeSessionWire =>
+  IntakeSessionWireSchema.parse({ ...RUN_DIALOG_INTAKE.sessions[RUN_DIALOG_INTAKE.ids[key]], ...change });

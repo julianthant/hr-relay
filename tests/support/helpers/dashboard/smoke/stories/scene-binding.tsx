@@ -3,7 +3,6 @@ import type { DashboardAuthority } from "../../../../../../src/dashboard/app/das
 import { LOADING } from "../../../../../../src/dashboard/state/async-resource.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../../../../../../src/dashboard/state/client-context.js";
 import { serverLocalDay } from "../../../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
-import type { FrontendBootstrapWire } from "../../../../../../src/models/dashboard/bootstrap.js";
 import { ActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { RUN_DIALOG_ACTOR, RUN_DIALOG_BOOTSTRAP } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 
@@ -14,7 +13,7 @@ export function SceneBinding({ children }: { children: ReactNode }) {
   const client = useDashboardClient();
   const executor = useDashboardCommandExecutor();
   const binding = useMemo(() => {
-    const bootstrap = RUN_DIALOG_BOOTSTRAP as unknown as FrontendBootstrapWire;
+    const bootstrap = RUN_DIALOG_BOOTSTRAP;
     const epoch = Object.freeze({ client, bootstrap });
     const day = serverLocalDay(bootstrap.serverClock);
     const request = Object.freeze({ client, day, epoch, revision: 0 });

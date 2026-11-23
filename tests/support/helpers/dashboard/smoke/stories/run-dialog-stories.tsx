@@ -7,6 +7,7 @@ import { DashboardClientError } from "../../../../../../src/dashboard/client/err
 import { RunStartDialog } from "../../../../../../src/dashboard/surfaces/run-start/run-start.js";
 import type { RunStartStage } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { LaunchActivity, LaunchRecovery, RerunLoad } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
+import { PreflightCheckIdSchema } from "../../../../../../src/models/preflight/preflight-contract.js";
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
@@ -58,10 +59,10 @@ const scene = (title: string, client: () => DashboardClient, stage: RunStartStag
       await page.mouse.move(0, 0); }, ...story };
 };
 const reading = (...checks: ServedCheck[]) => () => runDialogClient({ readPreflight: async () => runDialogReadiness(checks) });
-const PASS: ServedCheck = { check: "config.valid", status: "pass" };
-const WARN: ServedCheck = { check: "fiscal.current", status: "warning", summary: "The fiscal year ends soon." };
-const FIXABLE: ServedCheck = { check: "secrets.ucpath-sso", status: "fail", summary: "The UCPath password is missing." };
-const UNFIXABLE: ServedCheck = { check: "filesystem.health", status: "fail", summary: "Relay is out of disk space." };
+const PASS: ServedCheck = { check: PreflightCheckIdSchema.parse("config.valid"), status: "pass" };
+const WARN: ServedCheck = { check: PreflightCheckIdSchema.parse("fiscal.current"), status: "warning", summary: "The fiscal year ends soon." };
+const FIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("secrets.ucpath-sso"), status: "fail", summary: "The UCPath password is missing." };
+const UNFIXABLE: ServedCheck = { check: PreflightCheckIdSchema.parse("filesystem.health"), status: "fail", summary: "Relay is out of disk space." };
 const rerunClient = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ rerunValues: async () => runDialogRerunSnapshot(), previewRerunWarnings: async () => runDialogRerunWarning(false), ...served });
 const planning = (served: Partial<DashboardClient> = {}) => () => runDialogClient({ submitStartPlan: async () => runDialogPlan(), executeCommand: async () => RUN_DIALOG_APPLIED, ...served });
 const start = (page: Page) => press(page, "Start run");
