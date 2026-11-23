@@ -3,13 +3,14 @@ import type { Page } from "@playwright/test";
 import type { DashboardClient } from "../../../../../../src/dashboard/client/index.js";
 import { CommandResultSchema } from "../../../../../../src/rules/commands/commands.js";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
+import { DashboardClientError } from "../../../../../../src/dashboard/client/errors.js";
 import { RunStartDialog } from "../../../../../../src/dashboard/surfaces/run-start/run-start.js";
 import type { RunStartStage } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { LaunchActivity, LaunchRecovery, RerunLoad } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
-  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
+  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, type ServedCheck,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -18,10 +19,10 @@ import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
 
-function DialogScene({ client, rerun, before }: { client: DashboardClient; rerun?: boolean; before?: () => void }) {
+function DialogScene({ client, rerun, before, catalog = RUN_DIALOG_CATALOG }: { client: DashboardClient; rerun?: boolean; before?: () => void; catalog?: typeof RUN_DIALOG_CATALOG }) {
   before?.();
   return <StoryFrame><DashboardClientProvider client={client}><SceneBinding>
-    <RunStartDialog open onOpenChange={noop} catalog={RUN_DIALOG_CATALOG} panelWorkflowId={RUN_DIALOG_WORKFLOW} actorId={RUN_DIALOG_ACTOR}
+    <RunStartDialog open onOpenChange={noop} catalog={catalog} panelWorkflowId={RUN_DIALOG_WORKFLOW} actorId={RUN_DIALOG_ACTOR}
       onOpenIntake={noop} onFixCheck={noop} {...(rerun === true ? { rerunSource: RUN_DIALOG_RERUN_SOURCE } : {})} />
   </SceneBinding></DashboardClientProvider></StoryFrame>;
 }
@@ -48,10 +49,10 @@ async function reach(page: Page, stage: RunStartStage, rerun: boolean): Promise<
   }
 }
 
-interface SceneOptions { readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void }
+interface SceneOptions { readonly catalog?: typeof RUN_DIALOG_CATALOG; readonly rerun?: boolean; readonly then?: (page: Page) => Promise<void>; readonly before?: () => void }
 const scene = (title: string, client: () => DashboardClient, stage: RunStartStage, extra: Partial<Story> & SceneOptions = {}): Story => {
-  const { rerun = false, then, before, ...story } = extra;
-  return { title, render: () => <DialogScene client={client()} rerun={rerun} {...(before === undefined ? {} : { before })} />, ready: '[role="dialog"]',
+  const { rerun = false, then, before, catalog, ...story } = extra;
+  return { title, render: () => <DialogScene client={client()} rerun={rerun} {...(catalog === undefined ? {} : { catalog })} {...(before === undefined ? {} : { before })} />, ready: '[role="dialog"]',
     play: async page => { await reach(page, stage, rerun); await then?.(page);
       // The pointer rests on the button just pressed, which would draw its hover fill.
       await page.mouse.move(0, 0); }, ...story };
@@ -133,6 +134,49 @@ const RECOVERY = {
   retained: stage("A start sent earlier and not confirmed", planning({ executeCommand: never }), "Input", { before: saved(retainedCommand()), knownFailures: { ...SHELL_BREAK, "no-banned-text": "#532" } }),
 } satisfies Record<LaunchRecovery["state"], Story>;
 
+/** The Options stage's controls, each pressed once away from its default. */
+type OptionsControl = "priority" | "dry-run" | "browser-mode";
+const OPTIONS = {
+  priority: stage("Options with Priority switched off", () => runDialogClient(), "Options", { then: page => dialog(page).getByRole("switch", { name: "Priority" }).click() }),
+  "dry-run": stage("Options with Dry run switched on", () => runDialogClient(), "Options", { catalog: RUN_DIALOG_DRY_RUN_CATALOG, then: page => dialog(page).getByRole("switch", { name: "Dry run" }).click() }),
+  "browser-mode": stage("Options with the browser hidden", () => runDialogClient(), "Options", { then: page => dialog(page).getByText("Hidden", { exact: true }).click() }),
+} satisfies Record<OptionsControl, Story>;
+
+/** What the operator sees of the PDFs a PDF workflow takes, from none chosen to a refused pick. */
+type PdfInputState = "none" | "reading" | "selected" | "several" | "wrong-type" | "refused" | "upload-failed" | "choice-unpicked" | "choice-picked";
+const pdfFile = (name: string, contents = "%PDF-1.4 story") => ({ name, mimeType: name.endsWith(".pdf") ? "application/pdf" : "text/plain", contents });
+const attach = (...files: ReturnType<typeof pdfFile>[]) => async (page: Page) => { await dialog(page).locator('input[type="file"]').setInputFiles(files.map(({ name, mimeType, contents }) => ({ name, mimeType, buffer: Buffer.from(contents) }))); };
+const pdfStage = (title: string, served: Partial<DashboardClient>, at: RunStartStage, then?: (page: Page) => Promise<void>): Story =>
+  stage(title, () => runDialogClient({ uploadOcrSource: runDialogUpload, ...served }), at, { catalog: RUN_DIALOG_PDF_CATALOG, ...(then === undefined ? {} : { then }) });
+const afterAttach = (...files: ReturnType<typeof pdfFile>[]) => async (page: Page) => { await attach(...files)(page); await dialog(page).getByText(/PDFs? selected|Choose valid|refused|could not/u).first().waitFor(); };
+const PDF = {
+  none: pdfStage("A PDF workflow, no PDFs chosen", {}, "Input"),
+  reading: pdfStage("PDFs being read", { uploadOcrSource: never }, "Input", attach(pdfFile("first.pdf"))),
+  selected: pdfStage("One PDF chosen", {}, "Input", afterAttach(pdfFile("first.pdf"))),
+  several: pdfStage("Seven PDFs chosen, the list capped", {}, "Input", afterAttach(...Array.from({ length: 7 }, (_unused, index) => pdfFile(`scan-${index + 1}.pdf`, `%PDF-1.4 ${index}`)))),
+  "wrong-type": pdfStage("A file that is not a PDF", {}, "Input", afterAttach(pdfFile("notes.txt"))),
+  refused: pdfStage("A PDF the server side refuses (empty)", {}, "Input", afterAttach(pdfFile("empty.pdf", ""))),
+  "upload-failed": pdfStage("A PDF whose upload failed", { uploadOcrSource: async () => { throw new DashboardClientError({ kind: "network", message: "offline", retryable: true }); } }, "Input", afterAttach(pdfFile("first.pdf"))),
+  "choice-unpicked": pdfStage("Options, the required form choice not made", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Options"); }),
+  "choice-picked": pdfStage("Options, OCR off and a form chosen", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Continue"); await at(page, "Options");
+    await dialog(page).getByRole("switch", { name: "Read with OCR" }).click(); await dialog(page).getByText("I-9", { exact: true }).click(); }),
+} satisfies Record<PdfInputState, Story>;
+
+/** What the dialog shows when the reference spreadsheets a workflow reads cannot be read or checked. */
+type ReferenceState = "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed";
+const unreadable = () => { throw new Error("The spreadsheets could not be read."); };
+const reference = (title: string, served: Partial<DashboardClient>, catalog = RUN_DIALOG_REFERENCE_CATALOG, extra: Partial<Story> = {}): Story =>
+  stage(title, () => runDialogClient({ workbookTypes: async () => [], ...served }), "Input", { catalog, ...extra });
+const READING = { slowFetch: { region: '[aria-label="Loading reference data"]' } };
+const REFERENCE = {
+  loading: reference("Reference spreadsheets still loading", { workbookCatalog: never, workbookCompatibility: never }, RUN_DIALOG_REFERENCE_CATALOG, READING),
+  "catalog-failed": reference("The spreadsheet list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }),
+  "compatibility-failed": reference("The spreadsheet check could not be read", { workbookCatalog: async () => [], workbookCompatibility: async () => unreadable() }),
+  unchecked: reference("Relay has no spreadsheet check for the workflow", { workbookCatalog: async () => [], workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }),
+  "check-loading": reference("The optional check still loading", { workbookCatalog: never, workbookCompatibility: never }, RUN_DIALOG_CHECK_CATALOG, READING),
+  "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
+} satisfies Record<ReferenceState, Story>;
+
 export const RUN_DIALOG_STORIES = defineSurface("run-dialog", {
-  stage: STAGE, checks: CHECKS, "check-combination": CHECK_COMBINATION, "rerun-load": RERUN_LOAD, activity: ACTIVITY, refusal: REFUSAL, answer: ANSWER, recovery: RECOVERY,
+  stage: STAGE, checks: CHECKS, "check-combination": CHECK_COMBINATION, "rerun-load": RERUN_LOAD, activity: ACTIVITY, refusal: REFUSAL, answer: ANSWER, recovery: RECOVERY, options: OPTIONS, pdf: PDF, reference: REFERENCE,
 });

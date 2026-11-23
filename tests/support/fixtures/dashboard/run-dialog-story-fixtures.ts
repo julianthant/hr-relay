@@ -6,8 +6,10 @@ import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-m
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { RerunValuesRequestSchema, RerunValuesResponseSchema, type RerunValuesResponse } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningWireSchema, type RerunWarningWire } from "../../../../src/models/dashboard/rerun-warning.js";
+import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { StartPlanWireSchema, type StartPlanWire } from "../../../../src/models/dashboard/start-plan.js";
 import type { PreflightReadinessWire } from "../../../../src/models/preflight/preflight-contract.js";
+import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "json" };
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
@@ -40,6 +42,28 @@ export const RUN_DIALOG_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
 
 export const RUN_DIALOG_CATALOG = buildWorkflowCatalog(RUN_DIALOG_WORKFLOWS,
   Object.freeze(Object.fromEntries(RUN_DIALOG_WORKFLOWS.map(flow => [flow.workflowId, "served" as const]))));
+
+const catalogOf = (patch: (flow: RunStartWorkflow) => RunStartWorkflow) => buildWorkflowCatalog(RUN_DIALOG_WORKFLOWS.map(patch),
+  Object.freeze(Object.fromEntries(RUN_DIALOG_WORKFLOWS.map(flow => [flow.workflowId, "served" as const]))));
+const literal = (text: string) => ({ segments: [{ kind: "literal" as const, text }] });
+const typedInput = (flow: RunStartWorkflow, supportsDryRun: boolean): RunStartWorkflow => flow.inputRun.state === "present"
+  ? { ...flow, inputRun: { state: "present", surface: { ...flow.inputRun.surface, supportsDryRun } } } : flow;
+/** The Person Lookup entry as a workflow that can preview without writing: the Options stage then offers Dry run. */
+export const RUN_DIALOG_DRY_RUN_CATALOG = catalogOf(flow => typedInput(flow, true));
+/** The entry as a workflow that reads its people from a required reference spreadsheet. */
+export const RUN_DIALOG_REFERENCE_CATALOG = catalogOf(flow => ({ ...flow, requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
+/** The entry as a workflow with the optional second check. */
+export const RUN_DIALOG_CHECK_CATALOG = catalogOf(flow => ({ ...flow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }));
+/** The entry as a PDF workflow: documents in, an OCR switch and a required choice on the Options stage. */
+export const RUN_DIALOG_PDF_CATALOG = catalogOf(flow => ({ ...flow, inputRun: { state: "absent", reason: "PDF input" }, uploadRun: {
+  pdfInput: { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: {} }, title: literal("Upload PDFs"),
+  fields: [{ kind: "boolean", field: "extractWithOcr", label: "Read with OCR", initial: true, description: "Turn off for text PDFs." },
+    { kind: "select", field: "form", label: "Form", required: true, options: [{ value: "i9", label: "I-9" }, { value: "w4", label: "W-4" }] }],
+  accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }], successMessage: literal("Started."), supportsDryRun: true } }));
+
+/** What the client serves for a PDF the story attaches: the upload as the actor made it, named and sized as sent. */
+export const runDialogUpload: DashboardClient["uploadOcrSource"] = async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-26T21:00:00.000Z",
+  artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: Array.from(request.bytes.slice(0, 32), byte => byte.toString(16).padStart(2, "0")).join("").padEnd(64, "0") } });
 
 export function runDialogPlan(startPlanId = "5a000000-0000-4000-8000-000000000001"): StartPlanWire {
   return StartPlanWireSchema.parse({
