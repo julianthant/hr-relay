@@ -4,6 +4,9 @@ import { runResultCurrent } from "../../../storage/sqlite/delegation-refresh.js"
 import type { RunFoldRecord } from "../../projections/run-queue-projection.js";
 import type { RunCaptureAvailabilityWire } from "../../../../models/dashboard/run-detail.js";
 
+// Only the identity gate holds an identity review; other gates serve their decision on the run's gate.
+const IDENTITY_GATE_ID = "identity-approval";
+
 export function availableSections(
   _row: RunFoldRecord | undefined,
   authority: RunRecord,
@@ -26,7 +29,6 @@ export function availableSections(
       : []),
     ...(captures?.state === "available" ? (["captures"] as const) : []),
     ...(lifecycle.state === "parked-write" ? (["parked-write"] as const) : []),
-
-    ...(lifecycle.state === "parked-gate" ? (["identity-gate"] as const) : []),
+    ...(lifecycle.state === "parked-gate" && String(lifecycle.gateId) === IDENTITY_GATE_ID ? (["identity-gate"] as const) : []),
   ];
 }

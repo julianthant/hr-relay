@@ -39,7 +39,7 @@ import { testAdmittedWorker } from "../../../fixtures/run-lifecycle-fixtures.js"
 import { syntheticStateRoot } from "../../synthetic-storage-admission.js";
 import { duoCeremonyGatesOver } from "../../duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../phase1f-executor-harness.js";
-import { scriptedWorkflow, WORK_STUDY_GATE_ID, WORK_STUDY_SCRIPT, type RecordedWrite, type ScriptWorld, type ScriptedWorkflow } from "./scripted-workflows.js";
+import { scriptedWorkflow, WORK_STUDY_SCRIPT, type RecordedWrite, type ScriptWorld, type ScriptedWorkflow } from "./scripted-workflows.js";
 
 export type { RecordedWrite } from "./scripted-workflows.js";
 
@@ -327,14 +327,6 @@ export async function startScriptedRun(request: SeededRequest, now: string, eid:
   const runId = runIds[0];
   if (runIds.length !== 1 || runId === undefined) throw new Error(`the scripted start applied ${String(runIds.length)} runs: ${JSON.stringify(result)}`);
   return runId;
-}
-
-/** Answers the open gate's "Continue anyway" arm with the command a gate control would send (no Logs card sends it yet, #580); the run returns to the queue. */
-export async function approveScriptedGate(request: SeededRequest, now: string, runId: string): Promise<void> {
-  const detail = RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`));
-  const result = CommandResultSchema.parse(await request("/api/v1/commands", { ...operatorCommand(now), family: "gate", type: "answer-gate-arm",
-    target: { runId, gateId: WORK_STUDY_GATE_ID, expectedVersion: detail.rowRevision }, payload: { arm: "continue" } }));
-  if (result.state !== "applied") throw new Error(`the scripted gate approval was ${result.state}: ${JSON.stringify(result)}`);
 }
 
 /** Sends a run command (`retry`, `cancel`) the way the run panel's buttons do, bound to the run's current revision. */
