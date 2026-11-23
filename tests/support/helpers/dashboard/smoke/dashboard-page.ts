@@ -119,6 +119,12 @@ export class DashboardPage {
     expect(await noBannedText({ page: this.page } as StateRuleContext), "text an operator must never read").toEqual([]);
   }
 
+  /** A second press on a control already pressed: Enter, then a click on the button if it is still there. */
+  async pressAgain(button: Locator): Promise<void> {
+    await this.page.keyboard.press("Enter");
+    await button.dispatchEvent("click", undefined, { timeout: 500 }).catch(() => undefined);
+  }
+
   /** Holds every command of `type` in flight until `release`, counting how many were sent. */
   async holdCommands(type: string): Promise<{ readonly sent: () => number; readonly release: () => void; readonly result: () => Promise<CommandResult> }> {
     let sent = 0;

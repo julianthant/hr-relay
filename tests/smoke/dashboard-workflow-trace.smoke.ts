@@ -84,7 +84,7 @@ test("Work-Study: the Start run dialog starts one run, a second press while pend
   const startButton = dashboard.dialog.getByRole("button", { name: "Start live run" });
   await startButton.click();
   await expect.poll(start.sent, { message: "the held Start reached the server" }).toBe(1);
-  await page.keyboard.press("Enter");
+  await dashboard.pressAgain(startButton);
   start.release();
   await dashboard.expectOneToast("Run started: 1 Work-Study run created.");
   await expect(dashboard.dialog).toBeHidden();
@@ -131,9 +131,10 @@ test("Person Lookup: Rerun starts one new run, a second press while pending send
     await rerun.getByRole("button", { name: "Continue" }).click();
   }
   const started = await dashboard.holdCommands("start-run");
-  await rerun.getByRole("button", { name: "Start run" }).click();
+  const rerunStart = rerun.getByRole("button", { name: "Start run" });
+  await rerunStart.click();
   await expect.poll(started.sent, { message: "the held Rerun reached the server" }).toBe(1);
-  await page.keyboard.press("Enter");
+  await dashboard.pressAgain(rerunStart);
   started.release();
   await dashboard.expectOneToast("Rerun created: 1 Person Lookup run created.");
   await expect(rerun).toBeHidden();
@@ -160,14 +161,15 @@ test("Work-Study: Retry after a failed step runs it again and writes once", asyn
   const recover = await dashboard.holdCommands("recover-run");
   await page.getByRole("button", { name: "Recover completed steps" }).click();
   const confirm = page.getByRole("dialog", { name: "Recover completed steps?" });
-  await confirm.getByRole("button", { name: "Recover", exact: true }).click();
+  const recoverButton = confirm.getByRole("button", { name: "Recover", exact: true });
+  await recoverButton.click();
   await expect.poll(recover.sent, { message: "the held Recover reached the server" }).toBe(1);
-  await page.keyboard.press("Enter");
+  await dashboard.pressAgain(recoverButton);
   recover.release();
+  expect(recover.sent(), "a second press while pending sent a second command").toBe(1);
   await dashboard.expectNoToast();
   const queuedByRetry = appliedRunIds(await recover.result()).filter(id => id !== runId);
   expect(queuedByRetry).toHaveLength(1);
-  expect(recover.sent(), "a second press while pending sent a second command").toBe(1);
   const [retried] = queuedByRetry;
   if (retried === undefined) throw new Error("the Recover queued no run");
   failures.allow(abortedRead(retried), ABORTED_READ_REASON);
@@ -214,9 +216,10 @@ test("Work-Study: Cancel on a run parked at its gate ends it as Cancelled and wr
   const cancel = await dashboard.holdCommands("cancel");
   await page.getByRole("button", { name: "Cancel run" }).click();
   const confirm = page.getByRole("dialog", { name: "Cancel this run?" });
-  await confirm.getByRole("button", { name: "Cancel the run", exact: true }).click();
+  const cancelButton = confirm.getByRole("button", { name: "Cancel the run", exact: true });
+  await cancelButton.click();
   await expect.poll(cancel.sent, { message: "the held Cancel reached the server" }).toBe(1);
-  await page.keyboard.press("Enter");
+  await dashboard.pressAgain(cancelButton);
   cancel.release();
   await expect(row).toContainText("Cancelled");
   expect(cancel.sent(), "a second press while pending sent a second command").toBe(1);
