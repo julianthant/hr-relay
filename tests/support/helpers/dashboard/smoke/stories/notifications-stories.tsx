@@ -36,7 +36,7 @@ const KIND = {
 
 const COMBINATION = {
   "storage-degraded": panel("Relay could not save everything", notificationsReady(STORAGE_DEGRADED_NOTICE)),
-  "backfill-gap": panel("Notification history is incomplete", notificationsReady(NOTICE_BY_TONE.positive), { notice: "Notification history is incomplete. Check the affected work." }),
+  "backfill-gap": panel("Notification history is incomplete", notificationsReady(BACKFILL_GAP_NOTICE, NOTICE_BY_TONE.positive), { notice: "Notification history is incomplete. Check the affected work." }),
   "priority-clear": panel("Nothing in Priority", notificationsReady({ ...NOTICE_BY_TONE.positive, day: "Today" })),
   "priority-hidden": panel("Priority section switched off", MIXED_NOTICES, { showPriority: false }),
   empty: panel("No notifications at all", notificationsReady()),

@@ -53,7 +53,7 @@ const COMBINATION = {
   attention: bar("Waiting, paused and failed workers side by side", ready(SESSION_WORKER_BY_STATE.waiting, SESSION_WORKER_BY_STATE.paused, SESSION_WORKER_BY_STATE.failed)),
   mixed: bar("Cards for busy workers, rows for quiet idle ones", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
-  stale: bar("Counts held from the last day while the next loads, controls locked", { ...ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed), stale: true }),
+  stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
   "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]', knownFailures: { "named-and-focusable": "#532" },
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
