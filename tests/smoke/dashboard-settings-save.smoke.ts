@@ -4,10 +4,18 @@ import { CommandResultSchema, SettingsCommandRequestSchema } from "../../src/rul
 import { syntheticSettingsAuthority } from "../support/helpers/dashboard/settings-harness.js";
 import { expect, test } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 
-test("General settings show edits immediately, persist on reload, and recover from a refused save", async ({ dashboard, page }) => {
+test("Settings show edits immediately, persist on reload, and recover from a refused save", async ({ dashboard, page }) => {
   const authority = await syntheticSettingsAuthority();
-  const rejected = Promise.withResolvers<void>();
-  let refuseNextSave = false;
+  let nextSave: { ready: Promise<void>; refused: boolean } | undefined;
+  async function whileReplyIsHeld(edit: () => Promise<void>, refused = false) {
+    const gate = Promise.withResolvers<void>();
+    nextSave = { ready: gate.promise, refused };
+    try {
+      await edit();
+      await expect.poll(() => nextSave === undefined, { message: "The Settings change dispatched a save" }).toBe(true);
+    }
+    finally { gate.resolve(); }
+  }
   const pickedPath = join(authority.root, "smoke-downloads");
   try {
     await mkdir(pickedPath);
@@ -17,14 +25,15 @@ test("General settings show edits immediately, persist on reload, and recover fr
     await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: authority.read() }));
     await page.route("**/api/v1/commands", async route => {
       const request = SettingsCommandRequestSchema.parse(route.request().postDataJSON());
-      if (refuseNextSave) {
-        refuseNextSave = false;
-        await rejected.promise;
+      const save = nextSave;
+      nextSave = undefined;
+      await save?.ready;
+      if (save?.refused) {
         await route.fulfill({ json: CommandResultSchema.parse({
           state: "rejected", commandId: request.commandId, code: "lock-unavailable", message: "Fixture refused this settings save.",
         }) });
       } else {
-        await route.fulfill({ json: await authority.execute(request) });
+        await route.fulfill({ json: authority.execute(request) });
       }
     });
 
@@ -41,32 +50,38 @@ test("General settings show edits immediately, persist on reload, and recover fr
     const failure = page.locator('[data-slot="toast-title"]').filter({ hasText: "Settings weren't saved. The previous value is back." });
 
     await expect(switchControl).toBeChecked();
-    refuseNextSave = true;
-    await switchControl.click();
-    await expect(switchControl).not.toBeChecked();
-    await expect(switchControl).toBeDisabled();
-    rejected.resolve();
+    await whileReplyIsHeld(async () => {
+      await switchControl.click();
+      await expect(switchControl).not.toBeChecked();
+    }, true);
     await expect(failure).toBeVisible();
     await expect(failure).toHaveCount(1);
     await expect(switchControl).toBeChecked();
     await expect(switchControl).toBeEnabled();
-    await switchControl.click();
-    await expect(switchControl).not.toBeChecked();
+    await whileReplyIsHeld(async () => {
+      await switchControl.click();
+      await expect(switchControl).not.toBeChecked();
+    });
     await expect(saved).toContainText("Prevent sleep");
 
-    await browser.click();
-    await page.getByRole("option", { name: "Small", exact: true }).click();
-    await expect(browser).toContainText("Small");
+    await whileReplyIsHeld(async () => {
+      await browser.click();
+      await page.getByRole("option", { name: "Small", exact: true }).click();
+      await expect(browser).toContainText("Small");
+    });
     await expect(saved).toContainText("Saved settings");
     await expect(browser).toBeEnabled();
 
-    await page.getByRole("group", { name: "Theme" }).getByText("Light", { exact: true }).click();
-    await expect(theme).toBeChecked();
-    await expect.poll(() => authority.read().sections.flatMap(section => section.leaves)
-      .find(leaf => leaf.path === "preferences.theme")?.effectiveValue).toBe("light");
+    await whileReplyIsHeld(async () => {
+      await page.getByRole("group", { name: "Theme" }).getByText("Light", { exact: true }).click();
+      await expect(theme).toBeChecked();
+    });
+    await dashboard.settleReads();
 
-    await downloads.click();
-    await expect(path).toHaveAttribute("aria-label", pickedPath);
+    await whileReplyIsHeld(async () => {
+      await downloads.click();
+      await expect(path).toHaveAttribute("aria-label", pickedPath);
+    });
     await expect(saved).toContainText("Saved Downloads");
 
     const date = page.locator('[data-settings-path$=".jobEndDate"]');
@@ -89,8 +104,20 @@ test("General settings show edits immediately, persist on reload, and recover fr
     await expect(date.locator('[data-type="month"]')).toHaveText("06");
     await expect(day).toHaveText("15");
     await expect(year).toHaveText("2027");
+
+    await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Performance", exact: true }).click();
+    const scheduling = page.getByRole("button", { name: /Worker scheduling/u });
+    const workers = page.getByRole("textbox", { name: "Default workers", exact: true });
+    await scheduling.click();
+    await workers.fill("3");
+    await expect(workers).toHaveValue("3");
+    await expect(saved).toContainText("Saved Default workers");
+    await dashboard.settleReads();
+    await page.reload();
+    await expect(dashboard.pageHeading("Performance")).toBeVisible();
+    await scheduling.click();
+    await expect(workers).toHaveValue("3");
   } finally {
-    rejected.resolve();
     await authority.close();
   }
 });

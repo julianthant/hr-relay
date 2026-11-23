@@ -4,17 +4,17 @@ import { FIXTURE_LOGIN, startSignedOut } from "../support/helpers/dashboard/serv
 test("wrong password clears on Sign up and a successful login reveals the complete dashboard", async ({ dashboard, page, seeded }, testInfo) => {
   const signIn = Promise.withResolvers<void>();
   const boot = Promise.withResolvers<void>();
-  await startSignedOut(page, signIn.promise);
-  await page.route("**/api/v1/bootstrap", async route => {
-    await boot.promise;
-    await route.continue();
-  });
-  const url = new URL("/", seeded.baseUrl);
+  const variant = await startSignedOut(seeded.baseUrl, signIn.promise);
+  const url = new URL("/", variant.baseUrl);
   url.searchParams.set("day", seeded.day);
-  const signInError = page.getByRole("alert").filter({ hasText: "That email and password did not match a profile on this computer." });
+  const signInError = page.getByRole("alert").filter({ hasText: "Wrong email or password" });
   const password = page.getByLabel("Password", { exact: true });
   const submit = page.getByRole("button", { name: "Log in", exact: true });
   try {
+    await page.route("**/api/v1/bootstrap", async route => {
+      await boot.promise;
+      await route.continue();
+    });
     await page.goto(url.toString());
     await expect(page.getByRole("heading", { name: "Log in to Relay" })).toBeVisible();
     await page.getByLabel("Work email").fill(FIXTURE_LOGIN.email);
@@ -66,8 +66,11 @@ test("wrong password clears on Sign up and a successful login reveals the comple
     const revealed = samples.filter(frame => !frame.loader);
     expect(revealed.length).toBeGreaterThanOrEqual(2);
     expect(revealed.every(frame => frame.ready && !frame.skeleton), "every frame after the loader contains the finished queue").toBe(true);
+    await dashboard.settleReads();
   } finally {
     signIn.resolve();
     boot.resolve();
+    try { await page.close(); }
+    finally { await variant.close(); }
   }
 });

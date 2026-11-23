@@ -19,16 +19,17 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
     const save = dialog.getByRole("button", { name: "Add to library" });
     await expect(save).toBeEnabled();
     const release = Promise.withResolvers<void>();
-    const received = Promise.withResolvers<void>();
-    await page.route("**/api/v1/workbooks/import", async route => {
-      received.resolve();
+    let received = false;
+    await page.route("**/api/v1/workbooks", async route => {
+      if (route.request().method() !== "POST") { await route.fallback(); return; }
+      received = true;
       await release.promise;
       await route.continue();
-    }, { times: 1 });
+    });
     try {
       await save.click();
       await expect(save).toBeDisabled();
-      await received.promise;
+      await expect.poll(() => received, { message: "The local CSV reached the workbook create route" }).toBe(true);
       await expect(page.getByText(`Added ${name}`, { exact: true })).toBeHidden();
     } finally {
       release.resolve();
