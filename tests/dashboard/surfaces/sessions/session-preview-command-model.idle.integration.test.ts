@@ -38,7 +38,7 @@ it("restarts the idle countdown when the read-back proves a refresh whose reply 
     assert.equal(commands?.operations["sample-worker-4"], undefined, "a refresh found by reading back leaves no note");
     const countdown = commands?.idleCountdowns["sample-worker-4"];
     assert.equal(countdown?.waiting, false);
-    assert.ok((countdown?.remainingMs ?? 0) > IDLE_REFRESH_MS - 3000, "the countdown restarts from the read-back");
+    assert.ok((countdown?.dueAt ?? 0) - Date.now() > IDLE_REFRESH_MS - 3000, "the countdown restarts from the read-back");
   } finally { await act(async () => root.unmount()); }
 });
 
