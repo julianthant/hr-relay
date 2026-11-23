@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { queuedRunFixture } from "../../../support/fixtures/backend/queued-run.js";
-import { RunEnvelopeSchema } from "../../../../src/models/run/envelope.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { Plan1CanonicalInput, Plan1Input, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { queuedRunFixture } from "../../support/fixtures/backend/queued-run.js";
+import { RunEnvelopeSchema } from "../../../src/models/run/envelope.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+import { Plan1CanonicalInput, Plan1Input, plan1Leaf } from "../../support/fixtures/plan1-operation-workflows.js";
 
 describe("queued run envelope", () => {
   it("reads the operation display fields recorded on an older run", () => {
