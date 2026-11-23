@@ -153,8 +153,9 @@ test("Work-Study: a slow step keeps the run Running and its duration is recorded
   await run.advance(90_000);
   await expect(row).toContainText("Running");
   expect(await run.advance()).toMatchObject({ at: "settled" });
-  const durations = RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).timeline.events.flatMap(event => event.durationMs?.state === "present" ? [event.durationMs.ms] : []);
-  expect(Math.max(0, ...durations)).toBeGreaterThanOrEqual(90_000);
+  const longest = async () => Math.max(0, ...RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).timeline.events
+    .flatMap(event => event.durationMs?.state === "present" ? [event.durationMs.ms] : []));
+  await expect.poll(longest, { message: "the timeline watcher folds the slow step's duration" }).toBeGreaterThanOrEqual(90_000);
 });
 
 test("Person Lookup: start, each step held, done, and nothing written", async ({ dashboard, seeded, page, failures }) => {
