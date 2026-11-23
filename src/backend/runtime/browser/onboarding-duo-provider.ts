@@ -543,18 +543,12 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     };
     const add = control(/^Add a device\b/iu);
     const other = control(/^Other options$/iu);
-    const manage = control(/^Manage devices\b/iu);
-    await add.or(manage).or(other).first().waitFor({ timeout });
+    await add.or(other).first().waitFor({ timeout });
     if (!await add.isVisible()) {
-      if (!await manage.isVisible()) await click(other);
-      await click(manage);
-      const verify = page.getByRole("heading", { name: "Verify your identity before managing devices", exact: true });
-      await add.or(verify).first().waitFor({ timeout });
-      if (!await add.isVisible()) {
-        await click(control(/^(?:Verified )?Duo Push\b/iu));
-        copy.phone();
-        await add.waitFor({ timeout });
-      }
+      await click(other);
+      await click(control(/^(?:Verified )?Duo Push\b/iu));
+      copy.phone();
+      await add.waitFor({ timeout });
     }
 
     for (const method of ["key", "touch"] as const) {
