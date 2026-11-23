@@ -204,14 +204,12 @@ async function ownDashboardUntilShutdown(
   const failures: unknown[] = [];
   let running: RunningDashboard | undefined;
   try {
-    if (!stopRequested) {
-      running = await compose();
-      const ready = started(running);
-      const stopped = Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
-      // A stop never waits for readiness publication; a readiness failure after the stop has nothing left to report to.
-      if (!stopRequested) await Promise.race([Promise.resolve().then(ready), stopped]);
-      await stopped;
-    }
+    running = await compose();
+    const ready = started(running);
+    const stopped = Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
+    // A stop never waits for readiness publication; a readiness failure after the stop has nothing left to report to.
+    if (!stopRequested) await Promise.race([Promise.resolve().then(ready), stopped]);
+    await stopped;
   } catch (error) { failures.push(error); }
   if (running !== undefined) {
     try { await running.stop(); }
@@ -256,9 +254,12 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     }
 
     const options = parseDashboardCommandOptions(args.slice(1));
+    const stopSignal = input.stopSignal ?? registeredDashboardStopSignal;
+    // A boot-latched stop composes nothing; a parent already gone still composes so the dashboard drains.
+    if (stopSignal?.aborted === true) return;
     await ownDashboardUntilShutdown(
       () => compose(input.isolation, options),
-      input.signals ?? processShutdownSignals(input.stopSignal ?? registeredDashboardStopSignal),
+      input.signals ?? processShutdownSignals(stopSignal),
       (running) => {
         write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
         return input.dashboardReady ?? (() => new Promise<void>((resolve, reject) => {
