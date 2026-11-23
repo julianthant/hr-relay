@@ -214,17 +214,18 @@ it('a held empty report names its own period until the chosen period arrives', a
   assert.equal(document.querySelector('[data-analytics-stale]'), null);
 });
 
-it('agrees on one run total across the header, the legend and the table, with one name per state', async () => {
-  if (data.state !== 'loaded') throw new Error('sample not loaded');
+it('agrees on one run total across the header, the legend and the table for the seeded day', async () => {
   await render(data);
-  const rows = data.report.analytics.workflows;
-  const total = rows.reduce((n, row) => n + row.done + row.failed + row.attention, 0);
-  assert.match(document.body.textContent, new RegExp(`${total} runs? in this period`));
-  const tableTotal = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr:not([data-open]) td:nth-child(3)')].reduce((n, cell) => n + Number(cell.textContent), 0);
-  assert.equal(tableTotal, total);
+  const header = /(\d+) runs? in this period/.exec(document.body.textContent ?? '');
+  assert(header, 'the Runs header counts runs');
+  const legend = [...document.querySelectorAll('ul[aria-label="Key figures"] li')].reduce((n, item) => n + Number(/^(\d+) ·/.exec(item.querySelector('span:last-child')?.textContent ?? '')?.[1]), 0);
+  const table = [...document.querySelectorAll('table[aria-label="Workflows"] tbody tr:not([data-open]) td:nth-child(3)')].reduce((n, cell) => n + Number(cell.textContent), 0);
+  assert.equal(Number(header[1]), legend);
+  assert.equal(legend, table);
+  assert(legend > 0);
   await act(async () => (document.querySelector('button[aria-expanded]') as HTMLButtonElement).click());
-  assert.doesNotMatch(document.body.textContent, /Waiting/);
-  assert.match(document.body.textContent, /Needs attention/);
+  assert.doesNotMatch(document.body.textContent ?? '', /Waiting/);
+  assert.match(document.body.textContent ?? '', /Needs attention/);
 });
 
 it('opens runs with a real button', async () => {
