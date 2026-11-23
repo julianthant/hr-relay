@@ -187,7 +187,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   })}));
   const retainedDigests = new Set<string>(), referencesIn = deletionArtifactReferenceMatcher(candidates.values());
   for (const { name: table } of AUTHORITY_TABLE_REGISTRY) {
-    if (table === "deleted_runs" || candidates.size === 0) continue;
+    if (table === "deleted_runs" || table === "debug_events" || candidates.size === 0) continue;
     const step = steps.find(step => step.table === table);
     const removedKeys = new Set(step === undefined ? [] : [...cascade].flatMap(id => database.prepare(`SELECT ${step.key} AS deletion_key FROM ${step.table} WHERE ${step.where}`).all(id)
       .map(row => z.union([z.string(), z.number()]).parse(row.deletion_key))));
