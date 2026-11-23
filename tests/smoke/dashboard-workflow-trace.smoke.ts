@@ -530,8 +530,6 @@ const onboardingStarted = async ({ dashboard, seeded, page, failures }: { dashbo
   const roster = seeded.scripted.onboardingRosterReference([[ONBOARDING_EMAIL, "Fixture Hire"]]);
   const runId = await startScriptedRun(request, SEEDED_NOW, ONBOARDING_EMAIL, roster, ONBOARDING_SCRIPT);
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
-  failures.allow(new RegExp(String.raw`^(?:http 409: GET |console: Failed to load resource: the server responded with a status of 409 \(Conflict\) )http://127\.0\.0\.1:\d+/api/v1/runs/${runId}/identity-gate$`, "u"),
-    "The panel asks for an identity review of the parked hire review, which holds none, and offers no answer control (#580).");
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
   return { request, runId, row };
