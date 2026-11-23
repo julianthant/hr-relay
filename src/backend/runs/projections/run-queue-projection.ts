@@ -421,7 +421,8 @@ export class RunQueueProjection {
     if (queueRevisions > 0) this.#notify({ runIds: [...runIds], workerChanged }, queueRevisions > 1);
   }
 
-  async pollBackground(read: (request: DashboardBackgroundReadRequest) => Promise<DashboardBackgroundReadResult>, nowMs: number): Promise<number | undefined> {
+  async pollBackground(read: (request: DashboardBackgroundReadRequest) => Promise<DashboardBackgroundReadResult>, nowMs: number,
+    workersChangedDuringStartup?: () => boolean): Promise<number | undefined> {
     const generation = this.#generationValue, rebuilding = this.#health.state === "degraded";
     const after = rebuilding ? 0 : this.#timelineCursor;
     const request = { limit: 128, spanTypes: PROJECTION_SPAN_TYPES, nowMs };
@@ -443,7 +444,8 @@ export class RunQueueProjection {
     this.#backgroundWorkers = workers;
     if (rebuilding) this.#rebuild({ records, cursor: through });
     else {
-      if (first) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
+      // The worker uses a different fingerprint format. Only rebaseline silently when the startup facts still match.
+      if (first && workersChangedDuringStartup?.() === false) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
       if (through > this.#timelineCursor) this.#ingestTail({ records: records.filter(record => record.cursor > this.#timelineCursor), cursor: through });
       this.reconcileWorkerAuthority();
     }
@@ -464,6 +466,10 @@ export class RunQueueProjection {
       if (fingerprint === this.#workerAuthorityFingerprint) return;
       this.#workerAuthorityFingerprint = fingerprint;
       this.#cursorValue += 1;
+      if (this.#backgroundWorkers === undefined) {
+        this.#notify({ runIds: [], workerChanged: true });
+        return;
+      }
       this.#dayCache.clear();
       const change: RunQueueProjectionChange = { kind: "snapshot", cursor: this.cursor() };
       for (const listener of this.#listeners) listener(change);

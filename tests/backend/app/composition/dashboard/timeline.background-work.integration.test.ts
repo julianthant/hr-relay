@@ -39,7 +39,9 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     const first = debug().record;
     const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
       lifecycle: f.service, loggingRepository, debugEvents });
-    await runtime.ready;
+    const startupCursor = projection.cursor();
+    await runtime.settled();
+    expect(projection.cursor()).toBe(startupCursor);
     poll.mockClear();
     tick(1000);
     expect(poll).not.toHaveBeenCalled();
@@ -86,14 +88,33 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     expect(projection.health().state).toBe("live");
     expect(poll).toHaveBeenCalledTimes(4);
     expect(synchronousIngest).not.toHaveBeenCalled();
+    const peerId = randomUUID();
+    execFileSync(process.execPath, ["--input-type=module", "-e", `
+      import { DatabaseSync } from "node:sqlite";
+      const db = new DatabaseSync(process.argv[1]);
+      const { changes } = db.prepare(\`
+        INSERT INTO timeline_events(id,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+        SELECT ?,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,
+          json_set(payload_json,'$.eventId',?,'$.cursor',(SELECT seq+1 FROM sqlite_sequence WHERE name='timeline_events'))
+        FROM timeline_events WHERE id=?
+      \`).run(process.argv[2], process.argv[2], process.argv[3]);
+      db.close();
+      if (changes !== 1) throw new Error("expected one peer observation");
+    `, f.profile.path, peerId, eventId]);
+    const beforePoll = performance.now();
+    tick(250);
+    await runtime.settled();
+    expect(projection.runLogSnapshot(runId).entries.at(-1)?.line.file.path).toBe(`timeline:${peerId}`);
+    expect(250 + performance.now() - beforePoll).toBeLessThanOrEqual(1000);
+
     const nextId = randomUUID();
     createTimelineEmitter({ repository: loggingRepository, clock, uuid: () => nextId }).emit(observation);
     tick(250);
-    expect(poll).toHaveBeenCalledTimes(5);
+    expect(poll).toHaveBeenCalledTimes(6);
     projection.ingestFromTimeline();
     await runtime.settled();
     expect(projection.runLogSnapshot(runId).entries.map(entry => entry.line.file.path)).toEqual([
-      `timeline:${eventId}`, `timeline:${nextId}`,
+      `timeline:${eventId}`, `timeline:${peerId}`, `timeline:${nextId}`,
     ]);
     poll.mockClear();
     tick(60_000);
@@ -120,7 +141,10 @@ it("degrades on a refused peer snapshot and rebuilds after the peer repairs it",
   try {
     const runtime = composeDashboardTimeline({ database, clock, projection, startupCleanups, admission: f.profile.admission,
       lifecycle: f.service, loggingRepository, debugEvents: createDebugEventWriter({ repository: loggingRepository, clock, build: "test" }) });
-    await runtime.ready;
+    const startupCursor = projection.cursor();
+    f.create(821);
+    await runtime.settled();
+    expect(projection.cursor()).not.toBe(startupCursor);
     const generation = projection.generation();
     peer.exec("CREATE TABLE unexpected_peer_table (id INTEGER)");
     for (let attempt = 0; attempt < 2; attempt++) {

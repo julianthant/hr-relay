@@ -74,9 +74,11 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   startupCleanups.push(() => clearInterval(diagnosticRetentionTimer));
 
   // Capture positions before the initial fold so a peer commit during startup remains visible.
-  const revision = database.trackAuthorityTables(["timeline_events", "runs", "deleted_runs", "worker_slots", "worker_pools",
-    "run_batches", "auth_leases", "write_intents"]);
-  let key: string | undefined = JSON.stringify(database.changeKey()), observed = revision();
+  const workerTables = ["runs", "deleted_runs", "worker_slots", "worker_pools", "run_batches", "auth_leases", "write_intents"] as const;
+  const revision = database.trackAuthorityTables(["timeline_events", ...workerTables]);
+  const startupWorkerRevision = database.trackAuthorityTables(workerTables);
+  const startupWorkers = startupWorkerRevision();
+  let key: string | { state: "retry" } = JSON.stringify(database.changeKey()), observed = revision();
   let lastWall = clock.nowMs(), leaseExpiry = Infinity;
   let safetyAt = clock.monotonicMs() + 60_000;
 
@@ -88,17 +90,16 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   }
   const reader = createDashboardBackgroundReader(admission, database);
   let pending: Promise<void> | undefined, stopped = false;
-  const startRead = (now: number) => {
-    pending = projection.pollBackground(reader.read, now).then(expiry => {
-      if (expiry === undefined) key = undefined;
+  const startRead = (now: number, workersChangedDuringStartup?: () => boolean) => {
+    pending = projection.pollBackground(request => reader.read(request), now, workersChangedDuringStartup).then(expiry => {
+      if (expiry === undefined) key = { state: "retry" };
       else leaseExpiry = expiry;
     }).catch((error: unknown) => {
-      key = undefined;
       projection.backgroundReadFailed(error);
     }).finally(() => { pending = undefined; });
     return pending;
   };
-  const ready = startRead(lastWall);
+  void startRead(lastWall, () => startupWorkers === undefined || startupWorkerRevision() !== startupWorkers);
   const timelineTimer = setInterval(() => {
     if (stopped || pending !== undefined) return;
     try {
@@ -110,12 +111,11 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       const degraded = projection.health().state === "degraded";
       if (current === key && !safety && !leaseDue && !degraded) return;
       const next = revision();
-      if (safety || leaseDue || degraded || key === undefined || next === undefined || next !== observed) void startRead(now);
+      if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now);
       key = current;
       observed = next;
       if (safety) safetyAt = elapsed + 60_000;
     } catch (error) {
-      key = undefined;
       projection.backgroundReadFailed(error);
     }
   }, TIMELINE_POLL_MS);
@@ -128,5 +128,5 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     await reader.close();
   };
   startupCleanups.push(stopTimeline);
-  return { noteWriter, timelineTimer, diagnosticRetentionTimer, ready, settled, stopTimeline };
+  return { noteWriter, timelineTimer, diagnosticRetentionTimer, settled, stopTimeline };
 }

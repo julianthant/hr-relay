@@ -126,7 +126,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let startupPending: (workflowId: string) => boolean = () => false;
   const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
 
-  const { noteWriter, ready: timelineReady, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
+  const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, lifecycle, debugEvents });
 
   const reportSupervisorFault = (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>): void => {
     const detail = error instanceof WorkerPoolError ? error.detail : {}, pid = origin?.pid ?? detail.pid;
@@ -414,9 +414,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   // Unfinished sends become delivery-unknown before any history route serves; expired chats are reclaimed now and hourly.
   database.authority.assistantHistory.settleInterrupted(clock.now().toISOString());
   database.authority.assistantHistory.reclaimExpired(clock.now().toISOString());
-  await timelineReady;
-  const timelineHealth = projection.health();
-  if (timelineHealth.state === "degraded") throw new Error(`dashboard timeline initialization failed: ${timelineHealth.lastError}`);
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const observation = { clock, debugEvents };
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({
