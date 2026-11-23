@@ -115,7 +115,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         database,
         descriptors: {
           resolve: (workflowId: string) =>
-            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
+            (workflowId === personLookupDescriptor.id ? personLookupDescriptor : scripting === undefined ? undefined : scriptedDescriptorOf(workflowId)),
         },
       },
       trust,

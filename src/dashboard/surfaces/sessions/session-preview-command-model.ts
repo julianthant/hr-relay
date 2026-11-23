@@ -232,7 +232,8 @@ const label = (request: SessionPreviewRequest) => request.action === 'add' ? 'Wo
 
 export function useSessionPreviewCommands(initial: SessionsViewState, catalog: readonly WorkflowCatalogEntry[], port: SessionPreviewCommandPort, source?: Readonly<{ snapshot: object; scope: object; actorId: string; onRefused?: (problem: string) => void }>) {
   const sourceKey = source?.snapshot ?? port;
-  const [readback, setReadback] = useState<{ key: object; data: SessionsViewState; removed: readonly string[] }>(() => ({ key: sourceKey, data: initial, removed: [] }));
+  // Only a served read-back keys this; the mount's snapshot (often the shared LOADING) must not pin its first state when a later day reuses it.
+  const [readback, setReadback] = useState<{ key: object; data: SessionsViewState; removed: readonly string[] }>(() => ({ key: {}, data: initial, removed: [] }));
   const data = readback.key === sourceKey ? readback.data : initial;
   const epoch = useRef<object>({});
   const identity = useRef(source?.scope ?? port);
