@@ -48,7 +48,7 @@ describe("D actual HTTP admission", () => {
       ]) {
         const response = await app.request("http://localhost/api/v1/commands", { method: "POST", headers: input.headers, body: JSON.stringify(input.body) });
         assert.equal(response.status, input.status, await response.text()); assert.equal(snapshot(f, true), before);
-        const diagnostics = readTimelineRecords(f.db.authority.timelineEvents).records.filter(row => row.payload.kind === "debug");
+        const diagnostics = f.db.authority.timelineEvents.debugPage({ limit: 1000 }).filter(row => row.payload.kind === "debug");
         assert.ok(diagnostics.every(row => row.payload.kind === "debug" && row.payload.event.category === "http"));
       }
       const command = resolutionCommand({ requestedAt: "2000-01-01T00:00:00.000Z" });

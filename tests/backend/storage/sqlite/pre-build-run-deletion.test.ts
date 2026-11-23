@@ -10,7 +10,9 @@ import { prepareNativeRunDeletion } from "../../../../src/backend/storage/sqlite
 import { deletePreBuildRuns, requireSettledPreBuildRun, settlePreBuildRun } from "../../../../src/backend/storage/sqlite/pre-build-run-deletion.js";
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
+import { TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { RunDeleteInputSchema } from "../../../../src/models/run/deleted-run.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { PredecessorRunRecordSchema, RunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_2, UUID_3, UUID_4, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, TRACE_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -198,5 +200,28 @@ it("creates a current store with no migration and requires a build id on a new r
     const { buildId: _omit, ...envelope } = QUEUED_RUN.envelope;
     assert.equal(PredecessorRunRecordSchema.safeParse({ ...QUEUED_RUN, envelope }).success, true);
     assert.equal(RunRecordSchema.safeParse({ ...QUEUED_RUN, envelope }).success, false);
+  } finally { database.close(); }
+});
+
+it("deletes a predecessor run while the timeline still holds a debug row, then moves that row to the debug table", () => {
+  const database = store();
+  try {
+    insertRuns(database, [predecessor()]);
+    const debug = TimelineEventRecordSchema.parse({ schemaVersion: 1, cursor: 1, eventId: randomUUID(), scope: { kind: "transport", connectionId: "local" },
+      occurredAt: NOW, recordedAt: NOW, retentionDate: NOW.slice(0, 10), source: { kind: "native" },
+      payload: { kind: "debug", event: { category: "http", phase: "settled", correlationId: "pre-build", build: "test", pid: 1 } } });
+    database.prepare("INSERT INTO timeline_events(cursor,id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json) VALUES(1,?,'debug',?,?,?,'ordinary',?)")
+      .run(debug.eventId, NOW, NOW, debug.retentionDate, canonicalJsonStringify(debug));
+    assert.equal(inspectNativeAuthority(database, SHAPE_VERSION).schemaVersion, SHAPE_VERSION);
+    database.exec("BEGIN EXCLUSIVE");
+    requireSettledPreBuildRun(database, RUN_ID, NOW, owner(database));
+    applyAuthorityMigrationsAfter(database, SHAPE_VERSION, { now: NOW, captureFile: () => { throw new Error("artifact-unexpected"); } });
+    database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+    database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+    database.exec("COMMIT");
+    assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(database.prepare("SELECT count(*) AS count FROM runs").get()?.count, 0);
+    assert.equal(database.prepare("SELECT count(*) AS count FROM timeline_events WHERE kind='debug'").get()?.count, 0);
+    assert.deepEqual(database.prepare("SELECT id FROM debug_events").all().map(row => row.id), [debug.eventId]);
   } finally { database.close(); }
 });
