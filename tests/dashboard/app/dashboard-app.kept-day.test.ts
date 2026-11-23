@@ -85,7 +85,7 @@ it("Back to a kept day gives the held run's Logs no Pause, Stop or Cancel, and s
   const { app } = createFixtureBff();
   const commands: string[] = [];
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
-    if (new URL(String(url)).pathname === "/api/v1/commands") commands.push(String(init?.body));
+    if (new URL(String(url)).pathname === "/api/v1/commands") commands.push(typeof init?.body === "string" ? init.body : "command");
     return app.request(url, init);
   } });
   const streams: { day: string; serve: (frame: DashboardDayWire) => void }[] = [];
