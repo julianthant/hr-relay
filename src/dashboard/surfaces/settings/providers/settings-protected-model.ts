@@ -71,20 +71,10 @@ export function useProtectedSettings(input: {
     if (busy.current) return;
     pending.current = undefined; setDraft({}); setErrors({}); setSave({ state: "idle" });
   };
-  const perform = async (command: ProtectedSettingsAttempt | string): Promise<void> => {
-    const commandId = typeof command === "string" ? command : command.commandId;
-    if (busy.current) return;
-    busy.current = true; pending.current = commandId; setSave({ state: "saving" });
-    if (binding === undefined) { busy.current = false; setSave(settingsScopeRecoveryState()); return; }
+  const perform = async (command: ProtectedSettingsAttempt): Promise<void> => {
+    if (busy.current || binding === undefined) return;
+    busy.current = true; pending.current = command.commandId; setSave({ state: "saving" });
     attemptScope.current = binding.scope;
-    const originalAttempt = binding.executor.retainedAttempts().find(attempt => attempt.request.commandId === commandId);
-    const original = typeof command === "string" ? originalAttempt?.request : command;
-    const parsed = ProtectedSettingsCommandRequestSchema.safeParse(original);
-    if (!parsed.success) {
-      busy.current = false; pending.current = undefined; setSave({ state: "idle" });
-      input.onSaveProblem?.({ ...settingsSaveFailure(), title: "Credentials weren't saved" }); return;
-    }
-    if (parsed.data.requestedBy !== binding.scope.actorId) { busy.current = false; setSave(settingsScopeRecoveryState()); return; }
     let document: EditableSettingsWire | undefined;
     let entryNames: readonly string[] = [];
     const options: CommandExecutionOptions = {
@@ -103,7 +93,7 @@ export function useProtectedSettings(input: {
         if (document !== undefined) input.acceptReadback(document);
         if (outcome.kind === "conflict") void input.refresh().catch(() => undefined);
         const view = commandAttemptView(outcome);
-        if (view.view === "unknown") { settleUnknown(parsed.data); return; }
+        if (view.view === "unknown") { settleUnknown(command); return; }
         if (!(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome); setSave(next);
         if (outcome.kind === "confirmed" && document?.protectedSettings.state === "available") {
@@ -115,8 +105,7 @@ export function useProtectedSettings(input: {
       },
     };
     try {
-      if (typeof command === "string" || originalAttempt !== undefined) await binding.executor.replay(commandId, options);
-      else await binding.executor.execute(command, options);
+      await binding.executor.execute(command, options);
     } finally { busy.current = false; }
   };
 
@@ -139,7 +128,6 @@ export function useProtectedSettings(input: {
     const timer = window.setTimeout(() => autosave(), 1200);
     return () => window.clearTimeout(timer);
   }, [available, draft, errors, explicitSave, input.readReady, save.state]);
-  const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   const shown = pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save;
   // An unknown save is read back, never resent: the served credentials show silently, or one failure toast.
   function settleUnknown(attempt: ProtectedReadbackAttempt): void {
@@ -161,7 +149,8 @@ export function useProtectedSettings(input: {
   // one still in flight is followed to its end so the editor never stays locked behind it.
   const adopted = useEffectEvent(() => {
     const attempt = retained?.request;
-    if (busy.current || binding === undefined || attempt?.family !== "settings" || attempt.type !== "apply-protected-settings") return;
+    if (binding === undefined || (busy.current && attemptScope.current === binding.scope)
+      || attempt?.family !== "settings" || attempt.type !== "apply-protected-settings") return;
     if (retained?.state === "settled") { settleUnknown(attempt); return; }
     void binding.executor.whenSettled(attempt.commandId).then(() => {
       const after = binding.executor.retainedAttempts().find(next => next.request.commandId === attempt.commandId);
@@ -173,7 +162,7 @@ export function useProtectedSettings(input: {
       else input.onSaveProblem?.({ ...settingsSaveFailure(), title: "Credentials weren't saved" });
     });
   });
-  useEffect(() => { adopted(); }, [retained?.request.commandId, retained?.state]);
+  useEffect(() => { adopted(); }, [binding?.scope, retained?.request.commandId, retained?.state]);
   return { draft, errors, save: shown, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
-    explicitSave, setExplicitSave, update, clear, reset, discard, submit, retry };
+    explicitSave, setExplicitSave, update, clear, reset, discard, submit };
 }
