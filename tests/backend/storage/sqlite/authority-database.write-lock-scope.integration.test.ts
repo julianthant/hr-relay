@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, it, vi } from "vitest";
-import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -17,10 +17,8 @@ const WHOLE_STORE = /\b(?:settings_snapshots|command_audits|workbook_\w+)\b/u;
 const LOG_READ = /\bFROM authority_changes WHERE seq>\?/u;
 const PEER_ROW = /^SELECT \* FROM timeline_events WHERE cursor=\?$/u;
 
-function emitNote(database: AuthorityDatabase, message: string) {
-  createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }).emitNote({
-    workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step", message,
-  });
+function emitter(database: AuthorityDatabase) {
+  return createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: "fixture" });
 }
 
 function traceSql(work: () => void): string[] {
@@ -42,8 +40,8 @@ async function peers() {
   const profile = await profileFixtures.create();
   const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 1000, migrationOwner: "write-lock-scope" }, clock);
   const peer = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 1000, migrationOwner: "write-lock-scope-peer" }, clock);
-  emitNote(database, "own-first");
-  emitNote(peer, "peer-commit");
+  emitter(database).emit({ category: "boot", phase: "started", correlationId: "own-first" });
+  emitter(peer).emit({ category: "boot", phase: "started", correlationId: "peer-commit" });
   return { profile, database, peer, async close() { peer.close(); database.close(); await profile.close(); } };
 }
 
@@ -51,7 +49,7 @@ describe("authority write lock scope", () => {
   it("appends a timeline event after a peer commit without whole-store reads under the write lock", async () => {
     const f = await peers();
     try {
-      const statements = traceSql(() => { emitNote(f.database, "traced"); });
+      const statements = traceSql(() => { emitter(f.database).emit({ category: "worker", phase: "started", correlationId: "traced" }); });
       assert.deepEqual(underWriteLock(statements).filter(sql => WHOLE_STORE.test(sql)), []);
     } finally { await f.close(); }
   });
@@ -89,7 +87,7 @@ describe("authority write lock scope", () => {
       const before = count();
       raw.exec("BEGIN IMMEDIATE");
       let thrown: unknown;
-      try { emitNote(database, "busy"); }
+      try { emitter(database).emit({ category: "worker", phase: "started", correlationId: "busy" }); }
       catch (error) { thrown = error; }
       raw.exec("ROLLBACK");
       assert.ok(thrown instanceof AuthorityWriterBusyError);
