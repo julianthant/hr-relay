@@ -11,6 +11,27 @@ import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/
 const { harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 afterEach(cleanup);
 
+it("returns the committed Save when its durable notification throws", async () => {
+  const h = await harness();
+  const { run, claim } = claimRunning(h.database, h.clock);
+  const proof = { transactionId: "T123456" };
+  h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+  h.world.verifyResults.push({ state: "present", proof });
+  const onDurableCommit = vi.fn(() => { throw new Error("durable notification failed"); });
+
+  assert.deepEqual(await h.execute({ ...contextFor(run, claim, writeFixtureSaveDescriptor), onDurableCommit }), {
+    disposition: "committed", proofSource: "normal-output", output: proof, proof,
+  });
+  const intent = intentByKey(h.database);
+  assert.ok(intent?.status === "committed");
+  assert.deepEqual(intent.completionProof.value, proof);
+  const checkpoints = h.database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId);
+  assert.equal(checkpoints.length, 1);
+  assert.equal(checkpoints[0]?.runId, run.envelope.runId);
+  assert.equal(onDurableCommit.mock.calls.length, 1);
+  assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
+});
+
 it("commits a verified Save when Pause wins the race to the settlement transaction", async () => {
   const h = await harness();
   const { run, claim } = claimRunning(h.database, h.clock);
