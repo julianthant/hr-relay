@@ -66,7 +66,7 @@ export function createProfileOnboarding(input: {
   function evictSettled(operationId: string): void {
     const receiptClosed = new Set(input.read(operationId).attempts.filter(entry => entry.providerClosedAt !== undefined).map(entry => entry.attemptId));
     for (const [attemptId, lease] of leases) {
-      if (lease.attempt.operationId !== operationId || !lease.closed || !receiptClosed.has(attemptId)) continue;
+      if (lease.attempt.operationId !== operationId || !lease.closed || lease.opening || !receiptClosed.has(attemptId)) continue;
       const failures = retainedFailures.filter(entry => entry.lease === lease);
       if (failures.some(entry => lease.browserClosureProved !== true || hasUnprovedSourceClosure(entry.error))) continue;
       leases.delete(attemptId);
