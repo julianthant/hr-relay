@@ -5,7 +5,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/operator.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
-import { queryActivitySummaries } from "../../../../src/backend/runs/queries/run-summaries.js";
+import { queryActivitySummaries } from "../../../../src/backend/runs/queries/activity-summaries.js";
 import type { ServedSummaryQueries } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 
 export async function summaryFixture(profileFixture?: () => Promise<BoundProfileStorageFixture>) {

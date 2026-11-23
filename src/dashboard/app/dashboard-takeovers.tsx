@@ -1,7 +1,8 @@
 import type { WorkflowSourcePolicy } from "./workflow-sources.js";
 import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
-import { lazy,Suspense,useEffect,type ComponentProps,type ReactNode } from "react";
+import { Suspense,useEffect,type ComponentProps,type ReactNode } from "react";
+import { CodeLoading, preloadable } from "../lib/preloadable.js";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import {
 type FrontendBootstrapWire
@@ -11,6 +12,7 @@ import { IntakeWorkspace } from "../surfaces/intake/intake.js";
 import { AppearanceSettings } from "../surfaces/settings/general/appearance-settings.js";
 import type { DemoTheme } from "../ds/ui.js";
 import { PanelBoundary } from "../surfaces/shared/panel-boundary.js";
+import { STARTUP_READ_DEADLINE_MS } from "./startup/first-screen.js";
 import {
 RUN_START_DOOR_ID,
 type DashboardTakeoverCloseFocusTargetId
@@ -23,12 +25,15 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./navigation/url-state.js";
-// The local server answers in milliseconds, so a page shows nothing while its code loads; a failed load reaches PanelBoundary.
-const SettingsPage = lazy(() => import("../surfaces/settings/settings.js").then(module => ({ default: module.SettingsPage })));
-const ActivityReport = lazy(() => import("../surfaces/activity/activity.js").then(module => ({ default: module.ActivityReport })));
-const WorkflowExplorer = lazy(() => import("../surfaces/explorer/explorer.js").then(module => ({ default: module.WorkflowExplorer })));
-/** Nothing is drafted before the Settings code arrives, so leaving proceeds. */
-function SettingsLoading({ onExitGuardChange }: { onExitGuardChange: (guard: SettingsExitGuard | undefined) => void }) {
+// The pages' code loads with the dashboard, under the startup loader, which waits for a page the URL opens; a failed or stalled load reaches PanelBoundary.
+const settingsPage = preloadable(() => import("../surfaces/settings/settings.js").then(module => module.SettingsPage));
+const activityReport = preloadable(() => import("../surfaces/activity/activity.js").then(module => module.ActivityReport));
+const workflowExplorer = preloadable(() => import("../surfaces/explorer/explorer.js").then(module => module.WorkflowExplorer));
+const SettingsPage = settingsPage.Component;
+const ActivityReport = activityReport.Component;
+const WorkflowExplorer = workflowExplorer.Component;
+/** Nothing is drafted while the Settings code loads or after it failed, so leaving proceeds. */
+function SettingsPassThrough({ onExitGuardChange }: { onExitGuardChange: (guard: SettingsExitGuard | undefined) => void }) {
  useEffect(() => {
    onExitGuardChange(proceed => proceed());
    return () => onExitGuardChange(undefined);
@@ -51,13 +56,16 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  onSettingsSaveProblem?: ComponentProps<typeof SettingsPage>["onSaveProblem"];
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
+ useEffect(() => {
+   for (const page of [settingsPage, activityReport, workflowExplorer]) page.preload().catch((error: unknown) => { window.reportError(error); });
+ }, []);
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
  const dataContent = dataSection === "activity" ? <ActivityReport client={client} today={today} useReport={useActivityReport} workflowSources={workflowSources} range={route.activity ?? ""} onRange={next => setRoute(current => ({ ...current, settings: "activity", activity: next }))} />
  : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
-            <PanelBoundary resetKey={route.settings ?? takeover} sentence="Couldn't open Settings." className="m-4">
-            <Suspense fallback={<SettingsLoading onExitGuardChange={onSettingsExitGuardChange} />}>
+            <PanelBoundary resetKey={route.settings ?? takeover} sentence="Couldn't open Settings." className="m-4" failed={<SettingsPassThrough onExitGuardChange={onSettingsExitGuardChange} />}>
+            <Suspense fallback={<><SettingsPassThrough onExitGuardChange={onSettingsExitGuardChange} /><CodeLoading deadlineMs={STARTUP_READ_DEADLINE_MS} /></>}>
             <SettingsPage
               onOpenRun={onOpenRun}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
@@ -65,7 +73,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
               accountPage={accountPage}
               section={route.settings ?? dataSection ?? ""}
               searchTarget={route.settingsTarget}
-              dataContent={dataContent === undefined ? undefined : <Suspense fallback={null}>{dataContent}</Suspense>}
+              dataContent={dataContent === undefined ? undefined : <Suspense fallback={<CodeLoading deadlineMs={STARTUP_READ_DEADLINE_MS} />}>{dataContent}</Suspense>}
               actorId={boot.actor.id}
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}

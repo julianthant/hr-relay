@@ -29,15 +29,22 @@ function hello(cursor: string, projectionGeneration = 7): Record<string, unknown
 }
 
 function snapshotEnvelope(cursor: string, surfaces: readonly Record<string, unknown>[], projectionGeneration = 7): Record<string, unknown> {
-  return { type: "snapshot", topic: "dashboard-day", cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+  return { type: "snapshot", topic: "dashboard-day", position: 0, cursor, payload: { ...dayOf(surfaces, cursor), projectionGeneration } };
+}
+
+/** The cursor a change follows when nothing was skipped: the one before its own. */
+function cursorBefore(cursor: string): string {
+  return `pc:${String(Math.max(1, Number(cursor.slice(3)) - 1))}`;
 }
 
 function replacePatch(cursor: string, rowRevision: number): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "replace-queue-surface",
       target: { runId: RUN_ID, rowRevision },
       replacement: surfaceOf(rowRevision),
@@ -47,10 +54,12 @@ function replacePatch(cursor: string, rowRevision: number): Record<string, unkno
 
 function removePatch(cursor: string, runId: string): Record<string, unknown> {
   return {
-    type: "patch",
+    type: "change",
     topic: "dashboard-day",
     cursor,
-    payload: {
+    after: cursorBefore(cursor),
+    position: 0,
+    day: {
       operation: "remove-queue-surface",
       target: { runId, rowRevision: 1 },
       reason: "the run was deleted from the queue",
@@ -244,6 +253,7 @@ describe("dashboard day subscription phase", () => {
     const snapshot = {
       type: "snapshot",
       topic: "dashboard-day",
+      position: 0,
       cursor: "pc:0",
       payload: dayOf([surfaceOf(3)], "pc:1"),
     };
@@ -424,6 +434,7 @@ describe("dashboard day subscription phase", () => {
     harness.streams[0].push({
       type: "snapshot",
       topic: "dashboard-day",
+      position: 0,
       cursor: "pc:1",
       payload: { ...dayOf([surfaceOf(1)], "pc:1"), day: "2026-08-02" },
     });
@@ -440,7 +451,7 @@ describe("dashboard day subscription phase", () => {
         ...dayOf([], "pc:1"),
         [field]: field === "descriptorHash" ? "e".repeat(64) : 8,
       };
-      harness.streams[0].push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", payload });
+      harness.streams[0].push({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: "pc:1", payload });
       assertStopped(harness, /day-stream-authority-mismatch/);
       assert.equal(harness.days.length, 0);
       harness.close();
@@ -453,6 +464,7 @@ describe("dashboard day subscription phase", () => {
     harness.streams[0].push({
       type: "snapshot",
       topic: "dashboard-day",
+      position: 0,
       cursor: "pc:1",
       payload: dayOf([], "pc:2"),
     });

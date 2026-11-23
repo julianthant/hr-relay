@@ -193,31 +193,3 @@ export function defineWorkerSessionProvider<S extends BrowserSystemId>(
     },
   });
 }
-
-export interface DeterministicSessionHarness<S extends BrowserSystemId> {
-  readonly provider: SessionProvider<S>;
-  readonly calls: () => readonly SessionLoginOptions[];
-}
-
-export function createDeterministicSessionProvider<S extends BrowserSystemId>(
-  system: S,
-  results: readonly LoginResult[],
-  options: Readonly<{ exclusive?: true }> = {},
-): DeterministicSessionHarness<S> {
-  const queue = results.map((result) => LoginResultSchema.parse(result));
-  const calls: SessionLoginOptions[] = [];
-  const provider = defineSessionProvider({
-    system,
-    ...options,
-    async login(_handle, loginOptions) {
-      calls.push(Object.freeze({ ...loginOptions }));
-      const result = queue.shift();
-      if (result === undefined) throw new Error(`${system} deterministic session has no queued login result`);
-      return result;
-    },
-  });
-  return Object.freeze({
-    provider,
-    calls: () => Object.freeze(calls.map((call) => Object.freeze({ ...call }))),
-  });
-}

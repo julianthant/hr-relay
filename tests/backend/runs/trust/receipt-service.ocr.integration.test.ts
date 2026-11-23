@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
-import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { authenticateOcrSnapshotApproval, requireCurrentOcrSnapshot } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { OcrApprovedSnapshotSchema, OcrReviewRevisionSchema } from "../../../../src/models/ocr/review.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -67,18 +67,18 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
     checkpoints: repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId), gateResults: [gate],
     delegations,
     authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(repositories, f.canonical.lifecycle, row, f.resolve) };
-  assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
+  assert.deepEqual(deriveRunEvidenceReceipt(input).receipt, receipt);
   const { authenticateSnapshotApproval: _authenticate, ...unproved } = input;
-  assert.throws(() => buildRunEvidenceReceipt(unproved), /OCR_REVIEW_REFUSED/u);
-  assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [] }));
-  assert.throws(() => buildRunEvidenceReceipt({ ...input, delegations: [] }), /terminal-dependency-set/u);
-  assert.throws(() => buildRunEvidenceReceipt({ ...input, delegations: input.delegations?.slice(1) }), /terminal-dependency-set/u);
+  assert.throws(() => deriveRunEvidenceReceipt(unproved), /OCR_REVIEW_REFUSED/u);
+  assert.throws(() => deriveRunEvidenceReceipt({ ...input, gateResults: [] }));
+  assert.throws(() => deriveRunEvidenceReceipt({ ...input, delegations: [] }), /terminal-dependency-set/u);
+  assert.throws(() => deriveRunEvidenceReceipt({ ...input, delegations: input.delegations?.slice(1) }), /terminal-dependency-set/u);
   for (const altered of [
     [delegations[0], ...delegations],
     [{ ...delegations[0], parentRunId: randomUUID() }, ...delegations.slice(1)],
     [{ ...delegations[0], edgeId: "foreign-edge" }, ...delegations.slice(1)],
     [{ ...delegations[0], manifest: { ...delegations[0].manifest, manifestFingerprint: "f".repeat(64) } }, ...delegations.slice(1)],
-  ]) assert.throws(() => buildRunEvidenceReceipt({ ...input, delegations: altered }), /evidence-graph/u);
+  ]) assert.throws(() => deriveRunEvidenceReceipt({ ...input, delegations: altered }), /evidence-graph/u);
 
   const snapshot = repositories.ocrReviews.snapshot(approval.commandId); assert.ok(snapshot);
   const revision = repositories.ocrReviews.latest(run.envelope.runId); assert.ok(revision);
@@ -99,7 +99,7 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
   for (const [name, altered, failure] of variants) {
     const expected = failure === "native" ? { name: "Error", message: "delegation-gate-resume-authority-unavailable" }
       : { name: "OcrReviewRefusedError", message: "OCR_REVIEW_REFUSED" };
-    assert.throws(() => buildRunEvidenceReceipt({ ...input,
+    assert.throws(() => deriveRunEvidenceReceipt({ ...input,
       authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(altered, f.canonical.lifecycle, row, f.resolve) }), expected, name);
     const refused = createReceiptService({ database: ocrProofReadDatabase(f.database, altered), runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
     assert.throws(() => refused.ensureReceipt(run.envelope.runId), expected, name);
@@ -110,7 +110,7 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
     { ...gate, result: { ...gate.result, value: { ...approval.payload.result.value, digest: "f".repeat(64) } } },
     { ...gate, result: { ...gate.result, value: { ...approval.payload.result.value, snapshotId: foreign } } },
   ]) {
-    assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [altered] }));
+    assert.throws(() => deriveRunEvidenceReceipt({ ...input, gateResults: [altered] }));
   }
   assert.deepEqual(service.ensureReceipt(run.envelope.runId), receipt);
 });
