@@ -213,7 +213,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
           work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
       },
-      preflight: healthyDashboardPreflightExecutor(clock),
+      preflight: { ...healthyDashboardPreflightExecutor(clock), read: () => ({ state: "present" as const, report: healthyDashboardPreflightReport(clock) }) },
       applicationLifecycle: createApplicationLifecycle({ database,
         requestQuit: () => { throw new Error("seeded fixture cannot quit the process"); },
         onFailure: error => { throw error; },
