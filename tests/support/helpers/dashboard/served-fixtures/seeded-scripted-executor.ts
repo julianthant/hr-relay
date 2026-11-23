@@ -23,11 +23,12 @@ import { createNoteTimelineWriter } from "../../../../../src/backend/storage/eve
 import type { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import type { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/index.js";
 import type { WorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import type { WorkbookActiveSelectionSchema } from "../../../../../src/models/dashboard/workbook-library.js";
 import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../../../src/models/workflows/crm-doc-download/documents.js";
-import { ONBOARDING_ROSTER_TYPE_ID } from "../../../../../src/models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../../../../src/models/workflows/onboarding/roster.js";
 import { REFERENCE_CHECK } from "../../../../../src/models/processing/workbooks/verify-person.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
@@ -39,7 +40,7 @@ import { testAdmittedWorker } from "../../../fixtures/run-lifecycle-fixtures.js"
 import { syntheticStateRoot } from "../../synthetic-storage-admission.js";
 import { duoCeremonyGatesOver } from "../../duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../phase1f-executor-harness.js";
-import { scriptedWorkflow, WORK_STUDY_GATE_ID, WORK_STUDY_SCRIPT, type RecordedWrite, type ScriptWorld, type ScriptedWorkflow } from "./scripted-workflows.js";
+import { scriptedDescriptorOf, scriptedWorkflow, WORK_STUDY_GATE_ID, WORK_STUDY_SCRIPT, type RecordedWrite, type ScriptWorld, type ScriptedWorkflow } from "./scripted-workflows.js";
 
 export type { RecordedWrite } from "./scripted-workflows.js";
 
@@ -73,6 +74,8 @@ export interface ScriptedExecutor {
   reviewReference(): ScriptedReference;
   /** A library spreadsheet typed as the onboarding roster, holding one row per `[email, first name, last name]`. */
   rosterReference(rows: readonly (readonly [string, string, string])[]): ScriptedReference;
+  /** A library spreadsheet typed as the onboarding roster (ONBOARDING_ROSTER_FIELDS), one row per `[email, full name]`. */
+  onboardingRosterReference(rows: readonly (readonly [string, string])[]): ScriptedReference;
   /** Where a run's published documents land. */
   documentsDirectory(): string;
   close(): Promise<void>;
@@ -147,7 +150,7 @@ export function createScriptedExecutor(deps: Readonly<{
     withAuthorityTransaction: work => database.withAuthorityTransaction(work), lockDir: join(stateRoot, "scratch", "artifact-sinks"),
     sinks: { "documents-file": createNamedFileOutputSink({ artifacts, documentsDirectory: () => documentsDirectory }) } });
   const ids = sequentialIdFactory("9");
-  const runWorkbooks = createRunWorkbookService({ database, clock });
+  const runWorkbooks = createRunWorkbookService({ database, clock, resolveDescriptor: scriptedDescriptorOf });
   const runtimes = new Map<string, Promise<Runtime>>();
   const start = async (script: ScriptedWorkflow): Promise<Runtime> => {
     const descriptor = script.module.descriptor;
@@ -183,7 +186,7 @@ export function createScriptedExecutor(deps: Readonly<{
         }));
       const providers = { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId, clock,
-          references: { runId, write: () => { throw new Error("the scripted workflow writes no reference"); }, read: command => runWorkbooks.read(claimed, command),
+          references: { runId, write: command => runWorkbooks.write(claimed, command), read: command => runWorkbooks.read(claimed, command),
             verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } }) } };
       deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "busy", runId }));
       return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun(
@@ -278,9 +281,22 @@ export function createScriptedExecutor(deps: Readonly<{
     return { entry: 1, typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId, versionId: "original", sheetId: "sheet", expectedVersion: library.read(libraryId).version };
   };
 
+  const onboardingRosterReference = (rows: readonly (readonly [string, string])[]): ScriptedReference => {
+    const fields = [...ONBOARDING_ROSTER_FIELDS];
+    const saved = library.create({ name: "Onboarding roster.xlsx", themes: [], hasFormulas: false, sheets: [{
+      id: "sheet", name: "Hires", width: fields.length, hidden: [], headerRow: 1,
+      columnBindings: fields.map((fieldId, index) => ({ id: `column-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+      rows: [{ id: "header", cells: fields.map(value => ({ value })) },
+        ...rows.map(([email, fullName], index) => ({ id: `row-${String(index)}`, cells: fields.map(field => ({ value: field === "email" ? email : field === "fullName" ? fullName : null })) }))] }] });
+    library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields, defaultWorkbookId: null });
+    library.operatorOperation(saved.libraryId, "type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: ONBOARDING_ROSTER_TYPE_ID, sharePoint: null } });
+    return { entry: 1, typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId: saved.libraryId, versionId: "original", sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version };
+  };
+
   return {
     drive,
     rosterReference,
+    onboardingRosterReference,
     documentsDirectory: () => documentsDirectory,
     writes: () => Object.freeze([...recorded]),
     reviewReference,
@@ -335,6 +351,14 @@ export async function approveScriptedGate(request: SeededRequest, now: string, r
   const result = CommandResultSchema.parse(await request("/api/v1/commands", { ...operatorCommand(now), family: "gate", type: "answer-gate-arm",
     target: { runId, gateId: WORK_STUDY_GATE_ID, expectedVersion: detail.rowRevision }, payload: { arm: "continue" } }));
   if (result.state !== "applied") throw new Error(`the scripted gate approval was ${result.state}: ${JSON.stringify(result)}`);
+}
+
+/** Answers a parked gate with a result the gate's schema accepts, the command a gate control would send; the run returns to the queue. */
+export async function answerScriptedGate(request: SeededRequest, now: string, runId: string, gateId: string, schema: z.ZodType, value: unknown): Promise<void> {
+  const detail = RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`));
+  const result = CommandResultSchema.parse(await request("/api/v1/commands", { ...operatorCommand(now), family: "gate", type: "resolve-gate",
+    target: { runId, gateId, expectedVersion: detail.rowRevision }, payload: { result: { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(value) } } }));
+  if (result.state !== "applied") throw new Error(`the scripted gate answer was ${result.state}: ${JSON.stringify(result)}`);
 }
 
 /** Sends a run command (`retry`, `cancel`) the way the run panel's buttons do, bound to the run's current revision. */
