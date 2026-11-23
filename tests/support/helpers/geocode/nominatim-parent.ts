@@ -16,5 +16,11 @@ owner.attach(child, router);
 router.register("ready", () => { process.send?.({ kind: "ready" }); });
 router.register("fetch-start", () => undefined);
 router.register("result", () => undefined);
+let routed = 0;
+child.on("message", (value: unknown) => {
+  if (typeof value === "object" && value !== null && "kind" in value && value.kind === "nominatim-request" && ++routed === 2) {
+    process.send?.({ kind: "request-routed" });
+  }
+});
 process.on("message", value => { if (value === "call") child.send("call"); });
 process.once("disconnect", () => { child.kill("SIGKILL"); void owner.stop(); });

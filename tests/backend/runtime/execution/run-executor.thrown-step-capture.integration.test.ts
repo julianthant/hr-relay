@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createRunBrowserScreenshotCapture } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
@@ -36,14 +36,20 @@ function thrownTask(thrown: Thrown) {
 type Page = BrowserScreenshotEvidence["state"] | "throws" | "deadline" | "deadline-pending";
 
 type Refusal = Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"];
+type HeldCapture = Readonly<{ entered(): void; release: Promise<void> }>;
 
-function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal = "page-closed", detail?: string): SessionFactoryHarness {
+function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal = "page-closed", detail?: string, pendingCapture?: HeldCapture): SessionFactoryHarness {
   const base = happySessionHarness();
   return { ...base, factory: { ...base.factory, async open(input) {
     const resource = await base.factory.open(input);
     return { ...resource, async screenshot(): Promise<BrowserScreenshotEvidence> {
-      if (page === "deadline" || page === "deadline-pending") reachDeadline();
-      if (page === "deadline-pending") await new Promise(resolve => { setTimeout(resolve, 50); });
+      if (page === "deadline") reachDeadline();
+      if (page === "deadline-pending") {
+        assert.ok(pendingCapture, "the deadline case holds the screenshot in flight");
+        pendingCapture.entered();
+        reachDeadline();
+        await pendingCapture.release;
+      }
       if (page === "throws") throw new Error("synthetic screenshot refusal");
       const evidence = { pageVersion: 1, sessionId: resource.sessionId, observedAt: "2026-08-29T08:00:00.000Z" } as const;
       return page === "available"
@@ -53,10 +59,10 @@ function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal
   } } };
 }
 
-async function runThrownStep(page: Page, options: Readonly<{ notes?: "saved" | "screenshot-refused"; thrown?: Thrown; refusal?: Refusal; detail?: string }> = {}) {
+async function runThrownStep(page: Page, options: Readonly<{ notes?: "saved" | "screenshot-refused"; thrown?: Thrown; refusal?: Refusal; detail?: string; pendingCapture?: HeldCapture }> = {}) {
   const services: ReturnType<typeof createDiagnosticCaptureService>[] = [];
   const deadlines: (() => void)[] = [];
-  const h = await executorHarness({ sessions: sessionsShowing(page, () => deadlines.shift()?.(), options.refusal, options.detail),
+  const h = await executorHarness({ sessions: sessionsShowing(page, () => deadlines.shift()?.(), options.refusal, options.detail, options.pendingCapture),
     stores: registryWithUcpathSearch(thrownTask(options.thrown ?? "timeout")),
     screenshotCapture: { capture: context => {
       const service = services[0];
@@ -169,11 +175,22 @@ describe("a task that throws", () => {
   });
 
   it("names the deadline when it ends the run while the failure screenshot is still being taken", async () => {
-    const { outcome, failure } = await runThrownStep("deadline-pending");
-    assert.equal(outcome.state, "failed");
-    assert.equal(failure?.code, "TASK_UNHANDLED_FAILURE");
-    assert.deepEqual(failure?.causeChain.slice(1).map(({ code, summary }) => [code, summary]),
-      [["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: task-deadline"]]);
+    const capture = Promise.withResolvers<void>();
+    let entered = false, settled = false;
+    const running = runThrownStep("deadline-pending", { pendingCapture: { entered: () => { entered = true; }, release: capture.promise } });
+    void running.then(() => { settled = true; }, () => { settled = true; });
+    try {
+      await vi.waitFor(() => assert.ok(entered, "run did not reach the failure screenshot"), { timeout: 15_000 });
+      await vi.waitFor(() => assert.ok(settled, "run did not settle while the failure screenshot was held"), { timeout: 5_000 });
+      const { outcome, failure } = await running;
+      assert.equal(outcome.state, "failed");
+      assert.equal(failure?.code, "TASK_UNHANDLED_FAILURE");
+      assert.deepEqual(failure?.causeChain.slice(1).map(({ code, summary }) => [code, summary]),
+        [["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: task-deadline"]]);
+    } finally {
+      capture.resolve();
+      await running;
+    }
   });
 });
 

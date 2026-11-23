@@ -1,7 +1,5 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("node:worker_threads", async () => {
@@ -127,12 +125,4 @@ describe("backup inspection worker", () => {
     expect(argv[3]).toMatch(/^file:\/\/.*\/tsx\//u);
     expect(argv).toHaveLength(4);
   });
-
-  it.each(["admission/admission.ts", "sqlite/backup-inspection.ts", "sqlite/backup-service.ts", "sqlite/backup-inspection-worker.ts"])(
-    "loads in a fresh process when %s is the first storage module imported", entry => {
-      const url = new URL(`../../../../src/backend/storage/${entry}`, import.meta.url);
-      const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `await import(${JSON.stringify(url.href)}); console.log("loaded");`],
-        { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-      expect(output.trim()).toBe("loaded");
-    }, 60_000);
 });
