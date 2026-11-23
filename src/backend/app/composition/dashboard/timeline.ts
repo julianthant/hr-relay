@@ -78,7 +78,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const timelineRevision = database.trackAuthorityTables(["timeline_events"]);
   const workerRevision = database.trackAuthorityTables(["runs", "deleted_runs", "worker_slots", "worker_pools",
     "run_batches", "auth_leases", "write_intents"]);
-  let key: string | { state: "unreadable" } = JSON.stringify(database.changeKey());
+  let key: string | { state: "unreadable" } = JSON.stringify(database.capturedChangeKey());
   let timeline = timelineRevision(), workers = workerRevision();
   let lastWall = clock.nowMs(), leaseExpiry = database.nextDuoLeaseExpiry(lastWall);
   let safetyAt = clock.monotonicMs() + 60_000;
@@ -91,7 +91,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   }
   const timelineTimer = setInterval(() => {
     try {
-      const current = JSON.stringify(database.changeKey());
+      const current = JSON.stringify(database.capturedChangeKey());
       const now = clock.nowMs(), elapsed = clock.monotonicMs();
       const safety = elapsed >= safetyAt;
       const leaseDue = now >= leaseExpiry || now < lastWall;

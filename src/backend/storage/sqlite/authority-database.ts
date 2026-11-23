@@ -4315,6 +4315,12 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({ ...key, totalChanges: key.totalChanges - this.#temporaryProjectionChanges });
   }
 
+  /** What `trackAuthorityTables` revisions read: change-log high water and schema cookie, both still across debug-only commits. */
+  capturedChangeKey(): Readonly<{ changeLogSeq: number; schemaCookie: number }> {
+    this.#assertOpen();
+    return Object.freeze({ changeLogSeq: changeLogHighWater(this.#database), schemaCookie: readIntPragma(this.#database, "schema_version") });
+  }
+
   /** An independent revision for a reader's authority sources, backed by the retained change log. */
   trackAuthorityTables(tables: readonly AuthorityTableName[]): () => number | undefined {
     const selected = JSON.stringify(z.array(AuthorityTableNameSchema).min(1).parse(tables));
