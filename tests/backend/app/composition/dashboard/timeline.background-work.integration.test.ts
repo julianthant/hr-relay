@@ -10,19 +10,22 @@ import { createOperatorProjection } from "../../../../../src/backend/app/composi
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
-import { DESCRIPTOR_SET_HASH } from "../../../../support/helpers/backend/dashboard-harness.js";
+import { declareProjectionWorker, DESCRIPTOR_SET_HASH, workerMemberOf } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import { trustWorld } from "../../../../support/helpers/backend/trust-authority-fixture.js";
 
 it("polls only changed projection inputs, including peer commits, lease expiry and a quiet safety pass", async () => {
   const f = await trustWorld();
   const { database, world: { clock } } = f;
-  const projection = createOperatorProjection({ database, reader: f.service, clock, stateRoot: f.profile.stateRoot,
+  declareProjectionWorker(f.world.authority, f.workerId, 1);
+  const member = workerMemberOf(f.world.authority, { workerId: f.workerId });
+  const projection = createOperatorProjection({ database, reader: f.service, clock, workerMembers: () => [member], stateRoot: f.profile.stateRoot,
     appVersion: "0.1.0", descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors: { resolve: () => personLookupDescriptor },
     ledger: createTransactionHistory(database.authority) });
   const startupCleanups: StartupCleanup[] = [];
   const loggingRepository = database.authority.timelineEvents;
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: "test" });
+  const pollBackground = projection.pollBackground.bind(projection);
   const poll = vi.spyOn(projection, "pollBackground");
   const synchronousIngest = vi.spyOn(projection, "ingestFromTimeline");
   const lease = database.authority.duoCeremonyLeases.acquire({ credentialKey: "a".repeat(64), workerId: f.workerId,
@@ -81,36 +84,57 @@ it("polls only changed projection inputs, including peer commits, lease expiry a
     };
     createTimelineEmitter({ repository: loggingRepository, clock, uuid: () => eventId }).emit(observation);
     expect(projection.runFold(run.envelope.runId)).toBeUndefined();
-    tick(1000);
+    tick(750);
     await runtime.settled();
     expect(projection.runFold(run.envelope.runId)).toBeDefined();
     expect(projection.runLogSnapshot(runId).entries.map(entry => entry.line.file.path)).toEqual([`timeline:${eventId}`]);
     expect(projection.health().state).toBe("live");
     expect(poll).toHaveBeenCalledTimes(4);
     expect(synchronousIngest).not.toHaveBeenCalled();
-    const peerId = randomUUID();
-    execFileSync(process.execPath, ["--input-type=module", "-e", `
-      import { DatabaseSync } from "node:sqlite";
-      const db = new DatabaseSync(process.argv[1]);
-      const { changes } = db.prepare(\`
-        INSERT INTO timeline_events(id,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
-        SELECT ?,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,
-          json_set(payload_json,'$.eventId',?,'$.cursor',(SELECT seq+1 FROM sqlite_sequence WHERE name='timeline_events'))
-        FROM timeline_events WHERE id=?
-      \`).run(process.argv[2], process.argv[2], process.argv[3]);
-      db.close();
-      if (changes !== 1) throw new Error("expected one peer observation");
-    `, f.profile.path, peerId, eventId]);
-    const beforePoll = performance.now();
+    const leaseChanges: string[] = [];
+    const unsubscribe = projection.onChange(change => leaseChanges.push(change.kind));
+    const beforeExpiry = database.changeKey();
     tick(250);
     await runtime.settled();
+    unsubscribe();
+    expect(database.changeKey()).toEqual(beforeExpiry);
+    expect(leaseChanges).toEqual(["snapshot"]);
+    expect(poll).toHaveBeenCalledTimes(5);
+
+    const captured = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    poll.mockImplementationOnce((read, now) => pollBackground(async request => {
+      const page = await read(request);
+      captured.resolve();
+      await release.promise;
+      return page;
+    }, now));
+    tick(60_000);
+    await captured.promise;
+    const peerId = randomUUID();
+    const beforePeer = performance.now();
+    try {
+      execFileSync(process.execPath, ["--input-type=module", "-e", `
+        import { DatabaseSync } from "node:sqlite";
+        const db = new DatabaseSync(process.argv[1]);
+        const { changes } = db.prepare(\`
+          INSERT INTO timeline_events(id,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+          SELECT ?,workflow,run_id,kind,occurred_at,recorded_at,retention_date,retention_class,
+            json_set(payload_json,'$.eventId',?,'$.cursor',(SELECT seq+1 FROM sqlite_sequence WHERE name='timeline_events'))
+          FROM timeline_events WHERE id=?
+        \`).run(process.argv[2], process.argv[2], process.argv[3]);
+        db.close();
+        if (changes !== 1) throw new Error("expected one peer observation");
+      `, f.profile.path, peerId, eventId]);
+      tick(250);
+    } finally { release.resolve(); }
+    await runtime.settled();
     expect(projection.runLogSnapshot(runId).entries.at(-1)?.line.file.path).toBe(`timeline:${peerId}`);
-    expect(250 + performance.now() - beforePoll).toBeLessThanOrEqual(1000);
+    expect(250 + performance.now() - beforePeer).toBeLessThanOrEqual(1000);
 
     const nextId = randomUUID();
     createTimelineEmitter({ repository: loggingRepository, clock, uuid: () => nextId }).emit(observation);
     tick(250);
-    expect(poll).toHaveBeenCalledTimes(6);
+    expect(poll).toHaveBeenCalledTimes(8);
     projection.ingestFromTimeline();
     await runtime.settled();
     expect(projection.runLogSnapshot(runId).entries.map(entry => entry.line.file.path)).toEqual([

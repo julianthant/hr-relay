@@ -89,27 +89,39 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
   const reader = createDashboardBackgroundReader(admission, database);
-  let pending: Promise<void> | undefined, stopped = false;
+  let pending: Promise<void> | undefined, stopped = false, checkAfterRead = false;
   const startRead = (now: number, workersChangedDuringStartup?: () => boolean) => {
     pending = projection.pollBackground(request => reader.read(request), now, workersChangedDuringStartup).then(expiry => {
       if (expiry === undefined) key = { state: "retry" };
       else leaseExpiry = expiry;
     }).catch((error: unknown) => {
       projection.backgroundReadFailed(error);
-    }).finally(() => { pending = undefined; });
+    }).finally(() => {
+      pending = undefined;
+      if (checkAfterRead && !stopped) {
+        checkAfterRead = false;
+        check();
+      }
+    });
     return pending;
   };
-  void startRead(lastWall, () => startupWorkers === undefined || startupWorkerRevision() !== startupWorkers);
-  const timelineTimer = setInterval(() => {
-    if (stopped || pending !== undefined) return;
+  function check() {
+    if (stopped) return;
     try {
       const current = JSON.stringify(database.changeKey());
       const now = clock.nowMs(), elapsed = clock.monotonicMs();
       const safety = elapsed >= safetyAt;
       const leaseDue = now >= leaseExpiry || now < lastWall;
-      lastWall = now;
       const degraded = projection.health().state === "degraded";
-      if (current === key && !safety && !leaseDue && !degraded) return;
+      if (current === key && !safety && !leaseDue && !degraded) {
+        lastWall = now;
+        return;
+      }
+      if (pending !== undefined) {
+        checkAfterRead = true;
+        return;
+      }
+      lastWall = now;
       const next = revision();
       if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now);
       key = current;
@@ -118,9 +130,11 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
     } catch (error) {
       projection.backgroundReadFailed(error);
     }
-  }, TIMELINE_POLL_MS);
+  }
+  void startRead(lastWall, () => startupWorkers === undefined || startupWorkerRevision() !== startupWorkers);
+  const timelineTimer = setInterval(check, TIMELINE_POLL_MS);
   timelineTimer.unref();
-  const settled = async () => { await pending; };
+  const settled = async () => { while (pending !== undefined) await pending; };
   const stopTimeline = async () => {
     stopped = true;
     clearInterval(timelineTimer);
