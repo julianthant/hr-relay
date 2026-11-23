@@ -12,6 +12,10 @@ const SHEETS = 'section[aria-label="Spreadsheets"]';
 const FILE_DIALOG = '[role="dialog"]';
 const RUN_PANEL = '[aria-label="Selected run logs"]';
 const QUEUE = '[aria-label="Queue"]';
+const RUN_LOADING = `${RUN_PANEL} div:has(> [aria-label="Loading logs"])`;
+const RUN_SETTLED = `${RUN_PANEL} [role="region"][aria-label="Run logs"]`;
+const QUEUE_LOADING = `${QUEUE} [aria-label="Loading queue"]`;
+const QUEUE_SETTLED = `${QUEUE} .queue-filter-content`;
 const SETTINGS_FORM = '#dashboard-settings-content .settings-compact-form';
 const RUNS_SECTION = '.ds-body-section:has(> figure[aria-label="Runs per day"])';
 const REPORT = 'section[aria-label="Analytics report"]';
@@ -123,6 +127,7 @@ async function measure(
     result = await stopFrames();
     timing = await readTiming();
     await writeFile(test.info().outputPath("measurements.json"), JSON.stringify({ test: test.info().title, ...result, timing, actionEvidence }, null, 2));
+    console.log(measurementLine(result, timing));
   }
 
   const { start, frames: samples } = result;
@@ -201,6 +206,22 @@ async function measure(
   expect.soft(samples.at(-1)?.skeletons, "no skeleton left after settlement").toBe(0);
 }
 
+type Box = { width: number; height: number } | undefined;
+/** One log line per case: the CI job log is the evidence. */
+function measurementLine(result: { start?: number; viewport: { width: number; height: number }; frames: readonly { at: number; skeletons: number; feedback: boolean; pendingBounds?: Box; settledBounds?: Box }[] },
+  timing: { requestedAt?: number; releasedAt?: number } | undefined) {
+  const { start = 0, frames } = result;
+  const pendingAt = Math.max(start, timing?.requestedAt ?? start);
+  const skeletons = frames.filter(frame => frame.skeletons > 0);
+  const ms = (at: number | undefined, from: number) => at === undefined ? "none" : `+${Math.round(at - from)}ms`;
+  const size = (box: Box) => box === undefined ? "-" : `${Math.round(box.width)}x${box.height}`;
+  return [`SKELETON ${result.viewport.width}x${result.viewport.height}`, test.info().title,
+    `skeletonFrames=${skeletons.length}/${frames.length}`, `firstSkeleton=${ms(skeletons[0]?.at, pendingAt)}`,
+    `hold=${timing?.releasedAt === undefined ? "none" : `${Math.round(timing.releasedAt - pendingAt)}ms`}`,
+    `pending=${size(skeletons.at(-1)?.pendingBounds)}`, `settled=${size(frames.at(-1)?.settledBounds)}`,
+    `feedback=${ms(frames.find(frame => frame.feedback)?.at, start)}`].join(" | ");
+}
+
 function navigate(page: Page, params: Record<string, string>) {
   return page.evaluate(next => {
     const url = new URL(location.href);
@@ -234,7 +255,6 @@ function seededQueueCard(dashboard: DashboardPage, runId: string) {
 
 for (const viewport of DESKTOP_VIEWPORTS) {
   test.describe(`dashboard skeletons at ${viewport.width}x${viewport.height}`, () => {
-    test.skip(process.env.RELAY_DASHBOARD_SKELETON_EVIDENCE !== "1", "runs in the dedicated dashboard evidence workflow");
     test.use({ viewport, colorScheme: "dark" });
 
     test("a held cold Settings read measures the fixed General form", async ({ dashboard, page, seeded }) => {
@@ -391,7 +411,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         const open = seededQueueCard(dashboard, runId).locator("button[data-queue-open]");
         const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/runs/${runId}` });
         await measure(page, open, () => open.press("Enter"), () => expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible(), {
-          pendingRegion: RUN_PANEL, bounds: { pending: RUN_PANEL, settled: RUN_PANEL },
+          pendingRegion: RUN_PANEL, bounds: { pending: RUN_LOADING, settled: RUN_SETTLED },
         }, hold);
       });
 
@@ -401,7 +421,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await measure(page, null, () => navigate(page, { day }), async () => {
           await expect(page.getByRole("status", { name: "Loading queue" })).toBeHidden();
           await expect(dashboard.queue).toBeVisible();
-        }, { pendingRegion: QUEUE, bounds: { pending: QUEUE, settled: QUEUE }, checkSessionBar: true }, hold);
+        }, { pendingRegion: QUEUE, bounds: { pending: QUEUE_LOADING, settled: QUEUE_SETTLED }, checkSessionBar: true }, hold);
       });
 
       for (const day of ["2099-01-01", "invalid-date"]) {
