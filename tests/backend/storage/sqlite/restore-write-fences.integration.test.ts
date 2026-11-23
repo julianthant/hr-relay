@@ -11,7 +11,7 @@ import {
 } from "../../../../src/backend/storage/sqlite/restore-write-fences.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_5, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const capture = (database: DatabaseSync) => captureRestoreWriteFenceProof(read => read(database));
 
@@ -110,7 +110,7 @@ it("accepts additional unresolved writes but refuses weakened intent, attempt an
       attempt.writeAttemptId, attempt.writeIntentId, attempt.generation, attempt.runId, JSON.stringify(attempt));
     db.exec("INSERT INTO artifacts VALUES ('receipt', 'generated', '{}')");
   }
-  const more = { ...intent, writeIntentId: "11111111-1111-4111-8111-111111111111" };
+  const more = { ...intent, writeIntentId: UUID_5 };
   candidate.prepare("INSERT INTO write_intents VALUES (?,?,?,?,?)").run(
     more.writeIntentId, more.status, more.generation, more.runId, JSON.stringify(more));
   using proof = capture(original);
@@ -118,9 +118,9 @@ it("accepts additional unresolved writes but refuses weakened intent, attempt an
   for (const table of ["write_intents", "write_attempts", "artifacts"] as const) {
     candidate.exec("SAVEPOINT evidence");
     if (table === "write_intents") {
-      const changed = { ...intent, generation: intent.generation + 1 };
-      candidate.prepare("UPDATE write_intents SET generation=?, payload_json=? WHERE id=?")
-        .run(changed.generation, JSON.stringify(changed), changed.writeIntentId);
+      const changed = { ...intent, version: intent.version + 1 };
+      candidate.prepare("UPDATE write_intents SET payload_json=? WHERE id=?")
+        .run(JSON.stringify(changed), changed.writeIntentId);
     } else {
       candidate.exec(`DELETE FROM ${table}`);
     }
