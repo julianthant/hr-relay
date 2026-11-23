@@ -274,35 +274,40 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     deps.onDay(envelope.payload);
   }
 
-  function applyPatch(envelope: EnvelopeOf<"patch">): void {
+  function applyChange(envelope: EnvelopeOf<"change">): void {
     if (requireGreeted() === undefined) return;
     const cursor = cursorNumber(envelope.cursor);
     if (cursor === undefined || phase.phase !== "greeted") return;
+    const after = cursorNumber(envelope.after);
+    if (after === undefined || phase.phase !== "greeted") return;
     const held = baseline.held;
     // A cursor already applied, including a duplicate removal, is not applied again.
     if (held !== undefined && cursor <= held.cursorNumber) return;
-    if (held === undefined || cursor > held.cursorNumber + 1) {
+    // The server stamps `after` per connection, so cursors this connection was never sent are not a gap.
+    if (held === undefined || after > held.cursorNumber) {
       clearHeld();
       enterWaiting("connecting", false);
       return;
     }
-    let next: DashboardDayWire;
-    try {
-      next = applyDashboardDayPatch(held.snapshot, envelope.payload);
-    } catch (error) {
-      if (error instanceof DashboardClientError && error.kind === "protocol") {
-        clearHeld();
-        enterWaiting("connecting", false);
-        return;
+    let next = held.snapshot;
+    if (envelope.day !== undefined) {
+      try {
+        next = applyDashboardDayPatch(held.snapshot, envelope.day);
+      } catch (error) {
+        if (error instanceof DashboardClientError && error.kind === "protocol") {
+          clearHeld();
+          enterWaiting("connecting", false);
+          return;
+        }
+        throw error;
       }
-      throw error;
     }
     const authority = baseline.authority;
     baseline = {
       ...(authority === undefined ? {} : { authority }),
-      held: { snapshot: next, cursorNumber: Math.max(held.cursorNumber, cursor), cursorId: envelope.cursor },
+      held: { snapshot: next, cursorNumber: cursor, cursorId: envelope.cursor },
     };
-    deps.onDay(next);
+    if (envelope.day !== undefined) deps.onDay(next);
   }
 
   function handleEnvelope(envelope: DashboardStreamEnvelope): void {
@@ -324,8 +329,8 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       case "snapshot":
         applySnapshot(envelope);
         return;
-      case "patch":
-        applyPatch(envelope);
+      case "change":
+        applyChange(envelope);
         return;
       default: {
         const unexpected: never = envelope;
