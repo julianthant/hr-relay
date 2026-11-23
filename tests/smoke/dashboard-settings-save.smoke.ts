@@ -48,7 +48,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
     const downloads = page.getByRole("button", { name: "Change Downloads" });
     const path = page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value');
     const day = page.locator('[data-settings-path$=".jobEndDate"] [role="spinbutton"][data-type="day"]');
-    const saved = (name: string) => page.getByRole("heading", { name: `Saved ${name}`, exact: true });
+    const saved = (name: string) => page.getByRole("heading", { name: new RegExp(`^Saved ${name}(?:\\. Restart to use them\\.)?$`, "u") });
     const failure = page.locator('[data-slot="toast-title"]').filter({ hasText: "Settings weren't saved. The previous value is back." });
 
     await expect(switchControl).toBeChecked();

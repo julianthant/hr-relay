@@ -17,6 +17,10 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
     await dialog.locator('input[type="file"]').setInputFiles({ name: `${name}.csv`, mimeType: "text/csv", buffer: Buffer.from(csv) });
     await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue(name);
     await dialog.getByRole("button", { name: "Next" }).click();
+    const columns = dialog.getByRole("button", { name: "Columns", exact: true });
+    await expect(columns).toHaveAttribute("aria-expanded", "true");
+    await columns.click();
+    await expect(columns).toHaveAttribute("aria-expanded", "false");
 
     const save = dialog.getByRole("button", { name: "Add to library" });
     await expect(save).toBeEnabled();
