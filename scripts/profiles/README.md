@@ -1,14 +1,27 @@
 # Staging and development copies
 
-`npm run profile:staging` and `npm run profile:development` set up or update a copy. Run them from the production checkout while production keeps running; they only read production's verified backup files.
+Run the profile command from a Relay checkout other than the copy you are updating.
 
-Each run:
+| Command | Worktree | Source | Backend / frontend |
+| --- | --- | --- | --- |
+| `npm run profile:staging` | `~/Projects/hr-relay-staging` | `origin/staging` | 3941 / 5175 |
+| `npm run profile:development` | `~/Projects/hr-relay-dev` | `origin/development` | 3940 / 5176 |
 
-1. Takes the profile's lifetime lock (staging 3942, development 3943) and holds it until done. A running copy dashboard, or another update, holds it, so the command refuses.
-2. Fetches, then moves the copy's worktree to the one `origin/cut/*` (`~/Projects/hr-relay-staging`; several cuts need `--ref origin/cut/<name>`) or `origin/development` (`~/Projects/hr-relay-dev`). It creates the worktree when missing and refuses a dirty one.
-3. Clears leftovers of an interrupted earlier copy, then copies each person's newest verified authority backup (database and manifest, checked against the manifest's size and SHA-256) into the profile's data folder. A person with no verified backup refuses the run. If production prunes a backup mid-copy the person's backups are re-listed; repeated pruning refuses. Backups hold no credentials or tokens; nothing else is copied.
-4. Prints the profile, ref and SHA, ports, backups copied and the start command.
+1. Run the command for the desired profile. It fetches the branch, checks out its exact commit in
+   a detached worktree, installs dependencies, and prints the profile, ref, SHA, ports, and start
+   command. The branch must contain its isolated dashboard launcher.
+2. Start the copy using the printed command. Complete Relay signup and Duo in that copy, then quit
+   the dashboard without signing out.
+3. Run the same profile command with `-- --source-person <production profile UUID>` to import the
+   workbook library into the selected isolated person. Use that same argument on subsequent
+   refreshes. For example, the staging command is
+   `npm run profile:staging -- --source-person <production profile UUID>`.
 
-## Known gap: the copied backup cannot yet become the copy's store
+The isolated dashboard must be stopped for setup or refresh. The command holds its lifetime lock
+through checkout, dependency installation, and import and refuses dirty or unrelated worktrees.
 
-A restore accepts a backup only when its installation and profile IDs equal the target's issued binding (`same-person-restore-candidate.ts`), and the manifest's source identity derives from those IDs. A fresh isolated installation mints new IDs, so the store refuses these backups; the only workarounds (copying production's installation files, or rewriting manifests) break custody and are not done. The copy therefore starts with its own empty store until a store-owned prerequisite exists: an offline "fork backup into a new installation" maintenance operation in the storage lane, which verifies the backup, mints the target's IDs inside the store's own transaction, drops credential, session and queued-run state, and writes a fresh verified manifest. Operator steps today: Duo sign-in in each copy.
+Production can keep running. The store imports from the chosen person's newest verified backup
+and checks the backup's identity, contents, and schema. If production prunes that backup during the
+import, rerun the command. Allow production to take a new in-session backup if none is available.
+The import refreshes local workbook content and workbook types and preserves edits made in the
+copy. Only the workbook library crosses environments. Each copy has its own signup and Duo.

@@ -1,163 +1,170 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { applicationDataWorkspace } from "../../src/backend/app/config/runtime-isolation.js";
-import { RuntimeAlreadyRunningError, acquireRuntimeLifetimeLock } from "../../src/backend/storage/admission/lifetime-lock.js";
+import { applicationDataWorkspace, rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
+import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeAlreadyRunningError, acquireRuntimeLifetimeLock, type RuntimeLifetimeLock } from "../../src/backend/storage/admission/lifetime-lock.js";
+import { createCredentialStore } from "../../src/backend/storage/configuration/credential-store.js";
+import { importIsolatedWorkbookLibrary } from "../../src/backend/storage/maintenance/isolated-library-import.js";
+import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { parseBackupManifestFile } from "../../src/backend/storage/sqlite/backup-service.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../src/backend/storage/source-closure.js";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
+import { systemClock } from "../../src/rules/time/clock.js";
 
-export const COPY_PROFILES = ["staging", "development"] as const;
-export type CopyProfile = (typeof COPY_PROFILES)[number];
+const CopyProfileSchema = z.enum(["staging", "development"]);
+type CopyProfile = z.infer<typeof CopyProfileSchema>;
 
-export class ProfileCopyRefusedError extends Error {
-  constructor(readonly code: string, detail: string) { super(`${code}: ${detail}`); }
+class ProfileCopyRefusedError extends Error {
+  constructor(code: string, detail: string) { super(`${code}: ${detail}`); this.name = "ProfileCopyRefusedError"; }
 }
 
-export interface HeldLock { close(): Promise<void> }
-export type AcquireLock = (port: number) => Promise<HeldLock>;
+interface ImportOptions {
+  readonly sourceWorkspace: string;
+  readonly targetWorkspace: string;
+  readonly sourceProfile: string;
+}
 
-/** Holds the profile's lifetime lock for the whole update: a running dashboard (or another update) owns it, so this refuses instead of touching its files. */
-export async function withProfileLock<T>(profile: CopyProfile, work: () => Promise<T>, acquire: AcquireLock = acquireRuntimeLifetimeLock): Promise<T> {
-  let lock: HeldLock;
-  try { lock = await acquire(runtimeProfiles[profile].lockPort); }
-  catch (error) {
-    if (error instanceof RuntimeAlreadyRunningError) throw new ProfileCopyRefusedError("profile-running", `the ${profile} dashboard (or another update) holds its lifetime lock; stop it first`);
-    throw error;
+export async function importProfileLibrary(options: ImportOptions, lock: RuntimeLifetimeLock) {
+  const { targetWorkspace, sourceWorkspace } = options;
+  const sourceProfile = z.uuid().parse(options.sourceProfile);
+  const production = applicationDataWorkspace(undefined, "production");
+  const offset = relative(production, targetWorkspace);
+  if (lock.port === runtimeProfiles.production.lockPort || targetWorkspace === sourceWorkspace
+    || !isAbsolute(offset) && offset.split(sep)[0] !== ".."
+    || existsSync(targetWorkspace) && realpathSync(targetWorkspace) !== targetWorkspace) {
+    throw new ProfileCopyRefusedError("destination-not-isolated", "Use the copy's dedicated data folder and lifetime lock.");
   }
-  try { return await work(); }
-  finally { await lock.close(); }
-}
-
-const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
-const STATE_SUFFIX = join(".tracker", "data", "profiles");
-const PRUNE_RETRIES = 3;
-
-export interface CopiedBackup { readonly profileId: string; readonly backupFileName: string; readonly authorityGeneration: number; readonly createdAt: string }
-
-/** Drops what an interrupted earlier copy left behind: staged files and databases whose manifest never landed. */
-function clearIncompleteCopy(targetProfiles: string): void {
-  if (!existsSync(targetProfiles)) return;
-  for (const profileId of readdirSync(targetProfiles)) {
-    const directory = join(targetProfiles, profileId, "backups", "authority");
-    if (!existsSync(directory)) continue;
-    const names = readdirSync(directory);
-    for (const name of names) {
-      if (name.startsWith(".") && name.endsWith(".tmp") || name.endsWith(".sqlite") && !names.includes(`${name}.manifest.json`)) rmSync(join(directory, name), { force: true });
-    }
+  if (!existsSync(join(targetWorkspace, ".tracker", "control", "installation.json"))) {
+    throw new ProfileCopyRefusedError("destination-signup-required", "Start the copy, finish its own Duo signup, stop it, then rerun.");
   }
-}
-
-function copyNewestBackup(profilesRoot: string, targetProfiles: string, profileId: string): CopiedBackup {
-  const directory = join(profilesRoot, profileId, "backups", "authority");
-  const manifests = existsSync(directory) ? readdirSync(directory).filter(name => name.endsWith(".manifest.json"))
+  const directory = join(sourceWorkspace, rebuildRuntimeIsolation.stateRoot, "profiles", sourceProfile, "backups", "authority");
+  const backups = (existsSync(directory) ? readdirSync(directory) : []).filter(name => name.endsWith(".sqlite.manifest.json"))
     .map(name => ({ name, manifest: parseBackupManifestFile(join(directory, name)) }))
-    .sort((a, b) => b.manifest.createdAt.localeCompare(a.manifest.createdAt)) : [];
-  const newest = manifests[0];
-  if (newest === undefined) throw new ProfileCopyRefusedError("source-backup-missing", `person ${profileId} has no verified backup; let production take one first`);
-  const { manifest } = newest, database = join(directory, manifest.backupFileName);
-  if (manifest.profileId !== profileId || newest.name !== `${manifest.backupFileName}.manifest.json`) throw new ProfileCopyRefusedError("backup-manifest-mismatch", `${newest.name} does not describe ${profileId}`);
-  if (statSync(database).size !== manifest.byteSize || sha256(database) !== manifest.sha256) throw new ProfileCopyRefusedError("backup-unverified", `${manifest.backupFileName} does not match its manifest`);
-  const targetDirectory = join(targetProfiles, profileId, "backups", "authority");
-  mkdirSync(targetDirectory, { recursive: true, mode: 0o700 });
-  const staged = [[database, manifest.backupFileName], [join(directory, newest.name), newest.name]] as const;
-  for (const [source, name] of staged) copyFileSync(source, join(targetDirectory, `.${name}.tmp`));
-  if (sha256(join(targetDirectory, `.${manifest.backupFileName}.tmp`)) !== manifest.sha256) throw new ProfileCopyRefusedError("copy-unverified", `${manifest.backupFileName} changed while copying`);
-  for (const [, name] of staged) renameSync(join(targetDirectory, `.${name}.tmp`), join(targetDirectory, name));
-  return { profileId, backupFileName: manifest.backupFileName, authorityGeneration: manifest.authorityGeneration, createdAt: manifest.createdAt };
-}
+    .sort((a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt)
+      || b.manifest.authorityGeneration - a.manifest.authorityGeneration || b.name.localeCompare(a.name));
+  const newest = backups[0];
+  if (newest === undefined) throw new ProfileCopyRefusedError("source-backup-missing", "Let the chosen production profile take an in-session backup, then rerun.");
+  const binding = { installationId: newest.manifest.installationId, profileId: sourceProfile };
+  if (newest.manifest.profileId !== sourceProfile || newest.name !== `${newest.manifest.backupFileName}.manifest.json`) {
+    throw new ProfileCopyRefusedError("source-backup-mismatch", "The newest backup does not match the chosen production profile.");
+  }
 
-const isVanished = (error: unknown) => z.object({ code: z.literal("ENOENT") }).safeParse(error).success;
-
-/** Copies each person's newest verified authority backup (database only: backups hold no credentials or tokens). Production may prune while this runs, so a vanished file re-lists the person's backups. */
-export function copyVerifiedBackups(sourceWorkspace: string, targetWorkspace: string): CopiedBackup[] {
-  const profilesRoot = join(sourceWorkspace, STATE_SUFFIX), targetProfiles = join(targetWorkspace, STATE_SUFFIX);
-  if (!existsSync(profilesRoot)) throw new ProfileCopyRefusedError("source-store-missing", "the production store has no profile folders");
-  const people = readdirSync(profilesRoot).sort();
-  if (people.length === 0) throw new ProfileCopyRefusedError("source-store-missing", "the production store has no people");
-  clearIncompleteCopy(targetProfiles);
-  return people.map(profileId => {
-    for (let attempt = 1; ; attempt += 1) {
-      try { return copyNewestBackup(profilesRoot, targetProfiles, profileId); }
-      catch (error) {
-        if (!isVanished(error)) throw error;
-        if (attempt === PRUNE_RETRIES) throw new ProfileCopyRefusedError("source-backup-pruned", `production kept pruning ${profileId}'s backups while copying; try again`);
+  const machine = acquireEntrypointAdmission(targetWorkspace, "exclusive", lock);
+  try {
+    const { activeProfileId } = machine.readProfileRegistry();
+    if (activeProfileId === null) throw new ProfileCopyRefusedError("destination-sign-in-required", "Sign in to the isolated profile and quit the dashboard without signing out.");
+    const admission = machine.admitProfile(activeProfileId);
+    try {
+      const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot });
+      const database = AuthorityDatabase.open(admission, {
+        path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "isolated-library-import",
+      }, systemClock, undefined, undefined, undefined, credentials);
+      try {
+        return await importIsolatedWorkbookLibrary(admission, database, {
+          source: { manifestPath: join(directory, newest.name), binding }, destination: admission.profileBinding,
+        });
+      } finally {
+        try { database.close(); }
+        catch (error) { throw retainAuthoritySourceClosure([error], { database }); }
       }
-    }
-  });
+    } finally { admission.release(); }
+  } finally { machine.release(); }
 }
 
 export type Git = (args: readonly string[]) => string;
 const gitIn = (directory: string): Git => args => execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" }).trim();
 
-/** Development follows `origin/development`. Staging follows the one `origin/cut/*` branch, or the one named by `requested`; several cuts without a choice are refused. */
-export function resolveSourceRef(profile: CopyProfile, git: Git, requested?: string): string {
+export function resolveSourceRef(profile: CopyProfile, git: Git): string {
   git(["fetch", "--prune", "origin"]);
-  if (profile === "development") {
-    if (requested !== undefined && requested !== "origin/development") throw new ProfileCopyRefusedError("ref-refused", "development follows origin/development only");
-    return "origin/development";
-  }
-  const cuts = git(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/cut/"]).split("\n").filter(name => name !== "");
-  if (requested !== undefined) {
-    if (!cuts.includes(requested)) throw new ProfileCopyRefusedError("ref-refused", `${requested} is not a current origin/cut/* branch`);
-    return requested;
-  }
-  if (cuts.length === 0) throw new ProfileCopyRefusedError("cut-branch-missing", "no origin/cut/* branch exists to stage");
-  if (cuts.length > 1) throw new ProfileCopyRefusedError("cut-branch-ambiguous", `pick one with --ref: ${cuts.join(", ")}`);
-  return cuts[0];
+  return `origin/${profile}`;
 }
 
-/** Creates or moves the copy's detached worktree; a dirty copy is refused. */
-export function syncWorktree(path: string, ref: string, mainGit: Git, gitFor: (directory: string) => Git = gitIn): string {
-  if (existsSync(join(path, ".git"))) {
-    const copy = gitFor(path);
-    if (copy(["status", "--porcelain"]) !== "") throw new ProfileCopyRefusedError("worktree-dirty", `${path} has local changes`);
-    copy(["checkout", "--detach", ref]);
-  } else mainGit(["worktree", "add", "--detach", path, ref]);
-  return gitFor(path)(["rev-parse", "HEAD"]);
+function syncWorktree(path: string, sha: string, mainGit: Git, gitFor: (directory: string) => Git): void {
+  const copy = gitFor(path), gitFile = join(path, ".git");
+  if (existsSync(path) && realpathSync(path) !== path) {
+    throw new ProfileCopyRefusedError("worktree-unowned", "The copy path must not resolve through a symlink.");
+  }
+  if (existsSync(gitFile)) {
+    if (!lstatSync(gitFile).isFile()
+      || copy(["rev-parse", "--path-format=absolute", "--git-common-dir"]) !== mainGit(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+      || copy(["branch", "--show-current"]) !== "") {
+      throw new ProfileCopyRefusedError("worktree-unowned", "The copy path must be this repository's detached worktree.");
+    }
+    if (copy(["status", "--porcelain"]) !== "") throw new ProfileCopyRefusedError("worktree-dirty", "Preserve the copy's local changes before updating.");
+    copy(["checkout", "--detach", sha]);
+  } else {
+    mainGit(["worktree", "add", "--detach", path, sha]);
+  }
+  if (copy(["rev-parse", "HEAD"]) !== sha) throw new ProfileCopyRefusedError("worktree-sha-mismatch", "The copy did not check out the selected commit.");
 }
 
-export interface ProfileCopyOptions {
+interface ProfileCopyOptions {
   readonly profile: CopyProfile;
   readonly repository: string;
   readonly copyPath: string;
   readonly sourceWorkspace: string;
   readonly targetWorkspace: string;
-  readonly ref?: string;
+  readonly sourceProfile?: string;
   readonly git?: Git;
   readonly gitFor?: (directory: string) => Git;
-  readonly acquire?: AcquireLock;
+  readonly acquire?: typeof acquireRuntimeLifetimeLock;
+  readonly install?: (directory: string) => void;
 }
 
-export function runProfileCopy(options: ProfileCopyOptions): Promise<string> {
-  const { profile } = options, ports = runtimeProfiles[profile];
-  return withProfileLock(profile, async () => {
+const PackageScriptsSchema = z.object({ scripts: z.record(z.string(), z.string()) });
+
+export async function runProfileCopy(options: ProfileCopyOptions): Promise<string> {
+  const { profile, sourceProfile } = options, ports = runtimeProfiles[profile];
+  let lock: RuntimeLifetimeLock;
+  try { lock = await (options.acquire ?? acquireRuntimeLifetimeLock)(ports.lockPort); }
+  catch (error) {
+    if (error instanceof RuntimeAlreadyRunningError) throw new ProfileCopyRefusedError("profile-running", `Stop the ${profile} dashboard or wait for the other update to finish.`);
+    throw error;
+  }
+  let retain = false;
+  try {
+    if (realpathSync(options.repository) === options.copyPath) {
+      throw new ProfileCopyRefusedError("worktree-in-use", "Run this command from a different Relay checkout.");
+    }
     const git = options.git ?? gitIn(options.repository);
-    const ref = resolveSourceRef(profile, git, options.ref);
-    const sha = syncWorktree(options.copyPath, ref, git, options.gitFor);
-    const backups = copyVerifiedBackups(options.sourceWorkspace, options.targetWorkspace);
+    const ref = resolveSourceRef(profile, git);
+    const sha = git(["rev-parse", "--verify", `${ref}^{commit}`]);
+    const { scripts } = PackageScriptsSchema.parse(JSON.parse(git(["show", `${sha}:package.json`])));
+    if (scripts[`dashboard:${profile}`] === undefined) {
+      throw new ProfileCopyRefusedError("profile-launcher-missing", `${ref} must contain the ${profile} dashboard launcher before it can be used as an isolated copy.`);
+    }
+    syncWorktree(options.copyPath, sha, git, options.gitFor ?? gitIn);
+    const install = options.install ?? (directory => { execFileSync("npm", ["ci"], { cwd: directory, stdio: "inherit" }); });
+    install(options.copyPath);
+    const imported = sourceProfile === undefined ? undefined : await importProfileLibrary({ ...options, sourceProfile }, lock);
     return [
       `profile: ${profile}`,
       `source: ${ref} @ ${sha} in ${options.copyPath}`,
-      `ports: backend ${String(ports.backendPort)}, frontend ${String(ports.frontendPort)}`,
+      `ports: backend ${String(ports.backendPort)}, frontend ${String(ports.frontendPort)}, lock ${String(ports.lockPort)}`,
       `data: ${options.targetWorkspace}`,
-      ...backups.map(backup => `backup: ${backup.profileId} ${backup.backupFileName} (generation ${String(backup.authorityGeneration)}, taken ${backup.createdAt})`),
-      `start: npm ci && npm run dashboard:${profile}   (in ${options.copyPath})`,
+      imported === undefined ? "workbooks: finish isolated Duo signup, stop the copy, then rerun with --source-person <production profile UUID>"
+        : `workbooks: ${String(imported.created)} created, ${String(imported.refreshed)} refreshed, ${String(imported.unchanged)} unchanged, ${String(imported.keptLocal)} kept local (backup generation ${String(imported.sourceBackup.authorityGeneration)})`,
+      `start: npm run dashboard:${profile}   (in ${options.copyPath})`,
     ].join("\n");
-  }, options.acquire);
+  } catch (error) {
+    retain = hasUnprovedSourceClosure(error);
+    throw error;
+  } finally { if (!retain) await lock.close(); }
 }
 
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  const { positionals, values } = parseArgs({ allowPositionals: true, options: { ref: { type: "string" } } });
-  const profile = z.enum(COPY_PROFILES).parse(positionals[0]);
+  const { positionals, values } = parseArgs({ allowPositionals: true, options: { "source-person": { type: "string" } } });
+  const [profile] = z.tuple([CopyProfileSchema]).parse(positionals);
+  const sourceProfile = z.uuid().optional().parse(values["source-person"]);
   const copyPath = join(homedir(), "Projects", profile === "staging" ? "hr-relay-staging" : "hr-relay-dev");
   process.stdout.write(`${await runProfileCopy({
-    profile, copyPath, ref: values.ref, repository: fileURLToPath(new URL("../..", import.meta.url)),
+    profile, copyPath, sourceProfile, repository: fileURLToPath(new URL("../..", import.meta.url)),
     sourceWorkspace: applicationDataWorkspace(undefined, "production"),
     targetWorkspace: applicationDataWorkspace(undefined, profile),
   })}\n`);
