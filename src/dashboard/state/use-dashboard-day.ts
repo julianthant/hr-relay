@@ -5,7 +5,7 @@ import type { NotificationPublicationWire } from "../../models/dashboard/subscri
 import type { DashboardDayWire } from "../../models/dashboard/projection.js";
 import type { SubscriptionState } from "../client/index.js";
 import { protocolError } from "../client/errors.js";
-import { failed, loaded, LOADING, type AsyncResource } from "./async-resource.js";
+import { createKeptResults, dropKeptResults, failed, loaded, loadingWith, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
 
 export interface DashboardDayState {
@@ -15,6 +15,10 @@ export interface DashboardDayState {
   readonly subscribePublications: (listener: (publication: NotificationPublicationWire) => void) => () => void;
   readonly refresh: () => void;
 }
+
+/** How many days' last frames a page keeps for an instant return. */
+export const KEPT_DAYS_LIMIT = 8;
+const keptDays = createKeptResults<DashboardDayWire>(KEPT_DAYS_LIMIT);
 
 export function useDashboardDay(day: string | undefined, nowIso?: string, authorityEpoch?: object, actorId?: string): DashboardDayState {
   const client = useDashboardClient();
@@ -29,13 +33,17 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
       publishPublication: (publication: NotificationPublicationWire) => { for (const listener of listeners) listener(publication); },
     };
   }, [client, day, revision, authorityEpoch, actorId]);
+  // Read during render, so the frame that switches the day already shows that day's kept copy.
+  const kept = useMemo(() => day === undefined ? undefined : keptDays.get(client, [authorityEpoch, actorId], day), [client, authorityEpoch, actorId, day, request]);
   const activeRequest = useRef(request);
   activeRequest.current = request;
   const subscribePublications = request.subscribePublications;
   const [result, setResult] = useState<{ request: typeof request; value: DashboardDayState }>();
   useEffect(() => {
     let active = true;
-    let value: DashboardDayState = { request, day: LOADING, connection: { state: "connecting" }, refresh, subscribePublications };
+    let shown = kept;
+    let value: DashboardDayState = { request, day: loadingWith(shown), connection: { state: "connecting" }, refresh, subscribePublications };
+    let served = false;
     const publish = (): void => { if (active) setResult({ request, value }); };
     publish();
     if (day === undefined) return () => { active = false; };
@@ -52,19 +60,26 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
         if (next.day !== day) {
           const error = protocolError("day-request-identity-mismatch");
           value = { request, day: failed(error), connection: { state: "stopped", error }, refresh, subscribePublications };
-        } else value = { ...value, day: loaded(next) };
+        } else {
+          served = true;
+          keptDays.keep(client, [authorityEpoch, actorId], day, { value: next, at: next.snapshotCursor });
+          value = { ...value, day: loaded(next) };
+        }
         publish();
       },
       onState: (connection) => {
         if (!active) return;
+        // Connecting again after a served frame is a stream reset: nothing kept from before it may show.
+        const reset = served && connection.state === "connecting";
+        if (reset) { served = false; shown = undefined; dropKeptResults(client); }
         value = { request, day: connection.state === "stopped" && connection.error !== undefined
-          ? failed(connection.error) : connection.state === "connecting" ? LOADING : value.day, connection, refresh, subscribePublications };
+          ? failed(connection.error) : connection.state === "connecting" ? loadingWith(shown) : value.day, connection, refresh, subscribePublications };
         publish();
       },
     }); });
     return () => { active = false; subscription?.close(); };
-  }, [client, day, actorId, request, refresh, subscribePublications]);
-  const current = result?.request === request ? result.value : { request, day: LOADING, connection: { state: "connecting" as const }, refresh, subscribePublications };
+  }, [client, day, actorId, authorityEpoch, kept, request, refresh, subscribePublications]);
+  const current = result?.request === request ? result.value : { request, day: loadingWith(kept), connection: { state: "connecting" as const }, refresh, subscribePublications };
   useEffect(() => {
     if (current.day.state !== "loaded" || nowIso === undefined) return;
     const pending = current.day.value.notifications
