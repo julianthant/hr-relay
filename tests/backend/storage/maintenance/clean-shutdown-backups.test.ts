@@ -27,7 +27,8 @@ vi.mock("node:fs", async actual => {
   } };
 });
 
-function fixture() {
+/** `firstGeneration` numbers the six backups from it; `sameInstant` gives them one creation time, as a frozen clock does. */
+function fixture(firstGeneration = 0, sameInstant = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "shutdown-backup-retention-"))), directory = join(root, "backups", "authority");
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const proofs = new Map<string, VerifiedBackup>();
@@ -37,15 +38,15 @@ function fixture() {
     authorityBackupExpectedSource: () => ({ kind: "profile" as const, binding: { installationId, profileId } }) };
   // @ts-expect-error This pure filesystem test replaces issued admission and native verification.
   const retain = (fresh = newest()) => retainCleanShutdownBackups(admission, clock, fresh);
-  const newest = () => { const proof = [...proofs.values()].find(value => value.manifest.authorityGeneration === 4); assert.ok(proof); return proof; };
+  const newest = () => { const proof = [...proofs.values()].find(value => value.manifest.authorityGeneration === firstGeneration + 4); assert.ok(proof); return proof; };
   // @ts-expect-error This pure filesystem test replaces issued admission and native verification.
   const resume = () => resumeShutdownBackupRetirement(admission, clock);
   const sourceIdentity = authoritySourceDatabaseIdentity({ kind: "profile", binding: { installationId, profileId } });
   for (let index = 0; index < 6; index++) {
-    const backupFileName = `authority-g${index}-20261101000000000-${randomUUID()}${index === 5 ? "" : ".shutdown"}.sqlite`;
-    const observed = { applicationId: AUTHORITY_APPLICATION_ID, schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, installationId, profileId, pageCount: 1, authorityGeneration: index, authorityContentFingerprint: digest };
+    const backupFileName = `authority-g${firstGeneration + index}-20261101000000000-${randomUUID()}${index === 5 ? "" : ".shutdown"}.sqlite`;
+    const observed = { applicationId: AUTHORITY_APPLICATION_ID, schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, installationId, profileId, pageCount: 1, authorityGeneration: firstGeneration + index, authorityContentFingerprint: digest };
     const manifest = AuthorityBackupManifestSchema.parse({ ...observed, kind: "hrauto-authority-backup", manifestVersion: 4, backupFileName,
-      sourceDatabaseIdentity: sourceIdentity, createdAt: new Date(Date.parse("2026-11-01T12:00:00.000Z") + index * 1000).toISOString(), byteSize: 2, sha256: digest,
+      sourceDatabaseIdentity: sourceIdentity, createdAt: new Date(Date.parse("2026-11-01T12:00:00.000Z") + (sameInstant ? 0 : index * 1000)).toISOString(), byteSize: 2, sha256: digest,
       verification: { ...observed, state: "verified", observedFrom: "backup-copy", observedAt: clock.now().toISOString(), quickCheck: "ok", foreignKeyViolations: 0, invariantViolations: [], exactTableRegistry: true } });
     const backupPath = join(directory, backupFileName), manifestPath = `${backupPath}.manifest.json`;
     writeFileSync(backupPath, "db", { mode: 0o600 }); writeFileSync(manifestPath, JSON.stringify(manifest), { mode: 0o600 });
@@ -61,6 +62,17 @@ function fixture() {
     faults.target = ""; vi.restoreAllMocks(); vi.mocked(verifyBackupManifestAtPath).mockReset(); vi.mocked(verifyBackupBytesAtPath).mockClear(); rmSync(root, { recursive: true });
   } };
 }
+
+it("keeps the highest generation as the fresh backup when every backup has one creation time", async () => {
+  const f = fixture(8, true);
+  try {
+    await f.retain();
+    const remaining = readdirSync(f.directory);
+    for (const proof of f.proofs.values()) if (proof.manifest.backupFileName.includes(".shutdown")) {
+      assert.equal(remaining.includes(proof.manifest.backupFileName), proof.manifest.authorityGeneration >= 10, proof.manifest.backupFileName);
+    }
+  } finally { f.close(); }
+});
 
 for (const invalid of [false, true]) it(`retires only verified old shutdown pairs, preserving other backup classes (verification refusal: ${invalid})`, async () => {
   const f = fixture(), { directory, before, proofs } = f;
