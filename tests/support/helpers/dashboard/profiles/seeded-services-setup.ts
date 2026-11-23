@@ -63,6 +63,7 @@ import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/rules/identity/ids.js";
 import type { TestClock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
+import { protectedSecretSource } from "../../protected-secret-source.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
 createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
@@ -159,7 +160,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       authorityRead: database,
       descriptors,
       clock,
-      ...(scripting === undefined ? {} : { workbooks: library }),
+      ...(scripting === undefined ? {} : { workbooks: library, protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper" }) }),
       ids: scripting === undefined ? { uuid: () => uuidOf(8000) } : sequentialIdFactory("8"),
       planTtlMs: 10 * 60 * 1000,
       configFingerprint: activeConfig?.configFingerprint ?? CONFIG_FINGERPRINT,
