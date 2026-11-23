@@ -220,6 +220,14 @@ async function seedRoster(page: Page, baseUrl: string) {
   return WorkbookImportResultSchema.parse(await response.json()).workbook.libraryId;
 }
 
+/** Data pages are Settings sections: open Settings, then measure the section link. */
+async function dataPageLink(page: Page, label: string) {
+  const sections = page.getByRole("navigation", { name: "Settings sections" });
+  if (!(await sections.isVisible())) await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(sections).toBeVisible();
+  return sections.getByRole("link", { name: label, exact: true });
+}
+
 function seededQueueCard(dashboard: DashboardPage, runId: string) {
   return dashboard.queue.locator(`[role="group"][data-demo-row-id="${runId}"]`);
 }
@@ -255,7 +263,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         test(`${surface === "Settings" ? "warm Settings" : surface} settles without an immediate-read skeleton`, async ({ dashboard, page }) => {
           const runId = dashboard.runId("doneRun");
           const control = surface === "Run logs" ? seededQueueCard(dashboard, runId).locator("button[data-queue-open]")
-            : (surface === "Settings" ? page : dashboard.workflows).getByRole("button", { name: surface, exact: true });
+            : surface === "Settings" ? page.getByRole("button", { name: surface, exact: true }) : await dataPageLink(page, surface);
           const content = {
             Settings: page.locator(THEME_FIELD),
             Spreadsheets: page.getByText("No spreadsheets yet", { exact: true }),
@@ -274,8 +282,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         });
       }
 
-      test("a held first Explorer read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-        const open = dashboard.workflows.getByRole("button", { name: "Explorer", exact: true });
+      test("a held first Explorer read uses no guessed-height skeleton", async ({ page }) => {
+        const open = await dataPageLink(page, "Explorer");
         const picker = page.getByRole("combobox", { name: "Explorer workflow" });
         const pickerSelector = 'button[aria-label="Explorer workflow"]';
         const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/explorer" });
@@ -288,8 +296,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         }, { keep: { selector: pickerSelector }, focus: pickerSelector }, hold);
       });
 
-      test("a held first Analytics read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-        const open = dashboard.workflows.getByRole("button", { name: "Analytics", exact: true });
+      test("a held first Analytics read uses no guessed-height skeleton", async ({ page }) => {
+        const open = await dataPageLink(page, "Analytics");
         const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/reports/activity/population" });
         await measure(page, open, () => open.click(), () => expect(page.locator(RUNS_SECTION)).toBeVisible(), {}, hold);
       });
@@ -337,8 +345,8 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         await expect(drillIn).toBeVisible();
       });
 
-      test("a held catalog read uses no guessed-height skeleton", async ({ dashboard, page }) => {
-        const open = dashboard.workflows.getByRole("button", { name: "Spreadsheets", exact: true });
+      test("a held catalog read uses no guessed-height skeleton", async ({ page }) => {
+        const open = await dataPageLink(page, "Spreadsheets");
         const hold = await holdDashboardSkeletonRead(page, { pathname: "/api/v1/workbooks/catalog" });
         await measure(page, open, () => open.click(), () => expect(page.getByText("No spreadsheets yet", { exact: true })).toBeVisible(), {}, hold);
       });
