@@ -13,6 +13,7 @@ import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../../src/models/processin
 import { UcpathPayPathReadSchema, type UcpathPayPathDriver } from "../../../../../src/models/ui/ucpath-paypath.js";
 import { PersonLookupInput } from "../../../../../src/models/workflows/person-lookup/input.js";
 import { WorkStudyInput } from "../../../../../src/models/workflows/work-study/input.js";
+import { EidSchema } from "../../../../../src/rules/identity/ids.js";
 import type { TestClock } from "../../../../../src/rules/time/clock.js";
 import type { BrowserDriver } from "../../../../../src/workflow-kit/task.js";
 
@@ -109,18 +110,18 @@ export const PERSON_LOOKUP_SCRIPT: ScriptedWorkflow = {
     const ucpath = createDeterministicUcpathPersonOrgDriver();
     const crmFor = (eid: string) => {
       const record = CrmDiscoveredRecordSchema.parse({ recordId: "ONB-1", recordUrl: "https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=ONB-1",
-        emplId: eid, name: "Deterministic, Person", department: "Housing Dining Hospitality", firstDayOfService: "07/01/2026", dateSigned: "06/25/2026" });
+        emplId: EidSchema.parse(eid), name: "Deterministic, Person", department: "Housing Dining Hospitality", firstDayOfService: "07/01/2026", dateSigned: "06/25/2026" });
       return createDeterministicCrmOnboardingDriver({ discovery: [record],
-        record: { state: "found", record: { recordId: record.recordId, emplId: eid, fullName: record.name, rawStage: "Completed" } },
-        dates: ReadOnboardingDatesOutputSchema.parse({ emplId: eid, state: "read", employmentDate: "2026-07-01", oathDate: "2026-06-25", reason: "" }) });
+        record: { state: "found", record: { recordId: record.recordId, emplId: record.emplId, fullName: record.name, rawStage: "Completed" } },
+        dates: ReadOnboardingDatesOutputSchema.parse({ emplId: record.emplId, state: "read", employmentDate: "2026-07-01", oathDate: "2026-06-25", reason: "" }) });
     };
     return {
-      ucpath: () => ({ ...ucpath, searchPersonOrg: async (request) => { await world.hold(); return ucpath.searchPersonOrg(request); } }),
+      ucpath: () => ({ ...ucpath, searchPersonOrg: async (request: Parameters<typeof ucpath.searchPersonOrg>[0]) => { await world.hold(); return ucpath.searchPersonOrg(request); } }),
       crm: () => {
         const crm = crmFor(world.run().subject);
         return { ...crm,
-          searchOnboardingRecords: async (request) => { await world.hold(); return crm.searchOnboardingRecords(request); },
-          readOnboardingDates: async (request) => { await world.hold(); return crm.readOnboardingDates(request); } };
+          searchOnboardingRecords: async (request: Parameters<typeof crm.searchOnboardingRecords>[0]) => { await world.hold(); return crm.searchOnboardingRecords(request); },
+          readOnboardingDates: async (request: Parameters<typeof crm.readOnboardingDates>[0]) => { await world.hold(); return crm.readOnboardingDates(request); } };
       },
     };
   },

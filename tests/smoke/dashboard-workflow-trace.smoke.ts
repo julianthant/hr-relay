@@ -78,7 +78,7 @@ test("Work-Study: Retry after a failed step runs it again and writes once", asyn
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
   await dashboard.openWorkflow("Work-Study");
-  const runId = await startScriptedRun(request, SEEDED_NOW, "10812347");
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10812345");
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
@@ -93,7 +93,7 @@ test("Work-Study: Retry after a failed step runs it again and writes once", asyn
   await expect(page.locator(`[data-demo-row-id="${retried}"]`)).toContainText("Running");
   expect(await again.finish()).toMatchObject({ state: "done" });
   await expect(page.locator(`[data-demo-row-id="${retried}"]`)).toContainText("Done");
-  expect(seeded.scripted.writes()).toEqual([{ runId: retried, nodeId: "save-transaction", eid: "10812347" }]);
+  expect(seeded.scripted.writes()).toEqual([{ runId: retried, nodeId: "save-transaction", eid: "10812345" }]);
 });
 
 test("Work-Study: a write whose answer is lost parks the run and is asked for once", async ({ dashboard, seeded, page, failures }) => {
@@ -101,7 +101,7 @@ test("Work-Study: a write whose answer is lost parks the run and is asked for on
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
   await dashboard.openWorkflow("Work-Study");
-  const runId = await startScriptedRun(request, SEEDED_NOW, "10812348");
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10812345");
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
@@ -114,7 +114,7 @@ test("Work-Study: a write whose answer is lost parks the run and is asked for on
   await page.reload();
   await dashboard.expectRunOpen(runId);
   await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("Write parked");
-  expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-transaction", eid: "10812348" }]);
+  expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
 });
 
 test("Work-Study: Cancel on a run parked at its gate ends it as Cancelled and writes nothing", async ({ dashboard, seeded, page, failures }) => {
@@ -122,7 +122,7 @@ test("Work-Study: Cancel on a run parked at its gate ends it as Cancelled and wr
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
   await dashboard.openWorkflow("Work-Study");
-  const runId = await startScriptedRun(request, SEEDED_NOW, "10812349", seeded.scripted.reviewReference());
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10812345", seeded.scripted.reviewReference());
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
@@ -138,7 +138,7 @@ test("Work-Study: a slow step keeps the run Running and its duration is recorded
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
   await dashboard.openWorkflow("Work-Study");
-  const runId = await startScriptedRun(request, SEEDED_NOW, "10812350");
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10812345");
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
@@ -156,7 +156,7 @@ test("Person Lookup: start, each step held, done, and nothing written", async ({
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
   await dashboard.openWorkflow("Person Lookup");
-  const runId = await startScriptedRun(request, SEEDED_NOW, "10812351", undefined, PERSON_LOOKUP_SCRIPT);
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10000001", undefined, PERSON_LOOKUP_SCRIPT);
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
