@@ -12,7 +12,7 @@ import { createCredentialStore } from "../../src/backend/storage/configuration/c
 import { importIsolatedWorkbookLibrary } from "../../src/backend/storage/maintenance/isolated-library-import.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { parseBackupManifestFile } from "../../src/backend/storage/sqlite/backup-service.js";
-import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../src/backend/storage/source-closure.js";
+import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closure.js";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 
@@ -68,10 +68,7 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
         return await importIsolatedWorkbookLibrary(admission, database, {
           source: { manifestPath: join(directory, newest.name), binding }, destination: admission.profileBinding,
         });
-      } finally {
-        try { database.close(); }
-        catch (error) { throw retainAuthoritySourceClosure([error], { database }); }
-      }
+      } finally { database.close(); }
     } finally { admission.release(); }
   } finally { machine.release(); }
 }
