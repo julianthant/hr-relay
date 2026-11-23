@@ -624,8 +624,8 @@ describe("isolated runtime composition", () => {
     assert.ok(help);
     assert.match(help, /^Relay foundation \(complete through 2j; active 3-workflow-migration\)/u);
     assert.match(help, /^Commands:$/mu);
-    assert.match(help, /^  dashboard .*1g-spine, port 3938/mu);
-    assert.match(help, /^  worker <workflow-id> --pool-index <positive-int>/mu);
+    assert.match(help, /^ {2}dashboard .*1g-spine, port 3938/mu);
+    assert.match(help, /^ {2}worker <workflow-id> --pool-index <positive-int>/mu);
     assert.doesNotMatch(help, /dry-run-scenario/u);
   });
 
