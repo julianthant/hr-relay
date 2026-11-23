@@ -1,5 +1,5 @@
 import type { NotificationInbox } from "./inbox.js";
-import type { NotificationTriggerEvent } from "../../../rules/notifications/notification-triggers.js";
+import { deriveNotificationDedupeFingerprint, type NotificationTriggerEvent } from "../../../rules/notifications/notification-triggers.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 export type NotificationObservation = Readonly<{ event: NotificationTriggerEvent; source: { identity: string; occurredAt: string } }>;
@@ -16,58 +16,70 @@ export function createNotificationObserver(deps: {
   let healthFailure: NotificationObservationStatus["code"];
   let running: Promise<void> | undefined;
   let diagnostics: readonly NonNullable<NotificationObservationStatus["code"]>[] = [];
-  const publishing = new Map<string, NotificationObservation>();
-  let retry = new Map<string, NotificationObservation>();
-  const batches = new Set<Promise<void>>();
+  const pendingBySource = new Map<string, NotificationObservation>();
+  const queues = new Map<string, Set<NotificationObservation>>();
+  const active = new Map<string, Promise<void>>();
+  // A nonempty queue without a publisher is waiting to retry its first occurrence.
+  const needsRetry = () => queues.size > active.size;
 
   const observeSources = (changed?: () => boolean): Promise<void> | undefined => {
     if (stopped) return;
-    const batch = retry;
     try {
-      if (changed !== undefined && !changed() && retry.size === 0 && diagnostics.length === 0) return;
+      if (changed !== undefined && !changed() && !needsRetry() && diagnostics.length === 0) return;
       diagnostics = [];
       const read = deps.read();
       diagnostics = read.diagnostics;
       for (const item of read.observations) {
         const id = item.source.identity;
-        const prior = publishing.get(id) ?? batch.get(id);
-        if (prior === undefined) batch.set(id, item);
-        else if (canonicalJsonStringify(prior.event) !== canonicalJsonStringify(item.event)) throw new Error("NOTIFICATION_PENDING_SOURCE_CONFLICT");
+        const prior = pendingBySource.get(id);
+        if (prior !== undefined) {
+          if (canonicalJsonStringify(prior.event) !== canonicalJsonStringify(item.event)) throw new Error("NOTIFICATION_PENDING_SOURCE_CONFLICT");
+          continue;
+        }
+        const key = deriveNotificationDedupeFingerprint(item.event);
+        let queue = queues.get(key);
+        if (queue === undefined) {
+          queue = new Set();
+          queues.set(key, queue);
+        }
+        queue.add(item);
+        pendingBySource.set(id, item);
       }
     } catch { diagnostics = ["NOTIFICATION_OBSERVATION_FAILED"]; }
-    if (batch.size === 0) return;
-    retry = new Map();
-    // Claim the whole batch before publishing so overlapping scans only start new occurrences.
-    for (const [id, item] of batch) publishing.set(id, item);
-    const work = Promise.resolve().then(async () => {
-      for (const [id, item] of batch) {
-        try { await deps.inbox.publish(item.event, item.source); }
-        catch { retry.set(id, item); }
-        finally { publishing.delete(id); }
-      }
-    }).finally(() => { batches.delete(work); });
-    batches.add(work);
-    return work;
+    for (const [key, queue] of queues) {
+      if (active.has(key)) continue;
+      active.set(key, Promise.resolve().then(async () => {
+        for (const item of queue) {
+          try { await deps.inbox.publish(item.event, item.source); }
+          catch { break; }
+          queue.delete(item);
+          pendingBySource.delete(item.source.identity);
+        }
+        active.delete(key);
+        if (queue.size === 0) queues.delete(key);
+      }));
+    }
+    if (active.size > 0) return Promise.all(active.values()).then(() => {});
   };
   const observe = (): Promise<void> => {
     if (stopped) return Promise.resolve();
     if (running !== undefined) return running;
     running = (async () => {
-      void observeSources();
-      if (batches.size > 0) await Promise.all(batches);
+      const publications = observeSources();
+      if (publications !== undefined) await publications;
       try { await deps.health(); healthFailure = undefined; } catch { healthFailure = "NOTIFICATION_OBSERVATION_FAILED"; }
     })().finally(() => { running = undefined; });
     return running;
   };
   const status = (): NotificationObservationStatus => {
-    const pending = publishing.size + retry.size + diagnostics.length + Number(healthFailure !== undefined);
-    const code = healthFailure ?? (retry.size > 0 ? "NOTIFICATION_OBSERVATION_FAILED" : diagnostics[0]);
+    const pending = pendingBySource.size + diagnostics.length + Number(healthFailure !== undefined);
+    const code = healthFailure ?? (needsRetry() ? "NOTIFICATION_OBSERVATION_FAILED" : diagnostics[0]);
     if (code !== undefined) return { state: "failed", code, pending };
     return { state: drained ? "stopped" : "ready", pending };
   };
   return Object.freeze({ observe, observeSources, status, async stop() {
     stopped = true;
-    await Promise.all([running, ...batches]);
+    await Promise.all([running, ...active.values()]);
     drained = true;
   } });
 }

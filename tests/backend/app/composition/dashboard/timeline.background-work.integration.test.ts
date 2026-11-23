@@ -59,6 +59,51 @@ it("publishes a peer commit on the next tick while an earlier publication is sti
   }
 });
 
+it.each(["delayed", "retried"])("folds the fourth occurrence after a %s third occurrence in the same inbox row", async mode => {
+  const { fixture, seedRun } = createNotificationCompositionTestWorld();
+  const f = await fixture();
+  const release = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  const occurrence = (count: number) => {
+    const { runId, workflow } = seedRun(f, runRecordOf({ seed: count })).envelope;
+    return {
+      event: { kind: "repeating-failure" as const, runId, workflowId: workflow, failureId: randomUUID(),
+        failureFingerprint: "a".repeat(64), occurrences: count, threshold: 3 },
+      source: { identity: String(count).repeat(64), occurredAt: f.clock.now().toISOString() },
+    };
+  };
+  const observations = [occurrence(3)];
+  const publish = vi.fn(f.inbox.publish.bind(f.inbox)).mockImplementationOnce(async (event, source) => {
+    started.resolve();
+    await release.promise;
+    if (mode === "retried") throw new Error("synthetic publication failure");
+    return f.inbox.publish(event, source);
+  });
+  const observer = createNotificationObserver({ read: () => ({ observations, diagnostics: [] }), inbox: { publish }, health: async () => {} });
+  const published: number[] = [];
+  f.inbox.onPublication(({ event }) => { if (event.kind === "repeating-failure") published.push(event.occurrences); });
+  try {
+    const first = observer.observeSources();
+    await started.promise;
+    observations.push(occurrence(4));
+    const next = observer.observeSources();
+    release.resolve();
+    await Promise.all([first, next]);
+    if (mode === "retried") {
+      expect(published).toEqual([]);
+      expect(observer.status()).toEqual({ state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 2 });
+      observations.length = 0;
+      await observer.observeSources(() => false);
+    }
+    expect(published).toEqual([3, 4]);
+    expect(f.inbox.list(LOCAL_OPERATOR_ACTOR_ID)).toMatchObject([{ count: 2, summary: expect.stringContaining("occurred 4 times") }]);
+  } finally {
+    release.resolve();
+    await observer.stop();
+    await f.close();
+  }
+});
+
 it("polls only changed projection inputs, including peer commits, lease expiry and a quiet safety pass", async () => {
   const f = await trustWorld();
   const { database, world: { clock } } = f;
