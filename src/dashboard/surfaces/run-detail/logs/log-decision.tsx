@@ -1,6 +1,6 @@
 import type { UcpathFoundPresentation, UcpathFoundDecision } from "./ucpath-found-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
-import { useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Check, ImageOff } from "lucide-react";
 import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Field, Input } from "../../../ds/ui.js";
 import type { DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
@@ -51,10 +51,17 @@ function DecisionBody({ decision, fieldLabel }: { decision: LogDecision; fieldLa
 }
 
 /** One served decision as a DecisionCard: its options, hints, recommended option and inputs all come from the wire. */
+type ServedDraft = Readonly<{ selected: string | undefined; answers: Readonly<Record<string, LogDecisionAnswer>> }>;
+/** A windowed log unmounts steps scrolled away; the feed keeps each served decision's draft so it comes back as the operator left it. */
+export const ServedDraftsContext = createContext<Map<string, ServedDraft> | undefined>(undefined);
+
 function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: LogDecision; served: RunDecisionWire; onAnswer?: DecisionAnswerHandler; onCancel?: () => void }) {
   const choices = choiceOptions(served);
-  const [selected, setSelected] = useState(recommendedOption(served)?.id);
-  const [answers, setAnswers] = useState<Readonly<Record<string, LogDecisionAnswer>>>({});
+  const drafts = useContext(ServedDraftsContext);
+  const draftKey = JSON.stringify(served);
+  const [selected, setSelected] = useState(() => drafts?.get(draftKey)?.selected ?? recommendedOption(served)?.id);
+  const [answers, setAnswers] = useState(() => drafts?.get(draftKey)?.answers ?? {});
+  useEffect(() => { drafts?.set(draftKey, { selected, answers }); }, [drafts, draftKey, selected, answers]);
   const option = choices.find(candidate => candidate.id === selected) ?? recommendedOption(served);
   const answer = option === undefined ? {} : answers[option.id] ?? (option.input?.kind === "text" && option.input.prefill !== undefined ? { text: option.input.prefill } : {});
   const disabled = onAnswer === undefined;
