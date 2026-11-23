@@ -193,7 +193,6 @@ export const SEPARATIONS_SCRIPT: ScriptedWorkflow = {
       worlds.set(documentNumber, created);
       return created;
     };
-    const current = (): SeparationWorld => worldOf(world.run().subject);
     /** A step parks once, at its first touch of a system; its later reads and its stage and commit run on. */
     const parked = new Set<string>();
     const hold = async (): Promise<void> => {
