@@ -333,7 +333,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(response.status, status);
     assert.equal((await json(response)).code, code);
-    assert.deepEqual(h.database.getMeta(), { ...before, authorityGeneration: Number(before.authorityGeneration) + 1 });
+    assert.deepEqual(h.database.getMeta(), before, "a debug-only fault advances no authority generation");
     assertHttpFaultOnly(h, beforeFault, 1);
   });
 
