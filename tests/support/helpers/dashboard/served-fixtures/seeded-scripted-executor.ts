@@ -5,6 +5,7 @@
  * The workflows it can run, and their system fakes, are in `scripted-workflows.ts`.
  */
 import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
 import { createWorkbookLibraryAdapter } from "../../../../../src/backend/processing/providers/workbook-library-adapter.js";
@@ -13,6 +14,9 @@ import { createDurableChildRunExecutor } from "../../../../../src/backend/runtim
 import { executeClaimedRun } from "../../../../../src/backend/runtime/execution/run-executor.js";
 import { WorkerActivitySchema, type WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
 import { WorkerSessionManager, withBoundRunConfigFingerprint } from "../../../../../src/backend/runtime/workers/worker-sessions.js";
+import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createArtifactSinkProjector } from "../../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
+import { createNamedFileOutputSink } from "../../../../../src/backend/storage/artifacts/named-file-output-sink.js";
 import { createWriteSequencer } from "../../../../../src/backend/runtime/writes/write-sequencer.js";
 import { requireLifecycleApplied, workerRunLifecyclePort, type RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -22,6 +26,8 @@ import type { WorkbookLibraryService } from "../../../../../src/backend/workbook
 import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import type { WorkbookActiveSelectionSchema } from "../../../../../src/models/dashboard/workbook-library.js";
+import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../../../src/models/workflows/crm-doc-download/documents.js";
+import { ONBOARDING_ROSTER_TYPE_ID } from "../../../../../src/models/workflows/onboarding/roster.js";
 import { REFERENCE_CHECK } from "../../../../../src/models/processing/workbooks/verify-person.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
@@ -30,6 +36,7 @@ import { workflowProjections } from "../../../../../src/workflow-kit/workflow.js
 import { appliedRunIds } from "../../../fixtures/operator-command-fixtures.js";
 import { sequentialIdFactory } from "../../../fixtures/phase1f-run-fixtures.js";
 import { testAdmittedWorker } from "../../../fixtures/run-lifecycle-fixtures.js";
+import { syntheticStateRoot } from "../../synthetic-storage-admission.js";
 import { duoCeremonyGatesOver } from "../../duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../phase1f-executor-harness.js";
 import { scriptedWorkflow, WORK_STUDY_GATE_ID, WORK_STUDY_SCRIPT, type RecordedWrite, type ScriptWorld, type ScriptedWorkflow } from "./scripted-workflows.js";
@@ -64,6 +71,10 @@ export interface ScriptedExecutor {
   writes(): readonly RecordedWrite[];
   /** A library spreadsheet that does not hold any scripted employee: a Work-Study run started with it stops at the gate. */
   reviewReference(): ScriptedReference;
+  /** A library spreadsheet typed as the onboarding roster, holding one row per `[email, first name, last name]`. */
+  rosterReference(rows: readonly (readonly [string, string, string])[]): ScriptedReference;
+  /** Where a run's published documents land. */
+  documentsDirectory(): string;
   close(): Promise<void>;
 }
 
@@ -128,6 +139,13 @@ export function createScriptedExecutor(deps: Readonly<{
   const world: ScriptWorld = { clock, hold, record: write => { recorded.push(write); },
     run: () => { const current = active(); return { runId: current.runId, subject: current.subject, heldNode: () => heldNode(current.runId), loseAnswer: () => current.loseAnswer }; } };
 
+  const stateRoot = dirname(deps.profilePath);
+  const documentsDirectory = join(stateRoot, "published-documents");
+  const admission = syntheticStateRoot(stateRoot);
+  const artifacts = createContentAddressedArtifactWriter({ admission });
+  const artifactProjector = createArtifactSinkProjector({ authority: database.authority, clock,
+    withAuthorityTransaction: work => database.withAuthorityTransaction(work), lockDir: join(stateRoot, "scratch", "artifact-sinks"),
+    sinks: { "documents-file": createNamedFileOutputSink({ artifacts, documentsDirectory: () => documentsDirectory }) } });
   const ids = sequentialIdFactory("9");
   const runWorkbooks = createRunWorkbookService({ database, clock });
   const runtimes = new Map<string, Promise<Runtime>>();
@@ -165,11 +183,11 @@ export function createScriptedExecutor(deps: Readonly<{
         }));
       const providers = { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId, clock,
-          references: { runId, write: () => { throw new Error("the scripted workflow writes no reference"); },
+          references: { runId, write: () => { throw new Error("the scripted workflow writes no reference"); }, read: command => runWorkbooks.read(claimed, command),
             verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } }) } };
       deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "busy", runId }));
       return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun(
-        { ...common, descriptor, writeSequencer, providers },
+        { ...common, descriptor, writeSequencer, providers, artifacts, artifactProjector },
         { run: claimed, claim: { workerId: WorkerIdSchema.parse(slot.workerId), claimGeneration: claimed.claimGeneration }, signal: new AbortController().signal },
       ), claimed.envelope.browserMode, { runId: claimed.envelope.runId, descriptorFingerprint: claimed.envelope.contractFingerprint })
         .finally(() => { deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "idle" })); });
@@ -240,8 +258,30 @@ export function createScriptedExecutor(deps: Readonly<{
       sheetId: "sheet", expectedVersion: library.read(referenceLibraryId).version };
   };
 
+  const rosterLibraries = new Map<string, string>();
+  const rosterReference = (rows: readonly (readonly [string, string, string])[]): ScriptedReference => {
+    const key = JSON.stringify(rows);
+    let libraryId = rosterLibraries.get(key);
+    if (libraryId === undefined) {
+      const fields = [...CRM_DOCUMENT_ROSTER_FIELDS];
+      const saved = library.create({ name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: [{
+        id: "sheet", name: "July 6", width: fields.length, hidden: [], headerRow: 1,
+        columnBindings: fields.map((fieldId, index) => ({ id: `column-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+        rows: [{ id: "header", cells: fields.map(value => ({ value })) },
+          ...rows.map(([email, first, last], index) => ({ id: `row-${String(index)}`,
+            cells: fields.map(field => ({ value: field === "email" ? email : field === "firstName" ? first : field === "lastName" ? last : field === "middleName" ? "" : null })) }))] }] });
+      library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields, defaultWorkbookId: null });
+      library.operatorOperation(saved.libraryId, "type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: ONBOARDING_ROSTER_TYPE_ID, sharePoint: null } });
+      libraryId = saved.libraryId;
+      rosterLibraries.set(key, libraryId);
+    }
+    return { entry: 1, typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId, versionId: "original", sheetId: "sheet", expectedVersion: library.read(libraryId).version };
+  };
+
   return {
     drive,
+    rosterReference,
+    documentsDirectory: () => documentsDirectory,
     writes: () => Object.freeze([...recorded]),
     reviewReference,
     close: async () => {

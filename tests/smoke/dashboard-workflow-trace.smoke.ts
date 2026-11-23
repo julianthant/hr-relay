@@ -1,7 +1,8 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { approveScriptedGate, seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
-import { PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
+import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
+import { readdirSync } from "node:fs";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
 import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
@@ -171,4 +172,51 @@ test("Person Lookup: start, each step held, done, and nothing written", async ({
   expect(position).toMatchObject({ at: "settled", outcome: { state: "done" } });
   await expect(row).toContainText("Done");
   expect(seeded.scripted.writes()).toHaveLength(0);
+});
+
+const crmDocFiles = (directory: string): string[] => { try { return readdirSync(directory, { recursive: true, encoding: "utf8" }).filter(name => name.endsWith(".zip")); } catch { return []; } };
+
+/** The workflow is a hidden source (#437): it has no sidebar entry or queue, so the run is reached by URL and the rest is asserted through the API. */
+async function openHiddenRun(page: import("@playwright/test").Page, baseUrl: string, day: string, runId: string): Promise<void> {
+  const url = new URL("/", baseUrl);
+  url.searchParams.set("day", day);
+  url.searchParams.set("run", runId);
+  await page.goto(url.toString());
+}
+
+test("CRM Document Download: started through the API, each step held, done in the run panel, one archive published and nothing written", async ({ dashboard, seeded, page, failures }) => {
+  const request = seededRequestOver(seeded.baseUrl);
+  const status = async (runId: string) => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status;
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  const roster = seeded.scripted.rosterReference([[crmDocEmail("10000001"), "Legal", "Fixture"]]);
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10000001", roster, CRM_DOC_DOWNLOAD_SCRIPT);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  await openHiddenRun(page, seeded.baseUrl, seeded.day, runId);
+  await dashboard.expectRunOpen(runId);
+  const run = await seeded.scripted.drive(runId);
+  expect(run.position).toEqual({ at: "step", nodeId: "document-records" });
+  await expect.poll(() => status(runId), { message: "the held run is running" }).toBe("running");
+  expect(await run.advance()).toEqual({ at: "step", nodeId: "document-pdfs" });
+  expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
+  expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "done" } });
+  await expect.poll(() => status(runId), { message: "the finished run is done" }).toBe("done");
+  await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  expect(seeded.scripted.writes()).toHaveLength(0);
+  expect(crmDocFiles(seeded.scripted.documentsDirectory())).toEqual(["July 6/July 6.zip"]);
+});
+
+test("CRM Document Download: a failed download shows Failed in the run panel and publishes nothing", async ({ dashboard, seeded, page, failures }) => {
+  const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  const roster = seeded.scripted.rosterReference([[crmDocEmail("10000002"), "Legal", "Fixture"]]);
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10000002", roster, CRM_DOC_DOWNLOAD_SCRIPT);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  await openHiddenRun(page, seeded.baseUrl, seeded.day, runId);
+  await dashboard.expectRunOpen(runId);
+  const run = await seeded.scripted.drive(runId);
+  expect(await run.advance()).toEqual({ at: "step", nodeId: "document-pdfs" });
+  expect(await run.fail()).toMatchObject({ at: "settled" });
+  await expect(dashboard.runPanel.getByText("Failed", { exact: true }).first()).toBeVisible();
+  expect(seeded.scripted.writes()).toHaveLength(0);
+  expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
 });
