@@ -3,19 +3,19 @@ import assert from "node:assert/strict";
 import { ChildProcess, type SendHandle } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { createDebugEventWriter, emitFaultWithCauses } from "../../../../src/backend/logs/debug-events.js";
 import { createNominatimService } from "../../../../src/backend/processing/providers/nominatim-owner.js";
 import { ProviderRequestEnvelopeSchema } from "../../../../src/models/providers/providers.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
-import { machineMonotonicMs, systemClock } from "../../../../src/rules/time/clock.js";
+import { machineMonotonicMs, manualClock, systemClock } from "../../../../src/rules/time/clock.js";
 import { scaledMs } from "../../../support/time-scale.js";
 import { debugTimelineFixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const request = ProviderRequestEnvelopeSchema.parse({ capability: "geocode.nominatim", payload: { schemaHash: "a".repeat(64), value: { street: "1 Test Road", country: "US" } } });
-function options(milliseconds = 10_000, controller = new AbortController()) { return { requestId: randomUUID(), signal: controller.signal, deadlineMonotonicMs: systemClock.monotonicMs() + milliseconds }; }
+function options(clock = systemClock) { return { requestId: randomUUID(), signal: new AbortController().signal, deadlineMonotonicMs: clock.monotonicMs() + 10_000 }; }
 
 function connectedChild(send: ChildProcess["send"]): ChildProcess {
   const child = new ChildProcess();
@@ -57,44 +57,65 @@ it("does not replay a failed adapter construction and permits a new invocation",
 });
 
 it("retains pending and rejected stop while an injected fetch remains unsettled", async () => {
-  let started = () => {}; const entering = new Promise<void>(done => { started = done; }); let complete = () => {};
+  const entering = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), drained = Promise.withResolvers<void>();
+  const clock = manualClock(new Date("2026-01-01T00:00:00.000Z"));
   let fetches = 0;
-  const service = createNominatimService({ clock: systemClock, adapter: fetchFn => ({ capability: "geocode.nominatim", invoke: async () => {
+  const service = createNominatimService({ clock, adapter: fetchFn => ({ capability: "geocode.nominatim", invoke: async () => {
     await fetchFn("https://synthetic.invalid");
-    return {response:{state:"unavailable",reason:{code:"adapter-unavailable",message:"synthetic"}},evidence:{summary:"synthetic",capturedAt:IsoInstantSchema.parse(systemClock.now().toISOString())}};
-  } }), fetchFn: async () => { fetches++; started(); return new Promise<Response>(done => { complete = () => done(Response.json([])); }); } });
-  const pending = service.invoke(request, options()); await entering;
-  const queued = service.invoke(request, options());
-  const first = service.stop(); const second = service.stop(); assert.equal(first, second);
-  let settled = false; void first.then(() => { settled = true; }, () => { settled = true; });
-  await new Promise<void>(done => setTimeout(done, 30)); assert.equal(settled, false);
-  assert.equal((await pending).response.state, "unavailable"); assert.equal((await queued).response.state, "unavailable");
-  await assert.rejects(first, /closure-unproven/u); assert.equal(service.stop(), first); await assert.rejects(service.stop(), /closure-unproven/u);
-  assert.equal(fetches, 1); complete();
-  await new Promise<void>(done => setTimeout(done, 20)); assert.equal(fetches, 1);
-  await assert.rejects(service.stop(), /closure-unproven/u);
+    drained.resolve();
+    return {response:{state:"unavailable",reason:{code:"adapter-unavailable",message:"synthetic"}},evidence:{summary:"synthetic",capturedAt:IsoInstantSchema.parse(clock.now().toISOString())}};
+  } }), fetchFn: async () => { fetches++; entering.resolve(); await release.promise; return Response.json([]); } });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "hrtime"] });
+  try {
+    const pending = service.invoke(request, options(clock));
+    let entered = false;
+    void entering.promise.then(() => { entered = true; });
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(entered, true, "nominatim owner did not enter its first paced fetch");
+    const queued = service.invoke(request, options(clock));
+    const first = service.stop(); const second = service.stop(); assert.equal(first, second);
+    let settled = false; void first.then(() => { settled = true; }, () => { settled = true; });
+    assert.equal((await pending).response.state, "unavailable"); assert.equal((await queued).response.state, "unavailable");
+    assert.equal(settled, false);
+    clock.advanceMonotonic(5_000);
+    await vi.advanceTimersByTimeAsync(1);
+    assert.equal(settled, true, "nominatim owner did not settle at its service-clock deadline");
+    await assert.rejects(first, /closure-unproven/u); assert.equal(service.stop(), first); await assert.rejects(service.stop(), /closure-unproven/u);
+    assert.equal(fetches, 1); release.resolve();
+    await drained.promise;
+    assert.equal(fetches, 1);
+    await assert.rejects(service.stop(), /closure-unproven/u);
+  } finally {
+    release.resolve();
+    const shutdown = service.stop().catch((error: unknown) => { if (!(error instanceof Error) || error.message !== "nominatim-owner-closure-unproven") throw error; });
+    try {
+      await vi.advanceTimersByTimeAsync(1);
+      await shutdown;
+    } finally { vi.useRealTimers(); }
+  }
 }, scaledMs(10_000));
 
 it("fails a child's in-flight request in the owner on a malformed Nominatim message and never replies to it", async () => {
-  let entered = () => {}; const entering = new Promise<void>(done => { entered = done; });
+  const entering = Promise.withResolvers<AbortSignal>(), release = Promise.withResolvers<void>();
   const outcome = { response: { state: "unavailable" as const, reason: { code: "adapter-unavailable" as const, message: "synthetic" } },
     evidence: { summary: "synthetic", capturedAt: IsoInstantSchema.parse(systemClock.now().toISOString()) } };
-  // The request settles by itself after 50 ms unless the owner aborts it first.
   const service = createNominatimService({ clock: systemClock, adapter: () => ({ capability: "geocode.nominatim", invoke: async (_request, call) => {
-    entered();
-    await new Promise<void>(done => { const timer = setTimeout(done, 50); call.signal.addEventListener("abort", () => { clearTimeout(timer); done(); }, { once: true }); });
+    entering.resolve(call.signal);
+    await release.promise;
     return outcome;
   } }) });
-  cleanups.push(() => service.stop());
+  cleanups.push(async () => { release.resolve(); await service.stop(); });
   const sent: unknown[] = [];
   const child = connectedChild((message: unknown) => { sent.push(message); return true; });
   let receive: ((message: Readonly<{ kind: string }> & Record<string, unknown>) => void) | undefined;
   service.attach(child, { register: (_family, handler) => { receive = message => { handler(message, undefined); }; } });
   assert.ok(receive !== undefined);
   receive({ kind: "nominatim-request", requestId: randomUUID(), deadlineMs: machineMonotonicMs() + 5_000, request });
-  await entering;
+  const signal = await entering.promise;
   receive({ kind: "nominatim-request", requestId: "not-a-request-id" });
-  await new Promise<void>(done => setTimeout(done, 100));
+  assert.equal(signal.aborted, true);
+  release.resolve();
+  await service.stop();
   assert.deepEqual(sent, []);
 });
 

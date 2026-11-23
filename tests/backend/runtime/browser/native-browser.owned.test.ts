@@ -94,16 +94,25 @@ for (const outcome of ["exit-without-reply", "no-exit", "refused", "transport-fa
       if (outcome === "refused") read.write(JSON.stringify({ id: message.data.id, error: { code: -32000, message: "synthetic refusal" } }) + "\0");
     });
     if (outcome === "transport-failed") write.destroy();
-    const started = Date.now();
-    if (outcome === "exit-without-reply") {
-      const owned = process;
-      await owned.stop(2000, true).catch((error: unknown) => {
-        throw new Error(`stop refused after exitDelivered=${String(exitDelivered)} exited=${String(owned.exited())}`, { cause: error });
-      });
-      assert.equal(exitDelivered, true);
-    }
-    else await assert.rejects(process.stop(outcome === "refused" ? 2000 : 50, true), /DUO_SETUP_STOP_FAILED/);
-    if (outcome !== "no-exit" && outcome !== "transport-failed") assert.ok(Date.now() - started < 1000, "settles on exit or refusal, not the deadline");
+    const owned = process;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let settled = false;
+      const stop = owned.stop(outcome === "refused" || outcome === "exit-without-reply" ? 2000 : 50, true);
+      void stop.then(() => { settled = true; }, () => { settled = true; });
+      await vi.advanceTimersByTimeAsync(0);
+      if (outcome === "exit-without-reply" || outcome === "refused") {
+        assert.equal(settled, true, "settles on exit or refusal before advancing to the deadline");
+      } else {
+        await vi.advanceTimersByTimeAsync(50);
+      }
+      if (outcome === "exit-without-reply") {
+        await stop.catch((error: unknown) => {
+          throw new Error(`stop refused after exitDelivered=${String(exitDelivered)} exited=${String(owned.exited())}`, { cause: error });
+        });
+        assert.equal(exitDelivered, true);
+      } else await assert.rejects(stop, /DUO_SETUP_STOP_FAILED/);
+    } finally { vi.useRealTimers(); }
     assert.deepEqual(sessionCalls, ["Browser.setDownloadBehavior"]);
     assert.equal(sent.length, outcome === "transport-failed" ? 0 : 1);
     for (const message of sent) assert.equal(wire.safeParse(message).success, true, `invalid CDP close command ${JSON.stringify(message)}`);
