@@ -11,6 +11,7 @@ import { ReadOnboardingDatesOutputSchema } from "../../../../../src/models/syste
 import { CrmDiscoveredRecordSchema } from "../../../../../src/models/systems/crm/search-onboarding-records.js";
 import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../../src/models/processing/workbooks/reference-check-stop.js";
 import { UcpathPayPathReadSchema, type UcpathPayPathDriver } from "../../../../../src/models/ui/ucpath-paypath.js";
+import { CrmDocDownloadCanonicalInput } from "../../../../../src/models/workflows/crm-doc-download/input.js";
 import { PersonLookupInput } from "../../../../../src/models/workflows/person-lookup/input.js";
 import { WorkStudyInput } from "../../../../../src/models/workflows/work-study/input.js";
 import { EidSchema } from "../../../../../src/rules/identity/ids.js";
@@ -127,7 +128,34 @@ export const PERSON_LOOKUP_SCRIPT: ScriptedWorkflow = {
   },
 };
 
-export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT]);
+/** The work email the scripted CRM record of an employee carries, and the key its roster row needs. */
+export const crmDocEmail = (eid: string): string => `eid${eid}@example.test`;
+export const CRM_DOC_FILE_NAME = "Signed Offer Letter.pdf";
+
+/** CRM Document Download: a CRM record search and an iDocs download for one employee, then one archive per roster worksheet; it writes to no system. */
+export const CRM_DOC_DOWNLOAD_SCRIPT: ScriptedWorkflow = {
+  module: catalogModule("crm-doc-download"),
+  submission: eid => ({ people: eid }),
+  subjectOf: input => {
+    const [person] = CrmDocDownloadCanonicalInput.parse(input).people;
+    if (person?.kind !== "eid") throw new Error("the scripted CRM Document Download run was not started by employee ID");
+    return person.value;
+  },
+  drivers(world) {
+    const crmFor = (eid: string) => createDeterministicCrmOnboardingDriver({
+      record: { state: "absent", queriedEid: EidSchema.parse(eid), reason: "unused by this workflow" }, dates: ReadOnboardingDatesOutputSchema.parse({ emplId: EidSchema.parse(eid), state: "no-confident-record", employmentDate: null, oathDate: null, reason: "" }),
+      documents: [{ identity: { recordId: "ONB-1", eid, workEmail: crmDocEmail(eid), personalEmail: null }, totalDocuments: 1,
+        documents: [{ index: 0, fileName: CRM_DOC_FILE_NAME, bytes: new TextEncoder().encode(`%PDF-1.7 synthetic ${eid}`) }] }] });
+    return { crm: () => {
+      const crm = crmFor(world.run().subject);
+      return { ...crm,
+        findDocumentRecord: async (subject: Parameters<typeof crm.findDocumentRecord>[0]) => { await world.hold(); return crm.findDocumentRecord(subject); },
+        readIdocs: async (request: Parameters<typeof crm.readIdocs>[0]) => { await world.hold(); return crm.readIdocs(request); } };
+    } };
+  },
+};
+
+export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT, CRM_DOC_DOWNLOAD_SCRIPT]);
 
 export function scriptedWorkflow(workflowId: string): ScriptedWorkflow {
   const script = SCRIPTED_WORKFLOWS.find(candidate => candidate.module.descriptor.id === workflowId);
