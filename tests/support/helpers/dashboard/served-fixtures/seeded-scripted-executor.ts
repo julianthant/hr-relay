@@ -8,7 +8,10 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
+import { I9_CHECK_REFERENCE } from "../../../../../src/models/workflows/i9-check/start.js";
+import { WorkbookReferenceReadRequestSchema } from "../../../../../src/models/processing/workbooks/read-reference.js";
 import { createWorkbookLibraryAdapter } from "../../../../../src/backend/processing/providers/workbook-library-adapter.js";
+import { createOcrReviewAdapter } from "../../../../../src/backend/processing/providers/ocr-review-adapter.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../../../src/backend/processing/providers/ocr-approved-snapshot-adapter.js";
 import { createOcrSourceService } from "../../../../../src/backend/runs/commands/ocr-source-service.js";
 import { createApprovedOcrRecordReader } from "../../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
@@ -26,6 +29,9 @@ import { WorkerActivitySchema, type WorkerActivity } from "../../../../../src/ba
 import { WorkerSessionManager, withBoundRunConfigFingerprint } from "../../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createArtifactSinkProjector } from "../../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
+import { createXlsxRetentionSink } from "../../../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
+import { i9CheckTrackerTable } from "../../../../../src/rules/i9-check/workbook.js";
+import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
 import { createNamedFileOutputSink } from "../../../../../src/backend/storage/artifacts/named-file-output-sink.js";
 import { createWriteSequencer } from "../../../../../src/backend/runtime/writes/write-sequencer.js";
 import { requireLifecycleApplied, workerRunLifecyclePort, type RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -51,7 +57,7 @@ import { testAdmittedWorker } from "../../../fixtures/run-lifecycle-fixtures.js"
 import { syntheticStateRoot } from "../../synthetic-storage-admission.js";
 import { duoCeremonyGatesOver } from "../../duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingLogger, sessionFactoryHarness } from "../../phase1f-executor-harness.js";
-import { scriptedDescriptorOf, scriptedWorkflow, WORK_STUDY_GATE_ID, WORK_STUDY_SCRIPT, type RecordedWrite, type ScriptWorld, type ScriptedWorkflow } from "./scripted-workflows.js";
+import { I9_PEOPLE, scriptedDescriptorOf, scriptedWorkflow, WORK_STUDY_GATE_ID, WORK_STUDY_SCRIPT, type RecordedWrite, type ScriptWorld, type ScriptedWorkflow } from "./scripted-workflows.js";
 
 export type { RecordedWrite } from "./scripted-workflows.js";
 
@@ -89,6 +95,10 @@ export interface ScriptedExecutor {
   submission(script: ScriptedWorkflow, subject: string): Promise<Record<string, unknown>>;
   /** The command that approves every record of a run's OCR review, which releases the records to the members; the OCR run is parked at its gate. */
   ocrApproval(rootRunId: string): Record<string, unknown>;
+  /** Corrects and approves every OCR review parked under a run, asserting the employee ID the script names for each record, through the commands the Logs review sends. */
+  approveOcrReviews(request: SeededRequest, now: string, rootRunId: string): Promise<void>;
+  /** A library spreadsheet typed as the I-9 Check action history, holding a row for each scripted I-9 person. */
+  i9Reference(): ScriptedReference;
   /** A library spreadsheet typed as the OCR roster with no people, which an Emergency Contact run needs to match the people it reads. */
   ocrRosterReference(): ScriptedReference;
   /** Where a run's published documents land. */
@@ -173,11 +183,18 @@ export function createScriptedExecutor(deps: Readonly<{
   const artifacts = createContentAddressedArtifactWriter({ admission });
   const artifactProjector = createArtifactSinkProjector({ authority: database.authority, clock,
     withAuthorityTransaction: work => database.withAuthorityTransaction(work), lockDir: join(stateRoot, "scratch", "artifact-sinks"),
-    sinks: { "documents-file": createNamedFileOutputSink({ artifacts, documentsDirectory: () => documentsDirectory }) } });
+    sinks: { "documents-file": createNamedFileOutputSink({ artifacts, documentsDirectory: () => documentsDirectory }),
+      "xlsx-retention": createXlsxRetentionSink({ artifacts, workbookPath: () => join(documentsDirectory, "i9-check-tracker.xlsx"), view: i9CheckTrackerTable }) } });
   const artifactReader = createServerVerifiedArtifactReader({ admission });
   const ids = sequentialIdFactory("9");
   const runWorkbooks = createRunWorkbookService({ database, clock });
   const sources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent: () => admission.assertProfileRuntime() });
+  /** A results workbook published to the library is this system's write: recorded when asked, every other library call is a read. */
+  const recordingPublishes = (run: RunRecord, adapter: ReturnType<typeof createWorkbookLibraryAdapter>) => ({ ...adapter,
+    invoke: (...args: Parameters<typeof adapter.invoke>) => {
+      if (args[0].payload.schemaHash !== deriveSchemaHash(WorkbookReferenceReadRequestSchema, "output")) recorded.push({ runId: run.envelope.runId, nodeId: heldNode(run.envelope.runId), eid: "" });
+      return adapter.invoke(...args);
+    } });
   const runtimes = new Map<string, Promise<Runtime>>();
   const resolveDescriptor = (workflowId: string) => scriptedDescriptorOf(workflowId);
   /** True when `runId` is `rootId` or a run it delegated to, at any depth. */
@@ -234,11 +251,14 @@ export function createScriptedExecutor(deps: Readonly<{
       manager.configureExecution(target.id, stores);
       const providers = { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "ocr.extract": refuseOcr,
+          "ocr.review": createOcrReviewAdapter({ clock, reader: createApprovedOcrRecordReader({ database, run: claimed, reader: lifecycle,
+            resolveDescriptor, assertCurrent: () => admission.assertProfileRuntime() }) }),
           "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({ clock, reader: createApprovedOcrRecordReader({ database, run: claimed, reader: lifecycle,
             resolveDescriptor, assertCurrent: () => admission.assertProfileRuntime() }) }),
-          "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: claimed.envelope.runId, clock,
+          "workbooks.library": recordingPublishes(claimed, createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: claimed.envelope.runId, clock,
+            publicationSource: () => ({ workflowId: target.id, workflowLabel: target.label, partitionDay: searchPartitionDay(new Date(claimed.envelope.enqueuedAt)) }),
             references: { runId: claimed.envelope.runId, write: () => { throw new Error("the scripted workflow writes no reference"); }, read: command => runWorkbooks.read(claimed, command),
-              verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } }) } };
+              verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } })) } };
       deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "busy", runId: claimed.envelope.runId }));
       return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun(
         { ...common, descriptor: target, writeSequencer, providers, artifacts, artifactProjector,
@@ -361,8 +381,23 @@ export function createScriptedExecutor(deps: Readonly<{
       sheetId: "people", expectedVersion: library.read(ocrRosterLibraryId).version };
   };
 
-  const ocrApproval = (rootRunId: string): Record<string, unknown> => {
-    const ocr = database.authority.runs.listChildren(rootRunId).find(child => child.envelope.workflow === "ocr");
+  let i9LibraryId: string | undefined;
+  const i9Reference = (): ScriptedReference => {
+    if (i9LibraryId === undefined) {
+      const columns = [...I9_CHECK_REFERENCE.fields];
+      const saved = library.create({ name: "Action History", themes: [], hasFormulas: false, sheets: [{ id: "history", name: "Action History", width: columns.length, hidden: [], headerRow: 1,
+        columnBindings: columns.map((fieldId, index) => ({ id: `column-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+        rows: [{ id: "header", cells: columns.map(value => ({ value })) }, ...I9_PEOPLE.map((person, index) => ({ id: `person-${String(index)}`,
+          cells: [person.eid, "000012345", "2024-01-01", "TER"].map(value => ({ value })) }))] }] });
+      library.putType({ id: I9_CHECK_REFERENCE.typeId, name: "Action History", keyFieldId: "eid", fields: columns, defaultWorkbookId: null });
+      library.operatorOperation(saved.libraryId, "i9-reference-type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null } });
+      i9LibraryId = saved.libraryId;
+    }
+    return { entry: 1, typeId: I9_CHECK_REFERENCE.typeId, libraryId: i9LibraryId, versionId: "original", sheetId: "history", expectedVersion: library.read(i9LibraryId).version };
+  };
+
+  const ocrApproval = (rootRunId: string, ocrRunId?: string): Record<string, unknown> => {
+    const ocr = database.authority.runs.listChildren(rootRunId).find(child => child.envelope.workflow === "ocr" && (ocrRunId === undefined || child.envelope.runId === ocrRunId));
     const review = ocr === undefined ? undefined : database.authority.ocrReviews.latest(ocr.envelope.runId);
     if (ocr === undefined || review === undefined) throw new Error(`scripted run ${rootRunId} has no OCR review to approve`);
     const commandId = randomUUID();
@@ -376,8 +411,33 @@ export function createScriptedExecutor(deps: Readonly<{
       ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
   };
 
+  const approveOcrReviews = async (request: SeededRequest, now: string, rootRunId: string): Promise<void> => {
+    const root = database.authority.runs.get(rootRunId);
+    if (root === undefined) throw new Error(`scripted run ${rootRunId} does not exist`);
+    const { assertedEid } = scriptedWorkflow(root.envelope.workflow);
+    const parked = database.authority.runs.listChildren(rootRunId).filter(child => child.envelope.workflow === "ocr" && child.lifecycle.state === "parked-gate");
+    if (parked.length === 0) throw new Error(`scripted run ${rootRunId} has no OCR review parked at its gate`);
+    for (const ocr of parked) {
+      const ocrRunId = ocr.envelope.runId;
+      for (const { recordId } of database.authority.ocrReviews.latest(ocrRunId)?.records ?? []) {
+        const review = database.authority.ocrReviews.latest(ocrRunId);
+        const record = review?.records.find(candidate => candidate.recordId === recordId);
+        if (review === undefined || record === undefined) throw new Error(`scripted OCR record ${recordId} is gone`);
+        const eid = assertedEid?.(Object.fromEntries(record.fields.answers.map(answer => [answer.path, answer.state === "read" ? answer.raw : undefined])));
+        if (eid === undefined) throw new Error(`the script asserts no employee ID for OCR record ${recordId}`);
+        const result = CommandResultSchema.parse(await request("/api/v1/commands", { ...operatorCommand(now), family: "ocr-review", type: "correct-ocr-record",
+          target: { runId: ocrRunId, expectedRevision: review.revision }, payload: { recordId, fields: record.fields, assertedEid: eid } }));
+        if (result.state !== "applied") throw new Error(`the scripted OCR correction was ${result.state}: ${JSON.stringify(result)}`);
+      }
+      const result = CommandResultSchema.parse(await request("/api/v1/commands", ocrApproval(rootRunId, ocrRunId)));
+      if (result.state !== "applied") throw new Error(`the scripted OCR approval was ${result.state}: ${JSON.stringify(result)}`);
+    }
+  };
+
   return {
     drive,
+    approveOcrReviews,
+    i9Reference,
     rosterReference,
     ocrRosterReference,
     submission: async (script, subject) => script.prepare === undefined ? script.submission(subject) : script.prepare(world, subject),

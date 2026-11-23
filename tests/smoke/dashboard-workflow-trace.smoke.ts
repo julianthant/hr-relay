@@ -1,7 +1,7 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { approveScriptedGate, seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
-import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
+import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, I9_CHECK_START_SCRIPT, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
 import { readdirSync } from "node:fs";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
@@ -9,6 +9,7 @@ import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smok
 import { expect, test } from "../support/helpers/dashboard/smoke/scripted-run-fixtures.js";
 
 const abortedRead = (runId: string) => new RegExp(String.raw`^requestfailed: http://127\.0\.0\.1:\d+/api/v1/runs/${runId}(?:/[a-z-]+)? net::ERR_ABORTED$`, "u");
+const abortedSettingsRead = /^requestfailed: http:\/\/127\.0\.0\.1:\d+\/api\/v1\/settings\/editable net::ERR_ABORTED$/u;
 const ABORTED_READ_REASON = "The panel abandons a read of the run in flight when the run's next state arrives, and reads again.";
 
 test("Work-Study: start, gate, answered once, done, then Back, Forward and Reload hold the URL's state", async ({ dashboard, seeded, page, failures }) => {
@@ -219,4 +220,65 @@ test("CRM Document Download: a failed download shows Failed in the run panel and
   await expect(dashboard.runPanel.getByText("Failed", { exact: true }).first()).toBeVisible();
   expect(seeded.scripted.writes()).toHaveLength(0);
   expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
+});
+
+/** Starts an I-9 Check Start run for the two scripted people, then drives it to where both PDF reviews wait; each OCR child parks on its own drive. */
+async function startI9ToReview(seeded: Parameters<Parameters<typeof test>[2]>[0]["seeded"], request: ReturnType<typeof seededRequestOver>, subject = "10000001,10000002"): Promise<string> {
+  const submission = await seeded.scripted.submission(I9_CHECK_START_SCRIPT, subject);
+  const runId = await startScriptedRun(request, SEEDED_NOW, "", seeded.scripted.i9Reference(), I9_CHECK_START_SCRIPT, submission);
+  for (const _review of subject.split(",")) {
+    const parked = await seeded.scripted.drive(runId);
+    expect(parked.position).toMatchObject({ at: "settled", outcome: { state: "parked-gate", gateId: "approve-records" } });
+  }
+  return runId;
+}
+
+test("I-9 Check Start: start, both PDF reviews approved, each person checked, done with its children, and one results workbook saved", async ({ dashboard, seeded, page, failures }) => {
+  const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  failures.allow(abortedSettingsRead, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
+  await dashboard.open();
+  await dashboard.openWorkflow("I-9 Check");
+  const runId = await startI9ToReview(seeded, request);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  await dashboard.openRun(runId);
+  expect(seeded.scripted.writes()).toHaveLength(0);
+
+  await seeded.scripted.approveOcrReviews(request, SEEDED_NOW, runId);
+  const run = await seeded.scripted.drive(runId);
+  expect(run.position).toEqual({ at: "step", nodeId: "identifier-match" });
+  await expect(row).toContainText("Running");
+  expect(await run.advance()).toEqual({ at: "step", nodeId: "identifier-match" });
+  expect(seeded.scripted.writes()).toHaveLength(0);
+  expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "done" } });
+  await expect(row).toContainText("Done");
+  await expect(row).not.toContainText("Running");
+  expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-workbook", eid: "" }]);
+
+  await dashboard.settleReads();
+  await page.reload();
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  expect(seeded.scripted.writes()).toHaveLength(1);
+});
+
+test("I-9 Check Start: a failed person check fails the run and saves no workbook", async ({ dashboard, seeded, page, failures }) => {
+  const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  failures.allow(abortedSettingsRead, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
+  await dashboard.open();
+  await dashboard.openWorkflow("I-9 Check");
+  const runId = await startI9ToReview(seeded, request);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  await seeded.scripted.approveOcrReviews(request, SEEDED_NOW, runId);
+  const run = await seeded.scripted.drive(runId);
+  expect(run.position).toEqual({ at: "step", nodeId: "identifier-match" });
+  expect(await run.fail()).toMatchObject({ at: "settled", outcome: { state: "failed", runId } });
+  await expect(row).toContainText("Failed");
+  await expect(row).not.toContainText("Running");
+  expect(seeded.scripted.writes()).toHaveLength(0);
 });
