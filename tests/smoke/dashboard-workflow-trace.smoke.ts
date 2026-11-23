@@ -1,6 +1,6 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
-import { approveScriptedGate, seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
+import { seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
 import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -14,7 +14,7 @@ import { expect, test } from "../support/helpers/dashboard/smoke/scripted-run-fi
 const abortedRead = (runId: string) => new RegExp(String.raw`^requestfailed: http://127\.0\.0\.1:\d+/api/v1/runs/${runId}(?:/[a-z-]+)? net::ERR_ABORTED$`, "u");
 const ABORTED_READ_REASON = "The panel abandons a read of the run in flight when the run's next state arrives, and reads again.";
 
-test("Work-Study: start, gate, answered once, done, then Back, Forward and Reload hold the URL's state", async ({ dashboard, seeded, page, failures }) => {
+test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Forward and Reload hold the URL's state", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   const status = async (runId: string) => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status;
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
@@ -23,8 +23,6 @@ test("Work-Study: start, gate, answered once, done, then Back, Forward and Reloa
 
   const runId = await startScriptedRun(request, SEEDED_NOW, "10812345", seeded.scripted.reviewReference());
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
-  failures.allow(new RegExp(String.raw`^(?:http 409: GET |console: Failed to load resource: the server responded with a status of 409 \(Conflict\) )http://127\.0\.0\.1:\d+/api/v1/runs/${runId}/identity-gate$`, "u"),
-    "The panel asks for an identity review of the parked reference-check gate, which holds none, and offers no answer control (#580).");
   const row = page.locator(`[data-demo-row-id="${runId}"]`);
   await expect(row).toBeVisible();
   await dashboard.openRun(runId);
@@ -33,9 +31,22 @@ test("Work-Study: start, gate, answered once, done, then Back, Forward and Reloa
   await expect(row).toContainText("Running");
   expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
 
-  // The shipped Logs panel offers no control for this reference-check gate (#580), so the answer is the command a gate control would send.
-  await approveScriptedGate(request, SEEDED_NOW, runId);
+  // The answer is held in flight: a second press while it is pending must not send a second command.
+  const answers: string[] = [];
+  let release: () => void = () => undefined;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/v1/commands", async route => {
+    answers.push(route.request().url());
+    await held;
+    await route.continue();
+  });
+  const approve = dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true });
+  await approve.click();
+  await approve.click({ timeout: 1000 }).catch(() => undefined);
+  release();
   await expect.poll(() => status(runId), { message: "the approved run returns to the queue" }).toBe("queued");
+  expect(answers).toHaveLength(1);
+  await page.unroute("**/api/v1/commands");
 
   const written = seeded.scripted.writes().length;
   const resumed = await seeded.scripted.drive(runId);

@@ -34,7 +34,6 @@ import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/bac
 import { deterministicPayPathOperations } from "../../../../../src/backend/systems/ucpath/driver/paypath-fake.js";
 import { ReadOnboardingDatesOutputSchema } from "../../../../../src/models/systems/crm/read-onboarding-dates.js";
 import { CrmDiscoveredRecordSchema } from "../../../../../src/models/systems/crm/search-onboarding-records.js";
-import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../../src/models/processing/workbooks/reference-check-stop.js";
 import { UcpathPayPathReadSchema, type UcpathPayPathDriver } from "../../../../../src/models/ui/ucpath-paypath.js";
 import { CrmDocDownloadCanonicalInput } from "../../../../../src/models/workflows/crm-doc-download/input.js";
 import { PersonLookupInput } from "../../../../../src/models/workflows/person-lookup/input.js";
@@ -89,7 +88,6 @@ function catalogModule(id: string): (typeof DASHBOARD_CATALOG_MODULES)[number] {
 }
 
 type PayPathWorld = ReturnType<typeof deterministicPayPathOperations>;
-export const WORK_STUDY_GATE_ID = REFERENCE_CHECK_REVIEW_GATE;
 const EFFECTIVE_DATE = "08/03/2026";
 
 /**

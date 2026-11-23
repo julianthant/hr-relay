@@ -27,3 +27,8 @@ if (TEST_TIME_SCALE !== 1) {
 if (typeof window !== "undefined" && !("ResizeObserver" in window)) {
   Object.assign(globalThis, { ResizeObserver: class { observe(): void {} unobserve(): void {} disconnect(): void {} } });
 }
+
+// jsdom has no reportError. The dashboard preloads page code through it; a test can end before that import does.
+if (typeof window !== "undefined" && !("reportError" in window)) {
+  Object.assign(globalThis, { reportError: (error: unknown) => { console.error(error); } });
+}

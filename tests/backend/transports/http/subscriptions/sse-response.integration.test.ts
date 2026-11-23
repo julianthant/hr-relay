@@ -65,7 +65,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
     // The chunks the bridge had already pulled before the bound tripped arrive
     // in order; the reset is the LAST state the connection carries.
     assert.equal(seen.at(-1)?.type, "reset-required");
-    assert.ok(seen.slice(0, -1).every(({ type }) => type === "patch"));
+    assert.ok(seen.slice(0, -1).every(({ type }) => type === "change"));
     assert.equal(connection.pending, 0);
 
     await reader.cancel();
