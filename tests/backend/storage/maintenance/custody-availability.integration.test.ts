@@ -420,14 +420,12 @@ for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses s
         firstName: "Other", lastName: "Fixture", email: "other@ucsd.edu", password: "disposable-fixture-password",
       })).json());
       assert.ok(draft.state === "onboarding");
-      for (const method of ["key", "touch"] as const) {
-        const started = PublicProfileStateSchema.parse(await (await tabB.post("onboarding/duo/start", { operationId: draft.operationId, method })).json());
-        assert.ok(started.state === "onboarding");
-        if (started.methods[method].state !== "complete") {
-          const confirmed = await tabB.post("onboarding/duo/confirm", { operationId: draft.operationId, method,
-            attemptId: started.methods[method].attemptId, operatorConfirmed: true });
-          assert.equal(confirmed.status, 200);
-        }
+      const started = PublicProfileStateSchema.parse(await (await tabB.post("onboarding/duo/start", { operationId: draft.operationId, method: "key" })).json());
+      assert.ok(started.state === "onboarding");
+      if (started.methods.key.state !== "complete") {
+        const confirmed = await tabB.post("onboarding/duo/confirm", { operationId: draft.operationId, method: "key",
+          attemptId: started.methods.key.attemptId, operatorConfirmed: true });
+        assert.equal(confirmed.status, 200);
       }
       assert.equal((await tabB.post("onboarding/complete", { operationId: draft.operationId })).status, 200);
     } else assert.equal((await tabB.post("sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" })).status, 200);

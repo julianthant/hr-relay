@@ -3,7 +3,7 @@ import { it } from "vitest";
 import { advanceProfileRegistryDocument, ProfileRegistryDocumentSchema } from "../../../src/models/profiles/profile.js";
 
 const installationId = "d97b0682-b67a-492a-a182-98696356dbd7";
-const current = ProfileRegistryDocumentSchema.parse({ schemaVersion: 4, installationId, revision: 0,
+const current = ProfileRegistryDocumentSchema.parse({ schemaVersion: 5, installationId, revision: 0,
   profiles: [], sessionGeneration: 0, activeProfileId: null });
 
 it("keeps registry revisions independent from session epochs", () => {
