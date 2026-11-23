@@ -79,6 +79,8 @@ import { assertCredentialStoreOwner } from "../configuration/credential-store.js
 import { stoppedLogoutAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,readFixedLayoutIntent,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { runtimeProfiles } from "../../../models/config/define-runtime-isolation.js";
+import { historyArchivePath, attachHistoryArchive, validateHistoryRead, runIndex } from "./isolated-history-store.js";
 import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
@@ -2926,6 +2928,9 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
+  #historyReader?: AuthorityDatabase;
+  #historyOwner?: AuthorityDatabase;
+  #historyCursorOffset = 0;
   readonly #dashboardReadSources = new Set<symbol>();
   /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
   #statements: SQLTagStore;
@@ -4163,6 +4168,26 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
+  /** The dashboard can read both histories. Workers and command handlers retain this operational store. */
+  dashboardHistory(): AuthorityDatabase {
+    const owner = this.#admission;
+    owner.assertProfileRuntime();
+    if (this.#historyReader !== undefined) return this.#historyReader;
+    if (!(owner.lifetime instanceof RuntimeLifetimeLock) || owner.lifetime.port === runtimeProfiles.production.lockPort) return this;
+    const path = historyArchivePath(owner.stateRoot);
+    if (fileStatus(path, true) === undefined) return this;
+    const reader = new AuthorityDatabase(owner, { path: this.#path, busyTimeoutMs: this.#busyTimeoutMs,
+      migrationOwner: "isolated-dashboard-history", openMode: "storage-doctor-read-only-no-migrate" }, this.#clock);
+    try {
+      // The native connection opened read-only. Allow TEMP views and paging tables on this connection alone.
+      reader.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
+      reader.#historyCursorOffset = attachHistoryArchive(reader.#database, path, owner.profileBinding);
+      reader.#historyOwner = this;
+      this.#historyReader = reader;
+      return reader;
+    } catch (error) { reader.close(); throw error; }
+  }
+
   /** Proves this open store is the person's own state.db, opened by exactly this live, exclusive admission. */
   assertOpenedByExclusive(admission: RuntimeAdmission): void {
     if (this.#admission !== admission) throw new Error("authority-database-owner-mismatch");
@@ -4222,6 +4247,7 @@ export class AuthorityDatabase implements Disposable {
 
   close(): void {
     if (this.#closed) return;
+    this.#historyReader?.close();
     if (this.#dashboardReadSources.size > 0) throw new Error("dashboard-background-reader-open");
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
     const owner = this.#takeStartupOwner();
@@ -4712,10 +4738,10 @@ export class AuthorityDatabase implements Disposable {
     const memberRow = z.strictObject({ id: RunIdSchema, parent_id: RunIdSchema, day: date, envelope_json: z.string() });
     return this.#withReadSnapshot(() => {
       this.#validateExternalQuerySources();
-      const counts = new Map(this.#database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+      const counts = new Map(this.#database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs ${runIndex(this.#database, "runs_day_idx")}
         WHERE local_day BETWEEN ? AND ? AND parent_id IS NULL GROUP BY local_day`).all(from, to)
         .map(raw => { const { day, count } = countRow.parse(raw); return [day, count] as const; }));
-      const members = this.#database.prepare(`SELECT id,parent_id,local_day AS day,envelope_json FROM runs INDEXED BY runs_day_idx
+      const members = this.#database.prepare(`SELECT id,parent_id,local_day AS day,envelope_json FROM runs ${runIndex(this.#database, "runs_day_idx")}
         WHERE local_day BETWEEN ? AND ? AND parent_id IS NOT NULL`).all(from, to).map(raw => {
         const row = memberRow.parse(raw);
         const envelope = RunEnvelopeSchema.parse(JSON.parse(row.envelope_json));
@@ -5732,6 +5758,14 @@ export class AuthorityDatabase implements Disposable {
    */
   #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return;
+    const owner = this.#historyOwner;
+    if (owner !== undefined) {
+      owner.withAuthorityReadSnapshot(() => {
+        owner.#validateExternalQuerySources(mode, searchValidation);
+        if (owner.getMeta().authorityGeneration !== this.getMeta().authorityGeneration) throw new Error("isolated-history-snapshot-changed");
+      });
+      return;
+    }
     const observed = readIntPragma(this.#database, "data_version");
     const reader = this.#changeReader;
     if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion && reader?.failed === undefined) return;
@@ -5772,6 +5806,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
+    if (this.#historyOwner !== undefined) throw new Error("isolated-history-read-only");
     return withOperationProof(() => {
       if (this.#transactionDepth === 0) clearOperationProofSlots();
       this.#assertOpen();
@@ -6004,6 +6039,7 @@ export class AuthorityDatabase implements Disposable {
         this.#authorityDirty = false;
         try {
           this.#assertOpen();
+          if (this.#historyOwner !== undefined) validateHistoryRead(this.#database, readIntPragma(this.#database, "data_version"));
           const result = withNativeRecordReadScope(read);
           revalidateOperationProof(witnesses);
           this.#assertOpen();
@@ -6398,6 +6434,7 @@ export class AuthorityDatabase implements Disposable {
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),
       timelineEvents: createTimelineRepository({
+        cursorOffset: () => this.#historyCursorOffset,
         database: this.#database,
         read: (work) => this.#withReadSnapshot(work),
         mutate: (work) => this.#authorityWrite("timeline_events", work),
@@ -7879,7 +7916,7 @@ export class AuthorityDatabase implements Disposable {
           WHERE p.position>? AND p.position<=? ORDER BY p.position`).all(offset,offset+limit).map(runRecordFromRow));
       },
       // Either representation can reveal active membership when a row's state has drifted.
-      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs INDEXED BY runs_nonterminal_idx
+      listNonTerminal: () => this.#withReadSnapshot(() => Object.freeze(this.#database.prepare(`SELECT * FROM runs ${runIndex(this.#database, "runs_nonterminal_idx")}
         WHERE state<>'terminal' OR json_extract(lifecycle_json,'$.lifecycle.state') IS NOT 'terminal'
         ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,julianday(enqueued_at),id`).all().map(runRecordFromRow))),
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`

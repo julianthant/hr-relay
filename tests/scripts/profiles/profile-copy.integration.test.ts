@@ -12,6 +12,8 @@ import { createBackupFixtures } from "../../support/helpers/storage/backup-fixtu
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
+import { runRecordOf } from "../../support/helpers/backend/dashboard-harness.js";
+import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -31,6 +33,9 @@ it("imports the newest production workbook library into the independently signed
   library.create({ name: "Example roster", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [],
     rows: [{ id: "row", cells: [{ value: "Example" }] }] }] });
   await takeBackup(source);
+  const queued = runRecordOf({ seed: 596, enqueuedAt: systemClock.now().toISOString() });
+  if (source.database.authority.runtimeConfig.get() === undefined) source.database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  source.database.authority.runs.enqueue(queued);
   library.create({ name: "Latest workbook", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "Latest" }] }] }] });
   const backup = await takeBackup(source);
   const binding = destination.admission.profileBinding, sourceProfile = source.admission.profileBinding.profileId;
@@ -43,6 +48,7 @@ it("imports the newest production workbook library into the independently signed
   const imported = await importProfileLibrary(options, lock);
   expect(imported.sourceBackup.backupFileName).toBe(backup.manifest.backupFileName);
   expect(imported.created).toBe(2);
+  expect(imported.history.runs).toBe(1);
   expect((await importProfileLibrary(options, lock)).unchanged).toBe(2);
 
   const machine = acquireEntrypointAdmission(destinationWorkspace, "exclusive", lock);
@@ -54,6 +60,10 @@ it("imports the newest production workbook library into the independently signed
         systemClock, undefined, undefined, undefined, credentials);
       try {
         expect(database.getMeta()).toMatchObject(binding);
+        expect(database.authority.runs.get(queued.envelope.runId)).toBeUndefined();
+        const history = database.dashboardHistory();
+        expect(history.authority.runs.get(queued.envelope.runId)?.lifecycle).toMatchObject({ state: "terminal", outcome: "discarded" });
+        expect(history.authority.runs.listNonTerminal()).toEqual([]);
         expect(database.authority.workbooks.catalog().map(entry => entry.name).sort()).toEqual(["Example roster", "Latest workbook"]);
       } finally { database.close(); }
     } finally { admission.release(); }

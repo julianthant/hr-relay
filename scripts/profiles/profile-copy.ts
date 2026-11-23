@@ -9,7 +9,7 @@ import { applicationDataWorkspace, rebuildRuntimeIsolation } from "../../src/bac
 import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAlreadyRunningError, acquireRuntimeLifetimeLock, type RuntimeLifetimeLock } from "../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialStore } from "../../src/backend/storage/configuration/credential-store.js";
-import { importIsolatedWorkbookLibrary } from "../../src/backend/storage/maintenance/isolated-library-import.js";
+import { importIsolatedProfileData } from "../../src/backend/storage/maintenance/isolated-library-import.js";
 import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { parseBackupManifestFile } from "../../src/backend/storage/sqlite/backup-service.js";
 import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closure.js";
@@ -65,7 +65,7 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
         path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "isolated-library-import",
       }, systemClock, undefined, undefined, undefined, credentials);
       try {
-        return await importIsolatedWorkbookLibrary(admission, database, {
+        return await importIsolatedProfileData(admission, database, {
           source: { manifestPath: join(directory, newest.name), binding }, destination: admission.profileBinding,
         });
       } finally { database.close(); }
@@ -146,6 +146,7 @@ export async function runProfileCopy(options: ProfileCopyOptions): Promise<strin
       `data: ${options.targetWorkspace}`,
       imported === undefined ? "workbooks: finish isolated Duo signup, stop the copy, then rerun with --source-person <production profile UUID>"
         : `workbooks: ${String(imported.created)} created, ${String(imported.refreshed)} refreshed, ${String(imported.unchanged)} unchanged, ${String(imported.keptLocal)} kept local (backup generation ${String(imported.sourceBackup.authorityGeneration)})`,
+      ...(imported === undefined ? [] : [`history: ${String(imported.history.runs)} runs, ${String(imported.history.timeline_events)} timeline events, ${String(imported.history.notifications)} notifications`]),
       `start: npm run dashboard:${profile}   (in ${options.copyPath})`,
     ].join("\n");
   } catch (error) {

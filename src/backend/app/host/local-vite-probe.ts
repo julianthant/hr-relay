@@ -25,13 +25,22 @@ export type OwnedViteProbeResult = Readonly<
         | "vite-client-identity-invalid"
         | "probe-response-invalid"
         | "probe-response-too-large";
+      /** Why the refused response could not be released; the refusal stands. */
+      cleanupFailure?: unknown;
     }
 >;
 
-type ProbeTextResult = Readonly<
-  | { state: "available"; text: string }
-  | { state: "unavailable"; reason: Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"] }
->;
+type ProbeUnavailable = Readonly<{
+  state: "unavailable";
+  reason: Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"];
+  cleanupFailure?: unknown;
+}>;
+type ProbeTextResult = Readonly<{ state: "available"; text: string }> | ProbeUnavailable;
+
+function notOwned(result: ProbeUnavailable): OwnedViteProbeResult {
+  return { state: "not-owned", reason: result.reason,
+    ...(result.cleanupFailure === undefined ? {} : { cleanupFailure: result.cleanupFailure }) };
+}
 
 function requestFailureReason(signal: AbortSignal): Exclude<OwnedViteProbeResult, { state: "owned" }>["reason"] {
   return signal.aborted ? "probe-deadline-expired" : "probe-request-failed";
@@ -41,22 +50,32 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null
     && (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > maxBytes)) {
-    return { state: "unavailable", reason: "probe-response-too-large" };
+    return await refuseUnread(response, "probe-response-too-large");
   }
   if (response.body === null) return { state: "unavailable", reason: "probe-response-invalid" };
   const reader = response.body.getReader();
+  let open = true;
+  const result = await readText(reader, maxBytes, () => { open = false; });
+  try { if (open) await reader.cancel("Vite identity probe stopped reading"); }
+  catch (cleanupFailure) { if (result.state === "unavailable") return { ...result, cleanupFailure }; }
+  finally { reader.releaseLock(); }
+  return result;
+}
+
+async function readText(
+  reader: ReadableStreamDefaultReader<Uint8Array>, maxBytes: number, ended: () => void,
+): Promise<ProbeTextResult> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytesRead = 0;
   let body = "";
   try {
     for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      // An errored stream holds no transfer to cancel.
+      try { chunk = await reader.read(); } catch (error) { ended(); throw error; }
+      if (chunk.done) { ended(); break; }
       bytesRead += chunk.value.byteLength;
-      if (bytesRead > maxBytes) {
-        await reader.cancel("Vite identity response exceeded its byte limit");
-        return { state: "unavailable", reason: "probe-response-too-large" };
-      }
+      if (bytesRead > maxBytes) return { state: "unavailable", reason: "probe-response-too-large" };
       body += decoder.decode(chunk.value, { stream: true });
     }
     body += decoder.decode();
@@ -66,9 +85,13 @@ async function readBoundedResponseText(response: Response, maxBytes: number): Pr
       state: "unavailable",
       reason: error instanceof TypeError ? "probe-response-invalid" : "probe-request-failed",
     };
-  } finally {
-    reader.releaseLock();
   }
+}
+
+async function refuseUnread(response: Response, reason: ProbeUnavailable["reason"]): Promise<ProbeUnavailable> {
+  try { await response.body?.cancel("Vite identity probe refused the response"); }
+  catch (cleanupFailure) { return { state: "unavailable", reason, cleanupFailure }; }
+  return { state: "unavailable", reason };
 }
 
 async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number): Promise<ProbeTextResult> {
@@ -78,7 +101,7 @@ async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number
   } catch {
     return { state: "unavailable", reason: requestFailureReason(signal) };
   }
-  if (!response.ok) return { state: "unavailable", reason: "owner-endpoint-refused" };
+  if (!response.ok) return await refuseUnread(response, "owner-endpoint-refused");
   return readBoundedResponseText(response, maxBytes);
 }
 
@@ -102,7 +125,7 @@ export async function probeOwnedViteServer(input: Readonly<{
     signal,
     VITE_PROBE_OWNER_MAX_RESPONSE_BYTES,
   );
-  if (owner.state === "unavailable") return { state: "not-owned", reason: owner.reason };
+  if (owner.state === "unavailable") return notOwned(owner);
   const observedNonce = DashboardLaunchNonceSchema.safeParse(owner.text);
   if (!observedNonce.success
     || !timingSafeEqual(Buffer.from(observedNonce.data, "hex"), Buffer.from(input.ownerNonce, "hex"))) {
@@ -110,7 +133,7 @@ export async function probeOwnedViteServer(input: Readonly<{
   }
 
   const index = await fetchProbeText(`${origin}/`, signal, VITE_PROBE_INDEX_MAX_RESPONSE_BYTES);
-  if (index.state === "unavailable") return { state: "not-owned", reason: index.reason };
+  if (index.state === "unavailable") return notOwned(index);
   if (!index.text.includes("<title>Relay</title>")
     // Vite stamps the entry with ?t=<timestamp> after any hot update.
     || !/src="\/app\/main\.tsx(?:\?t=\d+)?"/u.test(index.text)) {
@@ -118,7 +141,7 @@ export async function probeOwnedViteServer(input: Readonly<{
   }
 
   const client = await fetchProbeText(`${origin}/@vite/client`, signal, VITE_PROBE_CLIENT_MAX_RESPONSE_BYTES);
-  if (client.state === "unavailable") return { state: "not-owned", reason: client.reason };
+  if (client.state === "unavailable") return notOwned(client);
   if (!client.text.includes("createHotContext") || !client.text.toLowerCase().includes("vite")) {
     return { state: "not-owned", reason: "vite-client-identity-invalid" };
   }

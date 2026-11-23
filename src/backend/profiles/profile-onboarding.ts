@@ -44,7 +44,7 @@ export function createProfileOnboarding(input: {
   readonly publicState: (draft: DuoDraft) => ProfileOnboardingState | DuoReenrolState;
   readonly store: (draft: DuoDraft) => ReturnType<typeof createDuoCredentialStore>;
 }) {
-  type Lease = { revoked: boolean; closed: boolean; opening: boolean; attempt: DraftDuoAttempt; browserGeneration?: number; browserClosureProved?: true; capability?: DraftDuoCapability };
+  type Lease = { revoked: boolean; closed: boolean; opening: boolean; attempt: DraftDuoAttempt; browserGeneration?: number; browserClosureProved?: true; receiptPending?: true; capability?: DraftDuoCapability };
   const leases = new Map<string, Lease>();
   const retainedFailures: { error: unknown; lease?: Lease }[] = [];
   const retainCustody = (error: unknown, attempt?: DraftDuoAttempt) => {
@@ -61,6 +61,17 @@ export function createProfileOnboarding(input: {
   }
   function settleCustody(recovered: readonly Lease[]): void {
     for (const lease of recovered) lease.browserClosureProved = true;
+  }
+  /** Drops leases whose provider and receipt closure are proved and whose retained failures are settled; unproved owners stay. */
+  function evictSettled(operationId: string): void {
+    const receiptClosed = new Set(input.read(operationId).attempts.filter(entry => entry.providerClosedAt !== undefined).map(entry => entry.attemptId));
+    for (const [attemptId, lease] of leases) {
+      if (lease.attempt.operationId !== operationId || !lease.closed || lease.opening || !receiptClosed.has(attemptId)) continue;
+      const failures = retainedFailures.filter(entry => entry.lease === lease);
+      if (failures.some(entry => lease.browserClosureProved !== true || hasUnprovedSourceClosure(entry.error))) continue;
+      leases.delete(attemptId);
+      for (const entry of failures) retainedFailures.splice(retainedFailures.indexOf(entry), 1);
+    }
   }
   const browserHolds = new Map<string, ProfileSessionRefusedError>();
   const assertBrowserAvailable = (operationId: string) => { const hold = browserHolds.get(operationId); if (hold) throw hold; };
@@ -272,6 +283,7 @@ export function createProfileOnboarding(input: {
         const hold = browserHolds.get(operationId);
         if (hold && hasUnprovedSourceClosure(hold)) throw hold;
         browserHolds.delete(operationId);
+        evictSettled(operationId);
         await showOwnedBrowser(provider, browser);
       })();
       recovery = { operationId, generation, work };
@@ -335,7 +347,10 @@ export function createProfileOnboarding(input: {
       const provider = input.provider, draft = input.read(operationId);
       const receipt = draft.attempts.find(entry => entry.attemptId === attemptId && entry.method === method && entry.generation === draft.generation);
       const lease = leases.get(attemptId);
-      if (provider === undefined || receipt === undefined || lease?.attempt.operationId !== operationId) return unavailable();
+      if (provider === undefined || receipt === undefined) return unavailable();
+      // A repeated cancel of an evicted attempt is answered by its closure receipt.
+      if (lease === undefined && receipt.providerClosedAt !== undefined) return;
+      if (lease?.attempt.operationId !== operationId) return unavailable();
       lease.revoked = true;
       const closure = await provider.cancel(lease.attempt);
       if (closure.state === "closed") lease.closed = true;
@@ -351,36 +366,54 @@ export function createProfileOnboarding(input: {
         }), result: undefined };
       });
       if (closure.state !== "closed") return unavailable();
+      evictSettled(operationId);
     },
     async drain(operationId: string): Promise<void> {
       assertBrowserAvailable(operationId);
       if (recovery !== undefined) return unavailable();
       const draft = input.read(operationId), provider = input.provider;
-      const pending = draft.attempts.filter(entry => entry.generation === draft.generation
-        && entry.providerClosedAt === undefined && leases.get(entry.attemptId)?.closed !== true);
+      // A closed lease whose receipt write failed stays pending until the receipt is written.
+      const pending = draft.attempts.filter(entry => entry.generation === draft.generation && entry.providerClosedAt === undefined);
       if (pending.length > 0 && provider === undefined) return unavailable();
+      // An attempt that fails to close never keeps the setup browser open; its failure is reported after the browser close.
+      const attemptFailures: unknown[] = [];
+      let attemptsUnproved = false;
       for (const receipt of pending) {
         const lease = leases.get(receipt.attemptId); if (lease === undefined) return unavailable();
         lease.revoked = true;
-        const closure = await provider!.cancel(lease.attempt);
-        if (closure.state !== "closed") return unavailable();
-        lease.closed = true;
-        input.update(operationId, current => {
-          if (current.generation !== draft.generation) return unavailable();
-          return { attempts: current.attempts.map(entry => entry.attemptId === receipt.attemptId
-            ? { ...entry, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) } : entry), result: undefined };
-        });
+        try {
+          if (!lease.closed) {
+            if ((await provider!.cancel(lease.attempt)).state !== "closed") { attemptsUnproved = true; continue; }
+            lease.closed = true;
+          }
+          lease.receiptPending = true;
+          input.update(operationId, current => {
+            if (current.generation !== draft.generation) return unavailable();
+            return { attempts: current.attempts.map(entry => entry.attemptId === receipt.attemptId
+              ? { ...entry, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) } : entry), result: undefined };
+          });
+          delete lease.receiptPending;
+        } catch (error) { attemptFailures.push(error); }
       }
       const browser = browsers.get(operationId);
       if (browser !== undefined) {
         if (provider === undefined) return unavailable();
         const recovered = recoveredLeases(browser, provider.browserState?.(operationId).generation ?? -1);
-        const closure = await provider.closeBrowser(browser);
-        if (closure.state === "uncertain") throw retainBrowserHold(operationId, closure.cause);
+        const closure = await provider.closeBrowser(browser).catch((error: unknown) => {
+          throw attemptFailures.length === 0 ? error : new AggregateError([...attemptFailures, error], "profile-onboarding-drain-failed");
+        });
+        if (closure.state === "uncertain") {
+          throw retainBrowserHold(operationId, attemptFailures.length === 0 ? closure.cause
+            : new AggregateError([...attemptFailures, closure.cause], "profile-onboarding-drain-unproved"));
+        }
         settleCustody(recovered);
         browsers.delete(operationId);
       }
+      if (attemptFailures.length === 1) throw attemptFailures[0];
+      if (attemptFailures.length > 1) throw new AggregateError(attemptFailures, "profile-onboarding-attempt-closure-failed");
+      if (attemptsUnproved) return unavailable();
       assertCustody();
+      evictSettled(operationId);
     },
     recoverClosed(operationId: string): void {
       const draft = input.read(operationId);
@@ -414,7 +447,7 @@ export function createProfileOnboarding(input: {
     hasLiveAttempt(attemptId: string): boolean { const lease = leases.get(attemptId); return lease !== undefined && !lease.revoked && !lease.closed; },
     async close(): Promise<void> {
       const failures: unknown[] = [];
-      for (const operationId of new Set([...browsers.keys(), ...[...leases.values()].filter(lease => !lease.closed).map(lease => lease.attempt.operationId)])) {
+      for (const operationId of new Set([...browsers.keys(), ...[...leases.values()].filter(lease => !lease.closed || lease.receiptPending).map(lease => lease.attempt.operationId)])) {
         try { await owner.drain(operationId); } catch (error) { failures.push(error); }
       }
       try { await input.provider?.stop(); }
@@ -423,7 +456,7 @@ export function createProfileOnboarding(input: {
       if (failures.length > 1) throw new AggregateError(failures, "profile-onboarding-shutdown-unproved");
     },
     assertClosed(): void {
-      if ([...leases.values()].some(lease => !lease.closed)) return unavailable();
+      if ([...leases.values()].some(lease => !lease.closed || lease.receiptPending)) return unavailable();
       if (browsers.size > 0) return unavailable();
       assertCustody();
     },

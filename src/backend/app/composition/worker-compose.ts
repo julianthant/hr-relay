@@ -707,7 +707,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       channel?.failed(error);
       throw error;
     } finally {
-      await stopGateSources();
+      try { await stopGateSources(); } catch (error) { cleanupErrors.push(error); }
       router?.close();
     }
     if (channelFailure !== undefined) throw channelFailure instanceof Error ? channelFailure : new Error("worker-ipc-channel-failed", { cause: channelFailure });

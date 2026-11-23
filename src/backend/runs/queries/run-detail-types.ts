@@ -16,6 +16,7 @@ import type { ItemAttemptHistoryRequest, ItemAttemptHistoryResponse } from "../.
 
 
 export interface RunDetailTrustDeps {
+  receiptAvailable?(runId: string): boolean;
   readonly failureResolution?: ReturnType<typeof createFailureResolutionQuery>;
   /** Derive-and-persist the run's receipt; see `ensureRunEvidenceReceipt`. */
   ensureReceipt(runId: string): RunEvidenceReceipt;
