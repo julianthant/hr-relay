@@ -235,7 +235,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
       const through = authority.timelineEvents.debugHighWaterMark();
       const records = authority.timelineEvents.debugPage({ runId, after: 0, through, limit: 500 });
       const nextCursor = records.at(-1)?.cursor ?? through;
-      return { records, nextCursor, through,
+      return { records: [...records], nextCursor, through,
         highWaterMark: through, hasMore: nextCursor < through, after: 0 };
     }),
   };
