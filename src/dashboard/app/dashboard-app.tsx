@@ -385,12 +385,16 @@ function LoadedApp({
   }, [dayResource]);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
+  // The queue, rail counts and labels may show a kept copy of this day while it reloads; every decision reads `dayWire`.
+  const keptDay = dayResource.state === "loading" && dayResource.kept?.value.day === day ? dayResource.kept.value : undefined;
+  const shownDay = dayWire ?? keptDay;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => workflowComposition.harness?.commandResults ?? []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
-  const workflowSurfaces = useMemo(() => dayWire?.queueSurfaces.filter(row => row.parent !== null || workflowSource(row.workflowId, dataSources) === "served"), [dayWire, dataSources]);
-  const queueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
+  const workflowSurfaces = useMemo(() => shownDay?.queueSurfaces.filter(row => row.parent !== null || workflowSource(row.workflowId, dataSources) === "served"), [shownDay, dataSources]);
+  const shownQueueRows = workflowSurfaces ?? NO_QUEUE_ROWS;
+  const queueRows = dayWire === undefined ? NO_QUEUE_ROWS : shownQueueRows;
   const selectedRow = dayWire?.queueSurfaces.find(row => row.runId === route.run);
   const logIdentity = useMemo(() => ({ client, authorityEpoch, actorId: boot.actor.id, day, runId: route.run }), [client, authorityEpoch, boot.actor.id, day, route.run]);
   const retainedLogRow = useRef<{ identity: object; row: QueueSurfaceWire } | undefined>(undefined);
@@ -399,7 +403,7 @@ function LoadedApp({
   const logRow = selectedRow ?? (dayResource.state === "loading" ? retainedLogRow.current?.row : undefined);
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
-    || queueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
+    || shownQueueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog,
     now: clock.now, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, clock, today, day, dayState, route, activeWorkflowId]);
@@ -508,17 +512,17 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   const workflowLabels = useMemo(() => {
     const labels = new Map(workflowCatalog.map(workflow => [workflow.id, workflow.label]));
-    for (const row of dayWire?.queueSurfaces ?? []) {
+    for (const row of shownDay?.queueSurfaces ?? []) {
       if (row.parent !== null) labels.set(row.parent.workflowId, row.parent.label);
       for (const link of row.linkedRuns) labels.set(link.workflowId, link.label);
       if (row.surfaceKind === "operation") for (const member of row.recordMembers?.members ?? []) labels.set(member.target.workflowId, member.target.label);
     }
     return labels;
-  }, [workflowCatalog, dayWire]);
+  }, [workflowCatalog, shownDay]);
   const workflowLabelOf = useCallback((workflowId: string): string => workflowLabels.get(workflowId) ?? workflowId, [workflowLabels]);
   const scopedStatusCounts = useMemo(
-    () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
-    [dayWire, activeWorkflowId],
+    () => workflowStatusCounts(shownDay?.workflowCounts ?? [], activeWorkflowId),
+    [shownDay, activeWorkflowId],
   );
 
   /** Use the status vocabulary for filter text so labels and empty states agree. */
@@ -791,7 +795,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     void dispatchCommand(action, { runId: surface.runId, expectedVersion: action.expectedVersion }, { renameAnswer: next, source: "queue" });
   }, [dayWire, dispatchCommand, toast]);
   const { surfaces, outcomes, viewState, sortNowIso, queueHandlers, actionsOf } = useQueueWiring({
-    allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
+    allRows: shownDay?.queueSurfaces, attemptHistory: shownDay?.attemptHistory, rows: shownQueueRows, activeWorkflowId, kept: dayWire === undefined, filter, selectedRunId: route.run,
     openWells, now: clock.now, sort, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells,
     setBatchGrouping, runQueueAction, renameTitle: renameQueueTitle,
   });
@@ -880,9 +884,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
   useEffect(() => { document.title = `${pageName} — Relay`; }, [pageName]);
   const servedWorkflowCounts = useMemo(() => {
-    const childWorkflows = new Set(dayWire?.queueSurfaces.filter(row => row.parent !== null).map(row => row.workflowId));
-    return dayWire?.workflowCounts.filter(count => childWorkflows.has(count.workflowId) || workflowSource(count.workflowId, dataSources) === "served");
-  }, [dayWire, dataSources]);
+    const childWorkflows = new Set(shownDay?.queueSurfaces.filter(row => row.parent !== null).map(row => row.workflowId));
+    return shownDay?.workflowCounts.filter(count => childWorkflows.has(count.workflowId) || workflowSource(count.workflowId, dataSources) === "served");
+  }, [shownDay, dataSources]);
   const setLaunchOpen = launch.setOpen;
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
   const harness = workflowComposition.harness;
@@ -1094,13 +1098,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
             <div className="relative min-h-0 min-w-0 flex-1">
             <div className="dashboard-panel-columns">
-              <div className="dashboard-queue-column">
+              <div className="dashboard-queue-column" aria-busy={keptDay === undefined ? undefined : true}>
                 <h1 className="sr-only">{workflowLabelOf(activeWorkflowId)} queue</h1>
-              {dayWire === undefined || !queueWorkflowAvailable ? (
-                dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && !streamDown ? <QueueSkeleton /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
+              {shownDay === undefined || !queueWorkflowAvailable ? (
+                dateError === undefined && dayResource.state !== "failed" && shownDay === undefined && !streamDown ? <QueueSkeleton /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   {dateError === undefined && dayResource.state === "failed" ? <FailureNotice sentence="Couldn't load the queue."
-                    action={{ label: "Retry", onClick: dayState.refresh }} /> : <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
-                    description={dateError ?? (dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />}
+                    action={{ label: "Retry", onClick: dayState.refresh }} /> : <EmptyState title={dateError !== undefined ? "Choose a valid date" : shownDay === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
+                    description={dateError ?? (shownDay === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />}
                 </PanelBody></Panel>
               ) : <QueuePanel
                 surfaces={surfaces}
