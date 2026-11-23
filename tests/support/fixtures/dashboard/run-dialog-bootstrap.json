@@ -1,0 +1,136 @@
+{
+ "workflows": [
+  {
+   "id": "person-lookup",
+   "code": "pl",
+   "label": "Person Lookup",
+   "icon": "Search",
+   "categoryId": "search",
+   "descriptorFingerprint": "d82bc39dacb8b9702c3a95515e7a9f20b4ad4bad8a650d8f844f1164351fe2af",
+   "availability": {
+    "state": "available"
+   },
+   "role": {
+    "kind": "standalone"
+   },
+   "start": {
+    "readiness": {
+     "scope": "workbook-sources",
+     "state": "ready"
+    },
+    "summary": "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, cross-verifies the match against the CRM onboarding record, folds the two into an active / inactive verdict, and reads the CRM onboarding dates when the run asks for them.",
+    "enqueue": "reject-active",
+    "version": 7,
+    "inputRun": {
+     "placeholder": "Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)",
+     "parser": {
+      "split": {
+       "kind": "delimited",
+       "delimiters": [
+        ";",
+        "\n"
+       ]
+      },
+      "rules": [
+       {
+        "when": {
+         "kind": "pattern",
+         "pattern": "eid"
+        },
+        "emit": "emplId"
+       },
+       {
+        "when": {
+         "kind": "otherwise"
+        },
+        "emit": "name"
+       }
+      ],
+      "constants": [
+       {
+        "field": "keepNonHdh",
+        "value": {
+         "kind": "boolean",
+         "value": false
+        }
+       },
+       {
+        "field": "includeCrmDates",
+        "value": {
+         "kind": "boolean",
+         "value": false
+        }
+       }
+      ]
+     },
+     "examples": [
+      {
+       "key": "one-eid",
+       "label": "One EID",
+       "text": "10873698",
+       "note": "the ordinary case — one run for one employee id"
+      },
+      {
+       "key": "eid-and-name",
+       "label": "An EID and a name",
+       "text": "10873698; Battistessa, Johnnie",
+       "note": "two runs from one box: the parser reads the first as an employee id and the second as a name, and the comma inside the name is not a separator"
+      }
+     ]
+    },
+    "spreadsheetIntake": true,
+    "requiredWorkbookFields": [],
+    "steps": [
+     {
+      "key": "searching",
+      "label": "Searching",
+      "includedByDefault": true,
+      "control": {
+       "state": "required",
+       "reason": "This workflow requires every node in this step."
+      }
+     },
+     {
+      "key": "cross-verify",
+      "label": "Cross Verification",
+      "includedByDefault": true,
+      "control": {
+       "state": "required",
+       "reason": "This workflow requires every node in this step."
+      }
+     },
+     {
+      "key": "active-status",
+      "label": "Active Status",
+      "includedByDefault": true,
+      "control": {
+       "state": "required",
+       "reason": "This workflow requires every node in this step."
+      }
+     },
+     {
+      "key": "crm-dates",
+      "label": "CRM Dates",
+      "includedByDefault": false,
+      "control": {
+       "state": "selectable",
+       "inputField": "includeCrmDates"
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "workbookCompatibility": {
+  "workflows": [],
+  "libraries": []
+ },
+ "serverClock": {
+  "now": "2026-08-03T10:05:00.000-07:00",
+  "zone": "America/Los_Angeles"
+ },
+ "actor": {
+  "id": "local-operator",
+  "label": "Jordan Lee"
+ }
+}
