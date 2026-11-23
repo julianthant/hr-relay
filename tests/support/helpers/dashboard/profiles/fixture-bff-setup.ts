@@ -79,6 +79,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
       type: "snapshot",
       topic: "dashboard-day",
       cursor,
+      position: 0,
       payload: dayWire,
     });
   }
