@@ -27,7 +27,6 @@ import { READING_ID, submittedPage } from "../../../fixtures/ocr/source-pages.js
 import { i9Candidate, i9Search } from "../../../fixtures/i9-check.js";
 import { i9PageSubmission } from "../../../fixtures/i9-check-start.js";
 import { I9CheckStartInput } from "../../../../../src/models/workflows/i9-check/start.js";
-import type { UcpathPersonOrgDriver } from "../../../../../src/models/ui/ucpath-person-org.js";
 import { randomUUID } from "node:crypto";
 import { createDeterministicCrmOnboardingDriver } from "../../../../../src/backend/systems/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/fake.js";
@@ -45,6 +44,15 @@ import { WorkStudyInput } from "../../../../../src/models/workflows/work-study/i
 import { EidSchema } from "../../../../../src/rules/identity/ids.js";
 import type { TestClock } from "../../../../../src/rules/time/clock.js";
 import type { BrowserDriver } from "../../../../../src/workflow-kit/task.js";
+
+import { createDeterministicKualiDriver, createKualiFakeWorld, type KualiFakeWorld } from "../../../../../src/backend/systems/kuali/driver/fake.js";
+import { createDeterministicUcpathSmartHrWorldDriver, createUcpathSmartHrFakeWorld, type UcpathSmartHrFakeWorld } from "../../../../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
+import { KUALI_SEPARATION_FORM_TYPE } from "../../../../../src/models/ui/kuali-separation-document.js";
+import { UCPATH_PERSON_ORG_DETAIL_READY, type UcpathPersonOrgDriver, UCPATH_PERSON_ORG_DETAIL_SCREEN, UCPATH_PERSON_ORG_DISPLAYED_EID, UCPATH_PERSON_ORG_SEARCH_READY, UCPATH_PERSON_ORG_SEARCH_SCREEN } from "../../../../../src/models/ui/ucpath-person-org.js";
+import { SeparationsInput } from "../../../../../src/workflows/separations/workflow.js";
+import { COMPOSITION_ACTION_ID, COMPOSITION_DOCUMENT_NAME, COMPOSITION_EID, COMPOSITION_RECEIPT, COMPOSITION_UCPATH_NAME } from "../../separations-composition-fixtures.js";
+import { FINALIZATION_JOB_SUMMARY_READ, FINALIZATION_NAME_SEARCH_OUTPUT } from "../../kuali-finalization-fixtures.js";
+import { createDeterministicNewKronosDriver } from "./new-kronos-fake.js";
 
 export interface RecordedWrite {
   readonly runId: string;
@@ -362,6 +370,94 @@ export const I9_CHECK_START_SCRIPT: ScriptedWorkflow = {
   },
 };
 
+const SEPARATION_LAST_DAY = "06/12/2026";
+type KualiDriver = ReturnType<typeof createDeterministicKualiDriver>;
+
+/** One Kuali document's systems: the document and its form, and the employee's Smart HR transactions. Worlds are per document, so runs never share a filing. */
+interface SeparationWorld { readonly kuali: KualiFakeWorld; readonly ucpath: UcpathSmartHrFakeWorld }
+
+/**
+ * Separations: a Kuali document read, a UCPath person and job search, a Kronos timecard read, then the UCPath termination and the Kuali finalization.
+ * Each step parks where it first touches a system. The document carries the employee ID, so no identity gate opens; it writes twice, once to UCPath and once to Kuali.
+ */
+export const SEPARATIONS_SCRIPT: ScriptedWorkflow = {
+  module: catalogModule("separations"),
+  submission: documentNumber => ({ documentNumber }),
+  subjectOf: input => SeparationsInput.parse(input).documentNumber,
+  drivers(world) {
+    const worlds = new Map<string, SeparationWorld>();
+    const worldOf = (documentNumber: string): SeparationWorld => {
+      const known = worlds.get(documentNumber);
+      if (known !== undefined) return known;
+      const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber, displayedEid: COMPOSITION_EID });
+      kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: COMPOSITION_EID, employeeType: "Student",
+        studentTitleCode: "4921 - STDT 2", division: "Campus Dining and Retail", location: "Synthetic Hall", terminationType: "Move out of Area",
+        lastDayWorked: SEPARATION_LAST_DAY, separationDate: SEPARATION_LAST_DAY, additionalComments: "", requestAcknowledged: false,
+        timekeeperName: "", timekeeperComments: "", terminationEffectiveDate: "", department: "- - -", payrollTitleCode: "", payrollTitle: "",
+        submittedTerminationTemplate: false, transactionNumber: "", finalPay: null };
+      const created = { kuali, ucpath: createUcpathSmartHrFakeWorld({ emplId: COMPOSITION_EID, displayedName: COMPOSITION_UCPATH_NAME, nextTransactionId: COMPOSITION_RECEIPT }) };
+      worlds.set(documentNumber, created);
+      return created;
+    };
+    /** A step parks once, at its first touch of a system; its later reads and its stage and commit run on. */
+    const parked = new Set<string>();
+    const hold = async (): Promise<void> => {
+      const run = world.run();
+      const step = `${run.runId}/${run.heldNode()}`;
+      if (parked.has(step)) return;
+      parked.add(step);
+      await world.hold();
+    };
+    const recordWrite = (): void => { const run = world.run(); world.record({ runId: run.runId, nodeId: run.heldNode(), eid: COMPOSITION_EID }); };
+    return {
+      kuali: () => {
+        const drivers = new Map<string, KualiDriver>();
+        const driver = () => {
+          const subject = world.run().subject;
+          const known = drivers.get(subject);
+          if (known !== undefined) return known;
+          const created = createDeterministicKualiDriver(worldOf(subject).kuali, world.clock);
+          drivers.set(subject, created);
+          return created;
+        };
+        return { system: "kuali" as const, read: (id: Parameters<KualiDriver["read"]>[0]) => driver().read(id),
+          readActionListForDocument: async (request: Parameters<KualiDriver["readActionListForDocument"]>[0]) => { await hold(); return driver().readActionListForDocument(request); },
+          readSeparationDocument: async (request: Parameters<KualiDriver["readSeparationDocument"]>[0]) => { await hold(); return driver().readSeparationDocument(request); },
+          stageSeparationFinalization: async (target: Parameters<KualiDriver["stageSeparationFinalization"]>[0]) => { await hold(); return driver().stageSeparationFinalization(target); },
+          readSavedSeparationFinalization: async (target: Parameters<KualiDriver["readSavedSeparationFinalization"]>[0]) => { await hold(); return driver().readSavedSeparationFinalization(target); },
+          commit: async (id: Parameters<KualiDriver["commit"]>[0], capability: Parameters<KualiDriver["commit"]>[1]) => { recordWrite(); return driver().commit(id, capability); } };
+      },
+      ucpath: () => {
+        const person = createDeterministicUcpathPersonOrgDriver(FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_JOB_SUMMARY_READ);
+        const filings = new Map<string, ReturnType<typeof createDeterministicUcpathSmartHrWorldDriver>>();
+        const filing = () => {
+          const subject = world.run().subject;
+          const known = filings.get(subject);
+          if (known !== undefined) return known;
+          const created = createDeterministicUcpathSmartHrWorldDriver(worldOf(subject).ucpath, () => world.clock.now());
+          filings.set(subject, created);
+          return created;
+        };
+        const personScreens: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_SCREEN, UCPATH_PERSON_ORG_DETAIL_SCREEN];
+        const personStates: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_READY, UCPATH_PERSON_ORG_DETAIL_READY];
+        // The person-org fake owns the search screens; the Smart HR world owns the transaction pages.
+        return { ...person,
+          searchPersonOrg: async (request: Parameters<typeof person.searchPersonOrg>[0]) => { await hold(); return person.searchPersonOrg(request); },
+          readJobSummary: async (request: Parameters<typeof person.readJobSummary>[0]) => { await hold(); return person.readJobSummary(request); },
+          scanTerminationTransactions: async (request: Parameters<typeof person.scanTerminationTransactions>[0]) => { await hold(); return filing().scanTerminationTransactions(request); },
+          stageTermination: (request: Parameters<typeof person.stageTermination>[0]) => filing().stageTermination(request),
+          stagePendingTerminationSweep: (request: Parameters<typeof person.stagePendingTerminationSweep>[0]) => filing().stagePendingTerminationSweep(request),
+          commit: async (id: Parameters<typeof person.commit>[0], capability: Parameters<typeof person.commit>[1]) => { recordWrite(); return filing().commit(id, capability); },
+          goto: (next: never) => personScreens.includes(next) ? person.goto(next) : filing().goto(next),
+          waitFor: (stateId: never) => personStates.includes(stateId) ? person.waitFor(stateId) : filing().waitFor(stateId),
+          read: (id: never) => id === UCPATH_PERSON_ORG_DISPLAYED_EID ? person.read(id) : filing().read(id) };
+      },
+      "new-kronos": () => createDeterministicNewKronosDriver({ employeeId: COMPOSITION_EID, displayName: COMPOSITION_DOCUMENT_NAME,
+        punchDates: [SEPARATION_LAST_DAY], now: () => world.clock.now(), hold }),
+    };
+  },
+};
+
 export const ONBOARDING_EMAIL = "hire@example.test";
 
 /**
@@ -416,7 +512,7 @@ export const ONBOARDING_SCRIPT: ScriptedWorkflow = {
   },
 };
 
-export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT, CRM_DOC_DOWNLOAD_SCRIPT, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, ONBOARDING_SCRIPT]);
+export const SCRIPTED_WORKFLOWS: readonly ScriptedWorkflow[] = Object.freeze([WORK_STUDY_SCRIPT, PERSON_LOOKUP_SCRIPT, CRM_DOC_DOWNLOAD_SCRIPT, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, SEPARATIONS_SCRIPT, ONBOARDING_SCRIPT]);
 
 export function scriptedWorkflow(workflowId: string): ScriptedWorkflow {
   const script = SCRIPTED_WORKFLOWS.find(candidate => candidate.module.descriptor.id === workflowId);
