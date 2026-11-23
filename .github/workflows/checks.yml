@@ -148,40 +148,13 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Profile sequential root lint batches
+      - name: Lint root package
         run: |
-          ulimit -c 0
-          node --version
-          nproc
-          uptime
-          head -3 /proc/meminfo
-          lint=(node --trace-gc-nvp --max-old-space-size=6144 node_modules/eslint/bin/eslint.js
+          # Release the TypeScript heap before linting the tests.
+          lint=(node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js
             --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ --max-warnings 0)
-          profile() {
-            local label=$1 status=0
-            shift
-            echo "::group::$label"
-            TIMING=all /usr/bin/time -f 'Peak RSS: %M KiB; elapsed: %e s' \
-              "${lint[@]}" "$@" \
-              >"$RUNNER_TEMP/lint-profile.log" 2>&1 || status=$?
-            awk '
-              /"start_object_size":[0-9]+/ {
-                sub(/.*"start_object_size":/, "")
-                if ($0 + 0 > peak) peak = $0 + 0
-                samples++
-              }
-              END {
-                if (!samples) exit 1
-                printf "Peak sampled V8 heap: %.1f MiB (%d GC samples)\n", peak / 1048576, samples
-              }
-            ' "$RUNNER_TEMP/lint-profile.log"
-            sed '/ GC: {/d; /Memory pool: Removed pages:/d; /^, removed zone reservations:/d' "$RUNNER_TEMP/lint-profile.log"
-            echo "Exit: $status"
-            echo "::endgroup::"
-            return "$status"
-          }
-          profile 'Source, scripts and root configs' src scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts
-          profile 'Tests' tests
+          "${lint[@]}" src scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts
+          "${lint[@]}" tests
       - run: npm ci
         working-directory: fast-duo
       - run: npm run lint
