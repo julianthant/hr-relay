@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
-import { KEPT_RUN_LOGS_LIMIT, useRunWiring, type RunWiringState } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { KEPT_RUN_LOGS_LIMIT, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
 import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import { NotePageSchema, NativeRunEventWireSchema, RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
@@ -38,7 +38,7 @@ function clientFor(terminal: boolean, hold?: Promise<void>) {
   return { client, reads };
 }
 let root: Root | undefined;
-let seen: RunWiringState | undefined;
+let seen: ReturnType<typeof useRunWiring> | undefined;
 const bindingOf = (epoch: object, actorId: string): DashboardCommandBinding => ({ scope: { actorId }, executor: { retainedAttempts: () => [] }, authority: { epoch, day: "2026-08-03", nowIso: AT,
   dayState: { request: {}, refresh: () => undefined, day: { state: "loaded" } } } }) as unknown as DashboardCommandBinding;
 function Probe({ client, run = selection, binding }: Readonly<{ client: DashboardClient; run?: LogSelection; binding?: DashboardCommandBinding }>) { seen = useRunWiring(client, run, binding); return null; }
@@ -69,15 +69,26 @@ describe("Logs return visit", () => {
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
     assert.equal(reads.detail, 2);
   });
-  it("reads a finished run's logs once", async () => {
+  it("shows a finished run's kept logs at once, display only, and reads it again", async () => {
     const { client, reads } = clientFor(true);
-    await visit(client);
+    const binding = bindingOf({}, "operator-a");
+    await visit(client, selection, binding);
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    assert.ok(seen?.onDecision, "fresh logs answer decisions");
     await leave();
-    await visit(client);
-    assert.equal(seen?.state, "loaded");
-    assert.ok(seen?.snapshot);
-    assert.equal(reads.detail, 1);
+    let release!: () => void;
+    reads.hold = new Promise<void>(resolve => { release = resolve; });
+    await visit(client, selection, binding);
+    assert.equal(seen?.state, "loading", "a kept finished run is never loaded");
+    assert.ok(seen?.snapshot, "its kept logs show on the first frame");
+    assert.equal(seen?.onDecision, undefined, "no gate answer or Start reads a kept snapshot");
+    assert.equal(seen?.onUcpathDecision, undefined, "no parked write reads a kept snapshot");
+    assert.equal(seen?.onChildRetry, undefined);
+    assert.equal(seen?.onBatchMemberRetry, undefined);
+    await vi.waitFor(() => assert.equal(reads.detail, 2, "the return visit reads the run again"));
+    release();
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    assert.ok(seen?.onDecision, "decisions open once the fresh logs land");
   });
   it("shows nothing kept after the sign-in authority changes, and reads again", async () => {
     const { client, reads } = clientFor(true);
@@ -108,12 +119,11 @@ describe("Logs return visit", () => {
       await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
       await leave();
     }
-    const before = reads.detail;
+    reads.hold = new Promise<void>(() => undefined);
     await visit(client, selectionOf(runIdOf(KEPT_RUN_LOGS_LIMIT)), binding);
-    assert.equal(seen?.state, "loaded", "the newest run is still kept");
-    assert.equal(reads.detail, before, "a kept finished run sends no read");
+    assert.ok(seen?.snapshot, "the newest run is still kept");
     await leave();
     await visit(client, selectionOf(runIdOf(0)), binding);
-    assert.equal(reads.detail, before + 1, "the 21st visit evicted the oldest, so it reads again");
+    assert.equal(seen?.snapshot, undefined, "the 21st visit evicted the oldest");
   });
 });

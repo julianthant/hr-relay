@@ -140,15 +140,15 @@ function keepRunLogs(client: object, authority: RunLogAuthority, snapshot: RunLo
   keptRunLogs.keep(client, [authority.epoch, authority.actorId], snapshot.detail.runId, { value: snapshot, at: snapshot.detail.rowRevision });
 }
 
-/** The last loaded logs of this exact run under this authority. A finished run's logs cannot change, so a kept
- * snapshot of the same attempt at the same or a newer revision is final and is never read again; any other kept value is stale. */
+/** The last loaded logs of this exact run under this authority, shown while the fresh read runs. Display only:
+ * it stays `loading`, so no decision reads it, and every visit reads the run again. */
 export function keptRunLogsState(client: object, authority: RunLogAuthority, row: LogSelection["row"]): RunWiringState | undefined {
   const snapshot = keptRunLogs.get(client, [authority.epoch, authority.actorId], row.runId)?.value;
   if (snapshot === undefined) return undefined;
   const { detail } = snapshot;
   const same = detail.header.traceId === row.traceId && detail.header.attempt === row.attempt && detail.header.workflowId === row.workflowId;
   if (!same) return undefined;
-  return detail.outcome.state === "terminal" && detail.rowRevision >= row.rowRevision ? { state: "loaded", snapshot } : { state: "loading", snapshot };
+  return { state: "loading", snapshot };
 }
 
 function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
@@ -644,7 +644,6 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     : keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, servedRow) ?? { state: "loading" }, [settled, request, sameRun, client, servedRow]);
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
-    if (keptRunLogsState(client, { epoch: request.epoch, actorId: request.actorId }, request.selection.row)?.state === "loaded") return;
     const controller = new AbortController();
     reading.current = true;
     const ended = () => { reading.current = false; settledRow.current = latestRow.current; };
