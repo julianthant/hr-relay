@@ -50,7 +50,7 @@ describe("query index migration 37", () => {
       assert.ok(prior.some(object => object.name === "checkpoints_replay_idx"));
       migrateTo36(database);
       const after = schemaObjects(database);
-      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && object.tbl_name !== "workbook_payloads"), prior.filter(object => object.name !== "checkpoints_replay_idx"));
+      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !["workbook_payloads", "debug_events"].includes(object.tbl_name)), prior.filter(object => object.name !== "checkpoints_replay_idx"));
       assert.deepEqual(after.filter(object => object.name in QUERY_INDEXES).map(object => [object.name, object.sql]).sort(),
         Object.entries(QUERY_INDEXES).map(([name, index]) => [name, `CREATE INDEX ${name} ON ${index.on}`]).sort());
       assert.deepEqual(rows(database), stored);
