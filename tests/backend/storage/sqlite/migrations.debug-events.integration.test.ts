@@ -4,13 +4,14 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
-import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { applyAuthorityMigrationsAfter, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { DEBUG_EVENTS_MIGRATION, createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { restoreSchema38DebugEvents } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const CAPTURE = { now: "2026-11-23T00:00:00.000Z", captureFile: () => { throw new Error("no capture expected"); } };
 const AT = new Date("2026-11-20T12:00:00.000Z");
@@ -74,13 +75,70 @@ describe("debug event migration 39", () => {
     assert.deepEqual(repository.debugPage({ limit: 1000 }), debug);
     assert.equal(count(database, "debug_events WHERE pinned=1"), 1);
     assert.equal(repository.highWaterMark(), timelineHigh);
-    assert.equal(repository.debugHighWaterMark(), Math.max(...debug.map(record => record.cursor)));
+    assert.equal(repository.debugHighWaterMark(), timelineHigh);
     // The move adds no change entry and drops the entries that named the moved rows.
     assert.equal(sequence(database, "authority_changes"), changes.high);
     assert.equal(count(database, "authority_changes"), changes.entries - debug.length);
     assert.equal(count(database, `authority_changes WHERE table_name='timeline_events'
       AND json_extract(row_key,'$[0]') IN (SELECT cursor FROM debug_events)`), 0);
     assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
+  });
+
+  it("continues debug cursors past every cursor the timeline issued, so a diagnostics cursor from before the upgrade resumes", () => {
+    const { database, repository } = currentStore();
+    seed(repository);
+    restoreSchema38DebugEvents(database);
+    // Retention already removed the newest debug entry, so the retained debug rows end below the timeline's high-water mark.
+    database.exec("DELETE FROM timeline_events WHERE cursor=(SELECT MAX(cursor) FROM timeline_events WHERE kind='debug')");
+    const issued = sequence(database, "timeline_events");
+    assert.ok(Math.max(...storedTimeline(database).filter(record => record.payload.kind === "debug").map(record => record.cursor)) < issued);
+
+    database.exec("BEGIN");
+    applyAuthorityMigrationsAfter(database, 38, CAPTURE);
+    database.exec("COMMIT");
+
+    assert.equal(repository.debugHighWaterMark(), issued);
+    const { record } = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" })
+      .emit({ category: "http", phase: "settled", correlationId: "after-upgrade" });
+    assert.equal(record.cursor, issued + 1);
+    assert.deepEqual(repository.debugPage({ after: issued }), [record]);
+  });
+
+  it("appends a timeline event to a predecessor store that has no debug table", () => {
+    const { database, repository } = currentStore();
+    restoreSchema38DebugEvents(database);
+    const note = createNoteTimelineWriter({ repository, clock: manualClock(AT), pid: 1 });
+    note.emitNote({ workflow: "person-lookup", address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step", message: "offline" });
+    assert.equal(count(database, "timeline_events WHERE kind='note'"), 1);
+  });
+
+  it("upgrades a stopped schema-38 store holding debug rows through the store upgrade", async () => {
+    const f = await storageRecoveryFixture(7);
+    try {
+      let debug: readonly unknown[];
+      const database = new DatabaseSync(f.path);
+      try {
+        database.exec("PRAGMA foreign_keys=ON");
+        for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
+        database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
+        database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+        seed(createTimelineRepository({ database, read: work => work(), assertOwner: () => {}, mutate: work => work().result }));
+        restoreSchema38DebugEvents(database);
+        debug = storedTimeline(database).filter(record => record.payload.kind === "debug");
+        assert.equal(debug.length, 6);
+        assert.equal(inspectNativeAuthority(database, 38).schemaVersion, 38);
+      } finally { database.close(); }
+      const report = await f.run();
+      assert.equal(report.state, "upgraded");
+      assert.equal(report.fromSchemaVersion, 38);
+      const upgraded = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.equal(inspectNativeAuthority(upgraded).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+        assert.equal(count(upgraded, "timeline_events WHERE kind='debug'"), 0);
+        assert.deepEqual(createTimelineRepository({ database: upgraded, read: work => work(), assertOwner: () => {},
+          mutate: () => { throw new Error("read-only"); } }).debugPage({ limit: 1000 }), debug);
+      } finally { upgraded.close(); }
+    } finally { await f.dispose(); }
   });
 
   it("keeps debug entries immutable and the timeline's protected rows guarded after the move", () => {
