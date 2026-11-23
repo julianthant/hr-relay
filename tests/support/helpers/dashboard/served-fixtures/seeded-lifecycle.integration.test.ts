@@ -7,7 +7,7 @@ import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-det
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { SEEDED_NOW, startSeededServer, type SeededServer } from "./seeded-bff.js";
 import { seededRequestOver, startScriptedRun } from "./seeded-scripted-executor.js";
-import { WORK_STUDY_GATE_ID } from "./scripted-workflows.js";
+import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../../src/models/processing/workbooks/reference-check-stop.js";
 
 const servers: SeededServer[] = [];
 const roots: string[] = [];
@@ -120,7 +120,7 @@ describe("seeded drive helpers", () => {
     expect(detail.status).toBe(200);
     const { gate } = RunDetailWireSchema.parse(await detail.json());
     if (gate.state !== "open") throw new Error(`the parked run serves a ${gate.state} gate`);
-    expect(gate.nodeId).toBe(WORK_STUDY_GATE_ID);
+    expect(gate.nodeId).toBe(REFERENCE_CHECK_REVIEW_GATE);
     const cursors = stream.envelopes.flatMap(envelope => envelope.type === "change" || envelope.type === "snapshot" ? [envelope] : []);
     for (const [index, envelope] of cursors.entries()) {
       if (envelope.type === "change") expect(envelope.after).toBe(cursors[index - 1]?.cursor);
@@ -136,7 +136,7 @@ describe("seeded drive helpers", () => {
     expect((await rowOf(server, runId)).status).toBe("awaiting-approval");
     await expect.poll(() => stream.envelopes.length).toBeGreaterThan(3);
     expect((await fetch(`${server.baseUrl}/api/v1/runs/${runId}`)).status).toBe(200);
-    expect((await fetch(`${server.baseUrl}/api/v1/runs/${runId}/identity-gate`)).status).toBe(200);
+    expect((await fetch(`${server.baseUrl}/api/v1/runs/${runId}/logs`)).status).toBe(200);
   });
 
   it("publishes a notification to the open stream", async () => {

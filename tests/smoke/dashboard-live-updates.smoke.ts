@@ -76,7 +76,7 @@ const BASELINE: Record<RunEvent, Partial<Record<View, readonly string[]>>> = {
   },
   "gate parking": {
     "queue only": [],
-    "that run open": [RUN, LOGS, "GET /api/v1/runs/{id}/identity-gate"],
+    "that run open": [RUN, LOGS],
     "another run open": [],
   },
 };
@@ -126,7 +126,7 @@ test("notification published: requests after the event", async ({ dashboard, pag
 // The Work-Study queue holds this one run, so there is no other run to hold open beside it.
 const DECLARED_GATE_BASELINE: Partial<Record<View, readonly string[]>> = {
   "queue only": [],
-  "that run open": [RUN, LOGS, "GET /api/v1/runs/{id}/identity-gate", "GET /api/v1/runs/{id}/workbook-writes"],
+  "that run open": [RUN, LOGS, "GET /api/v1/runs/{id}/workbook-writes"],
 };
 
 for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
