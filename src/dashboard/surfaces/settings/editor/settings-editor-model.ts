@@ -29,7 +29,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const client = useSettingsClient();
   const binding = useDashboardCommandBinding();
   const generation = useRef<object>({});
-  const request = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint }), [client, binding?.scope, input.actorId, input.descriptorFingerprint]);
+  // Each section visit is its own read: leaving one retires its read, and only the visit that started a read may accept it.
+  const request = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint, view: input.view }), [client, binding?.scope, input.actorId, input.descriptorFingerprint, input.view]);
   const acceptedRequest = useRef<typeof request | undefined>(undefined);
   generation.current = request;
   useEffect(() => { generation.current = request; return () => { if (generation.current === request) generation.current = {}; }; }, [request]);
@@ -87,7 +88,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     void refresh().catch(() => { if (active && resource.snapshot().value === undefined) setEditor({ state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text }); });
     return () => { active = false; };
     // A section return and a stream reset read again; the shown document stays, locked, until the fresh one lands.
-  }, [refresh, resource, setEditor, stale, input.view]);
+  }, [refresh, resource, setEditor, stale]);
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
