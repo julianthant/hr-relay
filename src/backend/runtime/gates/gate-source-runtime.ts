@@ -283,7 +283,7 @@ export function createGateSourceRuntime(input: Readonly<{
     async start(signal: AbortSignal): Promise<() => Promise<void>> {
       const stops: Array<() => void | Promise<void>> = [];
       const stopAll = async (): Promise<unknown[]> => (await Promise.allSettled(stops.map((stop) => Promise.resolve().then(stop))))
-        .flatMap((outcome) => outcome.status === "rejected" ? [outcome.reason] : []);
+        .flatMap((outcome): unknown[] => outcome.status === "rejected" ? [outcome.reason] : []);
       try {
         for (const port of ports.values()) {
           stops.push(await port.subscribe((event) => Promise.resolve(settle(port, event)), signal));

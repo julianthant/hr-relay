@@ -187,7 +187,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (probe.state === "not-owned" && probe.cleanupFailure !== undefined) {
         appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: "DASHBOARD_FRONTEND_NOT_OWNED", area: "profile-request",
           reason: "frontend-probe-cleanup-failed", now: clock.now(),
-          error: probe.cleanupFailure instanceof Error ? probe.cleanupFailure : new Error(String(probe.cleanupFailure)) });
+          error: probe.cleanupFailure instanceof Error ? probe.cleanupFailure : new Error("frontend-probe-cleanup-failed", { cause: probe.cleanupFailure }) });
       }
       if (probe.state !== "owned") return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }), 403);
       frontendOwned = true;

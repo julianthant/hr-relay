@@ -23,7 +23,7 @@ describe("task setup that throws before the task runs", () => {
     });
     const { authority, deps } = await wiringHarness(descriptor, stores, {
       // A stored snapshot that cannot configure the provider client makes client construction throw.
-      providers: { adapters: {} as never, configSnapshots: { get: () => ({}) }, idFactory: { next: () => "r" } as never },
+      providers: { adapters: {}, configSnapshots: { get: () => ({}) }, idFactory: { next: () => "r" } },
     });
     authority.database.authority.runs.enqueue(queuedRunFor(descriptor));
     const claimed = claim(authority, descriptor);
@@ -31,9 +31,10 @@ describe("task setup that throws before the task runs", () => {
     const parent = new AbortController();
     let added = 0;
     let removed = 0;
-    const { addEventListener, removeEventListener } = parent.signal;
-    parent.signal.addEventListener = (...args: Parameters<typeof addEventListener>) => { if (args[0] === "abort") added += 1; addEventListener.apply(parent.signal, args); };
-    parent.signal.removeEventListener = (...args: Parameters<typeof removeEventListener>) => { if (args[0] === "abort") removed += 1; removeEventListener.apply(parent.signal, args); };
+    const addEventListener = parent.signal.addEventListener.bind(parent.signal);
+    const removeEventListener = parent.signal.removeEventListener.bind(parent.signal);
+    parent.signal.addEventListener = (...args: Parameters<typeof addEventListener>) => { if (args[0] === "abort") added += 1; addEventListener(...args); };
+    parent.signal.removeEventListener = (...args: Parameters<typeof removeEventListener>) => { if (args[0] === "abort") removed += 1; removeEventListener(...args); };
 
     const outcome = await executeClaimedRun(deps, { ...claimed, signal: parent.signal });
 
