@@ -25,23 +25,23 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const firedExpiries = useRef(new Set<string>());
-  // A new object per request, including A → B → A; the render guard runs before effects.
+  // A new object per request, including A → B → A; the render guard runs before effects. The kept frame is
+  // read here, during render, so the frame that switches the day already shows that day's kept copy.
   const request = useMemo(() => {
     const listeners = new Set<(publication: NotificationPublicationWire) => void>();
-    return { client, day, revision, authorityEpoch, actorId,
+    const kept = day === undefined ? undefined : keptDays.get(client, [authorityEpoch, actorId], day);
+    return { client, day, revision, authorityEpoch, actorId, kept,
       subscribePublications: (listener: (publication: NotificationPublicationWire) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
       publishPublication: (publication: NotificationPublicationWire) => { for (const listener of listeners) listener(publication); },
     };
   }, [client, day, revision, authorityEpoch, actorId]);
-  // Read during render, so the frame that switches the day already shows that day's kept copy.
-  const kept = useMemo(() => day === undefined ? undefined : keptDays.get(client, [authorityEpoch, actorId], day), [client, authorityEpoch, actorId, day, request]);
   const activeRequest = useRef(request);
   activeRequest.current = request;
   const subscribePublications = request.subscribePublications;
   const [result, setResult] = useState<{ request: typeof request; value: DashboardDayState }>();
   useEffect(() => {
     let active = true;
-    let shown = kept;
+    let shown = request.kept;
     let value: DashboardDayState = { request, day: loadingWith(shown), connection: { state: "connecting" }, refresh, subscribePublications };
     let served = false;
     const publish = (): void => { if (active) setResult({ request, value }); };
@@ -78,8 +78,8 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
       },
     }); });
     return () => { active = false; subscription?.close(); };
-  }, [client, day, actorId, authorityEpoch, kept, request, refresh, subscribePublications]);
-  const current = result?.request === request ? result.value : { request, day: loadingWith(kept), connection: { state: "connecting" as const }, refresh, subscribePublications };
+  }, [client, day, actorId, authorityEpoch, request, refresh, subscribePublications]);
+  const current = result?.request === request ? result.value : { request, day: loadingWith(request.kept), connection: { state: "connecting" as const }, refresh, subscribePublications };
   useEffect(() => {
     if (current.day.state !== "loaded" || nowIso === undefined) return;
     const pending = current.day.value.notifications
