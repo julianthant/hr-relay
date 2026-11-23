@@ -338,6 +338,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       let timer: ReturnType<typeof setTimeout> | undefined;
       let expired = false;
       let workerStopFailure: unknown;
+      let attemptFailure: ProfileOnboardingDuoProviderError | undefined;
       const started = options.clock.monotonicMs();
       const progress: { operation: NonNullable<ProfileOnboardingDuoEvent["operation"]> } = { operation: "close-attempt" };
       try {
@@ -346,9 +347,10 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           if (attempt) {
             if (!sameOwner(session.owner, attempt.attempt) || attempt.profileDirectory !== session.profileDirectory
               || attempt.context !== session.context || attempt.worker !== session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "scope");
+            // An unproved attempt still closes Chromium under this deadline; its failure keeps the closure uncertain.
             if ((await close(attempt)).state !== "closed") {
-              if (attempt.stopFailureAfterSettlement === undefined) throw attempt.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
-              workerStopFailure = attempt.stopFailureAfterSettlement;
+              if (attempt.stopFailureAfterSettlement === undefined) attemptFailure = attempt.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
+              else workerStopFailure = attempt.stopFailureAfterSettlement;
             }
           }
           progress.operation = "close-launch";
@@ -356,7 +358,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           session.launch.closing();
           if (session.launchStarted) {
             if (!session.context) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
-            if (session.worker && !session.contextClosed) {
+            if (session.worker && !session.contextClosed && attemptFailure === undefined) {
               progress.operation = "close-worker";
               try { await workerCall(session.worker, "browserStop"); }
               catch (error) { workerStopFailure = workerStopFailure === undefined ? error : new AggregateError([workerStopFailure, error]); }
@@ -369,6 +371,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
             await session.context.close();
             if (!session.contextClosed || session.context.pages().length || pages.some(page => !page.isClosed())) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           }
+          if (attemptFailure !== undefined) throw attemptFailure;
           progress.operation = "close-callbacks";
           await Promise.allSettled([session.startup, session.setupOpening, session.portalOpening]);
           progress.operation = "close-pump";

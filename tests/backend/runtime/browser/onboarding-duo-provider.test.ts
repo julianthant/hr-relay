@@ -185,7 +185,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     return result;
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
-      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
     events, selectedPages,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
@@ -734,6 +734,22 @@ describe("draft Duo provider", () => {
       await assert.rejects(w.provider.cancel(w.attempt), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure));
       assertUncertainBrowserClosure(await w.provider.closeBrowser(w.owner));
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      assert.equal(w.launches(), 1);
+    } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
+  });
+
+  it("closes Chromium under its deadline when the attempt close is uncertain, and keeps the attempt failure and profile", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure); w.blockStop();
+      await assert.rejects(w.provider.cancel(w.attempt), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
+      const cause = assertUncertainBrowserClosure(await w.provider.closeBrowser(w.owner));
+      assert.equal(w.contextClosed(), true, "the setup browser closes even though the attempt closure is unproved");
+      let attemptCause: unknown = cause;
+      while (attemptCause instanceof Error && !(attemptCause instanceof ProfileOnboardingDuoProviderError && attemptCause.reason === "browser-lifetime")) attemptCause = attemptCause.cause;
+      assert.ok(attemptCause instanceof ProfileOnboardingDuoProviderError, "the attempt failure stays in the closure cause");
+      assert.ok(existsSync(w.profile()), "unproved custody keeps the profile");
       await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       assert.equal(w.launches(), 1);
     } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
