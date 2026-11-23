@@ -49,6 +49,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       await expect(list.getByRole("alert")).toBeVisible();
       expect(await list.getByRole("alert").count()).toBe(1);
       await expect(list.getByRole("button", { name: "Retry" })).toBeVisible();
+      expect(await page.getByText(/could not load/i).count(), "the failure sentence appears once").toBe(1);
       await page.screenshot({ path: join(FRAMES, `run-unavailable-${String(viewport.width)}.png`), animations: "disabled" });
     });
   });
