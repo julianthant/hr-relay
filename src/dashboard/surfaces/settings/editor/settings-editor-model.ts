@@ -33,7 +33,17 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const request = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint, view: input.view }), [client, binding?.scope, input.actorId, input.descriptorFingerprint, input.view]);
   const acceptedRequest = useRef<typeof request | undefined>(undefined);
   generation.current = request;
+  const currentRequest = useRef(request);
+  currentRequest.current = request;
   useEffect(() => { generation.current = request; return () => { if (generation.current === request) generation.current = {}; }; }, [request]);
+  // A command outlives the section it was sent from: it settles while the same authority holds, whatever section is open.
+  const commandOwner = useMemo(() => ({ client, scope: binding?.scope, actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint }), [client, binding?.scope, input.actorId, input.descriptorFingerprint]);
+  const commandLife = useRef<object>(commandOwner);
+  commandLife.current = commandOwner;
+  useEffect(() => { commandLife.current = commandOwner; return () => { if (commandLife.current === commandOwner) commandLife.current = {}; }; }, [commandOwner]);
+  // Leaving a visit (another section, or closing Settings) retires the read it started; a read another owner started is not its to retire.
+  const visitRead = useRef<AbortController | undefined>(undefined);
+  useEffect(() => { const controller = new AbortController(); visitRead.current = controller; return () => { controller.abort(); }; }, [request]);
   const resource = useSettingsRead<EditableSettingsWire>(client, "editor", input);
   const previousRead = useRef({ request, resource });
   if (previousRead.current.request !== request) {
@@ -76,7 +86,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
                   || canonicalJsonStringify(previous.protectedSettings.entries) !== canonicalJsonStringify(document.protectedSettings.entries)))))) throw new Error("settings-readback-stale-or-divergent");
         return document;
       };
-      const document = await (publish ? resource.read(read, "SETTINGS_INITIAL_READ_UNAVAILABLE") : readWithDeadline(read, "SETTINGS_INITIAL_READ_UNAVAILABLE"));
+      const document = await (publish ? resource.read(read, "SETTINGS_INITIAL_READ_UNAVAILABLE", undefined, visitRead.current?.signal) : readWithDeadline(read, "SETTINGS_INITIAL_READ_UNAVAILABLE"));
       if (publish && generation.current === request) { acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }
       return document;
     } catch (error) {
@@ -156,10 +166,10 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
           return { state: readback === "confirmed" ? "matched" : readback === "superseded" ? "conflict" : "mismatch", evidence: readDocument };
         },
         publish: outcome => {
-          if (generation.current !== request) return;
+          if (commandLife.current !== commandOwner) return;
           binding.feedback(outcome);
           if (readDocument !== undefined) {
-            acceptedRequest.current = request; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
+            acceptedRequest.current = currentRequest.current; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
           }
           const next = commandSaveState(outcome);
           // An unknown outcome is read back: the served value shows silently, or one failure toast. Either way the lock is freed.
@@ -167,9 +177,9 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
             unknown = readBack(() => refresh(false), served => ordinaryReadbackConfirms(served, command.payload.patch)).then(served => {
               const landed = served !== undefined && ordinaryReadbackConfirms(served, command.payload.patch);
               binding.executor.resolve(command.commandId, landed, binding.scope);
-              if (generation.current !== request) return;
+              if (commandLife.current !== commandOwner) return;
               if (!landed || served === undefined) { failed(sent); return; }
-              acceptedRequest.current = request; resource.accept(served); setEditor({ state: "loaded", document: served }); setReadProblem(undefined);
+              acceptedRequest.current = currentRequest.current; resource.accept(served); setEditor({ state: "loaded", document: served }); setReadProblem(undefined);
               settle(sent);
             });
             return;
