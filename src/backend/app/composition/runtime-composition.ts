@@ -37,7 +37,7 @@ export interface RebuildRuntimeStart {
   readonly storage?: StorageComposer;
   /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
   readonly testData?: TestDataComposer;
-  /** A stop the secure bootstrap latched while the dashboard booted; the default shutdown signals honour it. */
+  /** Explicit seam override for tests; production registers via `registerDashboardStopSignal`. */
   readonly stopSignal?: AbortSignal;
 
   /** Explicit seam override for tests; production subscribes to the real process signals. */
@@ -83,6 +83,13 @@ export function registerDashboardComposer(composer: DashboardComposer): void {
     throw new Error("a dashboard composer is already registered; two compositions cannot own one runtime");
   }
   registeredDashboardComposer = composer;
+}
+
+// A stop the secure bootstrap latched while the dashboard booted; the default shutdown signals honour it.
+let registeredDashboardStopSignal: AbortSignal | undefined;
+
+export function registerDashboardStopSignal(signal: AbortSignal): void {
+  registeredDashboardStopSignal = signal;
 }
 
 let registeredOcrComposer: OcrComposer | undefined;
@@ -187,8 +194,7 @@ function processShutdownSignals(stopSignal: AbortSignal | undefined): RuntimeShu
 async function ownDashboardUntilShutdown(
   compose: () => Promise<RunningDashboard>,
   signals: RuntimeShutdownSignals,
-  announce: (running: RunningDashboard) => void,
-  ready?: () => void | Promise<void>,
+  started: (running: RunningDashboard) => () => void | Promise<void>,
 ): Promise<void> {
   let stopRequested = false;
   let resolveShutdown!: () => void;
@@ -200,7 +206,7 @@ async function ownDashboardUntilShutdown(
   try {
     if (!stopRequested) {
       running = await compose();
-      announce(running);
+      const ready = started(running);
       const stopped = Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
       // A stop never waits for readiness publication; a readiness failure after the stop has nothing left to report to.
       if (!stopRequested) await Promise.race([Promise.resolve().then(ready), stopped]);
@@ -252,14 +258,15 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     const options = parseDashboardCommandOptions(args.slice(1));
     await ownDashboardUntilShutdown(
       () => compose(input.isolation, options),
-      input.signals ?? processShutdownSignals(input.stopSignal),
-      (running) => { write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`); },
-      input.dashboardReady
-      ?? (() => new Promise<void>((resolve, reject) => {
-        const send = process.send?.bind(process);
-        if (send === undefined || !process.connected) { resolve(); return; }
-        send({ type: "hrauto-dashboard-ready" }, (error: Error | null) => { if (error) reject(error); else resolve(); });
-      })));
+      input.signals ?? processShutdownSignals(input.stopSignal ?? registeredDashboardStopSignal),
+      (running) => {
+        write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
+        return input.dashboardReady ?? (() => new Promise<void>((resolve, reject) => {
+          const send = process.send?.bind(process);
+          if (send === undefined || !process.connected) { resolve(); return; }
+          send({ type: "hrauto-dashboard-ready" }, (error: Error | null) => { if (error) reject(error); else resolve(); });
+        }));
+      });
     return;
   }
   if (command === "explain") {

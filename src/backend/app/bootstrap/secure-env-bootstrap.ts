@@ -14,6 +14,7 @@ import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
+import { registerDashboardStopSignal } from "../composition/runtime-composition.js";
 import { AutomaticPersonRepairRefusedError,FINISH_SHUTDOWN_BACKUP,hasPendingShutdownBackup,readPendingShutdownBackup,RegisteredPersonUpgradeRefusedError,removePendingShutdownBackup,RuntimeCustodyUncertainError,writePendingShutdownBackup } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
@@ -150,7 +151,7 @@ export async function runSecureEnvironmentBootstrap(
   let retain = false;
   // Latch a dashboard stop from admission through release, so a signal drains boot owners instead of killing them.
   const latchStop = (): void => { controller.abort(new Error("dashboard-stop-requested")); };
-  if (dashboard) { process.on("SIGINT", latchStop); process.on("SIGTERM", latchStop); }
+  if (dashboard) { process.on("SIGINT", latchStop); process.on("SIGTERM", latchStop); registerDashboardStopSignal(controller.signal); }
   try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
   catch (error) {
     if (workerExitUnobserved(error)) {

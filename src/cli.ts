@@ -53,5 +53,5 @@ export async function runCli(admission: RuntimeAdmission, acceptDashboardAdmissi
   registerExplainComposer((runtimeIsolation, args) => composeExplainRuntime({ admission, isolation: runtimeIsolation, args }));
   registerOcrComposer((args) => composeOcrCommand({ args }));
   registerStorageComposer((runtimeIsolation, args) => composeStorageCommand(runtimeIsolation, args, undefined, REPOSITORY_ROOT, admission));
-  await startRebuildRuntime({ isolation: rebuildRuntimeIsolation, stopSignal: lifetime.parentSignal });
+  await startRebuildRuntime({ isolation: rebuildRuntimeIsolation });
 }
