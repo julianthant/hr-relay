@@ -466,6 +466,7 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: smoke-profile
+          retention-days: 7
           path: tests/smoke/.output/results.json
           if-no-files-found: error
 
