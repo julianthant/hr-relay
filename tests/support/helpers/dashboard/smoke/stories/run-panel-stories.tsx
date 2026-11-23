@@ -226,9 +226,11 @@ const BREAKS: readonly (readonly [readonly StateRuleName[], readonly string[]])[
   [["dialogs-share-shape", "named-and-focusable"], ["review/ready", "review/unconfirmed", "review/needs-review", "review/empty"]],
   [["dialogs-share-shape", "named-and-focusable", "no-dead-disabled-control"], ["review/approved"]],
 ];
+/** Cut-off text shows at 1280 only with the fonts on the Mac; the Linux runner clips at 1024 alone. */
+const FITS_ONLY_AT_NARROW = { "fits-viewport": [1024] } as const;
 const knownFailures = (id: string): Story["knownFailures"] => Object.fromEntries(BREAKS.flatMap(([rules, ids]) => ids.includes(id) ? rules.map(rule => [rule, AUDIT_FIXES] as const) : []));
 
 export const RUN_PANEL_STORIES = defineSurface("run-panel", {
   header: HEADER, timeline: TIMELINE, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
   write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW,
-}).map(entry => ({ ...entry, story: { ...entry.story, knownFailures: knownFailures(entry.id.replace(/^run-panel\//u, "")) } }));
+}).map(entry => ({ ...entry, story: { ...entry.story, knownFailures: knownFailures(entry.id.replace(/^run-panel\//u, "")), knownFailureWidths: FITS_ONLY_AT_NARROW } }));
