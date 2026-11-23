@@ -56,14 +56,19 @@ test("imports both CSV sizes, opens their saved rows, and picks both as run refe
   }, { timeout: 45_000 });
 
   await page.getByRole("button", { name: /^(Back to dashboard|Close settings)$/u }).click();
-  await dashboard.openStartDialog();
-  await dashboard.dialog.getByRole("navigation", { name: "Workflow" }).getByRole("button", { name: "Person Lookup", exact: true }).click();
   const checks = dashboard.dialog.getByRole("region", { name: "Reference spreadsheets" });
   for (const { name } of inputs) await test.step(`Pick ${name} as a reference`, async () => {
+    await dashboard.openStartDialog();
+    await dashboard.dialog.getByRole("navigation", { name: "Workflow" }).getByRole("button", { name: "Person Lookup", exact: true }).click();
     await checks.getByRole("button", { name: "Add spreadsheet" }).click();
-    await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill(name);
-    await page.getByRole("menuitem", { name: new RegExp(name, "u") }).click();
+    const search = page.getByRole("searchbox", { name: "Find a spreadsheet" });
+    await search.fill("smoke roster");
+    const options = page.getByRole("menuitem");
+    await expect(options).toContainText(["Large smoke roster", "Small smoke roster"]);
+    await options.filter({ hasText: name }).click();
     await expect(checks.getByRole("button", { name: `Remove ${name}` })).toBeVisible();
     await expect(checks.getByRole("button", { name: new RegExp(`${name} worksheets, (?!none chosen)`, "u") })).toBeEnabled();
+    await dashboard.dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(dashboard.dialog).toBeHidden();
   }, { timeout: 20_000 });
 });

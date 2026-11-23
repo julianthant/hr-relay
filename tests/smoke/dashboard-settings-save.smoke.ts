@@ -48,8 +48,9 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
     const downloads = page.getByRole("button", { name: "Change Downloads" });
     const path = page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value');
     const day = page.locator('[data-settings-path$=".jobEndDate"] [role="spinbutton"][data-type="day"]');
-    const saved = (name: string) => page.getByRole("heading", { name: new RegExp(`^Saved ${name}(?:\\. Restart to use them\\.)?$`, "u") });
-    const failure = page.locator('[data-slot="toast-title"]').filter({ hasText: "Settings weren't saved. The previous value is back." });
+    const toasts = page.locator('[data-slot="toast-title"]');
+    const saved = (name: string) => toasts.filter({ hasText: new RegExp(`^Saved ${name}(?:\\. Restart to use them\\.)?$`, "u") });
+    const failure = toasts.filter({ hasText: "Settings weren't saved. The previous value is back." });
 
     await expect(switchControl).toBeChecked();
     await whileReplyIsHeld(async () => {
@@ -80,10 +81,13 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
     });
     await dashboard.settleReads();
 
+    const pathSave = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/commands"
+      && SettingsCommandRequestSchema.parse(response.request().postDataJSON()).payload.patch["paths.downloadsDir"] !== undefined);
     await whileReplyIsHeld(async () => {
       await downloads.click();
       await expect(path).toHaveAttribute("aria-label", pickedPath);
     });
+    expect(CommandResultSchema.parse(await (await pathSave).json())).toMatchObject({ state: "applied" });
     await expect(saved("Downloads")).toBeVisible();
 
     const date = page.locator('[data-settings-path$=".jobEndDate"]');
