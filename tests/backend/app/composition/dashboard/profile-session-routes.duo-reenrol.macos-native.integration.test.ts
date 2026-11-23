@@ -19,15 +19,15 @@ it("erases the account on macOS with a Duo re-enrolment open", async () => {
     const finished = await finish();
     const active = PublicProfileStateSchema.parse(await finished.json());
     assert.equal(active.state, "active");
-    const cookie = finished.headers.get("set-cookie")?.split(";", 1)[0];
-    assert.ok(cookie);
+    const session = finished.headers.get("x-relay-session");
+    assert.ok(session);
 
-    const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, cookie)).json());
-    assert.equal((await post("/api/v1/profile/duo/reenrol/start", { operationId: opened.operationId, method: "key" }, cookie)).status, 200);
+    const opened = DuoReenrolStateSchema.parse(await (await post("/api/v1/profile/duo/reenrol/begin", {}, session)).json());
+    assert.equal((await post("/api/v1/profile/duo/reenrol/start", { operationId: opened.operationId, method: "key" }, session)).status, 200);
     const operation = join(fixture.machine.stateRoot, "machine", "operations", `${opened.operationId}.json`);
     assert.equal(existsSync(operation), true);
     const response = await post("/api/v1/profile/delete-account", {
-      confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }, cookie);
+      confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }, session);
     const deleted = PublicProfileStateSchema.parse(await response.json());
     assert.equal(existsSync(operation), false);
     assert.deepEqual(deleted, { state: "signed-out", signUpRequired: true });
