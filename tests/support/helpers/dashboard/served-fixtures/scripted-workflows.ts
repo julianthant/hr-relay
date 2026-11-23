@@ -15,6 +15,7 @@ import { EmergencyContactMemberInputSchema } from "../../../../../src/models/wor
 import { EmergencyContactInputSchema } from "../../../../../src/models/workflows/emergency-contact/input.js";
 import { bindManualOcrPageReading } from "../../../../../src/models/workflows/ocr/page-accounting.js";
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../../src/models/workflows/ocr/source-manifest.js";
+import type { UcpathStoreDriver } from "../../../../../src/models/ui/ucpath-driver.js";
 import { defineTask } from "../../../../../src/workflow-kit/task.js";
 import { defineServiceStore, type RegisteredTaskStore } from "../../../../../src/workflow-kit/task-registry.js";
 import { taskStoreRegistry } from "../../../../../src/backend/app/registries/task-registry.js";
@@ -215,7 +216,7 @@ const pagesOf = (world: ScriptWorld): Map<string, z.output<typeof ExtractPdfPage
  */
 export const EMERGENCY_CONTACT_SCRIPT: ScriptedWorkflow = {
   module: catalogModule("emergency-contact"),
-  children: ["ocr", "ocr-page", "person-lookup", "i9-lookup", "emergency-contact-member"].map(childModule),
+  children: ["ocr", "ocr-page", "person-lookup", "i9-lookup", "emergency-contact-member", "onbase"].map(childModule),
   writeNode: "contact-preview",
   submission: () => { throw new Error("an Emergency Contact run is started with its uploaded PDF: use the executor's submission()"); },
   subjectOf: (input, workflowId) => {
@@ -255,10 +256,12 @@ export const EMERGENCY_CONTACT_SCRIPT: ScriptedWorkflow = {
   },
   drivers(world) {
     const persistence = new Map<string, ReturnType<typeof createDeterministicContactPersistence>>();
-    const now = () => world.clock.now().toISOString();
+    // Each observation is later than the last, as the Save's verification requires.
+    let ticks = world.clock.now().getTime();
+    const now = () => new Date(++ticks).toISOString();
     return { crm: () => ({ ...healthyCrmDriver(), searchOnboardingRecords: async () => [] }),
       i9: () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: world.clock.now().toISOString() }),
-      ucpath: () => {
+      ucpath: (): UcpathStoreDriver => {
       const base = createDeterministicUcpathPersonOrgDriver();
       let active: { eid: string; driver: ReturnType<typeof createDeterministicUcpathPersonOrgDriver> } | undefined;
       const forSubject = (input: { emplId: string; expectedName: string }) => {

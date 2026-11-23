@@ -1,17 +1,17 @@
 /** Workflow trace: a started run is followed through running, its gate and done, and its write is recorded once. */
 import { SEEDED_NOW } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { approveScriptedGate, seededRequestOver, sendScriptedRunCommand, startScriptedRun } from "../support/helpers/dashboard/served-fixtures/seeded-scripted-executor.js";
-import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, I9_CHECK_START_SCRIPT, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
+import { CRM_DOC_DOWNLOAD_SCRIPT, crmDocEmail, EMERGENCY_CONTACT_SCRIPT, I9_CHECK_START_SCRIPT, PERSON_LOOKUP_SCRIPT } from "../support/helpers/dashboard/served-fixtures/scripted-workflows.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import readXlsxFile from "read-excel-file/node";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
+import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
+import readXlsxFile from "read-excel-file/node";
 import { expect, test } from "../support/helpers/dashboard/smoke/scripted-run-fixtures.js";
 
 const abortedRead = (runId: string) => new RegExp(String.raw`^requestfailed: http://127\.0\.0\.1:\d+/api/v1/runs/${runId}(?:/[a-z-]+)? net::ERR_ABORTED$`, "u");
-const abortedSettingsRead = /^requestfailed: http:\/\/127\.0\.0\.1:\d+\/api\/v1\/settings\/editable net::ERR_ABORTED$/u;
 const ABORTED_READ_REASON = "The panel abandons a read of the run in flight when the run's next state arrives, and reads again.";
 
 test("Work-Study: start, gate, answered once, done, then Back, Forward and Reload hold the URL's state", async ({ dashboard, seeded, page, failures }) => {
@@ -224,8 +224,96 @@ test("CRM Document Download: a failed download shows Failed in the run panel and
   expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
 });
 
+const SETTINGS_READ_ABORTED = /^requestfailed: http:\/\/127\.0\.0\.1:\d+\/api\/v1\/settings\/editable net::ERR_ABORTED$/u;
+
+/** Starts an Emergency Contact run for the people (employee IDs) its PDF holds and drives it through the OCR child's identity lookups to the review gate. */
+async function startEmergencyContact(seeded: SeededServer, failures: { allow(pattern: RegExp, reason: string): void }, people: string) {
+  const request = seededRequestOver(seeded.baseUrl);
+  failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
+  failures.allow(SETTINGS_READ_ABORTED, "The settings read is abandoned when the page re-reads it.");
+  const submission = await seeded.scripted.submission(EMERGENCY_CONTACT_SCRIPT, people);
+  const runId = await startScriptedRun(request, SEEDED_NOW, people, seeded.scripted.ocrRosterReference(), EMERGENCY_CONTACT_SCRIPT, submission);
+  failures.allow(abortedRead(runId), ABORTED_READ_REASON);
+  return { request, runId };
+}
+
+/** Answers the OCR review's gate with the command its approve control sends and drives the run on, from the members' first step. */
+async function releaseEmergencyContact(seeded: SeededServer, request: ReturnType<typeof seededRequestOver>, runId: string) {
+  const parked = await seeded.scripted.drive(runId);
+  let position = parked.position;
+  while (position.at === "step") position = await parked.advance();
+  expect(position).toMatchObject({ at: "settled", outcome: { state: "parked-gate", gateId: "approve-records" } });
+  expect(await request("/api/v1/commands", seeded.scripted.ocrApproval(runId))).toMatchObject({ state: "applied" });
+  return seeded.scripted.drive(runId);
+}
+
+test("Emergency Contact: start, review released, each step held, one Save per person, done", async ({ dashboard, seeded, page, failures }) => {
+  await dashboard.open();
+  await dashboard.openWorkflow("Emergency Contact");
+  const { request, runId } = await startEmergencyContact(seeded, failures, "10800000,10800001");
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  await dashboard.openRun(runId);
+  const run = await releaseEmergencyContact(seeded, request, runId);
+  expect(seeded.scripted.writes()).toHaveLength(0);
+  const trail: string[] = [];
+  let position = run.position;
+  while (position.at === "step") {
+    trail.push(position.nodeId);
+    if (trail.length === 2) expect(seeded.scripted.writes(), "nothing is saved before the first person's Save step runs").toHaveLength(0);
+    position = await run.advance();
+  }
+  expect(trail).toEqual(Array.from({ length: 2 }, () => ["read-contacts", "contact-preview", "contact-preview", "contact-preview"]).flat());
+  expect(position).toMatchObject({ at: "settled", outcome: { state: "done", runId } });
+  await expect(row).toContainText("Done");
+  await expect(row).toContainText("2/2");
+  const writes = seeded.scripted.writes();
+  expect(writes.map(write => write.eid).sort()).toEqual(["10800000", "10800001"]);
+  expect(new Set(writes.map(write => write.runId)).size).toBe(2);
+  expect(writes.every(write => write.nodeId === "contact-preview" && write.runId !== runId)).toBe(true);
+  await dashboard.settleReads();
+  await page.reload();
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
+  expect(seeded.scripted.writes()).toEqual(writes);
+});
+
+test("Emergency Contact: a failed step shows Failed for the person and saves nothing", async ({ dashboard, seeded, page, failures }) => {
+  await dashboard.open();
+  await dashboard.openWorkflow("Emergency Contact");
+  const { request, runId } = await startEmergencyContact(seeded, failures, "10800000");
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  const run = await releaseEmergencyContact(seeded, request, runId);
+  expect(run.position).toEqual({ at: "step", nodeId: "read-contacts" });
+  expect(await run.fail()).toMatchObject({ at: "settled" });
+  await expect(row).toContainText("0/1");
+  await expect(row).toContainText("Failed");
+  expect(seeded.scripted.writes()).toHaveLength(0);
+});
+
+test("Emergency Contact: a Save whose answer is lost parks the person's run and is asked for once", async ({ dashboard, seeded, page, failures }) => {
+  await dashboard.open();
+  await dashboard.openWorkflow("Emergency Contact");
+  const { request, runId } = await startEmergencyContact(seeded, failures, "10800000");
+  const row = page.locator(`[data-demo-row-id="${runId}"]`);
+  await expect(row).toBeVisible();
+  await dashboard.openRun(runId);
+  const run = await releaseEmergencyContact(seeded, request, runId);
+  expect(await run.advance()).toEqual({ at: "step", nodeId: "contact-preview" });
+  let parked = await run.parkWrite();
+  while (parked.at === "step") parked = await run.advance();
+  expect(parked).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
+  expect(seeded.scripted.writes()).toEqual([{ runId: parked.at === "settled" && "runId" in parked.outcome ? parked.outcome.runId : "", nodeId: "contact-preview", eid: "10800000" }]);
+  await dashboard.settleReads();
+  await page.reload();
+  await dashboard.expectRunOpen(runId);
+  await expect(page.locator(`[data-demo-row-id="${runId}"]`)).not.toContainText("2/2");
+  expect(seeded.scripted.writes()).toHaveLength(1);
+});
+
 /** Starts an I-9 Check Start run for the two scripted people, then drives it to where both PDF reviews wait; each OCR child parks on its own drive. */
-async function startI9ToReview(seeded: Parameters<Parameters<typeof test>[2]>[0]["seeded"], request: ReturnType<typeof seededRequestOver>, subject = "10000001,10000002"): Promise<string> {
+async function startI9ToReview(seeded: SeededServer, request: ReturnType<typeof seededRequestOver>, subject = "10000001,10000002"): Promise<string> {
   const submission = await seeded.scripted.submission(I9_CHECK_START_SCRIPT, subject);
   const runId = await startScriptedRun(request, SEEDED_NOW, "", seeded.scripted.i9Reference(), I9_CHECK_START_SCRIPT, submission);
   for (const _review of subject.split(",")) {
@@ -238,7 +326,7 @@ async function startI9ToReview(seeded: Parameters<Parameters<typeof test>[2]>[0]
 test("I-9 Check Start: start, both PDF reviews approved, each person checked, done with its children, and one results workbook saved", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(abortedSettingsRead, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
+  failures.allow(SETTINGS_READ_ABORTED, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
   await dashboard.open();
   await dashboard.openWorkflow("I-9 Check");
   const runId = await startI9ToReview(seeded, request);
@@ -272,7 +360,7 @@ test("I-9 Check Start: start, both PDF reviews approved, each person checked, do
 test("I-9 Check Start: a failed person check fails the run and saves no workbook", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(abortedSettingsRead, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
+  failures.allow(SETTINGS_READ_ABORTED, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
   await dashboard.open();
   await dashboard.openWorkflow("I-9 Check");
   const runId = await startI9ToReview(seeded, request);
