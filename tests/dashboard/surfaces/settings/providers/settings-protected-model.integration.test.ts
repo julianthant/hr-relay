@@ -124,7 +124,7 @@ it("retains marked-only pseudonym recovery without a render throw or a metadata 
   assert.equal(h.sent.length, before + 1, "the next save reaches Relay");
 });
 
-it("settles a literal marker UCPath password after a lost reply with a single revision", async () => {
+it("writes a literal marker UCPath password once and reports the lost reply as unconfirmed", async () => {
   const h = await mountRecovery();
   const before = h.authority.credentials.read();
   await act(async () => h.controller().update("ucpathPassword", "<set>"));
@@ -134,7 +134,7 @@ it("settles a literal marker UCPath password after a lost reply with a single re
   assert.equal(h.sent.length, 1, "the lost reply is read back without resending the password");
   assert.equal(h.authority.credentials.read().revision, before.revision + 1);
   assert.equal(h.authority.credentials.read().entries.ucpathPassword?.value, "<set>");
-  assert.deepEqual(h.problems, []);
+  assert.deepEqual(h.problems, ["Credentials weren't saved"], "the marker cannot confirm the original value");
 });
 
 it("reads a stored write with a lost reply back once, across losing and regaining authority, and never resends it", async () => {
