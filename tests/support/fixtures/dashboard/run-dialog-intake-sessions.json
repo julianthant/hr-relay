@@ -1,0 +1,1259 @@
+{
+ "ids": {
+  "mapping": "7f1c9d20-4b6e-4a51-9c33-0b21d7e5a840",
+  "validated": "9a34be71-2c08-4d19-88f5-6e0b7c214d95",
+  "manifest": "0cda04a1-7fd8-4a3f-8a18-1f986c718d84",
+  "rerun": "55b3413d-1e04-47bb-b7cf-22e0371bbd99"
+ },
+ "sessions": {
+  "7f1c9d20-4b6e-4a51-9c33-0b21d7e5a840": {
+   "wireVersion": 1,
+   "intakeSessionId": "7f1c9d20-4b6e-4a51-9c33-0b21d7e5a840",
+   "workflow": "person-lookup",
+   "artifact": {
+    "id": "b48e2c17-9d05-4e63-8a72-1f5c0d9b4e33",
+    "sha256": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "bytes": 612,
+    "mediaType": "text/csv"
+   },
+   "sourceName": "cohort-7-onboarding.csv",
+   "state": "mapping",
+   "expectedVersion": 3,
+   "createdAt": "2026-08-03T10:01:12.000-07:00",
+   "updatedAt": "2026-08-03T10:02:40.000-07:00",
+   "sheets": [
+    "Cohort 7"
+   ],
+   "sheet": "Cohort 7",
+   "headerCandidates": [
+    {
+     "rowIndex": 2,
+     "cells": [
+      "UCPath ID",
+      "Employee Name",
+      "Department",
+      "Start Date"
+     ],
+     "confidence": 1
+    },
+    {
+     "rowIndex": 5,
+     "cells": [
+      "10-4567",
+      "Okafor, Chidi",
+      "Campus Recreation",
+      "07/21/2026"
+     ],
+     "confidence": 0.744
+    },
+    {
+     "rowIndex": 6,
+     "cells": [
+      "10554120",
+      "Ramirez, Sofia",
+      "Student Health",
+      "07/21/2026"
+     ],
+     "confidence": 0.701
+    },
+    {
+     "rowIndex": 4,
+     "cells": [
+      "10101010",
+      "Morrow, Bea",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.638
+    },
+    {
+     "rowIndex": 0,
+     "cells": [
+      "Onboarding roster — Cohort 7",
+      "",
+      "",
+      ""
+     ],
+     "confidence": 0.627
+    },
+    {
+     "rowIndex": 3,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 7,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "08/04/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 8,
+     "cells": [
+      "",
+      "",
+      "Facilities Management",
+      "08/04/2026"
+     ],
+     "confidence": 0.361
+    }
+   ],
+   "headerDiscoveryReason": "preselected",
+   "headerRowIndex": 2,
+   "headerFingerprint": "55f5fb4ba5197242d40f0d0c2aa3825e848361f72ee58f16db75b343d089eadb",
+   "columns": [
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "header": "UCPath ID",
+     "normalizedHeader": "ucpath id",
+     "occurrence": 1,
+     "currentIndex": 0,
+     "samples": [
+      "10873698",
+      "10101010",
+      "10-4567"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Employee Name",
+     "normalizedHeader": "employee name",
+     "occurrence": 1,
+     "currentIndex": 1,
+     "samples": [
+      "Battistessa, Johnnie",
+      "Morrow, Bea",
+      "Okafor, Chidi"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZGVwYXJ0bWVudCIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Department",
+     "normalizedHeader": "department",
+     "occurrence": 1,
+     "currentIndex": 2,
+     "samples": [
+      "Housing Dining Hospitality",
+      "Housing Dining Hospitality",
+      "Campus Recreation"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoic3RhcnQgZGF0ZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Start Date",
+     "normalizedHeader": "start date",
+     "occurrence": 1,
+     "currentIndex": 3,
+     "samples": [
+      "07/14/2026",
+      "07/14/2026",
+      "07/21/2026"
+     ]
+    }
+   ],
+   "rowCount": 7,
+   "targets": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "label": "Employee ID (EID)",
+     "required": false,
+     "schemaHash": "2f7b8b1969405af81be50e5ab63101dfc012b98dfd5bf27a47bb417474114fcf"
+    },
+    {
+     "targetFieldId": "name",
+     "canonicalFieldId": "fullName",
+     "label": "Full Name",
+     "required": false,
+     "schemaHash": "eb145d7e08c10a55f557870959853990d86abf611bdb5cd52c8f784f1cac68eb"
+    }
+   ],
+   "bindings": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "confirmedAt": "2026-08-03T10:02:40.000-07:00"
+    }
+   ],
+   "constants": [],
+   "corrections": [],
+   "exclusions": [],
+   "suggestions": [
+    {
+     "targetFieldId": "emplId",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "score": 0.9,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    },
+    {
+     "targetFieldId": "name",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "score": 1,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    }
+   ],
+   "validation": {
+    "state": "none"
+   }
+  },
+  "9a34be71-2c08-4d19-88f5-6e0b7c214d95": {
+   "wireVersion": 1,
+   "intakeSessionId": "9a34be71-2c08-4d19-88f5-6e0b7c214d95",
+   "workflow": "person-lookup",
+   "artifact": {
+    "id": "b48e2c17-9d05-4e63-8a72-1f5c0d9b4e33",
+    "sha256": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "bytes": 612,
+    "mediaType": "text/csv"
+   },
+   "sourceName": "cohort-7-onboarding.csv",
+   "state": "validated",
+   "expectedVersion": 4,
+   "createdAt": "2026-08-03T10:01:12.000-07:00",
+   "updatedAt": "2026-08-03T10:02:40.000-07:00",
+   "sheets": [
+    "Cohort 7"
+   ],
+   "sheet": "Cohort 7",
+   "headerCandidates": [
+    {
+     "rowIndex": 2,
+     "cells": [
+      "UCPath ID",
+      "Employee Name",
+      "Department",
+      "Start Date"
+     ],
+     "confidence": 1
+    },
+    {
+     "rowIndex": 5,
+     "cells": [
+      "10-4567",
+      "Okafor, Chidi",
+      "Campus Recreation",
+      "07/21/2026"
+     ],
+     "confidence": 0.744
+    },
+    {
+     "rowIndex": 6,
+     "cells": [
+      "10554120",
+      "Ramirez, Sofia",
+      "Student Health",
+      "07/21/2026"
+     ],
+     "confidence": 0.701
+    },
+    {
+     "rowIndex": 4,
+     "cells": [
+      "10101010",
+      "Morrow, Bea",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.638
+    },
+    {
+     "rowIndex": 0,
+     "cells": [
+      "Onboarding roster — Cohort 7",
+      "",
+      "",
+      ""
+     ],
+     "confidence": 0.627
+    },
+    {
+     "rowIndex": 3,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 7,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "08/04/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 8,
+     "cells": [
+      "",
+      "",
+      "Facilities Management",
+      "08/04/2026"
+     ],
+     "confidence": 0.361
+    }
+   ],
+   "headerDiscoveryReason": "preselected",
+   "headerRowIndex": 2,
+   "headerFingerprint": "55f5fb4ba5197242d40f0d0c2aa3825e848361f72ee58f16db75b343d089eadb",
+   "columns": [
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "header": "UCPath ID",
+     "normalizedHeader": "ucpath id",
+     "occurrence": 1,
+     "currentIndex": 0,
+     "samples": [
+      "10873698",
+      "10101010",
+      "10-4567"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Employee Name",
+     "normalizedHeader": "employee name",
+     "occurrence": 1,
+     "currentIndex": 1,
+     "samples": [
+      "Battistessa, Johnnie",
+      "Morrow, Bea",
+      "Okafor, Chidi"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZGVwYXJ0bWVudCIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Department",
+     "normalizedHeader": "department",
+     "occurrence": 1,
+     "currentIndex": 2,
+     "samples": [
+      "Housing Dining Hospitality",
+      "Housing Dining Hospitality",
+      "Campus Recreation"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoic3RhcnQgZGF0ZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Start Date",
+     "normalizedHeader": "start date",
+     "occurrence": 1,
+     "currentIndex": 3,
+     "samples": [
+      "07/14/2026",
+      "07/14/2026",
+      "07/21/2026"
+     ]
+    }
+   ],
+   "rowCount": 7,
+   "targets": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "label": "Employee ID (EID)",
+     "required": false,
+     "schemaHash": "2f7b8b1969405af81be50e5ab63101dfc012b98dfd5bf27a47bb417474114fcf"
+    },
+    {
+     "targetFieldId": "name",
+     "canonicalFieldId": "fullName",
+     "label": "Full Name",
+     "required": false,
+     "schemaHash": "eb145d7e08c10a55f557870959853990d86abf611bdb5cd52c8f784f1cac68eb"
+    }
+   ],
+   "bindings": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "confirmedAt": "2026-08-03T10:02:40.000-07:00"
+    },
+    {
+     "targetFieldId": "name",
+     "canonicalFieldId": "fullName",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "confirmedAt": "2026-08-03T10:02:40.000-07:00"
+    }
+   ],
+   "constants": [],
+   "corrections": [],
+   "exclusions": [],
+   "suggestions": [
+    {
+     "targetFieldId": "emplId",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "score": 0.9,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    },
+    {
+     "targetFieldId": "name",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "score": 1,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    }
+   ],
+   "validation": {
+    "state": "validated",
+    "validatedAt": "2026-08-03T10:02:00.000-07:00",
+    "readAt": "2026-08-03T10:02:00.000-07:00",
+    "validRows": 3,
+    "unresolvedRows": [
+     1,
+     3,
+     5,
+     6
+    ],
+    "rejected": [
+     {
+      "rejectId": "07d9105f-a0a1-52e9-b0f1-7612b0df2597",
+      "sourceRow": 3,
+      "code": "cell-coercion",
+      "reason": "is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID))",
+      "kind": "cell-coercion",
+      "field": "emplId",
+      "column": {
+       "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+       "header": "UCPath ID"
+      },
+      "raw": {
+       "state": "allowed",
+       "classification": "direct-identifier",
+       "transform": "allow",
+       "value": "10-4567"
+      }
+     },
+     {
+      "rejectId": "310adfc9-104c-5981-ab11-b2b34cc4ae1b",
+      "sourceRow": 6,
+      "code": "cross-field",
+      "reason": "Invalid input",
+      "kind": "cross-field",
+      "paths": [
+       "emplId",
+       "name"
+      ],
+      "issues": [
+       {
+        "path": [],
+        "code": "invalid_union",
+        "message": "Invalid input"
+       }
+      ]
+     },
+     {
+      "rejectId": "62acfbe9-833a-53d2-ad19-8ebed9ad454a",
+      "sourceRow": 1,
+      "code": "duplicate-identity",
+      "reason": "source rows 1, 5 describe the same item",
+      "kind": "duplicate-identity",
+      "itemId": "f1a2d0b1-11aa-5823-b6b1-758bae28135a",
+      "collidingSourceRows": [
+       1,
+       5
+      ]
+     },
+     {
+      "rejectId": "ecdd75c6-c16d-520c-a16d-af16ebb4e242",
+      "sourceRow": 5,
+      "code": "duplicate-identity",
+      "reason": "source rows 1, 5 describe the same item",
+      "kind": "duplicate-identity",
+      "itemId": "f1a2d0b1-11aa-5823-b6b1-758bae28135a",
+      "collidingSourceRows": [
+       1,
+       5
+      ]
+     }
+    ],
+    "excluded": []
+   }
+  },
+  "0cda04a1-7fd8-4a3f-8a18-1f986c718d84": {
+   "wireVersion": 1,
+   "intakeSessionId": "0cda04a1-7fd8-4a3f-8a18-1f986c718d84",
+   "workflow": "person-lookup",
+   "artifact": {
+    "id": "b48e2c17-9d05-4e63-8a72-1f5c0d9b4e33",
+    "sha256": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "bytes": 612,
+    "mediaType": "text/csv"
+   },
+   "sourceName": "cohort-7-onboarding.csv",
+   "state": "enqueued",
+   "expectedVersion": 5,
+   "reservedManifestId": "7b92095b-bb90-4ca2-b373-8402790fb7f8",
+   "intakeManifestId": "7b92095b-bb90-4ca2-b373-8402790fb7f8",
+   "manifest": {
+    "manifestId": "7b92095b-bb90-4ca2-b373-8402790fb7f8",
+    "mappingFingerprint": "55f5fb4ba5197242d40f0d0c2aa3825e848361f72ee58f16db75b343d089eadb",
+    "mappingSnapshotHash": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "intakeProjectionFingerprint": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "workflowContractFingerprint": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "canonicalInputSchemaHash": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "createdAt": "2026-08-03T10:04:00.000-07:00",
+    "totals": {
+     "sourceRows": 7,
+     "valid": 3,
+     "rejected": 4,
+     "rejectionEvents": 4,
+     "excluded": 0,
+     "corrected": 0
+    },
+    "sourceRowDispositions": [
+     {
+      "sourceRow": 1,
+      "disposition": "rejected",
+      "currentRejectIds": [
+       "62acfbe9-833a-53d2-ad19-8ebed9ad454a"
+      ]
+     },
+     {
+      "sourceRow": 2,
+      "disposition": "valid",
+      "itemId": "82ed6b39-608c-555f-9c57-70f79e0ada27",
+      "currentRejectIds": []
+     },
+     {
+      "sourceRow": 3,
+      "disposition": "rejected",
+      "currentRejectIds": [
+       "07d9105f-a0a1-52e9-b0f1-7612b0df2597"
+      ]
+     },
+     {
+      "sourceRow": 4,
+      "disposition": "valid",
+      "itemId": "65c6c72b-d36b-508c-9d5c-f193969ff61d",
+      "currentRejectIds": []
+     },
+     {
+      "sourceRow": 5,
+      "disposition": "rejected",
+      "currentRejectIds": [
+       "ecdd75c6-c16d-520c-a16d-af16ebb4e242"
+      ]
+     },
+     {
+      "sourceRow": 6,
+      "disposition": "rejected",
+      "currentRejectIds": [
+       "310adfc9-104c-5981-ab11-b2b34cc4ae1b"
+      ]
+     },
+     {
+      "sourceRow": 7,
+      "disposition": "valid",
+      "itemId": "e8b68575-86b3-55a5-bd97-a48142caee29",
+      "currentRejectIds": []
+     }
+    ],
+    "validRows": [
+     {
+      "sourceRow": 2,
+      "itemId": "82ed6b39-608c-555f-9c57-70f79e0ada27",
+      "inputHash": "5a5158e353d9f1edf6ba875b0ec054f286d248ffc418e916c387ea12c2ff3a92",
+      "parsedInput": {
+       "crmCheck": true,
+       "emplId": "10101010",
+       "includeCrmDates": false,
+       "keepNonHdh": false,
+       "mode": "search",
+       "name": "Morrow, Bea"
+      }
+     },
+     {
+      "sourceRow": 4,
+      "itemId": "65c6c72b-d36b-508c-9d5c-f193969ff61d",
+      "inputHash": "79407b1f64c2f70fabc67a9c20bea9bd520646e0eade84e8a28ec9fe74e7892d",
+      "parsedInput": {
+       "crmCheck": true,
+       "emplId": "10554120",
+       "includeCrmDates": false,
+       "keepNonHdh": false,
+       "mode": "search",
+       "name": "Ramirez, Sofia"
+      }
+     },
+     {
+      "sourceRow": 7,
+      "itemId": "e8b68575-86b3-55a5-bd97-a48142caee29",
+      "inputHash": "97228bf148fe92f4ec087669046455959ee29637df607006c248df44f3a002b8",
+      "parsedInput": {
+       "crmCheck": true,
+       "emplId": "10221844",
+       "includeCrmDates": false,
+       "keepNonHdh": false,
+       "mode": "search",
+       "name": "Okonkwo, Amara"
+      }
+     }
+    ]
+   },
+   "createdAt": "2026-08-03T10:01:12.000-07:00",
+   "updatedAt": "2026-08-03T10:02:40.000-07:00",
+   "sheets": [
+    "Cohort 7"
+   ],
+   "sheet": "Cohort 7",
+   "headerCandidates": [
+    {
+     "rowIndex": 2,
+     "cells": [
+      "UCPath ID",
+      "Employee Name",
+      "Department",
+      "Start Date"
+     ],
+     "confidence": 1
+    },
+    {
+     "rowIndex": 5,
+     "cells": [
+      "10-4567",
+      "Okafor, Chidi",
+      "Campus Recreation",
+      "07/21/2026"
+     ],
+     "confidence": 0.744
+    },
+    {
+     "rowIndex": 6,
+     "cells": [
+      "10554120",
+      "Ramirez, Sofia",
+      "Student Health",
+      "07/21/2026"
+     ],
+     "confidence": 0.701
+    },
+    {
+     "rowIndex": 4,
+     "cells": [
+      "10101010",
+      "Morrow, Bea",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.638
+    },
+    {
+     "rowIndex": 0,
+     "cells": [
+      "Onboarding roster — Cohort 7",
+      "",
+      "",
+      ""
+     ],
+     "confidence": 0.627
+    },
+    {
+     "rowIndex": 3,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 7,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "08/04/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 8,
+     "cells": [
+      "",
+      "",
+      "Facilities Management",
+      "08/04/2026"
+     ],
+     "confidence": 0.361
+    }
+   ],
+   "headerDiscoveryReason": "preselected",
+   "headerRowIndex": 2,
+   "headerFingerprint": "55f5fb4ba5197242d40f0d0c2aa3825e848361f72ee58f16db75b343d089eadb",
+   "columns": [
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "header": "UCPath ID",
+     "normalizedHeader": "ucpath id",
+     "occurrence": 1,
+     "currentIndex": 0,
+     "samples": [
+      "10873698",
+      "10101010",
+      "10-4567"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Employee Name",
+     "normalizedHeader": "employee name",
+     "occurrence": 1,
+     "currentIndex": 1,
+     "samples": [
+      "Battistessa, Johnnie",
+      "Morrow, Bea",
+      "Okafor, Chidi"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZGVwYXJ0bWVudCIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Department",
+     "normalizedHeader": "department",
+     "occurrence": 1,
+     "currentIndex": 2,
+     "samples": [
+      "Housing Dining Hospitality",
+      "Housing Dining Hospitality",
+      "Campus Recreation"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoic3RhcnQgZGF0ZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Start Date",
+     "normalizedHeader": "start date",
+     "occurrence": 1,
+     "currentIndex": 3,
+     "samples": [
+      "07/14/2026",
+      "07/14/2026",
+      "07/21/2026"
+     ]
+    }
+   ],
+   "rowCount": 7,
+   "targets": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "label": "Employee ID (EID)",
+     "required": false,
+     "schemaHash": "2f7b8b1969405af81be50e5ab63101dfc012b98dfd5bf27a47bb417474114fcf"
+    },
+    {
+     "targetFieldId": "name",
+     "canonicalFieldId": "fullName",
+     "label": "Full Name",
+     "required": false,
+     "schemaHash": "eb145d7e08c10a55f557870959853990d86abf611bdb5cd52c8f784f1cac68eb"
+    }
+   ],
+   "bindings": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "confirmedAt": "2026-08-03T10:02:40.000-07:00"
+    },
+    {
+     "targetFieldId": "name",
+     "canonicalFieldId": "fullName",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "confirmedAt": "2026-08-03T10:02:40.000-07:00"
+    }
+   ],
+   "constants": [],
+   "corrections": [],
+   "exclusions": [],
+   "suggestions": [
+    {
+     "targetFieldId": "emplId",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "score": 0.9,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    },
+    {
+     "targetFieldId": "name",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "score": 1,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    }
+   ],
+   "validation": {
+    "state": "validated",
+    "validatedAt": "2026-08-03T10:02:00.000-07:00",
+    "readAt": "2026-08-03T10:02:00.000-07:00",
+    "validRows": 3,
+    "unresolvedRows": [
+     1,
+     3,
+     5,
+     6
+    ],
+    "rejected": [
+     {
+      "rejectId": "07d9105f-a0a1-52e9-b0f1-7612b0df2597",
+      "sourceRow": 3,
+      "code": "cell-coercion",
+      "reason": "is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID))",
+      "kind": "cell-coercion",
+      "field": "emplId",
+      "column": {
+       "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+       "header": "UCPath ID"
+      },
+      "raw": {
+       "state": "allowed",
+       "classification": "direct-identifier",
+       "transform": "allow",
+       "value": "10-4567"
+      }
+     },
+     {
+      "rejectId": "310adfc9-104c-5981-ab11-b2b34cc4ae1b",
+      "sourceRow": 6,
+      "code": "cross-field",
+      "reason": "Invalid input",
+      "kind": "cross-field",
+      "paths": [
+       "emplId",
+       "name"
+      ],
+      "issues": [
+       {
+        "path": [],
+        "code": "invalid_union",
+        "message": "Invalid input"
+       }
+      ]
+     },
+     {
+      "rejectId": "62acfbe9-833a-53d2-ad19-8ebed9ad454a",
+      "sourceRow": 1,
+      "code": "duplicate-identity",
+      "reason": "source rows 1, 5 describe the same item",
+      "kind": "duplicate-identity",
+      "itemId": "f1a2d0b1-11aa-5823-b6b1-758bae28135a",
+      "collidingSourceRows": [
+       1,
+       5
+      ]
+     },
+     {
+      "rejectId": "ecdd75c6-c16d-520c-a16d-af16ebb4e242",
+      "sourceRow": 5,
+      "code": "duplicate-identity",
+      "reason": "source rows 1, 5 describe the same item",
+      "kind": "duplicate-identity",
+      "itemId": "f1a2d0b1-11aa-5823-b6b1-758bae28135a",
+      "collidingSourceRows": [
+       1,
+       5
+      ]
+     }
+    ],
+    "excluded": []
+   },
+   "rerun": {
+    "intakeManifestId": "7b92095b-bb90-4ca2-b373-8402790fb7f8",
+    "createdAt": "2026-08-03T10:04:00.000-07:00",
+    "totals": {
+     "sourceRows": 7,
+     "valid": 3,
+     "rejected": 4,
+     "rejectionEvents": 4,
+     "excluded": 0,
+     "corrected": 0
+    },
+    "diff": {
+     "kind": "same-plan"
+    }
+   }
+  },
+  "55b3413d-1e04-47bb-b7cf-22e0371bbd99": {
+   "wireVersion": 1,
+   "intakeSessionId": "55b3413d-1e04-47bb-b7cf-22e0371bbd99",
+   "workflow": "person-lookup",
+   "artifact": {
+    "id": "b48e2c17-9d05-4e63-8a72-1f5c0d9b4e33",
+    "sha256": "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281",
+    "bytes": 612,
+    "mediaType": "text/csv"
+   },
+   "sourceName": "cohort-7-onboarding.csv",
+   "state": "validated",
+   "expectedVersion": 4,
+   "reservedManifestId": "d94663c1-8b04-48d7-abfa-d78fa46fd2cf",
+   "createdAt": "2026-08-03T10:01:12.000-07:00",
+   "updatedAt": "2026-08-03T10:02:40.000-07:00",
+   "sheets": [
+    "Cohort 7"
+   ],
+   "sheet": "Cohort 7",
+   "headerCandidates": [
+    {
+     "rowIndex": 2,
+     "cells": [
+      "UCPath ID",
+      "Employee Name",
+      "Department",
+      "Start Date"
+     ],
+     "confidence": 1
+    },
+    {
+     "rowIndex": 5,
+     "cells": [
+      "10-4567",
+      "Okafor, Chidi",
+      "Campus Recreation",
+      "07/21/2026"
+     ],
+     "confidence": 0.744
+    },
+    {
+     "rowIndex": 6,
+     "cells": [
+      "10554120",
+      "Ramirez, Sofia",
+      "Student Health",
+      "07/21/2026"
+     ],
+     "confidence": 0.701
+    },
+    {
+     "rowIndex": 4,
+     "cells": [
+      "10101010",
+      "Morrow, Bea",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.638
+    },
+    {
+     "rowIndex": 0,
+     "cells": [
+      "Onboarding roster — Cohort 7",
+      "",
+      "",
+      ""
+     ],
+     "confidence": 0.627
+    },
+    {
+     "rowIndex": 3,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "07/14/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 7,
+     "cells": [
+      "10873698",
+      "Battistessa, Johnnie",
+      "Housing Dining Hospitality",
+      "08/04/2026"
+     ],
+     "confidence": 0.51
+    },
+    {
+     "rowIndex": 8,
+     "cells": [
+      "",
+      "",
+      "Facilities Management",
+      "08/04/2026"
+     ],
+     "confidence": 0.361
+    }
+   ],
+   "headerDiscoveryReason": "preselected",
+   "headerRowIndex": 2,
+   "headerFingerprint": "55f5fb4ba5197242d40f0d0c2aa3825e848361f72ee58f16db75b343d089eadb",
+   "columns": [
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "header": "UCPath ID",
+     "normalizedHeader": "ucpath id",
+     "occurrence": 1,
+     "currentIndex": 0,
+     "samples": [
+      "10873698",
+      "10101010",
+      "10-4567"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Employee Name",
+     "normalizedHeader": "employee name",
+     "occurrence": 1,
+     "currentIndex": 1,
+     "samples": [
+      "Battistessa, Johnnie",
+      "Morrow, Bea",
+      "Okafor, Chidi"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZGVwYXJ0bWVudCIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Department",
+     "normalizedHeader": "department",
+     "occurrence": 1,
+     "currentIndex": 2,
+     "samples": [
+      "Housing Dining Hospitality",
+      "Housing Dining Hospitality",
+      "Campus Recreation"
+     ]
+    },
+    {
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoic3RhcnQgZGF0ZSIsIm9jY3VycmVuY2UiOjF9",
+     "header": "Start Date",
+     "normalizedHeader": "start date",
+     "occurrence": 1,
+     "currentIndex": 3,
+     "samples": [
+      "07/14/2026",
+      "07/14/2026",
+      "07/21/2026"
+     ]
+    }
+   ],
+   "rowCount": 7,
+   "targets": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "label": "Employee ID (EID)",
+     "required": false,
+     "schemaHash": "2f7b8b1969405af81be50e5ab63101dfc012b98dfd5bf27a47bb417474114fcf"
+    },
+    {
+     "targetFieldId": "name",
+     "canonicalFieldId": "fullName",
+     "label": "Full Name",
+     "required": false,
+     "schemaHash": "eb145d7e08c10a55f557870959853990d86abf611bdb5cd52c8f784f1cac68eb"
+    }
+   ],
+   "bindings": [
+    {
+     "targetFieldId": "emplId",
+     "canonicalFieldId": "eid",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "confirmedAt": "2026-08-03T10:02:40.000-07:00"
+    },
+    {
+     "targetFieldId": "name",
+     "canonicalFieldId": "fullName",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "confirmedAt": "2026-08-03T10:02:40.000-07:00"
+    }
+   ],
+   "constants": [],
+   "corrections": [],
+   "exclusions": [],
+   "suggestions": [
+    {
+     "targetFieldId": "emplId",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+     "score": 0.9,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    },
+    {
+     "targetFieldId": "name",
+     "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoiZW1wbG95ZWUgbmFtZSIsIm9jY3VycmVuY2UiOjF9",
+     "score": 1,
+     "why": [
+      "alias-exact",
+      "samples-parse"
+     ],
+     "ambiguous": false
+    }
+   ],
+   "validation": {
+    "state": "validated",
+    "validatedAt": "2026-08-03T10:02:00.000-07:00",
+    "readAt": "2026-08-03T10:02:00.000-07:00",
+    "validRows": 3,
+    "unresolvedRows": [
+     1,
+     3,
+     5,
+     6
+    ],
+    "rejected": [
+     {
+      "rejectId": "07d9105f-a0a1-52e9-b0f1-7612b0df2597",
+      "sourceRow": 3,
+      "code": "cell-coercion",
+      "reason": "is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID))",
+      "kind": "cell-coercion",
+      "field": "emplId",
+      "column": {
+       "sourceColumnId": "eyJub3JtYWxpemVkSGVhZGVyIjoidWNwYXRoIGlkIiwib2NjdXJyZW5jZSI6MX0",
+       "header": "UCPath ID"
+      },
+      "raw": {
+       "state": "allowed",
+       "classification": "direct-identifier",
+       "transform": "allow",
+       "value": "10-4567"
+      }
+     },
+     {
+      "rejectId": "310adfc9-104c-5981-ab11-b2b34cc4ae1b",
+      "sourceRow": 6,
+      "code": "cross-field",
+      "reason": "Invalid input",
+      "kind": "cross-field",
+      "paths": [
+       "emplId",
+       "name"
+      ],
+      "issues": [
+       {
+        "path": [],
+        "code": "invalid_union",
+        "message": "Invalid input"
+       }
+      ]
+     },
+     {
+      "rejectId": "62acfbe9-833a-53d2-ad19-8ebed9ad454a",
+      "sourceRow": 1,
+      "code": "duplicate-identity",
+      "reason": "source rows 1, 5 describe the same item",
+      "kind": "duplicate-identity",
+      "itemId": "f1a2d0b1-11aa-5823-b6b1-758bae28135a",
+      "collidingSourceRows": [
+       1,
+       5
+      ]
+     },
+     {
+      "rejectId": "ecdd75c6-c16d-520c-a16d-af16ebb4e242",
+      "sourceRow": 5,
+      "code": "duplicate-identity",
+      "reason": "source rows 1, 5 describe the same item",
+      "kind": "duplicate-identity",
+      "itemId": "f1a2d0b1-11aa-5823-b6b1-758bae28135a",
+      "collidingSourceRows": [
+       1,
+       5
+      ]
+     }
+    ],
+    "excluded": []
+   },
+   "rerun": {
+    "intakeManifestId": "7b92095b-bb90-4ca2-b373-8402790fb7f8",
+    "createdAt": "2026-08-03T10:04:00.000-07:00",
+    "totals": {
+     "sourceRows": 7,
+     "valid": 3,
+     "rejected": 4,
+     "rejectionEvents": 4,
+     "excluded": 0,
+     "corrected": 0
+    },
+    "diff": {
+     "kind": "changed",
+     "changes": [
+      {
+       "what": "mapping",
+       "was": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "now": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     ],
+     "added": [
+      {
+       "sourceRow": 2,
+       "itemId": "82ed6b39-608c-555f-9c57-70f79e0ada27",
+       "inputHash": "9fdcd3173894a6d4e7db5f5a38391ed164f8b28a3a1dc1bec506dfcde305ee53",
+       "parsedInput": {
+        "crmCheck": true,
+        "emplId": "10101010",
+        "includeCrmDates": false,
+        "keepNonHdh": false,
+        "mode": "search",
+        "name": "Morrow, Bea"
+       }
+      }
+     ],
+     "removed": [
+      {
+       "sourceRow": 4,
+       "itemId": "65c6c72b-d36b-508c-9d5c-f193969ff61d",
+       "inputHash": "19a6750440132371e5250611020b20f39659744004927b35b8b699a1d98c6904",
+       "parsedInput": {
+        "crmCheck": true,
+        "emplId": "10554120",
+        "includeCrmDates": false,
+        "keepNonHdh": false,
+        "mode": "search",
+        "name": "Ramirez, Sofia"
+       }
+      }
+     ],
+     "changedInputs": [
+      {
+       "itemId": "e8b68575-86b3-55a5-bd97-a48142caee29",
+       "beforeInputHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "afterInputHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

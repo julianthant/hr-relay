@@ -1,7 +1,8 @@
 import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DryRunMark } from "../run-detail/run-state-chips.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
-import { Fragment, memo, useMemo, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, RotateCcw, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
@@ -689,7 +690,6 @@ export function QueueRow({
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
-  deferOffscreen = false,
 }: {
   outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
@@ -702,7 +702,6 @@ export function QueueRow({
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
-  deferOffscreen?: boolean;
 }) {
   const status = dsStatusOf(batch?.status ?? surface.status);
   const announcing = useAttentionAnnounce(status);
@@ -746,7 +745,7 @@ export function QueueRow({
   const batchTestSystems = batch === undefined ? [] : [...new Set(batch.members.flatMap(member => testInstanceSystems(member.resolvedInstances)))];
 
   return (
-    <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
+    <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)] [[data-index='0']>&]:pt-[var(--ds-space-cozy)]">
         <QueueRowGroup
           onClick={event => {
             if (event.detail > 1) return;
@@ -760,7 +759,6 @@ export function QueueRow({
           data-queue-batch-id={batch?.id}
           className={cn(
             "group relative flex min-w-0 flex-1 cursor-pointer flex-col overflow-hidden border has-[[data-queue-open]:focus-visible]:outline has-[[data-queue-open]:focus-visible]:outline-2",
-            deferOffscreen && "[content-visibility:auto] [contain-intrinsic-size:auto_160px]",
             dsRadius.lg,
             dsMotion.base,
             dsFocus,
@@ -992,6 +990,9 @@ const MemoQueueRow = memo(QueueRow, (before, after) => {
   return !belongs(beforeSelected) && !belongs(afterSelected);
 });
 
+/** Short days mount every row; longer ones mount only the rows near the viewport. */
+const QUEUE_WINDOW_FROM = 100;
+
 /** Keep memoized queue props stable between deliberate live-clock ticks. */
 export const QueuePanel = memo(function QueuePanel({
   outcomes,
@@ -1049,8 +1050,78 @@ export const QueuePanel = memo(function QueuePanel({
     [digestOf("cancelled"), "cancelled"],
   ].filter(([count]) => count !== 0).map(([count, word]) => `${String(count)} ${String(word)}`).join(" · ");
 
+  type Line = { kind: "band"; band: (typeof bands)[number] } | { kind: "row"; surface: (typeof bands)[number]["rows"][number] };
+  const lines: Line[] = bands.flatMap(band => band.rows.length === 0 ? [] : [
+    ...(band.key === null ? [] : [{ kind: "band" as const, band }]),
+    ...band.rows.map(surface => ({ kind: "row" as const, surface })),
+  ]);
+  const holds = (surface: Extract<Line, { kind: "row" }>["surface"], runId: string): boolean => {
+    if ("kind" in surface) return [...surface.members, ...surface.history].some(row => String(row.runId) === runId);
+    const item = itemByRunId.get(String(surface.runId));
+    return (item?.attempts ?? []).some(attempt => String(attempt.runId) === runId)
+      || (membersOf.get(String(surface.runId)) ?? NO_MEMBERS).some(member => String(member.runId) === runId);
+  };
+  const windowed = lines.length > QUEUE_WINDOW_FROM;
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const list = useRef<VirtuosoHandle>(null);
+  const selectedRunId = state.selectedRunId;
+  useEffect(() => {
+    if (selectedRunId === undefined) return;
+    const index = lines.findIndex(line => line.kind === "row" && holds(line.surface, selectedRunId));
+    // Keyboard selection can land on a row outside the window; bring it in without moving a visible one.
+    if (index >= 0) list.current?.scrollIntoView({ index, behavior: "auto" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new selection scrolls; live reorders must not pull the view back
+  }, [selectedRunId]);
+  const renderLine = (line: Line): ReactNode => {
+    if (line.kind === "band") {
+      const band = line.band;
+      return <div key={`band:${band.key}`} data-queue-band={band.key}
+        className={cn(
+          dsText.caps,
+          "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex flex-wrap items-baseline gap-x-[var(--ds-space-snug)]",
+          band.key === "attention"
+            ? "text-[color:var(--ds-status-waiting-fg)]"
+            : "text-[color:var(--ds-fg-muted)]",
+        )}
+      >
+        {/* `Finished today` is only true on today's partition. */}
+        <span className="whitespace-nowrap">{band.key === "finished" && !isToday ? "Finished" : band.label}</span>
+        {/* Band counts describe visible rows; day totals belong to the served status projection. */}
+        <span title={grouped ? "Displayed rows; each Lookup batch counts once." : undefined} className="tabular-nums">
+          {band.rows.length}
+        </span>
+        {/* Show day-finished outcomes only under All; filtered subsets cannot claim day totals. */}
+        {band.key === "finished" && filter === undefined && breakdown !== "" && (
+          <span className="min-w-0 font-normal tabular-nums"
+            title={grouped ? "Completed Queue rows; each Lookup batch counts once. Run totals remain in the status filters." : undefined}>
+            {breakdown}
+          </span>
+        )}
+      </div>;
+    }
+    const surface = line.surface;
+    if ("kind" in surface) return <MemoQueueRow key={surface.key} batch={surface} surface={surface.representative}
+      state={state} handlers={handlers} actionsOf={actionsOf} workflowLabelOf={workflowLabelOf} />;
+    const item = itemByRunId.get(String(surface.runId));
+    if (item === undefined) throw new Error(`queue row lost item ${String(surface.itemId)}`);
+    const selectedAttempt = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId);
+    const visible = selectedAttempt ?? item.representative;
+    return <MemoQueueRow
+      key={item.key}
+      surface={visible}
+      outcome={outcomes?.get(String(visible.runId))}
+      itemGroup={item}
+      members={membersOf.get(String(visible.runId)) ?? NO_MEMBERS}
+      membersOf={membersOf}
+      state={state}
+      handlers={handlers}
+      actionsOf={actionsOf}
+      workflowLabelOf={workflowLabelOf}
+    />;
+  };
+
   const body = (
-      <div data-queue-scroll className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div ref={setScroller} data-queue-scroll className="min-h-0 flex-1 overflow-y-auto pb-3">
         {top.length === 0 && (
           <EmptyState
             className="mx-[var(--ds-space-cozy)] mt-[var(--ds-space-cozy)]"
@@ -1064,60 +1135,12 @@ export const QueuePanel = memo(function QueuePanel({
             {...(filter === undefined && onStartRun !== undefined ? { action: <Button size="sm" variant="secondary" onClick={onStartRun}>Start run</Button> } : {})}
           />
         )}
-        {bands.map((band) => {
-          if (band.rows.length === 0) return null;
-          return (
-            <div key={band.key ?? "chronological"}>
-              {band.key !== null && <div data-queue-band={band.key}
-                className={cn(
-                  dsText.caps,
-                  "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex flex-wrap items-baseline gap-x-[var(--ds-space-snug)]",
-                  band.key === "attention"
-                    ? "text-[color:var(--ds-status-waiting-fg)]"
-                    : "text-[color:var(--ds-fg-muted)]",
-                )}
-              >
-                {/* `Finished today` is only true on today's partition. */}
-                <span className="whitespace-nowrap">{band.key === "finished" && !isToday ? "Finished" : band.label}</span>
-                {/* Band counts describe visible rows; day totals belong to the served status projection. */}
-                <span title={grouped ? "Displayed rows; each Lookup batch counts once." : undefined} className="tabular-nums">
-                  {band.rows.length}
-                </span>
-                {/* Show day-finished outcomes only under All; filtered subsets cannot claim day totals. */}
-                {band.key === "finished" && filter === undefined && breakdown !== "" && (
-                  <span className="min-w-0 font-normal tabular-nums"
-                    title={grouped ? "Completed Queue rows; each Lookup batch counts once. Run totals remain in the status filters." : undefined}>
-                    {breakdown}
-                  </span>
-                )}
-              </div>}
-              {band.rows.map((surface) => {
-                if ("kind" in surface) return <MemoQueueRow key={surface.key} batch={surface} surface={surface.representative}
-                  state={state} handlers={handlers} actionsOf={actionsOf} workflowLabelOf={workflowLabelOf} />;
-                const renderRow = (row: QueueSurfaceWire) => {
-                  const item = itemByRunId.get(String(row.runId));
-                  if (item === undefined) throw new Error(`queue row lost item ${String(row.itemId)}`);
-                  const selectedAttempt = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId);
-                  const visible = selectedAttempt ?? item.representative;
-                  return <MemoQueueRow
-                    key={item.key}
-                    surface={visible}
-                    outcome={outcomes?.get(String(visible.runId))}
-                    itemGroup={item}
-                    members={membersOf.get(String(visible.runId)) ?? NO_MEMBERS}
-                    membersOf={membersOf}
-                    deferOffscreen={displayTop.length > 100}
-                    state={state}
-                    handlers={handlers}
-                    actionsOf={actionsOf}
-                    workflowLabelOf={workflowLabelOf}
-                  />;
-                };
-                return renderRow(surface);
-              })}
-            </div>
-          );
-        })}
+        {windowed
+          ? scroller !== null && <Virtuoso ref={list} customScrollParent={scroller} data={lines} increaseViewportBy={400}
+            computeItemKey={(_, line) => line.kind === "band" ? `band:${line.band.key}` : "kind" in line.surface ? line.surface.key : itemByRunId.get(String(line.surface.runId))?.key ?? String(line.surface.runId)}
+            // flow-root keeps a band label's margin inside the measured item
+            itemContent={(_, line) => <div className="flow-root">{renderLine(line)}</div>} />
+          : lines.map(renderLine)}
       </div>
   );
   return <section aria-label="Queue" className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}>
