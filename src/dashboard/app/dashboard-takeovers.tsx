@@ -1,7 +1,7 @@
 import type { WorkflowSourcePolicy } from "./workflow-sources.js";
 import "../surfaces/shared/codex-text.css";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
-import { lazy,Suspense,type ComponentProps,type ReactNode } from "react";
+import { lazy,Suspense,useEffect,type ComponentProps,type ReactNode } from "react";
 import type { AccountPage } from "../surfaces/settings/account/account-settings.js";
 import {
 type FrontendBootstrapWire
@@ -27,6 +27,14 @@ type AppRouteState
 const SettingsPage = lazy(() => import("../surfaces/settings/settings.js").then(module => ({ default: module.SettingsPage })));
 const ActivityReport = lazy(() => import("../surfaces/activity/activity.js").then(module => ({ default: module.ActivityReport })));
 const WorkflowExplorer = lazy(() => import("../surfaces/explorer/explorer.js").then(module => ({ default: module.WorkflowExplorer })));
+/** Nothing is drafted before the Settings code arrives, so leaving proceeds. */
+function SettingsLoading({ onExitGuardChange }: { onExitGuardChange: (guard: SettingsExitGuard | undefined) => void }) {
+ useEffect(() => {
+   onExitGuardChange(proceed => proceed());
+   return () => onExitGuardChange(undefined);
+ }, [onExitGuardChange]);
+ return null;
+}
 export function DashboardTakeovers({client,useActivityReport,today,workflowSources,takeover,route,setRoute,boot,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,onSettingsSaved,onSettingsSaveProblem,theme,onToggleTheme,onOpenRun,deleteAccount,accountPage,children}: {
  useActivityReport?: ActivityReportHook; today: string; workflowSources: WorkflowSourcePolicy;
@@ -49,7 +57,7 @@ export function DashboardTakeovers({client,useActivityReport,today,workflowSourc
  : dataSection === "explorer" ? <div className="codex-text"><WorkflowExplorer catalog={workflowCatalog} client={client} /></div> : undefined;
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <PanelBoundary resetKey={route.settings ?? takeover} sentence="Couldn't open Settings." className="m-4">
-            <Suspense fallback={null}>
+            <Suspense fallback={<SettingsLoading onExitGuardChange={onSettingsExitGuardChange} />}>
             <SettingsPage
               onOpenRun={onOpenRun}
               appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
