@@ -8,7 +8,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
 import type { PersonPreferencesPort, PersonPreferencesState } from "../lib/person-preferences.js";
-import { ordinaryReadbackState, checkedSettingsResult, settingsSaveFailure } from "../surfaces/settings/editor/settings-attempt-model.js";
+import { keepNewerProtected, ordinaryReadbackState, checkedSettingsResult, settingsSaveFailure } from "../surfaces/settings/editor/settings-attempt-model.js";
 import { ordinaryReadbackConfirms } from "../surfaces/settings/editor/settings-draft-model.js";
 import { readBack } from "../app/commands/command-readback.js";
 import { settingsRowAt } from "../client/subscriptions/row-store.js";
@@ -32,6 +32,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
   let connection: { client: DashboardClient; binding: PreferencesBinding; current: () => PreferencesBinding } | undefined;
   let document: EditableSettingsWire | undefined;
   const listeners = new Set<() => void>();
+  const rowWaiters = new Set<() => void>();
   const publish = (next: PersonPreferencesState) => { state = next; for (const listener of listeners) listener(); };
   const fail = (problem: string) => publish({ value: state.value, state: "failed", problem });
   const port: PersonPreferencesPort = {
@@ -64,15 +65,17 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
           // A binding without the stream reads Settings.
           if (revision === undefined || rows === undefined) readback = EditableSettingsWireSchema.parse(await active.client.editableSettings());
           else {
-            try { readback = await settingsRowAt(rows, revision, () => active.current().authority.dayState?.connection.state === "stopped"); }
+            const ended = () => { const day = active.current().authority.dayState; return day?.rows !== rows || day.connection.state === "stopped"; };
+            try { readback = await settingsRowAt(rows, revision, ended, rowWaiters); }
             catch (error) { joinFailure = error; throw error; }
           }
           const verification = ordinaryReadbackState(command, result, readback);
           return { state: verification === "confirmed" ? "matched" : verification === "superseded" ? "conflict" : "mismatch", evidence: readback };
         } });
+      // Frees the lock even if the connection that sent it has closed.
+      if (joinFailure !== undefined) binding.executor.resolve(command.commandId, false, binding.scope);
       if (started !== generation) return false;
       if (joinFailure !== undefined) {
-        binding.executor.resolve(command.commandId, false, binding.scope);
         // The last held row shows, or the value before the change.
         const held = rows?.settings()?.document;
         if (held !== undefined && (document === undefined || held.revision > document.revision)) document = held;
@@ -94,7 +97,8 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       publish({ value: preferencesFromSettings(readback), state: "ready" });
       const resource = settingsReadResource<EditableSettingsWire>(active.client, active.binding.authority.epoch,
         canonicalJsonStringify([binding.scope.actorId, binding.authority.epoch.bootstrap.descriptorHash]), "editor");
-      resource.accept(readback);
+      // A protected save may have landed while this readback waited.
+      resource.accept(keepNewerProtected(readback, resource.snapshot().value));
       return outcome.kind === "confirmed" ? true : "recovered";
     },
   };
@@ -120,6 +124,8 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
         // The next connection reads the served value; a save cut off here is never left pending.
         if (state.state === "saving") publish({ value: state.value, state: "loading" }); };
     },
+    /** The day stream's rows or connection changed: a save waiting for its row checks again. */
+    streamChanged() { for (const check of [...rowWaiters]) check(); },
     clear() { generation += 1; if (connection !== undefined) { clearSettingsReads(connection.client); dropKeptResults(connection.client); } connection = undefined; document = undefined; state = { value: NEUTRAL_PERSON_PREFERENCES, state: "signed-out" }; },
   });
 }

@@ -13,7 +13,7 @@ import { SettingsReadSuperseded,useSettingsRead } from "../../../state/settings-
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
 import { routePresentation } from "../routes/settings-routes-model.js";
 import { settingTitle } from "../settings-presentation.js";
-import { checkedSettingsResult,commandSaveState,ordinaryReadbackState,settingsSaveNotice,settingsSaveFailure,type OrdinarySettingsAttempt,type SettingsSaveListener,type SettingsSaveProblemListener,type SettingsSaveState } from "./settings-attempt-model.js";
+import { checkedSettingsResult,commandSaveState,keepNewerProtected,ordinaryReadbackState,settingsSaveNotice,settingsSaveFailure,type OrdinarySettingsAttempt,type SettingsSaveListener,type SettingsSaveProblemListener,type SettingsSaveState } from "./settings-attempt-model.js";
 import { blurredSettingsPath,type SettingsBlurEvent } from "./settings-autosave-model.js";
 import { useSettingsClient } from "./settings-client.js";
 import { readBack } from "../../../app/commands/command-readback.js";
@@ -119,12 +119,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     return () => { active = false; };
     // A section return and a stream reset read again; the shown document stays, locked, until the fresh one lands.
   }, [refresh, resource, setEditor, stale]);
-  /** `document`, keeping the shown protected snapshot when it is newer: protected settings keep their own reads. */
-  const keepProtected = useCallback((document: EditableSettingsWire): EditableSettingsWire => {
-    const shown = resource.snapshot().value?.protectedSettings;
-    return shown?.state === "available" && document.protectedSettings.state === "available" && shown.readback.revision > document.protectedSettings.readback.revision
-      ? { ...document, protectedSettings: shown } : document;
-  }, [resource]);
+  const keepProtected = useCallback((document: EditableSettingsWire): EditableSettingsWire => keepNewerProtected(document, resource.snapshot().value), [resource]);
   // A row above the shown document replaces it; with nothing shown, only once the editor's own read has failed.
   useEffect(() => {
     const document = streamed?.document;

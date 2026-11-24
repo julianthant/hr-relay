@@ -779,7 +779,7 @@ function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITI
   for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "hidden", id);
   return Object.freeze({ ...composition, sessionsHarness: undefined });
 }
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2; accountless?: boolean } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2; accountless?: boolean; preferences?: ReturnType<typeof createPersonPreferences> } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -818,13 +818,15 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
     return app.request(url, init);
   } });
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
-  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
+  const preview = options.preferences ?? createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
   const workflowComposition = options.workflowComposition ?? MOCK_WORKFLOW_COMPOSITION_m2;
   await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },
+    /** A malformed envelope stops the subscription for good. */
+    stop: async () => { await act_m2(async () => publish(streams.at(-1)!, "malformed")); await settle(); },
     disconnect: async () => { await act_m2(async () => streams.at(-1)!.error(new Error('Synthetic disconnect'))); await settle(); },
     /** The settings row the hub sends after an ordinary commit, as a rows-only change. */
     settingsRow: (value: unknown) => {
@@ -942,6 +944,25 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     }
     assert_m2.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent === "Retry exact attempt"), false);
     await settle(); assert_m2.equal(commands.length, 1, "a settled save is never retried");
+  });
+
+  it_m2("ends a display preference save at once when the stream stops while it waits for its row", async () => {
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
+    const preferences = createPersonPreferences("person");
+    let commands = 0;
+    const h = await mount({ preferences, settingsRead: authority.read, command: body => {
+      commands += 1;
+      return Promise.resolve(Response.json(authority.execute(CommandRequestSchema.parse(body))));
+    } });
+    assert_m2.equal(preferences.snapshot().state, "ready");
+    let saving: ReturnType<typeof preferences.change> | undefined;
+    await act_m2(async () => { saving = preferences.change({ "preferences.animations": { set: !preferences.snapshot().value.animations } }); });
+    await settle();
+    assert_m2.equal(commands, 1); assert_m2.equal(preferences.snapshot().state, "saving");
+    await h.stop();
+    assert_m2.equal(preferences.snapshot().state, "ready", "the stop ends the wait, not its bound");
+    assert_m2.equal(await saving, false);
+    assert_m2.ok(liveToasts().some(node => /Settings weren't saved/u.test(node.textContent ?? "")));
   });
 
   for (const landed of [true, false]) it_m2(`reads a lost credentials save back without resending it (${landed ? "landed" : "not landed"}) and the next save reaches Relay`, async () => {
