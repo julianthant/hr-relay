@@ -10,7 +10,7 @@ import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
 const CONVERSATION: AssistantConversationPort = { initial: () => ({ id: "story-chat", title: "New chat", files: [] }) };
-export const CONNECTED: ChatGptAccountSnapshot = { state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: "enabled" };
+export const CONNECTED: Extract<ChatGptAccountSnapshot, { state: "connected" }> = { state: "connected", name: "Jordan Lee", email: "jordan.lee@example.com", planUsage: "enabled" };
 
 export interface AssistantHostProps {
   readonly client?: AssistantStoryClientOptions;
