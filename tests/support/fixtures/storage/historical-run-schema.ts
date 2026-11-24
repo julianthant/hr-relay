@@ -74,9 +74,13 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
 /** Steps a current authority back to schema 39: none of the list indexes and no generated dependency parent column. */
 export function restoreSchema39ListIndexes(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 40);
+  dropListIndexObjects(database);
+  database.exec("UPDATE database_states SET schema_version=39; PRAGMA user_version=39");
+}
+
+function dropListIndexObjects(database: DatabaseSync): void {
   for (const name of Object.keys(LIST_INDEXES)) database.exec(`DROP INDEX ${name}`);
-  database.exec(`ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id;
-    UPDATE database_states SET schema_version=39; PRAGMA user_version=39`);
+  database.exec("ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id");
 }
 
 /**
@@ -228,7 +232,7 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
   // The dependency table goes back to its old DDL in place, so the comparison below keeps its rows.
-  restoreSchema39ListIndexes(database);
+  dropListIndexObjects(database);
   embedWorkbookPayloads(database);
   dropSchema36WorkbookSyncStatusColumn(database);
   removeSchema30WorkbookPinTags(database);
