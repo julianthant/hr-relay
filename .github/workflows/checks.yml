@@ -437,7 +437,17 @@ jobs:
       - run: npm run test:perf
 
   smoke:
-    name: smoke
+    name: smoke (${{ matrix.lane }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: traces
+            args: --project=smoke
+          - lane: independent
+            args: --project=gallery --grep @gallery-independent
+          - lane: shared
+            args: --project=gallery --grep-invert @gallery-independent
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).smoke }}
     runs-on: ubuntu-latest
@@ -461,11 +471,21 @@ jobs:
         run: |
           dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:smoke
+      - name: List all smoke and gallery cases
+        run: npm run --silent test:smoke -- --list --reporter=json > "$RUNNER_TEMP/smoke-list.json"
+      - run: npm run test:smoke -- ${{ matrix.args }}
+      - name: Verify every assigned case ran exactly once
+        env:
+          SLOT: ${{ strategy.job-index }}
+          SLOTS: ${{ strategy.job-total }}
+        run: |
+          test "$SLOTS" = 3
+          jq -er --argjson slot "$SLOT" --slurpfile listed "$RUNNER_TEMP/smoke-list.json" \
+            -f tests/support/helpers/dashboard/smoke/verify-shard.jq tests/smoke/.output/results.json
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: smoke-profile
+          name: smoke-profile-${{ matrix.lane }}
           retention-days: 7
           path: tests/smoke/.output/results.json
           if-no-files-found: error
