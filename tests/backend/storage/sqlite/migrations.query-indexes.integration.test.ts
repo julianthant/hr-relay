@@ -50,7 +50,9 @@ describe("query index migration 37", () => {
       assert.ok(prior.some(object => object.name === "checkpoints_replay_idx"));
       migrateTo36(database);
       const after = schemaObjects(database);
-      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES) && !["workbook_payloads", "debug_events"].includes(object.tbl_name)), prior.filter(object => object.name !== "checkpoints_replay_idx"));
+      // Migration 40 adds the generated dependency parent column, so the dependency table's DDL is compared by its own migration's test.
+      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES) && !["workbook_payloads", "debug_events"].includes(object.tbl_name) && object.name !== "delegation_dependencies"),
+        prior.filter(object => object.name !== "checkpoints_replay_idx" && object.name !== "delegation_dependencies"));
       assert.deepEqual(after.filter(object => object.name in QUERY_INDEXES).map(object => [object.name, object.sql]).sort(),
         Object.entries(QUERY_INDEXES).map(([name, index]) => [name, `CREATE INDEX ${name} ON ${index.on}`]).sort());
       assert.deepEqual(rows(database), stored);

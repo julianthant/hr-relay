@@ -7178,7 +7178,7 @@ export class AuthorityDatabase implements Disposable {
         listByParentRun: (parentRunId: string) => {
           const rows = this.#database.prepare(`
             SELECT * FROM delegation_dependencies
-            WHERE json_extract(payload_json, '$.parentRunId') = ?
+            WHERE parent_run_id = ?
             ORDER BY created_at, id
           `).all(RunIdSchema.parse(parentRunId));
           return Object.freeze(rows.map((row) => this.#parseNativeRow("delegation_dependencies",row,DependencyRecordSchema)));

@@ -65,7 +65,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
     const eventFilter = "kind IN ('run.queued','run.claimed')";
     const eventRows = selected === undefined
       ? database.prepare(`SELECT * FROM timeline_events WHERE ${eventFilter} ORDER BY cursor`).all()
-      : database.prepare(`SELECT * FROM timeline_events WHERE run_id IN (SELECT value FROM json_each(?)) AND ${eventFilter} ORDER BY cursor`).all(ids);
+      : database.prepare(`SELECT * FROM timeline_events WHERE run_id IN (SELECT value FROM json_each(?)) AND ${eventFilter} ORDER BY run_id,cursor`).all(ids);
     for(const raw of eventRows) {
       const event=timelineEventFromRow(raw);
       if(event.scope.kind !== "run" || event.payload.kind !== "span"
@@ -78,7 +78,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         queueTitle:prior.queueTitle ?? (span.t === "run.queued" ? span.title ?? null : null)});
     }
     const children = new Map<string, { runId: string; state: string; outcome: string | null }[]>();
-    const childRuns = selected === undefined ? runs : database.prepare(`SELECT * FROM runs ${runIndex(database, "runs_parent_idx")} WHERE parent_id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(ids).map(runRecordFromRow);
+    const childRuns = selected === undefined ? runs : database.prepare(`SELECT * FROM runs ${runIndex(database, "runs_parent_idx")} WHERE parent_id IN (SELECT value FROM json_each(?)) ORDER BY parent_id,id`).all(ids).map(runRecordFromRow);
     for (const run of childRuns) {
       const parent = run.envelope.parent?.runId;
       if (parent === undefined) continue;
@@ -89,8 +89,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
     const dependencies = new Map<string, string[]>();
     const dependencyRows = selected === undefined
       ? database.prepare("SELECT * FROM delegation_dependencies ORDER BY id").all()
-      : database.prepare(`SELECT dependency.* FROM delegation_dependencies dependency JOIN run_delegations delegation ON delegation.id=dependency.delegation_id
-        WHERE delegation.parent_run_id IN (SELECT value FROM json_each(?)) ORDER BY dependency.id`).all(ids);
+      : database.prepare("SELECT * FROM delegation_dependencies WHERE parent_run_id IN (SELECT value FROM json_each(?)) ORDER BY parent_run_id,id").all(ids);
     for (const raw of dependencyRows) {
       const dependency=DependencyRecordSchema.parse(nativeOrdinaryRecordFromRow("delegation_dependencies",raw));
       const group = dependencies.get(dependency.parentRunId) ?? [];

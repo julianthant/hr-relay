@@ -71,11 +71,12 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
-/** Steps a current authority back to schema 39: none of the list indexes. */
+/** Steps a current authority back to schema 39: none of the list indexes and no generated dependency parent column. */
 export function restoreSchema39ListIndexes(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 40);
   for (const name of Object.keys(LIST_INDEXES)) database.exec(`DROP INDEX ${name}`);
-  database.exec("UPDATE database_states SET schema_version=39; PRAGMA user_version=39");
+  database.exec(`ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id;
+    UPDATE database_states SET schema_version=39; PRAGMA user_version=39`);
 }
 
 /**
