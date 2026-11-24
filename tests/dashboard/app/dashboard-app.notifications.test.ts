@@ -60,7 +60,7 @@ async function mount(missing = false, mixed = false, view?: Readonly<Record<stri
       input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows, notifications: [notification] }); input.onState({ state: "live" }); return streamingRunPanel(input, client);
     },
   };
-  window.history.replaceState(null, "", `/?day=2026-08-04${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
+  window.history.replaceState(null, "", `/?day=2026-08-02${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);

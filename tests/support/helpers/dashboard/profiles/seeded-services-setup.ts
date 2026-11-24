@@ -202,7 +202,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       ...(trustNotifications === undefined || notificationRoutes === undefined ? {} : {
         notificationPublications: composeNotificationPublications({
           database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox, target: notificationRoutes.target }),
-        notificationStatus: { read: notificationRoutes.status, onChange: trustNotifications.observer.onStatusChange },
+        notificationStatus: { read: () => notificationRoutes.status(), onChange: listener => trustNotifications.observer.onStatusChange(listener) },
       }),
     });
     const app = createFixtureDashboardApp({
