@@ -16,7 +16,7 @@ import { expect } from "@playwright/test";
 import { chromium, type BrowserContext } from "playwright";
 import { it } from "vitest";
 import { z } from "zod";
-import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { createProfileOnboardingDuoProvider, duoTextSnapshot, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -671,4 +671,55 @@ for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as
     try { await runtime.stop(); machine.release(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
   }
   if (failure !== undefined) throw failure instanceof Error ? failure : new Error("native-failed-replacement-control", { cause: failure });
+});
+
+const SNAPSHOT_SECRET = "value-sentinel";
+const SNAPSHOT_FIELDS = `<input name="code" value="${SNAPSHOT_SECRET}-attr"><input name="typed" type="password"><textarea>${SNAPSHOT_SECRET}-textarea</textarea>
+  <select><option>${SNAPSHOT_SECRET}-option</option></select><div contenteditable="true"><p>${SNAPSHOT_SECRET}-editable</p></div>`;
+async function servedDuoText(pages: Record<string, string>): Promise<BrowserContext> {
+  const context = await (await chromium.launch({ headless: true })).newContext();
+  await context.route("https://**/*", async route => {
+    const { origin, pathname } = new URL(route.request().url()), body = pages[`${origin}${pathname}`];
+    if (body === undefined) await route.abort(); else await route.fulfill({ contentType: "text/html", body });
+  });
+  return context;
+}
+
+it("records frame hosts, headings, labels and status text but no field values, even inside an iframe", async () => {
+  const context = await servedDuoText({
+    "https://api-test.duosecurity.com/frame/prompt": `<h1>Check for a Duo Push</h1><div role="alert">Pushed a login request</div>${SNAPSHOT_FIELDS}
+      <button>Other options</button><a href="/help?ticket=${SNAPSHOT_SECRET}">Need help?</a><button hidden>Hidden control</button>
+      <iframe src="https://frame-test.duosecurity.com/inner?token=${SNAPSHOT_SECRET}"></iframe>`,
+    "https://frame-test.duosecurity.com/inner": `<h2>Inner heading</h2>${SNAPSHOT_FIELDS}<button>Inner button</button>`,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`https://api-test.duosecurity.com/frame/prompt?sid=${SNAPSHOT_SECRET}#${SNAPSHOT_SECRET}`);
+    const inner = page.frameLocator("iframe");
+    await inner.getByRole("button", { name: "Inner button" }).waitFor();
+    await page.fill("input[name=typed]", `${SNAPSHOT_SECRET}-typed`);
+    await inner.locator("input[name=typed]").fill(`${SNAPSHOT_SECRET}-typed`);
+    await page.locator("textarea").fill(`${SNAPSHOT_SECRET}-typed-textarea`);
+    const text = await duoTextSnapshot(page);
+    assert.doesNotMatch(text, new RegExp(SNAPSHOT_SECRET, "u"));
+    assert.equal(text, [
+      "frame api-test.duosecurity.com/frame/prompt", "  headings: Check for a Duo Push", "  controls: Other options", "  controls: Need help?",
+      "  text: Pushed a login request", "frame frame-test.duosecurity.com/inner", "  headings: Inner heading", "  controls: Inner button", "",
+    ].join("\n"));
+  } finally { await context.browser()?.close(); }
+});
+
+it("records only the SSO host, path and labels after a redirect", async () => {
+  const sso = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
+  const context = await servedDuoText({
+    "https://api-test.duosecurity.com/frame/prompt": `<script>location.replace(${JSON.stringify(`${sso}?execution=${SNAPSHOT_SECRET}#${SNAPSHOT_SECRET}`)})</script>`,
+    [sso]: `<form><label for="u">Username</label><input id="u" name="username"><label for="p">Password</label><input id="p" type="password"><button>Sign in</button></form>`,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://api-test.duosecurity.com/frame/prompt");
+    await page.waitForURL(url => url.href.startsWith(sso));
+    await page.fill("#u", `${SNAPSHOT_SECRET}-user`); await page.fill("#p", `${SNAPSHOT_SECRET}-password`);
+    assert.equal(await duoTextSnapshot(page), "frame a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO\n  controls: Sign in\n");
+  } finally { await context.browser()?.close(); }
 });

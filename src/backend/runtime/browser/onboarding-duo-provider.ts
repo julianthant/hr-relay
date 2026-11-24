@@ -100,7 +100,8 @@ export async function duoTextSnapshot(page: Page): Promise<string> {
   for (const frame of page.frames()) {
     const url = URL.parse(frame.url());
     lines.push(`frame ${url === null ? "unparsed" : `${url.host}${url.pathname}`}`);
-    const read = DuoTextSchema.safeParse(await frame.evaluate(() => {
+    let result: unknown;
+    try { result = await frame.evaluate(() => {
       const skip = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
       // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
       const reader = {
@@ -116,7 +117,8 @@ export async function duoTextSnapshot(page: Page): Promise<string> {
       };
       return { headings: reader.all("h1, h2, h3, h4, h5, h6, [role=heading]"), controls: reader.all("button, a[href], [role=button], [role=link]"),
         text: reader.all("[role=alert], [role=status], [aria-live]:not([aria-live=off]), p") };
-    }).catch(() => undefined));
+    }); } catch { /* a detached or crashed frame is recorded as unreadable */ }
+    const read = DuoTextSchema.safeParse(result);
     if (!read.success) { lines.push("  unreadable"); continue; }
     for (const [kind, values] of Object.entries(read.data)) for (const value of values) lines.push(`  ${kind}: ${value}`);
   }
