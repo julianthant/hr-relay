@@ -8,7 +8,6 @@ import type { ActivityBrowse, ActivityDrilldownData } from "../../../../../../sr
 import type { ActivityViewState } from "../../../../../../src/dashboard/surfaces/activity/activity-view-model.js";
 import type { ViewRoute } from "../../../../../../src/dashboard/app/navigation/view-route-model.js";
 import { ANALYTICS_STORY_RANGE, ANALYTICS_STORY_TODAY, analyticsStoryReport, type AnalyticsStoryOptions } from "../../../../fixtures/dashboard/analytics-story-fixtures.js";
-import { analyticsRedesignMockReport } from "../../../../fixtures/dashboard/analytics-redesign-mock.js";
 import type { ActivitySampleState } from "../../../../fixtures/dashboard/activity-sample.js";
 import { withKnownBreaks } from "../known-breaks.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
@@ -21,16 +20,14 @@ interface Scene {
   readonly browse?: ActivityBrowse;
   readonly play?: (page: Page) => Promise<void>;
   readonly story?: Partial<Story>;
-  /** The proposed page of #752 on its mock report. */
-  readonly redesign?: true;
 }
 
 function AnalyticsStoryPage({ scene }: { scene: Scene }) {
   const [range, setRange] = useState(scene.range ?? ANALYTICS_STORY_RANGE);
-  const [useReport] = useState(() => scene.redesign ? analyticsRedesignMockReport() : analyticsStoryReport(scene.report));
+  const [useReport] = useState(() => analyticsStoryReport(scene.report));
   const initial: ViewRoute = scene.browse === undefined ? {} : { activityBrowse: scene.browse };
   return <StoryFrame><ViewNavigationHost initial={initial}><main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-    <ActivityReport range={range} onRange={setRange} today={ANALYTICS_STORY_TODAY} useReport={useReport} design={scene.redesign ? "redesign" : "current"} />
+    <ActivityReport range={range} onRange={setRange} today={ANALYTICS_STORY_TODAY} useReport={useReport} />
   </main></ViewNavigationHost></StoryFrame>;
 }
 
@@ -69,18 +66,9 @@ const PICK = {
   "range-90d": scene("The last 90 days", { play: period("90d"), story: { ready: 'text="Runs"' } }),
   "range-refused": scene("An address with a date range that is not valid", { range: "later..earlier", story: { ready: 'text="That date range is not valid. Pick a period above."' } }),
   "period-updating": scene("The next period read while the last one stays", { range: "2026-08-28..2026-09-26", report: { held: true }, story: { ready: '[data-analytics-stale]' } }),
-  "one-workflow": scene("One workflow chosen", { play: then(click("By workflow"), click("Separations", "menuitemradio")), story: { ready: 'button:has-text("Separations")' } }),
+  "one-workflow": scene("One workflow chosen", { play: then(click("All workflows"), click("Separations", "menuitemradio")), story: { ready: 'button:has-text("Separations")' } }),
   "workflow-details": scene("A workflow row opened", { play: click("Show Separations details"), story: { ready: 'text="Open runs"' } }),
 } satisfies Record<View, Story>;
-
-/** The proposed page of #752, for the operator to approve before it replaces the current one. */
-type Redesign = "week" | "month" | "one-workflow" | "workflow-details";
-const REDESIGN = {
-  week: scene("Proposed: the report for the week", { redesign: true }),
-  month: scene("Proposed: the last 30 days", { redesign: true, play: period("30d") }),
-  "one-workflow": scene("Proposed: one workflow chosen", { redesign: true, play: then(click("All workflows"), click("Onboarding", "menuitemradio")), story: { ready: 'button:has-text("Onboarding")' } }),
-  "workflow-details": scene("Proposed: a workflow row opened", { redesign: true, play: click("Show Separations details"), story: { ready: 'text="Open runs"' } }),
-} satisfies Record<Redesign, Story>;
 
 const METRIC = {
   completed: drill("Completed runs of a workflow", { workflow: "sample-separations" }, '[aria-label="Search runs"]'),
@@ -118,8 +106,6 @@ const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** A control on the report shows no visible focus ring on its keyboard stop: the period choice, or in a drilldown its search and order. */
   FOCUS: ["named-and-focusable"],
-  /** FOCUS, and the opened workflow row lists a raw code, id or path the banned-text rule rejects. */
-  FOCUS_AND_RAW_TEXT: ["named-and-focusable", "no-banned-text"],
 } as const;
 
 /** By `<state type>/<member>`. */
@@ -147,13 +133,9 @@ const KNOWN_BREAKS = {
   "pick/range-30d": BREAK_SETS.FOCUS,
   "pick/range-90d": BREAK_SETS.FOCUS,
   "view/loaded": BREAK_SETS.FOCUS,
-  "redesign/week": BREAK_SETS.FOCUS,
-  "redesign/month": BREAK_SETS.FOCUS,
-  "redesign/one-workflow": BREAK_SETS.FOCUS,
-  "redesign/workflow-details": BREAK_SETS.FOCUS,
-  "pick/workflow-details": BREAK_SETS.FOCUS_AND_RAW_TEXT,
+  "pick/workflow-details": BREAK_SETS.FOCUS,
 } as const;
 
 export const ANALYTICS_STORIES = withKnownBreaks(
-  defineSurface("analytics", { view: VIEW, contents: CONTENTS, pick: PICK, redesign: REDESIGN, metric: METRIC, list: LIST, browse: BROWSE, export: EXPORT }),
+  defineSurface("analytics", { view: VIEW, contents: CONTENTS, pick: PICK, metric: METRIC, list: LIST, browse: BROWSE, export: EXPORT }),
   "analytics", AUDIT_FIXES, KNOWN_BREAKS);

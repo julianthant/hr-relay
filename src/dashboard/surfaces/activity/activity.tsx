@@ -9,7 +9,6 @@ import { useViewNavigation, useViewState } from '../../app/navigation/view-route
 import type { ActivityBrowse, ActivityDrilldownData, ActivitySelectionHandler } from './activity-drilldown-model.js';
 import type { ActivityViewState } from './activity-view-model.js';
 import type { ActivityDateRange } from "./activity-model.js";
-import type { AnalyticsDesign } from "./analytics-model.js";
 
 /** What the report reads; the product passes useActivityWiring and a harness may pass a hook with the same shape. */
 export interface ActivityReportWiring {
@@ -23,7 +22,7 @@ export function ActivityReport(props: Omit<Parameters<typeof ActivityReportBody>
   return <ActivityReportBody key={attempt} {...props} onRetry={() => setAttempt(count => count + 1)} />;
 }
 
-function ActivityReportBody({ range, onRange, client, today = "", useReport = useActivityWiring, workflowSources = WORKFLOW_SOURCES, onRetry, design }: { onRetry: () => void; design?: AnalyticsDesign; range: string; onRange: (range: string) => void; client?: ActivityClient; today?: string; useReport?: ActivityReportHook; workflowSources?: WorkflowSourcePolicy }) {
+function ActivityReportBody({ range, onRange, client, today = "", useReport = useActivityWiring, workflowSources = WORKFLOW_SOURCES, onRetry }: { onRetry: () => void; range: string; onRange: (range: string) => void; client?: ActivityClient; today?: string; useReport?: ActivityReportHook; workflowSources?: WorkflowSourcePolicy }) {
   const [notice, setNotice] = useState<{ scope: object; text: string }>();
   const [selection, setSelection] = useViewState('activityBrowse', null);
   const navigation = useViewNavigation();
@@ -45,7 +44,7 @@ function ActivityReportBody({ range, onRange, client, today = "", useReport = us
   };
   const badRange = { state: "unavailable" as const, reason: "That date range is not valid. Pick a period above." };
   if (resolved.refusal && parseActivityRange("", today).refusal) return <section aria-label="Analytics report" className="settings-reference-page settings-data-section"><PageHeading title="Analytics" description="Report unavailable" /><p role="alert" className="text-body text-ui-danger">That date range is not valid.</p></section>;
-  return <ActivityView design={design} data={resolved.refusal ? badRange : wire.data} onRetry={resolved.refusal ? undefined : onRetry} range={resolved} today={today}
+  return <ActivityView data={resolved.refusal ? badRange : wire.data} onRetry={resolved.refusal ? undefined : onRetry} range={resolved} today={today}
     selection={selection} onSelection={onSelection} browse={wire.browse} pending={wire.pending} blocked={!wire.exportReady}
     onRange={next => { setNotice(undefined); setSelection(null); onRange(activityRangeValue(next)); }}
     onExport={wire.exportReady ? onExport : undefined}
