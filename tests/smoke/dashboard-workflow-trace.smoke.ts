@@ -331,13 +331,10 @@ test("CRM Document Download: a failed download shows Failed in the run panel and
   expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
 });
 
-const SETTINGS_READ_ABORTED = /^requestfailed: http:\/\/127\.0\.0\.1:\d+\/api\/v1\/settings\/editable net::ERR_ABORTED$/u;
-
 /** Starts an Emergency Contact run for the people (employee IDs) its PDF holds and drives it through the OCR child's identity lookups to the review gate. */
 async function startEmergencyContact(seeded: SeededServer, failures: { allow(pattern: RegExp, reason: string): void }, people: string) {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(SETTINGS_READ_ABORTED, "The settings read is abandoned when the page re-reads it.");
   const submission = await seeded.scripted.submission(EMERGENCY_CONTACT_SCRIPT, people);
   const runId = await startScriptedRun(request, SEEDED_NOW, people, seeded.scripted.ocrRosterReference(), EMERGENCY_CONTACT_SCRIPT, submission);
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
@@ -429,7 +426,6 @@ async function startI9ToReview(seeded: SeededServer, request: ReturnType<typeof 
 test("I-9 Check Start: start, both PDF reviews approved, each person checked, done with its children, and one results workbook saved", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(SETTINGS_READ_ABORTED, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
   await dashboard.open();
   await dashboard.openWorkflow("I-9 Check");
   const runId = await startI9ToReview(seeded, request);
@@ -461,7 +457,6 @@ test("I-9 Check Start: start, both PDF reviews approved, each person checked, do
 test("I-9 Check Start: a failed person check fails the run and saves no workbook", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(SETTINGS_READ_ABORTED, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
   await dashboard.open();
   await dashboard.openWorkflow("I-9 Check");
   const runId = await startI9ToReview(seeded, request);
