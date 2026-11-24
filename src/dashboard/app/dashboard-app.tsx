@@ -8,7 +8,6 @@ import { StartupLoading } from "../surfaces/shell/startup-loading.js";
 import { useStartupGate } from "./startup/startup-gate.js";
 import { signInProblems, useDuoReenrol, usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
 import { sameSessionAccount } from "../surfaces/settings/account/account-session.js";
-import { relayUsernameIn } from "../surfaces/settings/account/relay-username.js";
 import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
 import { Onboarding } from "../surfaces/shell/onboarding.js";
@@ -149,7 +148,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
                 : { state: publicProfile.accountDeletion.state, personName: session.account?.name ?? boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, duoKeys, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => sameSessionAccount(await profileClient.readProfileSession(), session), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request), readUsername: async () => relayUsernameIn(await profileClient.editableSettings()) } } : undefined}
+          accountPage={session?.state === "active" && session.account !== undefined ? { values: session.account, duoKeys, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), readAccount: async () => sameSessionAccount(await profileClient.readProfileSession(), session), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request), readUsername: async () => sameSessionAccount(await profileClient.readProfileSession(), session)?.username } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}

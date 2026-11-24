@@ -13,7 +13,7 @@ import { createCredentialStore } from "../../../src/backend/storage/configuratio
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { LogoutOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, syntheticOnboardingDuo, withFixtureUcpath } from "../../support/helpers/admission-fixture.js";
 
 const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-22T12:01:00.000Z" };
 async function fixture(withForeign = false) {
@@ -25,8 +25,8 @@ async function fixture(withForeign = false) {
     const runtime = composeProfileRuntime({ admission: originalMachine, clock, hostFacts: { primaryDisplay: null },
       onboardingDuo: syntheticOnboardingDuo() });
     try {
-      const foreign = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ email: "foreign@ucsd.edu", password: "foreign-fixture-password",
-        firstName: "Other", lastName: "Fixture", createdAt: "2026-10-22T11:59:00.000Z" }));
+      const foreign = await finishProfileOnboarding(runtime.session, runtime.session.signUp(withFixtureUcpath({ email: "foreign@ucsd.edu", password: "foreign-fixture-password",
+        firstName: "Other", lastName: "Fixture", createdAt: "2026-10-22T11:59:00.000Z" })));
       assert.equal(foreign.state, "active"); if (foreign.state !== "active") throw new Error("actual foreign fixture signup required");
       await runtime.drainForLogout(foreign.token);
       const pending = runtime.session.logOut(foreign.token, { at: fields.at });
@@ -42,7 +42,7 @@ async function fixture(withForeign = false) {
       assert.ok(database);
       return { source: database.capturePendingLogoutSource(), intentFailed(error: unknown): never { throw error; } };
     } });
-  const active = await finishProfileOnboarding(source, source.signUp({ ...fields, firstName: "Fixture", lastName: "Operator", createdAt: "2026-10-22T12:00:00.000Z" }));
+  const active = await finishProfileOnboarding(source, source.signUp(withFixtureUcpath({ ...fields, firstName: "Fixture", lastName: "Operator", createdAt: "2026-10-22T12:00:00.000Z" })));
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("actual fixture signup required");
   const sourceOwner = originalMachine.admitProfile(active.profileId);
   const database = AuthorityDatabase.open(sourceOwner, { path: join(sourceOwner.stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "profile-session-test", openMode: "read-write" }, clock,

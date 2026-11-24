@@ -50,7 +50,7 @@ export function chatGptPort(snapshot: ChatGptAccountSnapshot): ChatGptAccountPor
   return { mode: "preview", getSnapshot: () => snapshot, subscribe: () => noop, signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), signOut: () => Promise.resolve(undefined) };
 }
 
-const ACCOUNT = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: IsoInstantSchema.parse("2026-09-13T12:00:00.000Z") } satisfies AccountValues;
+const ACCOUNT = { name: "Jordan Lee", initials: "JL", timekeeper: "Jordan Lee", timekeeperInitials: "JL", lastSignedInAt: IsoInstantSchema.parse("2026-09-13T12:00:00.000Z"), username: "jordan.lee@ucsd.edu" } satisfies AccountValues;
 export const DUO_WORK_KEY = { id: "a".repeat(64), shortId: "aB12cd34", name: "Work security key", addedAt: "2026-09-03T12:00:00.000Z",
   lastUsedAt: "2026-09-13T12:00:00.000Z" } satisfies DuoKeysSnapshot["keys"][number];
 

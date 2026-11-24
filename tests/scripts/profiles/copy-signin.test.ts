@@ -13,7 +13,7 @@ import { runtimeProfiles } from "../../../src/models/config/define-runtime-isola
 const credentials = {
   RELAY_EMAIL: "synthetic-copy@example.test",
   RELAY_PASSWORD: "relay # sentinel",
-  UCPATH_USERNAME: "ucpath-username-sentinel",
+  UCPATH_USERNAME: "ucpath-username-sentinel@ucsd.edu",
   UCPATH_PASSWORD: "ucpath-password-sentinel",
 };
 const envBody = Object.entries(credentials).map(([name, value]) => `${name}="${value}"`).join("\n");
@@ -139,18 +139,19 @@ it("opens a new copy's Duo setup and only finishes after the dashboard reports b
     { path: "/api/v1/profile/state", body: undefined, session: null },
     { path: "/api/v1/profile/sign-up", body: JSON.stringify({
       email: credentials.RELAY_EMAIL, password: credentials.RELAY_PASSWORD, firstName: "Development", lastName: "Operator",
+      ucpathUsername: credentials.UCPATH_USERNAME, ucpathPassword: credentials.UCPATH_PASSWORD,
     }), session: null },
     { path: "/api/v1/profile/onboarding/duo/portal", body: JSON.stringify({ operationId }), session: "synthetic-draft" },
     { path: "/api/v1/profile/onboarding/complete", body: JSON.stringify({ operationId }), session: "synthetic-draft" },
   ]);
 });
 
-it("passes only Relay credentials to the dashboard and keeps echoed secrets out of output and files", async () => {
+it.each([false, true])("keeps echoed credentials out of output and files (signup=%s)", async signUpRequired => {
   const post = vi.fn();
   const dashboard = createDashboardClient({
     baseUrl: "http://127.0.0.1:3940",
     fetchImpl: async (url, init) => {
-      if (new URL(String(url)).pathname.endsWith("/state")) return Response.json({ state: "signed-out", signUpRequired: false });
+      if (new URL(String(url)).pathname.endsWith("/state")) return Response.json({ state: "signed-out", signUpRequired });
       post(init?.body);
       throw new Error(Object.values(credentials).join(" "));
     },
@@ -159,7 +160,9 @@ it("passes only Relay credentials to the dashboard and keeps echoed secrets out 
   try {
     await expect(driveCopySignin("development", dashboard, () => readCopySigninCredentials(envFile)))
       .rejects.toThrow(/^copy-signin-dashboard-failed$/u);
-    expect(post.mock.calls).toEqual([[JSON.stringify({ email: credentials.RELAY_EMAIL, password: credentials.RELAY_PASSWORD })]]);
+    expect(post.mock.calls).toEqual([[JSON.stringify({ email: credentials.RELAY_EMAIL, password: credentials.RELAY_PASSWORD,
+      ...(signUpRequired ? { firstName: "Development", lastName: "Operator",
+        ucpathUsername: credentials.UCPATH_USERNAME, ucpathPassword: credentials.UCPATH_PASSWORD } : {}) })]]);
     const output = [...stdout.mock.calls, ...stderr.mock.calls].map(([chunk]) => String(chunk)).join("\n");
     for (const value of Object.values(credentials)) expect(output).not.toContain(value);
     expect(readdirSync(directory)).toEqual(["operator-signin.env"]);

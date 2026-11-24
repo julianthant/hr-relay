@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
@@ -9,14 +10,35 @@ import type { RuntimeAdmission } from "../../../../src/backend/storage/admission
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
-import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { LogoutOperationSchema, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createCredentialStore, createSyntheticProfileSession, finishProfileOnboarding } from "../admission-fixture.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { createCredentialStore, createSyntheticProfileSession, finishProfileOnboarding, withFixtureUcpath } from "../admission-fixture.js";
 import { registerBoundProfile, unregisterBoundProfile } from "../synthetic-database-admission.js";
 import { runtimeLifetimeLock } from "./runtime-lifetime.js";
 
 type Session = ReturnType<typeof createSyntheticProfileSession>;
 type SessionInput = Omit<Parameters<typeof createSyntheticProfileSession>[0], "admission" | "machineRoot">;
+
+/** Seed a predecessor operation and its continuity digest in an isolated fixture. */
+export function signUpWithLegacyOperation(machineRoot: string, session: Pick<Session, "signUp">, fields: Parameters<Session["signUp"]>[0]) {
+  const draft = session.signUp(withFixtureUcpath(fields));
+  if (draft.state !== "onboarding") throw new Error("legacy sign-up fixture requires a draft");
+  const path = join(machineRoot, "machine", "operations", `${draft.operationId}.json`);
+  const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  const { relay, ...previous } = operation;
+  if (relay === undefined) throw new Error("legacy sign-up fixture requires a current operation");
+  const controlPath = join(dirname(machineRoot), "control", "profile-registry.json");
+  const control = z.looseObject({ operations: z.array(z.strictObject({ operationId: z.uuid(), digest: z.string() })) })
+    .parse(JSON.parse(readFileSync(controlPath, "utf8")));
+  const witness = control.operations.find(row => row.operationId === draft.operationId);
+  const digest = (record: typeof operation) => createHash("sha256").update(canonicalJsonStringify(record)).digest("hex");
+  if (witness === undefined || witness.digest !== digest(operation)) throw new Error("legacy sign-up fixture requires the current operation witness");
+  witness.digest = digest(previous);
+  writeFileSync(path, canonicalJsonStringify(previous));
+  writeFileSync(controlPath, canonicalJsonStringify(control));
+  return draft;
+}
 
 /** One temp installation with real profile sessions whose logout settles through a real native source owner. */
 export async function createProfileSessionWorld() {
@@ -77,7 +99,7 @@ export async function createProfileSessionWorld() {
   }
 
   async function signUp(session: Session, fields: { firstName: string; lastName: string; email: string; password: string; createdAt: string }) {
-    const active = await finishProfileOnboarding(session, session.signUp(fields));
+    const active = await finishProfileOnboarding(session, session.signUp(withFixtureUcpath(fields)));
     if (active.state !== "active") throw new Error(`profile-session-world sign-up ${active.state}`);
     return active;
   }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProtectedValueSchemas } from "../config/protected-settings.js";
 import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 import { ProfileIdSchema, ProfileRegistryRowSchema, type ProfileRegistryRow } from "./profile.js";
@@ -6,7 +7,11 @@ import { PreflightReportWireSchema } from "../preflight/preflight-contract.js";
 import { DuoKeyChangeSchema, DuoKeyIdSchema, DuoKeyNameSchema } from "../config/duo-credential-store.js";
 
 export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(1).max(254), password: z.string().min(1).max(1024) });
-export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
+export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({
+  firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64),
+  ucpathUsername: ProtectedValueSchemas.ucpathUserId,
+  ucpathPassword: ProtectedValueSchemas.ucpathPassword,
+});
 export type ProfileLoginRequest = z.infer<typeof ProfileLoginRequestSchema>;
 export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
 /**

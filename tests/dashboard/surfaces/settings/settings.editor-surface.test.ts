@@ -295,6 +295,23 @@ describe("editable Settings surface", () => {
     assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
   });
 
+  it("shows the served Relay username and the saved UCPath username each in its own row, with no password in the page", async () => {
+    const transport = await settingsClient([], "lost");
+    assert.equal(transport.authority.protectedApply({ ucpathUserId: { set: "ucpath.person@ucsd.edu" }, ucpathPassword: { set: "saved-ucpath-secret" } }).state, "applied");
+    const client = transport.client;
+    const values = { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", timekeeperInitials: "SO", lastSignedInAt: "2026-08-28T08:00:00-08:00" };
+    const page = (username?: string) => ({ values: { ...values, ...(username === undefined ? {} : { username }) }, details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }) as never, login: { changePassword: async () => ({ state: "changed" }) as never, changeUsername: async () => ({ state: "changed" }) as never } });
+    host = await mountSettingsPage(client, "account", undefined, undefined, undefined, page("relay.person@ucsd.edu"));
+    assert.match(host.textContent ?? "", /Usernamerelay\.person@ucsd\.edu/u);
+    assert.match(host.textContent ?? "", /Usernameucpath\.person@ucsd\.edu/u);
+    assert.doesNotMatch(document.body.innerHTML, /saved-ucpath-secret/u);
+    act(() => root?.unmount()); host.remove();
+    host = await mountSettingsPage(client, "account", undefined, undefined, undefined, page());
+    assert.match(host.textContent ?? "", /UsernameShown after your next sign-in/u);
+    assert.match(host.textContent ?? "", /Usernameucpath\.person@ucsd\.edu/u);
+    assert.doesNotMatch(document.body.innerHTML, /saved-ucpath-secret/u);
+  });
+
   it("holds a UCPath pencil-dialog draft through the timer, blur, Escape and Cancel and writes only on Save", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const applied: unknown[] = [];
