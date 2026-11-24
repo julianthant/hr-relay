@@ -56,7 +56,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       let readback: EditableSettingsWire | undefined;
       const rows = binding.authority.dayState?.rows;
       // The reply landed but no row answered it: the save ends unresolved, with no read of Settings.
-      let joinFailed = false;
+      let joinFailure: unknown;
       const outcome = await binding.executor.execute(command, { scope: binding.scope,
         readback: async (_request, reply) => {
           const result = checkedSettingsResult(command, reply);
@@ -65,13 +65,13 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
           if (revision === undefined || rows === undefined) readback = EditableSettingsWireSchema.parse(await active.client.editableSettings());
           else {
             try { readback = await settingsRowAt(rows, revision, () => active.current().authority.dayState?.connection.state === "stopped"); }
-            catch (error) { joinFailed = true; throw error; }
+            catch (error) { joinFailure = error; throw error; }
           }
           const verification = ordinaryReadbackState(command, result, readback);
           return { state: verification === "confirmed" ? "matched" : verification === "superseded" ? "conflict" : "mismatch", evidence: readback };
         } });
       if (started !== generation) return false;
-      if (joinFailed) {
+      if (joinFailure !== undefined) {
         binding.executor.resolve(command.commandId, false, binding.scope);
         // The last held row shows, or the value before the change.
         const held = rows?.settings()?.document;

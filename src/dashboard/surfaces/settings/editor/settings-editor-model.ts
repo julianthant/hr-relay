@@ -186,7 +186,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       if (binding === undefined || command.requestedBy !== binding.scope.actorId) { failed(sent); return; }
       let readDocument: EditableSettingsWire | undefined;
       // The reply landed but no row answered it: the save ends unresolved, with no read of Settings.
-      let joinFailed = false;
+      let joinFailure: unknown;
       const saved = (replayed: boolean) => {
         settle(sent);
         input.onSaved?.(settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), replayed, readDocument?.runtimeStatus.state === "restart-required"));
@@ -199,7 +199,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
           const rows = stream.current.rows;
           try {
             readDocument = keepProtected(await settingsRowAt(rows, result.settingsRevision, () => stream.current.rows !== rows || stream.current.stopped, rowWaiters.current));
-          } catch (error) { joinFailed = true; throw error; }
+          } catch (error) { joinFailure = error; throw error; }
           const readback = ordinaryReadbackState(command, result, readDocument);
           return { state: readback === "confirmed" ? "matched" : readback === "superseded" ? "conflict" : "mismatch", evidence: readDocument };
         },
@@ -219,7 +219,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       };
       const outcome = await binding.executor.execute(command, options);
       if (commandSaveState(outcome).state !== "unconfirmed") return;
-      if (joinFailed) {
+      if (joinFailure !== undefined) {
         // Frees the lock so the next edit reaches Relay; the editor shows the last held row and the save problem.
         binding.executor.resolve(command.commandId, false, binding.scope);
         if (commandLife.current !== commandOwner) return;
