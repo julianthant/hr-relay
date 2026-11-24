@@ -13,6 +13,7 @@ import { projectNotificationTrigger } from "../../../src/rules/notifications/not
 import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
 import { ActorIdSchema, CommandIdSchema } from "../../../src/rules/identity/ids.js";
 import { NotificationPublicationWireSchema, type NotificationArrival } from "../../../src/models/dashboard/subscription.js";
+import { WireErrorSchema } from "../../../src/models/dashboard/primitives.js";
 import type { NotificationTarget } from "../../../src/models/notifications/notification-target.js";
 import { NotificationCommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
@@ -46,7 +47,7 @@ function targetOf(notification: NotificationWire, refused = false): Notification
 function publication(notification: NotificationWire, n = 1, listed: NotificationWire = notification, target: NotificationTarget = targetOf(notification)): NotificationArrival {
   return { publication: NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }), listed, target };
 }
-const ERROR = { state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true } as const;
+const ERROR = WireErrorSchema.parse({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true });
 async function harness(enabled = true, initiallyFailed = false, statusDelivered = true) {
   let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false;
   let postWait: Promise<void> | undefined;

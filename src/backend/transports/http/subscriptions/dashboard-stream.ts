@@ -10,7 +10,7 @@ import {
   type RunPanel,
   type StreamRow,
 } from "../../../../models/dashboard/subscription.js";
-import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
+import { ProjectionGenerationSchema, WireErrorSchema } from "../../../../models/dashboard/primitives.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../../../runs/projections/run-queue-projection.js";
 import { LOCAL_OPERATOR_ACTOR_ID, ProjectionCursorSchema, type RunId } from "../../../../rules/identity/ids.js";
@@ -240,7 +240,7 @@ export class DashboardStreamHub {
     if (cursorValue === undefined) throw new Error(`projection produced a malformed cursor: ${cursor}`);
     const unstamped: UnstampedPublication = Object.freeze({
       type: "notification-publication", cursor, descriptorHash: this.#projection.descriptorSetHash(),
-      projectionGeneration: this.#projection.generation(), publication: wire, listed, target,
+      projectionGeneration: ProjectionGenerationSchema.parse(this.#projection.generation()), publication: wire, listed, target,
     });
     this.#retain({ cursorNumber: cursorValue, kind: "publication", publication: unstamped });
     for (const subscriber of this.#subscribers) this.#push(subscriber, { kind: "ready", envelope: publicationFor(unstamped, subscriber.day) });
@@ -471,6 +471,7 @@ export class DashboardStreamHub {
       if (row === undefined) return;
       const parsed = StreamRowSchema.safeParse(row);
       if (parsed.success) {
+        if (parsed.data.model !== "run-panel") throw new Error(`run panel ${key} parsed as another row`);
         read.row = parsed.data;
         read.retry = retry;
       } else {

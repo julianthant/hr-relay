@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { createRowStore } from "../../../../src/dashboard/client/subscriptions/row-store.js";
 import type { StreamRow } from "../../../../src/models/dashboard/subscription.js";
+import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
 
 const RUN = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
 const panelAt = (rowRevision: number): StreamRow => ({ model: "run-panel", key: RUN, value: { state: "available", detail: { runId: RUN, rowRevision } } } as unknown as StreamRow);
@@ -33,7 +34,7 @@ describe("row store delivery", () => {
 describe("row store notification status", () => {
   const ready = { state: "ready", pending: 0 } as const;
   const failed = { state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 } as const;
-  const error = { state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true } as const;
+  const error = WireErrorSchema.parse({ state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true });
   const statusRow = (value: Extract<StreamRow, { model: "notification-status" }>["value"]): StreamRow => ({ model: "notification-status", key: "local-operator", value } as StreamRow);
 
   it("holds the delivered status whatever run is open, and keeps a good one when a read fails", () => {

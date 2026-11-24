@@ -156,7 +156,7 @@ function snapshotOf(envelope: DashboardStreamEnvelope | undefined): Extract<Dash
 }
 
 function panelRevisions(rows: readonly StreamRow[]): (number | string)[] {
-  return rows.map(row => row.value.state === "available" ? row.value.detail.rowRevision : row.value.error.code);
+  return rows.flatMap(row => row.model !== "run-panel" ? [] : [row.value.state === "available" ? row.value.detail.rowRevision : row.value.error.code]);
 }
 
 /** Resolves when `next()` hands something out; `undefined` means the envelope has not been handed out yet. */

@@ -149,7 +149,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
   const dayState = binding.authority.dayState;
   const store = dayState.rows;
-  const status = useSyncExternalStore(store.subscribe, () => store.notificationStatus(), noStatus);
+  const status = useSyncExternalStore(listener => store.subscribe(listener), () => store.notificationStatus(), noStatus);
   const day = dayState.day;
   const dayRows = day.state === "loaded" ? day.value.notifications : day.state === "loading" ? day.kept?.value.notifications : undefined;
   const [upserts, setUpserts] = useState<{ request: typeof request; rows: readonly NotificationWire[] }>();
@@ -221,6 +221,11 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       if (outcome.kind !== "confirmed") break;
     }
     if (outcome === undefined) return false;
+    // A command that settles after the inbox moved to another day of the same authority leaves that day's rows behind it.
+    const replacement = current.current;
+    if (replacement.request !== request && replacement.request.enabled && replacement.request.client === client
+      && replacement.binding.scope.client === owner.scope.client && replacement.binding.scope.actorId === owner.scope.actorId
+      && replacement.binding.scope.authority === owner.scope.authority) replacement.binding.authority.dayState.refresh();
     return current.current.request === request && outcome.kind === "confirmed";
   };
   const statusNotice = !consistent ? inboxMessage("DASHBOARD_READ_FAILED") : status === undefined ? ""

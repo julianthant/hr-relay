@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, CommandIdSchema } from "../../../../src/rules/identity/ids.js";
 import { NotificationWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { registerNotificationRoutes } from "../../../../src/backend/transports/http/routes/notifications.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
@@ -116,9 +116,9 @@ it("serves the same storage group through canonical inbox and day snapshots, kee
     assert.equal(await groupState(await read(expiredTag)), "snoozed");
 
     const linked = queuedEventOf(w, { seed: 1, descriptor: personLookupDescriptor, displayName: "First name" });
-    await inbox.publish({ kind: "verified-done", runId: linked.runId, workflowId: "person-lookup" });
+    await inbox.publish({ kind: "command-unknown", commandId: CommandIdSchema.parse(uuidOf(900)) });
     const done = emitted.at(-1);
-    assert.ok(done !== undefined && done.event.kind === "verified-done");
+    assert.ok(done !== undefined && done.event.kind === "command-unknown");
     const plain = publications.project(done);
     assert.deepEqual(plain.listed, plain.publication.notification, "a publication outside a group is listed as itself");
     const notice = notificationRecordOf({ seed: 1, title: "Run needs attention", lastSeenAt: linked.ts });

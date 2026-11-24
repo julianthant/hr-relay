@@ -1,7 +1,10 @@
 /** The client's row store: the whole read-model values the stream carries for the open views.
  * A row replaces the held value for its `(model, key)` and is never patched, so applying an envelope twice leaves it as it was. */
 import type { RunPanel, StreamRow } from "../../../models/dashboard/subscription.js";
-import type { NotificationObservationStatus } from "../../../models/notifications/notifications.js";
+import type { z } from "zod";
+import type { NotificationObservationStatusSchema } from "../../../models/notifications/notifications.js";
+
+type NotificationObservationStatus = z.infer<typeof NotificationObservationStatusSchema>;
 
 /** The observer status the stream last delivered. A failed read keeps the last good status and marks it unavailable. */
 export type HeldNotificationStatus = Readonly<{ status?: NotificationObservationStatus; unavailable: boolean }>;
