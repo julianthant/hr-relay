@@ -15,6 +15,7 @@ import { it } from "vitest";
 
 
 import { notificationTitle, notificationWireOf } from "../../../src/models/dashboard/projection.js";
+import { shortFailureText } from "../../../src/models/failures/error-catalog.js";
 import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FICTIONAL_PERSON } from "../../support/fixtures/person-lookup-presentation.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
@@ -99,6 +100,24 @@ afterEach(_afterEachFixture0);
   });
 });
 
+describe("notice text", () => {
+  const nowMs = Date.parse(LATER);
+  it("serves a failed run's notice as the first sentence of its failure text and leaves other notices whole", () => {
+    const long = "Kronos could not verify the timecard. Review it, then enter the confirmed separation dates manually.";
+    const failed = notificationWireOf(record({ trigger: "failed", summary: long }), nowMs);
+    assert.equal("summary" in failed ? failed.summary : undefined, "Kronos could not verify the timecard.");
+    const stored = notificationWireOf(record({ trigger: "storage", summary: long, links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }] }), nowMs);
+    assert.equal("summary" in stored ? stored.summary : undefined, long);
+    for (const [text, short] of [["No employee found. Check the name or employee ID.", "No employee found."], ["One sentence only.", "One sentence only."], ["Saved file v1.2 was replaced. Reopen it.", "Saved file v1.2 was replaced."], ["No full stop", "No full stop"]] as const) {
+      assert.equal(shortFailureText(text), short);
+    }
+  });
+  it("titles a waiting gate Run waiting, so it does not repeat the Needs you section", () => {
+    assert.equal(notificationTitle("gate-waiting"), "Run waiting");
+    assert.equal(notificationWireOf(record({ trigger: "gate-waiting" }), nowMs).title, "Run waiting");
+  });
+});
+
 describe("command notices", () => {
   const nowMs = Date.parse(LATER);
   function notice(event: { kind: "command-unknown"; commandId: string } | { kind: "command-refused"; commandId: string; outcome: "rejected" | "conflict" } | { kind: "bulk-incomplete"; bulkCommandId: string }, overrides: Record<string, unknown> = {}) {
@@ -142,7 +161,7 @@ describe("command notices", () => {
     assert.equal(expired.kind, "command");
     if (expired.kind !== "command") throw new Error("command wire");
     assert.equal(expired.priority, true);
-    const ordinary = [record(), record({ trigger: "gate-waiting", title: "Needs you" })].map(row => notificationWireOf(row, nowMs));
+    const ordinary = [record(), record({ trigger: "gate-waiting", title: "Run waiting" })].map(row => notificationWireOf(row, nowMs));
     assert.equal(ordinary.some(wire => wire.kind === "command"), false);
   });
 });

@@ -1,7 +1,7 @@
 import { QueueParentSchema } from "./queue-parent.js";
 import { DelegatedRecordRefSchema } from "../workflow/delegated-record.js";
 import { RunOutcomeSchema, RunPauseSchema } from "../run/record.js";
-import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
+import { ErrorCatalogCodeSchema, shortFailureText } from "../failures/error-catalog.js";
 import { PreflightRefusalCodeSchema } from "../preflight/preflight-contract.js";
 import { z } from "zod";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
@@ -618,7 +618,7 @@ export function notificationWireOf(
     actorId: record.actorId,
     severity,
     title: notificationTitle(record.trigger),
-    summary: record.summary,
+    summary: record.trigger === "failed" ? shortFailureText(record.summary) : record.summary,
     channel: record.channel,
     count: record.count,
     trigger: record.trigger,
@@ -636,7 +636,7 @@ export function notificationWireOf(
 
 /** Compose public text from closed trigger codes, never private diagnostic prose. */
 export function notificationTitle(trigger: z.infer<typeof NotificationTriggerSchema>): string {
-  const titles: Record<typeof trigger, string> = { failed: "Run failed", "gate-waiting": "Needs you", "write-parked": "Write parked", repeating: "Repeating failure", storage: "Storage needs attention", "verified-done": "Verified completion", "backfill-gap": "Notification history is incomplete", command: "Command needs attention" };
+  const titles: Record<typeof trigger, string> = { failed: "Run failed", "gate-waiting": "Run waiting", "write-parked": "Write parked", repeating: "Repeating failure", storage: "Storage needs attention", "verified-done": "Verified completion", "backfill-gap": "Notification history is incomplete", command: "Command needs attention" };
   return titles[trigger];
 }
 const NotificationLinkWireSchema = z.discriminatedUnion("kind", [
