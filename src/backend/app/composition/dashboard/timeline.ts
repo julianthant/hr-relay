@@ -76,7 +76,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const workerTables = ["runs", "deleted_runs", "worker_slots", "worker_pools", "run_batches", "auth_leases", "write_intents"] as const;
   const revision = database.trackAuthorityTables(["timeline_events", ...workerTables], "poll-hint");
   const startupWorkerRevision = database.trackAuthorityTables(workerTables, "poll-hint");
-  let key: string | undefined = JSON.stringify(database.capturedChangeKey());
+  let key: string | { state: "retry" } = JSON.stringify(database.capturedChangeKey());
   const startupWorkers = startupWorkerRevision();
   let observed = revision();
   let lastWall = clock.nowMs(), leaseExpiry = Infinity;
@@ -92,11 +92,11 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   let pending: Promise<void> | undefined, stopped = false, checkAfterRead = false;
   const startRead = (now: number, workersChangedDuringStartup?: () => boolean) => {
     pending = projection.pollBackground(request => reader.read(request), now, workersChangedDuringStartup).then(expiry => {
-      if (expiry === undefined) key = undefined;
+      if (expiry === undefined) key = { state: "retry" };
       else leaseExpiry = expiry;
     }).catch((error: unknown) => {
       // A normal commit can supersede paged worker facts while the admitted timeline remains live.
-      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = undefined;
+      if (error instanceof Error && error.message === "dashboard-background-worker-cursor-stale") key = { state: "retry" };
       else projection.backgroundReadFailed(error);
     }).finally(() => {
       pending = undefined;
@@ -125,7 +125,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       lastWall = now;
       const next = revision();
-      if (safety || leaseDue || degraded || key === undefined || next === undefined || next !== observed) void startRead(now);
+      if (safety || leaseDue || degraded || typeof key !== "string" || next === undefined || next !== observed) void startRead(now);
       key = current;
       observed = next;
       if (safety) safetyAt = elapsed + 60_000;
