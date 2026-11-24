@@ -65,7 +65,7 @@ function conversions(path: string) {
 
 for (const interrupted of [false, true]) it(`upgrades real retained predecessor Kuali evidence through startup${interrupted ? " after an interrupted committed conversion" : ""}, preserving every frozen row and a second startup`, async () => {
   const __p0 = performance.now(); const prof = (label: string) => process.stderr.write(`[prof] ${label} ${Math.round(performance.now() - __p0)}ms\n`);
-  const f = await predecessorSeparationsRerun();
+  const f = interrupted ? await predecessorSeparationsRerun() : await cpuProfiled("fixture", () => predecessorSeparationsRerun());
   prof("test:fixture");
   assert.ok(f.writes.some(intent => intent.status === "committed"));
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");

@@ -19,9 +19,10 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
   vi.doMock("../../../../src/models/validation/schema-bound-value.js", async importOriginal => {
     const current = await importOriginal<typeof import("../../../../src/models/validation/schema-bound-value.js")>();
     const { FingerprintSchema } = await import("../../../../src/rules/identity/ids.js");
-    let hashMs = 0, hashes = 0; Reflect.set(globalThis, "__hashStats", () => `${hashes} hashes ${Math.round(hashMs)}ms`);
+    const memo = new WeakMap<object, Map<string, ReturnType<typeof FingerprintSchema.parse>>>(); let hashMs = 0, hashes = 0; Reflect.set(globalThis, "__hashStats", () => `${hashes} hashes ${Math.round(hashMs)}ms`);
     return { ...current, deriveSchemaHash: (schema: Parameters<typeof current.deriveSchemaHash>[0], io: "input" | "output") => {
-      const s0 = performance.now(); try { return FingerprintSchema.parse(predecessorEvidenceSchemaHash(schema, io)); } finally { hashMs += performance.now() - s0; hashes++; } } };
+      const s0 = performance.now(); try { const byIo = memo.get(schema) ?? new Map<string, ReturnType<typeof FingerprintSchema.parse>>(); memo.set(schema, byIo);
+        const hit = byIo.get(io); if (hit !== undefined) return hit; const hash = FingerprintSchema.parse(predecessorEvidenceSchemaHash(schema, io)); byIo.set(io, hash); hashes++; return hash; } finally { hashMs += performance.now() - s0; } } };
   });
   // The receipt is derived by the build that stored the run: the profile-name-domain build, whose Separations input had no stored initials.
   const restoreBuild = simulatePreviousSeparationsInputGeneration();
