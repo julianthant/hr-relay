@@ -1,9 +1,9 @@
 import { profileInitials } from "../../../../models/profiles/profile-identity.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
-import { Fragment, useRef, useState } from "react";
+import { Fragment } from "react";
 import { Server } from "lucide-react";
 import { Form } from "@heroui/react";
-import { BodySection, Button, Dialog, DialogContent, DialogFooter, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText, Notice } from "../../../ds/ui.js";
+import { BodySection, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -20,11 +20,7 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
   ucpathPassword: "Password for UCPath access.",
 };
 
-type Removal = { name: Parameters<Editor["protectedEditor"]["clear"]>[0]; label: string; hasSaved: boolean };
-
 function CredentialsSection({ editor, profileName, embedded }: { editor: Editor; profileName: string; embedded: boolean }) {
-  const [removal, setRemoval] = useState<Removal | null>(null);
-  const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
   if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description="Reopen Settings to try again." />;
@@ -33,16 +29,6 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
   const credentials = editor.protectedEditor;
   const Root = embedded ? Fragment : "div";
   const profile = { displayName: profileName, initials: profileInitials(profileName) };
-  const askRemove = (target: Removal): void => {
-    removeTrigger.current = globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null;
-    setRemoval(target);
-  };
-  const confirmRemove = (): void => {
-    if (removal === null) return;
-    if (!removal.hasSaved) credentials.reset(removal.name);
-    else credentials.clear(removal.name);
-    setRemoval(null);
-  };
   return <Root {...embedded ? {} : { className: "settings-compact-page settings-credentials-page" }}>
     {!embedded && <PageHeading title="Account" description="Sign-in details and protected workflow configuration." />}
     {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description="Reopen Settings to refresh." />}
@@ -53,10 +39,9 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
         <FormGroup label="UCPath sign-in">
           {authority.rows.filter(row => row.name === "ucpathUserId" || row.name === "ucpathPassword").map(row => {
             const description = PROTECTED_DESCRIPTION[row.name] ?? row.purpose;
-            const onRemove = (hasSaved: boolean, removeLabel: string): void => askRemove({ name: row.name, label: removeLabel, hasSaved });
             return embedded
-              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={row.name === "ucpathUserId" ? "Username" : "Password"} thing={row.name === "ucpathUserId" ? "UCPath username" : "UCPath password"} description={description} onRemove={onRemove} />
-              : <ProtectedSettingField key={row.name} editor={editor} name={row.name} description={description} onRemove={onRemove} />;
+              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={row.name === "ucpathUserId" ? "Username" : "Password"} thing={row.name === "ucpathUserId" ? "UCPath username" : "UCPath password"} description={description} />
+              : <ProtectedSettingField key={row.name} editor={editor} name={row.name} description={description} />;
           })}
         </FormGroup>
       </BodySection>
@@ -66,14 +51,6 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
         </FormGroup>
       </BodySection>}
     </Form>
-    <Dialog open={removal !== null} onOpenChange={open => { if (!open) setRemoval(null); }}>
-      <DialogContent size="sm" className="ds-body-overlay" title={`Remove ${removal?.label ?? "value"}?`}
-        description={removal?.hasSaved ? "The saved value will be removed." : "The unsaved value will be cleared."}
-        onCloseAutoFocus={event => { if (removeTrigger.current?.isConnected) { event.preventDefault(); removeTrigger.current.focus(); } removeTrigger.current = null; }}>
-        <DialogFooter><Button variant="secondary" onClick={() => setRemoval(null)}>Cancel</Button>
-          <Button variant="danger" onClick={confirmRemove}>Remove credential</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
   </Root>;
 }
 

@@ -269,6 +269,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
     };
     const accent = token("--ds-accent");
     const canvasSurface = token("--ds-surface-page");
+    const off = token("--ds-button-off-bg");
+    const same = (first: readonly number[], second: readonly number[]) => first.every((channel, index) => Math.abs(channel - (second[index] ?? 0)) <= 2);
     const found: string[] = [];
     for (const button of document.querySelectorAll<HTMLElement>('body :is(button, [role="button"], a[data-slot="button"])')) {
       const box = button.getBoundingClientRect();
@@ -279,6 +281,8 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
       const declared = button.className.includes("bg-[var(--ds-accent)]") || button.className.includes("text-[color:var(--ds-accent-fg)]");
       const loud = fill[3] >= 250 && contrast(fill, canvasSurface) >= 3;
       if (!declared && !loud) continue;
+      // A dialog's confirm with nothing to save is the flat off grey, not a second accent.
+      if (button.matches(":disabled") && same(fill, off)) continue;
       if (fill[3] < 250 || fill.some((channel, index) => Math.abs(channel - (accent[index] ?? 0)) > 2)) {
         const paint = fill[3] < 250 ? "has no solid fill" : `is filled rgb(${fill.slice(0, 3).join(", ")})`;
         found.push(`the button "${(button.getAttribute("aria-label") ?? button.innerText).trim().slice(0, 40)}" ${paint}, `
@@ -334,6 +338,9 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
     // A switch's input is laid over its whole row at opacity 0 so the row takes the click; the ring a keyboard user sees
     // is drawn on the visible control beside it (WCAG 2.4.7 asks that a ring be visible, not that it sit on the input).
     const overlay = element instanceof HTMLInputElement && getComputedStyle(element).opacity === "0";
+    // A text field's focus mark is its caret plus the field's border stepping up, drawn on the box around the input.
+    const field = element.matches("input:not([type=checkbox], [type=radio], [type=range]), textarea") ? element.closest('[data-slot="search-field-group"], .ds-secret-input') : null;
+    if (field !== null) return [element, field];
     if (!(element instanceof HTMLInputElement) || box.width > 1 && box.height > 1 && !overlay) return [element];
     return [...element.labels ?? []].flatMap(label => [label, ...label.querySelectorAll("*")]).filter(part => part !== element);
   };

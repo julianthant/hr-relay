@@ -14,21 +14,23 @@ afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; 
 
 const SAVED_PASSWORD = "saved-placeholder-secret";
 const calls: string[] = [];
-function fakeEditor(): never {
+type Draft = Partial<Record<"ucpathUserId" | "ucpathPassword", { kind: "set"; raw: string }>>;
+function fakeEditor(draft: Draft = {}): never {
   return {
     editor: { state: "loaded", document: { protectedSettings: { state: "available", rows: [{ name: "ucpathUserId", label: "UCPath user ID", purpose: "p" }, { name: "ucpathPassword", label: "UCPath password", purpose: "p" }],
       entries: { ucpathUserId: { value: "ucp-user", valueId: "a" }, ucpathPassword: { value: SAVED_PASSWORD, valueId: "b" } } } } },
     readProblem: undefined,
-    protectedEditor: { locked: false, draft: {}, errors: {}, setExplicitSave: () => {}, reset: (name: string) => { calls.push(`reset ${name}`); }, submit: () => { calls.push("submit"); }, update: () => {}, clear: () => {} },
+    protectedEditor: { locked: false, draft, errors: {}, setExplicitSave: () => {}, reset: (name: string) => { calls.push(`reset ${name}`); }, submit: () => { calls.push("submit"); }, update: () => {}, clear: () => {} },
   } as never;
 }
-async function mount(name: "ucpathUserId" | "ucpathPassword", label: string, thing: string): Promise<void> {
+async function mount(name: "ucpathUserId" | "ucpathPassword", label: string, thing: string, draft: Draft = {}): Promise<void> {
   calls.length = 0;
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(ProtectedPencilRow, { editor: fakeEditor(), name, label, thing, description: "d", onRemove: () => {} }) })));
+  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(ProtectedPencilRow, { editor: fakeEditor(draft), name, label, thing, description: "d" }) })));
 }
 const dialog = (): HTMLElement | null => document.body.querySelector<HTMLElement>('[role="dialog"]');
 const press = (name: string) => act(async () => { [...(dialog()?.querySelectorAll("button") ?? [])].find(item => item.textContent === name)?.click(); });
+const save = (): HTMLButtonElement | undefined => [...(dialog()?.querySelectorAll("button") ?? [])].find(item => item.textContent === "Save");
 const pencil = (label: string) => document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 
 describe("Settings > Account UCPath rows", () => {
@@ -55,8 +57,27 @@ describe("Settings > Account UCPath rows", () => {
     assert.doesNotMatch(document.body.innerHTML, new RegExp(SAVED_PASSWORD, "u"));
   });
 
+  for (const [why, name, label, thing, draft] of [
+    ["nothing is typed", "ucpathPassword", "Password", "UCPath password", {}],
+    ["the typed value is blank", "ucpathPassword", "Password", "UCPath password", { ucpathPassword: { kind: "set", raw: "   " } }],
+    ["the typed username is the saved one", "ucpathUserId", "Username", "UCPath username", { ucpathUserId: { kind: "set", raw: " ucp-user " } }],
+  ] as const) it(`keeps Save off and sends nothing while ${why}`, async () => {
+    await mount(name, label, thing, draft);
+    await act(async () => pencil(`Edit ${thing}`)?.click());
+    assert.equal(save()?.disabled, true);
+    await press("Save");
+    assert.deepEqual(calls, []);
+    assert.ok(dialog());
+  });
+
+  it("turns Save on for a changed username", async () => {
+    await mount("ucpathUserId", "Username", "UCPath username", { ucpathUserId: { kind: "set", raw: "ucp-other" } });
+    await act(async () => pencil("Edit UCPath username")?.click());
+    assert.equal(save()?.disabled, false);
+  });
+
   it("Save submits the draft and closes; Cancel resets it and returns focus to the pencil", async () => {
-    await mount("ucpathPassword", "Password", "UCPath password");
+    await mount("ucpathPassword", "Password", "UCPath password", { ucpathPassword: { kind: "set", raw: "new-secret" } });
     await act(async () => pencil("Edit UCPath password")?.click());
     await press("Save");
     assert.deepEqual(calls, ["submit"]);
