@@ -116,9 +116,13 @@ const seedInputs = new Map<string, unknown>([
 function seedInput(workflow: AnyWorkflowDescriptor): RunRecord["input"] {
   const raw = seedInputs.get(workflow.id);
   if (raw === undefined) throw new SeedCopyError(`seed-copy-input-missing: ${workflow.id}`);
+  const protectedBindings = workflow.protectedInputs?.map(declaration => ({
+    ...declaration, kind: "protected-store" as const,
+    valueId: deriveStableUuid(seedNamespace, `${workflow.id}/${declaration.name}`),
+  })) ?? [];
   return RunRecordSchema.shape.input.parse({
     raw,
-    parsed: { schemaHash: deriveSchemaHash(workflow.canonicalInput, "output"), protectedBindings: [],
+    parsed: { schemaHash: deriveSchemaHash(workflow.canonicalInput, "output"), protectedBindings,
       value: workflow.canonicalInput.parse(workflow.input.parse(raw)) },
     ingressSchemaHash: deriveSchemaHash(workflow.input, "input"),
   });
