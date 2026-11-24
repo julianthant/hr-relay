@@ -15,7 +15,7 @@ const PANEL = '[aria-label="Notification list"]';
 interface PanelOptions { readonly showPriority?: boolean; readonly dismissed?: readonly string[]; readonly notice?: string }
 const panel = (title: string, state: NotificationsState, { showPriority = true, dismissed = [], notice = "" }: PanelOptions = {}, extra: Partial<Story> = {}): Story => ({ title, ready: PANEL,
   render: () => <StoryFrame><aside aria-label="Workspace" className="workspace-rail ui-theme-scope" data-notifications-open="true"><div className="workspace-rail-body">
-    <NotificationsPanel state={state} activeId="" showPriority={showPriority} onShowPriority={noop} dismissed={dismissed} onDismiss={noop} onControl={noop} onReadAll={noop} onOpen={noop} onBack={noop} notice={notice} />
+    <NotificationsPanel state={state} activeId="" showPriority={showPriority} onShowPriority={noop} dismissed={dismissed} onDismiss={noop} onControl={noop} canAct={() => true} onReadAll={noop} onOpen={noop} onBack={noop} notice={notice} />
   </div></aside></StoryFrame>, ...extra });
 
 const PANEL_STATE = {

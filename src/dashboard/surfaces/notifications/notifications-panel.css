@@ -11,6 +11,7 @@
   display: flex; width: 100%; flex-direction: column; box-sizing: border-box; padding: 4px 8px 8px;
   border: 0; border-radius: 10px; background: transparent; text-align: left; font-weight: 400; color: var(--ds-sidebar-fg); cursor: pointer;
 }
+.notification-item:disabled { cursor: default; }
 .notification-row { position: relative; }
 .notification-item:hover, .notification-item:focus-visible, .notification-row:hover .notification-item, .notification-row:focus-within .notification-item { background: var(--rail-hover-fill); outline: none; }
 .notification-item[aria-current] { background: var(--ds-surface-selected); }

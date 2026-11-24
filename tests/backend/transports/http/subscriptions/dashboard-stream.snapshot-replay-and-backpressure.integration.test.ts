@@ -295,7 +295,7 @@ describe("dashboard stream hub", () => {
       lastEventId: cursorAt,
       lastProjectionGeneration: generationAt,
     });
-    assert.deepEqual(atHead.initial.map(({ type }) => type), ["hello", "change", "health"], "at head: only the connection's own cursor-only handoff");
+    assert.deepEqual(atHead.initial.map(({ type }) => type), ["hello", "health", "change"], "at head: only the connection's own cursor-only handoff");
     atHead.close();
 
     taskEventsOf(w, 1, "searching"); // count-neutral -> retained change
@@ -305,7 +305,7 @@ describe("dashboard stream hub", () => {
       lastProjectionGeneration: generationAt,
     });
     const types = resumed.initial.map(({ type }) => type);
-    assert.deepEqual(types, ["hello", "change", "change", "health"], "the retained change, then the connection's own handoff");
+    assert.deepEqual(types, ["hello", "health", "change", "change"], "the retained change, then the connection's own handoff");
     resumed.close();
     assert.equal(buildDay.mock.calls.length, 0);
   });

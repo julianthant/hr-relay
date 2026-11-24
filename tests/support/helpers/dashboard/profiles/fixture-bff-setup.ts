@@ -75,9 +75,10 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
     dayWire: DashboardDayWire = FIXTURE_DAY_WIRE,
     cursor = "pc:1",
   ): DashboardStreamEnvelope {
+    // The server's hub sends the observer status with every snapshot; the fixture observer is always ready.
     return DashboardStreamEnvelopeSchema.parse({
       type: "snapshot",
-      rows: [],
+      rows: [{ model: "notification-status", key: "local-operator", value: { state: "available", value: { state: "ready", pending: 0 } } }],
       topic: "dashboard-day",
       cursor,
       position: 0,

@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { ActorIdSchema, LocalDateSchema, FingerprintSchema, ProjectionCursorSchema, RunIdSchema } from "../../rules/identity/ids.js";
 import { DashboardWireVersionSchema, ProjectionGenerationSchema, RowRevisionSchema, WireErrorSchema } from "./primitives.js";
-import { DashboardDayWireSchema, NotificationWireSchema, QueueSurfaceWireSchema } from "./projection.js";
+import { DashboardDayWireSchema, NotificationWireSchema, QueueSurfaceWireSchema, type NotificationWire } from "./projection.js";
 import { NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "./run-detail.js";
+import { NotificationObservationStatusSchema } from "../notifications/notifications.js";
+import { NotificationTargetSchema, type NotificationTarget } from "../notifications/notification-target.js";
 
 const QueueReplacementPatchSchema = z.strictObject({
   operation: z.literal("replace-queue-surface"),
@@ -53,11 +55,19 @@ export const RunPanelSchema = z.discriminatedUnion("state", [
 ]);
 export type RunPanel = z.infer<typeof RunPanelSchema>;
 
+/** A row read that failed or passed its deadline is sent as its error; the client keeps any good value it holds. */
+const ReadSchema = <Value extends z.ZodType>(value: Value) => z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), value }),
+  z.strictObject({ state: z.literal("unavailable"), error: WireErrorSchema }),
+]);
+
 /** A whole read-model value for one `(model, key)`; it replaces the held value and is never patched. */
 export const StreamRowSchema = z.discriminatedUnion("model", [
   z.strictObject({ model: z.literal("run-panel"), key: RunIdSchema, value: RunPanelSchema }).superRefine((row, context) => {
     if (row.value.state === "available" && row.value.detail.runId !== row.key) context.addIssue({ code: "custom", path: ["value"], message: "run panel must belong to its key" });
   }),
+  /** What `GET /notifications/status` answers for the actor. */
+  z.strictObject({ model: z.literal("notification-status"), key: ActorIdSchema, value: ReadSchema(NotificationObservationStatusSchema) }),
 ]);
 export type StreamRow = z.infer<typeof StreamRowSchema>;
 
@@ -92,13 +102,30 @@ export const NotificationPublicationWireSchema = z.strictObject({
 });
 export type NotificationPublicationWire = z.infer<typeof NotificationPublicationWireSchema>;
 
+/** An arrival, retained for resume at its own cursor. It has no `after` and does not move the client's held cursor. */
 const NotificationPublicationEnvelopeSchema = z.strictObject({
   type: z.literal("notification-publication"),
+  cursor: ProjectionCursorSchema,
   day: LocalDateSchema,
   descriptorHash: FingerprintSchema,
   projectionGeneration: ProjectionGenerationSchema,
   publication: NotificationPublicationWireSchema,
+  /** The row as `GET /notifications` lists it, read with `publication`: a storage notice arrives inside its concern's group. */
+  listed: NotificationWireSchema,
+  /** What `GET /notifications/{id}/target` answered for the row when the envelope was built. */
+  target: NotificationTargetSchema,
+}).superRefine((envelope, context) => {
+  const { notificationId, actorId } = envelope.publication.notification;
+  const listed = envelope.listed;
+  const holds = listed.notificationId === notificationId
+    || (listed.kind === "notification" && listed.group?.members.some(member => member.notificationId === notificationId) === true);
+  if (!holds || listed.actorId !== actorId) context.addIssue({ code: "custom", path: ["listed"], message: "a publication's listed row must hold its notification" });
 });
+
+/** A publication as the client admits it: the row, the destination the server resolved for it, and the `snapshotCursor` of the day
+ * the stream held when it arrived, which the day's next snapshot replaces. */
+export type NotificationArrival = Readonly<{ publication: NotificationPublicationWire; listed: NotificationWire; target: NotificationTarget;
+  snapshotCursor: z.infer<typeof ProjectionCursorSchema> }>;
 
 export const DashboardStreamEnvelopeSchema = z.union([
   HelloEnvelopeSchema,

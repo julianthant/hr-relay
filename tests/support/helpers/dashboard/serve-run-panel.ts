@@ -1,5 +1,6 @@
 import { DashboardClientError, type DashboardClient, type RowStoreWriter } from "../../../../src/dashboard/client/index.js";
 import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
+import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { RunPanel } from "../../../../src/models/dashboard/subscription.js";
 import { appendLogPage } from "../../../../src/dashboard/surfaces/run-detail/logs-model.js";
 
@@ -30,6 +31,11 @@ export async function serveRunPanel(rows: RowStoreWriter, client: PanelReads, ru
   rows.apply([{ model: "run-panel", key: runId as never, value: panel ?? await readRunPanel(client, runId) }], rowRevision);
 }
 
+/** The `notification-status` row the server sends with every snapshot, for an observer that is ready. */
+export function serveReadyNotificationStatus(rows: RowStoreWriter | undefined): void {
+  rows?.apply([{ model: "notification-status", key: ActorIdSchema.parse("local-operator"), value: { state: "available", value: { state: "ready", pending: 0 } } }]);
+}
+
 type DaySubscription = ReturnType<DashboardClient["subscribeDay"]>;
 
 /** The subscription a fake `subscribeDay` returns: streams the open run's panel into `input.rows`, now and on each `select`.
@@ -45,6 +51,7 @@ export function streamingRunPanel(input: Parameters<DashboardClient["subscribeDa
       rows.apply([{ model: "run-panel", key: run as never, value: { state: "refused", error } }]);
     });
   };
+  serveReadyNotificationStatus(input.rows);
   stream(input.run);
   return { select: stream, close: () => undefined };
 }

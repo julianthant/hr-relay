@@ -261,7 +261,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
       lastEventId: currentCursor,
       lastProjectionGeneration: w.projection.generation(),
     });
-    assert.deepEqual(currentResume.initial.map(({ type }) => type), ["hello", "change", "health"], "nothing to replay; only the connection's own handoff");
+    assert.deepEqual(currentResume.initial.map(({ type }) => type), ["hello", "health", "change"], "nothing to replay; only the connection's own handoff");
     currentResume.close();
   });
 

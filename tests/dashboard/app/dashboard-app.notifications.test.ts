@@ -11,7 +11,7 @@ import { PRODUCT_WORKFLOW_COMPOSITION, workflowComposition, type WorkflowSourceP
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
-import { streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
+import { serveReadyNotificationStatus, streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
@@ -52,15 +52,15 @@ async function mount(missing = false, mixed = false, view?: Readonly<Record<stri
     ? { ...common, kind: "command", priority: true, severity: "error", title: "Cancel run: rejected", summary: "The run already finished.", context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "command-refused" }, link: { kind: "command-result", commandId: target.commandId } }
     : { ...common, kind: "notification", trigger: "failed", severity: "error", title: "Run failed", context: { state: "available", subject: "Canonical history", workflow: mixed ? "Separations" : "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: target.kind === "failure" ? { kind: "failure", runId: target.runId, failureId: target.failureId } : { kind: "run", runId: target.runId } });
   const client = { ...transport,
-    notificationSnapshot: async () => [notification], notificationStatus: async () => ({ state: "ready" as const, pending: 0 }), notificationTarget: async () => target,
+    notificationTarget: async () => target,
     bootstrap: async () => { const boot = await transport.bootstrap(); return mixed ? { ...boot, workflows: [...boot.workflows, { ...WorkflowBootstrapPrimitiveSchema.parse(boot.workflows[0]), id: "separations", code: "sep", label: "Separations" }] } : boot; },
     runDetail: async (id: string) => { const detail = await transport.runDetail(id); return mixed && id === FIXTURE_IDS.failedRun ? RunDetailWireSchema.parse({ ...detail, header: { ...detail.header, workflowId: "separations" } }) : detail; },
-    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows }; },
+    dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows, notifications: [notification] }; },
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows }); input.onState({ state: "live" }); return streamingRunPanel(input, client);
+      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows, notifications: [notification] }); input.onState({ state: "live" }); return streamingRunPanel(input, client);
     },
   };
-  window.history.replaceState(null, "", `/?day=2026-08-04${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
+  window.history.replaceState(null, "", `/?day=2026-08-02${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
@@ -173,7 +173,7 @@ it("mounts served inbox controls and reports only the served search authority to
   } });
   const client = { ...transport,
     searchRuns: async (query: CrossDateSearchQueryInput) => { queries.push(query.q); return CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: 1, results: [{ runId: FIXTURE_IDS.failedRun, traceId: "pl-120000-0099", workflowId: "person-lookup", partitionDay: FIXTURE_DAY_WIRE.day, registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" }, state: "done", shape: "single", dryRun: true, priority: "bulk", systems: [], runNumber: { state: "absent", reason: "not recorded" }, retryOf: { state: "absent", reason: "first" }, enqueuedAt: "2026-08-03T12:00:00Z", endedAt: { state: "absent", reason: "not recorded" }, match: { field: "actor", strength: "exact" }, metadata: { subject: { state: "available", value: "Exact served subject" }, actor: { state: "available", value: "local-operator" }, version: 1, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } } }] }); },
-    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day) }); input.onState({ state: "live" }); return { select() {}, close() {} }; },
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -215,11 +215,11 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   let rows = NotificationWireSchema.array().parse([{ kind: "notification", notificationId, actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title: "Delayed read", occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Historical subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId } }]);
   let commit = () => {};
   const delayed = new Promise<void>(resolve => { commit = resolve; });
-  let writes = 0, inboxReads = 0;
+  let writes = 0;
   const days: string[] = [];
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
-    if (path === "/api/v1/notifications") { inboxReads++; return Response.json(rows); }
+    if (path === "/api/v1/notifications") return Response.json(rows);
     if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
     if (path.endsWith("/target")) return Response.json({ kind: "run", runId, day: FIXTURE_DAY_WIRE.day });
     if (path === "/api/v1/commands") {
@@ -234,7 +234,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   const client = { ...transport,
     dashboardDay: async (day: string) => ({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), notifications: rows }),
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      days.push(input.day); input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); input.onState({ state: "live" }); return { select() {}, close() {} };
+      days.push(input.day); input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
   };
   window.history.replaceState(null, "", "/?day=2026-08-02");
@@ -247,9 +247,9 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   assert.equal(new URLSearchParams(location.search).get("day"), FIXTURE_DAY_WIRE.day);
   assert.equal(writes, 1); assert.deepEqual(days, ["2026-08-02", FIXTURE_DAY_WIRE.day]);
   assert(host.querySelector('button[aria-label="Notifications, 1 unread"]'));
-  const before = inboxReads;
+  const before = days.length;
   await act(async () => { commit(); await new Promise(resolve => setTimeout(resolve, 30)); });
-  assert(inboxReads > before, "settlement must read current destination authority");
+  assert(days.length > before, "settlement must read current destination authority");
   assert(host.querySelector('button[aria-label="Notifications, 0 unread"]'));
   assert(rowAction(host, "Delayed read", "Mark as unread"));
   assert.equal(writes, 1);

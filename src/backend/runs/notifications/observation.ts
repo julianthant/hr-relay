@@ -17,6 +17,15 @@ export function createNotificationObserver(deps: {
   let running: Promise<void> | undefined, publishing: Promise<void> | undefined;
   let sourceStatus: NotificationObservationStatus = { state: "ready", pending: 0 };
   const pending = new Map<string, NotificationObservation>();
+  const statusListeners = new Set<() => void>();
+  let reported = canonicalJsonStringify({ state: "ready", pending: 0 });
+  /** Tells each listener once per distinct status, after the state that moved it is written. */
+  const statusMoved = (): void => {
+    const next = canonicalJsonStringify(status());
+    if (next === reported) return;
+    reported = next;
+    for (const listener of [...statusListeners]) listener();
+  };
 
   const observeSources = (changed?: () => boolean): Promise<void> | undefined => {
     if (stopped || publishing !== undefined) return publishing;
@@ -36,9 +45,11 @@ export function createNotificationObserver(deps: {
     const settle = () => {
       sourceStatus = failures === 0 ? { state: "ready", pending: 0 }
         : { state: "failed", code: code ?? "NOTIFICATION_OBSERVATION_FAILED", pending: failures };
+      statusMoved();
     };
     if (pending.size === 0) { settle(); return; }
     sourceStatus = { state: "ready", pending: pending.size };
+    statusMoved();
     publishing = (async () => {
       for (const [identity, item] of pending) {
         try { await deps.inbox.publish(item.event, item.source); pending.delete(identity); }
@@ -55,6 +66,7 @@ export function createNotificationObserver(deps: {
       const publications = observeSources();
       if (publications !== undefined) await publications;
       try { await deps.health(); healthFailure = undefined; } catch { healthFailure = "NOTIFICATION_OBSERVATION_FAILED"; }
+      statusMoved();
     })().finally(() => { running = undefined; });
     return running;
   };
@@ -62,9 +74,14 @@ export function createNotificationObserver(deps: {
     if (healthFailure !== undefined) return { state: "failed", code: healthFailure, pending: sourceStatus.pending + 1 };
     return drained && sourceStatus.state !== "failed" ? { state: "stopped", pending: 0 } : sourceStatus;
   };
-  return Object.freeze({ observe, observeSources, status, async stop() {
+  const onStatusChange = (listener: () => void): (() => void) => {
+    statusListeners.add(listener);
+    return () => { statusListeners.delete(listener); };
+  };
+  return Object.freeze({ observe, observeSources, status, onStatusChange, async stop() {
     stopped = true;
     await Promise.all([running, publishing]);
     drained = true;
+    statusMoved();
   } });
 }

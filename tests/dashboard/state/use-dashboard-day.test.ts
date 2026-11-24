@@ -9,6 +9,7 @@ import type { DashboardClient,SubscriptionState } from "../../../src/dashboard/c
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { KEPT_DAYS_LIMIT,useDashboardDay,type DashboardDayState } from "../../../src/dashboard/state/use-dashboard-day.js";
 import { NotificationPublicationWireSchema } from "../../../src/models/dashboard/subscription.js";
+import { ProjectionCursorSchema } from "../../../src/rules/identity/ids.js";
 import { DashboardDayWireSchema,type DashboardDayWire } from "../../../src/models/dashboard/projection.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -188,11 +189,12 @@ it("forwards only live publication callbacks belonging to the current day, actor
   const render = async (day: string, currentEpoch = epoch, currentClient = client, actor = "local-operator") => {
     await act(async () => root.render(createElement(DashboardClientProvider, { client: currentClient, children: createElement(Probe, { day, epoch: currentEpoch, actor }) })));
   };
-  const publication = NotificationPublicationWireSchema.parse({ sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
+  const wire = NotificationPublicationWireSchema.parse({ sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: {
     kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1,
     publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
     occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "not-applicable" }, sourceEvent: { state: "available", kind: "storage-degraded" },
   } });
+  const publication = { publication: wire, listed: wire.notification, target: { kind: "storage" as const }, snapshotCursor: ProjectionCursorSchema.parse("pc:1") };
   await render(DAY);
   assert(state);
   const delivered: unknown[] = [];

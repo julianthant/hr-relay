@@ -55,4 +55,40 @@ describe("subscription snapshots, changes, and resets", () => {
       "only declared row models ride the stream");
     assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "change", cursor: "pc:2", ...change, rows: [{ ...refused, value: { state: "loading" } }] }).success, false);
   });
+
+  it("carries the notification status row available or unavailable, never another value", () => {
+    const available = { model: "notification-status", key: "local-operator", value: { state: "available", value: { state: "ready", pending: 0 } } };
+    const unavailable = { model: "notification-status", key: "local-operator", value: { state: "unavailable", error: { state: "error", code: "DASHBOARD_READ_FAILED", message: "not read", retryable: true } } };
+    for (const row of [available, unavailable]) {
+      assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", cursor: "pc:2", ...snapshot, rows: [row] }).success, true);
+    }
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", cursor: "pc:2", ...snapshot,
+      rows: [{ ...available, value: { state: "available", value: { state: "unknown", pending: 0 } } }] }).success, false);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse({ type: "snapshot", cursor: "pc:2", ...snapshot, rows: [{ ...available, value: { state: "ready", pending: 0 } }] }).success, false,
+      "the status is wrapped in its read state");
+  });
+});
+
+describe("notification publications", () => {
+  const notification = (notificationId: string, extra: Record<string, unknown> = {}) => ({ kind: "notification", notificationId, actorId: "local-operator", channel: "ping", count: 1,
+    publicationId: "b".repeat(64), trigger: "storage", readState: "unread", state: "unread", severity: "warning", title: "Storage health degraded",
+    occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "storage", concern: "backup" }, sourceEvent: { state: "available", kind: "storage-degraded" }, ...extra });
+  const A = "00000000-0000-4000-8000-0000000000a1", B = "00000000-0000-4000-8000-0000000000a2";
+  const envelope = (listed: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ type: "notification-publication", cursor: "pc:3", day: "2026-08-03", descriptorHash: HASH_A, projectionGeneration: 1,
+    publication: { sourceId: "a".repeat(64), actorId: "local-operator", durable: "created", notification: notification(A) }, listed, target: { kind: "storage" }, ...extra });
+
+  it("carries its cursor, its target and the listed row that holds it", () => {
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse(envelope(notification(A))).success, true, "a row outside a group is listed as itself");
+    const group = notification(B, { count: 3, group: { concern: "backup", members: [{ notificationId: A, revision: 1 }, { notificationId: B, revision: 1 }] } });
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse(envelope(group)).success, true, "a storage notice is listed inside its concern's group");
+    for (const missing of ["cursor", "target", "listed"] as const) {
+      const { [missing]: _omitted, ...rest } = envelope(notification(A));
+      assert.equal(DashboardStreamEnvelopeSchema.safeParse(rest).success, false, `a publication names its ${missing}`);
+    }
+  });
+
+  it("refuses a listed row that does not hold the published notification", () => {
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse(envelope(notification(B))).success, false);
+    assert.equal(DashboardStreamEnvelopeSchema.safeParse(envelope(notification(A, { actorId: "other-operator" }))).success, false);
+  });
 });
