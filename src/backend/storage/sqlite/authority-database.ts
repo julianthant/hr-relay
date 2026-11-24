@@ -1741,11 +1741,14 @@ export function validateAuthorityChanges(database: DatabaseSync, entries: readon
 
 /**
  * Validates each page's closure on its own, so one scoped check never covers more than one page; this equals validating their
- * union, since every check reads current rows. A whole-store route covers the remaining pages.
+ * union, since every check reads current rows, except the build-prefix check, which is given every page's changed search rows.
+ * A whole-store route covers the remaining pages.
  */
 function validateAuthorityChangePages(database: DatabaseSync, pages: readonly ReturnType<typeof authorityChangeClosure>[],
   singletonKeys: readonly DependencyKey[], search: "all" | "progress" | "none"): AuthorityChangeRoute {
-  return pages.some(page => validateAuthorityChangeClosure(database, page, singletonKeys, search) === "whole") ? "whole" : "scoped";
+  // The build-prefix check must see every changed search row: a row another page changed is not an unchanged prefix end.
+  const searchRuns = new Set(pages.flatMap(page => [...page.searchRuns]));
+  return pages.some(page => validateAuthorityChangeClosure(database, { ...page, searchRuns }, singletonKeys, search) === "whole") ? "whole" : "scoped";
 }
 
 function validateAuthorityChangeClosure(database: DatabaseSync, closure: ReturnType<typeof authorityChangeClosure>,
