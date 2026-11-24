@@ -53,11 +53,8 @@
 .settings-takeover .settings-account-page .ds-result-row-value button[data-slot="button"]:not([aria-label]) { width:112px; }
 .settings-search-arrival[data-held="true"]::before { animation: none; opacity: 1; }
 .settings-fix-banner { position: sticky; top: 0; z-index: 2; background: var(--ui-canvas); }
-/* Single-field edit dialogs (ChatGPT "Edit name"): light 16px title, plain label above a tall input, even spacing, × centred on the title. */
-.settings-edit-dialog { --ds-dialog-title-size:16px;--ds-dialog-title-lh:24px; }
-.settings-edit-dialog > header { align-items:center;padding-bottom:var(--ds-space-base); }
-.settings-edit-dialog > header h2 { font-weight:500; }
-.settings-edit-dialog [data-slot="dialog-body"] { display:flex;flex-direction:column;gap:16px;padding-block:var(--ds-space-base) var(--ds-space-cozy); }
+/* Single-field edit dialogs (ChatGPT "Edit name"): plain label above a tall input, even spacing. Title, header and body spacing come from the small dialog in tokens.css. */
+.settings-edit-dialog [data-slot="dialog-body"] { display:flex;flex-direction:column;gap:16px; }
 .settings-edit-dialog label.ds-field-label { font-size:13px;line-height:20px;font-weight:400;color:var(--ds-fg); }
 .settings-edit-dialog .ds-field-copy { gap:0; }
 .settings-edit-dialog input { height:40px;min-height:40px;font-size:14px; }

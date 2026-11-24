@@ -2057,3 +2057,9 @@ body[data-demo-theme],
 [data-demo-theme="dark"] { --ds-menu-fg: #dcdcde; --ds-fg-list: #c4c4c6; --ds-sidebar-fg: #c5c5c7; --ds-sidebar-grey: #7c7c80; }
 
 @media (max-width: 1099px) { :root { --ds-w-queue-column: 336px; } }
+
+/* The small dialog (confirmations and single-field edits): a light 16px title, the × level with it, tight even spacing. */
+[data-size="sm"][role="dialog"] { --ds-dialog-title-size: 16px; --ds-dialog-title-lh: 24px; }
+[data-size="sm"][role="dialog"] > header { align-items: center; padding-bottom: var(--ds-space-base); }
+[data-size="sm"][role="dialog"] > header h2 { font-weight: 500; }
+[data-size="sm"][role="dialog"] [data-slot="dialog-body"] { padding-block: var(--ds-space-base) var(--ds-space-cozy); }
