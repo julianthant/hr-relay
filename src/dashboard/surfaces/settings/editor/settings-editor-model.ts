@@ -152,7 +152,6 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     try {
       if (binding === undefined || command.requestedBy !== binding.scope.actorId) { failed(sent); return; }
       let readDocument: EditableSettingsWire | undefined;
-      let unknown: Promise<void> | undefined;
       const saved = (replayed: boolean) => {
         settle(sent);
         input.onSaved?.(settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), replayed, readDocument?.runtimeStatus.state === "restart-required"));
@@ -172,24 +171,23 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
             acceptedRequest.current = currentRequest.current; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
           }
           const next = commandSaveState(outcome);
-          // An unknown outcome is read back: the served value shows silently, or one failure toast. Either way the lock is freed.
-          if (next.state === "unconfirmed") {
-            unknown = readBack(() => refresh(false), served => ordinaryReadbackConfirms(served, command.payload.patch)).then(served => {
-              const landed = served !== undefined && ordinaryReadbackConfirms(served, command.payload.patch);
-              binding.executor.resolve(command.commandId, landed, binding.scope);
-              if (commandLife.current !== commandOwner) return;
-              if (!landed || served === undefined) { failed(sent); return; }
-              acceptedRequest.current = currentRequest.current; resource.accept(served); setEditor({ state: "loaded", document: served }); setReadProblem(undefined);
-              settle(sent);
-            });
-            return;
-          }
+          if (next.state === "unconfirmed") return;
           if (next.state !== "applied") { failed(sent); return; }
           saved(next.replayed);
         },
       };
-      await binding.executor.execute(command, options);
-      await unknown;
+      const outcome = await binding.executor.execute(command, options);
+      if (commandSaveState(outcome).state !== "unconfirmed") return;
+      // Release the command reservation even if the editor that sent it has closed.
+      const served = await readBack<EditableSettingsWire | undefined>(() => binding.executor.isCurrentAuthority(binding.scope) ? refresh(false) : Promise.resolve(undefined),
+        document => document === undefined || ordinaryReadbackConfirms(document, command.payload.patch));
+      if (!binding.executor.isCurrentAuthority(binding.scope)) return;
+      const landed = served !== undefined && ordinaryReadbackConfirms(served, command.payload.patch);
+      binding.executor.resolve(command.commandId, landed, binding.scope);
+      if (commandLife.current !== commandOwner) return;
+      if (!landed) { failed(sent); return; }
+      acceptedRequest.current = currentRequest.current; resource.accept(served); setEditor({ state: "loaded", document: served }); setReadProblem(undefined);
+      settle(sent);
     } finally { busy.current = false; setSaving(false); }
   };
 
