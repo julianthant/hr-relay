@@ -174,7 +174,8 @@ it("recovers after a background worker exits and stops cleanly after the replace
     ledger: createTransactionHistory(database.authority) });
   const loggingRepository = database.authority.timelineEvents;
   const startupCleanups: StartupCleanup[] = [];
-  const post = Worker.prototype.postMessage;
+  const post: unknown = Reflect.get(Worker.prototype, "postMessage");
+  if (typeof post !== "function") throw new Error("fixture worker postMessage missing");
   const workers = new Set<Worker>();
   let hold = false;
   const intercept = vi.spyOn(Worker.prototype, "postMessage").mockImplementation(function (this: Worker, ...args) {
@@ -182,7 +183,7 @@ it("recovers after a background worker exits and stops cleanly after the replace
       workers.add(this);
       if (hold) return;
     }
-    post.apply(this, args);
+    Reflect.apply(post, this, args);
   });
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   try {
@@ -199,7 +200,9 @@ it("recovers after a background worker exits and stops cleanly after the replace
       vi.advanceTimersByTime(250);
       await worker.terminate();
       await runtime.settled();
-      expect(projection.health()).toMatchObject({ state: "degraded", lastError: expect.stringContaining("dashboard-background-worker-exited") });
+      const health = projection.health();
+      expect(health.state).toBe("degraded");
+      expect(health.lastError).toContain("dashboard-background-worker-exited");
       hold = false;
     };
     await crash();

@@ -136,7 +136,8 @@ export function createDashboardBackgroundReader(admission: RuntimeAdmission, sou
       const page = await connection.read({ ...request, through: throughNative,
         after: archive.length === request.limit && throughNative !== undefined ? throughNative : nativeCursor(request.after) });
       const through = request.through ?? page.through + offset;
-      const records = [...archive, ...page.records.slice(0, request.limit - archive.length).map(record => ({ ...record, cursor: record.cursor + offset }))];
+      const records = [...archive, ...page.records.slice(0, request.limit - archive.length)
+        .map(record => ({ ...record, cursor: PositiveIntSchema.parse(record.cursor + offset) }))];
       const cursor = records.length === request.limit ? records[records.length - 1].cursor : through;
       return { ...page, records, cursor, through };
     },
