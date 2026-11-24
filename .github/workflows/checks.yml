@@ -250,35 +250,7 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: |
-          if [[ "$SUITE" != unit ]]; then
-            exec scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
-          fi
-          profile="$RUNNER_TEMP/profile"
-          mkdir -p "$profile"
-          ( while true; do
-              {
-                echo "[machine] $(date -u +%T) load=$(cut -d' ' -f1-3 /proc/loadavg) $(free -m | awk '/^Mem:/{printf "mem used=%sMB avail=%sMB", $3, $7} /^Swap:/{printf " swap=%sMB", $3}') root-free=$(df -m / | awk 'NR==2{print $4}')MB tmp=$(du -sm "$TMPDIR" 2>/dev/null | cut -f1)MB procs=$(ps -e --no-headers | wc -l)"
-                ps -eo rss=,pcpu=,etimes=,args= --sort=-rss | head -6 | awk '{printf "[machine]   %d MB %s%% %ss %s\n", $1/1024, $2, $3, substr($0, index($0,$4), 160)}'
-              } | tee -a "$profile/machine.log"
-              sleep 5
-            done ) &
-          sampler=$!
-          set +e
-          /usr/bin/time -v -o "$profile/time.txt" scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3 --logHeapUsage > >(tee "$profile/vitest.log") 2>&1
-          status=$?
-          kill "$sampler"
-          cat "$profile/time.txt"
-          echo "[machine] processes left after Vitest:"
-          ps -eo pid,ppid,etimes,rss,args --sort=ppid | grep -vE ' (ps|grep|bash|sh|tee|awk|head|sleep)( |$)' | tail -n +2
-          exit "$status"
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() && matrix.suite == 'unit' }}
-        with:
-          name: profile-ubuntu-unit-${{ matrix.shard }}
-          path: ${{ runner.temp }}/profile/
-          if-no-files-found: ignore
-          retention-days: 14
+        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
       - name: Affected integration tests
         if: matrix.files != null
         env:
