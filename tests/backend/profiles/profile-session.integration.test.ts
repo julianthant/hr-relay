@@ -141,8 +141,11 @@ describe("profile session", () => {
       createdAt: "2026-09-06T12:00:00.000Z" };
     for (const input of [fields, { ...fields, ucpathUsername: "alex-sso@ucsd.edu" }, { ...fields, ucpathPassword: "ucpath-fixture-password" },
       { ...fields, ucpathUsername: "alex@example.test", ucpathPassword: "ucpath-fixture-password" }]) {
-      assert.deepEqual(session.signUp(input), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+      const refused = session.signUp(input);
+      assert.ok(refused.state === "refused");
+      assert.equal(refused.code, "PROFILE_SIGN_IN_REFUSED");
     }
+    assert.equal(existsSync(join(root, "machine", "operations")), false);
     const machine = machineAdmissions.get(root);
     assert.ok(machine);
     assert.deepEqual(machine.readProfileRegistry().profiles, []);
@@ -180,7 +183,7 @@ describe("profile session", () => {
     assert.ok(machine);
     const fields = { firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "relay-fixture-password",
       ucpathUsername: "alex-sso@ucsd.edu", ucpathPassword: "ucpath-fixture-password", createdAt: "2026-09-06T12:00:00.000Z" };
-    const draft = legacy ? signUpWithLegacyOperation(session, fields) : session.signUp(fields);
+    const draft = legacy ? signUpWithLegacyOperation(root, session, fields) : session.signUp(fields);
     assert.ok(draft.state === "onboarding");
     await readyProfileOnboarding(session, draft);
     const path = join(root, "machine", "profile-verifiers.json"), intentPath = join(dirname(root), "control", "profile-publication.json");
@@ -213,8 +216,7 @@ describe("profile session", () => {
         assert.deepEqual(readFileSync(path), verifierBytes);
       } finally { writeFileSync(intentPath, intentBytes); }
     }
-    await session.closeOnboarding();
-    session.close();
+    await session.close();
     const restarted = createProfileSession({ machineRoot: root });
     await restarted.recoverOnboarding();
     assert.equal(existsSync(intentPath), false);

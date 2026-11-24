@@ -491,15 +491,15 @@ export function createProfileSession(input: {
     readonly createdAt: string;
   }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
+    const selection = registry.read();
+    if (selection.profiles.some(row => row.lifecycle === "cancelling") || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_LOGOUT_INCOMPLETE");
+    if (selection.activeProfileId !== null) return refusal("PROFILE_SIGN_UP_OTHER_SIGNED_IN");
+    if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const username = ProtectedValueSchemas.ucpathUserId.safeParse(fields.ucpathUsername);
     const password = ProtectedValueSchemas.ucpathPassword.safeParse(fields.ucpathPassword);
     if (!username.success || !password.success || !z.email().safeParse(username.data.trim()).success || !/@ucsd\.edu$/iu.test(username.data.trim())) {
       return refusal("PROFILE_SIGN_IN_REFUSED");
     }
-    const selection = registry.read();
-    if (selection.profiles.some(row => row.lifecycle === "cancelling") || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_LOGOUT_INCOMPLETE");
-    if (selection.activeProfileId !== null) return refusal("PROFILE_SIGN_UP_OTHER_SIGNED_IN");
-    if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const identified = verifiers.identify(fields.email);
     if (identified !== "unknown" && registry.read().profiles.some((row) => row.profileId === identified.profileId)) {
       return refusal("PROFILE_OTHER_EMAIL");

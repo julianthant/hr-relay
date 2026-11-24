@@ -150,7 +150,7 @@ it("serves the unfinished logout after restart, truthfully refuses signup, conti
       return { status: response.status, body: PublicProfileStateSchema.parse(await response.json()) };
     };
     assert.deepEqual(await (await fetch(`${base}/api/v1/profile/state`)).json(), { state: "signed-out", signUpRequired: false, logoutIncomplete: true });
-    assert.deepEqual(await post("sign-up", { email: fields.email, password: fields.password, firstName: "New", lastName: "Fixture" }), {
+    assert.deepEqual(await post("sign-up", withFixtureUcpath({ email: fields.email, password: fields.password, firstName: "New", lastName: "Fixture" })), {
       status: 200, body: { state: "refused", code: "PROFILE_LOGOUT_INCOMPLETE" },
     });
     assert.equal((await post("sign-in", { email: fields.email, password: fields.password })).body.state, "cancelling");

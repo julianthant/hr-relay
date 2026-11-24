@@ -57,7 +57,8 @@ for (const scenario of [{ action: "complete", withCause: true, unknownFirst: tru
     try {
       let credential: string | undefined, draft;
       if (scenario.unknownFirst) {
-        const signup = await post("sign-up", { firstName: "Held", lastName: "Fixture", email: "held-fixture@ucsd.edu", password: "disposable-held-fixture" });
+        const signup = await post("sign-up", { firstName: "Held", lastName: "Fixture", email: "held-fixture@ucsd.edu", password: "disposable-held-fixture",
+          ucpathUsername: "held-fixture@ucsd.edu", ucpathPassword: "disposable-held-fixture" });
         draft = PublicProfileStateSchema.parse(await signup.json()); credential = signup.headers.get("x-relay-session") ?? undefined;
       } else { const ready = await readyPublicSignUp(base); draft = ready.draft; credential = ready.credential; }
       assert.ok(credential); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");

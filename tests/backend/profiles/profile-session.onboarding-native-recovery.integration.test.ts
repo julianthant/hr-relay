@@ -120,7 +120,7 @@ async function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider,
   const fields = { firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
     password: "disposable-draft-recovery", createdAt: new Date().toISOString() };
   const signup = { ...fields, ucpathUsername: "draft-recovery-sso@ucsd.edu", ucpathPassword: "disposable-draft-ucpath" };
-  const draft = legacy ? signUpWithLegacyOperation(profile.session, fields) : profile.session.signUp(signup);
+  const draft = legacy ? signUpWithLegacyOperation(machine.stateRoot, profile.session, fields) : profile.session.signUp(signup);
   if (draft.state !== "onboarding") throw new Error("fixture genuine draft required");
   return { root, lifetime, machine, machineRoot: machine.stateRoot, profile, draft, processLockRoot };
 }

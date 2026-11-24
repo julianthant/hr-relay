@@ -68,8 +68,7 @@ function refusalCode(result: { state: string; code?: string }) { return result.s
 // Stop after publication but before the first successful upgrade, leaving the old registry row intact.
 async function unupgraded(machine: Awaited<ReturnType<typeof world>>, fields = alexFields) {
   const session = machine.open();
-  const draft = signUpWithLegacyOperation(session, fields);
-  assert.equal(draft.state, "onboarding");
+  const draft = signUpWithLegacyOperation(machine.machineRoot, session, fields);
   const rename = fs.renameSync;
   vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
     if (String(to).endsWith("/profile-publication.json") && fs.readFileSync(from, "utf8").includes('"relayEmail"')) {

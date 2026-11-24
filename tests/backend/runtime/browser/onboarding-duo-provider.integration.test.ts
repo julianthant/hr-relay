@@ -544,7 +544,7 @@ for (const expire of [false, true]) it(`real public Reopen proves owned stop, na
   const post = (path: string, body: unknown, session = credential) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
     origin: base, "content-type": "application/json", ...(session === undefined ? {} : { "x-relay-session": session }) }, body: JSON.stringify(body) });
   try {
-    const signup = await post("sign-up", { firstName: "Synthetic", lastName: "Reopen", email: "synthetic-reopen@ucsd.edu", password: "synthetic-reopen-password" });
+    const signup = await post("sign-up", withFixtureUcpath({ firstName: "Synthetic", lastName: "Reopen", email: "synthetic-reopen@ucsd.edu", password: "synthetic-reopen-password" }));
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
     credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     const shown = PublicProfileStateSchema.parse(await (await post("onboarding/duo/browser", { operationId: draft.operationId })).json());
@@ -647,7 +647,7 @@ for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as
   const post = (path: string, body: unknown, session = credential) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
     origin: base, "content-type": "application/json", ...(session === undefined ? {} : { "x-relay-session": session }) }, body: JSON.stringify(body) });
   try {
-    const signup = await post("sign-up", { firstName: "Synthetic", lastName: "Recovery", email: "synthetic-recovery@ucsd.edu", password: "synthetic-recovery-password" });
+    const signup = await post("sign-up", withFixtureUcpath({ firstName: "Synthetic", lastName: "Recovery", email: "synthetic-recovery@ucsd.edu", password: "synthetic-recovery-password" }));
     const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
     credential = signup.headers.get("x-relay-session") ?? undefined; assert.ok(credential);
     const call = (action: string, extra = {}) => post(`onboarding/${action}`, { operationId: draft.operationId, ...extra });
