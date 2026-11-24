@@ -10,6 +10,7 @@ export const test = base.extend<{ seeded: SeededServer }>({
     try {
       await use(server);
     } finally {
+      console.log(`[diag] closing seeded server now=${String(Date.now())}`);
       await server.close();
     }
   },

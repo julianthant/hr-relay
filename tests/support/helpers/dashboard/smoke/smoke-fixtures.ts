@@ -15,9 +15,11 @@ export const SEEDED_PREFERENCE_WRITE = /^(?:http 500: POST |console: Failed to l
 export function watchPageDiagnostics(page: Page): string[] {
   const seen: string[] = [];
   page.on("console", message => { if (message.type() === "error") seen.push(`console: ${message.text()} ${message.location().url}`); });
+  page.on("request", request => { if (request.url().includes("/api/v1/settings/editable")) console.log(`[diag] start settings/editable now=${String(Date.now())}`); });
   page.on("pageerror", error => seen.push(`pageerror: ${error.message}`));
   page.on("requestfailed", request => {
     const reason = request.failure()?.errorText ?? "";
+    console.log(`[diag] requestfailed ${request.url()} ${reason} started=${String(Math.round(request.timing().startTime))} now=${String(Date.now())}`);
     // Leaving or reloading the page aborts its open event stream.
     if (reason === "net::ERR_ABORTED" && new URL(request.url()).pathname.startsWith("/events/")) return;
     seen.push(`requestfailed: ${request.url()} ${reason}`);
