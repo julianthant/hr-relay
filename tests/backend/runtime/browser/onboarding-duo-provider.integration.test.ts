@@ -325,7 +325,7 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
       const state = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(state.state, "pending"); assert.equal(state.ceremonyObserved, true); assert.equal(state.operatorConfirmed, false);
       await page.evaluate(heading => { const element = document.createElement("h2"); element.textContent = heading; document.body.append(element); },
-        "Added security key");
+        "Added security key (Relay Work Key (Laptop))");
       await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state).toBe("complete");
       const done = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(done.portalAccepted, true); assert.equal(done.operatorConfirmed, false);
@@ -351,6 +351,7 @@ for (const scenario of ["software", "abort", "timeout"] as const) it(`real enrol
       const active = await profile.session.completeOnboarding(draft.token, draft.operationId);
       finished = true;
       assert.equal(active.profileId, draft.profileId);
+      assert.deepEqual(profile.session.readDuoKeys(active.token).keys.map(key => key.name), ["Relay Work Key (Laptop)"]);
       assert.equal(machine.readProfileRegistry().profiles.filter(row => row.profileId === draft.profileId).length, 1);
       const owner = machine.admitProfile(draft.profileId);
       let stored: unknown;

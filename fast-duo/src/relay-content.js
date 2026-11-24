@@ -88,7 +88,7 @@
   });
   const checkAcceptance = async () => {
     if (!registration || registration.accepted) return;
-    const pattern = /^Added security key(?: \([^()]{1,40}\))?$/;
+    const pattern = /^Added security key(?: \(([^\p{Cc}]{1,160})\))?$/u;
     const matching = [...document.querySelectorAll('h1, h2, [role="heading"]')].filter(element =>
       element.getClientRects().length && pattern.test(element.textContent.trim()));
     const success = matching.filter(element => priorHeadings.get(element) !== element.textContent.trim());
@@ -96,10 +96,11 @@
     // Duo may re-render an old heading as a new element; only an extra copy of the text is new.
     const text = success[0].textContent.trim();
     if (matching.filter(element => element.textContent.trim() === text).length <= [...priorHeadings.values()].filter(prior => prior === text).length) return;
+    const name = pattern.exec(text)?.[1]?.trim();
     registration.accepted = true;
     try {
       const reply = await chrome.runtime.sendMessage({ type: 'RELAY_PORTAL_ACCEPTED', request: {
-        requestId: registration.requestId, rpId: registration.rpId, origin: registration.origin } });
+        requestId: registration.requestId, rpId: registration.rpId, origin: registration.origin, ...(name ? { name } : {}) } });
       if (!reply?.success) throw new Error('ONBOARDING_DUO_PORTAL_UNRECORDED');
     } catch { window.postMessage({ type: 'RELAY_DUO_UNCERTAIN' }, location.origin); }
   };

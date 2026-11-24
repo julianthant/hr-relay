@@ -3,6 +3,7 @@ import { ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { ErrorCodeSchema } from "../../rules/identity/ids.js";
 import { ProfileIdSchema, ProfileRegistryRowSchema, type ProfileRegistryRow } from "./profile.js";
 import { PreflightReportWireSchema } from "../preflight/preflight-contract.js";
+import { DuoKeyChangeSchema, DuoKeyIdSchema, DuoKeyNameSchema } from "../config/duo-credential-store.js";
 
 export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(1).max(254), password: z.string().min(1).max(1024) });
 export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
@@ -44,6 +45,20 @@ export const ProfileDetailsChangeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("changed"), account: ProfileAccountSchema }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
 ]);
+const DuoKeySummarySchema = z.strictObject({ id: DuoKeyIdSchema, name: DuoKeyNameSchema.optional(),
+  shortId: z.string().min(1).max(8).regex(/^[A-Za-z0-9_-]+$/u), addedAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().optional() });
+export const DuoKeysSnapshotSchema = z.strictObject({ revision: z.number().int().safe().nonnegative(), keys: z.array(DuoKeySummarySchema).max(1000) });
+export type DuoKeysSnapshot = z.infer<typeof DuoKeysSnapshotSchema>;
+export const ProfileDuoKeysScopeSchema = z.strictObject({ profileId: ProfileIdSchema, epoch: z.number().int().safe().positive() });
+export const ProfileDuoKeysReadSchema = ProfileDuoKeysScopeSchema.extend({ snapshot: DuoKeysSnapshotSchema });
+export const ProfileDuoKeyChangeRequestSchema = ProfileDuoKeysScopeSchema.extend({ change: DuoKeyChangeSchema });
+export const DuoKeyChangeResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("changed"), snapshot: DuoKeysSnapshotSchema }),
+  z.strictObject({ state: z.literal("name-in-use") }),
+  z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema }),
+]);
+export type DuoKeyChangeResult = z.infer<typeof DuoKeyChangeResultSchema>;
+export const ProfileDuoKeyChangeResponseSchema = ProfileDuoKeysScopeSchema.extend({ commandId: z.uuid(), result: DuoKeyChangeResultSchema });
 /** A Relay username the dashboard sign-in form accepts: one UCSD work email with no surrounding spaces. */
 export function isRelayUsername(value: string): boolean { return /^[^\s@]+@ucsd\.edu$/iu.test(value); }
 export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
