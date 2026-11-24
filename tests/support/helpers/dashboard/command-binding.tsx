@@ -8,6 +8,7 @@ import { DashboardCommandBindingProvider, useDashboardClient, useDashboardComman
 import type { DashboardAuthority } from "../../../../src/dashboard/app/dashboard-app-model.js";
 import { FIXTURE_BOOTSTRAP } from "../../fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
+import { createRowStore } from "../../../../src/dashboard/client/index.js";
 
 export function FixtureCommandBinding({ children, actorId, requestKey = 0, nowIso = FIXTURE_BOOTSTRAP.serverClock.now, feedback }: { children: ReactNode; actorId: string; requestKey?: number; nowIso?: string; feedback?: (outcome: CommandOutcome) => void }) {
   const client = useDashboardClient();
@@ -24,7 +25,7 @@ export function FixtureCommandBinding({ children, actorId, requestKey = 0, nowIs
     const request = Object.freeze({ client, day, epoch, revision: requestKey });
     const authority: DashboardAuthority = Object.freeze({ epoch, catalog: [], now: () => bootstrap.serverClock.now,
       today: day, day,
-      dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded" as const, value: dayWire }, connection: { state: "connecting" as const }, refresh: () => { throw new Error("fixture day refresh is not served"); } },
+      dayState: { rows: createRowStore(), subscribePublications: () => { throw new Error("fixture publications are not served"); }, request, day: { state: "loaded" as const, value: dayWire }, connection: { state: "connecting" as const }, refresh: () => { throw new Error("fixture day refresh is not served"); } },
       selection: { route: { start: false }, workflowId: "" },
     });
     return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: scopeActorId, client, authority: epoch, dayRequest: request }), feedback: feedback ?? (() => undefined) });

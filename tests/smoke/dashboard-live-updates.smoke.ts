@@ -53,33 +53,16 @@ const EVENTS: Record<RunEvent, { shows?: string; run(server: SeededServer): stri
   "gate parking": { shows: PARKED, run: seededRun("runningRun"), fire: server => server.drive.parkRunningRunAtGate() },
 };
 
-const RUN = "GET /api/v1/runs/{id}";
-const LOGS = "GET /api/v1/runs/{id}/logs";
 const STREAM = "GET /events/v1";
 
-/** Requests in the quiet window after the event, sorted. The design's target for every cell is none. */
+/** Requests in the quiet window after the event, sorted. The run panel reads from the stream, so every cell is none. */
+const NONE: Record<View, readonly string[]> = { "queue only": [], "that run open": [], "another run open": [] };
 const BASELINE: Record<RunEvent, Partial<Record<View, readonly string[]>>> = {
-  "run starting": {
-    "queue only": [],
-    "that run open": [RUN, LOGS],
-    "another run open": [],
-  },
-  // The detail read is ahead of the held row, so the day stream is reopened and every view reads again.
-  "run starting, its row not yet reconciled": {
-    "queue only": [],
-    "that run open": [RUN, RUN, LOGS, LOGS, STREAM, "GET /api/v1/notifications", "GET /api/v1/notifications", "GET /api/v1/notifications/status", "GET /api/v1/notifications/status", "GET /api/v1/settings/editable"],
-    "another run open": [],
-  },
-  "step finishing": {
-    "queue only": [],
-    "that run open": [RUN, LOGS],
-    "another run open": [],
-  },
-  "gate parking": {
-    "queue only": [],
-    "that run open": [RUN, LOGS],
-    "another run open": [],
-  },
+  "run starting": NONE,
+  // The panel may be ahead of its row; it is shown and the day is not read again.
+  "run starting, its row not yet reconciled": NONE,
+  "step finishing": NONE,
+  "gate parking": NONE,
 };
 
 async function openView(dashboard: DashboardPage, view: View, eventRun: string): Promise<void> {
@@ -127,7 +110,7 @@ test("notification published: requests after the event", async ({ dashboard, pag
 // The Work-Study queue holds this one run, so there is no other run to hold open beside it.
 const DECLARED_GATE_BASELINE: Partial<Record<View, readonly string[]>> = {
   "queue only": [],
-  "that run open": [RUN, LOGS, "GET /api/v1/runs/{id}/workbook-writes"],
+  "that run open": [],
 };
 
 for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
@@ -148,6 +131,7 @@ for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
     expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
 
     await expect(row, "the queue row shows the run's new status").toContainText(PARKED);
+    if (view === "that run open") await expect(dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true }), "the open panel shows the gate").toBeVisible();
     await quiet(page, seen);
     expect([...seen].sort()).toEqual([...DECLARED_GATE_BASELINE[view] ?? []].sort());
   });
@@ -253,3 +237,72 @@ for (const event of Object.keys(TOPIC_BASELINE) as RunEvent[]) {
     });
   }
 }
+
+test("opening a run: one stream request and no run reads", async ({ dashboard, page, seeded }) => {
+  const seen = watchRequests(page);
+  await dashboard.open();
+  await quiet(page, seen);
+  seen.length = 0;
+
+  await dashboard.openRun(seeded.runIds.runningRun ?? "");
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
+  await quiet(page, seen);
+
+  expect(seen).toEqual([STREAM]);
+});
+
+test("a cold link to a run: one stream request, opened with that run", async ({ dashboard, page, seeded }) => {
+  const runId = seeded.runIds.runningRun ?? "";
+  const seen = watchRequests(page);
+  const streams: string[] = [];
+  page.on("request", request => { const url = new URL(request.url()); if (url.pathname === "/events/v1") streams.push(url.searchParams.get("topics") ?? ""); });
+  const url = new URL("/", seeded.baseUrl);
+  url.searchParams.set("day", SEEDED_DAY);
+  url.searchParams.set("run", runId);
+  url.searchParams.set("section", "logs");
+
+  await page.goto(url.toString());
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
+  await quiet(page, seen);
+
+  expect(streams, "the first connection carries the run topic and nothing reopens it").toEqual([`dashboard-day:${SEEDED_DAY},run:${runId}`]);
+  expect(seen.filter(request => /\/runs\//u.test(request)), "the panel comes from the stream, not a run read").toEqual([]);
+});
+
+test("a note-only commit reaches the open panel with no request", async ({ dashboard, page, seeded }) => {
+  const runId = seeded.runIds.runningRun ?? "";
+  const seen = watchRequests(page);
+  await dashboard.open();
+  await dashboard.openRun(runId);
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
+  await quiet(page, seen);
+  seen.length = 0;
+
+  seeded.drive.addRunningNote("A note that moves no queue row");
+
+  await expect(dashboard.runPanel.getByText("A note that moves no queue row")).toBeVisible();
+  await quiet(page, seen);
+  expect(seen).toEqual([]);
+});
+
+test("the open-gate run's refusal shows from the stream, with no run read and no reconnect", async ({ dashboard, page, seeded }) => {
+  const seen = watchRequests(page);
+  await dashboard.open();
+  await quiet(page, seen);
+  seen.length = 0;
+
+  await dashboard.openRun(dashboard.runId("openGateRun"));
+  await expect(dashboard.runPanel.getByText("These logs don't match this run.", { exact: true })).toBeVisible();
+  await quiet(page, seen);
+  expect(seen, "opening a run costs its one stream request").toEqual([STREAM]);
+  const runningRow = page.locator(`[data-demo-row-id="${seeded.runIds["runningRun"]}"]`).first();
+  const before = await runningRow.textContent();
+  seen.length = 0;
+
+  seeded.drive.finishRunningStep();
+  await expect.poll(() => runningRow.textContent(), { message: "the queue row shows the event" }).not.toBe(before);
+  await expect(dashboard.runPanel.getByText("These logs don't match this run.", { exact: true }), "the refusal is still shown").toBeVisible();
+  await quiet(page, seen);
+  expect(seen, "the queue keeps updating and the refused panel reads nothing").toEqual([]);
+});

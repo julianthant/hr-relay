@@ -32,7 +32,7 @@ async function mount(deletion: () => Promise<Response>) {
     return app.request(url, init);
   } });
   const client: DashboardClient = { ...transport, subscribeDay: options => {
-    options.onDay(FIXTURE_DAY_WIRE); options.onState({ state: "live" }); return { close() {} };
+    options.onDay(FIXTURE_DAY_WIRE); options.onState({ state: "live" }); return { select() {}, close() {} };
   } };
   window.history.replaceState(null, "", "/?settings=account");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
