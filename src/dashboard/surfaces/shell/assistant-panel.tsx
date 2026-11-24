@@ -1,4 +1,4 @@
-import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantProposal } from "../assistant/assistant-model.js";
+import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, assistantHistoryState, assistantRefusalAction, type AssistantProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { Fragment, useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, X } from "lucide-react";
@@ -9,13 +9,11 @@ import { ComposerInput } from './composer-input.js';
 import { useAssistantPanel, type AssistantConversationPort, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import { assistantActivity, type AssistantTurnPhase } from './assistant-launcher-model.js';
 import './assistant-panel.css';
-import { ASSISTANT_FAILURES, type AssistantFailureCode, type AssistantModelPreferenceView, type AssistantProposalRow } from '../../../models/dashboard/assistant.js';
+import type { AssistantModelPreferenceView, AssistantProposalRow } from '../../../models/dashboard/assistant.js';
 
 export function AssistantFileChip({ file }: { file: AssistantFile }) {
   return <div className="hub-file-chip"><Paperclip aria-hidden /><span>{file.name}<small>{file.status} spreadsheet</small></span></div>;
 }
-/** A refusal about the ChatGPT account is fixed in Settings; every other refusal is answered by sending the message again. */
-const accountRefusal = (code: AssistantFailureCode) => code === 'ASSISTANT_PLAN_DISABLED' || code === 'ASSISTANT_ACCOUNT_EXPIRED' || code.startsWith('CHATGPT_AUTH');
 const HIDDEN_PROPOSAL_FACTS = new Set(['Input', 'Runs', 'Expires', 'Browser', 'Captures', 'Configuration', 'Options', 'Mode']);
 const MODE_LABEL = { 'dry-run': 'Dry run', 'read-only': 'Read only', 'local-change': 'Local change' } as const;
 /** The served card's planned rows; the server derives each row's display from the planned input. */
@@ -85,7 +83,7 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
   // The account read has no action while it is still loading; the composer stays disabled without a strip.
   const accountLoading = !served.accountAvailable && served.accountAction === undefined;
   const turn = served.state.turn;
-  const historyFailed = historyNotice === ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE;
+  const historyFailed = assistantHistoryState(loading, historyNotice) === 'failed';
   const lastMessage = served.state.messages.at(-1);
   // Only the newest failed reply is shown, as one notice; it is never a chat bubble and an older failure is not repeated.
   const lastRefusal = lastMessage?.role === 'assistant' && lastMessage.code !== undefined ? { text: lastMessage.text, code: lastMessage.code } : undefined;
@@ -108,7 +106,7 @@ export function AssistantPanel({ conversationPort, onAttachFile, onRegisterSprea
           onConfirm={() => { served.onAction({ type: 'confirm' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }} />}
         {turn.state === 'waiting' && <AssistantReply><div className="hub-typing" role="status"><span className="hub-typing-dots" aria-hidden><i /><i /><i /></span><span>Preparing a reply…</span><Button variant="secondary" size="sm" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</Button></div></AssistantReply>}
         {lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text}
-          action={turn.state !== 'idle' ? undefined : accountRefusal(lastRefusal.code) ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
+          action={turn.state !== 'idle' ? undefined : assistantRefusalAction(lastRefusal.code) === 'open-settings' ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
             : keptPrompt(served.state.messages, served.state.messages.length - 1) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(served.state.messages, served.state.messages.length - 1)! }); served.onAction({ type: 'send' }); } }} />}
         {turn.state === 'failed' && <FailureNotice sentence="Reply unavailable."
           action={accountReady && served.state.draft === turn.prompt ? { label: 'Retry', onClick: () => served.onAction({ type: 'retry' }) } : undefined} />}
