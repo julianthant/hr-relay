@@ -62,15 +62,14 @@ test("Work-Study: start, gate, one press of Continue anyway, done, then Back, Fo
   await expect(row).not.toContainText("Running");
   expect(seeded.scripted.writes().slice(written)).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
 
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
   await dashboard.settleReads();
   await page.goBack();
   await expect(page.getByText("No run open")).toBeVisible();
   await page.goForward();
   await dashboard.expectRunOpen(runId);
+  await dashboard.settleReads();
   expect(seeded.scripted.writes().slice(written)).toHaveLength(1);
 });
 
@@ -216,9 +215,7 @@ test("Work-Study: a write whose answer is lost parks the run and is asked for on
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
   await expect(row).toContainText("Write parked");
   await expect(row).not.toContainText("Running");
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(row).toContainText("Write parked");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "save-transaction", eid: "10812345" }]);
 });
@@ -334,13 +331,10 @@ test("CRM Document Download: a failed download shows Failed in the run panel and
   expect(crmDocFiles(seeded.scripted.documentsDirectory())).toHaveLength(0);
 });
 
-const SETTINGS_READ_ABORTED = /^requestfailed: http:\/\/127\.0\.0\.1:\d+\/api\/v1\/settings\/editable net::ERR_ABORTED$/u;
-
 /** Starts an Emergency Contact run for the people (employee IDs) its PDF holds and drives it through the OCR child's identity lookups to the review gate. */
 async function startEmergencyContact(seeded: SeededServer, failures: { allow(pattern: RegExp, reason: string): void }, people: string) {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(SETTINGS_READ_ABORTED, "The settings read is abandoned when the page re-reads it.");
   const submission = await seeded.scripted.submission(EMERGENCY_CONTACT_SCRIPT, people);
   const runId = await startScriptedRun(request, SEEDED_NOW, people, seeded.scripted.ocrRosterReference(), EMERGENCY_CONTACT_SCRIPT, submission);
   failures.allow(abortedRead(runId), ABORTED_READ_REASON);
@@ -381,9 +375,7 @@ test("Emergency Contact: start, review released, each step held, one Save per pe
   expect(writes.map(write => write.eid).sort()).toEqual(["10800000", "10800001"]);
   expect(new Set(writes.map(write => write.runId)).size).toBe(2);
   expect(writes.every(write => write.nodeId === "contact-preview" && write.runId !== runId)).toBe(true);
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
   expect(seeded.scripted.writes()).toEqual(writes);
 });
@@ -415,9 +407,7 @@ test("Emergency Contact: a Save whose answer is lost parks the person's run and 
   while (parked.at === "step") parked = await run.advance();
   if (parked.at !== "settled" || parked.outcome.state !== "parked-write") throw new Error(`the Save did not park the run: ${JSON.stringify(parked)}`);
   expect(seeded.scripted.writes()).toEqual([{ runId: parked.outcome.runId, nodeId: "contact-preview", eid: "10800000" }]);
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("0/1");
   expect(seeded.scripted.writes()).toHaveLength(1);
 });
@@ -436,7 +426,6 @@ async function startI9ToReview(seeded: SeededServer, request: ReturnType<typeof 
 test("I-9 Check Start: start, both PDF reviews approved, each person checked, done with its children, and one results workbook saved", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(SETTINGS_READ_ABORTED, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
   await dashboard.open();
   await dashboard.openWorkflow("I-9 Check");
   const runId = await startI9ToReview(seeded, request);
@@ -460,9 +449,7 @@ test("I-9 Check Start: start, both PDF reviews approved, each person checked, do
   expect(tracker?.data.slice(1).map(cells => [cells[0], cells[2], cells[5], cells[6]])).toEqual([
     ["Example, Avery", "10000001", "Yes", "Keep"], ["Example, Blair", "10000002", "Yes", "Keep"]]);
 
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
   expect(seeded.scripted.writes()).toHaveLength(1);
 });
@@ -470,7 +457,6 @@ test("I-9 Check Start: start, both PDF reviews approved, each person checked, do
 test("I-9 Check Start: a failed person check fails the run and saves no workbook", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
-  failures.allow(SETTINGS_READ_ABORTED, "The I-9 Check run dialog's settings read is abandoned when the run's next state arrives, and read again.");
   await dashboard.open();
   await dashboard.openWorkflow("I-9 Check");
   const runId = await startI9ToReview(seeded, request);
@@ -514,9 +500,7 @@ test("Separations: start, each step held, done, and one write to UCPath and one 
     { runId, nodeId: "file-termination", eid: COMPOSITION_EID },
     { runId, nodeId: "finalize-kuali", eid: COMPOSITION_EID },
   ]);
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
   expect(seeded.scripted.writes()).toHaveLength(2);
 });
@@ -564,9 +548,7 @@ test("Onboarding: start, each step held, the hire review answered, done, and the
   await expect(row).toContainText("Done");
   await expect(row).not.toContainText("Running");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "i9-profile-save", eid: ONBOARDING_EMAIL }, { runId, nodeId: "hire-create", eid: ONBOARDING_EMAIL }]);
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(dashboard.runPanel.getByText("Done", { exact: true }).first()).toBeVisible();
   expect(seeded.scripted.writes()).toHaveLength(2);
 });
@@ -617,9 +599,7 @@ test("Onboarding: a hire submit whose answer is lost parks the run and is asked 
   expect(await run.parkWrite()).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
   await dashboard.openRun(runId);
-  await dashboard.settleReads();
-  await page.reload();
-  await dashboard.expectRunOpen(runId);
+  await dashboard.reloadRun(runId);
   await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("Write parked");
   expect(seeded.scripted.writes()).toEqual([{ runId, nodeId: "i9-profile-save", eid: ONBOARDING_EMAIL }, { runId, nodeId: "hire-create", eid: ONBOARDING_EMAIL }]);
 });
