@@ -104,7 +104,7 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
   const commands: unknown[] = []; let loseNextResponse = false;
   const encode = (input: unknown) => `data: ${JSON.stringify(DashboardStreamEnvelopeSchema.parse(input))}\n\n`;
   function publish() {
-    const payload = snapshot(); const value = encode({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: projection.cursor(), payload });
+    const payload = snapshot(); const value = encode({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: projection.cursor(), payload });
     for (const stream of streams) stream.write(value);
   }
   const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value,
@@ -122,7 +122,7 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
       if (url.pathname === "/events/v1") {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
         res.write(encode({ type: "hello", wireVersion: 1, descriptorHash, projectionGeneration: projection.generation(), cursor: projection.cursor() }));
-        res.write(encode({ type: "snapshot", topic: "dashboard-day", position: 0, cursor: projection.cursor(), payload: snapshot() }));
+        res.write(encode({ type: "snapshot", topic: "dashboard-day", rows: [], position: 0, cursor: projection.cursor(), payload: snapshot() }));
         res.write(encode({ type: "health", state: "live" })); streams.add(res); res.on("close", () => streams.delete(res)); return;
       }
       if (url.pathname === "/api/v1/dashboard") { res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(snapshot())); return; }

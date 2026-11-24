@@ -95,8 +95,8 @@ import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-schedule
 import type { SpanEmitter } from "../../logs/span-emitter.js";
 import { ExecutorSpanEventSchema } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
-import { requestedPayPathRecheck, WriteParkedError } from "../execution/run-executor.js";
-import type { WriteSequencer, WriteSequencerContext } from "../execution/run-executor.js";
+import { requestedPayPathRecheck, WriteParkedError } from "../execution/run-execution-write.js";
+import type { WriteSequencer, WriteSequencerContext } from "../execution/run-execution-write.js";
 
 /* ── the mutation capability — this module is the SOLE minting point ──────── */
 

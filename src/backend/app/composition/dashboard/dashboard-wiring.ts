@@ -73,6 +73,7 @@ import { startNotificationPolling } from "./notifications.js";
 import { composeDashboardTimeline } from "./timeline.js";
 import { composeWorkerPool,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
+import { readRunPanel } from "../../../runs/queries/run-detail.js";
 
 
 const DASHBOARD_WORKFLOW_SOURCES = ["served", "hidden"] as const;
@@ -349,6 +350,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox }),
+    runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
     preflightReport: () => preflightAuthority.readLatest(),
   });
   const { hub } = shell;

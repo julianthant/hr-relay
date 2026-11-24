@@ -44,6 +44,7 @@ import {
   type Fingerprint,
   type BrowserSystemId,
   type IsoInstant,
+  type RunId,
 } from "../../../rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
@@ -229,7 +230,9 @@ type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
 export type RunQueueProjectionChange =
   | { readonly kind: "patch"; readonly cursor: ProjectionCursor; readonly position: number; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
   | { readonly kind: "snapshot"; readonly cursor: ProjectionCursor; readonly position: number }
-  | { readonly kind: "generation"; readonly cursor: ProjectionCursor };
+  | { readonly kind: "generation"; readonly cursor: ProjectionCursor }
+  /** Runs whose timeline records an ingest folded, notes included, that no patch or snapshot of that ingest carried. */
+  | { readonly kind: "runs"; readonly runIds: readonly RunId[]; readonly position: number };
 
 export interface RunQueueProjectionHealth {
   readonly state: "live" | "degraded";
@@ -299,6 +302,12 @@ const PROJECTION_SPAN_TYPES = [
   "run.queued", "run.claimed", "run.requeued", "span.started", "span.ended",
   "gate.opened", "gate.resolved", "transaction.fenced", "data.observed",
 ] satisfies SpanEventWire["t"][];
+
+const PROJECTION_SPAN_TYPE_SET: ReadonlySet<string> = new Set(PROJECTION_SPAN_TYPES);
+
+function isProjectionSpan(record: ReturnType<typeof readTimelineRecords>["records"][number]): boolean {
+  return record.payload.kind === "span" && PROJECTION_SPAN_TYPE_SET.has(record.payload.event.t);
+}
 
 function projectionEvents(records: ReturnType<typeof readTimelineRecords>["records"]) {
   return records.map(record => {
@@ -413,10 +422,12 @@ export class RunQueueProjection {
       return;
     }
     try {
-      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor, undefined, PROJECTION_SPAN_TYPES);
+      const tail = readTimelineRecords(this.#deps.timeline, this.#timelineCursor);
       this.#timelineCursor = tail.cursor;
       if (tail.records.length === 0) return;
-      const events = projectionEvents(tail.records);
+      const touched = new Set<RunId>();
+      for (const record of tail.records) if (record.scope.kind === "run") touched.add(record.scope.runId);
+      const events = projectionEvents(tail.records.filter(isProjectionSpan));
       let queueRevisions = 0;
       const runIds = new Set<string>();
       let workerChanged = false;
@@ -427,7 +438,9 @@ export class RunQueueProjection {
         for (const runId of affected.runIds) runIds.add(runId);
         workerChanged ||= affected.workerChanged;
       }
-      if (queueRevisions > 0) this.#notify({ runIds: [...runIds], workerChanged }, queueRevisions > 1);
+      const carried = queueRevisions > 0 ? this.#notify({ runIds: [...runIds], workerChanged }, queueRevisions > 1) : { snapshot: false, runIds: [] };
+      const uncarried = carried.snapshot ? [] : [...touched].filter(runId => !carried.runIds.includes(runId));
+      if (uncarried.length > 0) this.#emit({ kind: "runs", runIds: uncarried, position: this.#timelineCursor });
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -496,8 +509,7 @@ export class RunQueueProjection {
       this.#cursorValue = 1;
       this.#health = { state: "live" };
       this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint();
-      const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
-      for (const listener of this.#listeners) listener(change);
+      this.#emit({ kind: "generation", cursor: this.cursor() });
     } catch (error) {
       this.#health = {
         state: "degraded",
@@ -767,7 +779,12 @@ export class RunQueueProjection {
   }
 
   // Row patches carry no count tuples; count changes require a snapshot.
-  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): void {
+  #emit(change: RunQueueProjectionChange): void {
+    for (const listener of this.#listeners) listener(change);
+  }
+
+  /** Publishes the day changes and answers which runs they carried: a snapshot carries every run. */
+  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): { snapshot: boolean; runIds: readonly string[] } {
     if (affected.workerChanged) this.#dayCache.clear();
     else {
       for (const cached of this.#dayCache.values()) {
@@ -855,9 +872,11 @@ export class RunQueueProjection {
       if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.takeCursor(), position });
       return changes;
     });
-    for (const change of publications) {
-      for (const listener of this.#listeners) listener(change);
-    }
+    for (const change of publications) this.#emit(change);
+    return {
+      snapshot: publications.some(change => change.kind === "snapshot"),
+      runIds: publications.flatMap(change => change.kind === "patch" ? [change.patch.target.runId] : []),
+    };
   }
 
   /** Capture shared authority at a snapshot/reconcile boundary, including the batch revisions row patches may expose. */

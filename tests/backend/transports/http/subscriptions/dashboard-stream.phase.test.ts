@@ -24,7 +24,7 @@ function scriptedProjection(): ScriptedProjection & {
   health(): { readonly state: "degraded" };
   buildDashboardDayWire(day: string): never;
   generation(): number;
-  cursor(): RunQueueProjectionChange["cursor"];
+  cursor(): ReturnType<typeof ProjectionCursorSchema.parse>;
   takeCursor(): never;
   position(): number;
   descriptorSetHash(): string;

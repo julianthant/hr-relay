@@ -40,7 +40,8 @@ classifiedFailureFields,
 createRunDiagnosticCapture,
 operatorRequestedCapture,
 } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
-import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-execution-contract.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { CrmReadOnboardingRecord } from "../../../../src/models/systems/crm/read-onboarding-record.js";
 import { BrowserSessionIdSchema } from "../../../../src/rules/identity/ids.js";

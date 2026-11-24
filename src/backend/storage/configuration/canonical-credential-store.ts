@@ -323,7 +323,7 @@ function reenrolStageOwner(paths: ReturnType<typeof canonicalPaths>, directory: 
 type OwnedStages = ReadonlyMap<string, Readonly<{ bytes: Buffer; kind?: CanonicalCredentialKind; identity?: DirectoryIdentity }>>;
 function inspectCanonicalNamespace(paths: ReturnType<typeof canonicalPaths>, head: Head, key: Buffer,
   owned: OwnedStages, assertCurrent: () => void, ancestry = new Map<string, DirectoryIdentity>(),
-  tolerateReenrolStages = false): void {
+  abandonedStages?: ReadonlySet<string>): void {
   const writerLockPath = join(paths.directory, `.${paths.binding.profileId}.writer.lock`);
   function validatePrivateLock(bytes: Buffer): void {
     try { assertPrivateFileLockBytes(bytes); }
@@ -354,7 +354,7 @@ function inspectCanonicalNamespace(paths: ReturnType<typeof canonicalPaths>, hea
         }
         continue;
       }
-      if (tolerateReenrolStages && !profileDirectory && reenrolStageOwner(paths, directory, name) !== undefined) continue;
+      if (abandonedStages?.has(path)) continue;
       if (!name.endsWith(".canonical.tmp")) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
       const expected = owned.get(path);
       if (expected === undefined && writerLockPresent()) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
@@ -418,6 +418,14 @@ function captureAbandonedSignUpHead(paths: ReturnType<typeof fixedCanonicalPaths
   };
 }
 
+const startupStageRepairs = new WeakMap<RuntimeLifetimeLock, number>();
+
+export function takeCanonicalCredentialStartupStageRepairs(lifetime: RuntimeLifetimeLock): number {
+  const count = startupStageRepairs.get(lifetime) ?? 0;
+  startupStageRepairs.delete(lifetime);
+  return count;
+}
+
 export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetimeLock, workspace: string,
   machineRoot: string, installationId: string, abandonable: (profileId: string) => boolean): readonly (() => void)[] {
   if (!(lifetime instanceof RuntimeLifetimeLock)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
@@ -479,14 +487,25 @@ export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetime
       if (reading.state === "active") {
         const head = reading.head;
         guard(); const key = authenticateHead(head);
-        // A re-enrolment stage never became authority: its operation rolls forward from the intent, head and record, so boot removes it.
-        inspectCanonicalNamespace(paths, head, key, new Map(), guard, ancestry, true);
-        for (const stageDirectory of [paths.directory, dirname(paths.records.duo)]) for (const name of readdirSync(stageDirectory)) {
-          if (reenrolStageOwner(paths, stageDirectory, name) === undefined) continue;
-          guard(); const path = join(stageDirectory, name), stage = readPrivateFile(path, { label: "protected.json", maxBytes });
-          if (stage === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-          removals.push(() => { guard(); removeExactPath(path, stage.identity, false, "credential-reenrol-stage-changed"); fsyncPath(stageDirectory); });
+        const stages = new Set<string>();
+        for (const stageDirectory of [paths.directory, dirname(paths.records.duo), dirname(paths.records.protected)]) {
+          for (const name of readdirSync(stageDirectory)) {
+            const ordinary = /^\.([0-9a-f-]{36})\.([0-9a-f-]{36})\.canonical\.tmp$/u.exec(name);
+            const reenrol = reenrolStageOwner(paths, stageDirectory, name) !== undefined;
+            if (!reenrol && (ordinary?.[1] !== profileId || !z.uuidv4().safeParse(ordinary[2]).success)) continue;
+            guard(); const path = join(stageDirectory, name), stage = readPrivateFile(path, { label: "protected.json", maxBytes });
+            if (stage === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+            stages.add(path);
+            removals.push(() => {
+              guard();
+              noSymlinkAncestry(stageDirectory, ancestry);
+              removeExactPath(path, stage.identity, false, "credential-stage-changed");
+              fsyncPath(stageDirectory);
+              startupStageRepairs.set(lifetime, (startupStageRepairs.get(lifetime) ?? 0) + 1);
+            });
+          }
         }
+        inspectCanonicalNamespace(paths, head, key, new Map(), guard, ancestry, stages);
         for (const kind of kinds) {
           guard(); const record = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
           if (record === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
