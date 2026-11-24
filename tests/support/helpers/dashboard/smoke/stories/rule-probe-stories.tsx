@@ -22,7 +22,7 @@ function ToastOverToolbar() {
     const timer = window.setTimeout(() => { toast({ tone: "danger", sticky: true, title: "Run unavailable", description: "This run is no longer in the queue." }); }, 0);
     return () => { window.clearTimeout(timer); };
   }, [toast]);
-  return <div className="fixed inset-x-0 bottom-0"><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
+  return <div className="fixed inset-x-0" style={{ bottom: "calc(var(--ds-toast-inset-bottom) - 1rem)" }}><ActionBar><ActionBarRow label="Queue actions"><Button>Start run</Button></ActionBarRow></ActionBar></div>;
 }
 
 /** Starts a request after first paint; it answers 404 and then the text changes. */
