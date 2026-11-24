@@ -218,6 +218,9 @@ export function LoadedApp({
   const panelRow = route.run === undefined || logPreview !== "top-level" ? undefined : priorRows?.find(row => row.runId === route.run);
   const panelRun = logPreview === "none" || panelRow !== undefined && panelRow.parent !== null ? route.run : undefined;
   const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, panelRun);
+  // A queue date that opens no day stream, such as a future or malformed link, leaves the served inbox a stream of today.
+  const inboxDay = dayRequested === undefined && workflowComposition.harness?.useInbox === undefined ? today : undefined;
+  const inboxDayState = useDashboardDay(inboxDay, nowIso, authorityEpoch, boot.actor.id);
   const dayResource = dayState.day;
   snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
     .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
@@ -307,6 +310,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "conflict" ? "warning" : "danger", title: outcome.feedback.text });
   }, [executor, toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
+  const inboxBinding = useMemo(() => inboxDay === undefined ? commandBinding : Object.freeze({ ...commandBinding,
+    authority: Object.freeze({ ...authority, day: inboxDay, dayState: inboxDayState }), scope: Object.freeze({ ...commandScope, dayRequest: inboxDayState.request }) }),
+  [inboxDay, commandBinding, authority, inboxDayState, commandScope]);
   const currentPreferenceBinding = useRef(commandBinding);
   currentPreferenceBinding.current = commandBinding;
   useEffect(() => {
@@ -758,7 +764,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     workflowLabel: workflowLabelOf,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
-  const servedInbox = useInboxWiring({ client, enabled: harnessInbox === undefined, binding: commandBinding });
+  const servedInbox = useInboxWiring({ client, enabled: harnessInbox === undefined, binding: inboxBinding });
   const inbox = harnessInbox ?? servedInbox;
   const shownRecovery: readonly CommandRecoveryEntry[] = workflowComposition.harness?.unknownCommand ? [...recoveryEntries, workflowComposition.harness.unknownCommand] : recoveryEntries;
   const commandNotices: readonly NotificationItem[] = [
@@ -772,7 +778,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   // Local command notices are not server rows: their read state lives here, never in the served inbox.
   const localNoticeIds = new Set(commandNotices.map(notice => notice.id));
   const openInbox: InboxWiring["open"] = (item, navigate, opened, refused) => localNoticeIds.has(item.id) ? navigate(item.destination, opened, refused) : inbox.open(item, navigate, opened, refused);
-  const railInbox = { ...inbox, open: openInbox,
+  const railInbox = { ...inbox, open: openInbox, canAct: (id: string) => localNoticeIds.has(id) || inbox.canAct(id),
     state: withCommandNotices(inbox.state, commandNotices.map(notice => noticeRead.has(notice.id) ? { ...notice, read: true } : notice)),
     control: async (id: string, action: Parameters<InboxWiring["control"]>[1]) => {
       if (!localNoticeIds.has(id)) return inbox.control(id, action);
