@@ -12,7 +12,6 @@ import { framePath, type CatalogueEntry } from "./story-catalogue.js";
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../../");
 const GALLERY_ROOT = join(REPO_ROOT, "tests/smoke/gallery");
 const SMOKE_OUTPUT = join(REPO_ROOT, "tests/smoke/.output");
-const GALLERY_DIST = join(SMOKE_OUTPUT, "gallery-page");
 /** Where the frames and their index page land, inside the smoke output folder. */
 export const STATE_FRAMES_DIR = join(SMOKE_OUTPUT, "states");
 
@@ -21,12 +20,13 @@ interface GalleryTestFixtures { diagnostics: StateRuleContext["diagnostics"] }
 
 export const test = base.extend<GalleryTestFixtures, GalleryWorkerFixtures>({
   // eslint-disable-next-line no-empty-pattern -- Playwright parses fixture dependencies from this pattern.
-  galleryUrl: [async ({}, use) => {
+  galleryUrl: [async ({}, use, workerInfo) => {
+    const galleryDist = join(SMOKE_OUTPUT, `gallery-page-${String(workerInfo.parallelIndex)}`);
     // One page, no fallback: a path the gallery does not serve answers 404, as the dashboard's backend does.
     const shared = { configFile: false, root: GALLERY_ROOT, logLevel: "warn", appType: "mpa",
-      build: { outDir: GALLERY_DIST, emptyOutDir: true, chunkSizeWarningLimit: 10_000 } } as const;
+      build: { outDir: galleryDist, emptyOutDir: true, chunkSizeWarningLimit: 10_000 } } as const;
     // A failed test restarts the worker; the page this run already built is still current.
-    const stamp = join(GALLERY_DIST, "built-by-run");
+    const stamp = join(galleryDist, "built-by-run");
     const run = String(process.ppid);
     if (!existsSync(stamp) || readFileSync(stamp, "utf8") !== run) {
       await build({ ...shared, plugins: [react(), tailwindcss()], resolve: { alias: { "@": join(REPO_ROOT, "src/dashboard") } } });
