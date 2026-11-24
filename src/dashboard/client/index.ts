@@ -28,6 +28,7 @@ export type { ApplicationLifecycle } from "../../models/dashboard/application-li
 export { DashboardClientError };
 export { applyDashboardDayPatch } from "./queries/day-state.js";
 export type { SubscriptionState } from "./subscriptions/subscription.js";
+export { createRowStore, type RowStore, type RowStoreWriter } from "./subscriptions/row-store.js";
 export type { StartPlanResponse } from "./commands.js";
 export type { OperatorXlsxClientDownload } from "./commands.js";
 export type { OperatorXlsxExportRequest } from "../../models/dashboard/xlsx-export.js";

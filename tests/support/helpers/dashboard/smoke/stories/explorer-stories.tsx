@@ -94,9 +94,9 @@ const SOURCE = {
 } satisfies Record<SourceView, Story>;
 
 const AUDIT_FIXES = "#532";
-/** The Onboarding steps show raw workflow codes (UC_FULL_HIRE, UC_CONC_HIRE) and a transaction name that is cut off at 1024; after a
+/** The Onboarding steps show raw workflow codes (UC_FULL_HIRE, UC_CONC_HIRE); after a
  * choice is made, the page's selects lose their focus ring. */
-const PAGE = ["no-banned-text", ["fits-viewport", 1024]] as const;
+const PAGE = ["no-banned-text"] as const;
 const KNOWN_BREAKS = {
   "load/ready": PAGE, "block/card": PAGE, "block/click": PAGE, "block/starts": PAGE, "block/pick": PAGE, "block/decision": PAGE,
   "card/fill": PAGE, "card/read": PAGE, "decision/continues": PAGE,

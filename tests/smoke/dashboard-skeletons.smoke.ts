@@ -411,7 +411,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       test("a held run read stays inside the selected run panel", async ({ dashboard, page }) => {
         const runId = dashboard.runId("doneRun");
         const open = seededQueueCard(dashboard, runId).locator("button[data-queue-open]");
-        const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/runs/${runId}` });
+        const hold = await holdDashboardSkeletonRead(page, { run: runId });
         await measure(page, open, () => open.press("Enter"), () => expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible(), {
           pendingRegion: RUN_PANEL, bounds: { pending: RUN_LOADING, settled: RUN_SETTLED },
         }, hold);

@@ -20,6 +20,7 @@ import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-l
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
+import { createRowStore } from "../../../src/dashboard/client/index.js";
 
 // LoadedApp resolves the date selection once per render, so this counts its renders.
 const appRenders = vi.hoisted(() => ({ count: 0 }));
@@ -60,7 +61,7 @@ it("ten ticks re-render no part of a collapsed Sessions panel", async () => {
   const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async () => { throw new Error("no request is expected"); } });
   const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
   const binding = { client, executor: new CommandExecutor(() => scope), scope, day: FIXTURE_DAY_WIRE.day, now: () => FIXTURE_NOW,
-    dayState: { subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh() {} } };
+    dayState: { rows: createRowStore(), subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh() {} } };
   const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
   const catalog = buildWorkflowCatalog(served, servedFixtureSources(served));
   const clock = createServedClock(FIXTURE_NOW);
@@ -111,7 +112,7 @@ it("ten ticks re-render neither an open Sessions panel nor its worker cards, whi
   const elapsed = () => [...host.querySelectorAll("article footer > span:first-child")].map(span => span.textContent).join("|");
   for (const day of [FIXTURE_DAY_WIRE, { ...FIXTURE_DAY_WIRE, workerCards: [], unavailableWorkerCards: [] }]) {
     const binding = { client, executor: new CommandExecutor(() => scope), scope, day: FIXTURE_DAY_WIRE.day, now: () => FIXTURE_NOW,
-      dayState: { subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: day }, connection: { state: "live" as const }, refresh() {} } };
+      dayState: { rows: createRowStore(), subscribePublications: () => () => {}, request: scope.dayRequest, day: { state: "loaded" as const, value: day }, connection: { state: "live" as const }, refresh() {} } };
     await act(async () => root?.render(createElement(ServedClockContext.Provider, { value: clock }, createElement(TooltipProvider, null, createElement(ToastProvider, null,
       createElement(SessionPanel, { catalog, binding, open: true, onOpenChange() {} }))))));
     await act(async () => {});

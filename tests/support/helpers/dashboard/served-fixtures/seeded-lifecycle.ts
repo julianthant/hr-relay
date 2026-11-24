@@ -615,6 +615,13 @@ export function parkRunningRunAtGate(world: SeedWorld): string {
   return run.envelope.runId;
 }
 
+/** A note-only commit: the running run gets a note and no span event, so no queue row moves. */
+export function addRunningNote(world: SeedWorld, message: string): string {
+  const run = seededRun(world, RUNNING_SEED);
+  note(world, run, "step", message);
+  return run.envelope.runId;
+}
+
 /** The notification event a publication drive sends: the seeded done run, verified. */
 export function seededDoneNotificationEvent(): { kind: "verified-done"; runId: string; workflowId: string } {
   return { kind: "verified-done", runId: uuidOf(DONE_SEED), workflowId: WORKFLOW_ID };

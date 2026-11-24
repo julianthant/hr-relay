@@ -14,6 +14,7 @@ import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflo
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../../support/helpers/dashboard/mock-world/fixture-day.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/helpers/dashboard/mock-world/fixture-start.js";
 import { servedFixtureSources } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { createRowStore } from "../../../../src/dashboard/client/index.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
@@ -22,7 +23,7 @@ const client = createDashboardClient({ baseUrl: "http://sessions.test", fetchImp
 const scope: CommandExecutionScope = { actorId: "local-operator", client, authority: {}, dayRequest: {} };
 const executor = new CommandExecutor(() => scope);
 const binding = (day: SessionCommandBinding["dayState"]["day"]): SessionCommandBinding => ({ client, executor, scope, day: FIXTURE_DAY_WIRE.day, now: () => FIXTURE_NOW,
-  dayState: { subscribePublications: () => () => {}, request: scope.dayRequest, day, connection: { state: "connecting" }, refresh() {} } });
+  dayState: { rows: createRowStore(), subscribePublications: () => () => {}, request: scope.dayRequest, day, connection: { state: "connecting" }, refresh() {} } });
 
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); });

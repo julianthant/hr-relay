@@ -29,11 +29,14 @@ import { serverLocalDay } from "../../../src/dashboard/surfaces/shell/date-navig
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import { CommandResultSchema, DashboardCommandRequestSchema, type DashboardCommandRequest } from "../../../src/rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
-import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
+import { RowRevisionSchema, WireErrorSchema } from "../../../src/models/dashboard/primitives.js";
 import { RunIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
 import { projectDecision, rowActionOption } from "../../../src/backend/runs/decisions/project-decision.js";
 import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
+import { createRowStore, type RowStore, type RowStoreWriter } from "../../../src/dashboard/client/index.js";
+import type { RunPanel } from "../../../src/models/dashboard/subscription.js";
+import { serveRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const OTHER = "00000000-0000-4000-8000-000000000002";
@@ -72,6 +75,13 @@ function identityFixtures(...args: Parameters<typeof createIdentityCeremonyFixtu
 function clientFor(read: (path: string, signal?: AbortSignal | null) => unknown) {
   return createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (input, init) => Response.json(await read(new URL(String(input)).pathname, init?.signal)) });
 }
+/** The writers behind the stores the fixtures hand out, so a test can stream a panel into the store a binding reads. */
+const writers = new WeakMap<RowStore, RowStoreWriter>();
+function openStore(): RowStoreWriter { const writer = createRowStore(); writers.set(writer, writer); return writer; }
+function serveRows(rows: RowStore, client: Parameters<typeof serveRunPanel>[1], runId: string, panel?: RunPanel) {
+  const writer = writers.get(rows); assert.ok(writer, "the binding's row store was not made by the fixture");
+  return serveRunPanel(writer, client, runId, panel);
+}
 function commandBindingFixture() {
   const client = clientFor(() => { throw new Error("unprovided Logs fixture read"); });
   const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, serverClock: { ...FIXTURE_BOOTSTRAP.serverClock, now: NOW, zone: "America/Los_Angeles" } });
@@ -82,7 +92,7 @@ function commandBindingFixture() {
   const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
   const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
     authority: { epoch, catalog: [], now: () => bootstrap.serverClock.now, today: day, day,
-      dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request,
+      dayState: { rows: openStore(), subscribePublications: () => { throw new Error("fixture publications are not served"); }, request,
         day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
       selection: { route: { start: false }, workflowId: "launch-proof" } } };
   return { client, binding };
@@ -111,6 +121,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope),
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
     let pending: Promise<CommandOutcome> | undefined;
     const render = () => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected, onAction: (action, target) => {
@@ -196,7 +207,10 @@ describe("served Logs wiring", () => {
       const [, , , , runId, section] = path.split("/");
       return section === undefined ? FIXTURE_RUN_DETAILS[runId] : FIXTURE_SECTIONS[runId][section];
     });
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } }) }));
+    const h = commandBindingFixture();
+    await serveRows(h.binding.authority.dayState.rows, client, row.runId);
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+      children: createElement(LogSample, { selection: { row, workflowLabel: "Person Lookup" } }) }) }));
     assert.match(document.body.textContent ?? "", /Searching UCPath directory for Morrow, Bea/);
     assert.doesNotMatch(document.body.textContent ?? "", /Capture availability not supplied/);
     assert.match(document.body.textContent ?? "", /Identity Approval/);
@@ -229,6 +243,7 @@ describe("served Logs wiring", () => {
     const served = RunDetailWireSchema.parse({ ...detail(withActions), availableSections: ["logs"], decision: projectDecision("paused", [...rowActionOption("resume", "resume", rowActions), ...rowActionOption("cancel-run", "cancel", rowActions)]) });
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : served);
     const sent: string[] = [];
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
     await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
       children: createElement(LogSample, { selection: withActions, onAction: action => { sent.push(action.key); } }) }) }));
     const button = (label: string) => { const found = [...document.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === label); assert.ok(found, label); return found; };
@@ -247,7 +262,10 @@ describe("served Logs wiring", () => {
     const entry = projection.steps.find(step => step.id === FIXTURE_PARKED_WRITE.writeIntentId)?.entries[0];
     assert.equal(entry?.id, FIXTURE_PARKED_WRITE.writeIntentId); assert.equal(entry?.kind, "decision");
     if (entry?.kind === "decision") { assert.equal(entry.decision.state, "parked"); assert.deepEqual(entry.decision.served?.options.map(option => option.label), ["Saved", "Not saved, write it again"]); assert.equal(entry.decision.footer, undefined); }
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
+    const h = commandBindingFixture();
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+      children: createElement(LogSample, { selection: selection() }) }) }));
     assert.match(document.body.textContent ?? "", /Did the write save\?/);
     assert.equal(document.querySelector('form[aria-label="Did the write save?"]')?.querySelectorAll("button").length, 2);
     const jump = [...document.querySelectorAll("button")].find(button => button.textContent === "Resolve");
@@ -381,6 +399,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     let state: ReturnType<typeof useRunWiring> | undefined;
     function Probe() { state = useRunWiring(client, selected, binding); return null; }
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(createElement(Probe));
     const approve = gate.decision!.options[0]; assert.ok(approve); assert.ok(state?.onDecision);
     await act(async () => state?.onDecision?.(gate.gateRef, approve, { candidate: gate.options[1].ref }));
@@ -414,6 +433,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected }) }) }));
     const block = document.querySelector('form[aria-label="Is this the right person?"]'); assert.ok(block);
@@ -458,6 +478,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     const panel = (next: LogSelection, currentBinding = binding) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
       children: createElement(LogSample, { selection: next, key: transition === "keyed-run-roundtrip" ? next.row.runId : undefined }) }) });
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(panel(selected));
     const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label);
     const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
@@ -465,9 +486,11 @@ describe("served Logs wiring", () => {
     const next = { ...selected, row: { ...selected.row, ...(transition === "command-revision" ? { rowRevision: RowRevisionSchema.parse(4) } : {}) } };
     if (transition === "command-revision") currentDetail = resolved;
     if (transition === "run-roundtrip" || transition === "keyed-run-roundtrip") {
+      await serveRows(binding.authority.dayState.rows, client, OTHER);
       await act(async () => root?.render(panel(selection(OTHER))));
       assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
     }
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     const replacementBinding = transition === "foreign-scope" ? { ...binding, scope: { ...scope, actorId: "other-operator", authority: {} } } : binding;
     await act(async () => root?.render(transition === "unmounted" ? null : panel(next, replacementBinding)));
     if (transition === "foreign-scope" || transition === "unmounted") assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
@@ -525,7 +548,9 @@ describe("served Logs wiring", () => {
     const panel = (index: number) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected[index] }) }) });
     const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gates[0].decision!.options[0].label); assert.ok(control); return control; };
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(panel(0)); await act(async () => approve().click());
+    await serveRows(binding.authority.dayState.rows, client, OTHER);
     await act(async () => root?.render(panel(1))); await act(async () => approve().click()); assert.equal(sent.length, 2);
     resolved.add(OTHER); await act(async () => releases.get(OTHER)?.());
     assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.equal(approve().disabled, true);
@@ -550,6 +575,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
     const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: next }) }) });
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(panel(selected));
     const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label);
     const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
@@ -578,6 +604,7 @@ describe("served Logs wiring", () => {
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
     let current: ReturnType<typeof useRunWiring> | undefined;
     function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding }) { current = useRunWiring(client, selected, activeBinding); return createElement("span", null, current.command?.feedback); }
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(createElement(Probe, { key: "first", activeBinding: binding }));
     await act(async () => current?.onDecision?.(gate.gateRef, gate.decision!.options[0], {})); assert.equal(sent.length, 1);
     await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: binding })));
@@ -594,7 +621,10 @@ describe("served Logs wiring", () => {
   });
   it("shows an empty log as no actions", async () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), rows: [], notes: [] } } : detail());
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
+    const h = commandBindingFixture();
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+      children: createElement(LogSample, { selection: selection() }) }) }));
     assert.match(document.body.textContent ?? "", /No actions yet/);
   });
   it("retains supplied notes and locks decision controls when gate/capture authority is omitted", async () => {
@@ -613,6 +643,7 @@ describe("served Logs wiring", () => {
       };
       const scope = { ...h.binding.scope, client };
       const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
+      await serveRows(binding.authority.dayState.rows, client, RUN);
       await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
         children: createElement(LogSample, { selection: selected }) }) }));
       assert.match(document.body.textContent ?? "", /Authoritative note 0/);
@@ -638,6 +669,7 @@ describe("served Logs wiring", () => {
     const scope = { ...h.binding.scope, client };
     const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { throw new Error("refusal must not invent changed authority"); } } } };
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: selected }) }) }));
     const approve = () => { const node = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.decision!.options[0].label); assert.ok(node); return node; };
@@ -681,9 +713,11 @@ describe("served Logs wiring", () => {
     const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
       children: createElement(LogSample, { selection: next }) }) });
     const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === firstGate.decision!.options[0].label); assert.ok(control); return control; };
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await mount(panel(selected)); await act(async () => approve().click());
     assert.equal(sent.length, 1); assert.equal(outcomes[0].kind, "confirmed"); assert.equal(refreshed, 1); assert.equal(approve().disabled, true);
     gateIndex = 1; resolved = false;
+    await serveRows(binding.authority.dayState.rows, client, RUN);
     await act(async () => root?.render(panel({ ...selected, row: { ...selected.row, rowRevision: RowRevisionSchema.parse(5) } })));
     assert.equal(approve().disabled, false); assert.equal(sent.length, 1); assert.doesNotMatch(document.body.textContent ?? "", /Decision confirmed/);
     await act(async () => approve().click());
@@ -717,9 +751,11 @@ describe("served Logs wiring", () => {
       const radio = document.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]; assert.ok(radio); await act(async () => radio.click());
       assert.equal(approve().disabled, false); await act(async () => approve().click());
     }
+    const serve = (runId: string) => serveRows(binding.authority.dayState.rows, client, runId);
+    await serve(RUN);
     await mount(panel(selected)); await choose(0); assert.equal(sent.length, 1);
-    await act(async () => root?.render(panel(selection(OTHER))));
-    await act(async () => root?.render(panel(selected)));
+    await serve(OTHER); await act(async () => root?.render(panel(selection(OTHER))));
+    await serve(RUN); await act(async () => root?.render(panel(selected)));
     assert.match(document.body.textContent ?? "", /Pending/); assert.equal(approve().disabled, true);
     await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
     const next = { ...selected, row: { ...selected.row, ...(authority === "new-revision" ? { rowRevision: RowRevisionSchema.parse(4) } : {}) } };
@@ -730,6 +766,7 @@ describe("served Logs wiring", () => {
       currentGate = section.payload.value;
       currentDetail = RunDetailWireSchema.parse({ ...open, gate: { ...open.gate, nodeId: "second-gate", revision: 2 } });
     }
+    await serve(RUN);
     const nextBinding = authority === "foreign-actor" || authority === "foreign-authority" ? { ...binding, scope: { ...scope,
       ...(authority === "foreign-actor" ? { actorId: "other-operator" } : { authority: {} }) } } : binding;
     await act(async () => root?.render(panel(next, nextBinding)));
@@ -743,110 +780,162 @@ describe("served Logs wiring", () => {
     for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.payload,
       { decision: "approved", gateRef: gate.gateRef, optionRef: gate.options[index].ref }); }
     assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /That was refused/); assert.equal(approve().disabled, true);
-    await act(async () => root?.render(panel(selection(OTHER)))); await act(async () => root?.render(panel(next)));
+    await serve(OTHER); await act(async () => root?.render(panel(selection(OTHER)))); await serve(RUN); await act(async () => root?.render(panel(next)));
     assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /That was refused/);
     currentDetail = RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: GATE_NODE, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } });
     await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
     await act(async () => root?.render(panel(next, binding)));
     assert.doesNotMatch(document.body.textContent ?? "", /That was refused|Pending/); assert.equal(sent.length, 2);
   });
+  const bound = (client: DashboardClient, binding: DashboardCommandBinding, selected: LogSelection) => createElement(DashboardClientProvider, { client,
+    children: createElement(DashboardCommandBindingProvider, { binding, children: createElement(LogSample, { selection: selected }) }) });
+  const refused = (code: string, retryable: boolean) => ({ state: "refused" as const, error: WireErrorSchema.parse({ state: "error", code, message: "private native mismatch", retryable }) });
+  const unreadable = () => { const reads: string[] = []; return { reads, client: clientFor(path => { reads.push(path); throw new Error("the panel is streamed; no read is made"); }) }; };
   it("mounts the served LogSample producer without fictional decision events", async () => {
+    const h = commandBindingFixture();
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : detail());
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
+    await mount(bound(client, h.binding, selection()));
     assert.match(document.body.textContent ?? "", /Authoritative note 0/);
     assert.doesNotMatch(document.body.textContent ?? "", /Reading the employment record|Termination confirmed|Approve match/);
     assert.doesNotMatch(document.body.textContent ?? "", /cross-source chronology unavailable/);
   });
-  for (const source of ["client", "backend"] as const) it(`shows the catalog refusal for ${source} Logs identity failures`, async () => {
+  it("shows the catalog refusal for client Logs identity failures", async () => {
+    const h = commandBindingFixture();
     const malformed = { ...page(), rows: page().rows?.map(row => row.kind === "note"
       ? { ...row, native: undefined, note: { ...row.note, native: undefined } } : row),
       notes: page().notes.map(note => ({ ...note, native: undefined })) };
-    const client = source === "client" ? clientFor(path => path.endsWith("/logs")
-      ? { section: "logs", payload: malformed } : detail()) : createDashboardClient({ baseUrl: "http://fixture.test",
-        fetchImpl: async input => new URL(String(input)).pathname.endsWith("/logs")
-          ? Response.json({ state: "error", code: "LOGS_IDENTITY_REFUSED", message: "private native mismatch", retryable: false }, { status: 409 })
-          : Response.json(detail()) });
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
+    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: malformed } : detail());
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
+    await mount(bound(client, h.binding, selection()));
     assert.match(document.body.textContent ?? "", /These logs don't match this run\./u);
     assert.equal([...document.querySelectorAll("button")].some(button => button.textContent === "Retry"), false);
     assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
   });
-  it("opens the detail and logs reads once under StrictMode", async () => {
-    const paths: string[] = [];
-    const client = clientFor(path => { paths.push(path); return path.endsWith("/logs") ? { section: "logs", payload: page() } : detail(); });
-    await mount(createElement(StrictMode, null, createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) })));
-    assert.equal(paths.filter(path => path.endsWith("/logs")).length, 1);
-    assert.equal(paths.filter(path => /\/runs\/[^/]+$/.test(path)).length, 1);
+  it("shows the catalog refusal for a backend Logs identity failure streamed as a refused panel", async () => {
+    const h = commandBindingFixture();
+    const { client, reads } = unreadable();
+    await serveRows(h.binding.authority.dayState.rows, client, RUN, refused("LOGS_IDENTITY_REFUSED", false));
+    await mount(bound(client, h.binding, selection()));
+    assert.match(document.body.textContent ?? "", /These logs don't match this run\./u);
+    assert.equal([...document.querySelectorAll("button")].some(button => button.textContent === "Retry"), false);
+    assert.doesNotMatch(document.body.textContent ?? "", /private native mismatch|Authoritative note/);
+    assert.deepEqual(reads, []);
   });
-  it("does not turn a failed served read into a mock or a verified empty result", async () => {
-    const client = clientFor(() => { throw new Error("offline"); });
-    await mount(createElement(DashboardClientProvider, { client, children: createElement(LogSample, { selection: selection() }) }));
+  it("takes the panel from the store under StrictMode without any client read", async () => {
+    const h = commandBindingFixture();
+    const served = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : detail());
+    await serveRows(h.binding.authority.dayState.rows, served, RUN);
+    const { client, reads } = unreadable();
+    await mount(createElement(StrictMode, null, bound(client, h.binding, selection())));
+    assert.match(document.body.textContent ?? "", /Authoritative note 0/);
+    assert.deepEqual(reads, []);
+  });
+  it("stays loading, never failed or empty, while the store holds no panel for the run", async () => {
+    const h = commandBindingFixture();
+    const { client, reads } = unreadable();
+    await mount(bound(client, h.binding, selection()));
+    const text = document.body.textContent ?? "";
+    assert.doesNotMatch(text, /Couldn't load logs|No actions yet|Approve match|Reading the employment record/);
+    let current: ReturnType<typeof useRunWiring> | undefined;
+    function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding | undefined }) { current = useRunWiring(client, selection(), activeBinding); return null; }
+    await act(async () => root?.render(createElement(Probe, { activeBinding: h.binding })));
+    assert.equal(current?.state, "loading"); assert.equal(current?.snapshot, undefined);
+    await act(async () => root?.render(createElement(Probe, { activeBinding: undefined })));
+    assert.equal(current?.state, "loading"); assert.deepEqual(reads, []);
+  });
+  it("shows a retryable refused panel as a failed read without turning it into a mock or a verified empty result", async () => {
+    const h = commandBindingFixture();
+    const { client, reads } = unreadable();
+    await serveRows(h.binding.authority.dayState.rows, client, RUN, refused("DASHBOARD_READ_FAILED", true));
+    await mount(bound(client, h.binding, selection()));
     const text = document.body.textContent ?? "";
     assert.ok(text.includes("Couldn't load logs."));
-    assert.doesNotMatch(text, /offline|unclassified failure/);
-    assert.doesNotMatch(document.body.textContent ?? "", /No actions yet/);
-    assert.doesNotMatch(document.body.textContent ?? "", /Approve match|Reading the employment record/);
+    assert.doesNotMatch(text, /private native mismatch|unclassified failure/);
+    assert.doesNotMatch(text, /No actions yet|Approve match|Reading the employment record/);
+    assert.deepEqual(reads, []);
   });
-  it("mounts the harness preview for the same failed client and selection without retrying the served read", async () => {
-    let reads = 0;
-    const client = clientFor(() => { reads++; throw new Error("offline"); });
+  it("mounts the harness preview beside a refused panel without any client read", async () => {
+    const h = commandBindingFixture();
+    const { client, reads } = unreadable();
+    await serveRows(h.binding.authority.dayState.rows, client, RUN, refused("DASHBOARD_READ_FAILED", true));
     const selected = selection();
     const panel = (preview?: true) => createElement(TooltipProvider, null, createElement(DashboardClientProvider, { client,
-      children: createElement(preview ? LogPreview : LogSample, { selection: selected }) }));
+      children: createElement(DashboardCommandBindingProvider, { binding: h.binding, children: createElement(preview ? LogPreview : LogSample, { selection: selected }) }) }));
     await mount(panel());
-    assert.ok(reads > 0);
     assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
-    const failedReads = reads;
     await act(async () => root?.render(panel(true)));
-    assert.equal(reads, failedReads);
     assert.match(document.body.textContent ?? "", /Separation request verified/);
     assert.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Couldn't load logs|cross-source chronology unavailable/);
     await act(async () => root?.render(panel()));
-    assert.ok(reads > failedReads);
     assert.match(document.body.textContent ?? "", /Couldn't load logs\./);
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
+    assert.deepEqual(reads, []);
   });
-  for (const replacement of ["day", "epoch", "day-request", "scope"] as const) it(`revokes stale reads after ${replacement} authority replacement`, async () => {
+  for (const replacement of ["day", "epoch", "day-request", "scope"] as const) it(`follows the replacing authority's store after ${replacement} authority replacement`, async () => {
     const h = commandBindingFixture();
-    const pending: { signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];
-    const client = clientFor((path, signal) => path.endsWith("/logs") ? { section: "logs", payload: page() }
-      : new Promise(resolve => pending.push({ signal, resolve })));
+    const { client, reads } = unreadable();
+    const served = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : detail());
     const binding: DashboardCommandBinding = { ...h.binding, scope: { ...h.binding.scope, client },
       authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
+    await serveRows(binding.authority.dayState.rows, served, RUN);
     const selected = selection();
     let current: ReturnType<typeof useRunWiring> | undefined;
     function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding }) { current = useRunWiring(client, selected, activeBinding); return null; }
     await mount(createElement(Probe, { activeBinding: binding }));
+    assert.equal(current?.state, "loaded");
+    // The replacing authority streams its own panels; nothing the old store held is shown under it.
+    const rows = openStore();
     const next: DashboardCommandBinding = { ...binding,
       scope: replacement === "scope" ? { ...binding.scope, actorId: "other-operator" } : binding.scope,
       authority: { ...binding.authority, day: replacement === "day" ? "2026-08-04" : binding.authority.day,
         epoch: replacement === "epoch" ? { ...binding.authority.epoch } : binding.authority.epoch,
-        dayState: replacement === "day-request" ? { ...binding.authority.dayState, request: {} } : binding.authority.dayState } };
+        dayState: { ...binding.authority.dayState, rows, ...(replacement === "day-request" ? { request: {} } : {}) } } };
     await act(async () => root?.render(createElement(Probe, { activeBinding: next })));
-    assert.equal(pending.length, 2); assert.equal(pending[0].signal?.aborted, true);
-    await act(async () => pending[0].resolve(detail())); assert.equal(current?.state, "loading");
-    await act(async () => pending[1].resolve(detail())); assert.equal(current?.state, "loaded");
-    assert.equal(current?.snapshot?.detail.runId, RUN);
+    // A new day or day request under the same sign-in keeps the loaded logs it already held; a new sign-in or actor keeps none.
+    if (replacement === "epoch" || replacement === "scope") { assert.equal(current?.state, "loading"); assert.equal(current?.snapshot, undefined); }
+    await serveRows(rows, served, RUN);
+    assert.equal(current?.state, "loaded"); assert.equal(current?.snapshot?.detail.runId, RUN);
+    assert.deepEqual(reads, []);
   });
-  it("revokes both stale A responses across A to B to A and client replacement", async () => {
-    const pending: { path: string; signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];
-    const client = clientFor((path, signal) => new Promise(resolve => pending.push({ path, signal, resolve })));
-    const details = () => pending.filter(request => !request.path.endsWith("/logs"));
+  it("shows only the selected run's panel across A to B to A, and a newer streamed panel replaces the old one", async () => {
+    const h = commandBindingFixture();
+    const { client, reads } = unreadable();
+    const rows = h.binding.authority.dayState.rows;
+    const serving = (empty: boolean) => clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: empty ? { ...page(), rows: [], notes: [] } : page() } : detail());
     let current: ReturnType<typeof useRunWiring> | undefined;
-    function Probe({ client: activeClient, selected }: { client: DashboardClient; selected: LogSelection }) { current = useRunWiring(activeClient, selected, undefined); return null; }
+    function Probe({ selected }: { selected: LogSelection }) { current = useRunWiring(client, selected, h.binding); return null; }
     const a = selection(), b = selection(OTHER);
-    await mount(createElement(Probe, { client, selected: a }));
-    await act(async () => root?.render(createElement(Probe, { client, selected: b })));
-    await act(async () => root?.render(createElement(Probe, { client, selected: a })));
-    assert.equal(details().length, 3); assert.equal(details()[0].signal?.aborted, true); assert.equal(details()[1].signal?.aborted, true);
-    await act(async () => details()[0].resolve(detail()));
-    assert.equal(current?.state, "loading"); assert.equal(details().length, 3);
-    const replacement = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: { ...page(), rows: [], notes: [] } } : detail());
-    await act(async () => root?.render(createElement(Probe, { client: replacement, selected: a })));
-    assert.equal(current?.state, "loaded"); assert.equal(current?.snapshot?.logs.rows?.length, 0);
-    await act(async () => details()[2].resolve(detail()));
-    assert.equal(current?.snapshot?.logs.rows?.length, 0); assert.equal(details()[2].signal?.aborted, true);
+    const shownRows = () => current?.snapshot?.logs.rows?.length;
+    await serveRows(rows, serving(false), RUN);
+    await mount(createElement(Probe, { selected: a }));
+    assert.equal(current?.state, "loaded"); assert.equal(shownRows(), 1);
+    await act(async () => root?.render(createElement(Probe, { selected: b })));
+    assert.equal(current?.state, "loading"); assert.equal(current?.snapshot, undefined);
+    await act(async () => root?.render(createElement(Probe, { selected: a })));
+    assert.equal(current?.state, "loaded"); assert.equal(shownRows(), 1);
+    await serveRows(rows, serving(true), RUN);
+    assert.equal(current?.state, "loaded"); assert.equal(shownRows(), 0);
+    assert.deepEqual(reads, []);
+  });
+  it("shows a panel read after the row and refreshes nothing, but keeps a panel behind the row loading", async () => {
+    const h = commandBindingFixture();
+    const { client, reads } = unreadable();
+    let refreshed = 0;
+    const binding: DashboardCommandBinding = { ...h.binding, authority: { ...h.binding.authority, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    const rowAt = (revision: number): LogSelection => ({ ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(revision) } });
+    const panelAt = (revision: number) => clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : { ...detail(rowAt(revision)), rowRevision: revision });
+    let current: ReturnType<typeof useRunWiring> | undefined;
+    function Probe({ selected }: { selected: LogSelection }) { current = useRunWiring(client, selected, binding); return null; }
+    await serveRows(binding.authority.dayState.rows, panelAt(4), RUN);
+    await mount(createElement(Probe, { selected: rowAt(3) }));
+    assert.equal(current?.state, "loaded"); assert.equal(current?.snapshot?.detail.rowRevision, 4);
+    await act(async () => root?.render(createElement(Probe, { selected: rowAt(5) })));
+    assert.equal(current?.state, "loading");
+    await serveRows(binding.authority.dayState.rows, panelAt(5), RUN);
+    assert.equal(current?.state, "loaded"); assert.equal(current?.snapshot?.detail.rowRevision, 5);
+    assert.equal(refreshed, 0); assert.deepEqual(reads, []);
   });
 });
 
@@ -877,15 +966,14 @@ it("joins task screenshots by exact bundle, artifact, node, attempt and browser 
   assert.throws(() => projectRunLogs({ ...snapshot, sections: [] }, client), /RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH/);
 });
 
-it("preserves a catalogued unmapped-display refusal from the actual HTTP client through the Logs hook", async () => {
+it("preserves a catalogued unmapped-display refusal streamed as a refused panel through the Logs hook", async () => {
   const selected=selection();
-  const client=createDashboardClient({baseUrl:'http://fixture.test',fetchImpl:async input=>new URL(String(input)).pathname.endsWith('/logs')
-    ? Response.json({state:'error',code:'RUN_LOG_DISPLAY_VALUE_UNMAPPED',message:'Untrusted transport text',retryable:false},{status:409})
-    : Response.json(detail(selected))});
+  const h=commandBindingFixture();
+  const refused={state:'refused' as const,error:WireErrorSchema.parse({state:'error',code:'RUN_LOG_DISPLAY_VALUE_UNMAPPED',message:'Untrusted transport text',retryable:false})};
+  await serveRows(h.binding.authority.dayState.rows,h.client,RUN,refused);
   let current:ReturnType<typeof useRunWiring>|undefined;
-  function Probe(){current=useRunWiring(client,selected,undefined);return createElement('div',null,current.state==='failed'?current.error:'Loading');}
+  function Probe(){current=useRunWiring(h.client,selected,h.binding);return createElement('div',null,current.state==='failed'?current.error:'Loading');}
   await mount(createElement(Probe));
-  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
   assert.equal(current?.state,'failed');
   assert.match(document.body.textContent??'',/A saved value has no display text/u);
   assert.doesNotMatch(document.body.textContent??'',/Dashboard data could not be read|Untrusted transport text/u);

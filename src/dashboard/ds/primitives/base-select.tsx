@@ -84,9 +84,11 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn("ds-menu-surface relative isolate z-50 max-h-(--available-height) w-auto origin-(--transform-origin) overflow-x-hidden overflow-y-auto duration-100 data-[align-trigger=true]:animate-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className)}
+          // Base UI mounts the closed popup once the trigger is focused; only an open list may make toasts inert.
+          render={(popupProps, { open }) => <div {...popupProps}>{open && <OverlayLayerPresence />}{popupProps.children}</div>}
           {...props}
         >
-          <OverlayLayerPresence /><SelectScrollUpButton />
+          <SelectScrollUpButton />
           <SelectPrimitive.List>{children}</SelectPrimitive.List>
           <SelectScrollDownButton />
         </SelectPrimitive.Popup>

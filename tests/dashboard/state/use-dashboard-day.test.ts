@@ -131,7 +131,7 @@ describe("useDashboardDay — a stopped subscription", () => {
 it("isolates A -> B -> A days and actor epochs while retaining disconnected rows", async () => {
   const subscriptions: Parameters<DashboardClient["subscribeDay"]>[0][] = [];
   const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => {
-    subscriptions.push(input); return { close: () => undefined };
+    subscriptions.push(input); return { select: (_run: string | undefined) => undefined, close: () => undefined };
   } } as DashboardClient;
   const seen: DashboardDayState[] = [];
   function Probe({ day, epoch }: { day: string; epoch: object }) { seen.push(useDashboardDay(day, undefined, epoch)); return null; }
@@ -180,7 +180,7 @@ it("uses a stable token for settlements and ticks, replacing it on explicit same
 
 it("forwards only live publication callbacks belonging to the current day, actor epoch and client", async () => {
   const subscriptions: Parameters<DashboardClient["subscribeDay"]>[0][] = [];
-  const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => { subscriptions.push(input); return { close() {} }; } } as DashboardClient;
+  const client = { subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => { subscriptions.push(input); return { select: (_run: string | undefined) => undefined, close() {} }; } } as DashboardClient;
   let state: DashboardDayState | undefined;
   function Probe({ day, epoch, actor }: { day: string; epoch: object; actor: string }) { state = useDashboardDay(day, undefined, epoch, actor); return null; }
   const root = createRoot(document.createElement("div")); mounted = root;

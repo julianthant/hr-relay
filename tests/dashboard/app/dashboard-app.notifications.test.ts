@@ -11,6 +11,7 @@ import { PRODUCT_WORKFLOW_COMPOSITION, workflowComposition, type WorkflowSourceP
 import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
+import { streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 import { RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { LocalDateSchema } from "../../../src/rules/identity/ids.js";
@@ -56,7 +57,7 @@ async function mount(missing = false, mixed = false, view?: Readonly<Record<stri
     runDetail: async (id: string) => { const detail = await transport.runDetail(id); return mixed && id === FIXTURE_IDS.failedRun ? RunDetailWireSchema.parse({ ...detail, header: { ...detail.header, workflowId: "separations" } }) : detail; },
     dashboardDay: async (day: string) => { reads.push(day); return { ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), queueSurfaces: missing ? [] : dayRows }; },
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows }); input.onState({ state: "live" }); return { close() {} };
+      input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), queueSurfaces: dayRows }); input.onState({ state: "live" }); return streamingRunPanel(input, client);
     },
   };
   window.history.replaceState(null, "", `/?day=2026-08-04${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
@@ -172,7 +173,7 @@ it("mounts served inbox controls and reports only the served search authority to
   } });
   const client = { ...transport,
     searchRuns: async (query: CrossDateSearchQueryInput) => { queries.push(query.q); return CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: 1, results: [{ runId: FIXTURE_IDS.failedRun, traceId: "pl-120000-0099", workflowId: "person-lookup", partitionDay: FIXTURE_DAY_WIRE.day, registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "people" }, state: "done", shape: "single", dryRun: true, priority: "bulk", systems: [], runNumber: { state: "absent", reason: "not recorded" }, retryOf: { state: "absent", reason: "first" }, enqueuedAt: "2026-08-03T12:00:00Z", endedAt: { state: "absent", reason: "not recorded" }, match: { field: "actor", strength: "exact" }, metadata: { subject: { state: "available", value: "Exact served subject" }, actor: { state: "available", value: "local-operator" }, version: 1, failureCode: null, evidence: { receipt: false, failure: false, diagnostic: false } } }] }); },
-    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day) }); input.onState({ state: "live" }); return { close() {} }; },
+    subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => { input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day) }); input.onState({ state: "live" }); return { select() {}, close() {} }; },
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -233,7 +234,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   const client = { ...transport,
     dashboardDay: async (day: string) => ({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(day), notifications: rows }),
     subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
-      days.push(input.day); input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); input.onState({ state: "live" }); return { close() {} };
+      days.push(input.day); input.onDay({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse(input.day), notifications: rows }); input.onState({ state: "live" }); return { select() {}, close() {} };
     },
   };
   window.history.replaceState(null, "", "/?day=2026-08-02");
