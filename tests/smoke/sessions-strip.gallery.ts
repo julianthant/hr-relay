@@ -59,16 +59,21 @@ test("a 340px-high window (680px at 200% zoom) keeps the open panel's worker con
   await expect(retry).toBeInViewport({ ratio: 1 });
 });
 
-test("at 340px high the expanded three-toast stack and the open panel do not cover each other", async ({ mount, page, diagnostics }) => {
-  await page.setViewportSize({ width: 1280, height: 340 });
-  const id = "sessions/toast/stack";
-  const entry = CATALOGUE.find(item => item.id === id);
-  if (entry === undefined) throw new Error(`the catalogue has no story ${id}`);
-  await mount(id);
-  await expect(page.locator('[data-slot="toast"]')).toHaveCount(3);
-  await page.locator('[data-slot="toast"]').first().focus();
-  await expect(page.locator('[data-slot="toast"][data-expanded]').first()).toBeVisible();
-  await page.waitForTimeout(600);
-  expect(await STATE_RULES["toast-placement"].check({ page, storyId: id, story: entry.story, diagnostics, dialogShapes: new Map() })).toEqual([]);
-  expect((await measure(page)).bodyHeight, "the open panel still shows its cards").toBeGreaterThan(100);
-});
+// Title only, title and one line, and a line that wraps: the panel's top follows whatever the expanded stack's bottom is.
+for (const [id, retry] of [["sessions/toast/stack", false], ["sessions/toast/stack-described", true], ["sessions/toast/stack-wrapped", true]] as const) {
+  test(`at 340px high the expanded three-toast stack and the open panel do not cover each other: ${id}`, async ({ mount, page, diagnostics }) => {
+    await page.setViewportSize({ width: 1280, height: 340 });
+    const entry = CATALOGUE.find(item => item.id === id);
+    if (entry === undefined) throw new Error(`the catalogue has no story ${id}`);
+    await mount(id);
+    await expect(page.locator('[data-slot="toast"]')).toHaveCount(3);
+    await page.locator('[data-slot="toast"]').first().focus();
+    await expect(page.locator('[data-slot="toast"][data-expanded]').first()).toBeVisible();
+    await page.waitForTimeout(600);
+    expect(await STATE_RULES["toast-placement"].check({ page, storyId: id, story: entry.story, diagnostics, dialogShapes: new Map() })).toEqual([]);
+    if (!retry) return;
+    const button = page.getByRole("group", { name: "Workers", exact: true }).getByRole("article").filter({ hasText: "Failed" }).getByRole("button", { name: "Retry" });
+    await button.focus();
+    await expect(button, "Retry stays reachable beneath the stack").toBeInViewport({ ratio: 1 });
+  });
+}

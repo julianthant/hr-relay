@@ -20,11 +20,17 @@ const bar = (title: string, data: SessionsViewState, { open = true, operations, 
     {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
 /** Raises one result toast once the story has mounted, as the app does after a command settles. */
 const TOAST_TITLES = ["Workers added", "Worker removed", "Idle sessions refreshed"] as const;
-function RaiseToast({ count }: { count: number }) {
+const TOAST_LINES = {
+  title: [],
+  described: ["Two workers are starting.", "Morrow, Bea · back to idle.", "Every idle session was checked."],
+  wrapped: ["Two workers are starting on this machine and will show as idle once they are ready to take runs.", "Morrow, Bea · the worker finished its last run and was removed from this machine's sessions.", "Every idle session was checked against the server and the ones that stopped answering were refreshed."],
+} as const satisfies Record<string, readonly string[]>;
+type ToastLines = keyof typeof TOAST_LINES;
+function RaiseToast({ count, lines = "title" }: { count: number; lines?: ToastLines }) {
   const { toast } = useToasts();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  useEffect(() => { if (mounted) TOAST_TITLES.slice(0, count).forEach(title => toast({ tone: "success", title })); }, [mounted, count, toast]);
+  useEffect(() => { if (mounted) TOAST_TITLES.slice(0, count).forEach((title, index) => { const description: string | undefined = TOAST_LINES[lines][index]; toast({ tone: "success", title, ...(description === undefined ? {} : { description }) }); }); }, [mounted, count, lines, toast]);
   return null;
 }
 /** The approved design's own toast: an error in front of two results, title and one short line. */
@@ -42,9 +48,9 @@ function RaiseErrorStack() {
 }
 const errorStack = (theme: "dark" | "light"): Story => ({ title: `An error toast in front of two results, ${theme}`, ready: '[data-slot="toast-description"]', play: page => page.waitForTimeout(600),
   render: () => <StoryFrame theme={theme}><RaiseErrorStack /><SessionsView data={ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.idle)} open={false} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> });
-const withToast = (title: string, data: SessionsViewState, open = true, count = 1, play?: Story["play"]): Story => {
+const withToast = (title: string, data: SessionsViewState, open = true, count = 1, play?: Story["play"], lines: ToastLines = "title"): Story => {
   const base = bar(title, data, { open });
-  return { ...base, ready: '[data-ds-toast-state]', ...(play === undefined ? {} : { play }), render: () => <StoryFrame><RaiseToast count={count} /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> };
+  return { ...base, ready: '[data-ds-toast-state]', ...(play === undefined ? {} : { play }), render: () => <StoryFrame><RaiseToast count={count} lines={lines} /><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame> };
 };
 const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ state: "ready", workers });
 
@@ -102,6 +108,8 @@ const TOAST = {
   "one-row": withToast("A result toast over one idle card", ready(QUIET_IDLE[0])),
   several: withToast("A result toast over several cards", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
   stack: withToast("Three toasts stacked at rest over the open panel", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3, page => page.waitForTimeout(600)),
+  "stack-described": withToast("Three toasts with a title and one line, stacked over the open panel", ready(SESSION_WORKER_BY_STATE.failed, SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3, page => page.waitForTimeout(600), "described"),
+  "stack-wrapped": withToast("Three toasts whose line wraps, stacked over the open panel", ready(SESSION_WORKER_BY_STATE.failed, SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3, page => page.waitForTimeout(600), "wrapped"),
   "stack-hover": withToast("Three toasts expanded on hover, clear of the panel", ready(SESSION_WORKER_BY_STATE.running, ...QUIET_IDLE), true, 3,
     async page => { await page.locator('[data-slot="toast"]').first().hover(); await page.waitForTimeout(600); }),
   "error-stack": errorStack("dark"),
