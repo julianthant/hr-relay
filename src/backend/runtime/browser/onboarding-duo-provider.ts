@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createDuoBrowserFocus, type DuoBrowserFocus, type NativeFocusTarget } from "./native-browser-focus.js";
 import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess, type PersistentContextLauncher } from "./native-browser.js";
 import { PROFILE_ONBOARDING_STATE, type ProfileOnboardingBrowser } from "../../../models/profiles/public-profile.js";
@@ -106,12 +106,37 @@ async function workerCall(worker: Worker, method: "install" | "next" | "reply" |
   }
 }
 
-/** A bound copy sign-in fixture refuses Duo setup before any browser launch or network call. */
-export function copySigninFixtureDuoProvider(): ProfileOnboardingDuoProvider | undefined {
-  if (copySigninFixtureWorkspace() === undefined) return undefined;
-  const refuse = (): Promise<never> => Promise.reject(new ProfileOnboardingDuoProviderError("unavailable", "provider", new Error("copy-signin-fixture-duo-refused")));
-  return { async stop() {}, showBrowser: refuse, openPortal: refuse, start: refuse,
-    async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; } };
+const FIXTURE_SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
+const FIXTURE_SSO_FORM = `<!doctype html><form action="${FIXTURE_SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="urn:mace:ucsd.edu:sso:username"><label for="ssopassword">Password</label><input id="ssopassword" name="urn:mace:ucsd.edu:sso:password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
+
+/**
+ * A bound copy sign-in fixture runs the real owned browser headless against a synthetic UCSD SSO form with no network.
+ * It records only digests of the submitted fields, then refuses the submission so Duo is never reached.
+ */
+export function copySigninFixtureBrowser(): Pick<OnboardingDuoProviderOptions, "launcher" | "focus"> | undefined {
+  const workspace = copySigninFixtureWorkspace();
+  if (workspace === undefined) return undefined;
+  const digest = (value: string | null) => value === null ? null : createHash("sha256").update(value).digest("hex");
+  return {
+    focus: { async captureRelay() { return undefined; }, async show() {}, async returnToRelay() {} },
+    launcher: { async launch(input) {
+      if (input.nativeOnly === true) return DEFAULT_BROWSER_LAUNCHER.launch(input);
+      const context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true });
+      await context.route("**/*", async route => {
+        const request = route.request(), url = request.url();
+        if (url.startsWith("chrome-extension://")) await route.continue();
+        else if (url === "https://duo.ucsd.edu/") await route.fulfill({ contentType: "text/html", body: `<script>location.replace(${JSON.stringify(FIXTURE_SSO)})</script>` });
+        else if (url === FIXTURE_SSO && request.method() === "GET") await route.fulfill({ contentType: "text/html", body: FIXTURE_SSO_FORM });
+        else if (url === FIXTURE_SSO && request.method() === "POST") {
+          const fields = new URLSearchParams(request.postData() ?? "");
+          writeFileSync(join(workspace, ".tracker", "fixture-sso-submission.json"), JSON.stringify({
+            username: digest(fields.get("urn:mace:ucsd.edu:sso:username")), password: digest(fields.get("urn:mace:ucsd.edu:sso:password")) }), { mode: 0o600 });
+          await route.abort();
+        } else await route.abort();
+      });
+      return context;
+    } },
+  };
 }
 
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
@@ -402,7 +427,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (!context || !worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
     const token = randomUUID(), marker = `${install ? "about:blank" : url}#relay-target=${token}`;
     const opened = context.waitForEvent("page", { predicate: page => page.waitForURL(marker, { waitUntil: "commit", timeout: options.closeProofMs }).then(() => true, () => false), timeout: options.closeProofMs });
-    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", [install ? token : marker])]);
+    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", install ? [token, options.copySignin !== undefined] : [marker])]);
     const target = z.strictObject({ tabId: z.number().int().nonnegative(), windowId: z.number().int().nonnegative(), url: z.literal(marker) }).parse(raw);
     browserCurrent(session);
     if (page.url() !== target.url) throw new ProfileOnboardingDuoProviderError("refused", "scope");

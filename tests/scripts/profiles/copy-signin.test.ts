@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { assertCopySigninFixture, assertCopySigninTarget, driveCopySignin, useCopySigninFixture, readCopySigninCredentials } from "../../../scripts/profiles/copy-signin.js";
 import { runDevDashboard } from "../../../scripts/dev/dashboard.js";
-import { copySigninFixtureDuoProvider } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { copySigninFixtureBrowser } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { osCredentialSecretStore, selectedCredentialSecretStore } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import { applicationDataWorkspace } from "../../../src/backend/app/config/runtime-isolation.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
@@ -69,12 +69,12 @@ it("refuses a fixture reached through a case alias of a live profile root that h
 
 it("keeps the OS keychain and the real Duo provider unless a fixture workspace is bound", () => {
   expect(selectedCredentialSecretStore()).toBe(osCredentialSecretStore);
-  expect(copySigninFixtureDuoProvider()).toBeUndefined();
+  expect(copySigninFixtureBrowser()).toBeUndefined();
   const workspace = join(directory, "Relay-development");
   mkdirSync(workspace);
   expect(() => useCopySigninFixture("development", workspace)).toThrow("copy-signin-target-refused");
   expect(selectedCredentialSecretStore()).toBe(osCredentialSecretStore);
-  expect(copySigninFixtureDuoProvider()).toBeUndefined();
+  expect(copySigninFixtureBrowser()).toBeUndefined();
   expect(readdirSync(workspace)).toEqual([]);
 });
 

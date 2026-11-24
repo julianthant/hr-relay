@@ -112,7 +112,7 @@ it("produces Emergency Contact's exact-scope report and shows its real failed ch
   assert.match(missing.reason, /Preflight evidence is unavailable for this exact scope/u);
   await mount(h.client, "emergency-contact");
   assert.ok(document.body.textContent?.includes("Relay's settings could not be read. Restart Relay, then check again."), document.body.textContent ?? "");
-  assert.equal(document.querySelector('[data-run-check-fix="config.valid"]'), null, "Settings cannot fix an invalid runtime configuration");
+  assert.equal(document.querySelector('[data-run-check-fix="config.valid"]') === null, true, "Settings cannot fix an invalid runtime configuration");
   const report = PreflightReadinessWireSchema.parse(await h.client.readPreflight(selection));
   assert.equal(report.state, "present");
   if (report.state !== "present") throw new Error("completed exact-scope report required");

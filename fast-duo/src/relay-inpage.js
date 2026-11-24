@@ -5,8 +5,6 @@
   if (!credentials) return;
   const originalGet = credentials.get.bind(credentials);
   const originalCreate = credentials.create.bind(credentials);
-  // Relay's Duo browser never raises a native WebAuthn prompt: requests the security key cannot serve are refused.
-  const refused = () => Promise.reject(new DOMException('Duo setup refused this key request.', 'NotAllowedError'));
   const encode = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
   const decode = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), character => character.charCodeAt(0)).buffer;
   const urlId = text => text.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -52,12 +50,12 @@
   }
   credentials.get = async options => {
     const key = options?.publicKey;
-    if (!key) return originalGet(options);
-    if ((key.rpId || location.hostname) !== 'duosecurity.com') return refused();
+    if (!key || (key.rpId || location.hostname) !== 'duosecurity.com') return originalGet(options);
     const result = await request('DUO_AUTOPILOT_SIGN', {
       rpId: key.rpId || location.hostname, requestId: crypto.randomUUID(), challenge: encode(key.challenge),
       allowCredentials: (key.allowCredentials || []).map(entry => encode(entry.id)),
     }, options.signal);
+    if (result.passThrough) return originalGet(options);
     if (!result.ok) throw new DOMException('Duo setup refused this key request.', 'NotAllowedError');
     const response = Object.create(AuthenticatorAssertionResponse.prototype, Object.getOwnPropertyDescriptors({
       clientDataJSON: decode(result.clientDataJSON), authenticatorData: decode(result.authenticatorData),
@@ -71,8 +69,7 @@
   };
   credentials.create = async options => {
     const key = options?.publicKey;
-    if (!key) return originalCreate(options);
-    if ((key.rp?.id || location.hostname) !== 'duosecurity.com') return refused();
+    if (!key || (key.rp?.id || location.hostname) !== 'duosecurity.com') return originalCreate(options);
     const requestId = crypto.randomUUID();
     const result = await request('DUO_AUTOPILOT_ENROLL', {
       requestId, rpId: key.rp?.id || location.hostname, challenge: encode(key.challenge),

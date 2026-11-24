@@ -31,7 +31,7 @@ import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
 import { serializeTokenedErrorCauses } from "../../../../models/failures/error-origins.js";
 import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
-import { copySigninFixtureDuoProvider, createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
+import { copySigninFixtureBrowser, createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { PROFILE_ONBOARDING_BROWSER_DIRECTORY } from "../../../storage/browser-root-contract.js";
 import { createBrowserRoots } from "../../../storage/browser-roots.js";
@@ -82,13 +82,13 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
   const profileRuntime = await (async () => {
     const facts = hostConfigFacts(env);
-    let onboardingDuo = input.onboardingDuo ?? (input.copySignin === undefined ? undefined : copySigninFixtureDuoProvider());
+    let onboardingDuo = input.onboardingDuo;
     if (onboardingDuo === undefined) {
       const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, PROFILE_ONBOARDING_BROWSER_DIRECTORY);
       ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
       ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
       onboardingDuo = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
-        clock, copySignin: input.copySignin, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
+        clock, copySignin: input.copySignin, ...(input.copySignin === undefined ? {} : copySigninFixtureBrowser()), closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
     }
     const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });
     try { await profile.session.recoverOnboarding(); }

@@ -65,6 +65,14 @@
       "replacementRequired": true
     },
     {
+      "name": "dom-node-assertions",
+      "file": "tests/architecture/tooling/dom-node-assertions.test.ts",
+      "status": "active",
+      "owner": "docs/reference/guards-and-tests.md",
+      "invariant": "Reason: a failing node:assert equality on a jsdom node formats it without bound, and the fork grew until a CI runner lost its VM. No test compares a value whose type holds a DOM Node, including nullable and array forms, through node:assert equal, strictEqual, deepEqual or their negated and partial forms; tests compare nodes by identity instead.",
+      "replacementRequired": true
+    },
+    {
       "name": "manual-clock-test-only",
       "file": "tests/architecture/tooling/manual-clock-test-only.test.ts",
       "status": "active",

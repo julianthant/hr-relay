@@ -38,7 +38,7 @@ it("keeps the served assistant closed until requested and preserves its close an
     panel = host.querySelector<HTMLElement>("#hub-shell-assistant"); assert.ok(panel);
     assert.equal(panel.hidden, false); assert.equal(launcher.getAttribute("aria-expanded"), "true");
     await act(async () => panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    assert.equal(panel.hidden, true); assert.equal(document.activeElement, launcher);
+    assert.equal(panel.hidden, true); assert.equal(document.activeElement === launcher, true);
     await act(async () => launcher.click());
     assert.equal(panel.hidden, false);
   } finally { await act(async () => root.unmount()); host.remove(); }
@@ -112,7 +112,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
     await act(async () => button("Delete chat Other chat").click());
     await act(async () => submit().click());
     await act(async () => { held[2]?.settle(); await held[2]?.done; });
-    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]'), null);
+    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]') === null, true);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
 
@@ -156,6 +156,6 @@ it("announces rename and delete only after the chat port acknowledges them and k
     await act(async () => button("Delete chat Other chat").click());
     await act(async () => submit().click());
     await act(async () => { held[2]?.settle(); await held[2]?.done; });
-    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]'), null);
+    assert.equal(status(), "Chat deleted."); assert.equal(host.querySelector('[aria-label="Delete chat Other chat"]') === null, true);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

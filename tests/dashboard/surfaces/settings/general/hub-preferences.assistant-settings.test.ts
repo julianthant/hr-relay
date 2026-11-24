@@ -30,7 +30,7 @@ describe("General Assistant group", () => {
   });
   it("has no Model or Effort row", async () => {
     await mount();
-    assert.equal(host!.querySelector('[aria-label="Model"]'), null);
-    assert.equal(host!.querySelector('[aria-label="Effort"]'), null);
+    assert.equal(host!.querySelector('[aria-label="Model"]') === null, true);
+    assert.equal(host!.querySelector('[aria-label="Effort"]') === null, true);
   });
 });

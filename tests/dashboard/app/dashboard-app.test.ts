@@ -375,7 +375,7 @@ describe_m1("served sign-up Finish", () => {
     await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
     await vi_m1.waitFor(() => {
       assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell"));
-      assert_m1.equal(document.querySelector(".hub-onboarding"), null);
+      assert_m1.equal(document.querySelector(".hub-onboarding") === null, true);
     });
     assert_m1.equal(refusedReads, 1);
     assert_m1.deepEqual(await client.readProfileSession(), { ...active, epoch: 2 });
@@ -588,8 +588,7 @@ afterEach_m1(_afterEachFixture0);
     const frame = frameOf("Settings");
     assert_m1.equal(document.activeElement === frame, true);
     assert_m1.equal(
-      document.querySelector('section[aria-label="UI catalog"]'),
-      null,
+      document.querySelector('section[aria-label="UI catalog"]') === null, true,
       "the catalog must no longer mount a frame of its own",
     );
     assert_m1.doesNotMatch(frame.textContent ?? "", /UI catalog|No such settings section/u);
@@ -597,8 +596,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal([...frame.querySelectorAll("a")].some(link => link.textContent?.trim() === "UI catalog"), false);
     assert_m1.equal(takeFirstTab(frame).getAttribute("aria-label"), "Close settings");
     assert_m1.equal(
-      document.querySelector('[aria-label="Close the UI catalog"]'),
-      null,
+      document.querySelector('[aria-label="Close the UI catalog"]') === null, true,
       "a section may not carry a second exit from the page that contains it",
     );
   });
@@ -619,8 +617,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(
       [...document.querySelectorAll("button")].find(
         (button) => button.textContent?.trim() === "Import spreadsheet",
-      ),
-      undefined,
+      ) === undefined, true,
       "the toolbar's Import spreadsheet door is retired — the Run Modal carries the handoff",
     );
   });
@@ -643,7 +640,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.ok(notifications instanceof HTMLButtonElement);
     assert_m1.match(notifications.getAttribute("aria-label") ?? "", /^Notifications, \d+ unread$/u);
     await press(notifications);
-    assert_m1.equal(frameOf("Settings"), frame, "opening notifications preserves the runtime draft owner");
+    assert_m1.equal(frameOf("Settings") === frame, true, "opening notifications preserves the runtime draft owner");
     assert_m1.equal(input.dataset.value, value, "browser appearance and notification controls preserve runtime edits");
     await press(notifications);
     const sectionLink = (label: string): HTMLAnchorElement => {

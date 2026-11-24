@@ -43,7 +43,7 @@ it("tells the operator the setup browser was closed and offers Reopen; a healthy
     assert.ok(closed.button("Reopen"));
   } finally { await closed.close(); }
   const open = await mount(draft({ state: "open", generation: 1 }));
-  try { assert.equal(open.button("Reopen"), undefined); } finally { await open.close(); }
+  try { assert.equal(open.button("Reopen") === undefined, true); } finally { await open.close(); }
 });
 
 it("shows one plain failure and disables Add this device when the status read fails, with re-enrolment wording", async () => {
