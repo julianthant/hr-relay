@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { lstatSync, mkdtempSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -56,12 +56,14 @@ interface ProofSession {
   verifyUcpathPassword(password: string): Promise<void>;
 }
 
+type TestPasswords = Readonly<{ relay: string; ucpath: string }>;
+
 export interface UpgradeProofDependencies {
   inspect(profileId?: string): Promise<InspectedCopy>;
-  snapshot(profileId: string): Snapshot;
+  snapshot(profileId?: string): Snapshot;
   withSession(run: (session: ProofSession) => Promise<void>): Promise<void>;
   approveRecovery(): Promise<boolean>;
-  testPassword(): string;
+  testPasswords(): TestPasswords;
 }
 
 const RefusalCodeSchema = z.union([ErrorCatalogCodeSchema, CommandRejectionCodeSchema]);
@@ -110,11 +112,15 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
   };
   let failureCode: ProofCode = "COPY_TARGET_REFUSED";
   try {
-    const before = await deps.inspect();
-    const profileId = before.snapshot.row.profileId;
-    receipt.hashes.before = snapshotHashes(before.snapshot);
-    requireProof(before.snapshot.selected === profileId && before.snapshot.row.relayEmail === undefined, "COPY_NOT_PRISTINE");
-    const originalMaterial = verifierMaterial(before.snapshot);
+    const raw = deps.snapshot();
+    const profileId = raw.row.profileId;
+    receipt.hashes.before = snapshotHashes(raw);
+    requireProof(raw.selected === profileId && raw.row.relayEmail === undefined, "COPY_NOT_PRISTINE");
+    const before = await deps.inspect(profileId);
+    const observed = before.snapshot;
+    requireProof(observed.selected === raw.selected && JSON.stringify(observed.row) === JSON.stringify(raw.row)
+      && observed.protectedBytes.equals(raw.protectedBytes) && observed.verifierBytes.equals(raw.verifierBytes), "COPY_AUTHORITY_CHANGED");
+    const originalMaterial = verifierMaterial(raw);
     let originalPassword = before.ucpathPassword;
     let repaired: Snapshot | undefined;
     const checkAndChange = async (session: ProofSession, state: ProofState, baseline: Snapshot) => {
@@ -130,13 +136,14 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
       requireProof(checks.sessionIssued && checks.protectedUnchangedOnAdmission && checks.verifierRowsUnchangedOnAdmission
         && checks.registryGainedRelayEmail, "COPY_ADMISSION_UNCONFIRMED");
 
-      const testPassword = deps.testPassword();
-      requireProof(testPassword !== originalPassword, "COPY_TARGET_REFUSED");
-      requireProof(ProfilePasswordChangeRequestSchema.safeParse({ currentPassword: testPassword, newPassword: originalPassword }).success,
+      failureCode = "COPY_RESTORE_UNCONFIRMED";
+      const passwords = deps.testPasswords();
+      requireProof(passwords.relay !== originalPassword && passwords.ucpath !== originalPassword, "COPY_TARGET_REFUSED");
+      requireProof(ProfilePasswordChangeRequestSchema.safeParse({ currentPassword: passwords.relay, newPassword: originalPassword }).success,
         "COPY_RESTORE_UNCONFIRMED");
       const otherVerifiers = verifierMaterial(admitted, true);
       failureCode = "RELAY_CHANGE_UNCONFIRMED";
-      await session.changeRelayPassword(originalPassword, testPassword);
+      await session.changeRelayPassword(originalPassword, passwords.relay);
       try {
         const changed = deps.snapshot(profileId);
         receipt.hashes.relayChanged = snapshotHashes(changed);
@@ -144,7 +151,7 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
         requireProof(checks.protectedUnchangedOnRelayChange && verifierMaterial(changed) !== originalMaterial
           && verifierMaterial(changed, true) === otherVerifiers, "RELAY_CHANGE_UNCONFIRMED");
       } finally {
-        await session.changeRelayPassword(testPassword, originalPassword);
+        await session.changeRelayPassword(passwords.relay, originalPassword);
       }
       const relayRestored = deps.snapshot(profileId);
       receipt.hashes.relayRestored = snapshotHashes(relayRestored);
@@ -152,13 +159,13 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
         && verifierMaterial(relayRestored, true) === otherVerifiers, "COPY_RESTORE_UNCONFIRMED");
 
       failureCode = "UCPATH_SAVE_UNCONFIRMED";
-      await session.saveUcpathPassword(testPassword);
+      await session.saveUcpathPassword(passwords.ucpath);
       try {
         const saved = deps.snapshot(profileId);
         receipt.hashes.ucpathSaved = snapshotHashes(saved);
         checks.verifiersUnchangedOnUcpathSave = saved.verifierBytes.equals(relayRestored.verifierBytes);
         requireProof(checks.verifiersUnchangedOnUcpathSave && !saved.protectedBytes.equals(relayRestored.protectedBytes), "UCPATH_SAVE_UNCONFIRMED");
-        await session.verifyUcpathPassword(testPassword);
+        await session.verifyUcpathPassword(passwords.ucpath);
       } finally {
         await session.saveUcpathPassword(originalPassword);
       }
@@ -170,7 +177,7 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
       const state = await session.resume();
       if (state.state === "active") {
         requireProof(before.pairProvesVerifier, "COPY_VERIFIER_MISMATCH");
-        await checkAndChange(session, state, before.snapshot);
+        await checkAndChange(session, state, raw);
         return;
       }
       const code = refused(state) ?? "COPY_SESSION_NOT_ISSUED";
@@ -178,7 +185,7 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
       const afterRefusal = deps.snapshot(profileId);
       receipt.hashes.resumeRefused = snapshotHashes(afterRefusal);
       if (code !== "PROFILE_AUTHORITY_UNAVAILABLE" || before.pairProvesVerifier || !before.loginWrittenLast) return;
-      requireProof(afterRefusal.row.relayEmail === undefined && afterRefusal.protectedBytes.equals(before.snapshot.protectedBytes)
+      requireProof(afterRefusal.row.relayEmail === undefined && afterRefusal.protectedBytes.equals(raw.protectedBytes)
         && verifierMaterial(afterRefusal) === originalMaterial, "COPY_AUTHORITY_CHANGED");
       if (!await deps.approveRecovery()) { receipt.outcome = "operator-required"; return; }
       failureCode = "INTERRUPTED_LOGIN_REPAIR_UNCONFIRMED";
@@ -187,7 +194,7 @@ export async function runAccountsUpgradeProof(build: Build, deps: UpgradeProofDe
       receipt.hashes.repaired = snapshotHashes(afterRepair);
       requireProof(recovered.state.state === "active" && recovered.state.profileId === profileId,
         refused(recovered.state) ?? "INTERRUPTED_LOGIN_REPAIR_UNCONFIRMED");
-      requireProof(afterRepair.row.relayEmail !== undefined && !afterRepair.protectedBytes.equals(before.snapshot.protectedBytes)
+      requireProof(afterRepair.row.relayEmail !== undefined && !afterRepair.protectedBytes.equals(raw.protectedBytes)
         && verifierMaterial(afterRepair) === originalMaterial, "INTERRUPTED_LOGIN_REPAIR_UNCONFIRMED");
       originalPassword = recovered.password;
       repaired = afterRepair;
@@ -238,9 +245,11 @@ function privateBytes(path: string, label: "lock" | "protected.json", maxBytes: 
 export function copySnapshots(workspace: string) {
   const state = join(workspace, rebuildRuntimeIsolation.stateRoot);
   const machine = join(state, "machine");
-  return (profileId: string): Snapshot => {
-    const id = z.uuid().parse(profileId);
+  return (profileId?: string): Snapshot => {
     const registry = RegistrySchema.parse(JSON.parse(privateBytes(join(machine, "profiles.json"), "lock", 1_048_576).toString("utf8")));
+    const selected = profileId ?? registry.activeProfileId;
+    requireProof(selected !== null, "COPY_SESSION_NOT_ISSUED");
+    const id = z.uuid().parse(selected);
     const [row, duplicate] = registry.profiles.filter(candidate => candidate.profileId === id);
     requireProof(row !== undefined && duplicate === undefined, "COPY_AUTHORITY_CHANGED");
     return { selected: registry.activeProfileId, row,
@@ -269,7 +278,6 @@ async function inspectStoppedCopy(workspace: string, snapshot: UpgradeProofDepen
       const browserRoots = BrowserRootsSchema.parse(JSON.parse(privateBytes(join(machine.stateRoot, "machine", "browser-roots.json"), "lock", 1_048_576).toString("utf8")));
       requireProof(browserRoots.installationId === registry.installationId
         && browserRoots.roots.every(root => root.launch.state === "closed" && root.native === undefined), "COPY_TARGET_REFUSED");
-      const observed = snapshot(row.profileId);
       const admission = machine.admitProfile(row.profileId);
       try {
         const store = createCredentialStore({ admission, stateRoot: admission.stateRoot });
@@ -280,9 +288,9 @@ async function inspectStoppedCopy(workspace: string, snapshot: UpgradeProofDepen
         const owner = verifiers.identify(ucpathUsername);
         const writers = store.lastEntryWriters();
         const loginWrites = new Set([digest("relay-login-change"), digest("relay-login-change-restore")]);
-        return { snapshot: observed, ucpathUsername, ucpathPassword,
-          pairProvesVerifier: owner !== "unknown" && owner.profileId === row.profileId && verifiers.passwordMatches(row.profileId, ucpathPassword),
-          loginWrittenLast: [writers.ucpathUserId, writers.ucpathPassword].every(writer => writer?.operation === "set" && loginWrites.has(writer.commandFingerprint)) };
+        const pairProvesVerifier = owner !== "unknown" && owner.profileId === row.profileId && verifiers.passwordMatches(row.profileId, ucpathPassword);
+        const loginWrittenLast = [writers.ucpathUserId, writers.ucpathPassword].every(writer => writer?.operation === "set" && loginWrites.has(writer.commandFingerprint));
+        return { snapshot: snapshot(row.profileId), ucpathUsername, ucpathPassword, pairProvesVerifier, loginWrittenLast };
       } finally { admission.release(); }
     } finally { machine.release(); }
   } finally { await lock.close(); }
@@ -419,13 +427,20 @@ function checkedBuild(candidate: string): Build {
 
 const usage = "RELAY_RUNTIME_PROFILE=development npx tsx scripts/proof/accounts-upgrade-receipt.ts --candidate <reviewed-464-sha>";
 
+export function writeCopyRecoveryPasswords(path: string): TestPasswords {
+  const passwords = { relay: randomBytes(32).toString("base64url"), ucpath: randomBytes(32).toString("base64url") };
+  writeFileSync(path, `${JSON.stringify(passwords)}\n`, { mode: 0o600, flag: "wx", flush: true });
+  return passwords;
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { candidate: { type: "string" }, help: { type: "boolean" } } });
   if (values.help === true) {
     process.stdout.write(`${usage}\n\nPrepare the isolated development profile on the pre-upgrade build using copy-signin.ts development.\n`
       + "Close its dashboard window without signing out. Run the proof on the Mac from a clean checkout containing this rig, Copy Sign-In, and the reviewed #464 commit.\n"
       + "Keep the operator present. If the proof confirms an interrupted login change, the operator can approve repair with the old Relay login in the copy sign-in env file.\n"
-      + "The proof uses the development ports and data root. It writes and posts a redacted receipt on #464.\n");
+      + "The proof uses the development ports and data root. It writes and posts a redacted receipt on #464.\n"
+      + "If password restoration is unconfirmed, use the private recovery-passwords.json beside the receipt.\n");
     return;
   }
   const candidate = CommitSchema.parse(values.candidate);
@@ -433,15 +448,20 @@ async function main(): Promise<void> {
   requireProof(process.platform === "darwin" && runtimeProfile === "development" && copySigninFixtureWorkspace() === undefined, "COPY_TARGET_REFUSED");
   delete process.env.DEBUG;
   const workspace = applicationDataWorkspace(undefined, "development");
+  assertCopySigninTarget("development", workspace, rebuildRuntimeIsolation);
   const snapshot = copySnapshots(workspace);
+  const directory = mkdtempSync(join(tmpdir(), "relay-accounts-upgrade-"));
+  const recoveryPath = join(directory, "recovery-passwords.json");
   const receipt = await runAccountsUpgradeProof(build, {
     inspect: profileId => inspectStoppedCopy(workspace, snapshot, profileId), snapshot,
     withSession: run => withCopySession(workspace, run), approveRecovery: approveInterruptedRecovery,
-    testPassword: () => randomBytes(32).toString("base64url"),
+    testPasswords: () => writeCopyRecoveryPasswords(recoveryPath),
   });
-  const path = join(mkdtempSync(join(tmpdir(), "relay-accounts-upgrade-")), "receipt.md");
+  const path = join(directory, "receipt.md");
   writeFileSync(path, `### Relay account upgrade proof 4.6(1)\n\n\`\`\`json\n${JSON.stringify(receipt, null, 2)}\n\`\`\`\n`, { mode: 0o600, flag: "wx" });
   process.stdout.write(`Accounts upgrade ${receipt.outcome}. Receipt ${path}\n`);
+  if (receipt.checks.passwordsRestored) unlinkSync(recoveryPath);
+  else if (lstatSync(recoveryPath, { throwIfNoEntry: false }) !== undefined) process.stderr.write(`Copy password recovery file ${recoveryPath}\n`);
   try {
     execFileSync("gh", ["issue", "comment", "464", "--repo", "julianthant/hr-relay", "--body-file", path], { stdio: ["ignore", "ignore", "pipe"] });
   } catch {

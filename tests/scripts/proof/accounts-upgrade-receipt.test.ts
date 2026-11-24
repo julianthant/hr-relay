@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
-import { copySnapshots, runAccountsUpgradeProof, type UpgradeProofDependencies } from "../../../scripts/proof/accounts-upgrade-receipt.js";
+import { copySnapshots, runAccountsUpgradeProof, writeCopyRecoveryPasswords, type UpgradeProofDependencies } from "../../../scripts/proof/accounts-upgrade-receipt.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import type { PublicProfileState } from "../../../src/models/profiles/public-profile.js";
 
@@ -83,7 +83,7 @@ function fixture(options: {
       } finally { calls.push("stop"); }
     },
     approveRecovery: () => Promise.resolve(options.allowRecovery ?? false),
-    testPassword: () => "receipt-test-password-sentinel",
+    testPasswords: () => ({ relay: "receipt-test-relay-password-sentinel", ucpath: "receipt-test-ucpath-password-sentinel" }),
   };
   return { dependencies, calls, restored: () => relayPassword === oldPassword && ucpathPassword === oldPassword, recovered: () => recovered };
 }
@@ -112,10 +112,43 @@ describe("accounts upgrade proof receipt", () => {
       writeFileSync(join(machine, "profile-verifiers.json"), "verifier file", { mode: 0o600 });
       writeFileSync(join(credentials, "protected.json"), "protected file", { mode: 0o600 });
 
-      assert.deepEqual(copySnapshots(workspace)(profileId), {
+      assert.deepEqual(copySnapshots(workspace)(), {
         selected: profileId, row, protectedBytes: Buffer.from("protected file"), verifierBytes: Buffer.from("verifier file"),
       });
     } finally { rmSync(workspace, { recursive: true }); }
+  });
+
+  it("captures the raw copy before admission and refuses a changed protected or verifier file", async () => {
+    for (const file of ["protectedBytes", "verifierBytes"] as const) {
+      const { dependencies, calls } = fixture();
+      const receipt = await runAccountsUpgradeProof(build, {
+        ...dependencies,
+        snapshot(id) { calls.push("raw snapshot"); return dependencies.snapshot(id); },
+        async inspect(id) {
+          calls.push("inspect");
+          const observed = await dependencies.inspect(id);
+          return { ...observed, snapshot: { ...observed.snapshot, [file]: Buffer.from("changed during admission") } };
+        },
+      });
+      assert.deepEqual(calls, ["raw snapshot", "inspect"]);
+      assert.equal(receipt.outcome, "failed");
+      assert.deepEqual(receipt.codes, ["COPY_AUTHORITY_CHANGED"]);
+      assert.ok(receipt.hashes.before);
+    }
+  });
+
+  it("saves distinct test passwords to a private recovery file without replacing it", () => {
+    const directory = mkdtempSync(join(tmpdir(), "relay-upgrade-recovery-"));
+    try {
+      const path = join(directory, "recovery-passwords.json");
+      const passwords = writeCopyRecoveryPasswords(path);
+      assert.match(passwords.relay, /^[\w-]{43}$/u);
+      assert.match(passwords.ucpath, /^[\w-]{43}$/u);
+      assert.notEqual(passwords.relay, passwords.ucpath);
+      assert.equal(statSync(path).mode & 0o777, 0o600);
+      assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), passwords);
+      assert.throws(() => writeCopyRecoveryPasswords(path), { code: "EEXIST" });
+    } finally { rmSync(directory, { recursive: true }); }
   });
 
   it("proves admission and independent password changes and restores both copy passwords", async () => {
@@ -158,6 +191,7 @@ describe("accounts upgrade proof receipt", () => {
     assert.notEqual(recovered.hashes.before?.protected, recovered.hashes.admitted?.protected);
     assert.equal(copy.recovered(), true);
     assert.equal(copy.restored(), true);
+    assert.doesNotMatch(JSON.stringify(recovered), /receipt-(?:email|original|test)|interrupted-password-sentinel|a52de557/u);
 
     const mismatch = fixture({ resume, allowRecovery: true });
     const binding = fixture({ resume: { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" }, interrupted: true, allowRecovery: true });
