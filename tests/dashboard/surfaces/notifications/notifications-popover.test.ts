@@ -148,3 +148,24 @@ it("moves focus to the next row after a clear, then to the header once the list 
   assert.ok(document.activeElement === document.querySelector("header.notice-popover-head"), "focus moves to the header");
   assert(document.body.textContent?.includes("No notifications"), "the empty state is the panel's own");
 });
+
+it("skips a deleted row when moving focus after a clear, and falls back to the header when only deleted rows remain", async () => {
+  const items = [item("a"), item("gone", { gone: true }), item("c")];
+  const view = await draw({ state: "ready", items, pinned: [] });
+  await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
+  await view.rerender({ state: "ready", items: items.slice(1), pinned: [] });
+  assert.ok(document.activeElement === view.row(1).querySelector("button.notice-main"), "focus skips the deleted row that cannot take it");
+  await act(async () => view.row(1).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]')?.click());
+  await view.rerender({ state: "ready", items: [items[1]], pinned: [] });
+  assert.ok(document.activeElement === document.querySelector("header.notice-popover-head"), "no row can take focus, so the header does");
+});
+
+it("moves focus to the first row left after Clear all, or to the header when none is left", async () => {
+  const items = [item("a"), item("waiting", { tone: "warning", standing: true })];
+  const view = await draw({ state: "ready", items, pinned: [] });
+  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Clear all"]')?.click());
+  assert.deepEqual(view.calls, ["clear-all"]);
+  await view.rerender({ state: "ready", items: [items[1]], pinned: [] });
+  assert.ok(document.activeElement === view.row(0).querySelector("button.notice-main"), "the standing row left takes focus");
+  assert.equal(view.row(0).dataset.id, "waiting");
+});

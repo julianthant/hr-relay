@@ -73,19 +73,22 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
   const rest = items.filter(item => !needsYou.includes(item));
   const days = [...new Set(rest.map(itemDay))];
   const clearable = items.some(itemClearable);
-  // After a clear, focus moves to the row that took its place, or to the header once the list is empty.
-  const [moveFocus, setMoveFocus] = useState<{ cleared?: string; next?: string }>();
+  // After a clear, focus moves to the next row that can take it, or to the header once none can; after Clear all, to the first such row left.
+  const [moveFocus, setMoveFocus] = useState<{ cleared: readonly string[]; next?: string; first?: true }>();
   const headRef = useRef<HTMLElement>(null), scrollRef = useRef<HTMLDivElement>(null);
+  const focusableRows = () => [...(scrollRef.current?.querySelectorAll<HTMLElement>("li.notice-row") ?? [])].filter(row => row.querySelector("button.notice-main") !== null);
   useEffect(() => {
-    if (moveFocus === undefined || items.some(item => item.id === moveFocus.cleared)) return;
-    const next = [...(scrollRef.current?.querySelectorAll<HTMLElement>("li.notice-row") ?? [])].find(row => row.dataset.id === moveFocus.next)?.querySelector<HTMLElement>(".notice-main");
-    (next ?? headRef.current)?.focus();
+    if (moveFocus === undefined || items.some(item => moveFocus.cleared.includes(item.id))) return;
+    const rows = focusableRows();
+    const next = moveFocus.first === true ? rows[0] : rows.find(row => row.dataset.id === moveFocus.next);
+    (next?.querySelector<HTMLElement>("button.notice-main") ?? headRef.current)?.focus();
     setMoveFocus(undefined);
   }, [moveFocus, items]);
   const clearRow = (id: string) => {
-    const ids = [...(scrollRef.current?.querySelectorAll<HTMLElement>("li.notice-row") ?? [])].map(row => row.dataset.id);
-    const index = ids.indexOf(id);
-    setMoveFocus({ cleared: id, next: ids[index + 1] ?? ids[index - 1] });
+    const rows = [...(scrollRef.current?.querySelectorAll<HTMLElement>("li.notice-row") ?? [])], index = rows.findIndex(row => row.dataset.id === id);
+    const focusable = new Set(focusableRows());
+    const next = rows.slice(index + 1).find(row => focusable.has(row)) ?? rows.slice(0, Math.max(index, 0)).reverse().find(row => focusable.has(row));
+    setMoveFocus({ cleared: [id], next: next?.dataset.id });
     onClear(id);
   };
   const rowHandlers = { ...handlers, onClear: clearRow };
@@ -102,7 +105,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
         <SegmentedChoice label="Show" hideLabel value={show} options={SHOW_OPTIONS} onChange={onShow} />
         <span className="notice-popover-actions">
           <HeadAction label="Mark all read" icon={<CheckCheck aria-hidden className={dsIcon.md} />} onClick={onReadAll} disabled={unread === 0} />
-          <HeadAction label="Clear all" icon={<Trash2 aria-hidden className={dsIcon.md} />} onClick={() => { setMoveFocus({}); onClearAll(); }} disabled={!clearable} />
+          <HeadAction label="Clear all" icon={<Trash2 aria-hidden className={dsIcon.md} />} onClick={() => { setMoveFocus({ cleared: items.filter(itemClearable).map(item => item.id), first: true }); onClearAll(); }} disabled={!clearable} />
         </span>
       </header>
       <div ref={scrollRef} className="notice-popover-scroll">

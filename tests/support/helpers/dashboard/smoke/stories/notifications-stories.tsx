@@ -67,11 +67,24 @@ const KIND = {
   storage: kind(NOTICE_BY_KIND.storage), chatgpt: kind(NOTICE_BY_KIND.chatgpt), run: kind(NOTICE_BY_KIND.run), command: kind(NOTICE_BY_KIND.command),
 } satisfies Record<NotificationKind, Story>;
 
+/** Hovering a row shows its actions in the time's slot; every text line box stays where it was. */
+const hoverKeepsText: NonNullable<Story["play"]> = async page => {
+  const row = page.locator(".notice-row").first();
+  const boxes = () => row.locator(".notice-title, .notice-context, .notice-detail").evaluateAll(lines => lines.map(line => {
+    const box = line.getBoundingClientRect();
+    return [box.x, box.y, box.width, box.height];
+  }));
+  const before = await boxes();
+  await row.hover();
+  await row.getByRole("button", { name: "Clear notification" }).waitFor();
+  const after = await boxes();
+  if (before.length === 0 || JSON.stringify(before) !== JSON.stringify(after)) throw new Error(`hover moved the row's text: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+};
 const COMBINATION = {
   empty: popover("The popover with no notifications", notificationsReady()),
   grouped: popover("The popover with many grouped notifications", POPOVER_MANY),
   long: popover("The popover with a long name, truncated on one line", POPOVER_LONG_NOTICES, { knownFailures: { "fits-viewport": "#751" } }),
-  hover: popover("A row hovered: the read toggle and Clear take the time's place and nothing moves", POPOVER_FEW, { play: page => page.locator(".notice-row").first().hover() }),
+  hover: popover("A row hovered: the read toggle and Clear take the time's place and nothing moves", POPOVER_FEW, { play: hoverKeepsText }),
   standing: popover("A notice still waiting on you, hovered: no Clear until it is handled", POPOVER_FEW, { play: page => page.locator('.notice-row[data-id="popover-waiting"]').hover() }),
   cleared: popover("Everything cleared: only the notice still waiting on you stays", POPOVER_FEW, { play: page => page.getByRole("button", { name: "Clear all" }).click() }),
   "cleared-empty": popover("Everything cleared: the empty panel", notificationsReady(POPOVER_FAILED, POPOVER_DONE), { play: page => page.getByRole("button", { name: "Clear all" }).click() }),
