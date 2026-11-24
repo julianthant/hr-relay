@@ -155,7 +155,7 @@ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION, 36])("imports schema %i runs, history
     .toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);
   expect(report.history).toMatchObject({ write_intents: 1, write_attempts: 1, notifications: 1 });
   // The archive answers the native statements, so it seeks where the native store seeks.
-  const archived = new DatabaseSync(historyPath, { readOnly: true }), native = new DatabaseSync(join(directory, manifest.backupFileName), { readOnly: true });
+  const archived = new DatabaseSync(historyPath, { readOnly: true }), native = new DatabaseSync(join(copy.stateRoot, "state.db"), { readOnly: true });
   try {
     const carried = new Set(archived.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => String(row.name)));
     const expected = native.prepare("SELECT name,tbl_name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name").all()
