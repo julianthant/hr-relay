@@ -77,7 +77,6 @@ describe("the Run dialog's Checks section", () => {
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
     await slow.press("Continue");
-    await slow.press("Continue");
     assert.equal(slow.disabled("Start run"), true);
     assert.ok(slow.text().includes("Checking"));
     await act(async () => { pending.resolve(h.readiness([PASSING])); });
@@ -128,7 +127,6 @@ describe("the Run dialog's Checks section", () => {
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
     await slow.press("Continue");
-    await slow.press("Continue");
     const section = document.body.querySelector('section[aria-label="Checks"]');
     assert.equal(((section?.textContent ?? "").match(/Checking/gu) ?? []).length, 1, "the Checks section says Checking once");
     assert.equal(document.body.querySelectorAll('[aria-label="Checking"] .ds-run-row').length, 8);
@@ -165,7 +163,6 @@ describe("the Run dialog's Checks section", () => {
     assert.equal(dialog.stage(), "Start");
     assert.equal(dialog.disabled("Start run"), false, "the fixed check no longer blocks Start");
     await dialog.press("Back");
-    await dialog.press("Back");
     assert.equal(dialog.typedInput().value, h.TYPED);
     assert.equal(window.sessionStorage.length, 0);
   });
@@ -194,7 +191,6 @@ describe("the Run dialog's Checks section", () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
     await slow.press("Continue");
     const region = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
     assert.ok(region?.textContent?.includes("Checking"));
@@ -306,7 +302,6 @@ describe("a refused re-check through the real client", () => {
     return { dialog, before: reports.length };
   }
   async function toChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
-    await dialog.press("Continue");
     await dialog.press("Continue");
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
     assert.equal(dialog.stage(), "Start");

@@ -1,6 +1,6 @@
 import type { RefObject, ReactNode } from "react";
 import { Check, CircleAlert, FlaskConical, X } from "lucide-react";
-import { useEffect, useId } from "react";
+import { useEffect, useId, useMemo } from "react";
 import type { SurfaceField, InputRunSurface, TypedDateControl, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
@@ -450,7 +450,8 @@ export function RunSpreadsheets({ reference, check, busy, catalogError, onRefres
 }) {
   const chosen = reference?.sheets.find(sheet => sheet.libraryId === reference.chosenLibraryId);
   const chosenSheetId = reference?.chosenSheetId ?? "";
-  const worksheets = reference?.worksheets ?? [];
+  const referenceWorksheets = reference?.worksheets;
+  const worksheets = useMemo(() => referenceWorksheets ?? [], [referenceWorksheets]);
   const worksheetsState = reference?.worksheetsState ?? "ready";
   const missingSheet = chosenSheetId !== "" && !worksheets.some(sheet => sheet.sheetId === chosenSheetId);
   const onWorksheet = reference?.onWorksheet;
@@ -476,7 +477,7 @@ export function RunSpreadsheets({ reference, check, busy, catalogError, onRefres
       {reference !== undefined && chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={reference.chosenVersionId ?? chosen.currentVersionId} note={note}
         worksheets={worksheets} picked={chosenSheetId === "" ? [] : [chosenSheetId]} mode="one" busy={busy} worksheetsReady={worksheetsState === "ready"}
         onVersion={reference.onVersion} onWorksheets={ids => { if (ids[0] !== undefined) reference.onWorksheet(ids[0]); }} onRemove={reference.onRemove} />}
-      {check !== undefined && <CheckPickedRows sheets={check.sheets} busy={busy} {...check} />}
+      {check !== undefined && <CheckPickedRows busy={busy} {...check} />}
     </SpreadsheetSection>
     {reference !== undefined && worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{reference.worksheetsError}</p>}
     {reference !== undefined && chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {reference.requiredLabel}.</p>}

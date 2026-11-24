@@ -97,7 +97,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
     const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
     await act(async () => button.click());
   };
-  await press("Continue"); await press("Continue"); for (let wait = 0; wait < 6; wait += 1) await h.settle();
+  await press("Continue"); for (let wait = 0; wait < 6; wait += 1) await h.settle();
   await press(h.buttons().some(button => h.buttonName(button) === "Start live run") ? "Start live run" : "Start run");
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
@@ -112,7 +112,7 @@ it("reads catalog and compatibility without the workbook list while the launcher
     workbookCompatibility: async () => { reads.workbookCompatibility += 1; return libraryReads.workbookCompatibility(); } };
   const dialog = await h.openDialog(h.stubClient({ ...counted }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent(); await select(0); await mode("rehire");
-  await dialog.press("Continue"); await h.settle(); await dialog.press("Continue"); await h.settle();
+  await dialog.press("Continue"); await h.settle();
   assert.equal(reads.workbookList, 0, "Start run never lists whole workbooks");
   assert.deepEqual([reads.workbookCatalog, reads.workbookCompatibility], [1, 1], "each reference read happens once per dialog open");
 });
@@ -122,9 +122,9 @@ it("uses saved rows only, requires a common explicit mode and preserves duplicat
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned, true); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent();
   assert.equal(document.querySelector("textarea") === null, true);
-  assert.equal(document.querySelectorAll('input[type="radio"]:checked').length, 0);
+  assert.equal(document.querySelectorAll('input[type="radio"]:checked').length, 1, "the first mode is preselected");
   assert.equal(checkboxRows().length, 2); assert.equal(dialog.disabled("Continue"), true);
-  await select(1); await select(0); assert.equal(dialog.disabled("Continue"), true);
+  await select(1); await select(0); assert.equal(dialog.disabled("Continue"), false, "the preselected first mode applies to both rows");
   await mode("rehire"); await dialog.press("Continue");
   assert.equal(dialog.text().includes("Reference spreadsheet"), false, "row-source reference controls are only in Input");
   await dialog.press("Start live run"); assert.ok(planned);
@@ -143,7 +143,7 @@ it("retains the original issued envelope after an unknown result and later mode 
   }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire"); await dialog.press("Continue"); await dialog.press("Start live run");
   const retained = window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""); assert.ok(retained);
-  await dialog.press("Back"); await dialog.press("Back"); await mode("rehire");
+  await dialog.press("Back"); await mode("rehire");
   assert.equal(window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""), retained);
   assert.equal(commands.length, 1); assert.equal(dialog.disabled("Continue"), true);
 });
@@ -158,7 +158,7 @@ it("keeps Rerun single-source with its restored mode and a fresh explicit refere
     previewRerunWarnings: async input => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(input).source, warnings: [], warningDigest: h.HASH } }),
     submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
-  await dialog.press("Continue"); assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
+  assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
   await chooseCurrent();
   assert.equal(document.querySelector<HTMLInputElement>('input[value="rehire"]')?.checked, true);
   await dialog.press("Continue"); await dialog.press("Start live run"); assert.ok(planned);

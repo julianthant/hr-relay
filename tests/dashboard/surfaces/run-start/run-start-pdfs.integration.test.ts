@@ -230,11 +230,11 @@ it("plans one Emergency Contact run per uploaded PDF", async () => {
   const picks = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="File to OnBase-"]')];
   expect(picks.map(radio => [radio.value, radio.checked])).toEqual([["file", false], ["skip", false]]);
   expect(picks[0]?.closest(".ds-run-row")?.textContent).toContain("File to OnBase");
-  expect(dialog.disabled("Continue")).toBe(true);
+  expect(dialog.disabled("Start dry run")).toBe(true);
   expect(dialog.text()).toContain("Pick File to OnBase.");
   expect(plans).toHaveLength(0);
   const skip = picks[1]; assert.ok(skip); await act(async () => skip.click());
-  expect(dialog.disabled("Continue")).toBe(false);
+  expect(dialog.disabled("Start dry run")).toBe(false);
   await dialog.press("Start dry run");
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.dryRun).toBe(true);
@@ -286,7 +286,6 @@ it("turning the switch off changes the footer and the start request carries extr
   expect((ocrSwitch() as HTMLInputElement).checked).toBe(false);
   expect(dialog.text()).toContain("· OCR off");
   expect(dialog.text()).not.toContain("· OCR on");
-  await dialog.press("Continue");
   await dialog.press("Start run");
   expect(EmergencyContactInputSchema.parse(StartPlanRequestSchema.parse(plans[0]).submissions[0]).extractWithOcr).toBe(false);
 });
@@ -294,7 +293,6 @@ it("turning the switch off changes the footer and the start request carries extr
 it("sends extractWithOcr true when the switch is left on", async () => {
   const plans: unknown[] = [];
   const dialog = await contactDialog(plans);
-  await dialog.press("Continue");
   await dialog.press("Start run");
   expect(EmergencyContactInputSchema.parse(StartPlanRequestSchema.parse(plans[0]).submissions[0]).extractWithOcr).toBe(true);
 });

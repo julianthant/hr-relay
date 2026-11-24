@@ -31,14 +31,11 @@ function button(name: string): HTMLButtonElement {
   assert.equal(matches.length, 1, `one button ${name}: ${text()}`); return matches[0];
 }
 const findButton = (name: string) => [...document.querySelectorAll("button")].find((node) => node.textContent?.trim() === name || node.getAttribute("aria-label") === name);
-/** Checks is the last stage and holds Start: continues from Options and waits for the served readiness to let `name` start. */
+/** Start holds the options, steps and checks: waits for the served readiness to let `name` start. */
 async function reachChecks(name: string) {
-  const next = findButton("Continue");
-  assert.ok(next, `no Continue toward ${name}: ${text()}`);
-  await act(async () => next.click());
   for (let wait = 0; wait < 300 && (findButton(name) === undefined || findButton(name)?.disabled === true); wait += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
 }
-/** A press of Start from an earlier stage goes to Checks first. */
+/** A press of Start waits for the readiness checks first. */
 async function press(name: string) {
   if (/^(Start|Create rerun)/u.test(name) && findButton(name) === undefined) await reachChecks(name);
   const node = button(name); assert.equal(node.disabled, false, `${name}: ${text()}`); await act(async () => node.click()); }

@@ -42,7 +42,6 @@ describe("older typed Rerun backend prefill through mounted current form", () =>
           for (const submission of parsed.submissions) assert.deepEqual(descriptor.input.parse(submission), submission);
           return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
       }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: { runId: run.envelope.runId, expectedVersion: run.version } });
-      await dialog.press("Continue");
       if (kind === "padded-name") {
         assert.equal(dialog.typedInput().value, ""); assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
         await dialog.type("Example, Person, 01/15/2000, x");

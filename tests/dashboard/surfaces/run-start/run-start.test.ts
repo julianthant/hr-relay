@@ -93,7 +93,6 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     assert.ok(settlePlan !== undefined, "the dialog never called submitStartPlan");
 
     await dialog.press("Back");
-    await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
     await act(async () => {
@@ -122,7 +121,6 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     const settleCommand = release;
     assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
 
-    await dialog.press("Back");
     await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
@@ -555,7 +553,6 @@ describe("the request carries the operator's omissions", () => {
       "an omitted step was still selected",
     );
 
-    await dialog.press("Back");
     assert.ok(dialog.text().includes("5 of 7 included"));
   });
 
@@ -670,7 +667,6 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.deepEqual(request.stepOmissions?.map(({ step }) => step), ["kronos-timecard", "ucpath-transaction"]);
 
-    await dialog.press("Back");
     await dialog.press("Kronos timecard");
     assert.ok(dialog.text().includes("7 of 7 included"), "undoing the choice left the forced step out");
     assert.equal(dialog.disabled("UCPath transaction"), false);

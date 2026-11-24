@@ -28,7 +28,7 @@ for (const rerun of [false, true]) {
       return plan;
     } };
     const replaceBinding = await mount(h, rerun ? await h.completeSource() : undefined, expiring);
-    if (rerun) { await press("Continue"); await press("Confirm"); await press("Continue"); }
+    if (rerun) { await press("Continue"); await press("Confirm"); }
     else { const box = document.querySelector("textarea"); assert.ok(box); await fill(box, "10812345"); await press("Continue"); }
     await act(async () => checkbox("Dry run").click());
     return replaceBinding;
@@ -111,7 +111,7 @@ for (const rerun of [false, true]) {
     const replaceBinding = await review(h, client);
     await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
     if (replacement === "draft") {
-      await press("Back"); await press("Back");
+      await press("Back");
       const box = rerun ? field("Employee ID") : document.querySelector("textarea");
       assert.ok(box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement);
       await fill(box, "10812346");
