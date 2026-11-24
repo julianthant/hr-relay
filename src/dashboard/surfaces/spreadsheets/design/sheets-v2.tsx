@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { closeDraft, editMapping, importWorkbook, pendingImportName } from './sheets-v2-writes.js';
 import { EmptyState, FailureNotice, PageHeading, SearchInput, dsIcon, useToasts } from '../../../ds/ui.js';
@@ -113,6 +113,8 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const groups = { workflows: workflowTags(sheets), tags: operatorTags(sheets) };
   // A selected tag no sheet carries any more drops out, so the filter can never hold a choice it has no entry to clear.
   const activeFilter = useMemo(() => filter.filter(tag => workflowTags(sheets).includes(tag) || operatorTags(sheets).includes(tag)), [filter, sheets]);
+  const catalogSettled = !catalogLoading && !catalogError;
+  useEffect(() => { if (catalogSettled && activeFilter.length !== filter.length) setFilter(activeFilter); }, [catalogSettled, activeFilter, filter]);
   const visible = useMemo(() => newestFirst(sheets).filter(sheet => (!activeFilter.length || activeFilter.some(tag => tagsOf(sheet).includes(tag))) && sheet.name.toLowerCase().includes(query.trim().toLowerCase())), [sheets, activeFilter, query]);
   const tables = (['Pinned', 'SharePoint', 'Spreadsheets'] as const).map(title => ({ title, items: visible.filter(sheet => tableOf(sheet) === title) })).filter(table => table.items.length);
   const target = dialog && get(dialog.id);

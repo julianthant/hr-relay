@@ -97,6 +97,10 @@ it('keeps the tag filter and clears a selection whose only tag was removed', asy
   const trigger = host.querySelector('button[aria-label="Filter by tag"]');
   assert.equal(trigger?.textContent, 'All tags');
   assert.ok(host.querySelector('li[aria-label="Roster.xlsx"]') && host.querySelector('li[aria-label="Keys.xlsx"]'));
+  wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, tags: ['Fall'] }), make('keys', 'Keys.xlsx', { pinned: false, tags: [] })];
+  await render();
+  assert.equal(host.querySelector('button[aria-label="Filter by tag"]')?.textContent, 'All tags');
+  assert.ok(host.querySelector('li[aria-label="Roster.xlsx"]') && host.querySelector('li[aria-label="Keys.xlsx"]'));
 });
 
 it('shows a toast when the command is refused', async () => {
