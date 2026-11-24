@@ -42,7 +42,8 @@ type EnvelopeOf<Type extends DashboardStreamEnvelope["type"]> = Extract<Dashboar
 export interface DashboardDaySubscriptionDeps {
   readonly transport: DashboardTransport;
   readonly day: string;
-  readonly onDay: (day: DashboardDayWire) => void;
+  /** `cursor` is the stream position the day was served at: its snapshot cursor, or the last change applied to it. */
+  readonly onDay: (day: DashboardDayWire, cursor?: string) => void;
   readonly onState: (state: SubscriptionState) => void;
   /** The run whose panel rides the stream; `select` changes it. */
   readonly run?: string;
@@ -123,7 +124,9 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       && phase.stream === stream;
   }
 
+  /** Every reset, gap and new generation ends here: the held day and every panel read before it are gone. */
   function clearHeld(): void {
+    deps.rows?.reset();
     baseline = baseline.authority === undefined ? {} : { authority: baseline.authority };
   }
 
@@ -214,6 +217,8 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       envelope.projectionGeneration !== previous.generation || envelope.descriptorHash !== previous.descriptorHash
     );
     const held = differs ? undefined : baseline.held;
+    // A new projection generation or descriptor: no panel read under the old one may answer a decision.
+    if (differs) deps.rows?.reset();
     baseline = {
       authority: { generation: envelope.projectionGeneration, descriptorHash: envelope.descriptorHash },
       ...(held === undefined ? {} : { held }),
@@ -287,7 +292,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     };
     // Rows land before the day, so a view never holds a day row newer than the panel that came with it.
     deps.rows?.apply(envelope.rows);
-    deps.onDay(envelope.payload);
+    deps.onDay(envelope.payload, envelope.cursor);
   }
 
   function applyChange(envelope: EnvelopeOf<"change">): void {
@@ -324,7 +329,7 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       held: { snapshot: next, cursorNumber: cursor, cursorId: envelope.cursor },
     };
     deps.rows?.apply(envelope.rows);
-    if (envelope.day !== undefined) deps.onDay(next);
+    if (envelope.day !== undefined) deps.onDay(next, envelope.cursor);
   }
 
   function handleEnvelope(envelope: DashboardStreamEnvelope): void {

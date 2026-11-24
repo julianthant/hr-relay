@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createRowStore, type DashboardClient, type RowStoreWriter } from "../../../src/dashboard/client/index.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
+import { dropKeptResults } from "../../../src/dashboard/state/async-resource.js";
 import { KEPT_RUN_LOGS_LIMIT, useRunWiring, type RunWiringState } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
 import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
@@ -39,7 +40,7 @@ function clientFor(terminal: boolean, hold?: Promise<void>) {
   return { client, reads };
 }
 let root: Root | undefined;
-let seen: RunWiringState | undefined;
+let seen: ReturnType<typeof useRunWiring> | undefined;
 const stores = new WeakMap<DashboardCommandBinding, RowStoreWriter>();
 const bindingOf = (epoch: object, actorId: string): DashboardCommandBinding => {
   const rows = createRowStore();
@@ -84,16 +85,39 @@ describe("Logs return visit", () => {
     assert.equal(seen?.state, "loaded");
     assert.equal(reads.detail, 2, "only the two panels built for the stream read the run");
   });
-  it("shows a finished run's kept logs without waiting for the stream", async () => {
+  it("shows a finished run's kept logs at once, display only, until the stream delivers its panel", async () => {
     const { client, reads } = clientFor(true);
     const epoch = {};
     await visitServed(client, selection, bindingOf(epoch, "operator-a"));
     await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    assert.ok(seen?.onDecision, "the streamed panel answers decisions");
     await leave();
-    await visit(client, selection, bindingOf(epoch, "operator-a"));
-    assert.equal(seen?.state, "loaded");
-    assert.ok(seen?.snapshot);
+    const fresh = bindingOf(epoch, "operator-a");
+    await visit(client, selection, fresh);
+    assert.equal(seen?.state, "loading", "a kept finished run is never loaded");
+    assert.ok(seen?.snapshot, "its kept logs show on the first frame");
+    assert.equal(seen?.onDecision, undefined, "no gate answer or Start reads a kept snapshot");
+    assert.equal(seen?.onUcpathDecision, undefined);
+    assert.equal(seen?.onChildRetry, undefined);
+    assert.equal(seen?.onBatchMemberRetry, undefined);
     assert.equal(reads.detail, 1, "the visit reads nothing");
+    await act(async () => serve(fresh, client, RUN));
+    assert.equal(seen?.state, "loaded");
+    assert.ok(seen?.onDecision, "decisions open once the stream's panel lands");
+  });
+  it("drops the panel and every kept copy when the stream resets, so no decision runs until a fresh panel arrives", async () => {
+    const { client } = clientFor(false);
+    const binding = bindingOf({}, "operator-a");
+    await visitServed(client, selection, binding);
+    await vi.waitFor(() => assert.equal(seen?.state, "loaded"));
+    assert.ok(seen?.onDecision);
+    await act(async () => { stores.get(binding)?.reset(); dropKeptResults(client); });
+    assert.equal(seen?.state, "loading");
+    assert.equal(seen?.snapshot, undefined, "the pre-reset logs are gone, not shown as a kept copy");
+    assert.equal(seen?.onDecision, undefined, "decisions stay off with no panel");
+    await act(async () => serve(binding, client, RUN));
+    assert.equal(seen?.state, "loaded");
+    assert.ok(seen?.onDecision, "a fresh panel turns them back on");
   });
   it("shows nothing kept after the sign-in authority changes, until the stream delivers", async () => {
     const { client, reads } = clientFor(true);
@@ -123,7 +147,7 @@ describe("Logs return visit", () => {
     }
     const before = reads.detail;
     await visit(client, selectionOf(runIdOf(KEPT_RUN_LOGS_LIMIT)), bindingOf(epoch, "operator-a"));
-    assert.equal(seen?.state, "loaded", "the newest run is still kept");
+    assert.ok(seen?.snapshot, "the newest run is still kept");
     await leave();
     await visit(client, selectionOf(runIdOf(0)), bindingOf(epoch, "operator-a"));
     assert.equal(seen?.state, "loading", "the 21st visit evicted the oldest");

@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it, vi } from "vitest";
 import { PanelBoundary } from "../../../src/dashboard/surfaces/shared/panel-boundary.js";
-import { DashboardPageBoundary } from "../../../src/dashboard/app/dashboard-app.js";
+import { DashboardPageBoundary } from "../../../src/dashboard/app/dashboard-page-boundary.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 

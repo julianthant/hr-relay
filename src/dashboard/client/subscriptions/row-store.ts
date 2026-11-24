@@ -11,6 +11,8 @@ export interface RowStore {
 export interface RowStoreWriter extends RowStore {
   /** Replaces the held value of each row whose run is open; rows of any other run are dropped. */
   apply(rows: readonly StreamRow[]): void;
+  /** Drops every held panel, keeping the open run: the stream they came from ended, so none may answer a decision. */
+  reset(): void;
   /** Names the open run; the panel of every other run is dropped. */
   open(runId: string | undefined): void;
 }
@@ -31,6 +33,11 @@ export function createRowStore(): RowStoreWriter {
         changed = true;
       }
       if (changed) notify();
+    },
+    reset: () => {
+      if (panels.size === 0) return;
+      panels.clear();
+      notify();
     },
     open: (runId) => {
       openRun = runId;

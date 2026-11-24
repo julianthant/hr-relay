@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plan: ${{ steps.select.outputs.plan }}
+      smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,6 +41,10 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      - id: smoke-matrix
+        run: |
+          matrix=$(python3 tests/support/helpers/dashboard/smoke/smoke-lanes.py matrix)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
       - name: Find the latest successful file timings
         id: timings
         uses: actions/github-script@v9
@@ -437,7 +442,10 @@ jobs:
       - run: npm run test:perf
 
   smoke:
-    name: smoke
+    name: smoke (${{ matrix.lane }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.smoke-matrix) }}
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).smoke }}
     runs-on: ubuntu-latest
@@ -461,11 +469,22 @@ jobs:
         run: |
           dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:smoke
+      - name: List all smoke and gallery cases
+        run: npm run --silent test:smoke -- --list --reporter=json > "$RUNNER_TEMP/smoke-list.json"
+      - name: Select this lane from the complete listing
+        env:
+          LANE: ${{ matrix.lane }}
+          SLOTS: ${{ strategy.job-total }}
+        run: python3 tests/support/helpers/dashboard/smoke/smoke-lanes.py "$LANE" "$SLOTS" "$RUNNER_TEMP"
+      - run: npm run test:smoke -- --test-list "$RUNNER_TEMP/smoke-tests.txt"
+      - name: Verify every assigned case ran exactly once
+        run: |
+          jq -er --slurpfile expectedIds "$RUNNER_TEMP/smoke-expected.json" \
+            -f tests/support/helpers/dashboard/smoke/verify-shard.jq tests/smoke/.output/results.json
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: smoke-profile
+          name: smoke-profile-${{ matrix.lane }}
           retention-days: 7
           path: tests/smoke/.output/results.json
           if-no-files-found: error
