@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { TimelineRecordError } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -18,11 +21,34 @@ afterEach(async () => { for (const cleanup of cleanups.reverse()) await cleanup(
 const { fixture } = createCredentialDoctorFixtures(cleanups);
 const context = { signal: new AbortController().signal, timeoutMs: 10_000, deadlineMonotonicMs: 10_000, redaction: "presence-only" as const };
 
+function suspectLocation(root: string) {
+  const directory = join(root, "backups", "suspects");
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const name = `suspect-${"2".repeat(17)}-${randomUUID()}.sqlite`;
+  return { directory, name, path: join(directory, name) };
+}
+
+function migrateSuspect(f: Awaited<ReturnType<typeof fixture>>, version: number) {
+  const suspect = suspectLocation(f.root);
+  const database = new DatabaseSync(suspect.path);
+  try {
+    database.exec("PRAGMA journal_mode=WAL");
+    for (const migration of SQLITE_MIGRATIONS.filter(migration => migration.version <= version)) {
+      for (const statement of migration.statements) database.exec(statement);
+    }
+    database.exec(`PRAGMA application_id=${AUTHORITY_APPLICATION_ID}; PRAGMA user_version=${version}`);
+    const { installationId, profileId } = f.admission.profileBinding;
+    database.prepare(`INSERT INTO database_states (id, schema_version, authority_generation, updated_at,
+      search_generation, search_state, installation_id, profile_id) VALUES (1, ?, 0, ?, 0, 'ready', ?, ?)`)
+      .run(version, CONFIG_SNAPSHOT.capturedAt, installationId, profileId);
+  } finally { database.close(); }
+  chmodSync(suspect.path, 0o600);
+  return suspect;
+}
+
 /** A copy of the live store preserved at a historical schema, as a restore leaves it under backups/suspects. */
 function preserveSuspect(f: Awaited<ReturnType<typeof fixture>>, schema: 20 | 21, untombstonedRunId?: string, newerWriteRunId?: string): void {
-  const directory = join(f.root, "backups", "suspects");
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const path = join(directory, `suspect-${"2".repeat(17)}-${randomUUID()}.sqlite`);
+  const { path } = suspectLocation(f.root);
   const live = new DatabaseSync(f.options.authorityPath, { readOnly: true });
   try { live.exec(`VACUUM INTO '${path}'`); } finally { live.close(); }
   chmodSync(path, 0o600);
@@ -47,6 +73,39 @@ function preserveSuspect(f: Awaited<ReturnType<typeof fixture>>, schema: 20 | 21
 }
 
 describe("storage doctor over a preserved suspect at a historical schema", () => {
+  it.each([8, 23, CURRENT_AUTHORITY_SCHEMA_VERSION - 1])("reads a migration-built schema-%i suspect without changing the image", async (version) => {
+    const f = await fixture();
+    const { directory, name, path } = migrateSuspect(f, version);
+    const bytes = readFileSync(path);
+    const { mtimeNs } = statSync(path, { bigint: true });
+    assert.deepEqual(readdirSync(directory), [name]);
+
+    const report = await doctorAuthorityStorage(f.admission, f.options, undefined, f.credentialStore);
+
+    assert.equal(report.spanAuthority.state, "reconciled", JSON.stringify(report.spanAuthority));
+    assert.deepEqual(readFileSync(path), bytes);
+    assert.equal(statSync(path, { bigint: true }).mtimeNs, mtimeNs);
+    assert.deepEqual(readdirSync(directory), [name]);
+  });
+
+  it("refuses an unsupported schema and a damaged suspect with the existing reader errors", async () => {
+    const f = await fixture();
+    const version = CURRENT_AUTHORITY_SCHEMA_VERSION - 1;
+    const { path } = migrateSuspect(f, version);
+    const futureVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
+    const changeSuspect = (statement: string) => {
+      const database = new DatabaseSync(path);
+      try { database.exec(statement); } finally { database.close(); }
+    };
+    const inspect = () => AuthorityDatabase.inspectPreservedRecoveryEvidenceReadOnly(f.admission, path);
+
+    changeSuspect(`PRAGMA user_version=${futureVersion}`);
+    assert.throws(inspect, new TimelineRecordError(`preserved authority schema ${futureVersion} is not openable`));
+
+    changeSuspect(`PRAGMA user_version=${version}; DROP TABLE run_search`);
+    assert.throws(inspect, new TimelineRecordError(`preserved authority tables do not match schema ${version}`));
+  });
+
   it.each([20, 21] as const)("reconciles span authority and keeps authority.health healthy for a schema-%i suspect", async (schema) => {
     const f = await fixture();
     preserveSuspect(f, schema);
