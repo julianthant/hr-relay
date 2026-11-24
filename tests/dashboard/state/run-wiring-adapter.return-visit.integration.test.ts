@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it, vi } from "vitest";
 import { createRowStore, type DashboardClient, type RowStoreWriter } from "../../../src/dashboard/client/index.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { dropKeptResults } from "../../../src/dashboard/state/async-resource.js";
-import { KEPT_RUN_LOGS_LIMIT, useRunWiring, type RunWiringState } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { KEPT_RUN_LOGS_LIMIT, useRunWiring } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { mockQueueSurface } from "../../mocks/workflows/workflow-queue-model.js";
 import { initialMockDraft } from "../../mocks/workflows/workflow-mock-model.js";
 import { NotePageSchema, NativeRunEventWireSchema, RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";

@@ -598,7 +598,7 @@ function streamedRunSnapshot(row: RowIdentity, panel: Extract<RunPanel, { state:
 function refusedPanelState(error: Extract<RunPanel, { state: "refused" }>["error"]): RunWiringState {
   if (error.code === "LOGS_IDENTITY_REFUSED") return { state: "failed", retryable: false, diagnostic: error, error: identityRefusalReason(undefined) };
   const catalog = error.code === "RUN_LOG_DISPLAY_VALUE_UNMAPPED" ? "RUN_LOG_DISPLAY_VALUE_UNMAPPED" : "DASHBOARD_READ_FAILED";
-  return { state: "failed", retryable: false, diagnostic: error, error: formatErrorCatalogFailure(createErrorCatalogFailure(catalog, {})).text };
+  return { state: "failed", retryable: error.retryable, diagnostic: error, error: formatErrorCatalogFailure(createErrorCatalogFailure(catalog, {})).text };
 }
 
 /** What the run panel shows for the row: nothing yet, a refusal as the route would have answered it, a panel
@@ -662,7 +662,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   // A day frame re-serves the row as a new object; only its identity and revision change what the panel shows.
   const { runId, attempt, traceId, workflowId, rowRevision } = row;
   // The panel held when the row last moved: it may trail the row while the stream catches up. Any panel delivered later may not.
-  const heldAtRow = useRef<{ runId: string; rowRevision: number; panel: RunPanel | undefined }>();
+  const heldAtRow = useRef<{ runId: string; rowRevision: number; panel: RunPanel | undefined } | undefined>(undefined);
   if (heldAtRow.current?.runId !== runId || heldAtRow.current.rowRevision !== rowRevision) heldAtRow.current = { runId, rowRevision, panel };
   const held = heldAtRow.current.panel;
   const value = useMemo(() => streamedRunState(client, authority, { runId, attempt, traceId, workflowId, rowRevision }, panel, held), [client, authority, runId, attempt, traceId, workflowId, rowRevision, panel, held]);
