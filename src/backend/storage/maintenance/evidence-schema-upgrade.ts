@@ -12,9 +12,9 @@ import { backupStoppedAuthority } from "./upgrade.js";
 export async function upgradeEvidenceSchemas(admission: RuntimeAdmission, descriptors: readonly AnyWorkflowDescriptor[], browserClosure: ProfileBrowserClosure,
   operation: OfflineMaintenanceOperation, clock: Clock, processLockRoot: string): Promise<"current" | "upgraded"> {
   let result: "current" | "upgraded" = "current";
+  let plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
   // Each pending conversion is published behind its own verified backup of the source it converts.
   for (;;) {
-    const plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
     for (const record of plan.records) {
       const reference = record.backup.manifestPath;
       const name = basename(reference);
@@ -45,7 +45,8 @@ export async function upgradeEvidenceSchemas(admission: RuntimeAdmission, descri
     await admission.qualifyStoppedProtectedSettingsUpgrade({ closure, operation, clock, processLockRoot, backupManifestPath: backup.manifestPath });
     AuthorityDatabase.convertEvidenceSchemas(admission, descriptors, processLockRoot, clock, plan.inspection.authorityContentFingerprint, backup, verifyStoppedBackupManifestAtPath);
     assertStoppedBackupClosure(closure, admission, operation);
-    if (AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors).pending.some(pending => pending.id === conversion.id))
+    plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
+    if (plan.pending.some(pending => pending.id === conversion.id))
       throw new Error("evidence-schema-conversion-readback-missing");
     result = "upgraded";
   }

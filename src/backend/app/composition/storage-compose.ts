@@ -62,6 +62,7 @@ import { reconcileStartupAuthorityStages } from "../../storage/sqlite/backup-ser
 import { AuthorityDatabase,AuthorityFormatUnsupportedError,doctorAuthorityStorage,OfflineAuthorityRestoreService,summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
 
 import { resumeAutomaticAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
+import { withReusableReadonlyAuthoritySnapshots } from "../../storage/sqlite/readonly-authority-snapshot.js";
 import { type StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
@@ -483,8 +484,8 @@ async function inspectAndUpgradeRegisteredPersonStores(workspace: string, lifeti
       try {
         await withStoppedMachineStorage(workspace, lifetime, async machine => {
           const { upgradeProfileAtStartup } = await import("../../storage/maintenance/upgrade.js");
-          const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock,
-            stage => logStartupUpgradeStage(workspace, clock, stage));
+          const report = await withReusableReadonlyAuthoritySnapshots(() => upgradeProfileAtStartup(
+            profileBrowserClosure, machine, profileId, hostFacts, clock, stage => logStartupUpgradeStage(workspace, clock, stage)));
           if ((report.state !== "upgraded" && report.state !== "already-upgraded") || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
           if (report.compaction === "failed") logStartupUpgradeStage(workspace, clock, "compaction-failed");
         });
@@ -566,7 +567,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
   try {
     await resumePendingAutomaticRestore(workspace, lifetime);
     const standings = startupStandingsFor(lifetime);
-    const pendingLogouts = await AuthorityDatabase.withUpgradeInspections(() => prepareStartupUpgrades(workspace, lifetime, hostFacts, clock, standings));
+    const pendingLogouts = await prepareStartupUpgrades(workspace, lifetime, hostFacts, clock, standings);
     if (pendingLogouts.length !== 0) {
       const logoutMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
       let logoutRuntime: ReturnType<typeof composeProfileRuntime> | undefined;
@@ -632,7 +633,8 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
           if (person.credentialState !== "saved") continue;
           try {
             const admission = machine.admitStoppedProfileSettingsUpgrade(profileId, operation); owned.push(admission);
-            await upgradeProtectedSettings(admission, profileBrowserClosure, operation, clock, processLockRoot, READABLE_WORKFLOW_MODULES.map(module => module.descriptor));
+            await withReusableReadonlyAuthoritySnapshots(() => upgradeProtectedSettings(
+              admission, profileBrowserClosure, operation, clock, processLockRoot, READABLE_WORKFLOW_MODULES.map(module => module.descriptor)));
           } catch (error) {
             if (hasUnprovedSourceClosure(error)) throw error;
             advanceStartupStanding(standings, profileId, { type: "step-failed", step: "settings-upgrade", code: heldStepCode(error), cause: error });
@@ -652,6 +654,11 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
 
 export async function initializeRegisteredPersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
   hostFacts: HostConfigFacts, clock: Clock = systemClock): Promise<void> {
+  await AuthorityDatabase.withUpgradeInspections(() => initializePersonStores(workspace, lifetime, hostFacts, clock));
+}
+
+async function initializePersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
+  hostFacts: HostConfigFacts, clock: Clock): Promise<void> {
   const registered = await prepareRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
   const standings = startupStandingsFor(lifetime);
   for (const profileId of registered) {

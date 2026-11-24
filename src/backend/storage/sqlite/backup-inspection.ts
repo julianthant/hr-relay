@@ -6,7 +6,7 @@ import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase, withAuthorityDat
 import { resolve } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { inspectNativeAuthority, inspectNormalAuthority } from "./authority-database.js";
+import { inspectNativeAuthority, inspectNativeBackupCopy, inspectNormalAuthority } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
@@ -21,7 +21,16 @@ export type AuthorityBackupSourceReadOnly = Readonly<{
 
 export function inspectOpenDatabase(database:DatabaseSync,expectedSchemaVersion?:number) {
  const inspection=expectedSchemaVersion===undefined?inspectNormalAuthority(database):inspectNativeAuthority(database,expectedSchemaVersion);
+ return backupInspection(inspection);
+}
+
+function backupInspection(inspection: ReturnType<typeof inspectNativeAuthority>) {
  return Object.freeze({...inspection,invariantViolations:inspection.invariants.violations,exactTableRegistry:true as const});
+}
+
+/** A SHA-bound backup copy can retain its SQLite inspection across publication at a new path. */
+export function inspectVerifiedBackupCopyReadOnly(admission: RuntimeAdmission, path: string, expectedSchemaVersion: number): BackupCopyInspection {
+  return withAuthorityDatabaseReadOnly(admission, path, database => backupInspection(inspectNativeBackupCopy(database, expectedSchemaVersion)));
 }
 
 
