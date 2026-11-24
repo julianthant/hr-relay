@@ -10,7 +10,7 @@ import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboar
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
 const draft = (browser: object) => ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
-  profileId: "00000000-0000-4000-8000-000000000003", step: "duo", methods: { key: idle, touch: idle }, browser });
+  profileId: "00000000-0000-4000-8000-000000000003", step: "duo", methods: { key: idle }, browser });
 
 async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedOnboardingPort> = {}) {
   const never = () => Promise.reject(new Error("unused"));

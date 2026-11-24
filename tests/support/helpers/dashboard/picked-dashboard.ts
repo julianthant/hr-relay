@@ -3,7 +3,6 @@ import { PNG } from "pngjs";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema, type StepInterruptWire } from "../../../../src/models/dashboard/projection.js";
 import { RunDetailWireSchema, RunDetailSectionResponseSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { ApplicationLifecycleSchema } from "../../../../src/models/dashboard/application-lifecycle.js";
-import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { queueRowActions } from "../../../../src/backend/runs/projections/queue-row-actions.js";
@@ -23,18 +22,7 @@ function servedInterruptLabel(interrupt: StepInterruptWire | undefined): string 
 
 export const PICKED_RUN_STATES = ["running", "pausing", "paused", "resuming", "pause-all", "quit-confirm", "quitting", "after-crash"] as const;
 export const PICKED_SAFETY_STATES = ["captures", "before-after", "pre-submit-failed", "post-submit-unknown", "post-submit-proved", "dry-run"] as const;
-export const PICKED_SIGNUP_STATES = ["details", "duo-setup", "touch-pending", "virtual", "key-next", "both-added", "cancel-confirm"] as const;
 export type PickedRunState = (typeof PICKED_RUN_STATES)[number] | (typeof PICKED_SAFETY_STATES)[number];
-
-export function pickedSignupState(state: (typeof PICKED_SIGNUP_STATES)[number]) {
-  if (state === "details") return PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: true });
-  const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-  const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: true };
-  return PublicProfileStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: uuidOf(960), profileId: uuidOf(961), step: state === "both-added" ? "ready" : "duo",
-    methods: { key: state === "both-added" ? complete : idle,
-      touch: state === "both-added" || state === "key-next" ? complete : state === "touch-pending" ? { ...idle, state: "pending", attemptId: uuidOf(962) }
-        : state === "virtual" ? { ...idle, platformAuthenticator: "chromium-platform" } : idle } });
-}
 
 export function pickedRunWorld(state: PickedRunState) {
   const original = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === FIXTURE_IDS.runningRun);

@@ -15,8 +15,6 @@ The repository suites add:
   import closure, private file custody and a real Chromium workflow extension.
 - `tests/backend/runtime/browser/onboarding-duo-provider*.test.ts`: draft browser
   ownership, broker validation, native enrollment and closure.
-- `tests/backend/runtime/browser/duo-platform-authenticator*.test.ts`: emulated
-  platform registration, private credential rehydration and canonical signer handoff.
 - `tests/backend/runtime/browser/native-browser-focus.test.ts`: exact owned browser
   process activation and returning to the captured Relay window on both platforms.
 - `tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts`:

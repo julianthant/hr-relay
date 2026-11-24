@@ -3,7 +3,7 @@ import { PROFILE_ONBOARDING_STATE } from "../../../models/profiles/public-profil
 import type { PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
-import { Check, CircleDashed, CircleHelp, PanelTop, PanelTopClose, TriangleAlert, Fingerprint, KeyRound, LoaderCircle, X } from "lucide-react";
+import { Check, CircleDashed, CircleHelp, PanelTop, PanelTopClose, TriangleAlert, KeyRound, LoaderCircle, X } from "lucide-react";
 import { duoMethodLabels, duoSummary, signInSentence, useDuoBrowser, useWaitStage, type OnboardingDetails, type OnboardingErrors, type OnboardingStep, type ServedOnboardingPort } from "./onboarding-model.js";
 import "./onboarding.css";
 import { Button, Dialog, DialogContent, DialogFooter, Field, Input, SecretField } from "../../ds/ui.js";
@@ -23,11 +23,9 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
   const previousStep = useRef(step);
   const [errors, setErrors] = useState<OnboardingErrors>({});
   const draft = port.onboarding;
-  const uncertainMethod = draft?.methods.key.state === "unknown" ? "Security key" : draft?.methods.touch.state === "unknown" ? "Touch ID" : undefined;
-  const waitingMethod = draft?.methods.key.state === "pending" ? "Security key" : draft?.methods.touch.state === "pending" ? "Touch ID" : undefined;
-  const unavailableMethod = draft?.methods.key.state === "unavailable" ? "Security key" : draft?.methods.touch.state === "unavailable" ? "Touch ID" : undefined;
+  const keyState = draft?.methods.key.state;
   const currentDraft = useRef(draft?.operationId); currentDraft.current = draft?.operationId;
-  const methods = { key: draft?.methods.key.state === "complete", touch: draft?.methods.touch.state === "complete" };
+  const methods = { key: keyState === "complete" };
   const detailsDone = draft !== undefined || authenticated;
   const [submitting, setSubmitting] = useState(false);
   /** Set at dispatch, so a second press before React re-renders is ignored too. */
@@ -62,8 +60,8 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
   const heading = useRef<HTMLHeadingElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const signup = step === "signup";
-  const both = methods.key && methods.touch;
-  const inaccessible = step === "duo" && !detailsDone || step === "ready" && (!detailsDone || !both);
+  const keyAdded = methods.key;
+  const inaccessible = step === "duo" && !detailsDone || step === "ready" && (!detailsDone || !keyAdded);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [step]);
   useEffect(() => {
     if (submitting || !focusPassword.current) return;
@@ -97,7 +95,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
       finally { cancelInFlight.current = false; if (request === submitted.current) setBusy(false); }
       return;
     }
-    if (next === "duo" && !detailsDone || next === "ready" && !both) return;
+    if (next === "duo" && !detailsDone || next === "ready" && !keyAdded) return;
     onStep(next);
   };
   const finish = async () => {
@@ -125,19 +123,19 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
         : <Input {...shared} type={type} spellCheck={type === "email" ? false : undefined} inputMode={type === "email" ? "email" : undefined} />}
     </Field>;
   };
-  const title = step === "login" ? "Log in to Relay" : signup ? "Create your profile" : step === "ready" ? "You’re all set" : both ? "Duo setup is complete" : "Set up Duo";
+  const title = step === "login" ? "Log in to Relay" : signup ? "Create your profile" : step === "ready" ? "You’re all set" : keyAdded ? "Duo setup is complete" : "Set up Duo";
   const setupWindow = port.unavailable && draft?.browser.state !== "failed" ? { state: "checking" as const, generation: draft?.browser.generation ?? 0 } : draft?.browser;
   const opening = (launching || setupWindow?.state === "opening" || setupWindow?.state === "reopening");
-  const waitingAttempt = draft?.methods.key.state === "pending" ? draft.methods.key.attemptId : draft?.methods.touch.state === "pending" ? draft.methods.touch.attemptId : undefined;
+  const waitingAttempt = keyState === "pending" ? draft?.methods.key.attemptId : undefined;
   const openingStage = useWaitStage(step === "duo" && opening ? `${draft?.operationId}:${setupWindow?.state}:${setupWindow?.generation}` : undefined);
-  const stage = useWaitStage(step === "duo" && !opening && waitingMethod !== undefined ? `${draft?.operationId}:${waitingAttempt}` : undefined);
+  const stage = useWaitStage(step === "duo" && !opening && waitingAttempt !== undefined ? `${draft?.operationId}:${waitingAttempt}` : undefined);
   const reopen = setupWindow !== undefined && setupWindow.state !== "open";
   /** The pending press is Finish setup / Go to dashboard, not a cancellation. */
   const finishing = submitting && !cancelInFlight.current;
   const recoveryProvedCurrent = !port.unavailable && draft !== undefined && unknownCancellation.current?.operationId === draft.operationId
     && unknownCancellation.current.profileId === draft.profileId && (port.readRevision ?? 0) > unknownCancellation.current.readRevision;
   const recoveryBlocked = completionUnknown && !recoveryProvedCurrent;
-  const waitTitle = waitingMethod === undefined ? undefined : stage === "still" ? `Still waiting for Duo to add ${waitingMethod}` : `Waiting for Duo to add ${waitingMethod}`;
+  const waitTitle = waitingAttempt === undefined ? undefined : stage === "still" ? "Still waiting for Duo to add Security key" : "Waiting for Duo to add Security key";
   const windowTitle = setupWindow?.state === "failed" ? setupWindow.code === "DUO_SETUP_OPEN_FAILED" ? "Could not open setup window" : "Could not reopen setup window"
     : opening ? openingStage === "still" ? "Still opening setup window…" : setupWindow?.state === "reopening" ? "Reopening setup window…" : "Opening setup window…"
       : setupWindow?.state === "open" ? waitTitle ?? "Setup window is open" : setupWindow?.state === "closed" ? "Setup window closed" : "Checking setup window…";
@@ -145,13 +143,13 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
   const windowDescription = setupWindow?.state === "failed" ? operatorFailureSentence(setupWindow.code)
     : opening ? setupWindow?.state === "reopening" ? "Closing the previous window first." : undefined
       : setupWindow?.state === "open" ? undefined
-        : setupWindow?.state === "closed" ? both ? "Both methods are confirmed. Reopen or finish." : "Reopen to continue. Added methods are saved."
+        : setupWindow?.state === "closed" ? keyAdded ? "Your security key is confirmed. Reopen or finish." : "Reopen to continue."
           : "Relay cannot read the window. Reopen to check.";
-  const description = step === "login" ? resuming ? "Opening your workspace…" : "Open your workspace" : signup ? "Add your details, then set up Duo" : step === "ready" ? "Your profile is ready" : both ? "Security key and Touch ID are confirmed"
-    : uncertainMethod ? `Relay could not confirm ${uncertainMethod}. In Duo, remove any device you do not recognize, then start over.`
-    : waitingMethod ? `Finish adding ${waitingMethod} in the setup browser.`
-    : unavailableMethod ? `Relay cannot verify ${unavailableMethod}. Open the setup browser.`
-    : failed ? "Could not show the setup browser. Reopen it." : "Add your security key and Touch ID, in either order";
+  const description = step === "login" ? resuming ? "Opening your workspace…" : "Open your workspace" : signup ? "Add your details, then set up Duo" : step === "ready" ? "Your profile is ready" : keyAdded ? "Your security key is confirmed"
+    : keyState === "unknown" ? "Relay could not confirm your security key. In Duo, remove any device you do not recognize, then start over."
+    : keyState === "pending" ? "Finish adding your security key in the setup browser."
+    : keyState === "unavailable" ? "Relay cannot verify your security key. Open the setup browser."
+    : failed ? "Could not show the setup browser. Reopen it." : "Add your security key";
   if (inaccessible) return <div className="hub-onboarding"><div className="brand"><AppLockup /></div><main><div className="stack"><h1>Start with your details</h1><p>Complete the previous setup steps to continue.</p><Button variant="primary" size="lg" className="self-start" onClick={() => onStep("signup")}>Start with your details</Button></div></main></div>;
   const refusal = port.refusal;
   if (refusal !== undefined) return <div className="hub-onboarding"><a tabIndex={0} href="#onboarding-main" className="skip">Skip to content</a><div className="brand"><AppLockup /></div><main id="onboarding-main" tabIndex={-1}><div className="stack"><p className="form-error" role="alert">{operatorFailureSentence(refusal)}</p></div></main></div>;
@@ -160,7 +158,7 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
     <main id="onboarding-main" tabIndex={-1}><div className="auth-layout">
       {step !== "login" && <ol className="progress" aria-label="Profile setup progress">{(["signup", "duo", "ready"] as const).map((item, index) => {
         const current = step === "signup" ? 0 : step === "duo" ? 1 : 2;
-        return <li key={item} aria-current={item === step ? "step" : undefined} data-complete={index < current}><button tabIndex={0} className="step-link" type="button" disabled={item === "duo" && !detailsDone || item === "ready" && !both} onClick={() => navigate(item)}><span className="progress-marker" aria-hidden="true">{index < current ? <Check className="icon" /> : index + 1}</span>{["Your details", "Duo setup", "Ready"][index]}</button></li>;
+        return <li key={item} aria-current={item === step ? "step" : undefined} data-complete={index < current}><button tabIndex={0} className="step-link" type="button" disabled={item === "duo" && !detailsDone || item === "ready" && !keyAdded} onClick={() => navigate(item)}><span className="progress-marker" aria-hidden="true">{index < current ? <Check className="icon" /> : index + 1}</span>{["Your details", "Duo setup", "Ready"][index]}</button></li>;
       })}</ol>}
       <div className="stack"><header className="heading"><h1 ref={heading} tabIndex={-1}>{title}</h1><p>{description}</p></header>
         {(step === "login" || signup) ? <><form ref={form} className="auth-form" noValidate onSubmit={async event => {
@@ -196,9 +194,9 @@ export function Onboarding({ step, onStep, onDashboard, port, authenticated = fa
           {field("email", "Work email", "email", "username")}{field("password", "Password", "password", signup ? "new-password" : "current-password")}
           <p className="form-error" role="alert">{error}</p><Button variant="primary" size="lg" className="self-start" type="submit" aria-busy={submitting || undefined} disabled={submitting || port.unavailable}>{submitting && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{submitting ? signup ? "Creating profile…" : "Logging in…" : signup ? "Create profile" : "Log in"}</Button>
         </form><div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" aria-disabled={submitting || undefined} href={`?onboarding=${signup ? "login" : "signup"}`} onClick={async event => { event.preventDefault(); await navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div></> : step === "duo" ? <>
-          <ul className="method-list" aria-label="Duo methods">{(["key", "touch"] as const).map(method => <li key={method}><span className="method-name">{method === "key" ? <KeyRound className="icon" aria-hidden /> : <Fingerprint className="icon" aria-hidden />}{method === "key" ? "Security key" : "Touch ID"}</span><DuoMethodPill state={draft?.methods[method].state ?? (methods[method] ? "complete" : "idle")} /></li>)}</ul>
-          <p className="sr-only" role="status">{duoSummary(methods, draft)}</p>{error && setupWindow?.state !== "failed" && !port.unavailable && <p className="form-error" role="alert">{error}</p>}{setupWindow && <div className="window-state" role={setupWindow.state === "failed" ? "alert" : "status"}><WindowIcon className="icon" aria-hidden /><div><strong>{windowTitle}</strong>{windowDescription && <p>{windowDescription}</p>}</div></div>}<footer className="actions"><Button variant="ghost" size="lg" disabled={submitting || completionUnknown || (draft === undefined || port.unavailable)} aria-busy={cancelInFlight.current || undefined} onClick={event => requestCancellation("login", event.currentTarget)}>{cancelInFlight.current && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{cancelInFlight.current ? "Cancelling…" : "Cancel sign-up"}</Button>{both && reopen && <Button variant="secondary" size="lg" disabled={opening || submitting || recoveryBlocked} onClick={() => browser.open(true)}>Reopen</Button>}<Button variant="primary" size="lg" type="button" aria-busy={opening || both && finishing || undefined} disabled={submitting || (both ? completionUnknown : recoveryBlocked) || opening || both && port.unavailable} onClick={() => both ? finish() : browser.open(reopen)}>{(opening || both && finishing) && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{both ? finishing ? "Finishing…" : "Finish setup" : opening ? setupWindow?.state === "reopening" ? "Reopening…" : "Opening…" : reopen ? "Reopen" : "Show window"}</Button></footer>
-        </> : <>{error && <p className="form-error" role="alert">{error}</p>}<ul className="ready-list">{["Your details saved", "Security key confirmed", "Touch ID confirmed"].map(text => <li key={text}><Check className="icon" />{text}</li>)}</ul><Button variant="primary" size="lg" className="self-start" type="button" aria-busy={finishing || undefined} disabled={!detailsDone || !both || submitting || completionUnknown || port.unavailable} onClick={() => void finish()}>{finishing && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{finishing ? "Opening dashboard…" : "Go to dashboard"}</Button></>}
+          <ul className="method-list" aria-label="Duo methods"><li><span className="method-name"><KeyRound className="icon" aria-hidden />Security key</span><DuoMethodPill state={keyState ?? (methods.key ? "complete" : "idle")} /></li></ul>
+          <p className="sr-only" role="status">{duoSummary(methods, draft)}</p>{error && setupWindow?.state !== "failed" && !port.unavailable && <p className="form-error" role="alert">{error}</p>}{setupWindow && <div className="window-state" role={setupWindow.state === "failed" ? "alert" : "status"}><WindowIcon className="icon" aria-hidden /><div><strong>{windowTitle}</strong>{windowDescription && <p>{windowDescription}</p>}</div></div>}<footer className="actions"><Button variant="ghost" size="lg" disabled={submitting || completionUnknown || (draft === undefined || port.unavailable)} aria-busy={cancelInFlight.current || undefined} onClick={event => requestCancellation("login", event.currentTarget)}>{cancelInFlight.current && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{cancelInFlight.current ? "Cancelling…" : "Cancel sign-up"}</Button>{keyAdded && reopen && <Button variant="secondary" size="lg" disabled={opening || submitting || recoveryBlocked} onClick={() => browser.open(true)}>Reopen</Button>}<Button variant="primary" size="lg" type="button" aria-busy={opening || keyAdded && finishing || undefined} disabled={submitting || (keyAdded ? completionUnknown : recoveryBlocked) || opening || keyAdded && port.unavailable} onClick={() => keyAdded ? finish() : browser.open(reopen)}>{(opening || keyAdded && finishing) && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{keyAdded ? finishing ? "Finishing…" : "Finish setup" : opening ? setupWindow?.state === "reopening" ? "Reopening…" : "Opening…" : reopen ? "Reopen" : "Show window"}</Button></footer>
+        </> : <>{error && <p className="form-error" role="alert">{error}</p>}<ul className="ready-list">{["Your details saved", "Security key confirmed"].map(text => <li key={text}><Check className="icon" />{text}</li>)}</ul><Button variant="primary" size="lg" className="self-start" type="button" aria-busy={finishing || undefined} disabled={!detailsDone || !keyAdded || submitting || completionUnknown || port.unavailable} onClick={() => void finish()}>{finishing && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{finishing ? "Opening dashboard…" : "Go to dashboard"}</Button></>}
       </div></div></main>
     <Dialog open={cancelCurrent} onOpenChange={open => { if (!open) setCancelTarget(undefined); }}><DialogContent size="sm" title="Cancel sign-up?" description="Your unfinished profile and entered credentials are removed from this computer. Devices already added stay in Duo." onCloseAutoFocus={event => {
       event.preventDefault();

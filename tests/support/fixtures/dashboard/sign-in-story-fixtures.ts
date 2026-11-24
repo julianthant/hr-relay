@@ -12,10 +12,10 @@ const method = (state: MethodKind): ProfileOnboardingMethodState => ({
   ceremonyObserved: state === "complete", portalAccepted: state === "complete", operatorConfirmed: state === "complete", exactCredentialRequestObserved: state === "complete",
 });
 
-/** A Duo draft with the security key and Touch ID at the given states; both complete is the ready step. */
-export function duoDraft(key: MethodKind, touch: MethodKind, browser: ProfileOnboardingBrowser = { state: "open", generation: 1 }): ProfileOnboardingState {
+/** A Duo draft with the security key at the given state; complete is the ready step. */
+export function duoDraft(key: MethodKind, browser: ProfileOnboardingBrowser = { state: "open", generation: 1 }): ProfileOnboardingState {
   return { state: "onboarding", operationId: OPERATION, profileId: PROFILE,
-    step: key === "complete" && touch === "complete" ? "ready" : "duo", methods: { key: method(key), touch: method(touch) }, browser };
+    step: key === "complete" ? "ready" : "duo", methods: { key: method(key) }, browser };
 }
 
 /** What a person has typed or pressed to bring a screen to its state. */

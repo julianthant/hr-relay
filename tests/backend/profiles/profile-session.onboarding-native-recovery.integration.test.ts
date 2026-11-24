@@ -267,29 +267,23 @@ async function readyFixture() {
     async openPortal(owner) { owner.assertCurrent(); },
     async stop() {},
     async closeBrowser() { browserCloses++; return { state: "closed" }; },
-    async start(attempt, bind, _reportFailure) {
+    async start(_attempt, bind, _reportFailure) {
       assert.equal(active, false); active = true; starts++;
-      const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
+      const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1,
         origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       const credentialId = randomUUID(); remoteEnrollments.push(credentialId);
-      if (attempt.method === "key") {
-        const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-        await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
-          publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
-          transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
-      }
-      await capability.recordCeremony({ credentialId, requestId: randomUUID(), mechanism: attempt.method === "key" ? "fast-duo" : "native-platform",
-        softwareInterceptionDisabled: attempt.method === "touch" });
-      if (attempt.method === "touch") await capability.recordPortalAcceptance({ credentialId, requestId: randomUUID(), acceptance: "portal-accepted" });
+      const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+        publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
+        transport: "usb", isResidentCredential: false, createdAt: new Date().toISOString() });
+      await capability.recordCeremony({ credentialId, requestId: randomUUID() });
     },
     async cancel() { active = false; cancels++; return { state: "closed" }; },
   };
   const f = await privateDraftFixture(provider);
-  for (const method of ["key", "touch"] as const) {
-    const pending = await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, method);
-    const attemptId = pending.methods[method].attemptId; assert.ok(attemptId);
-    f.profile.session.confirmOnboardingDuo(f.draft.token, f.draft.operationId, method, attemptId);
-  }
+  const pending = await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
+  const attemptId = pending.methods.key.attemptId; assert.ok(attemptId);
+  f.profile.session.confirmOnboardingDuo(f.draft.token, f.draft.operationId, "key", attemptId);
   assert.equal(f.profile.session.readOnboarding(f.draft.token, f.draft.operationId).step, "ready");
   assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
   assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
@@ -668,13 +662,13 @@ it("cancels a ready sign-up, deleting local Duo material while preserving the re
   const f = await readyFixture();
   try {
     const remote = [...f.remoteEnrollments];
-    assert.equal(remote.length, 2);
+    assert.equal(remote.length, 1);
     assert.deepEqual(await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId), { state: "signed-out" });
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", f.draft.profileId)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`)), false);
     assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
     assert.deepEqual(f.remoteEnrollments, remote);
-    assert.deepEqual(f.providerCounts(), { starts: 2, cancels: 2, browserCloses: 1, active: false });
+    assert.deepEqual(f.providerCounts(), { starts: 1, cancels: 1, browserCloses: 1, active: false });
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`)), false);
   } finally { await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true }); }
 });
@@ -733,7 +727,7 @@ it("keeps a pending signup key unsigned until exact scoped proof confirms it, th
       await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
         publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"), transport: "usb", isResidentCredential: true,
         userHandle: "AQID", createdAt: new Date().toISOString() });
-      await capability.recordCeremony({ credentialId, requestId: enrollmentId, mechanism: "fast-duo", softwareInterceptionDisabled: false });
+      await capability.recordCeremony({ credentialId, requestId: enrollmentId });
       assert.equal(attempt.method, "key");
     },
   };

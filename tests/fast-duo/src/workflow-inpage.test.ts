@@ -30,11 +30,11 @@ function world() {
 }
 
 describe("workflow WebAuthn adapter", () => {
-  it("uses the original method only for non-Duo requests and explicit valid pass-through", async () => {
+  it("uses the original method only for non-Duo requests; a Duo pass-through reply is refused", async () => {
     const w = world();
     assert.deepEqual(await w.credentials.get({ publicKey: { rpId: "other.invalid" } }), { native: true });
-    const result = w.credentials.get(w.options()); w.reply(true, { passThrough: true });
-    assert.deepEqual(await result, { native: true }); assert.equal(w.nativeCalls(), 2);
+    const result = w.credentials.get(w.options()); const rejected = assert.rejects(result, { name: "NotAllowedError" });
+    w.reply(true, { passThrough: true }); await rejected; assert.equal(w.nativeCalls(), 1);
   });
   it("rejects broker refusal and malformed signing replies without native retry", async () => {
     for (const success of [false, true]) {
