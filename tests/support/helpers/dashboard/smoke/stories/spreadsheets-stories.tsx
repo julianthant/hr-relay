@@ -27,6 +27,8 @@ const fill = (label: string, value: string) => async (page: Page): Promise<void>
 const openRow = (name: string) => async (page: Page): Promise<void> => { await page.locator(`li[aria-label="${name}"]`).click(); };
 const choose = (label: string) => async (page: Page): Promise<void> => { await page.locator("label", { hasText: label }).first().click(); };
 const backToLibrary = async (page: Page): Promise<void> => { await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button").first().click(); };
+/** Waits out running color transitions, so a button pressed a moment ago is measured at its final fill. */
+const still = async (page: Page): Promise<void> => { await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined)))); };
 const loaded = async (page: Page): Promise<void> => { await page.locator('ul[aria-label="Spreadsheets"]').waitFor(); };
 /** Opens a row's actions menu and chooses one. */
 const menu = (item: string, sheet = SHEET) => then(loaded, click(`Actions for ${sheet}`), click(item, "menuitem"));
@@ -69,7 +71,7 @@ type Outcome = "cloned" | "clone-refused" | "renamed" | "tagged" | "linked" | "d
 const done = (...steps: readonly ((page: Page) => Promise<void>)[]) => then(...steps);
 const OUTCOME = {
   cloned: scene("A clone added", { play: done(menu("Clone"), click("Clone", "button")), story: { ready: 'text=/Cloned/' } }),
-  "clone-refused": scene("A clone the library refused", { server: { add: "refused" }, play: done(menu("Clone"), click("Clone", "button")), story: { ready: 'text="That spreadsheet is no longer in the library."' } }),
+  "clone-refused": scene("A clone the library refused", { server: { add: "refused" }, play: done(menu("Clone"), click("Clone", "button"), still), story: { ready: 'text="That spreadsheet is no longer in the library."' } }),
   renamed: scene("A spreadsheet renamed", { play: done(menu("Rename"), fill("Name", "Onboarding 2026.xlsx"), click("Rename")), story: { ready: 'text="Onboarding 2026.xlsx"' } }),
   tagged: scene("Tags saved", { play: done(menu("Edit tags"), fill("New tag", "Priority"), async page => { await page.getByLabel("New tag", { exact: true }).press("Enter"); }, click("Save"), async page => { await page.getByRole("dialog").waitFor({ state: "hidden" }); }), story: { ready: 'li[aria-label="Onboarding list.xlsx"]' } }),
   linked: scene("A SharePoint link added", { play: done(menu("Link to SharePoint…"), async page => { await page.getByPlaceholder("https://…sharepoint.com/…").fill("https://tenant.sharepoint.com/sites/people/Roster.xlsx"); }, click("Link")), story: { ready: 'text=/Linked/' } }),
@@ -104,7 +106,7 @@ const LINK = "https://tenant.sharepoint.com/sites/people/Roster.xlsx";
 const IMPORT = {
   dialog: scene("The import dialog", { play: then(loaded, click("Import")), story: { ready: 'role=dialog' } }),
   sharepoint: scene("A SharePoint workbook added", { play: importSharePoint(LINK), story: { ready: 'text="Added Roster.xlsx"' } }),
-  "sharepoint-refused": scene("A SharePoint workbook the library refused", { server: { add: "refused" }, play: importSharePoint(LINK), story: { ready: "text=/Couldn't add the spreadsheet/" } }),
+  "sharepoint-refused": scene("A SharePoint workbook the library refused", { server: { add: "refused" }, play: then(importSharePoint(LINK), still), story: { ready: "text=/Couldn't add the spreadsheet/" } }),
 } satisfies Record<Import, Story>;
 
 const AUDIT_FIXES = "#532";
