@@ -11,58 +11,16 @@ export interface PageFailures {
 /** Choosing a workflow saves it as a preference; the seeded backend wires no settings executor and answers 500. */
 export const SEEDED_PREFERENCE_WRITE = /^(?:http 500: POST |console: Failed to load resource: the server responded with a status of 500 \(Internal Server Error\) )http:\/\/127\.0\.0\.1:\d+\/api\/v1\/commands$/u;
 
-declare global {
-  interface Window { relayDiagnosticsFetchCancelled?: (url: string) => Promise<void> }
-}
-
-/** Reports each fetch the page cancels through its own signal before the response body has arrived. */
-function reportCancelledFetches(): void {
-  const fetch = window.fetch.bind(window);
-  window.fetch = async (input, init) => {
-    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
-    if (!signal || signal.aborted) return fetch(input, init);
-    const url = new URL(input instanceof Request ? input.url : String(input), location.href).href;
-    const cancelled = () => { void window.relayDiagnosticsFetchCancelled?.(url); };
-    const settled = () => { signal.removeEventListener("abort", cancelled); };
-    signal.addEventListener("abort", cancelled, { once: true });
-    try {
-      const response = await fetch(input, init);
-      void response.clone().arrayBuffer().then(settled, settled);
-      return response;
-    } catch (error) {
-      settled();
-      throw error;
-    }
-  };
-}
-
 /** Records every console error, page error, failed request and HTTP error the page produces from now on. */
-export async function watchPageDiagnostics(page: Page): Promise<string[]> {
+export function watchPageDiagnostics(page: Page): string[] {
   const seen: string[] = [];
-  // A request the page cancelled itself is no failure; the page's notice and the network abort arrive in either order.
-  const cancelledUrls: string[] = [];
-  const unclaimedAborts: { url: string; entry: string }[] = [];
-  await page.exposeBinding("relayDiagnosticsFetchCancelled", (_source, url: string) => {
-    const claimed = unclaimedAborts.find(candidate => candidate.url === url);
-    if (claimed === undefined) { cancelledUrls.push(url); return; }
-    unclaimedAborts.splice(unclaimedAborts.indexOf(claimed), 1);
-    seen.splice(seen.indexOf(claimed.entry), 1);
-  });
-  await page.addInitScript(reportCancelledFetches);
   page.on("console", message => { if (message.type() === "error") seen.push(`console: ${message.text()} ${message.location().url}`); });
   page.on("pageerror", error => seen.push(`pageerror: ${error.message}`));
   page.on("requestfailed", request => {
-    const url = request.url();
     const reason = request.failure()?.errorText ?? "";
-    if (reason === "net::ERR_ABORTED") {
-      // Leaving or reloading the page aborts its open event stream.
-      if (new URL(url).pathname.startsWith("/events/")) return;
-      const cancelled = cancelledUrls.indexOf(url);
-      if (cancelled !== -1) { cancelledUrls.splice(cancelled, 1); return; }
-    }
-    const entry = `requestfailed: ${url} ${reason}`;
-    seen.push(entry);
-    if (reason === "net::ERR_ABORTED") unclaimedAborts.push({ url, entry });
+    // Leaving or reloading the page aborts its open event stream.
+    if (reason === "net::ERR_ABORTED" && new URL(request.url()).pathname.startsWith("/events/")) return;
+    seen.push(`requestfailed: ${request.url()} ${reason}`);
   });
   page.on("response", response => {
     if (response.status() >= 400) seen.push(`http ${response.status()}: ${response.request().method()} ${response.url()}`);
@@ -87,7 +45,7 @@ export const test = base.extend<TestFixtures>({
     }
   },
   failures: [async ({ page }, use) => {
-    const seen = await watchPageDiagnostics(page);
+    const seen = watchPageDiagnostics(page);
     const allowed: RegExp[] = [];
     await use({ allow: pattern => { allowed.push(pattern); } });
     expect(seen.filter(entry => !allowed.some(pattern => pattern.test(entry))), "unexpected page diagnostics").toEqual([]);

@@ -43,7 +43,7 @@ export const test = base.extend<GalleryTestFixtures, GalleryWorkerFixtures>({
   }, { scope: "worker" }],
   baseURL: async ({ galleryUrl }, use) => { await use(galleryUrl); },
   diagnostics: async ({ page }, use) => {
-    const seen = await watchPageDiagnostics(page);
+    const seen = watchPageDiagnostics(page);
     const inFlight = new Set<Request>();
     page.on("request", request => { inFlight.add(request); });
     page.on("requestfinished", request => { inFlight.delete(request); });
