@@ -489,6 +489,13 @@ jobs:
           retention-days: 7
           path: tests/smoke/.output/results.json
           if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: smoke-states-${{ matrix.lane }}
+          retention-days: 7
+          path: tests/smoke/.output/states/
+          if-no-files-found: ignore
 
   unit:
     name: unit
