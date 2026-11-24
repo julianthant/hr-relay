@@ -163,9 +163,10 @@ export const RULE_PROBES = {
       render: () => <StoryFrame>
         <div style={{ width: 120, overflow: "hidden" }}><div style={{ width: 120, whiteSpace: "nowrap" }}>a long line of text that cannot fit its box</div></div>
         <div style={{ width: 400, overflow: "hidden" }}><div style={{ width: 400, whiteSpace: "nowrap" }}>a short line</div></div>
+        <div style={{ width: 120, overflowX: "auto" }}><div style={{ width: 400, whiteSpace: "nowrap" }}>a line that runs past a sideways scroller</div></div>
       </StoryFrame>,
     },
-    finds: { "fits-viewport": [/"a long line of text that cannot fit its box" is cut off sideways by its container/u, /^(?![\s\S]*"a short line")/u] },
+    finds: { "fits-viewport": [/"a long line of text that cannot fit its box" is cut off sideways by its container/u, /^(?![\s\S]*(?:"a short line"|"a line that runs past))/u] },
   },
   "dialog-off-shape": {
     story: {

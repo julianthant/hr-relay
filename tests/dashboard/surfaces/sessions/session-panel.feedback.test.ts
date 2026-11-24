@@ -43,7 +43,8 @@ it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the 
   assert.equal(document.querySelector('[role="dialog"]') === null, true);
   assert.doesNotMatch(panel.textContent ?? "", /Adding workers|Workers added/);
   assert.equal(document.querySelectorAll('[data-slot="toast-title"]').length, 0, "progress is never a toast");
-  assert.equal(panel.querySelectorAll('ul[aria-label="Workers being added"] li[aria-busy]').length, 1, "the panel shows one pending row");
+  assert.equal(panel.querySelectorAll('ul[aria-label="Workers being added"] li[aria-busy]').length, 1, "the panel shows one pending card");
+  assert.equal(panel.querySelector("[data-session-strip]")?.firstElementChild?.getAttribute("aria-label"), "Workers being added", "the pending card is first in the strip");
   assert.doesNotMatch(panel.textContent ?? "", /No workers yet/);
   assert.match(progress.textContent ?? "", /^Starting a worker for .+\.$/u, "the pending add is announced");
   assert.equal(trigger.disabled, true);

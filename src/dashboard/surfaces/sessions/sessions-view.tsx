@@ -3,13 +3,13 @@ import { useViewState } from "../../app/navigation/view-route-model.js";
 import { AssistantLauncher } from "../shell/assistant-launcher.js";
 import { useContext, useId, useLayoutEffect, useRef, useState } from "react";
 import { FirstScreenRevealedContext } from "../../app/startup/first-screen.js";
-import { ChevronDown, ChevronUp, Loader2, LogOut, Minus, Plus, Settings, UsersRound } from "lucide-react";
+import { ChevronDown, ChevronUp, LogOut, Minus, Plus, Settings, UsersRound } from "lucide-react";
 import { BareButton, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, dsFocus, Field, IconButton, Input, Select, Skeleton, Tooltip, useSkeletonWait } from "../../ds/ui.js";
 import { SETTINGS_GEAR_ID } from "../settings/settings-model.js";
 import { cn } from "../../lib/utils.js";
 import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
 import type { SessionPreviewOperation } from "./session-preview-command-model.js";
-import { WorkerCard } from "./worker-card.js";
+import { StartingCard, WorkerCard } from "./worker-card.js";
 import { LoadingRegion, SkeletonText } from "../shared/loading/loading.js";
 
 /** The bar's counts: one quiet summary line; only the running count is green, like the rail's running pill. */
@@ -59,7 +59,6 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   }, []);
   const actionable = data.state === "ready" && !data.stale;
   const workers = data.state === "ready" ? data.workers : [];
-  const cards = workers;
   const onWorkerControl = (id: string, control: SessionControl) => { onControl(id, control); if (control === "remove") toggleRef.current?.focus(); };
   const addTriggerRef = useRef<HTMLButtonElement>(null);
   const addFocusOrigin = useRef<Element | null>(null);
@@ -71,6 +70,10 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const addLocked = operations.add?.state === "pending";
   const pendingAdd = operations.add?.state === "pending" && operations.add.request.action === "add" ? operations.add.request : undefined;
   const pendingAddLabel = pendingAdd && (workflows.find(item => item.id === pendingAdd.workflow)?.label ?? pendingAdd.workflow);
+  const adding = pendingAdd !== undefined;
+  const stripRef = useRef<HTMLDivElement>(null);
+  // The Starting card is first, so a strip scrolled away from it comes back.
+  useLayoutEffect(() => { if (adding && stripRef.current !== null) stripRef.current.scrollLeft = 0; }, [adding]);
   const announcement = [
     pendingAdd && `Starting ${pendingAdd.count > 1 ? `${String(pendingAdd.count)} workers` : "a worker"} for ${pendingAddLabel ?? ""}.`,
     ...workers.filter(worker => operations[worker.id]?.state === "pending" && operations[worker.id]?.request.action === "remove").map(worker => `Removing ${worker.label}, ${worker.workflow}.`),
@@ -114,12 +117,10 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
     <p role="status" className="sr-only">{announcement}</p>
     {open && <div id={contentId} role="region" aria-label="Sessions" className="session-body">
       <div className="session-body-cards">
-      {data.state === "ready" ? data.workers.length || pendingAdd ? <>
-        {pendingAdd && <ul aria-label="Workers being added" className="m-0 mb-2 flex list-none flex-col gap-1 p-0"><li aria-busy className="list-none rounded-md bg-[var(--ds-worker-card-bg)] px-3"><div className="flex min-h-8 items-center justify-between gap-3">
-          <span className="min-w-0 truncate text-control">{pendingAddLabel}{pendingAdd.count > 1 && <span className="text-ui-muted"> × {pendingAdd.count}</span>}</span>
-          <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-ui-muted"><Loader2 aria-hidden className="size-3 animate-spin motion-reduce:animate-none" />Starting</span></div></li></ul>}
-        {cards.length > 0 && <div data-session-strip className="flex flex-wrap items-stretch gap-3 pb-1">{cards.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} disabled={!actionable} onControl={onWorkerControl} />)}</div>}
-      </> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
+      {data.state === "ready" ? data.workers.length || pendingAdd ? <div ref={stripRef} data-session-strip role="group" aria-label="Workers" tabIndex={0} className={cn("flex items-stretch gap-3 overflow-x-auto pb-1", dsFocus)}>
+        {pendingAdd && <StartingCard workflow={pendingAddLabel ?? pendingAdd.workflow} count={pendingAdd.count} />}
+        {workers.map(worker => <WorkerCard key={worker.id} countdown={idleCountdowns[worker.id]} worker={worker} operation={operations[worker.id]} disabled={!actionable} onControl={onWorkerControl} />)}
+      </div> : <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><UsersRound aria-hidden className="size-5 text-ui-muted" /><h3 className="m-0 text-heading">No workers yet</h3><p className="m-0 text-body text-ui-secondary">Add workers to start processing runs.</p></div> : data.state === "loading" ? <SessionsSkeleton /> : <div role="alert" className="flex min-h-32 flex-col items-center justify-center gap-2 text-center"><h3 className="m-0 text-heading">Sessions unavailable</h3><p className="m-0 text-body text-ui-secondary">{data.reason}</p></div>}
       </div>
     </div>}
   </section>

@@ -13,10 +13,10 @@ import { StoryFrame } from "./story-frame.js";
 const noop = () => undefined;
 const BODY = '[role="region"][aria-label="Sessions"]';
 
-interface BarOptions { readonly open?: boolean; readonly operations?: Readonly<Record<string, SessionPreviewOperation>> }
-const bar = (title: string, data: SessionsViewState, { open = true, operations }: BarOptions = {}, extra: Partial<Story> = {}): Story => ({ title,
+interface BarOptions { readonly open?: boolean; readonly operations?: Readonly<Record<string, SessionPreviewOperation>>; readonly theme?: "dark" | "light" }
+const bar = (title: string, data: SessionsViewState, { open = true, operations, theme = "dark" }: BarOptions = {}, extra: Partial<Story> = {}): Story => ({ title,
   ready: open ? BODY : '[aria-label="Session Panel"]',
-  render: () => <StoryFrame><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS}
+  render: () => <StoryFrame theme={theme}><SessionsView data={data} open={open} onOpenChange={noop} onControl={noop} onAdd={noop} workflows={SESSION_STORY_WORKFLOWS}
     {...(operations === undefined ? {} : { operations })} account={{ onSettings: noop, onLogout: noop }} /></StoryFrame>, ...extra });
 /** Raises one result toast once the story has mounted, as the app does after a command settles. */
 const TOAST_TITLES = ["Workers added", "Worker removed", "Idle sessions refreshed"] as const;
@@ -51,7 +51,7 @@ const ready = (...workers: readonly SessionWorker[]): SessionsViewState => ({ st
 const worker = (title: string, state: SessionWorkerState): Story => bar(title, ready(SESSION_WORKER_BY_STATE[state]));
 const WORKER = {
   running: worker("A worker running a step, Pause and Stop offered", "running"), starting: worker("A worker opening its browsers, Stop offered", "starting"),
-  idle: worker("A worker with nothing to do, a row with Remove", "idle"), waiting: worker("A worker waiting on a sign-in, Stop offered", "waiting"),
+  idle: worker("A worker with nothing to do, a card with Remove", "idle"), waiting: worker("A worker waiting on a sign-in, Stop offered", "waiting"),
   paused: worker("A paused worker, Resume and Stop offered", "paused"), stopped: worker("A worker the operator stopped, Retry offered", "stopped"),
   failed: worker("A worker that failed, Retry offered", "failed"), unavailable: worker("A worker Relay cannot read, no actions", "unavailable"),
 } satisfies Record<SessionWorkerState, Story>;
@@ -85,10 +85,11 @@ const COMBINATION = {
   attention: bar("Waiting, paused and failed workers side by side", ready(SESSION_WORKER_BY_STATE.waiting, SESSION_WORKER_BY_STATE.paused, SESSION_WORKER_BY_STATE.failed)),
   mixed: bar("Cards for busy and idle workers", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE)),
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
+  "one-row-light": bar("Five workers in one row, the next card peeking, light", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE), { theme: "light" }),
   stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
-  "adding-empty": bar("A worker being added to an empty panel, shown as a pending row", ready(), { operations: ADDING }, { ready: "li[aria-busy]" }),
-  adding: bar("A worker being added beside an idle card", ready(QUIET_IDLE[0]), { operations: ADDING }, { ready: "li[aria-busy]" }),
+  "adding-empty": bar("A worker being added to an empty panel, shown as a Starting card", ready(), { operations: ADDING }, { ready: "li[aria-busy]" }),
+  adding: bar("A worker being added, its Starting card before an idle card", ready(QUIET_IDLE[0]), { operations: ADDING }, { ready: "li[aria-busy]" }),
   removing: bar("An idle card being removed, the status reads Removing", ready(QUIET_IDLE[0]), { operations: { [(QUIET_IDLE[0]).id]: { request: { id: "remove-1", target: (QUIET_IDLE[0]).id, action: "remove" }, state: "pending", message: "Remove requested…" } } }, { ready: 'text="Removing"' }),
   "add-workers": bar("The Add workers dialog", ready(SESSION_WORKER_BY_STATE.running), {}, { ready: '[role="dialog"]',
     play: async page => { await page.getByRole("button", { name: "Add workers", exact: true }).click(); } }),
