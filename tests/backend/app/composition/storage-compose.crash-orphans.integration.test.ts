@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, lstatSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
 import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -45,7 +47,8 @@ const writer = `
   fs.renameSync = (source, target) => {
     if (crash === "backup publish" && source.endsWith(".manifest.json.tmp")) kill();
     if (crash === "credential stage" && target === join(root, "credentials", "protected.json")) kill();
-    return rename(source, target);
+    rename(source, target);
+    if (crash === "backup complete" && source.endsWith(".manifest.json.tmp")) kill();
   };
   syncBuiltinESMExports();
 
@@ -70,29 +73,39 @@ const writer = `
   } else if (crash === "credential stage") {
     const owner = createCanonicalCredentials(admission), current = owner.readRecord("protected");
     owner.replaceRecord("protected", current.revision, current.value);
-  } else if (crash === "restore stage") {
+  } else if (crash.startsWith("restore")) {
     const operation = admission.acquireOfflineMaintenance();
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: path,
       suspectDirectory: join(root, "backups", "suspects"), busyTimeoutMs: 250,
-      processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot) }, async () => { kill(); },
-      clock, undefined, credentials);
+      processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot) }, async () => { if (crash === "restore stage") kill(); },
+      clock, { copyFile: fs.copyFileSync, atomicReplace: kill }, credentials);
     await restore.restore({ manifestPath }, operation);
   }
   throw new Error("writer did not reach the requested crash point");
 `;
 
 const crashPoints = [
-  { stage: "backup stage", location: "backups", abandoned: [/^\.authority-.+\.sqlite\.tmp$/u], refuses: false },
-  { stage: "backup publish", location: "backups", abandoned: [/^\.authority-.+\.manifest\.json\.tmp$/u, /^authority-.+\.sqlite$/u], refuses: false },
-  { stage: "artifact stage", location: "artifacts", abandoned: [/^.+\.tmp$/u], refuses: false },
-  { stage: "artifact publish", location: "artifacts", abandoned: [/^.+\.tmp$/u], refuses: false },
-  { stage: "credential stage", location: "credentials", abandoned: [/^.+\.canonical\.tmp$/u], refuses: true },
-  { stage: "restore stage", location: "profile", abandoned: [/^\.restore-.+\.sqlite\.tmp$/u], refuses: false },
+  { stage: "backup stage", location: "backups", abandoned: [/^\.authority-.+\.sqlite\.tmp$/u] },
+  { stage: "backup publish", location: "backups", abandoned: [/^\.authority-.+\.manifest\.json\.tmp$/u, /^authority-.+\.sqlite$/u] },
+  { stage: "backup complete", location: "backups", abandoned: [] },
+  { stage: "artifact stage", location: "artifacts", abandoned: [/^.+\.tmp$/u] },
+  { stage: "artifact publish", location: "artifacts", abandoned: [/^.+\.tmp$/u] },
+  { stage: "credential stage", location: "credentials", abandoned: [/^.+\.canonical\.tmp$/u] },
+  { stage: "restore stage", location: "profile", abandoned: [/^\.restore-.+\.sqlite\.tmp$/u] },
+  { stage: "restore journal", location: "profile", abandoned: [] },
 ] as const;
 
-it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard crash at $stage", async ({ stage, location, abandoned, refuses }) => {
+function repairNotices(machineRoot: string) {
+  const log = readLocalDebugLog(machineRoot);
+  assert.equal(log.state, "present");
+  return log.records.flatMap(({ payload }) => payload.kind === "debug" && payload.event.area === "profile-startup-repair"
+    && payload.event.reason === "unfinished-store-stages-cleared" ? [payload.event] : []);
+}
+
+it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard crash at $stage", async ({ stage, location, abandoned }) => {
   const profile = await createBoundProfileFixture(), clock = manualClock(new Date(now));
-  const profileId = profile.admission.profileBinding.profileId;
+  const profileId = profile.admission.profileBinding.profileId, machineRoot = profile.machine.stateRoot;
+  const restoreJournal = join(profile.workspace, ".tracker", "control", "journal.json");
   const directories = { profile: profile.stateRoot, credentials: join(profile.stateRoot, "credentials"),
     backups: join(profile.stateRoot, "backups", "authority"), artifacts: profile.admission.artifactRoot };
   let restart: RuntimeLifetimeLock | undefined;
@@ -112,6 +125,7 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
     const publishedPaths = [backupPath, manifestPath, join(directories.artifacts, `${artifact.sha256}.artifact`), join(directories.credentials, "protected.json")];
     await profile.closeController();
     const published = publishedPaths.map(path => ({ path, bytes: readFileSync(path) }));
+    const retain = (path: string) => published.push({ path, bytes: readFileSync(path) });
     const before = new Set(readdirSync(directories[location]));
 
     const result = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", writer,
@@ -125,27 +139,84 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
       assert.equal(matches.length, 1, `${String(pattern)} in ${entries.join(", ")}`);
       return join(directories[location], matches[0]);
     });
-    if (stage === "artifact publish") {
+    if (stage === "backup complete") {
+      const finished = entries.find(name => name.endsWith(".sqlite"));
+      assert.ok(finished);
+      retain(join(directories.backups, finished));
+      retain(join(directories.backups, `${finished}.manifest.json`));
+    } else if (stage === "artifact publish") {
       const final = entries.find(name => name.endsWith(".artifact"));
       assert.ok(final);
-      const path = join(directories.artifacts, final);
-      published.push({ path, bytes: readFileSync(path) });
+      retain(join(directories.artifacts, final));
+    }
+    if (stage.startsWith("restore")) {
+      const suspects = join(profile.stateRoot, "backups", "suspects");
+      const suspect = readdirSync(suspects).find(name => name.endsWith(".sqlite"));
+      assert.ok(suspect);
+      retain(join(suspects, suspect));
+    }
+    let unsafeLink: string | undefined;
+    if (stage === "artifact stage") {
+      const live = join(directories.artifacts, `${artifact.sha256}.${process.pid}.${randomUUID()}.tmp`);
+      writeFileSync(live, "stage with a live PID", { mode: 0o600 }); retain(live);
+      unsafeLink = join(directories.artifacts, `${artifact.sha256}.${result.pid}.${randomUUID()}.tmp`);
+      symlinkSync(publishedPaths[2], unsafeLink);
+    }
+    let restoreStage: string | undefined;
+    if (stage === "restore journal") {
+      const name = entries.find(entry => /^\.restore-.+\.sqlite\.tmp$/u.test(entry));
+      assert.ok(name);
+      restoreStage = join(profile.stateRoot, name);
+      assert.equal(existsSync(restoreJournal), true);
+    } else if (stage === "restore stage") {
+      const unknown = join(profile.stateRoot, ".restore-unknown.sqlite.tmp");
+      writeFileSync(unknown, "unproved restore stage", { mode: 0o600 }); retain(unknown);
     }
 
     const lifetime = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
     restart = lifetime;
-    const start = () => initializeRegisteredPersonStores(profile.workspace, lifetime, hostFacts, clock);
-    if (refuses) await assert.rejects(start, { code: "STORAGE_AUTOMATIC_REPAIR_REFUSED" });
-    else {
-      await start();
-      const machine = acquireEntrypointAdmission(profile.workspace, "shared", restart);
-      const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts });
-      try {
-        const session = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: now });
-        assert.equal(session.state, "active");
-      } finally { await runtime.close("shutdown"); machine.release(); }
+    await initializeRegisteredPersonStores(profile.workspace, lifetime, hostFacts, clock);
+    const machine = acquireEntrypointAdmission(profile.workspace, "shared", lifetime);
+    const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts });
+    try {
+      const session = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: now });
+      assert.equal(session.state, "active");
+    } finally { await runtime.close("shutdown"); machine.release(); }
+    for (const path of stages) assert.equal(existsSync(path), false, path);
+    if (unsafeLink !== undefined) assert.equal(lstatSync(unsafeLink).isSymbolicLink(), true);
+    if (restoreStage !== undefined) {
+      assert.equal(existsSync(restoreStage), false);
+      assert.equal(existsSync(restoreJournal), false);
     }
-    for (const path of stages) assert.equal(existsSync(path), true, path);
+    const notices = repairNotices(machineRoot);
+    assert.equal(notices.length, stages.length === 0 ? 0 : 1);
+    if (notices.length > 0) assert.match(notices[0].message ?? "", new RegExp(`^Cleared ${stages.length} unfinished storage files?\\.$`, "u"));
+    if (stage === "artifact stage") {
+      await lifetime.close();
+      restart = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
+      await initializeRegisteredPersonStores(profile.workspace, restart, hostFacts, clock);
+      assert.deepEqual(repairNotices(machineRoot), notices);
+    }
     for (const { path, bytes } of published) assert.deepEqual(readFileSync(path), bytes, path);
+  } finally { await restart?.close(); await profile.close(); }
+});
+
+it.skipIf(process.platform === "win32")("keeps the startup refusal for an unrecognized canonical stage", async () => {
+  const profile = await createBoundProfileFixture(), clock = manualClock(new Date(now));
+  const profileId = profile.admission.profileBinding.profileId;
+  const current = join(profile.stateRoot, "credentials", "protected.json");
+  const unknown = join(profile.stateRoot, "credentials", `.${profileId}.unknown.canonical.tmp`);
+  let restart: RuntimeLifetimeLock | undefined;
+  try {
+    await profile.closeController();
+    const bytes = readFileSync(current);
+    writeFileSync(unknown, "unrecognized credential sibling", { mode: 0o600 });
+    const lifetime = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
+    restart = lifetime;
+    await assert.rejects(() => initializeRegisteredPersonStores(profile.workspace, lifetime, hostFacts, clock), (error: unknown) =>
+      error instanceof Error && "code" in error && error.code === "STORAGE_AUTOMATIC_REPAIR_REFUSED"
+      && error.cause instanceof Error && "code" in error.cause && error.cause.code === "CREDENTIAL_OPERATION_PENDING");
+    assert.equal(readFileSync(unknown, "utf8"), "unrecognized credential sibling");
+    assert.deepEqual(readFileSync(current), bytes);
   } finally { await restart?.close(); await profile.close(); }
 });
