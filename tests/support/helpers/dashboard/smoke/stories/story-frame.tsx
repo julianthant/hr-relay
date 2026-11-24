@@ -1,5 +1,5 @@
 /** The dashboard's theme root and providers around one story, as `DashboardApp` nests them. */
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useHubMotion } from "../../../../../../src/dashboard/ds/theme/motion.js";
 import { ToastProvider, TooltipProvider } from "../../../../../../src/dashboard/ds/ui.js";
 import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/person-preferences.js";
@@ -11,6 +11,7 @@ const PREFERENCES = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFE
 function ThemeRoot({ children }: { children: ReactNode }) {
   useHubMotion();
   return <div data-app-root="" data-demo-theme="dark"
+    style={{ "--ds-toast-inset-bottom": "calc(2 * (var(--ds-h-bar) + var(--ds-space-loose)))" } as CSSProperties}
     className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]">
     <TooltipProvider delayDuration={200}><ToastProvider>
       <div className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col">
