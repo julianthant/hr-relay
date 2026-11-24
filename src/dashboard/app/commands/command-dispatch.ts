@@ -325,7 +325,7 @@ export async function verifyShellCommandEffect(
   }
   if (request.family === "notification" && "members" in request.target) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== request.target.matchingCount) return mismatch(reply);
-    const rows = await client.notificationSnapshot();
+    const rows = (await client.notificationSnapshot()).filter(row => row.readOnlyHistory !== true);
     if (rows.length !== request.target.members.length || new Set(rows.map(row => row.notificationId)).size !== rows.length) return mismatch(rows);
     if (new Set(reply.affectedTargets.map(target => target.family === "notification" ? target.notificationId : "")).size !== reply.affectedTargets.length) return mismatch(reply);
     for (const member of request.target.members) {

@@ -4,8 +4,10 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
+import { inboxProjection } from "../../../../src/dashboard/state/inbox-wiring-adapter.js";
 import { NotificationsPopover } from "../../../../src/dashboard/surfaces/notifications/notifications-popover.js";
 import type { NotificationItem, NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
+import { NotificationWireSchema } from "../../../../src/models/dashboard/projection.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -54,6 +56,26 @@ it("opens a row, toggles its read state from the row, and marks all read", async
   await act(async () => view.row(2).querySelector<HTMLButtonElement>('button[aria-label="Mark as unread"]')?.click());
   await act(async () => [...document.querySelectorAll("button")].find(button => button.textContent === "Mark all read")?.click());
   assert.deepEqual(view.calls, ["open:failed", "read:failed", "unread:read", "read-all"]);
+});
+
+it("shows history without a toggle or bell count even when it matches a native notice", async () => {
+  const now = "2026-08-03T17:00:00.000Z";
+  const localId = "00000000-0000-4000-8000-000000000101";
+  const base = { kind: "notification", trigger: "failed", notificationId: localId, actorId: "local-operator",
+    channel: "ping", count: 1, publicationId: "a".repeat(64), severity: "error", title: "Run failed",
+    context: { state: "available", workflow: "Person Lookup", subject: "Fixture" }, revision: 1,
+    link: { kind: "run", runId: "00000000-0000-4000-8000-000000000102" } };
+  const local = NotificationWireSchema.parse({ ...base, state: "unread", readState: "unread", occurredAt: "2026-08-03T16:00:00.000Z" });
+  const archivedId = "00000000-0000-4000-8000-000000000103";
+  const archived = NotificationWireSchema.parse({ ...base, notificationId: archivedId, state: "read", readState: "read",
+    occurredAt: now, readOnlyHistory: true });
+  const view = await draw(inboxProjection([archived, local], now).state);
+  assert(view.host.querySelector('button[aria-label="Notifications, 1 unread"]'));
+  assert.deepEqual(view.groups(), [["Needs you", 1], ["Today", 1]]);
+  assert.equal(view.row(1).querySelector(".notice-action"), null);
+  await act(async () => view.row(1).querySelector<HTMLButtonElement>("button.notice-main")?.click());
+  await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Mark as read"]')?.click());
+  assert.deepEqual(view.calls, [`open:${archivedId}`, `read:${localId}`]);
 });
 
 it("says a deleted run was deleted on its own row, which opens nothing and has no Dismiss", async () => {

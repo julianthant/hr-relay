@@ -562,9 +562,12 @@ export function notificationWireOf(
   nowMs: number,
   context?: NotificationDisplayContext,
   sourceEvent?: z.infer<typeof NotificationSourceEventWireSchema>,
+  readOnlyHistory?: true,
 ): z.infer<typeof NotificationWireSchema> {
+  const history = readOnlyHistory === true ? { readOnlyHistory } : {};
   if (record.trigger === "backfill-gap") {
     return NotificationWireSchema.parse({
+      ...history,
       kind: "backfill-gap",
       notificationId: record.notificationId,
       actorId: record.actorId,
@@ -578,13 +581,15 @@ export function notificationWireOf(
       sourceEvent: sourceEvent ?? { state: "unavailable" },
     });
   }
+  const readState = readOnlyHistory === true ? "read" : record.status;
+  const snoozed = readOnlyHistory !== true && record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
   if (record.trigger === "command") {
-    const snoozed = record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
     const link = record.links[0];
     if (link?.kind !== "recovery" && link?.kind !== "command-result" && link?.kind !== "bulk-result") {
       throw new Error("command notice requires a command link");
     }
     return NotificationWireSchema.parse({
+      ...history,
       kind: "command",
       notificationId: record.notificationId,
       actorId: record.actorId,
@@ -594,14 +599,14 @@ export function notificationWireOf(
       severity: link.kind === "recovery" ? "error" : "warning",
       title: record.title,
       summary: record.summary,
-      readState: record.status,
-      state: snoozed ? "snoozed" : record.status,
+      readState,
+      state: snoozed ? "snoozed" : readState,
       ...(snoozed && record.snooze.state === "snoozed" ? { snoozedUntil: record.snooze.until } : {}),
       occurredAt: record.lastSeenAt,
       revision: record.version,
       context: context ?? { state: "unavailable" },
       sourceEvent: sourceEvent ?? { state: "unavailable" },
-      priority: record.status === "unread" && !snoozed,
+      priority: readState === "unread" && !snoozed,
       link,
     });
   }
@@ -610,9 +615,9 @@ export function notificationWireOf(
     : record.trigger === "verified-done"
       ? "info"
       : "warning";
-  const snoozed = record.snooze.state === "snoozed" && Date.parse(record.snooze.until) > nowMs;
   const link = record.links[0];
   return NotificationWireSchema.parse({
+    ...history,
     kind: "notification",
     notificationId: record.notificationId,
     actorId: record.actorId,
@@ -622,9 +627,9 @@ export function notificationWireOf(
     channel: record.channel,
     count: record.count,
     trigger: record.trigger,
-    readState: record.status,
+    readState,
     publicationId: sha256Hex(`notification-publication:${record.notificationId}:${String(record.count)}:${record.lastSeenAt}`),
-    state: snoozed ? "snoozed" : record.status,
+    state: snoozed ? "snoozed" : readState,
     ...(snoozed && record.snooze.state === "snoozed" ? { snoozedUntil: record.snooze.until } : {}),
     occurredAt: record.lastSeenAt,
     revision: record.version,
@@ -678,6 +683,7 @@ const StorageNotificationGroupSchema = z.strictObject({
 const StandardNotificationWireSchema = z.strictObject({
   group: StorageNotificationGroupSchema.optional(),
   kind: z.literal("notification"),
+  readOnlyHistory: z.literal(true).optional(),
   channel: z.enum(["ping", "inbox"]),
   count: PositiveIntSchema,
   publicationId: FingerprintSchema,
@@ -700,6 +706,7 @@ const StandardNotificationWireSchema = z.strictObject({
 /** A stored command notice: Priority while unread and not snoozed; recovery is an error, a refused command or incomplete batch a warning. */
 const CommandNotificationWireSchema = z.strictObject({
   kind: z.literal("command"),
+  readOnlyHistory: z.literal(true).optional(),
   channel: z.literal("ping"),
   count: PositiveIntSchema,
   publicationId: FingerprintSchema,
@@ -725,6 +732,7 @@ const CommandNotificationWireSchema = z.strictObject({
 
 const BackfillGapNotificationWireSchema = z.strictObject({
   kind: z.literal("backfill-gap"),
+  readOnlyHistory: z.literal(true).optional(),
   channel: z.literal("ping"),
   count: z.literal(1),
   publicationId: FingerprintSchema,
