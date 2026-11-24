@@ -57,7 +57,7 @@ export type NotificationsShow = "all" | "unread";
 const SHOW_OPTIONS = [{ value: "all", label: "All" }, { value: "unread", label: "Unread" }] as const;
 
 /** The bell and the surface it opens: a popover anchored to the bell, over the page, with its own scroll. Unread failures and waits
- * sit under Needs you; everything else falls into its day. */
+ * sit under Needs you; everything else falls into its day. It is modal, so Tab stays inside it until it closes. */
 export function NotificationsPopover({ state, open, onOpenChange, show, onShow, onReadAll, ...handlers }: RowHandlers & {
   state: NotificationsState; open: boolean; onOpenChange: (open: boolean) => void; show: NotificationsShow; onShow: (show: NotificationsShow) => void; onReadAll: () => void;
 }) {
@@ -68,7 +68,7 @@ export function NotificationsPopover({ state, open, onOpenChange, show, onShow, 
   const rest = items.filter(item => !needsYou.includes(item));
   const days = [...new Set(rest.map(itemDay))];
   const label = state.state === "loading" ? "Notifications loading" : state.state === "unavailable" ? "Notifications unavailable" : `Notifications, ${unread} unread`;
-  return <Popover open={open} onOpenChange={onOpenChange}>
+  return <Popover modal open={open} onOpenChange={onOpenChange}>
     <Tooltip side="bottom" content="Notifications" {...(open ? { open: false as const } : {})}><PopoverTrigger asChild>
       <IconButton variant="ghost" size="sm" className="notice-bell" label={label} title=""
         icon={<><Bell aria-hidden className="size-4" />{unread > 0 && <span aria-hidden className="notice-bell-count">{unread > 99 ? "99+" : unread}</span>}</>} />

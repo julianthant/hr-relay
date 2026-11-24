@@ -126,10 +126,10 @@ describe("dashboard presentation freeze", () => {
     assert.equal(frozenPresentationFiles.length, 151);
 
     const actual = discoverDashboardPresentationFiles(REPO_ROOT);
-    assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 123);
+    assert.equal(actual.filter((file) => file.endsWith(".tsx")).length, 124);
     assert.equal(
       actual.filter((file) => STYLESHEET_EXTENSIONS.has(extname(file).toLowerCase())).length,
-      24,
+      25,
     );
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.ts"));
     assert.ok(actual.includes("src/dashboard/ds/theme/tokens.css"));
