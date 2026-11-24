@@ -213,11 +213,9 @@ const BREAK_SETS = {
   FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
 } as const;
 
-/** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories) or the "Workflow configuration" title and group (the credentials and account-action stories). The overlap is real, so these stay recorded. */
+/** Measured at both widths with the app's Sessions-bar inset on the frame: the bottom-centre toast still covers the "Runs" toolbar (the save, restart and notice stories), or a title or group of the page (the credentials and Duo stories). The overlap is real, so these stay recorded. */
 const TOAST_STORIES: ReadonlySet<string> = new Set([
-  "settings/action/name-not-saved",
-  "settings/action/password-changed",
-  "settings/action/password-not-confirmed",
+  "settings/action/duo-not-opened",
   "settings/credentials/unknown",
   "settings/notice/restart-required",
   "settings/notice/setting-unavailable",

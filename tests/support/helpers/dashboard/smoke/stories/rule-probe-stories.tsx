@@ -39,7 +39,7 @@ function ToastOverSessions() {
   </>;
 }
 
-/** The Sessions bar collapsed, with a centred toast that clears it but sits 3rem under its floor. */
+/** The Sessions bar collapsed, with a centred toast that clears it by 8px but sits under the configured inset. */
 function ToastUnderFloor() {
   const { toast } = useToasts();
   useEffect(() => {
@@ -47,7 +47,7 @@ function ToastUnderFloor() {
     return () => { window.clearTimeout(timer); };
   }, [toast]);
   return <>
-    <style>{'[data-slot="toast-viewport"] { bottom: calc(var(--ds-toast-inset-bottom) - 3rem) !important; }'}</style>
+    <style>{'[data-slot="toast-viewport"] { bottom: calc(var(--session-dock-h) + 1.25rem) !important; }'}</style>
     <SessionsView data={{ state: "ready", workers: [] }} open={false} onOpenChange={() => undefined} onControl={() => undefined} onAdd={() => undefined} workflows={[]} />
   </>;
 }
@@ -194,7 +194,7 @@ export const RULE_PROBES = {
   },
   "toast-under-floor": {
     story: { title: "A centred toast clear of the Sessions bar, under its floor", ready: "[data-ds-toast-state]", render: () => <StoryFrame><ToastUnderFloor /></StoryFrame> },
-    finds: { "toast-placement": [/the toast viewport sits 56px .* its floor is 104px/u, /the front toast sits 56px .* its floor is 104px/u, /^(?![\s\S]*(?:horizontal centre|overlaps))/u] },
+    finds: { "toast-placement": [/the toast viewport sits 66px .* its floor is 104px/u, /the front toast sits 66px .* its floor is 104px/u, /^(?![\s\S]*(?:horizontal centre|overlaps))/u] },
   },
   "picker-beside-a-request": {
     story: {
