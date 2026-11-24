@@ -11,8 +11,9 @@ import { notificationWireOf, NotificationWireSchema, type NotificationWire } fro
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
 import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
-import { CommandIdSchema } from "../../../src/rules/identity/ids.js";
-import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../src/models/dashboard/subscription.js";
+import { ActorIdSchema, CommandIdSchema } from "../../../src/rules/identity/ids.js";
+import { NotificationPublicationWireSchema, type NotificationArrival } from "../../../src/models/dashboard/subscription.js";
+import type { NotificationTarget } from "../../../src/models/notifications/notification-target.js";
 import { NotificationCommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
@@ -37,24 +38,30 @@ function commandRow(sourceKind: "command-refused" | "command-unknown" | "bulk-in
   return NotificationWireSchema.parse({ kind: "command", notificationId: id, actorId: "local-operator", channel: "ping", count: 1, publicationId: "c".repeat(64), severity: sourceKind === "command-unknown" ? "error" : "warning", title: "Command notice", summary: "Served summary.", state: "unread", readState: "unread", revision: 1, occurredAt: now, priority: true,
     context: { state: "available", subject: "Exact subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: sourceKind }, link, ...overrides });
 }
-function publication(notification: NotificationWire, n = 1) { return NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }); }
-async function harness(enabled = true, initiallyFailed = false) {
+/** What the server resolves for a row's link, as `GET /notifications/{id}/target` would. */
+function targetOf(notification: NotificationWire, refused = false): NotificationTarget {
+  if (refused || notification.kind !== "notification" || notification.link === undefined) return { kind: "refused", reason: "run-unavailable" };
+  return NotificationTargetSchema.parse(notification.link.kind === "storage" ? { kind: "storage" } : { ...notification.link, day: "2026-08-03" });
+}
+function publication(notification: NotificationWire, n = 1, listed: NotificationWire = notification, target: NotificationTarget = targetOf(notification)): NotificationArrival {
+  return { publication: NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }), listed, target };
+}
+const ERROR = { state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true } as const;
+async function harness(enabled = true, initiallyFailed = false, statusDelivered = true) {
   let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false;
-  let snapshotWait: Promise<void> | undefined, postWait: Promise<void> | undefined, failReads = initiallyFailed;
+  let postWait: Promise<void> | undefined;
   const requests: string[] = [];
-  const commands: CommandRequest[] = [], listeners: ((publication: NotificationPublicationWire) => void)[] = [];
+  const commands: CommandRequest[] = [], listeners: ((arrival: NotificationArrival) => void)[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname; requests.push(path);
     if (path.endsWith("/target")) {
       const linked = rows.find(row => row.notificationId === path.split("/").at(-2));
-      if (refuseTarget || linked?.kind !== "notification" || linked.link === undefined) return Response.json({ kind: "refused", reason: "run-unavailable" });
-      return Response.json(linked.link.kind === "storage" ? { kind: "storage" } : { ...linked.link, day: "2026-08-03" });
+      return Response.json(linked === undefined ? { kind: "refused", reason: "run-unavailable" } : targetOf(linked, refuseTarget));
     }
     if (path.endsWith("/collection")) return Response.json({ actorId: "local-operator",
       members: [...rows].sort((a, b) => a.notificationId < b.notificationId ? -1 : 1).map(row => ({ notificationId: row.notificationId, expectedVersion: row.kind === "notification" ? row.revision : 1 })),
       matchingCount: rows.filter(row => row.kind === "notification" && row.readState === "unread").length });
-    if (path.endsWith("/status")) return Response.json({ state: "ready", pending: 0 });
-    if (path.endsWith("/notifications")) { await snapshotWait; if (failReads) throw new Error("inbox read failed"); return Response.json(rows); }
+    if (path.endsWith("/notifications")) return Response.json(rows);
     if (path.endsWith("/commands")) {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command);
@@ -71,20 +78,28 @@ async function harness(enabled = true, initiallyFailed = false) {
     throw new Error(`unexpected ${path}`);
   } });
   const epoch = { client, bootstrap: FIXTURE_BOOTSTRAP }, dayRequest = {};
+  // The day the stream holds carries the inbox rows; the status row arrives on the same stream.
+  const store = createRowStore();
+  const status = (value: { state: "available"; value: { state: "ready" | "failed"; code?: "NOTIFICATION_OBSERVATION_FAILED"; pending: number } } | { state: "unavailable"; error: typeof ERROR }) =>
+    act(async () => { store.apply([{ model: "notification-status", key: ActorIdSchema.parse("local-operator"), value }]); });
+  if (enabled && statusDelivered) await status(initiallyFailed ? { state: "unavailable", error: ERROR } : { state: "available", value: { state: "ready", pending: 0 } });
+  let dayServed = rows, dayRows = dayServed, refreshes = 0;
+  let day = { state: "loaded" as const, value: { ...FIXTURE_DAY_WIRE, notifications: [...dayRows] } };
   const scope = { client, authority: epoch, actorId: "local-operator", dayRequest };
   let activeScope: CommandExecutionScope = scope;
   const executor = new CommandExecutor(() => activeScope);
   const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, now: () => now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
-    dayState: { rows: createRowStore(), request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "live" }, refresh() {}, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
+    dayState: { rows: store, request: dayRequest, get day() { if (dayRows !== dayServed) { dayRows = dayServed; day = { state: "loaded", value: { ...FIXTURE_DAY_WIRE, notifications: [...dayServed] } }; } return day; },
+      connection: { state: "live" }, refresh() { refreshes += 1; }, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
   function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding }); return null; }
   root = createRoot(document.createElement("div"));
   const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   await render();
-  return { client, binding, requests, commands, listeners, render, get value() { assert(value); return value; }, setRows: (next: readonly NotificationWire[]) => { rows = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
-    holdReads: () => { let release = () => {}; snapshotWait = new Promise<void>(resolve => { release = resolve; }); return release; },
-    holdCommands: () => { let release = () => {}; postWait = new Promise<void>(resolve => { release = resolve; }); return release; },
-    failReads: () => { failReads = true; } };
+  return { client, binding, requests, commands, listeners, render, status, get refreshes() { return refreshes; }, get value() { assert(value); return value; },
+    /** The rows the server serves, and the day the stream next delivers. */
+    setRows: (next: readonly NotificationWire[]) => { rows = next; dayServed = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
+    holdCommands: () => { let release = () => {}; postWait = new Promise<void>(resolve => { release = resolve; }); return release; } };
 }
 it("defines all eight source policies with exact target kinds and honest gap/missing-source notice", () => {
   const kinds = ["run-failed", "subject-mismatch", "gate-opened", "write-parked", "repeating-failure", "storage-degraded", "verified-done", "backfill-gap"];
@@ -183,11 +198,11 @@ it("refuses a stale target without marking it read", async () => {
   await act(async () => { h.value.open(item, (target, _opened, reject) => { if (target.kind === "refused") reject("Exact refusal"); }, () => assert.fail("must not open"), message => { refused = message; }); await new Promise(resolve => setTimeout(resolve, 0)); });
   assert.equal(refused, "Exact refusal"); assert.equal(h.commands.length, 0);
 });
-it("checks the target of a published notice that has no source policy and says so when it is refused", async () => {
+it("checks the carried target of a published notice that has no source policy and says so when it is refused", async () => {
   const h = await harness(); const bare = row("run-failed", { title: "Run failed", context: { state: "unavailable" }, sourceEvent: { state: "unavailable" } });
-  assert.equal(notificationPolicy(bare), undefined); h.setRows([bare]); h.refuseTarget();
-  await act(async () => { h.listeners[0](publication(bare)); await new Promise(resolve => setTimeout(resolve, 0)); });
-  assert(h.requests.some(path => path.endsWith("/target")));
+  assert.equal(notificationPolicy(bare), undefined);
+  await act(async () => { h.listeners[0](publication(bare, 1, bare, targetOf(bare, true))); await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert.deepEqual(h.requests, [], "the target rides the publication");
   assert.match(h.value.notice, /This notification’s target is gone\. Refresh the inbox\./u);
 });
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
@@ -221,36 +236,99 @@ it("read-all binds the complete inbox in one command and preserves the pinned ba
   assert.match(h.value.notice, /history is incomplete/);
 });
 
-it("retains loaded rows when a refresh fails and isolates actions while pending or failed", async () => {
-  const h = await harness();
-  const loaded = h.value.state; assert.equal(loaded.state, "ready");
-  const release = h.holdReads();
-  await act(async () => h.listeners[0](publication(row("storage-degraded", { state: "snoozed", snoozedUntil: "2026-08-03T18:00:00Z" }))));
-  assert.deepEqual(h.value.state, loaded);
-  const requestCount = h.requests.length;
-  const item = loaded.state === "ready" ? loaded.items[0] : undefined; assert(item);
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+const firstItem = (wiring: InboxWiring) => { assert(wiring.state.state === "ready"); const item = wiring.state.items[0]; assert(item); return item; };
+
+it("shows a first status that could not be read with the day's rows, controls off, and recovers when the retry delivers it", async () => {
+  const h = await harness(true, true);
+  assert.equal(h.value.state.state, "ready", "the rows come from the day, not the failed read");
+  assert.match(h.value.notice, /could not load/);
   let opened = false;
-  let action: Promise<boolean> | undefined;
   await act(async () => {
-    action = h.value.control(id, "read");
-    h.value.open(item, () => { opened = true; }, () => {}, () => {});
+    assert.equal(await h.value.control(id, "read"), false);
+    await h.value.readAll();
+    h.value.open(firstItem(h.value), () => { opened = true; }, () => {}, () => {});
+    await tick();
   });
-  try { assert.equal(h.commands.length, 0); assert.equal(h.requests.length, requestCount); assert.equal(opened, false); }
-  catch (error) { release(); throw error; }
-  assert.equal(await action, false);
-  assert(h.value.notice.length > 0);
-  h.failReads(); await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 0)); });
-  assert.deepEqual(h.value.state, loaded); assert.match(h.value.notice, /could not load/);
-  await act(async () => { assert.equal(await h.value.control(id, "read"), false); });
-  assert.equal(h.commands.length, 0);
+  assert.equal(h.commands.length, 0); assert.equal(opened, false); assert.deepEqual(h.requests, []);
+
+  await h.status({ state: "available", value: { state: "ready", pending: 0 } });
+
+  assert.doesNotMatch(h.value.notice, /could not load/);
+  await act(async () => { assert(await h.value.control(id, "read")); });
+  assert.deepEqual(h.commands.map(command => command.type), ["notification-read"]);
 });
 
-it("keeps an initial inbox read failure unavailable", async () => {
-  const h = await harness(true, true);
-  assert.equal(h.value.state.state, "unavailable");
+it("keeps the rows display-only when a status update cannot be read, then takes the retried status", async () => {
+  const h = await harness();
+  const loaded = h.value.state;
+  await h.status({ state: "unavailable", error: ERROR });
+  assert.deepEqual(h.value.state, loaded);
   assert.match(h.value.notice, /could not load/);
-  assert.equal(await h.value.control(id, "read"), false);
+  await act(async () => { assert.equal(await h.value.control(id, "read"), false); });
+  assert.equal(h.commands.length, 0);
+
+  await h.status({ state: "available", value: { state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 } });
+
+  assert.doesNotMatch(h.value.notice, /could not load/);
+  assert(h.value.notice.length > 0, "the observer's own failure is still shown");
+  await act(async () => { assert(await h.value.control(id, "read")); });
+  assert.equal(h.commands.length, 1);
 });
+
+it("shows the rows as pending with controls off until the stream delivers the status", async () => {
+  const h = await harness(true, false, false);
+  assert.equal(h.value.state.state, "ready");
+  assert.match(h.value.notice, /Refreshing notifications/u);
+  await act(async () => { assert.equal(await h.value.control(id, "read"), false); });
+  await h.status({ state: "available", value: { state: "ready", pending: 0 } });
+  assert.equal(h.value.notice, "");
+  await act(async () => { assert(await h.value.control(id, "read")); });
+});
+
+it("adds a published row and raises its arrival with no inbox request", async () => {
+  const h = await harness();
+  const completed = row("verified-done", { notificationId: "00000000-0000-4000-8000-000000000119" });
+  const arrivals: string[] = [];
+  h.value.onPublication(arrival => arrivals.push(arrival.item.id));
+  await act(async () => { h.listeners[0](publication(completed)); await tick(); });
+  assert.deepEqual(h.requests, [], "the row, the status and the target all come from the stream");
+  assert.deepEqual(arrivals, [completed.notificationId]);
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(item => item.id).sort(), [id, completed.notificationId].sort());
+  assert.equal(h.value.notice, "");
+  await act(async () => { h.listeners[0](publication(completed)); await tick(); });
+  assert.deepEqual(arrivals, [completed.notificationId], "a source seen twice is admitted once");
+});
+
+it("replaces a held row by a listed row at or above its revision and keeps a newer held row", async () => {
+  const h = await harness();
+  const newer = row("storage-degraded", { revision: 3, readState: "read", state: "read" });
+  await act(async () => { h.listeners[0](publication(newer, 1)); await tick(); });
+  assert.equal(firstItem(h.value).read, true);
+  await act(async () => { h.listeners[0](publication(row("storage-degraded", { revision: 2 }), 2)); await tick(); });
+  assert.equal(firstItem(h.value).read, true, "an older listed row does not replace the held one");
+});
+
+it("keeps a storage group as one row with its count when a member is published", async () => {
+  const a = "00000000-0000-4000-8000-0000000000d1", b = "00000000-0000-4000-8000-0000000000d2", c = "00000000-0000-4000-8000-0000000000d3";
+  const storage = { context: { state: "storage", concern: "backup" } };
+  const group = (members: readonly (readonly [string, number])[], count: number) => row("storage-degraded", { ...storage, notificationId: members[0][0], revision: members[0][1], count,
+    group: { concern: "backup", members: members.map(([notificationId, revision]) => ({ notificationId, revision })) } });
+  const h = await harness();
+  h.setRows([group([[a, 1], [b, 1]], 2)]);
+  await h.render();
+  const member = row("storage-degraded", { ...storage, notificationId: c, revision: 1 });
+  await act(async () => { h.listeners[0](publication(member, 1, group([[c, 1], [a, 1], [b, 1]], 3))); await tick(); });
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(item => [item.id, item.count]), [[c, 3]]);
+  const folded = row("storage-degraded", { ...storage, notificationId: a, revision: 2, count: 2 });
+  await act(async () => { h.listeners[0](publication(folded, 2, group([[c, 1], [a, 2], [b, 1]], 4))); await tick(); });
+  assert(h.value.state.state === "ready");
+  assert.deepEqual(h.value.state.items.map(item => [item.id, item.count]), [[c, 4]], "a member's fold replaces the group, never adds a row beside it");
+  assert.deepEqual(h.requests, []);
+});
+
 for (const replacement of ["actor", "client", "authority"] as const) it(`does not reconcile an old command into a replacement ${replacement}`, async () => {
   const h = await harness(), release = h.holdCommands();
   let result: Promise<boolean> | undefined;

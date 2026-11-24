@@ -7,7 +7,7 @@ import {
   DashboardStreamEnvelopeSchema,
   StreamRowSchema,
   type DashboardStreamEnvelope,
-  type NotificationPublicationWire,
+  type NotificationArrival,
   type StreamRow,
 } from "../../../models/dashboard/subscription.js";
 import { RunIdSchema } from "../../../rules/identity/ids.js";
@@ -51,7 +51,8 @@ export interface DashboardDaySubscriptionDeps {
   readonly run?: string;
   /** Where the stream's rows are held. */
   readonly rows?: RowStoreWriter;
-  readonly publications?: Readonly<{ actorId: string; onPublication: (publication: NotificationPublicationWire) => void }>;
+  /** Each publication once by `sourceId`, with the target the server resolved for it. */
+  readonly publications?: Readonly<{ actorId: string; onPublication: (arrival: NotificationArrival) => void }>;
   /** Injectable reconnect timer; defaults to setTimeout. */
   readonly schedule?: (delayMs: number, run: () => void) => () => void;
   readonly reconnectDelayMs?: number;
@@ -293,9 +294,10 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
       stop(protocolError("notification-publication-actor-mismatch"));
       return;
     }
+    // A publication has no `after` and never moves the held cursor; a replay of one already admitted is dropped here.
     if (published.has(envelope.publication.sourceId)) return;
     published.add(envelope.publication.sourceId);
-    deps.publications.onPublication(envelope.publication);
+    deps.publications.onPublication({ publication: envelope.publication, listed: envelope.listed, target: envelope.target });
   }
 
   function applySnapshot(envelope: EnvelopeOf<"snapshot">): void {

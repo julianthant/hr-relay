@@ -1,7 +1,7 @@
 /** The selected day's server state, and nothing else.
  * One subscription per day (ref frontend-backend-integration: one global stream, not a connection */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
+import type { NotificationArrival } from "../../models/dashboard/subscription.js";
 import type { DashboardDayWire } from "../../models/dashboard/projection.js";
 import { createRowStore, type RowStore, type SubscriptionState } from "../client/index.js";
 import { protocolError } from "../client/errors.js";
@@ -16,7 +16,7 @@ export interface DashboardDayState {
   readonly connection: SubscriptionState;
   /** The whole read-model values the stream carries for the open run. */
   readonly rows: RowStore;
-  readonly subscribePublications: (listener: (publication: NotificationPublicationWire) => void) => () => void;
+  readonly subscribePublications: (listener: (arrival: NotificationArrival) => void) => () => void;
   readonly refresh: () => void;
 }
 
@@ -38,11 +38,11 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
   // A new object per request, including A → B → A; the render guard runs before effects. The kept frame is
   // read here, during render, so the frame that switches the day already shows that day's kept copy.
   const request = useMemo(() => {
-    const listeners = new Set<(publication: NotificationPublicationWire) => void>();
+    const listeners = new Set<(arrival: NotificationArrival) => void>();
     const kept = day === undefined ? undefined : keptDays.get(client, [authorityEpoch, actorId], day);
     return { rows: createRowStore(), client, day, revision, authorityEpoch, actorId, kept,
-      subscribePublications: (listener: (publication: NotificationPublicationWire) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-      publishPublication: (publication: NotificationPublicationWire) => { for (const listener of listeners) listener(publication); },
+      subscribePublications: (listener: (arrival: NotificationArrival) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+      publishPublication: (arrival: NotificationArrival) => { for (const listener of listeners) listener(arrival); },
     };
   }, [client, day, revision, authorityEpoch, actorId]);
   const activeRequest = useRef(request);
@@ -68,9 +68,9 @@ export function useDashboardDay(day: string | undefined, nowIso?: string, author
     // Subscribe once the mount has settled: a mount cancelled in the same tick opens no stream.
     queueMicrotask(() => { if (!active) return; subscription = subscriptionRef.current = client.subscribeDay({
       day, rows, ...(selectedRun.current === undefined ? {} : { run: selectedRun.current }),
-      ...(actorId === undefined ? {} : { publications: { actorId, onPublication: (publication: NotificationPublicationWire) => {
+      ...(actorId === undefined ? {} : { publications: { actorId, onPublication: (arrival: NotificationArrival) => {
         if (!active || activeRequest.current !== request) return;
-        request.publishPublication(publication);
+        request.publishPublication(arrival);
       } } }),
       onDay: (next, cursor = next.snapshotCursor) => {
         if (!active) return;

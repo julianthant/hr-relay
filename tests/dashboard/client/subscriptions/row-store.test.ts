@@ -29,3 +29,28 @@ describe("row store delivery", () => {
     assert.ok(held && !rows.deliveredBehindRow(held));
   });
 });
+
+describe("row store notification status", () => {
+  const ready = { state: "ready", pending: 0 } as const;
+  const failed = { state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 } as const;
+  const error = { state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true } as const;
+  const statusRow = (value: Extract<StreamRow, { model: "notification-status" }>["value"]): StreamRow => ({ model: "notification-status", key: "local-operator", value } as StreamRow);
+
+  it("holds the delivered status whatever run is open, and keeps a good one when a read fails", () => {
+    const rows = createRowStore();
+    assert.equal(rows.notificationStatus(), undefined);
+    let notified = 0;
+    rows.subscribe(() => { notified += 1; });
+    rows.apply([statusRow({ state: "unavailable", error })]);
+    assert.deepEqual(rows.notificationStatus(), { unavailable: true }, "a first status that failed holds nothing to show");
+    rows.apply([statusRow({ state: "available", value: ready })]);
+    assert.deepEqual(rows.notificationStatus(), { status: ready, unavailable: false });
+    rows.apply([statusRow({ state: "unavailable", error })]);
+    assert.deepEqual(rows.notificationStatus(), { status: ready, unavailable: true }, "the good status stays, marked unavailable");
+    rows.apply([statusRow({ state: "available", value: failed })]);
+    assert.deepEqual(rows.notificationStatus(), { status: failed, unavailable: false });
+    assert.equal(notified, 4);
+    rows.reset();
+    assert.equal(rows.notificationStatus(), undefined, "a reset drops it with the panels");
+  });
+});
