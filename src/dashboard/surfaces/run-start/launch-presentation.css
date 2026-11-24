@@ -40,7 +40,7 @@
 }
 .launch-design .launch-stage-marker[data-current] { @apply border-transparent bg-ui-info text-ui-canvas; }
 .launch-design .launch-stage-marker[data-completed] { @apply text-ui-positive; }
-.launch-design .launch-content { @apply flex flex-col gap-3 px-5 py-5; }
+.launch-design .launch-content { @apply flex flex-col gap-3; }
 .launch-dialog .launch-content > section { @apply gap-1; }
 .launch-dialog .launch-content > section > h3 { @apply m-0 text-control font-medium; }
 .launch-dialog .launch-content [data-slot="input"] { @apply bg-ui-field; }
