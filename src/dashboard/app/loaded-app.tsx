@@ -209,13 +209,14 @@ export function LoadedApp({
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
-  // A run whose Logs the harness preview draws reads no panel. The run is looked up in the day on screen a moment ago, or the kept
-  // frame. A run whose row is not known yet asks for no panel; the stream takes it once the day names the run.
+  // A run whose Logs the harness preview draws reads no panel; every other selected run rides the day's first connection, so a
+  // cold link opens one stream. The preview covers every row with `logsChildRows`, else top-level rows only: there the row is
+  // looked up in the day on screen a moment ago, or the kept frame, and an unknown one waits for the day to name it.
   const knownRows = useRef<readonly QueueSurfaceWire[] | undefined>(undefined);
+  const logPreview = workflowComposition.harness?.LogPreview === undefined ? "none" : workflowComposition.harness.logsChildRows === true ? "all" : "top-level";
   const priorRows = knownRows.current ?? (dayRequested === undefined ? undefined : keptDayFrame(client, authorityEpoch, boot.actor.id, dayRequested)?.queueSurfaces);
-  const panelRow = route.run === undefined ? undefined : priorRows?.find(row => row.runId === route.run);
-  const previewed = panelRow !== undefined && workflowComposition.harness?.LogPreview !== undefined && (panelRow.parent === null || workflowComposition.harness.logsChildRows === true);
-  const panelRun = panelRow === undefined || previewed ? undefined : route.run;
+  const panelRow = route.run === undefined || logPreview !== "top-level" ? undefined : priorRows?.find(row => row.runId === route.run);
+  const panelRun = logPreview === "none" || panelRow !== undefined && panelRow.parent !== null ? route.run : undefined;
   const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, panelRun);
   const dayResource = dayState.day;
   snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications

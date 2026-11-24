@@ -251,6 +251,25 @@ test("opening a run: one stream request and no run reads", async ({ dashboard, p
   expect(seen).toEqual([STREAM]);
 });
 
+test("a cold link to a run: one stream request, opened with that run", async ({ dashboard, page, seeded }) => {
+  const runId = seeded.runIds.runningRun ?? "";
+  const seen = watchRequests(page);
+  const streams: string[] = [];
+  page.on("request", request => { const url = new URL(request.url()); if (url.pathname === "/events/v1") streams.push(url.searchParams.get("topics") ?? ""); });
+  const url = new URL("/", seeded.baseUrl);
+  url.searchParams.set("day", SEEDED_DAY);
+  url.searchParams.set("run", runId);
+  url.searchParams.set("section", "logs");
+
+  await page.goto(url.toString());
+  await dashboard.expectRunOpen(runId);
+  await expect(dashboard.runPanel.getByRole("region", { name: "Run logs" })).toBeVisible();
+  await quiet(page, seen);
+
+  expect(streams, "the first connection carries the run topic and nothing reopens it").toEqual([`dashboard-day:${SEEDED_DAY},run:${runId}`]);
+  expect(seen.filter(request => /\/runs\//u.test(request)), "the panel comes from the stream, not a run read").toEqual([]);
+});
+
 test("a note-only commit reaches the open panel with no request", async ({ dashboard, page, seeded }) => {
   const runId = seeded.runIds.runningRun ?? "";
   const seen = watchRequests(page);

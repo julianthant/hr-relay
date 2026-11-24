@@ -156,3 +156,28 @@ for (const catchesUp of [false, true]) it(`retains stale Logs while the streamed
   assert.equal(approve.disabled, !catchesUp);
   assert.equal(sent.length, 0);
 });
+
+it('opens the first day stream of a cold run link with that run and selects nothing after the day arrives', async () => {
+  const run = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === FIXTURE_IDS.openGateRun);
+  assert(run);
+  const { app } = createFixtureBff();
+  const transport = createDashboardClient({ baseUrl: 'http://fixture.test', fetchImpl: async (url, init) => app.request(url, init) });
+  const opened: (string | undefined)[] = [];
+  const selected: (string | undefined)[] = [];
+  const client: DashboardClient = { ...transport,
+    subscribeDay: input => {
+      opened.push(input.run);
+      // The day arrives after the stream is open: the page knows no row of it when it connects.
+      setTimeout(() => { input.onDay(FIXTURE_DAY_WIRE); input.onState({ state: 'live' }); }, 5);
+      const stream = streamingRunPanel(input, client);
+      return { select: next => { selected.push(next); stream.select(next); }, close: () => stream.close() };
+    } };
+  window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE.day}&run=${run.runId}&section=logs`);
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: servedLogsComposition }) })));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+  const text = host.querySelector('.dashboard-log-column')?.textContent ?? '';
+  assert.ok(text.includes('identity-review gate opened for candidate selection'), text);
+  assert.deepEqual(opened, [run.runId], 'one stream, opened with the linked run');
+  assert.deepEqual(selected.filter(next => next !== run.runId), [], 'the day naming the run changes no topic');
+});
