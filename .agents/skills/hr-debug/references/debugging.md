@@ -4,7 +4,7 @@
 > independent operator command.
 
 The general method is the global `diagnose` skill: red gate → minimise → hypothesise → instrument →
-fix → regression test → cleanup. Use `sup_sol` at high reasoning for a subtle seam only when the user
+fix → regression test → cleanup. Use `gpt-6.2-sol` at high reasoning for a subtle seam only when the user
 explicitly authorizes delegation. This skill adds the repo-specific evidence sources,
 failure classes, and forbidden first moves. Read the owning reference and nearest module `AGENTS.md`
 before forming a theory.
