@@ -9,7 +9,7 @@ import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
-import { notificationListProjection } from "./notification-list.js";
+import { notificationListProjection, type ServedNotificationRecord } from "./notification-list.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -47,7 +47,6 @@ import {
   type IsoInstant,
   type RunId,
 } from "../../../rules/identity/ids.js";
-import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import type { RunSummary, DelegationWaitState } from "../../../models/run/summary.js";
 import {
@@ -181,7 +180,7 @@ export interface RunQueueProjectionDeps {
     reviewAvailable?(runId: string): boolean;
     recordMembers?(run: RunRecord, children: readonly RunRecord[]): QueueRecordMembers | undefined;
     /** Durable inbox rows served by day. */
-    listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
+    listNotifications(actorId: string): readonly ServedNotificationRecord[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
     command?(commandId: string): CommandRequest | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
@@ -1644,7 +1643,7 @@ export class RunQueueProjection {
       if (typeof workerKey !== "string") return { wire };
       let validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
       for (const notice of notifications) {
-        if (notice.snooze.state !== "snoozed") continue;
+        if (notice.readOnlyHistory === true || notice.snooze.state !== "snoozed") continue;
         const until = Date.parse(notice.snooze.until);
         if (until > now) validUntil = Math.min(validUntil, until);
       }
