@@ -1,15 +1,17 @@
 /** Assistant surface stories: the ChatGPT account the panel needs, every turn it can be in, each proposal card and how it is settled,
- * the refusals it shows, and the history it opens on. The real panel runs on the real controller; a scripted client answers it.
+ * the refusals it shows, files attached to a message, the history it opens on, and the list of chats. The real panel runs on the real controller; a scripted client answers it.
  * The turn's `unknown` state is reached by cancelling a reply that has not answered. The turn's `cancelled` state and a proposal's `edited`
  * disposition come only from typing while a reply is pending, and the composer is disabled then, so no person reaches them. */
 import type { Page } from "@playwright/test";
 import type { ChatGptAccountSnapshot } from "../../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
-import type { AssistantTurn } from "../../../../../../src/dashboard/surfaces/assistant/assistant-model.js";
+import type { AssistantHistoryState, AssistantRefusalAction, AssistantTurn } from "../../../../../../src/dashboard/surfaces/assistant/assistant-model.js";
+import type { AssistantFileStage } from "../../../../../../src/dashboard/surfaces/shell/assistant-panel-model.js";
+import type { ChatListView } from "../../../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 import { ASSISTANT_FAILURES } from "../../../../../../src/models/dashboard/assistant.js";
-import { ASSISTANT_STORY_PROMPT, type AssistantProposalKind } from "../../../../fixtures/dashboard/assistant-story-fixtures.js";
+import { ASSISTANT_STORY_CHATS, ASSISTANT_STORY_PROMPT, type AssistantProposalKind } from "../../../../fixtures/dashboard/assistant-story-fixtures.js";
 import { withKnownBreaks } from "../known-breaks.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
-import { AssistantHost, CONNECTED, type AssistantHostProps } from "./assistant-story-host.js";
+import { AssistantHost, ChatListHost, CONNECTED, type AssistantHostProps } from "./assistant-story-host.js";
 
 const PANEL = '[aria-label="Relay assistant"]';
 function scene(title: string, props: AssistantHostProps = {}, story: Partial<Story> = {}): Story {
@@ -76,54 +78,91 @@ const DISPOSITION = {
 } satisfies Record<Exclude<Extract<AssistantTurn, { state: "proposal" }>["disposition"], "edited">, Story>;
 
 const REFUSAL = {
-  "plan-disabled": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, 'button:has-text("Open Settings")'),
-  "rate-limited": after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, 'button:has-text("Retry")'),
-} satisfies Record<string, Story>;
+  "open-settings": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, 'button:has-text("Open Settings")'),
+  retry: after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, 'button:has-text("Retry")'),
+} satisfies Record<AssistantRefusalAction, Story>;
 
 const HISTORY = {
   loading: scene("History being read", { loading: true }, { ready: '[aria-label="Loading chat"]', slowFetch: { region: '[aria-label="Loading chat"]' } }),
   failed: scene("History that could not be read", { historyNotice: ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE }, { ready: 'text="Couldn\'t load chat history."' }),
   notice: scene("A note about the saved chat", { historyNotice: ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED }, { ready: 'role=status' }),
-  empty: scene("A chat with nothing said yet", {}, { ready: 'text="How can I help?"' }),
-} satisfies Record<string, Story>;
+  ready: scene("A chat with nothing said yet", {}, { ready: 'text="How can I help?"' }),
+} satisfies Record<AssistantHistoryState, Story>;
+
+/** Hands the composer one file, as the Add files menu does. */
+const attach = (name: string, mediaType: string) => async (page: Page): Promise<void> => {
+  await page.locator('input[type="file"]').setInputFiles({ name, mimeType: mediaType, buffer: Buffer.from("story file") });
+};
+const attached = (title: string, file: Parameters<typeof attach>, ready: string, props: AssistantHostProps = {}): Story => scene(title, props, { play: attach(...file), ready });
+const ATTACHMENT = {
+  staged: attached("A file ready to send", ["notes.pdf", "application/pdf"], '.hub-attachment[data-stage="staged"]'),
+  failed: attached("A file the server would not take", ["notes.pdf", "application/pdf"], '.hub-attachment[data-stage="failed"]', { client: { stage: { refused: "ASSISTANT_ATTACHMENT_UNAVAILABLE" } } }),
+  spreadsheet: attached("A spreadsheet kept off the assistant", ["people.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"], '.hub-attachment[data-stage="spreadsheet"]'),
+  unsupported: attached("A file the assistant cannot read", ["notes.zip", "application/zip"], ".hub-composer-error"),
+} satisfies Record<AssistantFileStage["state"] | "unsupported", Story>;
+
+/** The shell's chat list, opened from the panel's History button; its read never answers, so the panel behind it is still loading. */
+const chatList = (title: string, chats: Parameters<typeof ChatListHost>[0]["chats"], ready: string, ...more: readonly ((page: Page) => Promise<void>)[]): Story =>
+  ({ title, render: () => <ChatListHost chats={chats} />, slowFetch: { region: "#hub-shell-assistant" }, play: then(press("History"), ...more), ready });
+const CHATS = {
+  listed: chatList("Saved chats in each group", ASSISTANT_STORY_CHATS, ".hub-chat-row"),
+  empty: chatList("No saved chats", [], 'text="No chats yet"'),
+  "no-match": chatList("A search that matches no chat", ASSISTANT_STORY_CHATS, 'text="No matching chats."', async page => { await page.getByLabel("Search chats").fill("zzzz"); }),
+} satisfies Record<ChatListView, Story>;
 
 const AUDIT_FIXES = "#532";
+const BREAK_SETS = {
+  /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
+  COMPOSER: ["no-dead-disabled-control", "primary-button-accent"],
+  /** COMPOSER, and the account strip's text runs past the panel's width. */
+  COMPOSER_OVERFLOW: ["fits-viewport", "no-dead-disabled-control", "primary-button-accent"],
+  /** COMPOSER, and a control in the open panel (the message box, or a button in the transcript) shows no visible focus ring. */
+  COMPOSER_FOCUS: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
+  /** COMPOSER_FOCUS, and the history skeleton is drawn from the loading flag while no read is held. */
+  COMPOSER_FOCUS_SKELETON: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent", "skeleton-only-while-fetching"],
+} as const;
+
+/** By `<state type>/<member>`. */
 const KNOWN_BREAKS = {
-   "account/connected": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "account/expired": ["no-dead-disabled-control", "primary-button-accent"],
-   "account/loading": ["no-dead-disabled-control", "primary-button-accent"],
-   "account/sign-in-expired": ["no-dead-disabled-control", "primary-button-accent"],
-   "account/signed-out": ["no-dead-disabled-control", "primary-button-accent"],
-   "account/signing-in": ["fits-viewport", "no-dead-disabled-control", "primary-button-accent"],
-   "account/unavailable": ["no-dead-disabled-control", "primary-button-accent"],
-   "disposition/cancelled": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "disposition/confirmed": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "disposition/confirming": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "disposition/review": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "disposition/stale": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "disposition/unknown": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "history/empty": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "history/failed": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "history/loading": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent", "skeleton-only-while-fetching"],
-   "history/notice": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "kind/pause": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "kind/rerun": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "kind/separations-many": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "kind/start": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "kind/start-many": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "plan/disabled": ["no-dead-disabled-control", "primary-button-accent"],
-   "plan/enabled": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "plan/limit-reached": ["fits-viewport", "no-dead-disabled-control", "primary-button-accent"],
-   "refusal/plan-disabled": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "refusal/rate-limited": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "reply/answer": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "reply/answer-long": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "turn/failed": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "turn/idle": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "turn/unknown": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
-   "turn/waiting": ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
- } as const;
+  "account/expired": BREAK_SETS.COMPOSER,
+  "account/loading": BREAK_SETS.COMPOSER,
+  "account/sign-in-expired": BREAK_SETS.COMPOSER,
+  "account/signed-out": BREAK_SETS.COMPOSER,
+  "account/unavailable": BREAK_SETS.COMPOSER,
+  "plan/disabled": BREAK_SETS.COMPOSER,
+  "account/signing-in": BREAK_SETS.COMPOSER_OVERFLOW,
+  "plan/limit-reached": BREAK_SETS.COMPOSER_OVERFLOW,
+  "account/connected": BREAK_SETS.COMPOSER_FOCUS,
+  "attachment/failed": BREAK_SETS.COMPOSER_FOCUS,
+  "attachment/spreadsheet": BREAK_SETS.COMPOSER_FOCUS,
+  "attachment/staged": BREAK_SETS.COMPOSER_FOCUS,
+  "attachment/unsupported": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/cancelled": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/confirmed": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/confirming": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/review": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/stale": BREAK_SETS.COMPOSER_FOCUS,
+  "disposition/unknown": BREAK_SETS.COMPOSER_FOCUS,
+  "history/failed": BREAK_SETS.COMPOSER_FOCUS,
+  "history/notice": BREAK_SETS.COMPOSER_FOCUS,
+  "history/ready": BREAK_SETS.COMPOSER_FOCUS,
+  "kind/pause": BREAK_SETS.COMPOSER_FOCUS,
+  "kind/rerun": BREAK_SETS.COMPOSER_FOCUS,
+  "kind/separations-many": BREAK_SETS.COMPOSER_FOCUS,
+  "kind/start": BREAK_SETS.COMPOSER_FOCUS,
+  "kind/start-many": BREAK_SETS.COMPOSER_FOCUS,
+  "plan/enabled": BREAK_SETS.COMPOSER_FOCUS,
+  "refusal/open-settings": BREAK_SETS.COMPOSER_FOCUS,
+  "refusal/retry": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/answer": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/answer-long": BREAK_SETS.COMPOSER_FOCUS,
+  "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
+  "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
+  "turn/unknown": BREAK_SETS.COMPOSER_FOCUS,
+  "turn/waiting": BREAK_SETS.COMPOSER_FOCUS,
+  "history/loading": BREAK_SETS.COMPOSER_FOCUS_SKELETON,
+} as const;
 
 export const ASSISTANT_STORIES = withKnownBreaks(
-  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, kind: KIND, disposition: DISPOSITION, refusal: REFUSAL, history: HISTORY }),
+  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, kind: KIND, disposition: DISPOSITION, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS }),
   "assistant", AUDIT_FIXES, KNOWN_BREAKS);

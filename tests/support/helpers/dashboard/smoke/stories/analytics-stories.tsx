@@ -103,31 +103,39 @@ const EXPORT = {
 } satisfies Record<Export, Story>;
 
 const AUDIT_FIXES = "#532";
+const BREAK_SETS = {
+  /** A control on the report shows no visible focus ring on its keyboard stop: the period choice, or in a drilldown its search and order. */
+  FOCUS: ["named-and-focusable"],
+  /** FOCUS, and the opened workflow row lists a raw code, id or path the banned-text rule rejects. */
+  FOCUS_AND_RAW_TEXT: ["named-and-focusable", "no-banned-text"],
+} as const;
+
+/** By `<state type>/<member>`. */
 const KNOWN_BREAKS = {
-  "browse/ordered": ["named-and-focusable"],
-  "browse/outstanding-status": ["named-and-focusable"],
-  "browse/page-missing": ["named-and-focusable"],
-  "browse/reading": ["named-and-focusable"],
-  "browse/run-missing": ["named-and-focusable"],
-  "browse/run-open": ["named-and-focusable"],
-  "browse/search": ["named-and-focusable"],
-  "browse/search-none": ["named-and-focusable"],
-  "browse/second-page": ["named-and-focusable"],
-  "contents/incomplete": ["named-and-focusable"],
-  "export/exporting": ["named-and-focusable"],
-  "export/failed": ["named-and-focusable"],
-  "list/loaded": ["named-and-focusable"],
-  "list/unavailable": ["named-and-focusable"],
-  "metric/completed": ["named-and-focusable"],
-  "metric/failed": ["named-and-focusable"],
-  "metric/outstanding": ["named-and-focusable"],
-  "metric/timed": ["named-and-focusable"],
-  "pick/one-workflow": ["named-and-focusable"],
-  "pick/period-updating": ["named-and-focusable"],
-  "pick/range-30d": ["named-and-focusable"],
-  "pick/range-90d": ["named-and-focusable"],
-  "pick/workflow-details": ["named-and-focusable", "no-banned-text"],
-  "view/loaded": ["named-and-focusable"],
+  "browse/ordered": BREAK_SETS.FOCUS,
+  "browse/outstanding-status": BREAK_SETS.FOCUS,
+  "browse/page-missing": BREAK_SETS.FOCUS,
+  "browse/reading": BREAK_SETS.FOCUS,
+  "browse/run-missing": BREAK_SETS.FOCUS,
+  "browse/run-open": BREAK_SETS.FOCUS,
+  "browse/search": BREAK_SETS.FOCUS,
+  "browse/search-none": BREAK_SETS.FOCUS,
+  "browse/second-page": BREAK_SETS.FOCUS,
+  "contents/incomplete": BREAK_SETS.FOCUS,
+  "export/exporting": BREAK_SETS.FOCUS,
+  "export/failed": BREAK_SETS.FOCUS,
+  "list/loaded": BREAK_SETS.FOCUS,
+  "list/unavailable": BREAK_SETS.FOCUS,
+  "metric/completed": BREAK_SETS.FOCUS,
+  "metric/failed": BREAK_SETS.FOCUS,
+  "metric/outstanding": BREAK_SETS.FOCUS,
+  "metric/timed": BREAK_SETS.FOCUS,
+  "pick/one-workflow": BREAK_SETS.FOCUS,
+  "pick/period-updating": BREAK_SETS.FOCUS,
+  "pick/range-30d": BREAK_SETS.FOCUS,
+  "pick/range-90d": BREAK_SETS.FOCUS,
+  "view/loaded": BREAK_SETS.FOCUS,
+  "pick/workflow-details": BREAK_SETS.FOCUS_AND_RAW_TEXT,
 } as const;
 
 export const ANALYTICS_STORIES = withKnownBreaks(

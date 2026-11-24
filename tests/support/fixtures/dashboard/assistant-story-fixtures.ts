@@ -1,6 +1,7 @@
 /** Assistant fixtures for the state gallery: a client that answers each kind of reply, decision and attachment the panel meets, and the
  * ChatGPT account the panel reads. Browser-safe. */
 import type { AssistantQueries } from "../../../../src/dashboard/client/index.js";
+import type { HubChat, HubChatsPort } from "../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 import type { ChatGptAccountPort, ChatGptAccountSnapshot } from "../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
 import type { AssistantActionProposal, AssistantActionResult, AssistantFailureCode, AssistantResult, AssistantStageResult } from "../../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_FAILURES } from "../../../../src/models/dashboard/assistant.js";
@@ -59,4 +60,16 @@ const noop = () => undefined;
 export function assistantAccountPort(snapshot: ChatGptAccountSnapshot, retryable = false): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => noop, signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), signOut: () => Promise.resolve(undefined),
     ...(retryable ? { refresh: () => Promise.resolve() } : {}) };
+}
+
+/** The chats the history list shows, one in each group. */
+export const ASSISTANT_STORY_CHATS: readonly HubChat[] = [
+  { id: "chat-1", title: "Look up Avery Sample", minutes: 12, group: "Today" },
+  { id: "chat-2", title: "Rerun the Person Lookup batch", minutes: 1620, group: "Yesterday" },
+  { id: "chat-3", title: "Pause the separations run", minutes: 8640, group: "Earlier" },
+];
+/** A chat list frozen on `chats`; no story edits it. */
+export function assistantChatsPort(chats: readonly HubChat[]): HubChatsPort {
+  const refused = (): Promise<never> => Promise.reject(new Error("The story chat list does not change."));
+  return { source: "local", read: () => chats, rename: refused, remove: refused, create: refused };
 }
