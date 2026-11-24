@@ -86,6 +86,14 @@ export class DashboardPage {
     await expect(this.runPanel).toBeVisible();
   }
 
+  /** Reloads with the run open and waits for the reads the reloaded page starts, so a test never ends with one open. */
+  async reloadRun(runId: string): Promise<void> {
+    await this.settleReads();
+    await this.page.reload();
+    await this.expectRunOpen(runId);
+    await this.settleReads();
+  }
+
   async openStartDialog(): Promise<void> {
     await this.startRunButton.click();
     await expect(this.dialog.getByRole("heading", { name: "Start run" })).toBeVisible();

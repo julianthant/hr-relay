@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { act,createElement, type ComponentProps } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
-import { createDashboardClient,type DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient,createRowStore,type DashboardClient,type RowStoreWriter } from "../../../../src/dashboard/client/index.js";
+import { StreamRowSchema } from "../../../../src/models/dashboard/subscription.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
@@ -20,6 +21,8 @@ const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 
 let root: Root | undefined;
 let host: HTMLElement | undefined;
+/** The stream's rows for the page `settingsClient` serves: each applied ordinary save delivers its settings row. */
+let streamRows: RowStoreWriter | undefined;
 const authorities: Awaited<ReturnType<typeof syntheticSettingsAuthority>>[] = [];
 
 afterEach(async () => {
@@ -30,12 +33,15 @@ afterEach(async () => {
   for (const authority of authorities.splice(0)) await authority.close();
   root = undefined;
   host = undefined;
+  streamRows = undefined;
 });
 
 async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "lost" = "confirmed") {
   const authority = await syntheticSettingsAuthority();
   authorities.push(authority);
   let stored = false;
+  const rows = createRowStore();
+  streamRows = rows;
   let release!: () => void;
   const responseReady = mode === "held" ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
@@ -54,6 +60,9 @@ async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "
       }
       const result = authority.execute(request);
       stored = true;
+      if (result.state === "applied" && result.settingsRevision !== undefined) {
+        rows.apply([StreamRowSchema.parse({ model: "settings", key: "editable", value: { state: "available", value: authority.read() } })]);
+      }
       await responseReady;
       return new Response(JSON.stringify(result), { status: 200 });
     }
@@ -71,7 +80,7 @@ async function mountSettingsPage(client: DashboardClient, section: string,
   await act(async () => {
     root = createRoot(element);
     root.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
-      children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso,
+      children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso, ...(streamRows === undefined ? {} : { rows: streamRows }),
         children: createElement(SettingsPage, { profileName, onClose: () => undefined,
           section, actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64), onSection,

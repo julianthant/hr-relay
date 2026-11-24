@@ -68,6 +68,12 @@ export function checkedSettingsResult(command: SettingsAttempt, input: unknown):
   }
   return result.data;
 }
+/** `document`, keeping the shown protected snapshot when it is newer: protected settings keep their own reads. */
+export function keepNewerProtected(document: EditableSettingsWire, shown: EditableSettingsWire | undefined): EditableSettingsWire {
+  const held = shown?.protectedSettings;
+  return held?.state === "available" && document.protectedSettings.state === "available" && held.readback.revision > document.protectedSettings.readback.revision
+    ? { ...document, protectedSettings: held } : document;
+}
 export function protectedReadbackConfirms(command: ProtectedSettingsAttempt, result: CommandResult, document: EditableSettingsWire): boolean {
   if ((result.state !== "applied" && result.state !== "already-applied") || document.protectedSettings.state !== "available") return false;
   const current = document.protectedSettings.readback;
