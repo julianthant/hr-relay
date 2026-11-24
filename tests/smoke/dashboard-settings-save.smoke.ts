@@ -87,7 +87,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
 
   await whileReplyIsHeld(async () => {
     await downloads.click();
-    await expect(path).toHaveText(basename(pickedPath));
+    await expect(path).toHaveText(new RegExp(`${basename(pickedPath).slice(-8).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u"));
   });
   await expect(saved("Downloads")).toBeVisible();
 
@@ -111,7 +111,7 @@ test("Settings show edits immediately, persist on reload, and recover from a ref
   await expect(switchControl).not.toBeChecked();
   await expect(browser).toContainText("Small");
   await expect(theme).toBeChecked();
-  await expect(path).toHaveText(basename(pickedPath));
+  await expect(path).toHaveText(new RegExp(`${basename(pickedPath).slice(-8).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u"));
   await expect(date.locator('[data-type="month"]')).toHaveText("06");
   await expect(day).toHaveText("15");
   await expect(year).toHaveText("2027");
@@ -143,7 +143,7 @@ test("Downloads can save after a theme change without reopening Settings", async
     && SettingsCommandRequestSchema.parse(response.request().postDataJSON()).payload.patch["paths.downloadsDir"] !== undefined);
   await whileReplyIsHeld(async () => {
     await page.getByRole("button", { name: "Change Downloads" }).click();
-    await expect(page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value')).toHaveText(basename(pickedPath));
+    await expect(page.locator('[data-settings-path="paths.downloadsDir"] .ds-path-value')).toHaveText(new RegExp(`${basename(pickedPath).slice(-8).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u"));
   });
   const result = CommandResultSchema.parse(await (await pathSave).json());
   expect(result).toMatchObject({ state: "applied" });

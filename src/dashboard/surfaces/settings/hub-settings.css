@@ -45,7 +45,7 @@
 .settings-credentials-page .settings-compact-form>.ds-body-section+.ds-body-section { margin-top:var(--ds-settings-section-gap); }
 
 .settings-takeover .ds-path-control { gap:12px;justify-content:flex-end; }
-.settings-takeover .ds-path-value { justify-content:flex-end;color:var(--ui-primary);font-family:inherit;font-size:inherit; }
+.settings-takeover .ds-path-value { justify-content:flex-end;color:var(--ui-secondary);font-family:var(--ds-font-mono);font-size:12px; }
 .settings-keyboard-page > .ds-form-group { margin-top:16px; }
 .settings-takeover .ds-path-control > button { min-width:70px;height:28px; }
 .settings-takeover [data-settings-path^="annualDates."] .settings-compact-control { width:153px;margin-left:auto; }
