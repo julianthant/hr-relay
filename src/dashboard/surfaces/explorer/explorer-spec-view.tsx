@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCheck, Monitor, Workflow } from "lucide-react";
 import type { ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
-import { Chip, dsFocus, PageHeading, Select } from "../../ds/ui.js";
+import { dsFocus, PageHeading, Select } from "../../ds/ui.js";
 import { FieldRow, FieldRows } from "../shared/steps/field-row.js";
 import { ClickLine } from "../shared/steps/click-line.js";
 import { NoteLine } from "../shared/steps/note-line.js";
@@ -14,7 +14,7 @@ import { fieldSource, resolveExplorer, rowValue, systemName, visible, type SpecB
 
 type ExplorerWorkflowOption = Pick<ExplorerPickerEntry, "id" | "title"> & Partial<Pick<ExplorerPickerEntry, "depth">>;
 
-const STEP = "border-b last:border-b-0 [--spacing-log-time:2.75rem]";
+const STEP = "border-b last:border-b-0 [--spacing-log-time:1.75rem]";
 
 // A step toggle is an option the served definition names `skip-<step>`; the page words it as the step's inclusion.
 const isStepToggle = (id: string) => id.startsWith("skip-");
@@ -99,12 +99,12 @@ export function ExplorerSpecView({ spec, onWorkflow }: { spec: ExplorerReviewSpe
     </section>}
     <div className="mb-6 border-b border-ui-stroke pb-4"><NoteLine message={spec.unlistedFailure} /></div>
     <div>
-      {offset === 1 && <StepFrame leading={1} title="Open browser sessions" titleId={stepId(1)} className={STEP}>
-        <div className="flex flex-wrap gap-2">{sessions.map(system => <Chip key={system} icon={<Monitor aria-hidden className="size-3.5" />}>{systemName(system)}</Chip>)}</div>
+      {offset === 1 && <StepFrame numbered leading={1} title="Open browser sessions" titleId={stepId(1)} className={STEP}>
+        <div className="flex flex-wrap gap-2">{sessions.map(system => <span key={system} className="flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body"><Monitor aria-hidden className="size-4 text-ui-muted" />{systemName(system)}</span>)}</div>
       </StepFrame>}
       {steps.map((step, index) => {
         const number = index + 1 + offset;
-        return <StepFrame key={step.id} leading={number} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)} className={STEP}>
+        return <StepFrame numbered key={step.id} leading={number} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)} className={STEP}>
           {visible(step.description, values).slice(0, 1).map(line => <p key={line.text} className="m-0 text-body text-ui-secondary">{line.text}</p>)}
           {visible(step.checks, values).map(line => <NoteLine key={line.text} message={line.text} icon={<CheckCheck aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-positive" />} />)}
           {visible(step.blocks, values).map((block, position) => {
