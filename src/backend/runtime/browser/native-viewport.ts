@@ -39,20 +39,28 @@ export async function overrideNativeViewport(page: Page) {
   };
 }
 
-export async function withHeldNativeViewport<Result>(page: Page, operation: () => Promise<Result>): Promise<Result> {
-  if (page.viewportSize() !== null) return operation();
-  const viewport = await overrideNativeViewport(page);
-  let failure: { cause: unknown } | undefined;
-  try {
-    const size = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-    await viewport.resize(size);
-    return await operation();
-  } catch (cause) { failure = { cause }; throw cause; }
-  finally {
-    try { await viewport.restore(); }
-    catch (restoration) {
-      if (failure === undefined) throw restoration;
-      throw new AggregateError([failure.cause, restoration], "Native viewport restoration failed", { cause: restoration });
+export function holdNativeViewport<Args extends unknown[], Result>(
+  page: Page, assertCurrent: () => void, operation: (...args: Args) => Promise<Result>,
+): (...args: Args) => Promise<Result> {
+  return async (...args) => {
+    assertCurrent();
+    if (page.viewportSize() !== null) return operation(...args);
+    const viewport = await overrideNativeViewport(page);
+    let failure: { cause: unknown } | undefined;
+    try {
+      assertCurrent();
+      const size = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+      assertCurrent();
+      await viewport.resize(size);
+      assertCurrent();
+      return await operation(...args);
+    } catch (cause) { failure = { cause }; throw cause; }
+    finally {
+      try { await viewport.restore(); }
+      catch (restoration) {
+        if (failure === undefined) throw restoration;
+        throw new AggregateError([failure.cause, restoration], "Native viewport restoration failed", { cause: restoration });
+      }
     }
-  }
+  };
 }

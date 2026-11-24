@@ -7,6 +7,7 @@ import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { captureFullPage } from "../../../../src/backend/runtime/browser/full-page-capture.js";
+import { holdNativeViewport } from "../../../../src/backend/runtime/browser/native-viewport.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { withFixtureUcpath } from "../../../support/helpers/admission-fixture.js";
 import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
@@ -573,6 +574,14 @@ it("keeps headed evidence independent of native window size and gives resizing b
     assert.equal(resized, true);
     assert.equal(page.viewportSize(), null);
     await expect.poll(dimensions).toEqual(small);
+
+    const readHeldViewport = holdNativeViewport(page, () => {}, async () => {
+      await resize(850, 650);
+      await expect.poll(async () => (await cdp.send("Browser.getWindowBounds", { windowId })).bounds.width).toBeGreaterThan(800);
+      return dimensions();
+    });
+    assert.deepEqual(await readHeldViewport(), small);
+    await expect.poll(dimensions).toEqual(large);
     await cdp.detach();
   } finally { await context.close(); }
 });
