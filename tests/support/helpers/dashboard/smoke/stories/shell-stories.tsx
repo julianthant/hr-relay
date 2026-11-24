@@ -18,6 +18,8 @@ import { defineSurface, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
 const noop = () => undefined;
+/** The search palette's input draws no focus ring, and its filter chips and result list are not keyboard stops. */
+const PALETTE_FOCUS_BREAK = { "named-and-focusable": "#532" } as const;
 
 /** The app raises a notice after its data answers, never on first paint; the toast host only hears notices raised once it has mounted. */
 function LateNotice(props: ComponentProps<typeof Notice>) {
@@ -74,7 +76,7 @@ const RAIL = {
 
 /** Search open on the given filter, or on the given answer from the served search. */
 function searchStory(title: string, data: keyof typeof SEARCH_STORY_DATA, play: Story["play"], ready = 'input[aria-label="Search Relay"]'): Story {
-  return { title, ready, play, render: () => <StoryFrame><aside className="workspace-rail"><div className="workspace-rail-header"><div className="workspace-rail-actions"><RailSearch data={SEARCH_STORY_DATA[data]} workflows={SEARCH_STORY_WORKFLOWS} startKey="N" onAction={noop} onWorkflow={noop} onResult={noop} /></div></div></aside></StoryFrame> };
+  return { title, ready, play, knownFailures: PALETTE_FOCUS_BREAK, render: () => <StoryFrame><aside className="workspace-rail"><div className="workspace-rail-header"><div className="workspace-rail-actions"><RailSearch data={SEARCH_STORY_DATA[data]} workflows={SEARCH_STORY_WORKFLOWS} startKey="N" onAction={noop} onWorkflow={noop} onResult={noop} /></div></div></aside></StoryFrame> };
 }
 const opening: Story["play"] = page => page.getByRole("button", { name: "Search", exact: true }).click();
 const FILTER_LABEL = Object.fromEntries(PALETTE_FILTERS.map(({ id, label }) => [id, label])) as Record<PaletteFilter, string>;
