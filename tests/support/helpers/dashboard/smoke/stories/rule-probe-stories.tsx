@@ -163,10 +163,11 @@ export const RULE_PROBES = {
       render: () => <StoryFrame>
         <div style={{ width: 120, overflow: "hidden" }}><div style={{ width: 120, whiteSpace: "nowrap" }}>a long line of text that cannot fit its box</div></div>
         <div style={{ width: 400, overflow: "hidden" }}><div style={{ width: 400, whiteSpace: "nowrap" }}>a short line</div></div>
-        <div style={{ width: 120, overflowX: "auto" }}><div style={{ width: 400, whiteSpace: "nowrap" }}>a line that runs past a sideways scroller</div></div>
+        <div role="group" aria-label="Row" tabIndex={0} style={{ width: 120, overflowX: "auto" }}><div style={{ paddingLeft: 2000, whiteSpace: "nowrap" }}>a line the keyboard can scroll to</div></div>
+        <div style={{ width: 120, overflowX: "auto" }}><div style={{ paddingLeft: 2000, whiteSpace: "nowrap" }}>a line no key scrolls to</div></div>
       </StoryFrame>,
     },
-    finds: { "fits-viewport": [/"a long line of text that cannot fit its box" is cut off sideways by its container/u, /^(?![\s\S]*(?:"a short line"|"a line that runs past))/u] },
+    finds: { "fits-viewport": [/"a long line of text that cannot fit its box" is cut off sideways by its container/u, /"a line no key scrolls to" runs \d+px past the right edge/u, /^(?![\s\S]*(?:"a short line"|"a line the keyboard))/u] },
   },
   "dialog-off-shape": {
     story: {

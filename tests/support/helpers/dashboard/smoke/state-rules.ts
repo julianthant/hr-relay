@@ -55,6 +55,7 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
       const cuts: string[] = [];
       let checkX = true;
       let checkY = true;
+      let inRow = false;
       let unseen = false;
       for (let frameElement: HTMLElement | null = element; frameElement !== null && frameElement !== document.body && (checkX || checkY); frameElement = frameElement.parentElement) {
         const frameStyle = getComputedStyle(frameElement);
@@ -67,12 +68,14 @@ export function fitsViewport({ page }: StateRuleContext): Promise<readonly strin
         const by = frameElement === element ? "" : " by its container";
         if (checkX && clips(frameStyle.overflowX) && (right > frameLeft + frameElement.clientWidth + 1 || left < frameLeft - 1)) { cuts.push(`${label} is cut off sideways${by}`); checkX = false; }
         if (checkY && clips(frameStyle.overflowY) && (bottom > frameTop + frameElement.clientHeight + 1 || top < frameTop - 1)) { cuts.push(`${label} is cut off at the ${bottom > frameTop + frameElement.clientHeight + 1 ? "bottom" : "top"}${by}`); checkY = false; }
+        // A row that scrolls sideways, fits the window and takes the keyboard may run past its right edge.
+        if (scrolls(frameStyle.overflowX) && frameElement.tabIndex >= 0 && box.right <= window.innerWidth + 1) inRow = true;
         // Text past a scrolling container's edge is reachable by scrolling, not clipped.
         if (scrolls(frameStyle.overflowX)) checkX = false;
         if (scrolls(frameStyle.overflowY)) checkY = false;
       }
       if (unseen) continue;
-      if (right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
+      if (!inRow && right > window.innerWidth + 1) found.push(`${label} runs ${String(Math.round(right - window.innerWidth))}px past the right edge`);
       found.push(...cuts);
     }
     return found;
