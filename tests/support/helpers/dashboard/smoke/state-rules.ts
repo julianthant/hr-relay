@@ -181,7 +181,7 @@ function measureDialogs(): DialogShape[] {
 }
 
 /** The design system's own dialog of this size, drawn alone in a second page at the same viewport. */
-async function designSystemDialogShape(page: Page, variant: string): Promise<DialogShape["shape"]> {
+async function designSystemDialogShape(page: Pick<Page, "context" | "url">, variant: string): Promise<DialogShape["shape"]> {
   const reference = await page.context().newPage();
   try {
     await reference.goto(new URL("/", page.url()).href);
@@ -199,7 +199,11 @@ async function designSystemDialogShape(page: Page, variant: string): Promise<Dia
   }
 }
 
-export async function dialogsShareShape({ page, storyId, story, dialogShapes }: StateRuleContext): Promise<readonly string[]> {
+type DialogRuleContext = Pick<StateRuleContext, "storyId" | "story" | "dialogShapes"> & {
+  readonly page: Pick<Page, "viewportSize" | "evaluate" | "context" | "url">;
+};
+
+export async function dialogsShareShape({ page, storyId, story, dialogShapes }: DialogRuleContext): Promise<readonly string[]> {
   const viewport = page.viewportSize();
   const found: string[] = [];
   for (const { kind, variant, shape } of await page.evaluate(measureDialogs)) {
