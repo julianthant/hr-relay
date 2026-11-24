@@ -1,6 +1,8 @@
 /** The open Sessions panel is one row of equal cards that scrolls sideways and is as tall as one card, however many workers there are. */
 import { expect, test } from "../support/helpers/dashboard/smoke/gallery-fixtures.js";
 import type { Page } from "@playwright/test";
+import { STATE_RULES } from "../support/helpers/dashboard/smoke/state-rules.js";
+import { CATALOGUE } from "../support/helpers/dashboard/smoke/stories/catalogue.js";
 
 const measure = (page: Page) => page.evaluate(() => {
   const strip = document.querySelector<HTMLElement>("[data-session-strip]");
@@ -55,4 +57,18 @@ test("a 340px-high window (680px at 200% zoom) keeps the open panel's worker con
   const retry = page.getByRole("group", { name: "Workers", exact: true }).getByRole("article").filter({ hasText: "Failed" }).getByRole("button", { name: "Retry" });
   await retry.focus();
   await expect(retry).toBeInViewport({ ratio: 1 });
+});
+
+test("at 340px high the expanded three-toast stack and the open panel do not cover each other", async ({ mount, page, diagnostics }) => {
+  await page.setViewportSize({ width: 1280, height: 340 });
+  const id = "sessions/toast/stack";
+  const entry = CATALOGUE.find(item => item.id === id);
+  if (entry === undefined) throw new Error(`the catalogue has no story ${id}`);
+  await mount(id);
+  await expect(page.locator('[data-slot="toast"]')).toHaveCount(3);
+  await page.locator('[data-slot="toast"]').first().focus();
+  await expect(page.locator('[data-slot="toast"][data-expanded]').first()).toBeVisible();
+  await page.waitForTimeout(600);
+  expect(await STATE_RULES["toast-placement"].check({ page, storyId: id, story: entry.story, diagnostics, dialogShapes: new Map() })).toEqual([]);
+  expect((await measure(page)).bodyHeight, "the open panel still shows its cards").toBeGreaterThan(100);
 });
