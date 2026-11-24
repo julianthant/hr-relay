@@ -9,6 +9,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/profile-session-routes.duo-reenrol.macos-native.integration.test.ts",
   "tests/backend/app/composition/dashboard/profile-session-routes.restart.integration.test.ts",
   "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/evidence-schema-upgrade.retired-generation.integration.test.ts",
   "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
   "tests/scripts/dev/relay.windows-native.integration.test.ts",
@@ -76,6 +77,7 @@ export const SERIAL_STORAGE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
   "tests/backend/storage/maintenance/profile-inventory.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
 ];
 
 // Native files that passed on Linux (ci-pipeline-07 report): Ubuntu shards run them too; the macOS native shards still run them.
