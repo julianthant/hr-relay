@@ -18,7 +18,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/build/` | Source-tool preparation and independent checks. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. `relay.ts` owns the Windows production launcher and private loopback stop broker; `relay-backend.ts` reports shutdown only after bootstrap releases its lifetime. Root `relay.cmd` selects portable Node. `tests/support/processes/relay-drain-child.ts` supplies the controlled write-drain proof. |
 | `scripts/test/` | Shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
-| `.github/workflows/development.yml`, `staging.yml`, `production.yml`, `checks.yml` | `Development`, `Staging` and `Production` call the one `checks.yml` with fast, portable, release or full kinds. Their required gates are `development`, `staging` and `production`; Development tests task pushes and non-task PRs, gates task PRs on their push run and runs the scheduled full run; Staging and staging releases run the portable plan and require a green full run through `scripts/ci/full-run.ts`; hotfix and manual releases add macOS native proofs. Each PR supersedes its own older runs. |
+| `.github/workflows/` | `checks.yml` owns the shared fast, portable, release and full plans. `development.yml` posts the `development` result for Task pushes. `pr.yml` posts `PR metadata` for development PRs and the `development` result for non-Task heads. `full.yml` runs the scheduled or dispatched full plan on development. `staging.yml` and staging releases through `production.yml` run the portable plan and require a green full run through `scripts/ci/full-run.ts`. Hotfix and manual releases add macOS native proofs. |
 | `scripts/verify/` | Repository privacy and test-target verification. |
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
@@ -128,7 +128,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/dashboard/client/` | Shared backend transport, entered through `index.ts`, `queries.ts` and `commands.ts`, plus subscriptions. |
 | `src/dashboard/ds/` and `src/dashboard/kit/` | Design system and specimen preview. `ds/ui.tsx` is the barrel; `primitives/` and `theme/` implement it. `kit.html` is the separate preview entry. |
 | `src/dashboard/state/` and `src/dashboard/lib/` | Resource hooks, bootstrap, day and served clock state; framework-free utilities live in `lib/`. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |
-| `src/dashboard/surfaces/` | Feature components, sibling `*-model.ts` view models and styles. `surfaces/shared/` holds cross-feature components. Run-detail Logs presentation lives under `run-detail/logs/`; the Logs sample and the spreadsheet mock library live under `tests/support/fixtures/dashboard/`. The notification rail reads one `InboxWiring` (`notifications/notification-rail-model.ts`). Sample Analytics, Sessions, notifications, search results and status frames live under `tests/support/fixtures/dashboard/` and `tests/mocks/helpers/status-mock/`; the mock harness hands them to the app through `WorkflowComposition.harness`, `sessionsHarness` and `useActivityReport` in `app/workflow-sources.ts`, which the product composition leaves unset. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
+| `src/dashboard/surfaces/` | Feature components, sibling `*-model.ts` view models and styles. `surfaces/shared/` holds cross-feature components. Run-detail Logs presentation lives under `run-detail/logs/`; the Logs sample and the spreadsheet mock library live under `tests/support/fixtures/dashboard/`. The notification rail reads one `InboxWiring` (`notifications/notification-rail-model.ts`). Sample Analytics, Sessions, notifications, search results and status frames live under `tests/support/fixtures/dashboard/` and `tests/support/helpers/dashboard/mock-world/status-mock/`; the mock harness hands them to the app through `WorkflowComposition.harness`, `sessionsHarness` and `useActivityReport` in `app/workflow-sources.ts`, which the product composition leaves unset. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields and the shared spreadsheet field catalog live under `fields/`. `failures/error-origins.ts` owns the closed constructor-bound cause vocabulary and its value-free serializer shared by backend events and browser reports. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
 | `src/models/storage/storage-status.ts` | The one storage status definition: health causes, recovery inspection, restore candidates and eligibility, backup health and backup service state, span reconciliation, protected-settings and upgrade-journal inspections, doctor counts and authority, and the bootstrap storage summary. The backend doctor report (`backend/storage/sqlite/recovery-contracts.ts`) and the dashboard wire (`models/dashboard/storage.ts`, `models/dashboard/bootstrap.ts`) are built from these same schema objects. |
@@ -262,7 +262,6 @@ tests/
 ├── dashboard/{app,client,ds,lib,state,surfaces}/
 ├── fast-duo/src/
 ├── {models,rules,scripts,workflow-kit,workflows}/
-├── mocks/
 ├── perf/
 ├── smoke/
 ├── support/{fixtures,helpers,processes}/
@@ -273,11 +272,11 @@ tests/
 ```
 
 `tests/architecture/test-layout.test.ts` checks canonical filenames and mirrors against existing tracked source.
-Architecture, mocks, performance, type, and support trees are exempt from source mirroring.
+Architecture, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
 `tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
-fixture name from `tests/mocks/app-entry.tsx`.
+fixture name from `tests/support/helpers/dashboard/mock-world/app-entry.tsx`.
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
@@ -313,7 +312,7 @@ and persisted-read path.
 `tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
 `tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
 
-`tests/mocks/` holds `/ui-mock` scenes, the mock dashboard build entry and `workflows/`, the mock workflow runs, queue, review and Records model that scenes and fixture tests build on. Nothing under `src/` imports it.
+`tests/support/helpers/dashboard/mock-world/` holds the mock dashboard build entry and fixture servers, and `tests/support/fixtures/dashboard/workflow-mocks/` the mock workflow runs, queue, review and Records model that fixture tests build on. Nothing under `src/` imports them. The state gallery under `tests/smoke/` replaced the `/ui-mock` scenes.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 The private `config/test-data.local.json` input is ignored. Runtime state and artifact roots are declared
 in `config/runtime-isolation.json`; test fixtures are separate from that operator state.

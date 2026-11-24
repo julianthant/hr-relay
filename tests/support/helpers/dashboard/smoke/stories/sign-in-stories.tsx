@@ -14,7 +14,7 @@ type MethodState = ProfileOnboardingMethodState["state"];
 type BrowserState = ProfileOnboardingBrowser["state"];
 type SessionState = Exclude<PublicProfileState["state"], "active">;
 const noop = () => undefined;
-/** Log in, Sign up, Duo and the confirm and re-enrol dialogs hold a control the keyboard does not reach or one that shows no focus ring. */
+/** Log in, Sign up, Duo and the re-enrol window hold a control the keyboard does not reach or one that shows no focus ring. */
 const FOCUS_BREAK = { "named-and-focusable": "#532" } as const;
 const OPERATION = "00000000-0000-4000-8000-000000000001";
 
@@ -48,7 +48,7 @@ function scene(title: string, input: SignInScene, shows?: string): Story {
     : input.setup !== undefined ? 'h1:has-text("Set up Duo"), h2:has-text("Set up Duo")'
     : input.step === "signup" ? 'button:has-text("Create profile")' : input.step === "ready" ? 'button:has-text("Go to dashboard")'
     : input.step === "duo" ? '[aria-label="Duo methods"]' : 'button:has-text("Log in")';
-  const breaksFocus = input.setup === undefined || input.confirm === true || input.reenrol === true;
+  const breaksFocus = (input.setup === undefined && shows !== "Cancel sign-up?") || input.reenrol === true;
   return { title, render: () => <SignInPage scene={input} />, ready, ...(breaksFocus ? { knownFailures: FOCUS_BREAK } : {}), play: page => play(page, input), ...(waits ? { clock: true as const } : {}) };
 }
 

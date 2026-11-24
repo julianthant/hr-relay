@@ -13,9 +13,9 @@ import { createServedClock, ServedClockContext } from "../../../src/dashboard/st
 import { SessionPanel } from "../../../src/dashboard/surfaces/sessions/session-panel.js";
 import { NotificationsPanel } from "../../../src/dashboard/surfaces/notifications/notifications-view.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../mocks/helpers/fixture-day.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../mocks/helpers/fixture-start.js";
-import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_NOW } from "../../support/helpers/dashboard/mock-world/fixture-day.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../support/helpers/dashboard/mock-world/fixture-start.js";
+import { servedFixtureSources } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";

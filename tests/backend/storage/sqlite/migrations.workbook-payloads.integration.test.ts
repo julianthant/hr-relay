@@ -73,9 +73,9 @@ const storedBytes = (database: DatabaseSync, tables: readonly string[]) => table
   total + z.object({ bytes: z.number() }).parse(database.prepare(`SELECT coalesce(sum(length(payload_json)),0) AS bytes FROM ${table}`).get()).bytes, 0);
 
 describe("workbook payload migration 38", () => {
-  it("is under the debug events' current 39 and adds only the payload table", () => {
+  it("is under the current schema 41 and adds only the payload table", () => {
     assert.equal(WORKBOOK_PAYLOAD_MIGRATION.version, 38);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 39);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 41);
     assert.deepEqual(migrationTableNames(38).filter(table => !migrationTableNames(37).includes(table)), ["workbook_payloads"]);
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });

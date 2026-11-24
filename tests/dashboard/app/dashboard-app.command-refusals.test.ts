@@ -7,8 +7,8 @@ import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../mocks/helpers/workflow-composition.js";
-import { FIXTURE_DAY_WIRE } from "../../mocks/helpers/fixture-queue.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
+import { FIXTURE_DAY_WIRE } from "../../support/helpers/dashboard/mock-world/fixture-queue.js";
 import { createFixtureBff } from "../../support/helpers/dashboard/fixture-bff.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, it, vi } from "vitest";
-import { MOCK_WORKFLOW_COMPOSITION } from "../../../mocks/helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "../../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { DAY, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { disposeHttpRouteHarness, harness } from "../../../support/helpers/backend/http-route-harness.js";
 import { STARTUP_READ_DEADLINE_MS } from "../../../../src/dashboard/app/startup/first-screen.js";

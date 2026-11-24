@@ -1,0 +1,96 @@
+name: Full
+
+run-name: ${{ format('Full run {0}', github.sha) }}
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,27,47 * * * *'
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  decide:
+    if: ${{ github.ref == 'refs/heads/development' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    outputs:
+      start: ${{ steps.decide.outputs.start }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci
+      - uses: actions/github-script@v9
+        id: decide
+        with:
+          script: |
+            const { decideFullRun } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci/full-run.ts`);
+            const { start, reason } = await decideFullRun({ github, context, now: Date.now() });
+            core.info(reason);
+            core.setOutput('start', String(start));
+            await core.summary.addRaw(`${start ? 'Starting the full run' : 'No full run'} for ${context.sha}: ${reason}`).write();
+      # scripts/ci/full-run.ts finds started full runs by this step's name.
+      - name: Start the full run
+        if: steps.decide.outputs.start == 'true'
+        run: echo "Full run of $GITHUB_SHA"
+
+  full-checks:
+    needs: decide
+    if: ${{ needs.decide.outputs.start == 'true' }}
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: full
+
+  codeql:
+    needs: decide
+    if: ${{ needs.decide.outputs.start == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
+
+  dependencies:
+    needs: decide
+    if: ${{ needs.decide.outputs.start == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: npm audit --omit=dev --audit-level=high
+
+  # Staging and release pull requests look this job up by name as the proof of a commit.
+  full:
+    name: full
+    needs: [decide, full-checks, codeql, dependencies]
+    if: ${{ always() && needs.decide.outputs.start == 'true' }}
+    runs-on: ubuntu-slim
+    steps:
+      - env:
+          CHECKS: ${{ needs.full-checks.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          DEPENDENCIES: ${{ needs.dependencies.result }}
+        run: |
+          verdict=passed
+          for result in "$CHECKS" "$CODEQL" "$DEPENDENCIES"; do
+            if [ "$result" != success ]; then verdict=failed; fi
+          done
+          printf 'Full run %s %s: checks %s, codeql %s, dependencies %s\n' "$GITHUB_SHA" "$verdict" "$CHECKS" "$CODEQL" "$DEPENDENCIES" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          test "$verdict" = passed

@@ -9,8 +9,8 @@ import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/applic
 import { CommandRequestSchema, deriveSettingsCommandFingerprint, ProtectedSettingsCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { URL as FileURL } from "node:url";
 // @vitest-environment jsdom
-import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../mocks/helpers/fixture-settings.js";
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_EDITABLE_SETTINGS as FIXTURE_EDITABLE_SETTINGS_m1 } from "../../support/helpers/dashboard/mock-world/fixture-settings.js";
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m1 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 // @vitest-environment jsdom
 
 import assert_m1 from "node:assert/strict";
@@ -40,8 +40,8 @@ import { DashboardApp as DashboardApp_m2 } from '../../../src/dashboard/app/dash
 import { createDashboardClient as createDashboardClient_m2 } from '../../../src/dashboard/client/index.js';
 import { DashboardClientProvider as DashboardClientProvider_m2 } from '../../../src/dashboard/state/client-context.js';
 import { DashboardDayWireSchema as DashboardDayWireSchema_m2,type DashboardDayWire as DashboardDayWire_m2 } from '../../../src/models/dashboard/projection.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../mocks/helpers/fixture-queue.js';
-import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m2 } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../support/helpers/dashboard/mock-world/fixture-queue.js';
+import { MOCK_WORKFLOW_COMPOSITION as MOCK_WORKFLOW_COMPOSITION_m2 } from "../../support/helpers/dashboard/mock-world/workflow-composition.js";
 import { WORKFLOW_SOURCES } from "../../../src/dashboard/app/workflow-sources.js";
 import { createFixtureBff as createFixtureBff_m2 } from '../../support/helpers/dashboard/fixture-bff.js';
 
