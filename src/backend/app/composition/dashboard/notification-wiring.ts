@@ -37,7 +37,11 @@ function projectionDependencies({ database, lifecycle, descriptors, runDetailDep
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
     },
     source: id => database.authority.notificationPublications.latest(id),
-    standing: notificationStandingSources(database.authority),
+    standing: notificationStandingSources({
+      runs: { get: id => database.authority.runs.get(id) },
+      notificationPublications: { latest: id => database.authority.notificationPublications.latest(id) },
+      notificationHealth: { get: concern => database.authority.notificationHealth.get(concern) },
+    }),
   };
 }
 
