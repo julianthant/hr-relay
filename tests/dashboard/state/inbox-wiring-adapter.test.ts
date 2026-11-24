@@ -76,7 +76,7 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
       const target = command.target;
       if (command.type === "notification-clear" && "members" in target) {
         // As the server does: every named row clears, or none does.
-        const cleared = rows.filter(item => item.kind !== "backfill-gap" && target.members.some(member => member.notificationId === item.notificationId && member.expectedVersion === item.revision));
+        const cleared = rows.filter(item => item.kind !== "backfill-gap" && target.members.some(member => member.notificationId === item.notificationId && Number(member.expectedVersion) === Number(item.revision)));
         if (refuseClear || cleared.length !== target.members.length || cleared.some(item => item.kind !== "backfill-gap" && item.standing === true)) {
           return Response.json({ state: "rejected", commandId: command.commandId, code: "policy-refused", message: "This notice still waits on you." });
         }
