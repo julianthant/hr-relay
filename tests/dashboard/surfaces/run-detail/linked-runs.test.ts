@@ -70,11 +70,11 @@ describe("Logs header linked runs", () => {
     const list = rows();
     await act(async () => list[0].focus());
     await key(list[0], "ArrowDown");
-    assert.equal(document.activeElement, list[1]);
+    assert.equal(document.activeElement === list[1], true);
     await key(list[1], "ArrowDown"); await key(list[2], "ArrowDown");
-    assert.equal(document.activeElement, list[0], "wraps");
+    assert.equal(document.activeElement === list[0], true, "wraps");
     await key(list[0], "ArrowUp");
-    assert.equal(document.activeElement, list[2], "wraps back");
+    assert.equal(document.activeElement === list[2], true, "wraps back");
     await act(async () => list[2].click());
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ runId: "run-child-2" }));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -86,7 +86,7 @@ describe("Logs header linked runs", () => {
     await key(rows()[0], "Escape");
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    assert.equal(document.activeElement, button());
+    assert.equal(document.activeElement === button(), true);
   });
 
   it("truncates a long name without moving the status", async () => {

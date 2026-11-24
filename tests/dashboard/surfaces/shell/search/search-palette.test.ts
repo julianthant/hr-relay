@@ -27,7 +27,7 @@ it("reopens the search palette with an empty query", async () => {
   await escape();
   assert.equal(input()?.value, "");
   await escape();
-  assert.equal(input(), null);
+  assert.equal(input() === null, true);
   // Radix returns focus in a timer after the dialog unmounts. A failing assert.equal on two jsdom nodes inspects them without bound.
   await vi.waitFor(() => assert.equal(document.activeElement === trigger(), true));
   await act(async () => trigger().click());
@@ -45,7 +45,7 @@ it("puts the filter tabs under the input, gives workflows their rail icon and ro
   assert.deepEqual(order, ["input", "tabs", "list"]);
   const rows = [...palette.querySelectorAll(".search-palette-row")];
   assert.deepEqual(rows.slice(0, 5).map(row => row.textContent), ["Start a runR", "Spreadsheets", "Explorer", "Analytics", "Settings"]);
-  assert.equal(palette.querySelector(".search-palette-key"), null);
+  assert.equal(palette.querySelector(".search-palette-key") === null, true);
   assert(palette.querySelector("kbd")?.textContent === "R");
   const workflowIcon = rows.find(row => row.textContent === "Separations")!.querySelector("svg")!;
   assert(workflowIcon.classList.contains("lucide-user-minus"));

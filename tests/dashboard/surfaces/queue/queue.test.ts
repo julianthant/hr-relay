@@ -147,13 +147,13 @@ describe_m1("approved mixed queue presentation", () => {
     const body = host.querySelector("[data-queue-body]");
     assert_m1.ok(body);
     assert_m1.equal(body.querySelector("[data-demo-row-title]")?.textContent, row.title);
-    assert_m1.equal(body.firstElementChild?.querySelector("svg:not(.lucide-flask-conical)"), null);
+    assert_m1.equal(body.firstElementChild?.querySelector("svg:not(.lucide-flask-conical)") === null, true);
     assert_m1.ok(body.querySelector("svg.lucide-flask-conical"));
     assert_m1.ok(host.textContent?.includes("Dry run"));
     assert_m1.ok(host.textContent?.includes("test"));
     assert_m1.ok(host.textContent?.includes("Done"));
-    assert_m1.equal(host.querySelector('[aria-label^="What is this row"]'), null);
-    assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]'), null);
+    assert_m1.equal(host.querySelector('[aria-label^="What is this row"]') === null, true);
+    assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]') === null, true);
     assert_m1.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, "#1");
     const identity = [...host.querySelectorAll('span[title]')].find(element => element.getAttribute('title') === row.traceId);
     assert_m1.ok(identity);
@@ -176,7 +176,7 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.ok(host.querySelector(".animate-spin")?.closest("[data-slot=badge]"));
     const absent = QueueSurfaceWireSchema_m1.parse({ ...row, pipeline: [], liveMessage: { state: "absent", reason: "No active step was recorded" } });
     const empty = render(absent);
-    assert_m1.equal(empty.querySelector("[data-queue-progress]"), null);
+    assert_m1.equal(empty.querySelector("[data-queue-progress]") === null, true);
     assert_m1.ok(!empty.textContent?.includes("0 / 0"));
   });
   it_m1("omits an unmeasured terminal duration and preserves measured zero", () => {
@@ -206,7 +206,7 @@ describe_m1("approved mixed queue presentation", () => {
     const review = render(single("awaiting-approval"));
     const parked = render(single("blocked"));
     assert_m1.ok(review.querySelector("[data-queue-body] .text-ui-info"));
-    assert_m1.equal(review.querySelector("[data-queue-body] [class*=ds-status-waiting-fg]"), null);
+    assert_m1.equal(review.querySelector("[data-queue-body] [class*=ds-status-waiting-fg]") === null, true);
     assert_m1.ok(parked.querySelector("[data-queue-body] [class*=ds-status-parked-fg]"));
   });
 });

@@ -121,7 +121,7 @@ it("uses saved rows only, requires a common explicit mode and preserves duplicat
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return proposal(planned, true); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent();
-  assert.equal(document.querySelector("textarea"), null);
+  assert.equal(document.querySelector("textarea") === null, true);
   assert.equal(document.querySelectorAll('input[type="radio"]:checked').length, 0);
   assert.equal(checkboxRows().length, 2); assert.equal(dialog.disabled("Continue"), true);
   await select(1); await select(0); assert.equal(dialog.disabled("Continue"), true);

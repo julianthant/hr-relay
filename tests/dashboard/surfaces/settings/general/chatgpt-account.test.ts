@@ -68,7 +68,7 @@ it("shows a rejected account port action in the card with its original failure c
   const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes(ERROR_CATALOG.CHATGPT_CONNECT_FAILED.text));
   assert.ok(banner); assert.ok(banner.closest(".ds-form-group"));
   assert.match(banner.textContent ?? "", /ChatGPT did not connect\. Try again\./);
-  assert.deepEqual([...banner.querySelectorAll("button")], []);
+  assert.equal(banner.querySelectorAll("button").length, 0);
   assert.ok([...host.querySelectorAll("button")].some(button => button.textContent === "Connect"));
 });
 
@@ -154,7 +154,7 @@ describe("Disconnecting the ChatGPT account", () => {
     const confirm = [...document.body.querySelectorAll("button")].filter(node => node.textContent === "Disconnect").at(-1);
     assert.ok(confirm); await act(async () => confirm.click());
     assert.equal(calls, 1);
-    assert.ok(button("Connect")); assert.equal(button("Disconnect"), undefined);
+    assert.ok(button("Connect")); assert.equal(button("Disconnect") === undefined, true);
   });
 
   it("cancelling the question leaves the account connected", async () => {
@@ -173,7 +173,7 @@ describe("Disconnecting the ChatGPT account", () => {
     const confirm = [...document.body.querySelectorAll("button")].filter(node => node.textContent === "Disconnect").at(-1);
     assert.ok(confirm); await act(async () => confirm.click());
     assert.ok(document.body.textContent?.includes(ERROR_CATALOG.CHATGPT_CREDENTIAL_CONFLICT.text));
-    assert.ok(button("Disconnect")); assert.equal(button("Connect"), undefined);
+    assert.ok(button("Disconnect")); assert.equal(button("Connect") === undefined, true);
   });
 });
 

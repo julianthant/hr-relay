@@ -117,7 +117,7 @@ it('sends a SharePoint import with the link, name and tags when Next is chosen',
   await render();
   await click(byText('button', 'Import'));
   await click(document.body.querySelector('input[type="radio"][value="sharepoint"]'));
-  assert.equal(byText('button', 'Choose file'), undefined);
+  assert.equal(byText('button', 'Choose file') === undefined, true);
   assert.equal((byText('button', 'Next') as HTMLButtonElement).disabled, true);
   await type(document.body.querySelector('input[aria-label="SharePoint workbook link"]'), LINK);
   await type(document.body.querySelector('input[aria-label="Name"]'), 'Roster 2');

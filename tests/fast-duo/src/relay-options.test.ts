@@ -22,12 +22,12 @@ it("renders the approved extension states and keeps card selection, guards and f
   try {
     await mountRelayOptions(profile);
     assert.deepEqual(cards().map(card => card.querySelector("strong")?.textContent), ["Security key", "Touch ID"]);
-    assert.equal(document.querySelector("select"), null); assert.equal(document.getElementById("transport"), null);
+    assert.equal(document.querySelector("select") === null, true); assert.equal(document.getElementById("transport") === null, true);
     assert.equal(title(), "Set up Security key");
     cards()[1].focus(); cards()[1].click();
     assert.equal(cards()[1].getAttribute("aria-pressed"), "true"); assert.equal(title(), "Set up Touch ID");
     await vi.advanceTimersByTimeAsync(1000);
-    assert.equal(document.activeElement, cards()[1]);
+    assert.equal(document.activeElement === cards()[1], true);
     cards()[0].click();
     assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
     document.querySelector<HTMLButtonElement>("#primaryAction")!.click();
@@ -45,7 +45,7 @@ it("renders the approved extension states and keeps card selection, guards and f
       profile = { ...profile, methods: { key: { state }, touch: { state: "idle" } } };
       await vi.advanceTimersByTimeAsync(1000);
       assert.equal(cards()[0].querySelector(".relay-method-pill")?.textContent, label);
-      assert.equal(cards()[0].querySelector(".relay-method-track"), null);
+      assert.equal(cards()[0].querySelector(".relay-method-track") === null, true);
       assert.doesNotMatch(cards()[0].textContent ?? "", /Started|Added in Duo|Confirmed by Relay/);
       assert.equal(cards()[0].querySelector(".relay-method-identity strong")?.textContent, "Security key");
       assert.equal(cards()[0].querySelector(".relay-method-identity > span")?.textContent, "Fast Duo in this browser");
@@ -60,7 +60,7 @@ it("renders the approved extension states and keeps card selection, guards and f
       }
     }
     assert.ok(calls.includes("STATE"));
-    assert.equal(document.querySelector(".relay-method-sync"), null);
+    assert.equal(document.querySelector(".relay-method-sync") === null, true);
   } finally {
     window.dispatchEvent(new Event("pagehide"));
     document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();

@@ -105,10 +105,10 @@ describe("editable Settings surface", () => {
     assert.match(host.textContent ?? "", /Timekeeper nameSynthetic Middle Operator/u);
     assert.match(host.textContent ?? "", /Timekeeper initialsSMO/u);
     assert.doesNotMatch(host.textContent ?? "", /Historical Activity pseudonym/u);
-    assert.equal(host.querySelector('input[name="timekeeperName"]'), null);
-    assert.equal(host.querySelector('input[name="activityPersonPseudonym"]'), null);
-    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper name"]'), null);
-    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper initials"]'), null);
+    assert.equal(host.querySelector('input[name="timekeeperName"]') === null, true);
+    assert.equal(host.querySelector('input[name="activityPersonPseudonym"]') === null, true);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper name"]') === null, true);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper initials"]') === null, true);
     assert.equal(host.querySelectorAll("input").length, 3, "navigation search and the two UCPath credentials remain editable");
   });
 
@@ -198,7 +198,7 @@ describe("editable Settings surface", () => {
     assert.ok(navigation instanceof HTMLInputElement);
     assert.equal(navigation.disabled, false);
     await act(async () => { navigation.focus(); });
-    assert.equal(document.activeElement, navigation, "the editable control accepts keyboard focus");
+    assert.equal(document.activeElement === navigation, true, "the editable control accepts keyboard focus");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
@@ -271,7 +271,7 @@ describe("editable Settings surface", () => {
     host = await mountSettingsPage(transport.client, "general");
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
-    assert.equal(host.querySelector('[data-settings-path="display.viewport"]'), null);
+    assert.equal(host.querySelector('[data-settings-path="display.viewport"]') === null, true);
     assert.equal(host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Hidden");
     assert.equal(host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
@@ -314,7 +314,7 @@ describe("editable Settings surface", () => {
     await act(async () => { field.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); }); await wait();
     assert.equal(applied.length, 0, "blur does not write the dialog draft");
     await act(async () => { document.body.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); }); await wait();
-    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.equal(document.body.querySelector('[role="dialog"]') === null, true);
     assert.equal(applied.length, 0, "Escape discards without a write");
     field = await open();
     assert.equal(field.value, "", "the discarded draft is gone");
