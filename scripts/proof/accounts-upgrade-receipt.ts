@@ -345,7 +345,7 @@ function copySession(dashboard: DashboardClient): ProofSession {
     },
     async saveUcpathPassword(password) {
       const current = await settings();
-      const result = await dashboard.applySettings(ProtectedSettingsCommandRequestSchema.parse({
+      const result = await dashboard.executeCommand(ProtectedSettingsCommandRequestSchema.parse({
         family: "settings", type: "apply-protected-settings", source: "settings-surface", requestedBy: LOCAL_OPERATOR_ACTOR_ID,
         commandId: randomUUID(), requestedAt: systemClock.now().toISOString(), target: { expectedRevision: current.readback.revision },
         payload: { protectedSchemaHash: current.protectedSchemaHash, writeId: randomUUID(), entries: { ucpathPassword: { set: password } } },
@@ -359,7 +359,7 @@ function copySession(dashboard: DashboardClient): ProofSession {
   };
 }
 
-async function withCopySession(workspace: string, run: (session: ProofSession) => Promise<void>): Promise<void> {
+export async function withCopySession(workspace: string, run: (session: ProofSession) => Promise<void>): Promise<void> {
   assertCopySigninTarget("development", workspace, rebuildRuntimeIsolation);
   const browserDirectory = join(workspace, "copy-signin-browser");
   requireProof(noSymlinkAncestry(browserDirectory, new Map()), "PROFILE_SIGN_IN_REFUSED");
@@ -373,6 +373,7 @@ async function withCopySession(workspace: string, run: (session: ProofSession) =
   } }).finally(() => { stop.abort(); });
   process.on("SIGINT", halt);
   process.on("SIGTERM", halt);
+  let operationCompleted = false;
   try {
     const nonce = await Promise.race([ready.promise, delay(120_000, undefined, { signal: stop.signal, ref: false }).then(() => {
       throw new ProofRefusal("COPY_DASHBOARD_UNAVAILABLE");
@@ -403,10 +404,13 @@ async function withCopySession(workspace: string, run: (session: ProofSession) =
       } });
       await run(copySession(dashboard));
     } finally { await context.close(); }
+    operationCompleted = true;
   } finally {
     halt();
-    try { requireProof(await finished === 0, "COPY_DASHBOARD_UNAVAILABLE"); }
-    finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
+    try {
+      const code = await (operationCompleted ? finished : finished.catch(() => undefined));
+      if (operationCompleted) requireProof(code === 0, "COPY_DASHBOARD_UNAVAILABLE");
+    } finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
   }
 }
 
