@@ -204,6 +204,8 @@ function editorWorld(unknownOnce = false, delegated = true) {
         const { approval: _approval, ...review } = page.ocr;
         page = ReviewPageSchema.parse({ ...page, ocr: { ...review, approvedSnapshots: [snapshot], editing: { state: "unavailable", reason: "approved" } } });
       }
+      // The stream carries the row the command moved; the editor waits for it instead of reopening the day.
+      setTimeout(() => { if (!refreshPaused) refresh(); }, 0);
       const result = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [request.family === "gate" ? { family: "gate", runId: page.runId, gateId: request.target.gateId } : { family: "ocr-review", runId: page.runId }, { family: "run", runId: page.runId }] });
       recorded.set(request.commandId, { request, result });
       if (loseReply) { loseReply = false; throw new TypeError("Synthetic lost response after commit"); }
@@ -261,7 +263,7 @@ function changeInput(host: HTMLElement, key: string, value: string) {
   descriptor.set.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
-async function saveEdits() { await act(async () => { await vi.advanceTimersByTimeAsync(450); }); }
+async function saveEdits() { await act(async () => { await vi.advanceTimersByTimeAsync(450); await vi.advanceTimersByTimeAsync(10); }); }
 function button(host: HTMLElement, label: string) {
   const target = [...host.querySelectorAll("button")].find(button => button.textContent === label); assert.ok(target); return target;
 }
