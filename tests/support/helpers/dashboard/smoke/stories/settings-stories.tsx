@@ -185,7 +185,7 @@ const breaks = (...rules: readonly StateRuleName[]): Readonly<Partial<Record<Sta
 const BREAK_SETS = {
   /** Save is not the accent while the Account edit dialog shows a refusal. */
   ACCENT: breaks("primary-button-accent"),
-  /** The Tab walk reaches nothing while a toast stands in front; #710 owns the toast stop. */
+  /** The Tab walk reaches no control while a toast is on screen. */
   FOCUS: breaks("named-and-focusable"),
   /** FOCUS, and Save is not the accent while the dialog shows a refusal. */
   FOCUS_ACCENT: breaks("named-and-focusable", "primary-button-accent"),
