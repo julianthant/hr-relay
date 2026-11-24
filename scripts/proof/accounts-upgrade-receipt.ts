@@ -431,8 +431,6 @@ async function main(): Promise<void> {
   const build = checkedBuild(candidate);
   requireProof(process.platform === "darwin" && runtimeProfile === "development" && copySigninFixtureWorkspace() === undefined, "COPY_TARGET_REFUSED");
   delete process.env.DEBUG;
-  delete process.env.PWDEBUG;
-  delete process.env.NODE_DEBUG;
   const workspace = applicationDataWorkspace(undefined, "development");
   const snapshot = copySnapshots(workspace);
   const receipt = await runAccountsUpgradeProof(build, {
