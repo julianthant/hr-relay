@@ -1,5 +1,6 @@
 /** Live-update smoke: the requests the dashboard makes after one server event. Each live-update ticket lowers the counts it covers. */
 import type { Page, TestInfo } from "@playwright/test";
+import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../src/models/dashboard/subscription.js";
 import type { DashboardPage } from "../support/helpers/dashboard/smoke/dashboard-page.js";
 import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
@@ -143,6 +144,55 @@ for (const view of Object.keys(DECLARED_GATE_BASELINE) as View[]) {
     expect([...seen].sort()).toEqual([...DECLARED_GATE_BASELINE[view] ?? []].sort());
   });
 }
+
+/** Every API and stream request with its query, which {@link watchRequests} drops. */
+function watchRequestsWithQuery(page: Page): string[] {
+  const seen: string[] = [];
+  page.on("request", request => {
+    const { pathname, search } = new URL(request.url());
+    if ((!pathname.startsWith("/api/") && !pathname.startsWith("/events/")) || pathname === LIFECYCLE_POLL) return;
+    seen.push(`${request.method()} ${pathname}${search}`);
+  });
+  return seen;
+}
+
+/** The adapters' wait for a landed command's row (`ROW_REVISION_WAIT_MS`) and a margin: a fallback reopen would show inside it. */
+const ROW_WAIT_AND_MARGIN_MS = 6_500;
+
+// A landed command waits for its row on the stream instead of reopening the day. The same seeded command, Continue anyway on
+// a Work-Study run parked at its gate with that run open. Measured on the base adapters (CI run 45384851232, same test): the
+// press opened the stream once, with the run topic, and read the day not at all, as the day rides the stream's snapshot.
+const PRE_CHANGE = { stream: 1, day: 0 };
+const ANSWERED_GATE = { stream: PRE_CHANGE.stream - 1, day: PRE_CHANGE.day };
+scriptedTest("an answered gate: the row arrives on the stream and nothing reopens the day, not even after the fallback wait", async ({ dashboard, failures, page, seeded }) => {
+  failures.allow(SEEDED_PREFERENCE_WRITE, "the seeded backend cannot save the chosen workflow");
+  const request = seededRequestOver(seeded.baseUrl);
+  const seen = watchRequestsWithQuery(page);
+  await dashboard.open();
+  await dashboard.openWorkflow("Work-Study");
+  const runId = await startScriptedRun(request, SEEDED_NOW, "10812345", seeded.scripted.reviewReference());
+  const run = await seeded.scripted.drive(runId);
+  const row = page.locator(`[data-demo-row-id="${runId}"]`).first();
+  await expect(row).toContainText("Running");
+  await dashboard.openRun(runId);
+  expect(await run.advance()).toMatchObject({ at: "settled", outcome: { state: "parked-gate" } });
+  const approve = dashboard.runPanel.getByRole("button", { name: "Continue anyway", exact: true });
+  await expect(approve).toBeVisible();
+  await quiet(page, seen, 2_000);
+  seen.length = 0;
+
+  await approve.click();
+
+  await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the server returned the run to the queue" }).toBe("queued");
+  await expect(row, "the queue row left the gate status").not.toContainText(PARKED);
+  const settled = await row.textContent();
+  await page.waitForTimeout(ROW_WAIT_AND_MARGIN_MS);
+  await quiet(page, seen);
+  expect(await row.textContent(), "the settled row stays settled").toBe(settled);
+  expect(seen.filter(entry => entry === "POST /api/v1/commands"), "one command").toHaveLength(1);
+  expect(seen.filter(entry => entry.startsWith("GET /events/v1")).length, "stream opens after the press").toBe(ANSWERED_GATE.stream);
+  expect(seen.filter(entry => entry.startsWith("GET /api/v1/dashboard?day=")).length, "day reads after the press").toBe(ANSWERED_GATE.day);
+});
 
 /** One envelope a run-topic stream received, with its arrival time. */
 interface Received { readonly envelope: DashboardStreamEnvelope; readonly at: number }
