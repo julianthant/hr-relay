@@ -91,7 +91,7 @@ it('keeps the tag filter and clears a selection whose only tag was removed', asy
   await click(host.querySelector('button[aria-label="Filter by tag"]'));
   await click(byText('[role="menuitemcheckbox"]', 'Fall'));
   assert.equal(host.querySelector('button[aria-label="Filter by tag"]')?.textContent, 'Fall');
-  assert.equal(host.querySelector('li[aria-label="Keys.xlsx"]'), null);
+  assert.ok(!host.querySelector('li[aria-label="Keys.xlsx"]'));
   wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, tags: [] }), make('keys', 'Keys.xlsx', { pinned: false, tags: [] })];
   await render();
   const trigger = host.querySelector('button[aria-label="Filter by tag"]');
