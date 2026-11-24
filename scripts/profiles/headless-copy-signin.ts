@@ -4,15 +4,16 @@ import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { z } from "zod";
 import { applicationDataWorkspace, rebuildRuntimeIsolation } from "../../src/backend/app/config/runtime-isolation.js";
+import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../src/backend/runtime/browser/native-browser.js";
 import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
 import { acquireRuntimeLifetimeLock } from "../../src/backend/storage/admission/lifetime-lock.js";
 import { noSymlinkAncestry, statDirectory } from "../../src/backend/storage/configuration/credential-safe-file.js";
 import { createDashboardClient } from "../../src/dashboard/client/index.js";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
-import { DEVELOPMENT_DEBUG_MIRROR_ENV, RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
+import { DEVELOPMENT_DEBUG_MIRROR_ENV, RUNTIME_PROFILE_ENV, workerBootstrapEnvironment } from "../../src/models/config/secrets.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../src/models/dashboard/dashboard-frontend-owner.js";
 import type { PublicProfileState } from "../../src/models/profiles/public-profile.js";
 import { assertCopySigninTarget, CopySigninError, driveCopySignin, operatorCredentials, resumeKey, resumeRoute, stateRoute, waitForFrontend } from "./copy-signin.js";
@@ -22,8 +23,7 @@ const ports = runtimeProfiles[profile];
 const repository = fileURLToPath(new URL("../..", import.meta.url));
 
 export function checkoutGit(checkout: string, args: readonly string[]): string {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
-  return execFileSync("git", ["-C", checkout, ...args], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return execFileSync("git", ["-C", checkout, ...args], { env: workerBootstrapEnvironment(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 export function developmentCopyCheckout(): string {
@@ -81,9 +81,9 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
   readonly signal?: AbortSignal;
   readonly beforeStart?: (profile: CopyProfile) => void;
   readonly expectedSha?: string;
+  readonly backendPreload?: URL;
 } = {}): Promise<T> {
   options.signal?.throwIfAborted();
-  if (process.env.PWDEBUG || process.env.DEBUG || process.env.NODE_DEBUG) throw new CopySigninError("copy-signin-headless-debug-refused");
   const workspace = applicationDataWorkspace(undefined, profile);
   const selected = await enrolledProfile(workspace, options.beforeStart);
   const checkout = developmentCopyCheckout();
@@ -100,7 +100,7 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
   const stop = new AbortController();
   const signal = options.signal === undefined ? stop.signal : AbortSignal.any([options.signal, stop.signal]);
   const nonce = randomBytes(32).toString("hex");
-  const env = { ...process.env, [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: nonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
+  const env = { ...workerBootstrapEnvironment(), [RUNTIME_PROFILE_ENV]: profile, [DASHBOARD_LAUNCH_NONCE_ENV]: nonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
   const children: { process: ReturnType<typeof spawn>; closed: Promise<boolean> }[] = [];
   let stopping = false;
   const halt = () => {
@@ -121,12 +121,14 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
     return { child, closed };
   }
   signal.addEventListener("abort", halt, { once: true });
+  let browser: OwnedBrowserProcess | undefined;
   let context: BrowserContext | undefined;
   let result: T;
   let dashboardClosed: boolean;
   try {
     signal.throwIfAborted();
-    const backend = launch(["--conditions=development", "--import", "tsx", backendEntry, "--owned-backend", profile], true);
+    const preload = options.backendPreload === undefined ? [] : ["--import", options.backendPreload.href];
+    const backend = launch(["--conditions=development", "--import", "tsx", ...preload, backendEntry, "--owned-backend", profile], true);
     const ready = Promise.withResolvers<void>();
     backend.child.on("message", (message: unknown) => {
       if (message === null || typeof message !== "object" || !("type" in message)) return;
@@ -142,9 +144,10 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
     const browserDirectory = join(workspace, "copy-signin-browser");
     mkdirSync(browserDirectory, { mode: 0o700, recursive: true });
     statDirectory(browserDirectory, "copy sign-in browser", 0o700);
-    context = await chromium.launchPersistentContext(browserDirectory, {
-      headless: true, channel: "chromium", acceptDownloads: false, serviceWorkers: "block",
-      args: ["--no-proxy-server", "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"],
+    context = await DEFAULT_BROWSER_LAUNCHER.launch({
+      profileDirectory: browserDirectory, headless: true, nativeOnly: true, disablePasswordManager: true,
+      extensionDirectory: join(checkout, "fast-duo"), acceptDownloads: false, downloadsPath: browserDirectory,
+      viewport: { width: 1280, height: 720 }, timeoutMs: 30_000, ownedProcess(child) { browser = child; },
     });
     context.once("close", () => { stop.abort(new CopySigninError("copy-signin-headless-browser-stopped")); });
     signal.throwIfAborted();
@@ -189,7 +192,7 @@ export async function withHeadlessCopySignin<T>(use: (session: HeadlessCopySessi
     signal.throwIfAborted();
   } finally {
     signal.removeEventListener("abort", halt);
-    try { await context?.close(); }
+    try { await browser?.stop(30_000, context === undefined ? undefined : true); }
     finally {
       halt();
       dashboardClosed = (await Promise.all(children.map(child => child.closed))).every(Boolean);

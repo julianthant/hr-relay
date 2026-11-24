@@ -3,12 +3,13 @@ import { createHash } from "node:crypto";
 import { createReadStream, lstatSync, mkdtempSync, realpathSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { availableParallelism, loadavg, userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import type { Page, Response } from "playwright";
 import { z } from "zod";
+import { readRuntimeProfile, workerBootstrapEnvironment } from "../../src/models/config/secrets.js";
 import { systemClock } from "../../src/rules/time/clock.js";
 import type { HeadlessCopySession } from "../profiles/headless-copy-signin.js";
 
@@ -17,7 +18,6 @@ const sampleMs = 20;
 const stallMs = 100;
 const busyLimit = 2;
 const rssFlatBytes = 16 * 1024 * 1024;
-const probeEnvironment = "RELAY_IDLE_THREE_TAB_SOCKET";
 
 const StallsSchema = z.strictObject({ count: z.int().nonnegative(), longestMs: z.number().nonnegative(), totalMs: z.number().nonnegative() });
 const ProbeSchema = z.strictObject({ pid: z.int().positive(), start: z.iso.datetime(), end: z.iso.datetime(),
@@ -170,7 +170,7 @@ async function runBenchmark() {
   const shaSchema = z.string().regex(/^[0-9a-f]{40}$/u);
   const [target] = z.tuple([shaSchema]).parse(positionals);
   const base = shaSchema.optional().parse(values.base);
-  if (process.platform !== "darwin" || process.env.NODE_OPTIONS || process.env[probeEnvironment]) throw new Error("idle-benchmark-host-refused");
+  if (process.platform !== "darwin") throw new Error("idle-benchmark-host-refused");
   if (target === base) throw new Error("idle-benchmark-base-matches-target");
   const { checkoutGit, developmentCopyCheckout, withHeadlessCopySignin } = await import("../profiles/headless-copy-signin.js");
   const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
@@ -211,7 +211,7 @@ async function runBenchmark() {
       if (checkoutGit(checkout, ["rev-parse", "HEAD"]) !== sha) throw new Error("idle-benchmark-sha-mismatch");
       const dependencies = lstatSync(join(checkout, "node_modules"), { throwIfNoEntry: false });
       if (dependencies !== undefined && !dependencies.isDirectory()) throw new Error("idle-benchmark-copy-dependencies-refused");
-      execFileSync("npm", ["ci"], { cwd: checkout, stdio: "inherit" });
+      execFileSync("npm", ["ci"], { cwd: checkout, env: workerBootstrapEnvironment(), stdio: "inherit" });
     } finally { await lock.close(); }
     const runs = [await runOnce(sha), await runOnce(sha)] as const;
     return { sha, runs, verdict: summarizeIdleRuns(runs) };
@@ -223,8 +223,8 @@ async function runBenchmark() {
     const socket = join(directory, "probe.sock");
     try {
       if (Buffer.byteLength(socket) >= 104) throw new Error("idle-benchmark-probe-path-too-long");
-      process.env[probeEnvironment] = socket;
-      process.env.NODE_OPTIONS = `--import=tsx --import=${import.meta.url}`;
+      const preload = new URL(import.meta.url);
+      preload.searchParams.set("socket", socket);
       return await withHeadlessCopySignin(async session => {
         const digest = createHash("sha256");
         for await (const chunk of createReadStream(archiveRoot(session.stateRoot))) {
@@ -235,7 +235,7 @@ async function runBenchmark() {
         inputDigest ??= current;
         if (inputDigest !== current) throw new Error("idle-benchmark-imported-history-changed");
         return await measureTabs(session, socket);
-      }, { signal: stop.signal, expectedSha: sha, beforeStart({ stateRoot, installationId, profileId }) {
+      }, { signal: stop.signal, expectedSha: sha, backendPreload: preload, beforeStart({ stateRoot, installationId, profileId }) {
         const history = archiveRoot(stateRoot), local = join(stateRoot, "state.db");
         for (const path of [history, local, `${local}-wal`, `${local}-shm`]) {
           const stat = lstatSync(path, { throwIfNoEntry: false });
@@ -255,8 +255,6 @@ async function runBenchmark() {
         } finally { database.close(); }
       } });
     } finally {
-      delete process.env[probeEnvironment];
-      delete process.env.NODE_OPTIONS;
       if (lstatSync(socket, { throwIfNoEntry: false })?.isSocket()) unlinkSync(socket);
       rmdirSync(directory);
     }
@@ -272,8 +270,13 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
     process.exitCode = 1;
   }
 } else {
-  const socket = process.env[probeEnvironment];
-  if (socket !== undefined && process.env.RELAY_RUNTIME_PROFILE === "development" && process.argv[2] === "--owned-backend"
+  const socket = new URL(import.meta.url).searchParams.get("socket");
+  if (socket !== null && readRuntimeProfile() === "development" && process.argv[2] === "--owned-backend"
     && process.argv[3] === "development" && process.argv.length === 4
-    && entryPath === join(userInfo().homedir, "Projects", "hr-relay-dev", "scripts", "profiles", "copy-signin.ts")) serveBackendProbe(socket);
+    && entryPath === join(userInfo().homedir, "Projects", "hr-relay-dev", "scripts", "profiles", "copy-signin.ts")) {
+    const directory = dirname(socket);
+    if (basename(socket) !== "probe.sock" || !/^relay-idle-[\w-]{6}$/u.test(basename(directory)) || dirname(directory) !== realpathSync("/tmp")
+      || realpathSync(directory) !== directory || (lstatSync(directory).mode & 0o777) !== 0o700) throw new Error("idle-benchmark-probe-path-refused");
+    serveBackendProbe(socket);
+  }
 }
