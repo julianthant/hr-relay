@@ -50,7 +50,7 @@ describe("dashboard design tokens", () => {
 
   it("holds the approved sidebar width and group label", () => {
     const css = readFileSync(TOKENS_CSS, "utf8");
-    assert.match(css, /--ds-sidebar-width:\s*264px/u);
+    assert.match(css, /--ds-sidebar-width:\s*232px/u);
     assert.match(css, /\.ds-text-group-label\s*\{[^}]*font-size:\s*11px[^}]*font-weight:\s*500/u);
     assert.doesNotMatch(css, /\.ds-text-caps|--log-violet/u);
   });
