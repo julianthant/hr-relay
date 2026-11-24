@@ -47,9 +47,9 @@ const sequence = (database: DatabaseSync, table: string) => z.object({ seq: z.nu
   .parse(database.prepare("SELECT seq FROM sqlite_sequence WHERE name=?").get(table))?.seq ?? 0;
 
 describe("debug event migration 39", () => {
-  it("is under the list indexes' current 40 and adds only the debug table", () => {
+  it("is under the current schema 41 and adds only the debug table", () => {
     assert.equal(DEBUG_EVENTS_MIGRATION.version, 39);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 40);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 41);
     assert.deepEqual(migrationTableNames(39).filter(table => !migrationTableNames(38).includes(table)), ["debug_events"]);
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });

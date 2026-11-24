@@ -5,9 +5,10 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import type { IsoInstant } from "../../../rules/identity/ids.js";
 import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, OCR_SEARCH_TERMS_COLUMN_SQL } from "./migrations.js";
 import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 import { runRecordColumns, runRecordFromRow } from "./run-record-row.js";
+import { backfillRunSearchOcrSubjects } from "./run-search-index.js";
 import { privatePathRejects } from "../private-path.js";
 
 export function historyArchivePath(stateRoot: string): string {
@@ -124,6 +125,10 @@ function attach(database: DatabaseSync, path: string, binding: ProfileDatabaseBi
 const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync) => void>> = {
   39: archive => archive.exec(`ALTER TABLE delegation_dependencies ADD COLUMN parent_run_id;
     UPDATE delegation_dependencies SET parent_run_id=json_extract(payload_json,'$.parentRunId')`),
+  40: archive => {
+    archive.exec(OCR_SEARCH_TERMS_COLUMN_SQL);
+    backfillRunSearchOcrSubjects(archive);
+  },
 };
 const ArchiveVersion = z.object({ schema_version: z.number().int(), installation_id: z.string(), profile_id: z.string() });
 

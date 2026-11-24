@@ -1,10 +1,12 @@
 import { AssistantM1NativeCommandAuditSchema, convertAssistantCommandPairToM1 } from "./command-record-row.js";
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { CHANGE_LOG_SCHEMA_VERSION } from "./authority-change-log.js";
+import { OCR_SEARCH_TERMS_SCHEMA_VERSION } from "./migrations.js";
 import { RUN_REFERENCES_TABLE } from "../../../models/config/authority.js";
+import { hash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { OcrReviewRevisionSchema, ocrRecordName } from "../../../models/ocr/review.js";
+import { OcrReviewRevisionSchema, ocrEmployeeIdAnswer, ocrRecordName } from "../../../models/ocr/review.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
@@ -12,7 +14,7 @@ import { ActorIdSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { type PredecessorRunRecord } from "../../../models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { FailureRecordSchema } from "../../../models/trust/failure.js";
-import { CROSS_DATE_SEARCH_MATCH_ORDER, SearchMetadataSchema } from "../../../models/dashboard/search.js";
+import { CROSS_DATE_SEARCH_MATCH_ORDER, CROSS_DATE_SEARCH_QUERY_LIMIT, SearchMetadataSchema } from "../../../models/dashboard/search.js";
 import { RunSearchDeclarationSchema, RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchReadRequestSchema, RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 
@@ -46,7 +48,8 @@ function sourceActors(sources: z.infer<typeof ActorSourcesSchema>, run: Predeces
 const FullIndexRowSchema = z.strictObject({ run_id:z.string(),workflow:z.string(),trace:z.string(),local_day:z.string(),state:z.string(),shape:z.string(),
   dry_run:z.number().int().min(0).max(1),enqueued_ms:z.number().int(),subject:z.string().nullable(),actor_id:z.string().nullable(),descriptor_version:z.number().int().positive(),
   failure_code:z.string().nullable(),has_receipt:z.number().int().min(0).max(1),has_diagnostic:z.number().int().min(0).max(1),systems_json:z.string(),source_version:z.number().int().positive(),
-  declaration_json:z.string().nullable(),actor_source_json:z.string().nullable(),metadata_json:z.string(),created_at:z.string(),updated_at:z.string() });
+  declaration_json:z.string().nullable(),actor_source_json:z.string().nullable(),metadata_json:z.string(),created_at:z.string(),updated_at:z.string(),
+  ocr_subject_terms:z.string().nullable().optional() });
 export function runSearchIndexFromRow(input: unknown, run: PredecessorRunRecord, requireCurrent = true) {
   const row = FullIndexRowSchema.parse(input), record = RunSearchIndexRecordSchema.parse(JSON.parse(row.metadata_json));
   const declaration = row.declaration_json === null ? null : RunSearchDeclarationSchema.parse(JSON.parse(row.declaration_json));
@@ -91,52 +94,66 @@ function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declarat
   return { state: "available", value: value.trim() };
 }
 
-const SEARCH_ROWS = `(SELECT run_id AS id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,
-  subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,
-  has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json FROM run_search) s`;
-const OCR_SUBJECT_MATCH = "s.id IN (SELECT value FROM json_each(?))";
-const OcrSearchCandidateSchema = z.strictObject({ target_id: RunIdSchema, review_id: z.string() });
-const OcrSearchRecordsSchema = z.strictObject({ id: z.string(), records_json: z.string() });
+const OCR_SUBJECT_STRENGTH = deepFreeze({ exact: 0, prefix: 1, contains: 2 });
 
-// A hosted review contributes matches to its visible host. Only matching run IDs reach ranking and paging.
-function readOcrSubjectMatches(database: DatabaseSync, query: string, facet: string | undefined, where: string, parameters: readonly (string | number)[]) {
-  const matches = { exact: new Set<string>(), prefix: new Set<string>(), contains: new Set<string>(), facet: new Set<string>() };
-  const candidates = database.prepare(`SELECT s.id AS target_id,review.id AS review_id FROM runs ocr
-    JOIN ${SEARCH_ROWS} ON s.id=COALESCE(ocr.parent_id,ocr.id)
+function ocrSubjectDigest(term: string): string {
+  return hash("sha256", Buffer.from(`relay:run-search-ocr-subject:v1\0${term}`, "utf16le"), "base64url");
+}
+
+const OcrSearchRecordsSchema = z.strictObject({ records_json: z.string() });
+
+function ocrSubjectWithheld(subject: z.infer<typeof SearchMetadataSchema>["subject"] | undefined): boolean {
+  return subject?.state === "unavailable" && subject.reason === "withheld";
+}
+
+function ocrSubjectTermsFor(database: DatabaseSync, runId: string, subject: z.infer<typeof SearchMetadataSchema>["subject"]): string | null {
+  if (ocrSubjectWithheld(subject)) return null;
+  const reviews = database.prepare(`SELECT json_extract(review.payload_json,'$.records') AS records_json FROM runs ocr
     JOIN ocr_review_revisions review ON review.run_id=ocr.id AND review.revision=(
       SELECT max(revision) FROM ocr_review_revisions WHERE run_id=ocr.id
     )
-    WHERE ocr.workflow='ocr' AND json_extract(s.payload_json,'$.metadata.subject.reason') IS NOT 'withheld' AND ${where}
-    LIMIT ?`).all(...parameters, LIMIT + 1);
-  if (candidates.length > LIMIT) throw new Error(`run-search-query-too-broad: narrow dates or metadata filters (maximum ${String(LIMIT)} OCR reviews)`);
-  if (candidates.length === 0) return matches;
-
-  const targets = new Map(candidates.map(row => {
-    const candidate = OcrSearchCandidateSchema.parse(row);
-    return [candidate.review_id, candidate.target_id] as const;
-  }));
-  const reviews = database.prepare(`SELECT id,json_extract(payload_json,'$.records') AS records_json
-    FROM ocr_review_revisions WHERE id IN (SELECT value FROM json_each(?))`);
-  for (const row of reviews.iterate(JSON.stringify([...targets.keys()]))) {
-    const { id, records_json } = OcrSearchRecordsSchema.parse(row);
-    const target = targets.get(id);
-    if (target === undefined) throw new Error("run-search-ocr-review-candidate-mismatch");
-    targets.delete(id);
+    WHERE ocr.workflow='ocr' AND (ocr.parent_id=? OR (ocr.id=? AND ocr.parent_id IS NULL))
+    ORDER BY ocr.id`);
+  const subjects = new Set<string>();
+  for (const row of reviews.iterate(runId, runId)) {
+    const { records_json } = OcrSearchRecordsSchema.parse(row);
     for (const record of OcrReviewRevisionSchema.shape.records.parse(JSON.parse(records_json))) {
-      const employeeId = record.fields.answers.find(answer => answer.path === "employee.employeeId" || answer.path === "employeeId");
+      const employeeId = ocrEmployeeIdAnswer(record.fields);
       for (const value of [ocrRecordName(record.fields), record.assertedEid, employeeId?.state === "read" ? employeeId.value : undefined]) {
-        if (typeof value !== "string") continue;
-        const subject = value.trim().toLowerCase();
-        if (facet !== undefined && subject.includes(facet)) matches.facet.add(target);
-        if (query.length === 0 || !subject.includes(query)) continue;
-        matches.contains.add(target);
-        if (subject.startsWith(query)) matches.prefix.add(target);
-        if (subject === query) matches.exact.add(target);
+        if (typeof value === "string") subjects.add(value.trim().toLowerCase());
       }
     }
   }
-  if (targets.size !== 0) throw new Error("run-search-ocr-review-candidate-mismatch");
-  return matches;
+  const terms = new Map<string, number>();
+  for (const value of subjects) {
+    for (let start = 0; start < value.length; start += 1) {
+      // Lowercasing can expand a query character to two code units.
+      const limit = Math.min(value.length, start + 2 * CROSS_DATE_SEARCH_QUERY_LIMIT);
+      for (let end = start + 1; end <= limit; end += 1) {
+        const term = value.slice(start, end);
+        if (term !== term.trim()) continue;
+        const strength = start > 0 ? OCR_SUBJECT_STRENGTH.contains
+          : end < value.length ? OCR_SUBJECT_STRENGTH.prefix : OCR_SUBJECT_STRENGTH.exact;
+        if (strength < (terms.get(term) ?? Infinity)) terms.set(term, strength);
+      }
+    }
+  }
+  if (terms.size === 0) return null;
+  return [...terms].map(([term, strength]) => `|${String(strength)}|${ocrSubjectDigest(term)}|`).join("");
+}
+
+/** The stopped authority and imported history both backfill their existing search rows. */
+export function backfillRunSearchOcrSubjects(database: DatabaseSync): void {
+  const candidates = database.prepare(`SELECT run_id,metadata_json FROM run_search WHERE run_id IN (
+    SELECT COALESCE(ocr.parent_id,ocr.id) FROM runs ocr WHERE ocr.workflow='ocr'
+      AND EXISTS (SELECT 1 FROM ocr_review_revisions WHERE run_id=ocr.id)
+  )`).all();
+  const update = database.prepare("UPDATE run_search SET ocr_subject_terms=? WHERE run_id=?");
+  for (const row of candidates) {
+    const { run_id, metadata_json } = z.strictObject({ run_id: RunIdSchema, metadata_json: z.string() }).parse(row);
+    const { metadata } = RunSearchIndexRecordSchema.parse(JSON.parse(metadata_json));
+    update.run(ocrSubjectTermsFor(database, run_id, metadata.subject), run_id);
+  }
 }
 
 type RunSearchPublication = z.infer<typeof RunSearchPublicationSchema>;
@@ -205,8 +222,13 @@ function nextRunSearchState(state: RunSearchState, event: RunSearchEvent): RunSe
 
 export function createRunSearchIndex(database: DatabaseSync) {
   const schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
+  const hasOcrSubjects = schemaVersion >= OCR_SEARCH_TERMS_SCHEMA_VERSION;
+  const searchRows = `(SELECT run_id AS id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,
+    subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,
+    has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json${hasOcrSubjects ? ",ocr_subject_terms" : ""} FROM run_search) s`;
   const prepareTemporaryState = () => {
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_actor_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
+    database.exec("CREATE TEMP TABLE IF NOT EXISTS search_ocr_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_declarations(id TEXT PRIMARY KEY,json TEXT NOT NULL) WITHOUT ROWID");
   };
   const count = () => CountSchema.parse(database.prepare("SELECT count(*) AS count FROM run_search").get()).count;
@@ -281,6 +303,9 @@ export function createRunSearchIndex(database: DatabaseSync) {
     const sources = indexed.actor_source_json === null ? [] : ActorSourcesSchema.parse(JSON.parse(indexed.actor_source_json));
     validateActorSources(run,sources);
     if (canonicalJsonStringify(record.metadata) !== canonicalJsonStringify(metadataFor(run, declaration, sources))) throw new Error("run-search-source-metadata-invalid");
+    if (hasOcrSubjects && indexed.ocr_subject_terms !== ocrSubjectTermsFor(database, indexed.run_id, record.metadata.subject)) {
+      throw new Error("run-search-source-ocr-subject-invalid");
+    }
   };
   /**
    * `validateCoverage` limited to the given runs: the same rules, applied to their runs and index rows only. While a build is in
@@ -318,7 +343,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       : declared === undefined ? null : parse(RunSearchDeclarationSchema,declared);
     if (declaration !== null && (declaration.workflow !== run.envelope.workflow || declaration.version !== run.envelope.descriptorVersion
       || declaration.contractFingerprint !== run.envelope.contractFingerprint)) throw new Error("run-search-declaration-identity-mismatch");
-    if (prior !== undefined && !rebuilding) runSearchIndexFromRow(prior, run, false);
+    const previous = prior !== undefined && !rebuilding ? runSearchIndexFromRow(prior, run, false) : undefined;
     const sources = frozen?.actor_source_json == null ? [] : ActorSourcesSchema.parse(JSON.parse(frozen.actor_source_json));
     const refreshActor = rebuilding || prior === undefined || database.prepare("SELECT 1 FROM search_actor_dirty WHERE run_id=?").get(id) !== undefined;
     const retained = refreshActor ? retainedActorSources(run) : sources;
@@ -340,6 +365,14 @@ export function createRunSearchIndex(database: DatabaseSync) {
       subject,actor,metadata.version,metadata.failureCode,Number(metadata.evidence.receipt),Number(metadata.evidence.diagnostic),
       canonicalJsonStringify(Object.keys(run.envelope.resolvedInstance).sort()),run.version,declaration === null ? null : canonicalJsonStringify(declaration),
       sources.length === 0 ? null : canonicalJsonStringify(sources),canonicalJsonStringify(record),frozen?.created_at ?? now,now);
+    if (hasOcrSubjects && (rebuilding || prior === undefined
+      || ocrSubjectWithheld(previous?.metadata.subject) !== ocrSubjectWithheld(metadata.subject)
+      || database.prepare("SELECT 1 FROM search_ocr_dirty WHERE run_id=?").get(id) !== undefined)) {
+      const terms = ocrSubjectTermsFor(database, id, metadata.subject);
+      if (terms !== (frozen?.ocr_subject_terms ?? null)) {
+        database.prepare("UPDATE run_search SET ocr_subject_terms=? WHERE run_id=?").run(terms, id);
+      }
+    }
     database.prepare("DELETE FROM search_actor_dirty WHERE run_id=?").run(id);
   };
   const writeId = (id: string, now: string, rebuilding = false, readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow) => {
@@ -373,6 +406,16 @@ export function createRunSearchIndex(database: DatabaseSync) {
             AND json_extract(${ref}.payload_json,'$.result.state') IN ('applied','already-applied') AND json_extract(value,'$.family')='run';`)).join(" ");
         database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS search_start_actor_${action} AFTER ${action} ON main.command_audits BEGIN ${statements} END`);
       }
+      if (hasOcrSubjects) {
+        const dirtyTables = ["search_dirty", "search_ocr_dirty"];
+        const review = dirtyTables.map(table => `INSERT OR IGNORE INTO ${table}
+          SELECT COALESCE(parent_id,id) FROM runs WHERE id=NEW.run_id AND workflow='ocr';`).join(" ");
+        const deleted = dirtyTables.map(table => `INSERT OR IGNORE INTO ${table} VALUES(OLD.parent_id);`).join(" ");
+        database.exec(`CREATE TEMP TRIGGER IF NOT EXISTS search_ocr_review_insert AFTER INSERT ON main.ocr_review_revisions
+          BEGIN ${review} END;
+          CREATE TEMP TRIGGER IF NOT EXISTS search_ocr_child_delete AFTER DELETE ON main.runs
+          WHEN OLD.workflow='ocr' AND OLD.parent_id IS NOT NULL BEGIN ${deleted} END;`);
+      }
     },
     register(input: unknown, now: string) {
       const stored = columns(), current = runSearchPublicationOf(stored, buildProgress);
@@ -399,12 +442,12 @@ export function createRunSearchIndex(database: DatabaseSync) {
         // An explicit chunked rebuild may already have published this transaction's generation.
         // Search stays unavailable until explicit rebuild. Unrelated execution remains authoritative.
         if (publication().sourceGeneration !== sourceGeneration) publish({state:"invalid",sourceGeneration,afterRun:null,rowCount:count()},now);
-        database.exec("DELETE FROM search_dirty");
+        database.exec("DELETE FROM search_dirty; DELETE FROM search_ocr_dirty");
         return;
       }
       for (const row of database.prepare("SELECT run_id FROM search_dirty").iterate()) writeId(z.object({ run_id: z.string() }).parse(row).run_id, now);
       publish({ state: "published", sourceGeneration, afterRun: null, rowCount: count() }, now);
-      database.exec("DELETE FROM search_dirty");
+      database.exec("DELETE FROM search_dirty; DELETE FROM search_ocr_dirty");
     },
     rebuild(input: unknown, sourceGeneration: number, now: string, readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow) {
       const { restart, limit } = RunSearchRebuildRequestSchema.parse(input);
@@ -440,57 +483,52 @@ export function createRunSearchIndex(database: DatabaseSync) {
       if (facets.evidence === "diagnostic") add("s.diagnostic=1");
       if (facets.evidence === "none") add("s.receipt=0 AND s.failure IS NULL AND s.diagnostic=0");
 
-      const subjectQuery = scope === "all" || scope === "subject" ? q : "";
-      const subjectFacet = facets.subject?.toLowerCase();
-      const ocrMatches = subjectQuery.length > 0 || subjectFacet !== undefined
-        ? readOcrSubjectMatches(database, subjectQuery, subjectFacet, clauses.join(" AND "), parameters)
-        : undefined;
+      const ocrDigest = hasOcrSubjects && q.length > 0 && (scope === "all" || scope === "subject") ? ocrSubjectDigest(q) : undefined;
+      const ocrMatch = "instr(s.ocr_subject_terms,?)>0";
       if (q.length > 0) {
         const scopedFields = scope === "all" ? Object.values(fields) : [fields[scope]];
         const conditions = scopedFields.map(field => `instr(${field},?)>0`);
         const queryBindings = scopedFields.map(() => q);
-        if (ocrMatches?.contains.size) {
-          conditions.push(OCR_SUBJECT_MATCH);
-          queryBindings.push(JSON.stringify([...ocrMatches.contains]));
+        if (ocrDigest !== undefined) {
+          conditions.push(ocrMatch);
+          queryBindings.push(`|${ocrDigest}|`);
         }
         add(`(${conditions.join(" OR ")})`, ...queryBindings);
       }
-      if (subjectFacet !== undefined) {
-        if (ocrMatches?.facet.size) add(`(instr(s.subject,?)>0 OR ${OCR_SUBJECT_MATCH})`, subjectFacet, JSON.stringify([...ocrMatches.facet]));
-        else add("instr(s.subject,?)>0", subjectFacet);
+      if (facets.subject !== undefined) {
+        const subject = facets.subject.toLowerCase();
+        if (hasOcrSubjects) add(`(instr(s.subject,?)>0 OR ${ocrMatch})`, subject, `|${ocrSubjectDigest(subject)}|`);
+        else add("instr(s.subject,?)>0", subject);
       }
       const where = clauses.join(" AND ");
-      const candidateCount = CountSchema.parse(database.prepare(`SELECT count(*) AS count FROM (SELECT 1 FROM ${SEARCH_ROWS} WHERE ${where} LIMIT ?)`)
-        .get(...parameters, LIMIT + 1)).count;
-      if (candidateCount > LIMIT) throw new Error("run-search-query-too-broad: narrow dates or metadata filters (maximum 10000 candidates)");
       const rankParameters: string[] = [];
       const rankClauses = CROSS_DATE_SEARCH_MATCH_ORDER.flatMap((match, rank) => {
         if (scope !== "all" && scope !== match.field) return [];
         rankParameters.push(q);
         const field = fields[match.field];
         const condition = match.strength === "exact" ? `${field}=?` : match.strength === "prefix" ? `substr(${field},1,${String(q.length)})=?` : `instr(${field},?)>0`;
-        const ocrIds = match.field === "subject" ? ocrMatches?.[match.strength] : undefined;
-        if (ocrIds?.size) {
-          rankParameters.push(JSON.stringify([...ocrIds]));
-          return [`WHEN (${condition} OR ${OCR_SUBJECT_MATCH}) THEN ${String(rank)}`];
+        if (match.field === "subject" && ocrDigest !== undefined) {
+          rankParameters.push(`|${String(OCR_SUBJECT_STRENGTH[match.strength])}|${ocrDigest}|`);
+          return [`WHEN (${condition} OR ${ocrMatch}) THEN ${String(rank)}`];
         }
         return [`WHEN ${condition} THEN ${String(rank)}`];
       });
       const rank = q.length === 0 ? "0" : `CASE ${rankClauses.join(" ")} ELSE NULL END`;
       const bindings = q.length === 0 ? parameters : [...rankParameters, ...parameters];
-      const matched = `WITH ranked AS (SELECT s.*,${rank} AS match_rank FROM ${SEARCH_ROWS} WHERE ${where})`;
+      const matched = `WITH ranked AS (SELECT id,payload_json,subject,actor,enqueued_ms,${rank} AS match_rank FROM ${searchRows} WHERE ${where})`;
       const after = request.after;
       const afterSql = after === undefined ? "" : "AND (match_rank>? OR (match_rank=? AND enqueued_ms<?) OR (match_rank=? AND enqueued_ms=? AND id>?))";
       const cursorBindings = after === undefined ? [] : [after.matchRank, after.matchRank, Date.parse(after.enqueuedAt), after.matchRank, Date.parse(after.enqueuedAt), after.runId];
-      const pass = database.prepare(`${matched}, matched AS MATERIALIZED (SELECT * FROM ranked WHERE match_rank IS NOT NULL),
+      const pass = database.prepare(`${matched}, matched AS MATERIALIZED (SELECT * FROM ranked WHERE match_rank IS NOT NULL LIMIT ?),
         page AS (SELECT id,payload_json,match_rank,enqueued_ms FROM matched WHERE 1=1 ${afterSql} ORDER BY match_rank,enqueued_ms DESC,id LIMIT ?)
         SELECT 'row' AS kind,json_object('id',id,'payload_json',payload_json,'match_rank',match_rank) AS payload,match_rank,enqueued_ms,id FROM page
         UNION ALL SELECT 'summary',json_object('count',count(*),'subject_missing',COALESCE(sum(subject IS NULL),0),'actor_missing',COALESCE(sum(actor IS NULL),0)),NULL,NULL,NULL FROM matched
-        ORDER BY kind,match_rank,enqueued_ms DESC,id`).all(...bindings, ...cursorBindings, request.limit)
+        ORDER BY kind,match_rank,enqueued_ms DESC,id`).all(...bindings, LIMIT + 1, ...cursorBindings, request.limit)
         .map(row => z.object({ kind: z.enum(["row", "summary"]), payload: z.string() }).parse(row));
       const summary = pass.find(row => row.kind === "summary");
       if (summary === undefined) throw new Error("run-search-summary-missing");
       const coverage = z.object({ count: z.number().int(), subject_missing: z.number().int(), actor_missing: z.number().int() }).parse(JSON.parse(summary.payload));
+      if (coverage.count > LIMIT) throw new Error("run-search-query-too-broad: narrow dates or metadata filters (maximum 10000 candidates)");
       const rows = pass.filter(row => row.kind === "row").map(row => {
         const indexed = IndexRowSchema.parse(JSON.parse(row.payload));
 

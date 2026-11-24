@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/operator.js";
 import { DASHBOARD_CATALOG_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
-import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { resolveRunNavigation } from "../../../../src/dashboard/app/navigation/run-navigation.js";
@@ -81,8 +81,16 @@ it("finds an OCR run by a name or Employee ID carried only by its reviewed recor
   assert.ok(unfiltered.results.some(row => row.runId === runId));
   assert.ok(unfiltered.results.every(row => row.metadata.subject.state === "unavailable"));
 
-  const matches = [name, eid].map(q => search.search({ q, scope: "subject" }).results.map(row => row.runId));
-  assert.deepEqual(matches, [[runId], [runId]]);
+  const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+  try {
+    const matches = [name, eid, "xample, Av"].map(q => search.search({ q, scope: "subject" }).results.map(row => row.runId));
+    assert.deepEqual(matches, [[runId], [runId], [runId]]);
+    assert.ok(prepare.mock.calls.every(([sql]) => !sql.includes("ocr_review_revisions")));
+  } finally { prepare.mockRestore(); }
+  using native = new DatabaseSync(f.path, { readOnly: true });
+  const projection = native.prepare("SELECT ocr_subject_terms FROM run_search WHERE run_id=?").get(runId)?.ocr_subject_terms;
+  assert.ok(typeof projection === "string" && projection.length > 0);
+  assert.ok(!projection.toLowerCase().includes(name.toLowerCase()) && !projection.includes(eid));
   for (const q of [name, eid]) {
     const [result] = search.search({ q }).results;
     assert.ok(result);
@@ -95,10 +103,11 @@ it("finds an OCR run by a name or Employee ID carried only by its reviewed recor
   await assertOpensRun(f, { q: name }, runId);
 }, scaledMs(30_000));
 
-it("bounds eligible OCR reviews before reading record payloads", () => {
+it("keeps selective subject queries available beyond ten thousand retained OCR reviews", () => {
   const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
   try {
     for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
+    db.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
     db.exec(`INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id)
       VALUES(1,1,1,'2026-10-01T17:00:00.000Z',1,'ready','11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222');
       WITH RECURSIVE seeds(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seeds WHERE n<10001),
@@ -115,10 +124,8 @@ it("bounds eligible OCR reviews before reading record payloads", () => {
 
     const index = createRunSearchIndex(db);
     const input = { q: "example", scope: "subject", facets: {}, limit: 1 };
-    // The payloads lack records. The cross-date call must hit the work limit before reading them.
-    assert.throws(() => index.search(input, 1), /run-search-query-too-broad.*10000 OCR reviews/u);
-    assert.equal(index.search({ ...input, facets: { from: "2026-10-02", to: "2026-10-02" } }, 1).totalMatches, 0);
-    assert.equal(index.search({ ...input, scope: "run" }, 1).totalMatches, 0);
+    assert.equal(index.search(input, 1).totalMatches, 0);
+    assert.equal(index.search({ ...input, scope: "all" }, 1).totalMatches, 0);
   } finally {
     db.close();
   }
