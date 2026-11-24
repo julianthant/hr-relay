@@ -230,7 +230,7 @@ it("bounds cold range/run selected evidence independently of unrelated current a
       assert.equal(observed[0]?.rows, 121);
       using raw = new DatabaseSync(w.path, { readOnly: true });
       const rangePlan = raw.prepare("EXPLAIN QUERY PLAN SELECT id FROM timeline_events WHERE retention_class='confirmed-operation' AND confirmed_at>=? AND confirmed_at<? ORDER BY confirmed_at,id LIMIT 10001").all("2026-09-08", "2026-09-09");
-      assert.match(JSON.stringify(rangePlan), /SEARCH.*timeline_retention_idx/u);
+      assert.match(JSON.stringify(rangePlan), /SEARCH timeline_events USING INDEX timeline_transactions_idx \(confirmed_at>\? AND confirmed_at<\?\)/u);
       const runPlan = raw.prepare("EXPLAIN QUERY PLAN SELECT id FROM timeline_events WHERE retention_class='confirmed-operation' AND run_id=? ORDER BY confirmed_at,id LIMIT 10001").all(deletedIds[0] ?? "");
       assert.match(JSON.stringify(runPlan), /SEARCH.*timeline_run_transactions_idx/u);
     } finally { spy.mockRestore(); }
