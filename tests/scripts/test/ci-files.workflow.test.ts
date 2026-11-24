@@ -112,7 +112,7 @@ describe("development task push", () => {
 
   it.each([
     { workflow: development, resultJob: "development", needed: "checks" },
-    { workflow: pr, resultJob: "metadata", needed: "non-task-checks" },
+    { workflow: pr, resultJob: "non-task-result", needed: "non-task-checks" },
   ])("rejects failed, cancelled, skipped and missing proofs in $resultJob", ({ workflow, resultJob, needed }) => {
     const skipped = { result: "skipped" };
     for (const plan of [planFor("fast"), planFor("fast", { draft: true }),
@@ -189,14 +189,14 @@ describe("development task push", () => {
 describe("development pull requests", () => {
   it("runs metadata on the requested PR events without polling workflow runs", () => {
     expect(pr.split("\npermissions:\n")[0]).toContain("on:\n  pull_request:\n    branches: [development]\n"
-      + "    types: [opened, edited, synchronize, reopened, ready_for_review]");
-    expect(jobNames(pr)).toEqual(["non-task-checks", "metadata"]);
+      + "    types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]");
+    expect(jobNames(pr)).toEqual(["metadata", "non-task-checks", "non-task-result"]);
     expect(pr).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}");
     expect(pr).toContain("cancel-in-progress: true");
     expect(pr).not.toMatch(/listWorkflowRuns|listJobsForWorkflowRun|setTimeout|\bsleep\b/u);
     const metadata = job(pr, "metadata");
-    expect(metadata).toContain("needs: non-task-checks");
-    expect(metadata).toContain("if: ${{ !cancelled() }}");
+    expect(metadata).toMatch(/^ {4}name: PR metadata$/mu);
+    expect(metadata).not.toMatch(/^\s*(?:if|needs):|npm ci|ci-plan\.ts/u);
     expect(metadata).toContain("PR_BODY: ${{ github.event.pull_request.body }}");
     expect(metadata).toContain('git cat-file -e "$PR_BASE_SHA^{commit}"');
     expect(metadata).toContain('|| git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"');
@@ -205,35 +205,40 @@ describe("development pull requests", () => {
   });
 
   it("reserves the development name for the push result on Task PRs and runs fast checks for other heads", () => {
-    const metadata = job(pr, "metadata");
     const call = job(pr, "non-task-checks");
+    const result = job(pr, "non-task-result");
     expect(call).toContain("uses: ./.github/workflows/checks.yml");
     expect(call).toContain("kind: fast");
     const condition = call.match(/^ {4}if: (.+)$/mu)?.[1];
-    const name = metadata.match(/^ {4}name: (.+)$/mu)?.[1];
+    const resultCondition = result.match(/^ {4}if: (.+)$/mu)?.[1];
+    const name = result.match(/^ {4}name: (.+)$/mu)?.[1];
     assert.ok(condition);
+    assert.ok(resultCondition);
     assert.ok(name);
+    expect(result).toContain("needs: non-task-checks");
     for (const head_ref of [taskBranch, "fix/ci-other", "chore/ci-other", "dependabot/npm_and_yarn/tool"]) {
       const task = head_ref === taskBranch;
       expect(expression(condition, {}, { head_ref })).toBe(!task);
-      expect(expression(name, {}, { head_ref })).toBe(task ? "PR metadata" : "development");
+      expect(expression(resultCondition, {}, { head_ref })).toBe(!task);
+      expect(expression(name, {}, { head_ref })).toBe(task ? "Non-task result" : "development");
     }
-    expect(metadata.match(/^ {8}if: (.+)$/gmu)).toEqual([
-      `        if: ${condition}`,
-      `        if: ${condition}`,
-    ]);
   });
 
   it.each([
     { head: taskBranch, title: "CI: check metadata", body: "Update the gate.\r\n\r\nCloses #669\r\n", error: "" },
-    { head: "fix/ci-other", title: "CI: retain fast proof", body: "Closes #669", error: "" },
+    { head: "fix/ci-other", title: "CI: retain fast proof", body: "", error: "" },
+    { head: "chore/ci-other", title: "CI: keep chore metadata", body: "Updated the runners.", error: "" },
+    { head: "dependabot/npm_and_yarn/tool", title: "Dependencies: bump tool", body: "Automated dependency update.", error: "" },
     { head: "feature/ci", title: "CI: check metadata", body: "Closes #669", error: "branch name" },
     { head: taskBranch, title: "ci: use conventional title", body: "Closes #669", error: "pull request title" },
     { head: taskBranch, title: "CI: check metadata", body: "", error: "pull request body" },
     { head: taskBranch, title: "CI: check metadata", body: "Closes #669\nMore text", error: "pull request body" },
+    { head: "fix/ci-other", title: "fix: conventional title", body: "", error: "pull request title" },
+    { head: "chore/ci-other", title: "chore: conventional title", body: "", error: "pull request title" },
+    { head: "dependabot/npm_and_yarn/tool", title: "Bump tool", body: "", error: "pull request title" },
   ])("validates the shipped metadata command for $head with error=$error", ({ head, title, body, error }) => {
     const step = job(pr, "metadata").split("\n      - name: Check the development pull request metadata\n")[1];
-    const script = step?.match(/^ {8}run: (.+)$/mu)?.[1];
+    const script = step?.match(/^ {8}run: \|\n((?: {10}[^\n]*\n)+)/mu)?.[1];
     assert.ok(script);
     const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
       env: { ...process.env, NAMES_BASE: "development", NAMES_HEAD: head, NAMES_TITLE: title, PR_BODY: body }, encoding: "utf8",
@@ -416,9 +421,9 @@ describe("separate event and admitted proof workflows", () => {
   });
 
   it("keeps six entry and reusable workflows", () => {
-    expect(readdirSync(new URL("../../../.github/workflows/", import.meta.url))).toEqual(expect.arrayContaining([
-      "checks.yml", "development.yml", "full.yml", "pr.yml", "staging.yml", "production.yml",
-    ]));
+    expect(readdirSync(new URL("../../../.github/workflows/", import.meta.url)).filter(name => /\.ya?ml$/u.test(name)).sort()).toEqual([
+      "checks.yml", "development.yml", "full.yml", "pr.yml", "production.yml", "staging.yml",
+    ]);
     const stagingTrigger = staging.split("\npermissions:\n")[0];
     const productionTrigger = production.split("\npermissions:\n")[0];
     expect(stagingTrigger).toContain("run-name: ${{ github.event.pull_request.title || github.event.head_commit.message }}");
@@ -450,7 +455,7 @@ describe("separate event and admitted proof workflows", () => {
 
   it("uses small runners for selection, metadata, and workflow results", () => {
     for (const [workflow, name] of [
-      [checks, "changes"], [development, "development"], [pr, "metadata"], [full, "decide"], [full, "full"],
+      [checks, "changes"], [development, "development"], [pr, "metadata"], [pr, "non-task-result"], [full, "decide"], [full, "full"],
       [staging, "staging"], [production, "production"],
     ]) expect(job(workflow, name)).toContain("runs-on: ubuntu-slim");
   });
