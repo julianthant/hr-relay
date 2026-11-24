@@ -2,7 +2,7 @@ import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-ro
 import { onboardingProfileDirectory } from "../../../../src/backend/storage/browser-roots.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError }
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
 
-function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "darwin") {
+function world(platform: NodeJS.Platform = "darwin", { duoPage = false }: { duoPage?: boolean } = {}) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));
   const browserRoot = join(directory, "browsers");
   const extensionDirectory = join(directory, "extension");
@@ -22,11 +22,11 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   writeFileSync(join(extensionDirectory, "LICENSE"), "synthetic license fixture", { mode: 0o644 });
   writeFileSync(join(extensionDirectory, "THIRD_PARTY_NOTICES.md"), "synthetic notices fixture", { mode: 0o644 });
   mkdirSync(join(extensionDirectory, "src", "icons"), { mode: 0o700 });
-  for (const name of ["options.html", "options.js", "popup.html", "popup.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/key-round.svg", "icons/plus.svg", "icons/shield-check.svg", "relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "duo-origin.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "", { mode: 0o644 });
+  for (const name of ["options.html", "options.js", "popup.html", "popup.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/key-round.svg", "icons/plus.svg", "icons/shield-check.svg", "relay-background.js", "relay-content.js", "relay-inpage.js", "service.js", "crypto.js", "accounts.js", "duo-origin.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "", { mode: 0o644 });
   writeFileSync(join(extensionDirectory, "unlisted.txt"), "synthetic unlisted source", { mode: 0o644 });
   const clock = manualClock(new Date("2026-10-01T00:00:00.000Z"));
   const attempt: DraftDuoAttempt = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
-    attemptId: randomUUID(), method, expiresAt: "2026-10-01T00:10:00.000Z" };
+    attemptId: randomUUID(), method: "key", expiresAt: "2026-10-01T00:10:00.000Z" };
   const requests: unknown[] = [];
   const browserRequests: unknown[] = [];
   const events: import("../../../../src/models/profiles/profile.js").ProfileOnboardingDuoEvent[] = [];
@@ -115,14 +115,6 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let pages = [makePage()];
   const pageWaiters: ((page: Page) => void)[] = [];
   const context = { waitForEvent: () => new Promise<Page>(resolve => pageWaiters.push(resolve)), serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), isClosed: () => closing || closed, on: (_event: string, callback: () => void) => { listeners.push(callback); },
-    newCDPSession: async () => ({ async send(name: string, input?: { credentialId: string }) {
-      if (["WebAuthn.enable", "WebAuthn.setResponseOverrideBits", "WebAuthn.setUserVerified", "WebAuthn.setAutomaticPresenceSimulation"].includes(name)) return {};
-      if (name === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-platform" };
-      if (name === "WebAuthn.getCredential") return { credential: { credentialId: input?.credentialId, rpId: "duosecurity.com",
-        privateKey: generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
-        isResidentCredential: true, signCount: 1 } };
-      throw new Error("unexpected platform operation");
-    } }),
     newPage: async () => { const page = makePage(); pages.push(page); return page; },
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
   const relayTarget = platform === "win32" ? { platform: "win32" as const, processId: 72, windowHandle: "8192" }
@@ -143,7 +135,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
         return context;
       }
       input.ownedProcess?.({ exited: () => closed, onExit: callback => listeners.push(callback), stop: async () => { await context.close(); } });
-      launchCount++; closed = false; closing = false; pages = [makePage(), ...(method === "touch" ? [makePage("https://test.duosecurity.com")] : [])]; listeners.length = 0; profile = input.profileDirectory;
+      launchCount++; closed = false; closing = false; pages = [makePage(), ...(duoPage ? [makePage("https://test.duosecurity.com")] : [])]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
       assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");
@@ -173,7 +165,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       async persistPending() { called("persist"); return { revision: 1 }; },
       async signAssertion(request) { called("sign"); called("sign-return"); return { credentialId: request.credentialId,
         authenticatorData: "synthetic", clientDataJSON: "synthetic", signature: "synthetic", userHandle: null, transport: "usb", signCount: 5 }; },
-      async recordCeremony(receipt) { called(receipt.mechanism); },
+      async recordCeremony() { called("ceremony"); },
       async recordPortalAcceptance(receipt) { called(receipt.acceptance); },
       async retainUnknown() { calls.push("unknown"); },
     };
@@ -187,7 +179,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     return result;
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
-      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
+      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), contextClosed: () => closed, observed: () => observed, revoke: () => { current = false; },
     events, selectedPages,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
@@ -540,7 +532,7 @@ describe("draft Duo provider", () => {
   });
 
   for (const platform of ["darwin", "win32"] as const) it(`refuses an unproved exact target before ${platform} foreground handling`, async () => {
-    const w = world("key", platform), failure = new Error("ONBOARDING_DUO_SCOPE");
+    const w = world(platform), failure = new Error("ONBOARDING_DUO_SCOPE");
     try {
       await w.provider.showBrowser(w.owner);
       const activations = w.osFocuses(), windowActivations = w.windowFocuses();
@@ -552,10 +544,10 @@ describe("draft Duo provider", () => {
   });
 
   for (const platform of ["darwin", "win32"] as const) it(`activates each ${platform} show and returns to the original Relay target without starting an attempt`, async () => {
-    const w = world("key", platform);
+    const w = world(platform);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
     const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
-      step: "duo", methods: { key: idle, touch: idle } });
+      step: "duo", methods: { key: idle } });
     w.owner.readState = () => state;
     try {
       await w.provider.showBrowser(w.owner); await w.provider.showBrowser(w.owner);
@@ -604,7 +596,7 @@ describe("draft Duo provider", () => {
     const w = world();
     const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
     const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
-      step: "ready", methods: { key: complete, touch: complete } });
+      step: "ready", methods: { key: complete } });
     w.owner.readState = () => state;
     w.refuseReturn(new Error("synthetic return verification failure"));
     try {
@@ -823,7 +815,7 @@ describe("draft Duo provider", () => {
       await w.send("sign", { credentialId: "cHVibGljLWlk", requestId: randomUUID(), origin: BIND.origin, rpId: "duosecurity.com", challenge: "AQID" });
       const osFocusBeforeCompletion = w.osFocuses();
       await w.send("portal-accepted", { credentialId: "cHVibGljLWlk", requestId });
-      assert.deepEqual(w.calls, ["persist", "fast-duo", "sign", "sign-return", "portal-accepted"]);
+      assert.deepEqual(w.calls, ["persist", "ceremony", "sign", "sign-return", "portal-accepted"]);
       assert.equal(w.selectedPages.at(-1), "chrome-extension://owned-extension/src/options.html");
       assert.equal(w.osFocuses(), osFocusBeforeCompletion, "background completion selects its tab without activating the app");
       assert.deepEqual(await w.provider.cancel(w.attempt), { state: "closed" });
@@ -872,50 +864,12 @@ describe("draft Duo provider", () => {
       assert.equal(w.launches(), 0);
     } finally { await w.cleanup(); }
   });
-  it("persists the emulated macOS key before recording separate ceremony and portal facts", async () => {
-    const w = world("touch");
-    try {
-      await w.provider.start(w.attempt, w.bind, w.reportFailure);
-      await w.send("bind", BIND);
-      const requestId = randomUUID();
-      await w.send("native-created", { credentialId: "native-public-id", requestId });
-      assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
-      await w.send("portal-accepted", { credentialId: "native-public-id", requestId });
-      assert.deepEqual(w.calls, ["persist", "chromium-platform", "portal-accepted"]);
-    } finally { await w.cleanup(); }
-  });
-
-  it("retains the virtual platform key before recording its ceremony on Windows", async () => {
-    const w = world("touch", "win32");
-    try {
-      await w.provider.start(w.attempt, w.bind, w.reportFailure);
-      assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
-      const requestId = randomUUID(), credentialId = Buffer.from("virtual-public-id").toString("base64url");
-      assert.deepEqual(await w.send("native-created", { credentialId, requestId }), { ok: true, value: { observed: true } });
-      assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
-      await w.send("portal-accepted", { credentialId, requestId });
-      assert.deepEqual(w.calls, ["persist", "chromium-platform", "portal-accepted"]);
-    } finally { await w.cleanup(); }
-  });
-
   it("binds the verified top-level Duo page when it also contains same-origin child frames", async () => {
-    const w = world("touch");
+    const w = world("darwin", { duoPage: true });
     w.sameOriginChildFrame();
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
-      await w.send("native-created", { credentialId: "native-public-id", requestId: randomUUID() });
-      assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
-    } finally { await w.cleanup(); }
-  });
-
-  it("refuses ambiguous top-level Duo pages before preparing an authenticator", async () => {
-    const w = world("touch");
-    try {
-      await w.provider.start(w.attempt, w.bind, w.reportFailure);
-      w.addDuoPage();
-      assert.deepEqual(await w.send("bind", BIND), { ok: false });
-      assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
 
@@ -971,7 +925,7 @@ describe("draft Duo provider", () => {
 
 
 describe("draft document observations around native authority awaits", () => {
-  for (const boundary of ["persist", "sign", "sign-return", "fast-duo", "portal-accepted"] as const) it(`withholds ACK when document changes during ${boundary}`, async () => {
+  for (const boundary of ["persist", "sign", "sign-return", "ceremony", "portal-accepted"] as const) it(`withholds ACK when document changes during ${boundary}`, async () => {
     const w = world();
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
@@ -983,7 +937,7 @@ describe("draft document observations around native authority awaits", () => {
       if (["sign", "sign-return", "portal-accepted"].includes(boundary)) await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId });
       w.driftOn(boundary);
       const result = boundary === "persist" ? await w.send("persist", pending)
-        : boundary === "fast-duo" ? await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId })
+        : boundary === "ceremony" ? await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId })
         : boundary === "portal-accepted" ? await w.send("portal-accepted", { credentialId: "cHVibGljLWlk", requestId })
         : await w.send("sign", { credentialId: "cHVibGljLWlk", requestId: randomUUID(), origin: BIND.origin, rpId: "duosecurity.com", challenge: "AQID" });
       assert.deepEqual(result, { ok: false });
@@ -1016,7 +970,7 @@ it("reports backend failures with exception type and measures processing without
     assert.equal(w.events.some(event => event.stage === "slow-operation"), false);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
     const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
-      step: "duo", methods: { key: idle, touch: idle } });
+      step: "duo", methods: { key: idle } });
     w.owner.readState = () => { w.clock.advanceMonotonic(1500); return state; };
     await w.sendBrowser("state");
     await new Promise<void>(resolve => setImmediate(resolve));

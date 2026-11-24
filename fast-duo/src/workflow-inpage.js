@@ -28,7 +28,6 @@
       window.postMessage({ type: 'DUO_WORKFLOW_REQUEST', id, request: { requestId: id, rpId: key.rpId || location.hostname,
         origin: location.origin, challenge: encode(key.challenge), allowCredentials: (key.allowCredentials || []).map(entry => encode(entry.id)) } }, location.origin);
     });
-    if (result?.passThrough === true) return originalGet(options);
     if (!result?.ok) throw new DOMException('Duo signing refused.', 'NotAllowedError');
     const response = Object.create(AuthenticatorAssertionResponse.prototype, Object.getOwnPropertyDescriptors({
       clientDataJSON: decode(result.clientDataJSON), authenticatorData: decode(result.authenticatorData), signature: decode(result.signature),
@@ -36,7 +35,7 @@
     }));
     return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
       id: result.credentialId.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), rawId: decode(result.credentialId), type: 'public-key',
-      authenticatorAttachment: result.transport === 'usb' ? 'cross-platform' : 'platform', response, getClientExtensionResults: () => ({}),
+      authenticatorAttachment: 'cross-platform', response, getClientExtensionResults: () => ({}),
     }));
   };
 })();

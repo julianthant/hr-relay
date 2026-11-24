@@ -361,6 +361,8 @@ function focusProbe(input: FocusProbeStep): FocusProbeResult {
       const shown = stoodInFor(element).filter(part => { const partBox = part.getBoundingClientRect(); return partBox.width > 1 && partBox.height > 1; });
       if (shown.length === 0) continue;
       if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[inert], [aria-hidden="true"]') !== null) continue;
+      // A tab list hands its Tab stop to the active tab, so the tabs are the stops; the list counts as reached only while that tab can take focus.
+      if (element.getAttribute("role") === "tablist" && element.querySelector('[role="tab"][aria-selected="true"]:not(:disabled, [aria-disabled="true"])') !== null) continue;
       // A bare tabindex="-1" region is a focus target for scripts, not a control. So is a dialog's own surface: WCAG 2.4.3
       // (Focus Order) has focus move into the dialog, which needs it programmatically focusable, and 2.1.1 asks for no Tab stop on it.
       if (element.getAttribute("tabindex") === "-1" && !element.matches('a[href], button, input, select, textarea, [role]:not([role="dialog"], [role="alertdialog"])')) continue;
@@ -413,8 +415,14 @@ export async function namedAndFocusable({ page }: StateRuleContext): Promise<rea
       if (widgets.get(stop.index) !== true) continue;
       for (const key of ["ArrowRight", "ArrowDown"]) {
         for (let moves = 0; moves < members; moves += 1) {
+          const before = (await page.evaluate(focusProbe, { step: "stop" })).stop.index;
           await page.keyboard.press(key);
-          const moved = (await page.evaluate(focusProbe, { step: "stop" })).stop;
+          // A widget may move focus a tick after the key (Radix does); give it a moment before reading where focus went.
+          let moved = (await page.evaluate(focusProbe, { step: "stop" })).stop;
+          for (let waited = 0; waited < 10 && moved.index === before; waited += 1) {
+            await page.waitForTimeout(20);
+            moved = (await page.evaluate(focusProbe, { step: "stop" })).stop;
+          }
           if (moved.index === null || rings.has(moved.index)) break;
           rings.set(moved.index, moved.ring);
         }

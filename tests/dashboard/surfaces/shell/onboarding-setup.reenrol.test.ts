@@ -10,7 +10,7 @@ import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboar
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const done = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: true };
 const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-const draft = (methods: { key: object; touch: object }, step: "duo" | "ready") => ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
+const draft = (methods: { key: object }, step: "duo" | "ready") => ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
   profileId: "00000000-0000-4000-8000-000000000003", step, methods, browser: { state: "open", generation: 0 } });
 
 async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedOnboardingPort>) {
@@ -23,22 +23,22 @@ async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedO
   return { calls, host, button, async close() { await act(async () => root.unmount()); host.remove(); } };
 }
 
-it("keeps Use new devices off until both methods are proven and cancels from the same footer", async () => {
+it("keeps Use new key off until the security key is proven and cancels from the same footer", async () => {
   const calls: string[] = [];
-  const f = await mount(draft({ key: done, touch: idle }, "duo"), { cancel: async () => { calls.push("cancel"); return { state: "active", profileId: "00000000-0000-4000-8000-000000000003", epoch: 1, duoState: "ready" }; } });
+  const f = await mount(draft({ key: idle }, "duo"), { cancel: async () => { calls.push("cancel"); return { state: "active", profileId: "00000000-0000-4000-8000-000000000003", epoch: 1, duoState: "ready" }; } });
   try {
-    assert.equal(f.button("Use new devices")?.disabled, true);
+    assert.equal(f.button("Use new key")?.disabled, true);
     await act(async () => { f.button("Cancel setup")?.click(); });
     assert.deepEqual(calls, ["cancel"]);
   } finally { await f.close(); }
 });
 
-it("switches through the served port when both methods are proven and shows a refusal with the backend's text", async () => {
+it("switches through the served port when the security key is proven and shows a refusal with the backend's text", async () => {
   const calls: string[] = [];
-  const f = await mount(draft({ key: done, touch: done }, "ready"), { complete: async () => { calls.push("complete"); throw Object.assign(new Error("refused"), { code: "PROFILE_DUO_REENROL_BUSY" }); } });
+  const f = await mount(draft({ key: done }, "ready"), { complete: async () => { calls.push("complete"); throw Object.assign(new Error("refused"), { code: "PROFILE_DUO_REENROL_BUSY" }); } });
   try {
-    assert.equal(f.button("Use new devices")?.disabled, false);
-    await act(async () => { f.button("Use new devices")?.click(); });
+    assert.equal(f.button("Use new key")?.disabled, false);
+    await act(async () => { f.button("Use new key")?.click(); });
     assert.deepEqual(calls, ["complete"]);
     assert.match(f.host.querySelector("[role=alert]")?.textContent ?? "", /The new Duo setup can only switch in while idle\. Try later\./u);
     assert.ok(f.button("Cancel setup"));
@@ -48,9 +48,9 @@ it("switches through the served port when both methods are proven and shows a re
 it("sends one close command when both footer actions are pressed before React re-renders", async () => {
   const calls: string[] = [];
   const pending = (name: string) => () => { calls.push(name); return new Promise<never>(() => undefined); };
-  const f = await mount(draft({ key: done, touch: done }, "ready"), { complete: pending("complete"), cancel: pending("cancel") });
+  const f = await mount(draft({ key: done }, "ready"), { complete: pending("complete"), cancel: pending("cancel") });
   try {
-    const use = f.button("Use new devices"), cancel = f.button("Cancel setup"); assert.ok(use); assert.ok(cancel);
+    const use = f.button("Use new key"), cancel = f.button("Cancel setup"); assert.ok(use); assert.ok(cancel);
     await act(async () => { use.click(); use.click(); cancel.click(); });
     assert.deepEqual(calls, ["complete"]);
     assert.equal(f.button("Switching…")?.getAttribute("aria-busy"), "true");

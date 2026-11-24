@@ -44,8 +44,8 @@ const BANNER = {
     render: () => <StoryFrame><LateNotice sticky tone="warning" title="Can't reach Relay" description="Reconnecting…" /></StoryFrame> },
   quitting: { title: "Relay will quit once runs pause", ready: 'text=/Relay quits after runs pause/',
     render: () => <StoryFrame><LateNotice sticky tone="info" title="Relay quits after runs pause" /></StoryFrame> },
-  "no-worker": { title: "Queued runs and no worker to take them", knownFailures: { "word-limits": "#532" }, ready: 'text=/Person Lookup has no worker/',
-    render: () => <StoryFrame><LateNotice sticky tone="warning" title="Person Lookup has no worker. Add one in Sessions." /></StoryFrame> },
+  "no-worker": { title: "Queued runs and no worker to take them", ready: 'text=/Person Lookup has no worker/',
+    render: () => <StoryFrame><LateNotice sticky tone="warning" title="Person Lookup has no worker. Open Sessions." /></StoryFrame> },
 } satisfies Record<Banner, Story>;
 
 /** What the queue column shows when it has no queue to draw. */

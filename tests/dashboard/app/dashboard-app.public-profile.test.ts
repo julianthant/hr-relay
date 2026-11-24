@@ -14,7 +14,7 @@ for (const source of ["show", "poll", "initial", "initial-network"] as const) it
   const previous = window.location.href; window.history.replaceState(null, "", "/");
   const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
-    profileId: "00000000-0000-4000-8000-000000000002", step: "duo", methods: { key: idle, touch: idle } };
+    profileId: "00000000-0000-4000-8000-000000000002", step: "duo", methods: { key: idle } };
   const calls: string[] = [];
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
     const path = new URL(url).pathname; calls.push(path);
@@ -77,7 +77,7 @@ for (const ready of [false, true]) it(`resumes the server draft stage without or
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
     const path = new URL(url).pathname; calls.push(path); assert.equal(path, "/api/v1/profile/state");
     return Response.json({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
-      profileId: "00000000-0000-4000-8000-000000000002", step: ready ? "ready" : "duo", methods: { key: method(ready), touch: method(ready) } });
+      profileId: "00000000-0000-4000-8000-000000000002", step: ready ? "ready" : "duo", methods: { key: method(ready) } });
   } });
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   try {

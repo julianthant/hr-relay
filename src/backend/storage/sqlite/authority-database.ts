@@ -1665,7 +1665,7 @@ function readAuthorityChangePages(database: DatabaseSync, after: number, high: n
 }
 
 /** Entries kept for readers that fall behind; older ones are pruned, and a reader below the floor runs the whole-store check. */
-const CHANGE_LOG_RETAINED_ENTRIES = 100_000;
+const CHANGE_LOG_RETAINED_ENTRIES = 10_000;
 const CHANGE_LOG_PRUNE_INTERVAL_MS = 60_000;
 
 /**

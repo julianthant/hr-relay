@@ -522,7 +522,7 @@ preserves the draft. Whole-draft cancellation returns signed-out only after cano
 erasure proof. Neither Details, Duo completion nor entering Ready publishes a saved account.
 
 The Ready Finish callback invokes `completeProfileOnboarding({operationId})`. Backend receipts for
-both software FastDuo and native Mac Touch ID, proved provider closure and explicit Finish precede
+the security key, proved provider closure and explicit Finish precede
 registry/verifier/active-session publication. The active `x-relay-session` credential returned by
 Finish authorizes bootstrap, Queue, Run and HR data requests. Failed or unknown publication remains
 a defined HOLD; public error codes never expose private causes or credential values.
