@@ -61,13 +61,15 @@ it("drops a stored Touch ID row at first open and keeps signing with the securit
     store.enroll(key); store.confirm(key.credentialId, scope);
     const identity = store.identity(), ready = store.credentials();
     const RecordSchema = z.looseObject({ credentials: z.array(z.looseObject({ credentialId: z.string(), authenticator: z.looseObject({ transport: z.string() }).optional() })) });
+    const keyRows = () => RecordSchema.parse(readAuthenticatedCredentialFixture(machineRoot, profileId, "duo")).credentials.map(row => [row.credentialId, row.authenticator?.transport]);
+    const before = keyRows();
+    assert.ok(before.every(([, transport]) => transport === "usb") && before.some(([id]) => id === key.credentialId));
     const touch = { ...RecordSchema.parse(readAuthenticatedCredentialFixture(machineRoot, profileId, "duo")).credentials[0], ...material(),
       authenticator: { transport: "internal", isResidentCredential: true, userHandle: Buffer.from("synthetic-platform-user").toString("base64") } };
     rewriteAuthenticatedCredentialFixture(machineRoot, profileId, value => ({ credentials: [...RecordSchema.parse(value).credentials, touch] }), "duo");
     const reopened = createDuoCredentialStore(fixture.admission, clock);
     assert.deepEqual([reopened.identity(), reopened.credentials()], [identity, ready]);
-    const stored = RecordSchema.parse(readAuthenticatedCredentialFixture(machineRoot, profileId, "duo"));
-    assert.deepEqual(stored.credentials.map(row => [row.credentialId, row.authenticator?.transport]), [[key.credentialId, "usb"]]);
+    assert.deepEqual(keyRows(), before);
     const request = { requestId: randomUUID(), credentialId: key.credentialId, rpId: "duosecurity.com" as const, origin: scope.origin, challenge: "AQID" };
     assert.equal((await reopened.sign(request)).transport, "usb");
     await assert.rejects(reopened.sign({ ...request, requestId: randomUUID(), credentialId: touch.credentialId }));
