@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
+import { CHANGE_LOG_PAGE_ENTRIES, readAuthorityChangePages } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { seedStorageReadFixture } from "../../perf/storage-read-fixture.js";
 import { traceSqliteStatements } from "../../perf/sqlite-statement-counter.js";
 import { auditPlans, auditStoreQueryPlans, literalStatements, normalizeSql, tracedStatements, WHOLE_TABLE_READS, type PlanAudit } from "./helpers/query-plan-audit.js";
@@ -118,7 +119,7 @@ const plan = (database: DatabaseSync, sql: string) => database.prepare(`EXPLAIN 
 /** Selector, required plan, and for a plan that keeps a temporary sort the bound that keeps the sort small. */
 const PINNED_PLANS: readonly (readonly [RegExp, RegExp, string?])[] = [
   [/^SELECT id, request_json, parent_id FROM commands WHERE id IN \(SELECT value FROM json_each\(\?1\)\) OR parent_id IN \(SELECT value FROM json_each\(\?1\)\)/u,
-    /SEARCH commands USING INDEX commands_child_idx \(parent_id=\?\)/u, "bounded: it orders only the command groups the peer commits since this connection's last read changed, the rows the check re-derives"],
+    /SEARCH commands USING INDEX commands_child_idx \(parent_id=\?\)/u, `bounded: it orders one ${String(CHANGE_LOG_PAGE_ENTRIES)}-entry change-log page's command groups (their commands, children and referenced parents), since each page's closure is checked on its own`],
   [/^SELECT \* FROM timeline_events WHERE run_id IN \(SELECT value FROM json_each\(\?\)\) AND kind IN \('run\.queued','run\.claimed'\) ORDER BY run_id,cursor$/u,
     /SEARCH timeline_events USING INDEX timeline_run_idx \(run_id=\?\)/u],
   [/^SELECT \* FROM runs INDEXED BY runs_parent_idx WHERE parent_id IN \(SELECT value FROM json_each\(\?\)\) ORDER BY parent_id,id$/u,
@@ -178,4 +179,19 @@ describe("list index plans", () => {
       }
     } finally { database.close(); }
   }, 120_000);
+
+  it("bounds the command-group sort's scope to one change-log page's closure", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
+      const entries = 2 * CHANGE_LOG_PAGE_ENTRIES + 1;
+      database.prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
+        INSERT INTO authority_changes(table_name,row_key,op,keys_json) SELECT 'commands',json_array('c'||i),'update',json_array('command:c'||i) FROM n`).run(entries);
+      const pages = readAuthorityChangePages(database, 0, entries);
+      assert.ok(pages !== undefined);
+      expect(pages.map(page => page.keys.size)).toEqual([CHANGE_LOG_PAGE_ENTRIES, CHANGE_LOG_PAGE_ENTRIES, 1]);
+      pages.forEach((page, index) => { expect([...page.keys]).toEqual(Array.from({ length: page.keys.size }, (_, at) => `command:c${String(index * CHANGE_LOG_PAGE_ENTRIES + at + 1)}`)); });
+      expect(readAuthorityChangePages(database, entries, entries)?.map(page => page.keys.size)).toEqual([0]);
+    } finally { database.close(); }
+  });
 });

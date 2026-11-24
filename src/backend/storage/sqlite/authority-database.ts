@@ -1637,18 +1637,23 @@ function includeAuthorityChange(closure: ReturnType<typeof authorityChangeClosur
   }
 }
 
-function readAuthorityChangeClosure(database: DatabaseSync, after: number, high: number, observe?: (entry: ChangeEntry) => void) {
+/** Change-log entries read per page; each page's closure is validated on its own, so one scoped check covers at most this many. */
+export const CHANGE_LOG_PAGE_ENTRIES = 1_000;
+
+/** One closure per unread change-log page, or `undefined` on a gap; with nothing unread, one empty closure re-checks the singleton. */
+export function readAuthorityChangePages(database: DatabaseSync, after: number, high: number, observe?: (entry: ChangeEntry) => void) {
   const tail = z.strictObject({ first: z.number().nullable(), last: z.number().nullable() }).parse(database.prepare(`SELECT
     (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq LIMIT 1) AS first,
     (SELECT seq FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq DESC LIMIT 1) AS last`).get(after, after));
   if (high < after || (high === after ? tail.first !== null : tail.first !== after + 1 || tail.last !== high)) return undefined;
 
-  const closure = authorityChangeClosure();
-  const pageSize = 1_000;
+  const closures = [authorityChangeClosure()];
   let cursor = after;
   while (cursor < high) {
-    const page = readAuthorityChanges(database, cursor, pageSize);
-    if (page.length !== Math.min(high - cursor, pageSize)) return undefined;
+    const page = readAuthorityChanges(database, cursor, CHANGE_LOG_PAGE_ENTRIES);
+    if (page.length !== Math.min(high - cursor, CHANGE_LOG_PAGE_ENTRIES)) return undefined;
+    const closure = cursor === after ? closures[0] : authorityChangeClosure();
+    if (closure !== closures[0]) closures.push(closure);
     for (const entry of page) {
       if (entry.seq !== cursor + 1) return undefined;
       includeAuthorityChange(closure, entry);
@@ -1656,7 +1661,7 @@ function readAuthorityChangeClosure(database: DatabaseSync, after: number, high:
       cursor = entry.seq;
     }
   }
-  return closure;
+  return closures;
 }
 
 /** Entries kept for readers that fall behind; older ones are pruned, and a reader below the floor runs the whole-store check. */
@@ -1682,12 +1687,13 @@ function admitChanges(database: DatabaseSync, reader: ChangeLogReader, search: "
   // Entries may be missing while the schema differed, so a schema move is checked whole.
   if (schemaMoved) reader.wholeStore = true;
   const high = changeLogHighWater(database);
-  const closure = reader.wholeStore ? undefined : readAuthorityChangeClosure(database, reader.cursor, high, observe);
-  if (closure === undefined) reader.wholeStore = true;
+  const closures = reader.wholeStore ? undefined : readAuthorityChangePages(database, reader.cursor, high, observe);
+  if (closures === undefined) reader.wholeStore = true;
   const singleton = readSingletonImage(database);
-  const check = closure === undefined
+  // Validating the union of the page closures equals validating each one, since every check reads current rows; a whole-store route covers the rest.
+  const check = closures === undefined
     ? (value: typeof search) => { validateAuthorityStore(database, value); }
-    : (value: typeof search) => { validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value); };
+    : (value: typeof search) => { closures.find(closure => validateAuthorityChangeClosure(database, closure, singletonChangeKeys(reader.singleton, singleton), value) === "whole"); };
   try { check(search); }
   catch (error) {
     // The refusal is rethrown either way; this only names which half failed.
@@ -1709,7 +1715,7 @@ function admitChanges(database: DatabaseSync, reader: ChangeLogReader, search: "
   }
   if (search === "progress") return;
   Object.assign(reader, { cursor: high, singleton, wholeStore: false, failed: undefined, settled: undefined });
-  return closure !== undefined;
+  return closures !== undefined;
 }
 
 /**
